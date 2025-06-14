@@ -18,6 +18,9 @@ permissions:
 jobs:
   build-and-test:
     runs-on: [self-hosted, gpu]
+    strategy:
+      matrix:
+        ubuntu_version: [22.04, 24.04]
     timeout-minutes: 240
     env:
         CUDA_VISIBLE_DEVICES: all
@@ -29,7 +32,7 @@ jobs:
         DOCKER_TLS_CERTDIR: ""
         OMNI_KIT_ALLOW_ROOT: 1
     container:
-      image: ubuntu:22.04
+      image: ubuntu:${{ matrix.ubuntu_version }}
       options: --gpus all --security-opt=no-new-privileges:true --privileged
 
     steps:
