@@ -72,6 +72,7 @@ packages = [
     "pyperclip==1.8.0",                     # SWIPAT filed under: https://nvbugs/5326856
     "python-dateutil==2.9.0.post0",         # SWIPAT filed under: https://nvbugs/5303032
     "six==1.17.0",                          # SWIPAT filed under: https://nvbugs/5303087
+    "pillow",
 ]
 
 target = "../_build/target-deps/isaac_core_prebundle"
