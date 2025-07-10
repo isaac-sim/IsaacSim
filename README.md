@@ -201,6 +201,7 @@ Isaac Sim uses a custom build system with the following key options:
 xhost +"local:docker@"
 docker build -t isaac -f build.dockerfile .
 docker run -it --rm --gpus all \
+           -p 8226:8226
            -e DISPLAY=$DISPLAY \
            -e XAUTHORITY=$XAUTHORITY \
            -e XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
