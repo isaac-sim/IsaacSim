@@ -197,6 +197,8 @@ Isaac Sim uses a custom build system with the following key options:
 
 
 ### Run in docker
+
+Create:
 ```bash
 xhost +"local:docker@"
 docker build -t isaac -f build.dockerfile .
@@ -212,9 +214,9 @@ docker run -it --gpus all --name isaac \
            -v /tmp/.X11-unix:/tmp/.X11-unix \
            -v $XDG_RUNTIME_DIR:$XDG_RUNTIME_DIR \
            isaac
-...
-docker stop isaac
-...
+```
+Start again:
+```bash
 docker start isaac
 ```
 
