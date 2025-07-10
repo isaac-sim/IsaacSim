@@ -197,7 +197,7 @@ Isaac Sim uses a custom build system with the following key options:
 
 
 ### Run in docker
-```
+```bash
 xhost +"local:docker@"
 docker build -t isaac -f build.dockerfile .
 docker run -it --rm --gpus all \
