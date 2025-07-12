@@ -203,7 +203,7 @@ Create:
 xhost +"local:docker@"
 docker build -t isaac -f build.dockerfile .
 docker run -it --gpus all --name isaac \
-           -p 8226:8226
+           -p 8226:8226 \
            -e DISPLAY=$DISPLAY \
            -e XAUTHORITY=$XAUTHORITY \
            -e XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
