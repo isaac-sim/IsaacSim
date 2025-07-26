@@ -1,4 +1,28 @@
 # Changelog
+## [1.4.9] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 1.4.8)
+
+## [1.4.8] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [1.4.7] - 2025-06-26
+### Changed
+- Disable fabric usd notice handler during cloning
+
+## [1.4.6] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
+## [1.4.5] - 2025-06-19
+### Changed
+- Fixed another issue with fabric cloning for partially populated stages
+
+## [1.4.4] - 2025-06-17
+### Changed
+- Fixed fabric cloning for partially populated stages
+- Pre-populated rigid body attributes before cloning
 
 ## [1.4.3] - 2025-06-06
 ### Changed

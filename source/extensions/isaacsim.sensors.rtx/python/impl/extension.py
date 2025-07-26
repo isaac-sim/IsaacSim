@@ -15,7 +15,7 @@
 
 import ctypes
 import gc
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import carb
 import carb.settings
@@ -30,7 +30,6 @@ from isaacsim.core.nodes.scripts.utils import (
     register_node_writer_with_telemetry,
 )
 from isaacsim.core.utils.prims import get_prim_at_path
-from isaacsim.core.utils.stage import traverse_stage
 from isaacsim.sensors.rtx.bindings._isaacsim_sensors_rtx import acquire_interface as _acquire
 from isaacsim.sensors.rtx.bindings._isaacsim_sensors_rtx import release_interface as _release
 from omni.replicator.core import AnnotatorRegistry
@@ -65,7 +64,7 @@ class Extension(omni.ext.IExt):
         # Test if the originating node is of the appropriate type
         if node.get_type_name == upstream_node_type_name:
             carb.log_warn(
-                f"Provided node {node} is of type {usptream_node_type_name}. Setting attribute {attribute} to {value}."
+                f"Provided node {node} is of type {upstream_node_type_name}. Setting attribute {attribute} to {value}."
             )
             if not node.get_attribute(attribute).set(value=value):
                 carb.log_error(
@@ -200,7 +199,7 @@ class Extension(omni.ext.IExt):
         # (GenericModelOutput and RtxSensorMetadata) -> LidarPointAccumulator -> IsaacComputeRTXLidarFlatScan
         annotator_name = "IsaacComputeRTXLidarFlatScan"
 
-        def _on_attach_gmo_flatscan_simulation_time(node: og.Node):
+        def _on_attach_gmo_flatscan(node: og.Node):
             # Repeat annotator name definition in callback to avoid scope issues
             annotator_name = "IsaacComputeRTXLidarFlatScan"
 
@@ -229,12 +228,6 @@ class Extension(omni.ext.IExt):
                     ),
                     (
                         "omni.syntheticdata.SdRenderVarPtr",
-                        "cudaDeviceIndex",
-                        node.get_prim_path(),
-                        "cudaDeviceIndex",
-                    ),
-                    (
-                        "omni.syntheticdata.SdRenderVarPtr",
                         "exec",
                         node.get_prim_path(),
                         "exec",
@@ -257,13 +250,14 @@ class Extension(omni.ext.IExt):
                     attributes_mapping={
                         "outputs:dest": "inputs:dataPtr",
                         "outputs:cudaStream": "inputs:cudaStream",
+                        "outputs:newData": "inputs:newData",
                     },
                 ),
             ],
             node_type_id="isaacsim.sensors.rtx.IsaacComputeRTXLidarFlatScan",
             output_data_type=np.float32,
             output_channels=3,
-            on_attach_callback=_on_attach_gmo_flatscan_simulation_time,
+            on_attach_callback=_on_attach_gmo_flatscan,
         )
         self.registered_annotators.append(annotator_name)
 
@@ -316,12 +310,6 @@ class Extension(omni.ext.IExt):
                 node=node,
             )
             self._lidar_point_accumulator_count += 1
-            # self._update_upstream_node_attributes(
-            #     upstream_node_type_name="omni.sensors.nv.lidar.LidarPointAccumulator",
-            #     attribute="inputs:desiredCoordsType",
-            #     value="CARTESIAN",
-            #     node=node,
-            # )
 
             return self._on_attach_callback_base(
                 annotator_name=annotator_name,
@@ -350,10 +338,12 @@ class Extension(omni.ext.IExt):
                     attributes_mapping={
                         "outputs:dest": "inputs:dataPtr",
                         "outputs:cudaStream": "inputs:cudaStream",
+                        "outputs:newData": "inputs:newData",
                     },
                 ),
             ],
             node_type_id="isaacsim.sensors.rtx.IsaacExtractRTXSensorPointCloud",
+            init_params={"accumulateLidarScan": True},
             output_data_type=np.float32,
             output_channels=3,
             on_attach_callback=_on_attach_gmo_extract_rtx_sensor_point_cloud,
@@ -365,6 +355,7 @@ class Extension(omni.ext.IExt):
             name="RtxLidar" + "DebugDrawPointCloud",
             node_type_id="isaacsim.util.debug_draw.DebugDrawPointCloud",
             annotators=["IsaacExtractRTXSensorPointCloudNoAccumulator"],
+            doTransform=True,
             category="isaacsim.sensors.rtx",
         )
 
@@ -385,6 +376,7 @@ class Extension(omni.ext.IExt):
             # hard to see radar points... so make them more visible.
             size=0.2,
             color=[1, 0.2, 0.3, 1],
+            doTransform=True,
             category="isaacsim.sensors.rtx",
         )
         register_node_writer_with_telemetry(
@@ -394,6 +386,7 @@ class Extension(omni.ext.IExt):
             # hard to see radar points... so make them more visible.
             size=0.2,
             color=[1, 0.2, 0.3, 1],
+            doTransform=True,
             category="isaacsim.sensors.rtx",
         )
 
@@ -406,7 +399,7 @@ class Extension(omni.ext.IExt):
             sensors.get_synthetic_data().unregister_node_template(template)
 
 
-def get_gmo_data(dataPtr: int) -> gmo_utils.GenericModelOutput:
+def get_gmo_data(dataPtr: Union[int, np.ndarray]) -> gmo_utils.GenericModelOutput:
     """Retrieves GMO buffer from pointer to GMO buffer.
 
     Args:
@@ -415,9 +408,16 @@ def get_gmo_data(dataPtr: int) -> gmo_utils.GenericModelOutput:
     Returns:
         gmo_utils.GenericModelOutput: GMO buffer at dataPtr. Empty struct if dataPtr is 0 or None.
     """
-    if dataPtr == 0 or dataPtr is None:
+    if dataPtr is None:
         carb.log_warn(
-            "isaacsim.sensors.rtx.get_gmo_data: received null pointer, returning empty GenericModelOutput buffer."
+            "isaacsim.sensors.rtx.get_gmo_data: received null pointer (None), returning empty GenericModelOutput buffer."
+        )
+        return gmo_utils.GenericModelOutput
+    elif isinstance(dataPtr, np.ndarray):
+        return gmo_utils.getModelOutputFromBuffer(dataPtr)
+    elif dataPtr == 0:
+        carb.log_warn(
+            "isaacsim.sensors.rtx.get_gmo_data: received null pointer (0), returning empty GenericModelOutput buffer."
         )
         return gmo_utils.GenericModelOutput
     # Reach 28 bytes into the GMO data buffer using the pointer address

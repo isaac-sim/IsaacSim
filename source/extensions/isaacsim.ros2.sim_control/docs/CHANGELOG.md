@@ -1,4 +1,20 @@
 # Changelog
+## [1.1.4] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 1.1.3)
+
+## [1.1.3] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [1.1.2] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
+## [1.1.1] - 2025-06-24
+### Fixed
+- Resolved an issue where ROS 2 spinning errors would occur upon closing Isaac Sim.
+
 ## [1.1.0] - 2025-06-03
 ### Changed
 - Use isaacsim.core.experimental for prim operations

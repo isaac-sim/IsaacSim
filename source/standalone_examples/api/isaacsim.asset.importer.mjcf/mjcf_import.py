@@ -20,18 +20,15 @@ kit = SimulationApp({"renderer": "RaytracedLighting", "headless": False})
 import omni.kit.commands
 from isaacsim.core.prims import Articulation
 from isaacsim.core.utils.extensions import get_extension_path_from_name
-from pxr import Gf, PhysxSchema, Sdf, UsdLux, UsdPhysics
+from pxr import Gf, PhysicsSchemaTools, PhysxSchema, Sdf, UsdLux, UsdPhysics
 
 # Setting up import configuration:
 status, import_config = omni.kit.commands.execute("MJCFCreateImportConfig")
-# import_config.merge_fixed_joints = False
-# import_config.convex_decomp = False
-# import_config.import_inertia_tensor = True
-# import_config.fix_base = False
-# import_config.distance_scale = 1.0
-
-import_config.set_fix_base(True)
-import_config.set_import_inertia_tensor(True)
+import_config.merge_fixed_joints = False
+import_config.convex_decomp = False
+import_config.import_inertia_tensor = True
+import_config.fix_base = False
+import_config.distance_scale = 1.0
 
 
 # Get path to extension data:
@@ -61,15 +58,7 @@ physxSceneAPI.CreateBroadphaseTypeAttr("MBP")
 physxSceneAPI.CreateSolverTypeAttr("TGS")
 
 # Add ground plane
-omni.kit.commands.execute(
-    "AddGroundPlaneCommand",
-    stage=stage,
-    planePath="/groundPlane",
-    axis="Z",
-    size=1500.0,
-    position=Gf.Vec3f(0, 0, -0.50),
-    color=Gf.Vec3f(0.5),
-)
+PhysicsSchemaTools.addGroundPlane(stage, "/groundPlane", "Z", 1500, Gf.Vec3f(0, 0, -50), Gf.Vec3f(0.5))
 
 # Add lighting
 distantLight = UsdLux.DistantLight.Define(stage, Sdf.Path("/DistantLight"))

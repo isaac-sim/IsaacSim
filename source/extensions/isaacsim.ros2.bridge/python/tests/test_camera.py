@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import asyncio
-import gc
 
 import carb
 import omni.graph.core as og
@@ -36,22 +35,16 @@ from isaacsim.core.utils.viewports import set_camera_view
 from isaacsim.storage.native import get_assets_root_path_async
 from pxr import Sdf
 
-from .common import get_qos_profile
+from .common import ROS2TestCase, get_qos_profile
 
 
 # Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestRos2Camera(omni.kit.test.AsyncTestCase):
+class TestRos2Camera(ROS2TestCase):
     # Before running each test
     async def setUp(self):
-
-        import rclpy
+        await super().setUp()
 
         omni.usd.get_context().new_stage()
-        self._timeline = omni.timeline.get_timeline_interface()
-
-        ext_manager = omni.kit.app.get_app().get_extension_manager()
-        ext_id = ext_manager.get_enabled_extension_id("isaacsim.ros2.bridge")
-        self._ros_extension_path = ext_manager.get_extension_path(ext_id)
 
         self._assets_root_path = await get_assets_root_path_async()
         if self._assets_root_path is None:
@@ -59,12 +52,7 @@ class TestRos2Camera(omni.kit.test.AsyncTestCase):
             return
         kit_folder = carb.tokens.get_tokens_interface().resolve("${kit}")
 
-        self._physics_rate = 60
-        carb.settings.get_settings().set_bool("/app/runLoops/main/rateLimitEnabled", True)
-        carb.settings.get_settings().set_int("/app/runLoops/main/rateLimitFrequency", int(self._physics_rate))
-        carb.settings.get_settings().set_int("/persistent/simulation/minFrameRate", int(self._physics_rate))
         await omni.kit.app.get_app().next_update_async()
-        rclpy.init()
 
         # acquire the viewport window
         viewport_api = omni.kit.viewport.utility.get_active_viewport()
@@ -76,18 +64,7 @@ class TestRos2Camera(omni.kit.test.AsyncTestCase):
 
     # After running each test
     async def tearDown(self):
-        self._timeline.stop()
-        await omni.kit.app.get_app().next_update_async()
-        import rclpy
-
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            print("tearDown, assets still loading, waiting to finish...")
-            await asyncio.sleep(1.0)
-
-        self._timeline = None
-        rclpy.shutdown()
-        gc.collect()
-        pass
+        await super().tearDown()
 
     async def test_camera(self):
         scene_path = "/Isaac/Environments/Grid/default_environment.usd"
@@ -259,8 +236,6 @@ class TestRos2Camera(omni.kit.test.AsyncTestCase):
         system_time = time.time()
 
         self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
         await simulate_async(1.5, callback=spin)
         for _ in range(10):
             if self._rgb is None:

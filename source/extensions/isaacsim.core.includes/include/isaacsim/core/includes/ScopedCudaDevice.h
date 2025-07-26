@@ -39,6 +39,22 @@ namespace includes
         }                                                                                                              \
     }
 
+#define CU_SUCCEEDED(result) ((result) == CUresult::CUDA_SUCCESS)
+#define CU_FAILED(result) ((result) != CUresult::CUDA_SUCCESS)
+
+#define CU_CHECK(result)                                                                                                 \
+    {                                                                                                                    \
+        CUresult _cu_result = (result);                                                                                  \
+        if (CU_FAILED(_cu_result))                                                                                       \
+        {                                                                                                                \
+            const char* _errorName = nullptr;                                                                            \
+            const char* _errorString = nullptr;                                                                          \
+            cuGetErrorName(_cu_result, &_errorName);                                                                     \
+            cuGetErrorString(_cu_result, &_errorString);                                                                 \
+            CARB_LOG_ERROR("CU error %d: %s - %s at %s:%d", (_cu_result), _errorName, _errorString, __FILE__, __LINE__); \
+        }                                                                                                                \
+    }
+
 /**
  * @class ScopedDevice
  * @brief RAII wrapper for CUDA device context management.

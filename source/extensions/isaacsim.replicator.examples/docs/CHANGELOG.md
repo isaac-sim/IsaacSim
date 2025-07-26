@@ -1,4 +1,20 @@
 # Changelog
+## [1.1.29] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 1.1.28)
+
+## [1.1.28] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [1.1.27] - 2025-07-01
+### Changed
+- Update simready assets test example to add references using isaac sim api
+
+## [1.1.26] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
 ## [1.1.25] - 2025-06-13
 ### Changed
 - Fixed various simready assets example snippet warnings

@@ -192,6 +192,10 @@ class ColorJointWidget(TableWidget):
             width=120,
         )
 
+        # set the default selection to the first item
+        default_item = self.model.get_item_children()[0]
+        self.list.selection = [default_item]
+
     def __selection_changed(self, selection):
         if not selection:
             return

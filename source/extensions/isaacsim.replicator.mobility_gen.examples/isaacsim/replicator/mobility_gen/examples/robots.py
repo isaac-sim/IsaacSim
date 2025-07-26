@@ -36,7 +36,7 @@ from isaacsim.replicator.mobility_gen.impl.common import Buffer, Module
 # isaacsim.replicator.mobility_gen.examples
 from isaacsim.replicator.mobility_gen.impl.robot import ROBOTS, MobilityGenRobot
 from isaacsim.replicator.mobility_gen.impl.types import Pose2d
-from isaacsim.replicator.mobility_gen.impl.utils.global_utils import get_world
+from isaacsim.replicator.mobility_gen.impl.utils.global_utils import get_world, join_sdf_paths
 from isaacsim.replicator.mobility_gen.impl.utils.prim_utils import (
     prim_rotate_x,
     prim_rotate_y,
@@ -91,7 +91,7 @@ class WheeledMobilityGenRobot(MobilityGenRobot):
             _WheeledRobot(prim_path, wheel_dof_names=cls.wheel_dof_names, create_robot=True, usd_path=cls.usd_url)
         )
 
-        view = _ArticulationView(os.path.join(prim_path, cls.chassis_subpath))
+        view = _ArticulationView(join_sdf_paths(prim_path, cls.chassis_subpath))
 
         world.scene.add(view)
 
@@ -137,7 +137,7 @@ class PolicyMobilityGenRobot(MobilityGenRobot):
         world.scene.add(robot)
 
         # Articulation
-        view = _ArticulationView(os.path.join(prim_path, cls.articulation_path))
+        view = _ArticulationView(join_sdf_paths(prim_path, cls.articulation_path))
 
         world.scene.add(view)
 

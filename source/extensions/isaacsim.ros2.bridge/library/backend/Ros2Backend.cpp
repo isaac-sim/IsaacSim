@@ -70,9 +70,9 @@ void Ros2MessageInterfaceImpl::writeRosHeader(const std::string& frameId,
     else
     {
         fprintf(stdout,
-                "[Warning] Timestamp is invalid. Timestamp %" PRId64
+                "[Warning] Frame %s Timestamp is invalid. Timestamp %" PRId64
                 " will be neglected for all published ROS messages\n",
-                nanoseconds);
+                frameId.c_str(), nanoseconds);
     }
 }
 

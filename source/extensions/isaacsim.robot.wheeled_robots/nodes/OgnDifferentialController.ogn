@@ -16,52 +16,52 @@
             },
             "wheelRadius": {
                 "type": "double",
-                "description": "radius of the wheels",
+                "description": "Radius of the wheels in meters",
                 "default": 0.0
             },
             "wheelDistance": {
                 "type": "double",
-                "description": "distance between the two wheels",
+                "description": "Distance between the two wheels in meters",
                 "default": 0.0
             },
             "dt": {
                 "type": "double",
-                "description": "delta time",
+                "description": "Delta time in seconds",
                 "default": 0.0
             },
             "maxAcceleration": {
                 "type": "double",
-                "description": "maximum linear acceleration of the robot for forward and reverse, 0.0 means not set",
+                "description": "Maximum linear acceleration of the robot for forward and reverse in m/s^2, 0.0 means not set",
                 "default": 0.0
             },
             "maxDeceleration": {
                 "type": "double",
-                "description": "maximum linear braking of the robot, 0.0 means not set.",
+                "description": "Maximum linear braking of the robot in m/s^2, 0.0 means not set.",
                 "default": 0.0
             },
             "maxAngularAcceleration": {
                 "type": "double",
-                "description": "maximum angular acceleration of the robot, 0.0 means not set",
+                "description": "Maximum angular acceleration of the robot in rad/s^2, 0.0 means not set",
                 "default": 0.0
             },           
             "maxLinearSpeed":{
                 "type": "double",
-                "description": "max linear speed allowed for vehicle, 0.0 means not set",
+                "description": "Max linear speed allowed for vehicle in m/s, 0.0 means not set",
                 "default": 0.0
             },
             "maxAngularSpeed":{
                 "type": "double",
-                "description": "max angular speed allowed for vehicle, 0.0 means not set",
+                "description": "Max angular speed allowed for vehicle in rad/s, 0.0 means not set",
                 "default": 0.0
             },
             "maxWheelSpeed":{
                 "type": "double",
-                "description": "max wheel speed allowed, 0.0 means not set",
+                "description": "Max wheel speed allowed in rad/s, 0.0 means not set",
                 "default": 0.0
             },
             "linearVelocity":{
                 "type": "double",
-                "description": "desired linear velocity",
+                "description": "Desired linear velocity in m/s",
                 "metadata": {
                     "uiName": "Desired Linear Velocity"
                 },
@@ -69,7 +69,7 @@
             },
             "angularVelocity":{
                 "type": "double",
-                "description": "desired rotation velocity",
+                "description": "Desired rotation velocity in rad/s",
                 "metadata": {
                     "uiName": "Desired Angular Velocity"
                 },
@@ -79,7 +79,7 @@
         "outputs":{
             "velocityCommand":{
                 "type": "double[]",
-                "description": "velocity commands",
+                "description": ["Velocity commands", "Units:", "    linear (m/s)", "    angular (rad/s)"],
                 "default": [0.0, 0.0]    
             }
         }

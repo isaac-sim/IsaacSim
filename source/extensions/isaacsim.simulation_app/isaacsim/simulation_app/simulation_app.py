@@ -625,6 +625,7 @@ class SimulationApp:
 
     def close(self, wait_for_replicator=True) -> None:
         """Close the running Omniverse Toolkit."""
+
         try:
             # make sure that any replicator workflows finish rendering/writing
             import omni.replicator.core as rep
@@ -659,8 +660,18 @@ class SimulationApp:
                 self._app.print_and_log(
                     "Waiting for USD resource operations to complete (this may take a few seconds), use Ctrl-C to exit immediately"
                 )
-            while is_stage_loading():
+
+            # Add timeout to prevent infinite loop (max 300 iterations = ~5 seconds at 60fps)
+            max_iterations = 300
+            iteration_count = 0
+            while is_stage_loading() and iteration_count < max_iterations:
                 self._app.update()
+                iteration_count += 1
+
+            if iteration_count >= max_iterations:
+                self._app.print_and_log(
+                    "Warning: {max_iterations} frame timeout reached while waiting for USD resource operations to complete"
+                )
 
             # Cleanup any running tracy intances so data is not lost
             try:

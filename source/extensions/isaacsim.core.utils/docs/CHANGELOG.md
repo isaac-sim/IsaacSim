@@ -1,4 +1,20 @@
 # Changelog
+## [3.4.5] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 3.4.4)
+
+## [3.4.4] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [3.4.3] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
+## [3.4.2] - 2025-06-18
+### Fixed
+- Resolve reference paths between layers when saving the stage
+
 ## [3.4.1] - 2025-05-31
 ### Changed
 - Use default nucleus server for all tests

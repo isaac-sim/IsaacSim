@@ -15,6 +15,7 @@
 import asyncio
 
 import carb
+import isaacsim.core.utils.prims as prims_utils
 import isaacsim.core.utils.stage as stage_utils
 import numpy as np
 import omni.graph.core as og
@@ -61,6 +62,9 @@ class TestIMUSensorOgn(omni.kit.test.AsyncTestCase):
             path="/imu_sensor",
             parent="/World/Cube",
         )
+        prims_utils.set_prim_attribute_value(
+            "/World/Cube/imu_sensor", attribute_name="linearAccelerationFilterWidth", value=10
+        )
         pass
 
     async def setup_ogn(self):
@@ -96,12 +100,11 @@ class TestIMUSensorOgn(omni.kit.test.AsyncTestCase):
         )
 
         self.my_world.play()
-        # TODO: regenerate goldens
-        await simulate_async(0.5 - (1.0 / self._physics_rate) * 2.0)
+        await simulate_async(1.5)
         lin_acc = og.Controller.attribute(self.graph_path + "/ReadIMUNode.outputs:linAcc").get()
-        self.assertAlmostEqual(lin_acc[2], 9.81, places=2)
-        self.assertAlmostEqual(lin_acc[0], 0.0, places=2)
-        self.assertAlmostEqual(lin_acc[1], 0.0, places=2)
+        self.assertAlmostEqual(lin_acc[2], 9.81, delta=0.01)
+        self.assertAlmostEqual(lin_acc[0], 0.0, delta=0.01)
+        self.assertAlmostEqual(lin_acc[1], 0.0, delta=0.01)
 
         sensor_time = og.Controller.attribute(self.graph_path + "/ReadIMUNode.outputs:sensorTime").get()
         self.assertNotEqual(sensor_time, 0.0)

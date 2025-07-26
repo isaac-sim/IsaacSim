@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import numpy as np
 from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
@@ -37,11 +38,13 @@ art.initialize()
 dof_ptr = art.get_dof_index("panda_joint2")
 
 simulation_context.play()
-# NOTE: before interacting with dc directly you need to step physics for one step at least
+# NOTE: before interacting with physics directly you need to step physics for one step at least
 # simulation_context.step(render=True) which happens inside .play()
 for i in range(1000):
     art.set_joint_positions([[-1.5]], joint_indices=[dof_ptr])
     simulation_context.step(render=True)
+
+print("Reached: ", np.array2string(art.get_joint_positions(), precision=3, suppress_small=True))
 
 simulation_context.stop()
 simulation_app.close()

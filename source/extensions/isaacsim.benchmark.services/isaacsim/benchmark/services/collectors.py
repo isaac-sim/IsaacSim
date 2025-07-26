@@ -23,25 +23,29 @@ import omni.kit.test
 
 def get_last_gpu_time_ms(
     hydra_engine_stats: HydraEngineStats,
-) -> float:
+) -> Tuple[float, List[float]]:
     """
-    Return the RTX Renderer duration (in milliseconds) as seen in the profiler window.
+    Return the total RTX Renderer duration (in milliseconds) and per-GPU durations.
     """
     if hydra_engine_stats is None:
-        return 0.0
+        return 0.0, []
 
     device_nodes = hydra_engine_stats.get_gpu_profiler_result()
 
     total_time = 0.0
+    per_gpu_times = []
 
-    # jcannon TODO: make this handle multi GPU
-    for node in device_nodes[0]:
-        # RTX Renderer duration, seems to always be available even if the profiler
-        # isn't on... it is always the root node
-        if node["indent"] == 0:
-            total_time += node["duration"]
+    for device_idx, device in enumerate(device_nodes):
+        device_time = 0.0
+        for node in device:
+            if node["indent"] == 0:
+                device_time += node["duration"]
+        per_gpu_times.append(round(device_time, 6))
+        total_time += device_time
 
-    return round(total_time, 6)
+    # For backward compatibility, return average for single total
+    avg_time = round(total_time / len(device_nodes) if device_nodes else 0.0, 6)
+    return avg_time, per_gpu_times
 
 
 class IsaacUpdateFrametimeCollector:
@@ -75,6 +79,7 @@ class IsaacUpdateFrametimeCollector:
 
         self.app_frametimes_ms: List[float] = []
         self.gpu_frametimes_ms: List[float] = []
+        self.per_gpu_frametimes_ms: List[List[float]] = []
         self.physics_frametimes_ms: List[float] = []
         self.render_frametimes_ms: List[float] = []
 
@@ -91,8 +96,17 @@ class IsaacUpdateFrametimeCollector:
         app_update_time_ms = round((timestamp_ns - self.__last_main_frametime_timestamp_ns) / 1000 / 1000, 6)
         self.__last_main_frametime_timestamp_ns = timestamp_ns
         if self.gpu_frametime:
-            gpu_frametime_ms = get_last_gpu_time_ms(self.hydra_engine_stats)
-            self.gpu_frametimes_ms.append(gpu_frametime_ms)
+            avg_gpu_frametime_ms, per_gpu_times = get_last_gpu_time_ms(self.hydra_engine_stats)
+            self.gpu_frametimes_ms.append(avg_gpu_frametime_ms)
+
+            # Initialize per-GPU lists if needed
+            if len(self.per_gpu_frametimes_ms) != len(per_gpu_times):
+                self.per_gpu_frametimes_ms = [[] for _ in range(len(per_gpu_times))]
+
+            # Add per-GPU frametime data
+            for i, gpu_time in enumerate(per_gpu_times):
+                self.per_gpu_frametimes_ms[i].append(gpu_time)
+
         self.app_frametimes_ms.append(app_update_time_ms)
         self.elapsed_sim_time += event.payload["dt"]
 
@@ -112,6 +126,7 @@ class IsaacUpdateFrametimeCollector:
         # reset our tracking variables
         self.app_frametimes_ms: List[float] = []
         self.gpu_frametimes_ms: List[float] = []
+        self.per_gpu_frametimes_ms: List[List[float]] = []
         self.physics_frametimes_ms: List[float] = []
         self.render_frametimes_ms: List[float] = []
         self.__last_main_frametime_timestamp_ns = time.perf_counter_ns()
@@ -145,6 +160,9 @@ class IsaacUpdateFrametimeCollector:
             self.app_frametimes_ms.pop(0)
         if len(self.gpu_frametimes_ms) > 0:
             self.gpu_frametimes_ms.pop(0)
+        for per_gpu_list in self.per_gpu_frametimes_ms:
+            if len(per_gpu_list) > 0:
+                per_gpu_list.pop(0)
         if len(self.physics_frametimes_ms) > 0:
             self.physics_frametimes_ms.pop(0)
         if len(self.render_frametimes_ms) > 0:

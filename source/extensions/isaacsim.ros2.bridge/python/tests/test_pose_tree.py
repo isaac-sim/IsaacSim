@@ -13,72 +13,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
-import gc
-
-# NOTE:
-#   omni.kit.test - std python's unittest module with additional wrapping to add suport for async/await tests
-#   For most things refer to unittest docs: https://docs.python.org/3/library/unittest.html
 from re import I
 
 import carb
+import numpy as np
 import omni.graph.core as og
-
-# Import extension python module we are testing with absolute import path, as if we are external user (other extension)
 import omni.kit.commands
 import omni.kit.test
 import omni.kit.usd
 import usdrt.Sdf
 from isaacsim.core.nodes.scripts.utils import set_target_prims
+from isaacsim.core.prims import XFormPrim
 from isaacsim.core.utils.physics import simulate_async
-from isaacsim.core.utils.stage import open_stage_async
+from isaacsim.core.utils.stage import add_reference_to_stage, open_stage_async
 from isaacsim.storage.native import get_assets_root_path_async
-from pxr import Sdf
+from pxr import Sdf, UsdGeom
 from usd.schema.isaac import robot_schema
 
-from .common import add_cube, add_franka, get_qos_profile
+from .common import ROS2TestCase, add_cube, add_franka, get_qos_profile
 
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestRos2PoseTree(omni.kit.test.AsyncTestCase):
+class TestRos2PoseTree(ROS2TestCase):
     # Before running each test
     async def setUp(self):
-        import rclpy
-
+        await super().setUp()
         await omni.usd.get_context().new_stage_async()
-        self._timeline = omni.timeline.get_timeline_interface()
-
-        ext_manager = omni.kit.app.get_app().get_extension_manager()
-        ext_id = ext_manager.get_enabled_extension_id("isaacsim.ros2.bridge")
-        self._ros_extension_path = ext_manager.get_extension_path(ext_id)
-
-        self._assets_root_path = await get_assets_root_path_async()
-        if self._assets_root_path is None:
-            carb.log_error("Could not find Isaac Sim assets folder")
-            return
-        kit_folder = carb.tokens.get_tokens_interface().resolve("${kit}")
-
-        self._physics_rate = 60
-        carb.settings.get_settings().set_bool("/app/runLoops/main/rateLimitEnabled", True)
-        carb.settings.get_settings().set_int("/app/runLoops/main/rateLimitFrequency", int(self._physics_rate))
-        carb.settings.get_settings().set_int("/persistent/simulation/minFrameRate", int(self._physics_rate))
         await omni.kit.app.get_app().next_update_async()
-        rclpy.init()
 
         pass
 
     # After running each test
     async def tearDown(self):
-        import rclpy
-
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            print("tearDown, assets still loading, waiting to finish...")
-            await asyncio.sleep(1.0)
-
-        self._timeline = None
-        rclpy.shutdown()
-        gc.collect()
-        pass
+        await super().tearDown()
 
     async def test_pose_tree(self):
         import rclpy
@@ -265,3 +232,126 @@ class TestRos2PoseTree(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         spin()
         pass
+
+    async def test_frame_name_override(self):
+        import rclpy
+        from tf2_msgs.msg import TFMessage
+
+        stage = omni.usd.get_context().get_stage()
+        dome_light = stage.DefinePrim("/World/DomeLight", "DomeLight")
+        dome_light.CreateAttribute("inputs:intensity", Sdf.ValueTypeNames.Float).Set(500.0)
+
+        # Create two Franka robots at different paths
+        assets_root_path = await get_assets_root_path_async()
+        if assets_root_path is None:
+            carb.log_error("Could not find Isaac Sim assets folder")
+            return
+
+        asset_path = assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd"
+        add_reference_to_stage(usd_path=asset_path, prim_path="/World/panda1")
+        add_reference_to_stage(usd_path=asset_path, prim_path="/World/panda2")
+
+        stage = omni.usd.get_context().get_stage()
+
+        # Verify robots were created
+        panda1 = stage.GetPrimAtPath("/World/panda1")
+        panda2 = stage.GetPrimAtPath("/World/panda2")
+
+        self.assertTrue(panda1.IsValid(), "First robot not created successfully")
+        self.assertTrue(panda2.IsValid(), "Second robot not created successfully")
+
+        # Set position of second robot
+        XFormPrim(
+            "/World/panda2",
+            positions=np.array([[1.5, 0.0, 0.0]]),
+        )
+
+        stage = omni.usd.get_context().get_stage()
+        self._tf_data = None
+
+        def tf_callback(data: TFMessage):
+            self._tf_data = data
+
+        node = rclpy.create_node("tf_tester")
+        self._tf_sub = node.create_subscription(TFMessage, "/tf_test", tf_callback, 10)
+
+        try:
+            og.Controller.edit(
+                {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
+                {
+                    og.Controller.Keys.CREATE_NODES: [
+                        ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
+                        ("ReadSimTime", "isaacsim.core.nodes.IsaacReadSimulationTime"),
+                        ("PublishTF", "isaacsim.ros2.bridge.ROS2PublishTransformTree"),
+                    ],
+                    og.Controller.Keys.SET_VALUES: [
+                        ("PublishTF.inputs:topicName", "/tf_test"),
+                        (
+                            "PublishTF.inputs:targetPrims",
+                            [
+                                usdrt.Sdf.Path("/World/panda1"),
+                                usdrt.Sdf.Path("/World/panda2"),
+                            ],
+                        ),
+                    ],
+                    og.Controller.Keys.CONNECT: [
+                        ("OnPlaybackTick.outputs:tick", "PublishTF.inputs:execIn"),
+                        ("ReadSimTime.outputs:simulationTime", "PublishTF.inputs:timeStamp"),
+                    ],
+                },
+            )
+        except Exception as e:
+            print(e)
+
+        def spin():
+            rclpy.spin_once(node, timeout_sec=0.1)
+
+        # Run the simulation which will trigger the CARB_LOG_WARN when processing the duplicate "base_link" names
+        self._timeline.play()
+        await omni.kit.app.get_app().next_update_async()
+        await simulate_async(1, 60, spin)
+
+        self._timeline.stop()
+        spin()
+
+        # Verify transforms were published with unique names
+        self.assertIsNotNone(self._tf_data)
+
+        # Creating dict to store all frame IDs from both robots
+        original_frames = set()
+        renamed_frames = set()
+
+        franka_links = ["panda_link0", "panda_link1", "panda_link2", "panda_hand"]
+
+        # Collect frame IDs from TF message
+        frame_ids = []
+        for transform in self._tf_data.transforms:
+            frame_ids.append(transform.child_frame_id)
+
+        # Check for original and renamed frames
+        for link in franka_links:
+            if link in frame_ids:
+                original_frames.add(link)
+
+            renamed_pattern = "World_panda2_" + link
+            for frame_id in frame_ids:
+                if renamed_pattern in frame_id:
+                    renamed_frames.add(frame_id)
+
+        # Verify we found original frames
+        self.assertTrue(len(original_frames) > 0, f"No original frames found. All frames: {frame_ids}")
+
+        # Verify we found renamed frames
+        self.assertTrue(len(renamed_frames) > 0, f"No renamed frames found. All frames: {frame_ids}")
+
+        # Verify for each original frame, there's a corresponding renamed frame
+        for link in franka_links:
+            if link in original_frames:
+                renamed_exists = False
+                expected_renamed = "World_panda2_" + link
+                for renamed in renamed_frames:
+                    if expected_renamed in renamed:
+                        renamed_exists = True
+                        break
+
+                self.assertTrue(renamed_exists, f"Original frame {link} should have a renamed frames")

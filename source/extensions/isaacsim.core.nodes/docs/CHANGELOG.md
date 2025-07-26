@@ -1,4 +1,32 @@
 # Changelog
+## [3.2.13] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 3.2.12)
+
+## [3.2.12] - 2025-07-05
+### Changed
+- Update tests to pass without a custom loop runner
+
+## [3.2.11] - 2025-07-03
+### Changed
+- Removed bundles from OgnIsaacReadWorldPose and added unit test
+
+## [3.2.10] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [3.2.9] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
+## [3.2.8] - 2025-06-24
+### Changed
+- Add extension specific test args to extension.toml
+
+## [3.2.7] - 2025-06-18
+### Changed
+- Track change from isaacsim.core.include Pose.h
+
 ## [3.2.6] - 2025-06-13
 ### Changed
 - Switched CUDA files to Apache license.

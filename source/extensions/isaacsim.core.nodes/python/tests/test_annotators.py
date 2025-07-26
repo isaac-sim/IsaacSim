@@ -22,6 +22,7 @@ import omni.graph.core as og
 import omni.graph.core.tests as ogts
 import omni.kit.test
 import omni.replicator.core as rep
+from isaacsim.core.api import SimulationContext
 from isaacsim.core.api.objects.ground_plane import GroundPlane
 from isaacsim.core.api.robots import Robot
 from isaacsim.core.nodes.bindings import _isaacsim_core_nodes
@@ -39,17 +40,13 @@ class TestAnnotators(omni.kit.test.AsyncTestCase):
         self._timeline = omni.timeline.get_timeline_interface()
         self._viewport_api = get_active_viewport()
         self._render_product_path = self._viewport_api.get_render_product_path()
+        self._simulation_context = SimulationContext()
+        await self._simulation_context.initialize_simulation_context_async()
 
         ground_plane = GroundPlane("/World/ground_plane", visible=True)
         self._stage = get_current_stage()
         distantLight = UsdLux.DistantLight.Define(self._stage, Sdf.Path("/DistantLight"))
-        # action_registry = omni.kit.actions.core.get_action_registry()
-        # self._action = action_registry.get_action("omni.kit.viewport.actions", "toggle_grid_visibility")
-        # self._action.execute(viewport_api=self._viewport_api, visible=False)
-        self._stage = omni.usd.get_context().get_stage()
-        self._timeline = omni.timeline.get_timeline_interface()
-        self._stage.SetTimeCodesPerSecond(60)
-        self._timeline.set_target_framerate(60)
+
         set_camera_view(eye=[-6, 0, 6.5], target=[-6, 0, -1], camera_prim_path="/OmniverseKit_Persp")
         await omni.kit.app.get_app().next_update_async()
 

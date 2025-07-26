@@ -24,10 +24,12 @@ from isaacsim.core.api import World
 from isaacsim.core.prims import ParticleSystem, SingleParticleSystem
 from isaacsim.core.utils.stage import create_new_stage_async, update_stage_async
 
+from .common import CoreTestCase
 
-# Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestParticleSystemView(omni.kit.test.AsyncTestCase):
+
+class TestParticleSystemView(CoreTestCase):
     async def setUp(self):
+        await super().setUp()
         World.clear_instance()
         await create_new_stage_async()
         self.my_world = World(backend="torch", device="cuda")
@@ -36,8 +38,7 @@ class TestParticleSystemView(omni.kit.test.AsyncTestCase):
         pass
 
     async def tearDown(self):
-        World.clear_instance()
-        await update_stage_async()
+        await super().tearDown()
         pass
 
     async def test_cloth_prim_vie(self):

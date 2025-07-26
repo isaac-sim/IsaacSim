@@ -27,10 +27,12 @@ from isaacsim.core.utils.stage import create_new_stage_async, update_stage_async
 # Import extension python module we are testing with absolute import path, as if we are external user (other extension)
 from pxr import Gf, Usd, UsdGeom
 
+from .common import CoreTestCase
 
-# Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestParticleMaterial(omni.kit.test.AsyncTestCase, TestProperties):
+
+class TestParticleMaterial(CoreTestCase, TestProperties):
     async def setUp(self):
+        await super().setUp()
         World.clear_instance()
         await create_new_stage_async()
         self.my_world = World(backend="torch")  # , device="cuda")
@@ -39,8 +41,7 @@ class TestParticleMaterial(omni.kit.test.AsyncTestCase, TestProperties):
         pass
 
     async def tearDown(self):
-        World.clear_instance()
-        await update_stage_async()
+        await super().tearDown()
         pass
 
     async def test_cloth_prim(self):

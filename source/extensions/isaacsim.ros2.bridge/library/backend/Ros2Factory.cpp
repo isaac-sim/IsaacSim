@@ -21,6 +21,8 @@
 
 #include <carb/logging/Log.h>
 
+#include <memory>
+
 namespace isaacsim
 {
 namespace ros2
@@ -216,7 +218,12 @@ bool Ros2FactoryImpl::validateNodeName(const std::string& nodeName)
 } // namespace ros2
 } // namespace isaacsim
 
-isaacsim::ros2::bridge::Ros2Factory* createFactory()
+std::unique_ptr<isaacsim::ros2::bridge::Ros2Factory> createFactory()
 {
-    return new isaacsim::ros2::bridge::Ros2FactoryImpl();
+    return std::make_unique<isaacsim::ros2::bridge::Ros2FactoryImpl>();
+}
+
+isaacsim::ros2::bridge::Ros2Factory* createFactoryC()
+{
+    return createFactory().release();
 }

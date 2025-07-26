@@ -1,13 +1,13 @@
 <project toolsVersion="5.0">
 <!-- Public Packages -->
   <dependency name="repo_man" linkPath="../_repo/deps/repo_man">
-    <package name="repo_man" version="1.83.3" />
+    <package name="repo_man" version="1.86.0" />
   </dependency>
   <dependency name="repo_build" linkPath="../_repo/deps/repo_build">
-    <package name="repo_build" version="1.11.1" />
+    <package name="repo_build" version="1.12.0" />
   </dependency>
   <dependency name="repo_test" linkPath="../_repo/deps/repo_test">
-    <package name="repo_test" version="2.38.1" />
+    <package name="repo_test" version="2.39.0" />
   </dependency>
   <dependency name="repo_ci" linkPath="../_repo/deps/repo_ci">
     <package name="repo_ci" version="0.8.5" />
@@ -16,7 +16,7 @@
     <package name="repo_format" version="2.13.0" />
   </dependency>
   <dependency name="repo_package" linkPath="../_repo/deps/repo_package">
-    <package name="repo_package" version="5.14.1" />
+    <package name="repo_package" version="6.0.1" />
   </dependency>
   <dependency name="repo_source" linkPath="../_repo/deps/repo_source">
     <package name="repo_source" version="0.6.0" />

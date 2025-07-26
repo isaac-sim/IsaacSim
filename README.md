@@ -241,6 +241,10 @@ for broader dissemination of your work.
 
 Licensing terms can be found in the [License File](LICENSE).
 
+## Citation
+
+To cite Isaac Sim, click on "Cite this repository" in the right sidebar of the [Isaac Sim GitHub repository](https://github.com/isaac-sim/IsaacSim) landing page and select one of the listed citation entries.
+
 ## Contributing
 
 We do not support direct community contributions at the moment.

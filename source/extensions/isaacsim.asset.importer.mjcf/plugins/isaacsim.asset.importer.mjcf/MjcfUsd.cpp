@@ -834,10 +834,14 @@ pxr::UsdPrim createPrimitiveGeom(pxr::UsdStageWeakPtr stage,
     {
         CARB_LOG_INFO("Mesh Type");
         MeshInfo meshInfo = simulationMeshCache.find(geom->mesh)->second;
-        createUsdMesh(stage, path, meshInfo.mesh, materialPaths, config.distanceScale, importMaterials);
+        path = createUsdMesh(stage, path, meshInfo.mesh, materialPaths, config.distanceScale, importMaterials)
+                   .GetPrim()
+                   .GetChildren()
+                   .begin()
+                   ->GetPath();
         CARB_LOG_INFO("Created mesh at path %s", geomPath.c_str());
     }
-    pxr::UsdPrim prim = stage->GetPrimAtPath(pxr::SdfPath(geomPath));
+    pxr::UsdPrim prim = stage->GetPrimAtPath(path);
     if (prim)
     {
         CARB_LOG_INFO("Prim Exists");
@@ -952,7 +956,7 @@ pxr::UsdPrim createPrimitiveGeom(pxr::UsdStageWeakPtr stage,
         CARB_LOG_INFO("Done Adding Mesh");
     }
 
-    return prim;
+    return stage->GetPrimAtPath(pxr::SdfPath(geomPath));
 }
 
 pxr::UsdPrim createPrimitiveGeom(pxr::UsdStageWeakPtr stage,

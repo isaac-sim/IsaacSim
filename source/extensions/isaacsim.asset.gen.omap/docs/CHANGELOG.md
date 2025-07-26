@@ -1,4 +1,22 @@
 # Changelog
+
+## [2.0.28] - 2025-07-07
+### Changed
+- Fixed incorrect docstrings for pybind11 modules
+- Added tests for docstrings
+
+## [2.0.27] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 2.0.26)
+
+## [2.0.26] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [2.0.25] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
 ## [2.0.24] - 2025-05-31
 ### Changed
 - Use default nucleus server for all tests

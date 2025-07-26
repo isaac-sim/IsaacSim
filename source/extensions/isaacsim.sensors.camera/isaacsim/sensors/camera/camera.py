@@ -265,14 +265,6 @@ class Camera(BaseSensor):
         elif orientation is not None:
             self.set_local_pose(orientation=orientation)
         self._current_frame = dict()
-        # Initialize the first frame with the correct backend (warp or numpy)
-        if self._annotator_device is None:
-            backend_utils = self._backend_utils
-        else:
-            if self._annotator_device.startswith("cuda"):
-                backend_utils = warp_utils
-            else:
-                backend_utils = np_utils
         self._pause = False
         self._current_frame["rendering_time"] = 0
         self._current_frame["rendering_frame"] = 0
@@ -406,15 +398,6 @@ class Camera(BaseSensor):
                 order=1000,
             )
         )
-        # If no annotator device is specified, use the default backend utils
-        if self._annotator_device is None:
-            backend_utils = self._backend_utils
-        else:
-            if self._annotator_device.startswith("cuda"):
-                backend_utils = warp_utils
-            else:
-                backend_utils = np_utils
-        width, height = self.get_resolution()
         self._stage_open_callback = (
             omni.usd.get_context()
             .get_stage_event_stream()
@@ -1050,7 +1033,10 @@ class Camera(BaseSensor):
             wp.types.array: (N x 3) RGB color data for each point.
         """
         if "rgb" in self._custom_annotators:
-            return self._custom_annotators["rgb"].get_data(device=device)[:, :, :3]
+            data = self._custom_annotators["rgb"].get_data(device=device)
+            if data is None or data.shape[0] == 0:
+                return None
+            return data[:, :, :3]
         else:
             carb.log_warn(f"Annotator 'rgb' not attached to {self._render_product_path}")
             return None

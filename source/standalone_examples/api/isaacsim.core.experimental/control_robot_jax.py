@@ -61,7 +61,7 @@ import omni.timeline
 import warp as wp
 from isaacsim.core.experimental.materials import PreviewSurfaceMaterial
 from isaacsim.core.experimental.objects import Sphere
-from isaacsim.core.experimental.prims import Articulation, XformPrim
+from isaacsim.core.experimental.prims import Articulation, RigidPrim
 from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.storage.native import get_assets_root_path
 
@@ -220,7 +220,7 @@ sphere.apply_visual_materials(visual_material)
 
 # Get high-level wrappers for the involved prims.
 robot = Articulation("/World/robot")
-end_effector_link = XformPrim("/World/robot/panda_hand")
+end_effector_link = RigidPrim("/World/robot/panda_hand")
 end_effector_link_index = robot.get_link_indices("panda_hand").list()[0]
 
 robot.set_default_state(dof_positions=[0.012, -0.568, 0.0, -2.811, 0.0, 3.037, 0.741, 0.0, 0.0])

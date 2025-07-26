@@ -13,44 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import asyncio
-import gc
 import json
 
 import numpy as np
 import omni.graph.core as og
-import omni.graph.core.tests as ogts
 import omni.kit.test
 from isaacsim.core.utils.physics import simulate_async
 from isaacsim.core.utils.stage import create_new_stage_async
 
+from .common import ROS2TestCase
 
-class TestRos2Publisher(ogts.OmniGraphTestCase):
+
+class TestRos2Publisher(ROS2TestCase):
     # Before running each test
     async def setUp(self):
-        import rclpy
-
-        await omni.usd.get_context().new_stage_async()
-        self._timeline = omni.timeline.get_timeline_interface()
-
-        ext_manager = omni.kit.app.get_app().get_extension_manager()
-        ext_manager.get_enabled_extension_id("isaacsim.ros2.bridge")
-        await omni.kit.app.get_app().next_update_async()
+        await super().setUp()
 
         await create_new_stage_async()
-        rclpy.init()
 
     # After running each test
     async def tearDown(self):
-        import rclpy
-
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            print("tearDown, assets still loading, waiting to finish...")
-            await asyncio.sleep(1.0)
-
-        self._timeline = None
-        rclpy.shutdown()
-        gc.collect()
+        await super().tearDown()
 
     # ----------------------------------------------------------------------
     def _callback(self, msg):
@@ -226,7 +211,7 @@ class TestRos2Publisher(ogts.OmniGraphTestCase):
                     og.Controller.attribute("inputs:data", ogn_node).set(message_value.data)
 
             self._timeline.play()
-            await simulate_async(0.25)
+            await asyncio.sleep(0.25)
 
             # spin node
             rclpy.spin_once(ros2_node)

@@ -66,6 +66,19 @@ _, sensor = omni.kit.commands.execute(
 # RTX sensors are cameras and must be assigned to their own render product
 hydra_texture = rep.create.render_product(sensor.GetPath(), [1, 1], name="Isaac")
 
+# Additionally, create a 2D lidar sensor with Example_Rotary_2D config
+_, sensor_2D = omni.kit.commands.execute(
+    "IsaacSensorCreateRtxLidar",
+    path="/sensor_2D",
+    parent=None,
+    config="Example_Rotary_2D",
+    translation=(0, 0, 1.0),
+    orientation=Gf.Quatd(1.0, 0.0, 0.0, 0.0),  # Gf.Quatd is w,i,j,k
+)
+
+# RTX sensors are cameras and must be assigned to their own render product
+hydra_texture_2D = rep.create.render_product(sensor_2D.GetPath(), [1, 1], name="Isaac")
+
 simulation_context = SimulationContext(physics_dt=1.0 / 60.0, rendering_dt=1.0 / 60.0, stage_units_in_meters=1.0)
 simulation_app.update()
 
@@ -74,15 +87,18 @@ writer = rep.writers.get("RtxLidar" + "ROS2PublishPointCloud")
 writer.initialize(topicName="point_cloud", frameId="base_scan")
 writer.attach([hydra_texture])
 
-# Create the debug draw pipeline in the post process graph
+# Create the Point Clouddebug draw pipeline in the post process graph
 writer = rep.writers.get("RtxLidar" + "DebugDrawPointCloud")
 writer.attach([hydra_texture])
 
-
-# Create LaserScan publisher pipeline in the post process graph
+# Create Laser Scan publisher pipeline in the post process graph
 writer = rep.writers.get("RtxLidar" + "ROS2PublishLaserScan")
 writer.initialize(topicName="scan", frameId="base_scan")
-writer.attach([hydra_texture])
+writer.attach([hydra_texture_2D])
+
+# Create the Laser Scan debug draw pipeline in the post process graph
+writer = rep.writers.get("RtxLidar" + "DebugDrawPointCloud")
+writer.attach([hydra_texture_2D])
 
 simulation_app.update()
 

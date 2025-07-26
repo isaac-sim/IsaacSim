@@ -15,18 +15,22 @@
 
 import omni.kit.test
 from isaacsim.core.api import SimulationContext, World
-from isaacsim.core.utils.stage import create_new_stage_async, get_stage_units, set_stage_units
+from isaacsim.core.utils.stage import create_new_stage_async, get_current_stage, get_stage_units, set_stage_units
+
+from .common import CoreTestCase
 
 
-class TestSimulationContext(omni.kit.test.AsyncTestCase):
+class TestSimulationContext(CoreTestCase):
     # Before running each test
     async def setUp(self):
+        await super().setUp()
         await create_new_stage_async()
         World.clear_instance()
         pass
 
     # After running each test
     async def tearDown(self):
+        await super().tearDown()
         pass
 
     async def test_singleton(self):
@@ -67,4 +71,14 @@ class TestSimulationContext(omni.kit.test.AsyncTestCase):
         self.assertTrue(get_stage_units() == 100.0)
         # try set simulation dt with Nones
         simulation_context.set_simulation_dt(physics_dt=None, rendering_dt=None)
+        return
+
+    async def test_default_dt(self):
+        await create_new_stage_async()
+        stage = get_current_stage()
+        stage.SetTimeCodesPerSecond(90)
+        set_stage_units(stage_units_in_meters=1.0)
+        simulation_context = SimulationContext(set_defaults=False)
+        await simulation_context.initialize_simulation_context_async()
+        assert 1.0 / simulation_context.get_rendering_dt() == stage.GetTimeCodesPerSecond()
         return

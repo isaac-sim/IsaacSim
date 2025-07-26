@@ -1,4 +1,25 @@
 # Changelog
+## [1.3.7] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 1.3.6)
+
+## [1.3.6] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [1.3.5] - 2025-06-26
+### Changed
+- Update to latest loop runner code from kit-sdk
+- Remove internal category for extension
+
+## [1.3.4] - 2025-06-26
+### Added
+- Log failure but don't crash if message queue is null
+
+## [1.3.3] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
 ## [1.3.2] - 2025-05-31
 ### Changed
 - Use default nucleus server for all tests

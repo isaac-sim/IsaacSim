@@ -1,8 +1,20 @@
 # Changelog
+## [2.0.3] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 2.0.2)
+
+## [2.0.2] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [2.0.1] - 2025-06-25
+### Changed
+- Add --reset-user to test args
 
 ## [2.0.0] - 2025-06-10
 ### Changed
 - Refactored icon updates to enable batch processing per frame
+
 ### Added
 - More layers of visiblity checks to prevent issues with extension startup sync conditions
 - Cached set of prims that were previously checked for sensor prims to improve performance on frame updates

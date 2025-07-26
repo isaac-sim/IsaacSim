@@ -27,10 +27,12 @@ from isaacsim.core.utils.prims import define_prim
 from isaacsim.core.utils.rotations import euler_angles_to_quat
 from isaacsim.core.utils.stage import create_new_stage_async, update_stage_async
 
+from .common import CoreTestCase
 
-# Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestSingleRigidPrimPose(omni.kit.test.AsyncTestCase):
+
+class TestSingleRigidPrimPose(CoreTestCase):
     async def setUp(self):
+        await super().setUp()
         World.clear_instance()
         await create_new_stage_async()
         self._my_world = World(device="cpu")
@@ -38,8 +40,7 @@ class TestSingleRigidPrimPose(omni.kit.test.AsyncTestCase):
         pass
 
     async def tearDown(self):
-        self._my_world.clear_instance()
-        await update_stage_async()
+        await super().tearDown()
         pass
 
     async def test_position_orientation_scale(self):

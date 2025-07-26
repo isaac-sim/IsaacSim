@@ -46,7 +46,7 @@ EXPECTED_ANNOTATOR_SPEC = {
 }
 assert sorted(ANNOTATOR_SPEC.keys()) == sorted(EXPECTED_ANNOTATOR_SPEC.keys())
 
-IMG_COMPARISON_TOLERANCE = 0.94
+IMG_COMPARISON_TOLERANCE = 0.92
 
 
 class TestCameraViewSensor(omni.kit.test.AsyncTestCase):

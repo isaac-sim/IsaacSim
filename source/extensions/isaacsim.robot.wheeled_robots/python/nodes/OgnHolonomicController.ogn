@@ -17,70 +17,70 @@
             },
             "wheelRadius": {
                 "type": "double[]",
-                "description": "an array of wheel radius"
+                "description": "An array of wheel radius in meters"
             },
             "wheelPositions": {
                 "type": "double[3][]",
-                "description": "position of the wheel with respect to chassis' center of mass"
+                "description": "Position of the wheel with respect to chassis' center of mass in meters"
             },
             "wheelOrientations": {
                 "type": "double[4][]",
-                "description": "orientation of the wheel with respect to chassis' center of mass frame "
+                "description": "Orientation of the wheel with respect to chassis' center of mass frame"
             },
             "mecanumAngles": {
                 "type": "double[]",
-                "description": "angles of the mecanum wheels with respect to wheel's rotation axis"
+                "description": "Angles of the mecanum wheels with respect to wheel's rotation axis in radians"
             },  
             "wheelAxis": {
                 "type": "double[3]",
-                "description": "the rotation axis of the wheels",
+                "description": "The rotation axis of the wheels",
                 "default": [1.0,0.0,0.0]
             },
             "upAxis": {
                 "type": "double[3]",
-                "description": "the rotation axis of the vehicle",
+                "description": "The rotation axis of the vehicle",
                 "default": [0.0,0.0,1.0]
             },
             "inputVelocity":{
                 "type":  "double[3]", 
-                "description": "velocity in x and y and rotation",
+                "description": "Velocity in x and y (m/s) and rotation (rad/s)",
                 "metadata": {
                     "uiName": "Velocity Commands for the vehicle"
                 }
             },
             "maxLinearSpeed": {
                 "type": "double",
-                "description": "maximum speed allowed for the vehicle",
+                "description": "Maximum speed allowed for the vehicle in m/s",
                 "optional": "true",
                 "default": 100000
             },
             "maxAngularSpeed": {
                 "type": "double",
-                "description": "maximum angular rotation speed allowed for the vehicle",
+                "description": "Maximum angular rotation speed allowed for the vehicle in rad/s",
                 "optional": "true",
                 "default": 100000               
             },
             "maxWheelSpeed": {
                 "type": "double",
-                "description": "maximum rotation speed allowed for the wheel joints",
+                "description": "Maximum rotation speed allowed for the wheel joints in rad/s",
                 "optional": "true",
                 "default": 100000
             },
             "linearGain": {
                 "type": "double",
-                "description": "linear gain",
+                "description": "Linear gain",
                 "default": 1
             },
             "angularGain": {
                 "type": "double",
-                "description": "angular gain",
+                "description": "Angular gain",
                 "default": 1
             }        
         },
         "outputs":{
             "jointVelocityCommand":{
                 "type": "double[]",
-                "description": "velocity commands for the wheels joints"
+                "description": "Velocity commands for the wheels joints"
             }         
         }
     }

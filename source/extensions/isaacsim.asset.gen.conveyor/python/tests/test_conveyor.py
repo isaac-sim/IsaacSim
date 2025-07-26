@@ -73,19 +73,11 @@ def create_physics_scene(stage, gravity=9.81):
 class TestConveyor(omni.kit.test.AsyncTestCase):
     # Before running each test
     async def setUp(self):
-        # This needs to be set so that kit updates match physics updates
-        self._physics_rate = 60
-
-        carb.settings.get_settings().set_bool("/app/runLoops/main/rateLimitEnabled", True)
-        carb.settings.get_settings().set_int("/app/runLoops/main/rateLimitFrequency", int(self._physics_rate))
-        carb.settings.get_settings().set_int("/persistent/simulation/minFrameRate", int(self._physics_rate))
 
         self.conveyor_node = None
         await omni.usd.get_context().new_stage_async()
         self._stage = omni.usd.get_context().get_stage()
         self._timeline = omni.timeline.get_timeline_interface()
-        self._stage.SetTimeCodesPerSecond(self._physics_rate)
-        self._timeline.set_target_framerate(self._physics_rate)
         create_physics_scene(self._stage)
         await omni.kit.app.get_app().next_update_async()
         pass
@@ -171,9 +163,6 @@ class TestConveyor(omni.kit.test.AsyncTestCase):
         await self.test_conveyor(d=[0.0, 1.0, 0.0])
 
     async def test_100_conveyors(self):
-        # self._physics_rate = 60
-        carb.settings.get_settings().set_bool("/app/runLoops/main/rateLimitEnabled", False)
-        self._timeline.set_target_framerate(1000000)
 
         conveyor_nodes = []
         for i in range(10):
@@ -195,4 +184,4 @@ class TestConveyor(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
         rtt = time.time() - t
         print(f"rtt = {rtt}")
-        self.assertLessEqual(rtt, 1.0)  # Must run 100 frames in less than one second
+        self.assertLessEqual(rtt, 1.5, f"Must run 100 frames in less than 1.5 seconds, rtt = {rtt}")

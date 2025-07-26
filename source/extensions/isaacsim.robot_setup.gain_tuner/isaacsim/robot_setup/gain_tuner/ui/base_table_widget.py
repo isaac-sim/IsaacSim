@@ -261,7 +261,6 @@ class TableWidget:
             horizontal_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_OFF,
             vertical_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_AS_NEEDED,
             style_type_name_override="TreeView",
-            height=ui.Pixel(150),
         ):
             with ui.HStack():
                 self.id_column = ui.TreeView(
@@ -271,6 +270,7 @@ class TableWidget:
                     column_widths=[15],
                     columns_resizable=False,
                     header_visible=True,
+                    resizeable_on_columns_resized=True,
                 )
                 self.build_tree_view()
 

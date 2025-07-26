@@ -146,11 +146,10 @@ class Cloner:
             pass
 
         # second disable Fabric USD notice handler
-        # A.B. Needs a fix first on Fabric side
-        # stage_id = UsdUtils.StageCache.Get().Insert(self._stage).ToLongInt()
-        # self._fabric_usd_notice_enabled = SimulationManager.is_fabric_usd_notice_handler_enabled(stage_id)
-        # if self._fabric_usd_notice_enabled:
-        #     SimulationManager.enable_fabric_usd_notice_handler(stage_id, False)
+        stage_id = UsdUtils.StageCache.Get().Insert(self._stage).ToLongInt()
+        self._fabric_usd_notice_enabled = SimulationManager.is_fabric_usd_notice_handler_enabled(stage_id)
+        if self._fabric_usd_notice_enabled:
+            SimulationManager.enable_fabric_usd_notice_handler(stage_id, False)
 
         # third disable SimulationManager notice handler
         SimulationManager.enable_usd_notice_handler(False)
@@ -164,10 +163,9 @@ class Cloner:
         except:
             pass
 
-        # A.B. Needs a fix first on Fabric side
-        # if self._fabric_usd_notice_enabled:
-        #     stage_id = UsdUtils.StageCache.Get().Insert(self._stage).ToLongInt()
-        #     SimulationManager.enable_fabric_usd_notice_handler(stage_id, True)
+        if self._fabric_usd_notice_enabled:
+            stage_id = UsdUtils.StageCache.Get().Insert(self._stage).ToLongInt()
+            SimulationManager.enable_fabric_usd_notice_handler(stage_id, True)
 
         SimulationManager.enable_usd_notice_handler(True)
 

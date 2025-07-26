@@ -512,6 +512,7 @@ def save_stage(usd_path: str, save_and_reload_in_place=True) -> bool:
     layer = Sdf.Layer.CreateNew(usd_path)
     root_layer = get_current_stage().GetRootLayer()
     layer.TransferContent(root_layer)
+    omni.usd.resolve_paths(root_layer.identifier, layer.identifier)
     result = layer.Save()
     if save_and_reload_in_place:
         open_stage(usd_path)

@@ -44,14 +44,14 @@ body:
 
 - type: input
   attributes:
-    label: Isaac Sim version 
+    label: Isaac Sim version
     description: It can be found in the `VERSION` file located in either the repository or the build folder.
     placeholder: e.g. 5.0.0
   validations:
     required: true
 - type: input
   attributes:
-    label: Operating System (OS) 
+    label: Operating System (OS)
     placeholder: e.g. Ubuntu 24.04
   validations:
     required: true

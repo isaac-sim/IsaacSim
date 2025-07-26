@@ -15,7 +15,7 @@
 #include <pch/UsdPCH.h>
 // clang-format on
 
-#include "SensorNodeUtils.h"
+#include "LidarConfigHelper.h"
 #include "isaacsim/core/includes/UsdUtilities.h"
 
 #include <carb/InterfaceUtils.h>
@@ -40,8 +40,8 @@ namespace rtx
 
 void getTransformFromSensorPose(const omni::sensors::FrameAtTime& inPose, omni::math::linalg::matrix4d& matrixOutput)
 {
-    // async.pose is [X, Y, Z, W].
-    // quatd is i,j,k,w, but constructor is quatd(w, i, j, k)
+    // Assign the position and orientation from the frame at time
+    // inPose.orientation is ordered i,j,k,w, but the quatd constructor is ordered w,i,j,k
     omni::math::linalg::vec3d posM{ inPose.posM[0], inPose.posM[1], inPose.posM[2] };
     omni::math::linalg::quatd pose{ inPose.orientation[3], inPose.orientation[0], inPose.orientation[1],
                                     inPose.orientation[2] };
@@ -49,6 +49,7 @@ void getTransformFromSensorPose(const omni::sensors::FrameAtTime& inPose, omni::
     matrixOutput.SetRotateOnly(pose);
     matrixOutput.SetTranslateOnly(posM);
 }
+
 float LidarConfigHelper::getFarRange() const
 {
 
@@ -305,7 +306,6 @@ std::string LidarConfigHelper::ReadWholeTextFile(std::string fullPath)
 
     return str;
 }
-
 
 }
 }

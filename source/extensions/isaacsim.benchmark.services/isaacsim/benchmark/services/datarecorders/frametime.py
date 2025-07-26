@@ -30,11 +30,17 @@ logger = utils.set_up_logging(__name__)
 class FrametimeStats:
     app_frametime_samples: List[float] = field(default_factory=list)
     gpu_frametime_samples: List[float] = field(default_factory=list)
-    render_frametimes_ms: List[float] = field(default_factory=list)
+    physics_frametime_samples: List[float] = field(default_factory=list)
+    renderer_frametime_samples: List[float] = field(default_factory=list)
+
+    # Multi-GPU support
+    per_gpu_frametime_samples: List[List[float]] = field(default_factory=list)
 
     app_stats = {}
     physics_stats = {}
     gpu_stats = {}
+    renderer_stats = {}
+    per_gpu_stats = {}
 
     def _percentile_inc(self, values: List, percent: float, key=lambda x: x) -> float:
         """
@@ -110,3 +116,11 @@ class FrametimeStats:
         self.physics_stats = self.stats_helper(self.physics_frametime_samples)
         self.gpu_stats = self.stats_helper(self.gpu_frametime_samples)
         self.renderer_stats = self.stats_helper(self.renderer_frametime_samples)
+
+        # Multi-GPU support
+        self.per_gpu_stats = []
+        for gpu_samples in self.per_gpu_frametime_samples:
+            if gpu_samples:
+                self.per_gpu_stats.append(self.stats_helper(gpu_samples))
+            else:
+                self.per_gpu_stats.append({"mean": 0, "median": 0, "stdev": 0, "min": 0, "max": 0, "one_percent": 0})

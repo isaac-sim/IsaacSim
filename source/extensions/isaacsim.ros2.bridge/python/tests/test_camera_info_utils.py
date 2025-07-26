@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
-import gc
 
 import carb
 import numpy as np
@@ -26,23 +24,21 @@ from isaacsim.sensors.camera import Camera
 from isaacsim.storage.native import get_assets_root_path_async
 from pxr import Sdf
 
+from .common import ROS2TestCase
+
 
 # Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestCameraInfoUtils(omni.kit.test.AsyncTestCase):
+class TestCameraInfoUtils(ROS2TestCase):
     # Before running each test
     async def setUp(self):
+        await super().setUp()
         await omni.usd.get_context().new_stage_async()
-        self._timeline = omni.timeline.get_timeline_interface()
 
         self._assets_root_path = await get_assets_root_path_async()
         if self._assets_root_path is None:
             carb.log_error("Could not find Isaac Sim assets folder")
             return
 
-        self._physics_rate = 60
-        carb.settings.get_settings().set_bool("/app/runLoops/main/rateLimitEnabled", True)
-        carb.settings.get_settings().set_int("/app/runLoops/main/rateLimitFrequency", int(self._physics_rate))
-        carb.settings.get_settings().set_int("/persistent/simulation/minFrameRate", int(self._physics_rate))
         await omni.kit.app.get_app().next_update_async()
 
         # Load a scene
@@ -75,16 +71,12 @@ class TestCameraInfoUtils(omni.kit.test.AsyncTestCase):
 
     # After running each test
     async def tearDown(self):
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            print("tearDown, assets still loading, waiting to finish...")
-            await asyncio.sleep(1.0)
 
         # Clean up the camera
         if hasattr(self, "_camera"):
             self._camera = None
 
-        self._timeline = None
-        gc.collect()
+        await super().tearDown()
 
     async def test_read_camera_info_pinhole(self):
         """Test reading camera info for a pinhole camera with no distortion"""
@@ -127,7 +119,7 @@ class TestCameraInfoUtils(omni.kit.test.AsyncTestCase):
 
     async def test_read_camera_info_fisheye_unset_distortion(self):
         """Test reading camera info for a fisheye camera with unset distortion attributes"""
-        self._camera.set_projection_type("fisheyePolynomial")
+        self._camera.set_projection_type("OmniLensDistortionFthetaAPI")
 
         self._camera.set_focal_length(24.0)
         self._camera.set_horizontal_aperture(36.0)
@@ -155,7 +147,7 @@ class TestCameraInfoUtils(omni.kit.test.AsyncTestCase):
     async def test_read_camera_info_fisheye_plumb_bob_distortion(self):
         """Test reading camera info for a fisheye camera with plumb_bob distortion model"""
         # Set the camera to be a fisheye camera
-        self._camera.set_projection_type("fisheyePolynomial")
+        self._camera.set_projection_type("OmniLensDistortionFthetaAPI")
         self._camera.set_focal_length(24.0)
         self._camera.set_horizontal_aperture(36.0)
 
@@ -196,7 +188,7 @@ class TestCameraInfoUtils(omni.kit.test.AsyncTestCase):
     async def test_read_camera_info_fisheye_rational_polynomial_distortion(self):
         """Test reading camera info for a fisheye camera with rational_polynomial distortion model"""
         # Set the camera to be a fisheye camera
-        self._camera.set_projection_type("fisheyePolynomial")
+        self._camera.set_projection_type("OmniLensDistortionFthetaAPI")
         self._camera.set_focal_length(24.0)
         self._camera.set_horizontal_aperture(36.0)
 
@@ -234,7 +226,7 @@ class TestCameraInfoUtils(omni.kit.test.AsyncTestCase):
     async def test_read_camera_info_fisheye_equidistant_distortion(self):
         """Test reading camera info for a fisheye camera with equidistant distortion model"""
         # Set the camera to be a fisheye camera
-        self._camera.set_projection_type("fisheyePolynomial")
+        self._camera.set_projection_type("OmniLensDistortionFthetaAPI")
         self._camera.set_focal_length(24.0)
         self._camera.set_horizontal_aperture(36.0)
 
@@ -272,7 +264,7 @@ class TestCameraInfoUtils(omni.kit.test.AsyncTestCase):
     async def test_read_camera_info_fisheye_unsupported_distortion(self):
         """Test reading camera info for a fisheye camera with an unsupported distortion model"""
         # Set the camera to be a fisheye camera
-        self._camera.set_projection_type("fisheyePolynomial")
+        self._camera.set_projection_type("OmniLensDistortionFthetaAPI")
         self._camera.set_focal_length(24.0)
         self._camera.set_horizontal_aperture(36.0)
 

@@ -1,5 +1,5 @@
 [package]
-version = "1.1.0"
+version = "1.1.1"
 category = "Utility"
 title = "Jupyter notebook integration"
 description = "Jupyter notebook version of Omniverse's script editor"
@@ -19,7 +19,7 @@ writeTarget.kit = true
 name = "isaacsim.code_editor.jupyter"
 
 [python.pipapi]
-requirements = ["jupyterlab", "chardet", "python-language-server", "jedi", "requests", "h11"]
+requirements = ["jupyterlab", "python-language-server", "jedi", "requests", "h11"]
 use_online_index = true
 ignore_import_check = true
 

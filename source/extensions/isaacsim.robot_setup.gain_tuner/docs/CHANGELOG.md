@@ -1,4 +1,12 @@
 # Changelog
+## [3.0.5] - 2025-07-02
+### Changed
+- fixed refresh when robot changes on stage
+- fixed batch editing when tuning gains
+- removed "strength" and use stiffness/damping 
+- Pop up a warning asking for confirmation when save Gains to Physics Layer
+- Make frames and table resizable and add scroll bar
+
 ## [3.0.4] - 2025-05-19
 ### Changed
 - Update copyright and license to apache v2.0

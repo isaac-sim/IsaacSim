@@ -228,10 +228,13 @@ def get_style():
         "Rectangle::treeview_id": {"margin": 1, "background_color": TREEVIEW_ITEM_COLOR},
         "ScrollingFrame": {"background_color": FRAME_BG_COLOR},
         "ScrollingFrame::Treeview": {"background_color": TREEVIEW_BG_COLOR},
+        "Splitter": {"background_color": 0x0, "margin_width": 0},
+        "Splitter:hovered": {"background_color": 0xFFB0703B},
+        "Splitter:pressed": {"background_color": 0xFFB0703B},
         "TreeView": {
             "background_selected_color": TREEVIEW_SELECTED_COLOR,
             "background_color": TREEVIEW_BG_COLOR,
-            "secondary_color": TREEVIEW_BG_COLOR,
+            "secondary_color": TREEVIEW_SELECTED_COLOR,
         },  # the hover color of the TreeView selected item
         "TreeView::Header": {
             "background_color": TREEVIEW_HEADER_BG_COLOR,

@@ -24,8 +24,6 @@ from isaacsim.core.utils.stage import is_stage_loading
 from isaacsim.sensors.camera import Camera
 from omni.kit.viewport.utility import get_active_viewport
 
-TEST_NUM_APP_UPDATES = 60 * 10
-
 
 class TestBenchmarkCamera(BaseIsaacBenchmarkAsync):
     async def setUp(self):
@@ -48,8 +46,9 @@ class TestBenchmarkCamera(BaseIsaacBenchmarkAsync):
         self.benchmark_name = f"cameras_{n_camera}_resolution_{resolution[0]}_{resolution[1]}"
         self.set_phase("loading")
 
-        scene_path = "/Isaac/Environments/Simple_Warehouse/full_warehouse.usd"
-        await self.fully_load_stage(self.assets_root_path + scene_path)
+        scene_path = carb.settings.get_settings().get_as_string("/exts/isaacsim.benchmark.examples/scene_path")
+        if len(scene_path) > 0:
+            await self.fully_load_stage(self.assets_root_path + scene_path)
 
         timeline = omni.timeline.get_timeline_interface()
         timeline.play()
@@ -95,12 +94,3 @@ class TestBenchmarkCamera(BaseIsaacBenchmarkAsync):
     # ----------------------------------------------------------------------
     async def test_benchmark_1_camera_720p(self):
         await self.benchmark_camera(1, [1280, 720])
-
-    async def test_benchmark_2_camera_720p(self):
-        await self.benchmark_camera(2, [1280, 720])
-
-    async def test_benchmark_4_camera_720p(self):
-        await self.benchmark_camera(4, [1280, 720])
-
-    async def test_benchmark_8_camera_720p(self):
-        await self.benchmark_camera(8, [1280, 720])

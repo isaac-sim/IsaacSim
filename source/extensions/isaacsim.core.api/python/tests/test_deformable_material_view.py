@@ -27,10 +27,12 @@ from isaacsim.core.api.materials.deformable_material import DeformableMaterial
 from isaacsim.core.api.materials.deformable_material_view import DeformableMaterialView
 from isaacsim.core.utils.stage import create_new_stage_async, get_current_stage, update_stage_async
 
+from .common import CoreTestCase
 
-# Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestDeformableMaterialView(omni.kit.test.AsyncTestCase):
+
+class TestDeformableMaterialView(CoreTestCase):
     async def setUp(self):
+        await super().setUp()
         World.clear_instance()
         await create_new_stage_async()
         self.my_world = World(backend="torch")  # , device="cuda")
@@ -42,6 +44,7 @@ class TestDeformableMaterialView(omni.kit.test.AsyncTestCase):
     async def tearDown(self):
         self.my_world.clear_instance()
         await update_stage_async()
+        await super().tearDown()
         pass
 
     async def test_deformable_material_view(self):

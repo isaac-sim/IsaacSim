@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.1.0] - 2025-07-07
+### Changed
+- Add ability to check docstrings for pybind11 modules
+
 ## [1.0.8] - 2025-05-30
 ### Fixed
 - Add 'isaacsim' module to global namespace when checking members

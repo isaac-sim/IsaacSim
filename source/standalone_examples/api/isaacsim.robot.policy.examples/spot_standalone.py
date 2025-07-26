@@ -17,16 +17,21 @@ from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
 
+import argparse
+
 import carb
 import numpy as np
-import omni.appwindow  # Contains handle to keyboard
 from isaacsim.core.api import World
-from isaacsim.core.utils.prims import define_prim, get_prim_at_path
+from isaacsim.core.utils.prims import define_prim
 from isaacsim.robot.policy.examples.robots import SpotFlatTerrainPolicy
 from isaacsim.storage.native import get_assets_root_path
 
 first_step = True
 reset_needed = False
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--test", default=False, action="store_true", help="Run in test mode")
+args, unknown = parser.parse_known_args()
 
 
 # initialize robot on first step, run robot advance
@@ -84,6 +89,9 @@ while simulation_app.is_running():
             base_command = np.array([0, 1, 0])
         elif i == 200:
             i = 0
+            if args.test is True:
+                print("Reached: ", spot.robot.get_world_pose()[0])
+                break
         i += 1
 
 simulation_app.close()

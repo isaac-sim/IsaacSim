@@ -20,5 +20,4 @@
 *.stl filter=lfs diff=lfs merge=lfs -text
 *.pdf filter=lfs diff=lfs merge=lfs -text
 *.ico filter=lfs diff=lfs merge=lfs -text
-source/extensions/isaacsim.asset.browser/cache/isaacsim.asset.browser.cache.json filter=lfs diff=lfs merge=lfs -text
 source/apps/cache/isaacsim.asset.browser.cache.json filter=lfs diff=lfs merge=lfs -text

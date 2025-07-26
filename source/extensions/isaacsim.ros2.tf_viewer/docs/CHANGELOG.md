@@ -1,4 +1,20 @@
 # Changelog
+## [2.1.21] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 2.1.20)
+
+## [2.1.20] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [2.1.19] - 2025-06-30
+### Changed
+- Add writeTarget.platform to extension.toml
+
+## [2.1.18] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
 ## [2.1.17] - 2025-05-31
 ### Changed
 - Use default nucleus server for all tests

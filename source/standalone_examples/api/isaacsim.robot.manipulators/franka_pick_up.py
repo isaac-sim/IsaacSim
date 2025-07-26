@@ -82,17 +82,19 @@ my_controller = PickPlaceController(
 )
 articulation_controller = my_franka.get_articulation_controller()
 
-i = 0
 reset_needed = False
+task_completed = False
 while simulation_app.is_running():
     my_world.step(render=True)
     if my_world.is_stopped() and not reset_needed:
         reset_needed = True
+        task_completed = False
     if my_world.is_playing():
         if reset_needed:
             my_world.reset()
             my_controller.reset()
             reset_needed = False
+            task_completed = False
         observations = my_world.get_observations()
         actions = my_controller.forward(
             picking_position=cube.get_local_pose()[0],
@@ -100,8 +102,9 @@ while simulation_app.is_running():
             current_joint_positions=my_franka.get_joint_positions(),
             end_effector_offset=np.array([0, 0.005, 0]),
         )
-        if my_controller.is_done():
+        if my_controller.is_done() and not task_completed:
             print("done picking and placing")
+            task_completed = True
         articulation_controller.apply_action(actions)
     if args.test is True:
         break

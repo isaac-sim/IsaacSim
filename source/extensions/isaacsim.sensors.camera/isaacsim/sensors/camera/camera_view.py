@@ -308,13 +308,16 @@ class CameraView(XFormPrim):
         elif isinstance(orientations, torch.Tensor):
             orientation_matrices = self._backend_utils.quats_to_rot_matrices(orientations)
             converted_matrices = torch.matmul(
-                torch.tensor(transform_matrix[:3, :3], dtype=torch.float32), orientation_matrices
+                torch.tensor(transform_matrix[:3, :3], dtype=torch.float32, device=orientation_matrices.device),
+                orientation_matrices,
             )
             return self._backend_utils.rot_matrices_to_quats(converted_matrices)
         elif isinstance(orientations, wp.array):
             # Assuming similar operations are possible with wp.array
             orientation_matrices = self._backend_utils.quats_to_rot_matrices(orientations)
-            converted_matrices = wp.matmul(wp.array(transform_matrix[:3, :3]), orientation_matrices)
+            converted_matrices = wp.matmul(
+                wp.array(transform_matrix[:3, :3], device=orientation_matrices.device), orientation_matrices
+            )
             return self._backend_utils.rot_matrices_to_quats(converted_matrices)
         else:
             raise TypeError("Unsupported type for orientations")
@@ -519,6 +522,9 @@ class CameraView(XFormPrim):
         output_device = str(out.device) if out is not None else "cuda"
         # get the linear sensor data from the tiled annotator and (if needed) slice it to get only the RGB data
         data = self._annotators[spec["name"]].get_data(device=output_device)
+        # If there is no data available yet, return empty array
+        if data is None:
+            return wp.empty(0, device=output_device), {}
         # check whether returned data is a dict (used for segmentation)
         if isinstance(data, dict):
             tiled_data: wp.array = data["data"]
@@ -526,6 +532,9 @@ class CameraView(XFormPrim):
         else:
             tiled_data: wp.array = data
             info = {}
+        # If there is no data available yet, return empty array
+        if tiled_data.shape[0] == 0:
+            return wp.empty(0, device=output_device), {}
         # tiled image
         if tiled:
             shape = (*self.tiled_resolution, spec["channels"])

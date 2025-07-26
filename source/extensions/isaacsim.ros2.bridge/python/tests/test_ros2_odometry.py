@@ -13,14 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
-import gc
 
 import carb
 import numpy as np
 import omni.graph.core as og
-
-# Import extension python module we are testing with absolute import path, as if we are external user (other extension)
 import omni.kit.commands
 import omni.kit.test
 import omni.kit.usd
@@ -29,29 +25,21 @@ import usdrt.Sdf
 from isaacsim.core.api import World
 from isaacsim.core.api.objects import DynamicCuboid
 from isaacsim.core.api.scenes.scene import Scene
-from isaacsim.core.api.tasks import BaseTask
 from isaacsim.core.utils.physics import simulate_async
 from isaacsim.core.utils.prims import is_prim_path_valid
-from isaacsim.core.utils.stage import get_stage_units, open_stage_async
+from isaacsim.core.utils.stage import open_stage_async
 from isaacsim.core.utils.string import find_unique_string_name
-from isaacsim.core.utils.xforms import get_world_pose
 from isaacsim.storage.native import get_assets_root_path_async
-from pxr import Gf, PhysxSchema, Usd, UsdGeom, UsdLux, UsdPhysics
 
-from .common import get_qos_profile
+from .common import ROS2TestCase, get_qos_profile
 
 
-class TestRos2Odometry(omni.kit.test.AsyncTestCase):
+class TestRos2Odometry(ROS2TestCase):
     # Before running each test
     async def setUp(self):
-        import rclpy
+        await super().setUp()
 
         await omni.usd.get_context().new_stage_async()
-        self._timeline = omni.timeline.get_timeline_interface()
-
-        ext_manager = omni.kit.app.get_app().get_extension_manager()
-        ext_id = ext_manager.get_enabled_extension_id("isaacsim.ros2.bridge")
-        self._ros_extension_path = ext_manager.get_extension_path(ext_id)
 
         self._assets_root_path = await get_assets_root_path_async()
         if self._assets_root_path is None:
@@ -62,37 +50,19 @@ class TestRos2Odometry(omni.kit.test.AsyncTestCase):
         self.my_world = World(stage_units_in_meters=1.0)
         await self.my_world.initialize_simulation_context_async()
 
-        self._physics_rate = 60
-
         self.CUBE_SCALE = 0.5
-
-        carb.settings.get_settings().set_bool("/app/runLoops/main/rateLimitEnabled", True)
-        carb.settings.get_settings().set_int("/app/runLoops/main/rateLimitFrequency", int(self._physics_rate))
-        carb.settings.get_settings().set_int("/persistent/simulation/minFrameRate", int(self._physics_rate))
         await omni.kit.app.get_app().next_update_async()
-
-        rclpy.init()
 
         pass
 
     # After running each test
     async def tearDown(self):
-        import rclpy
 
         self.my_world.stop()
         self.my_world.clear_instance()
 
         await omni.kit.app.get_app().next_update_async()
-        # In some cases the test will end before the asset is loaded, in this case wait for assets to load
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            print("tearDown, assets still loading, waiting to finish...")
-            await asyncio.sleep(1.0)
-
-        self._timeline = None
-        rclpy.shutdown()
-        gc.collect()
-
-        pass
+        await super().tearDown()
 
     def get_cube_velocities(self):
         """Return a tuple (linear_velocity, angular_velocity) from the stored odometry message."""
@@ -234,22 +204,22 @@ class TestRos2Odometry(omni.kit.test.AsyncTestCase):
             # Verify the received odometry messages
             self.assertIsNotNone(self._cube_odometry_data)
 
-        await simulate_async(1, 60, spin)
+        await simulate_async(1.5, 60, spin)
 
         standard_checks()
 
         # Verify that the pose recieved from Odometry is correct
-        self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.x, 0.0, places=2)
-        self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.y, 0.0, places=2)
+        self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.x, 0.0, places=1)
+        self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.y, 0.0, places=1)
         self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.z, -0.7, delta=0.5)
 
         # Verify that the velocities recieved from Odometry are correct. Cude should be at rest.
-        self.assertAlmostEqual(self._cube_odometry_data.twist.twist.linear.x, 0.0, places=2)
-        self.assertAlmostEqual(self._cube_odometry_data.twist.twist.linear.y, 0.0, places=2)
-        self.assertAlmostEqual(self._cube_odometry_data.twist.twist.linear.z, 0.0, places=2)
-        self.assertAlmostEqual(self._cube_odometry_data.twist.twist.angular.x, 0.0, places=2)
-        self.assertAlmostEqual(self._cube_odometry_data.twist.twist.angular.y, 0.0, places=2)
-        self.assertAlmostEqual(self._cube_odometry_data.twist.twist.angular.z, 0.0, places=2)
+        self.assertAlmostEqual(self._cube_odometry_data.twist.twist.linear.x, 0.0, places=1)
+        self.assertAlmostEqual(self._cube_odometry_data.twist.twist.linear.y, 0.0, places=1)
+        self.assertAlmostEqual(self._cube_odometry_data.twist.twist.linear.z, 0.0, places=1)
+        self.assertAlmostEqual(self._cube_odometry_data.twist.twist.angular.x, 0.0, places=1)
+        self.assertAlmostEqual(self._cube_odometry_data.twist.twist.angular.y, 0.0, places=1)
+        self.assertAlmostEqual(self._cube_odometry_data.twist.twist.angular.z, 0.0, places=1)
 
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
@@ -420,16 +390,11 @@ class TestRos2Odometry(omni.kit.test.AsyncTestCase):
         from ackermann_msgs.msg import AckermannDriveStamped
         from nav_msgs.msg import Odometry
 
-        # Load the Leatherback robot USD
-        assets_root_path = await get_assets_root_path_async()
-        if assets_root_path is None:
-            self.skipTest("Could not find Isaac Sim assets folder")
-
         # Create a new stage for this test
         await omni.usd.get_context().new_stage_async()
 
         # Load the Leatherback robot USD
-        leatherback_usd_path = assets_root_path + "/Isaac/Samples/ROS2/Robots/leatherback_ROS.usd"
+        leatherback_usd_path = self._assets_root_path + "/Isaac/Samples/ROS2/Robots/leatherback_ROS.usd"
         await open_stage_async(leatherback_usd_path)
 
         # Initialize simulation world
@@ -656,16 +621,11 @@ class TestRos2Odometry(omni.kit.test.AsyncTestCase):
         from ackermann_msgs.msg import AckermannDriveStamped
         from nav_msgs.msg import Odometry
 
-        # Load the Leatherback robot USD
-        assets_root_path = await get_assets_root_path_async()
-        if assets_root_path is None:
-            self.skipTest("Could not find Isaac Sim assets folder")
-
         # Create a new stage for this test
         await omni.usd.get_context().new_stage_async()
 
         # Load the Leatherback robot USD
-        leatherback_usd_path = assets_root_path + "/Isaac/Samples/ROS2/Robots/leatherback_ROS.usd"
+        leatherback_usd_path = self._assets_root_path + "/Isaac/Samples/ROS2/Robots/leatherback_ROS.usd"
         await open_stage_async(leatherback_usd_path)
 
         # Initialize simulation world

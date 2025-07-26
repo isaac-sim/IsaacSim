@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.4.10] - 2025-07-22
+### Fixed
+- Fix exception caused if extension is disabled while ros bridge is being enabled
+
+## [1.4.9] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 1.4.8)
+
+## [1.4.8] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [1.4.7] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
 ## [1.4.6] - 2025-06-05
 ### Changed
 - removed the duplicated replicator menu hack

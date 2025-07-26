@@ -25,6 +25,8 @@
 
 #include <isaacsim/ros2/bridge/Ros2Factory.h>
 
+#include <memory>
+
 namespace isaacsim
 {
 namespace ros2
@@ -182,10 +184,24 @@ public:
  * Platform-specific export of the factory creation function.
  * This function is called to create a new instance of the ROS 2 factory.
  *
- * @return isaacsim::ros2::bridge::Ros2Factory* Pointer to the created factory
+ * @return std::unique_ptr<isaacsim::ros2::bridge::Ros2Factory> Unique pointer to the created factory
  */
 #ifdef _MSC_VER
-extern "C" __declspec(dllexport) isaacsim::ros2::bridge::Ros2Factory* createFactory();
+__declspec(dllexport) std::unique_ptr<isaacsim::ros2::bridge::Ros2Factory> createFactory();
 #else
-extern "C" isaacsim::ros2::bridge::Ros2Factory* createFactory();
+std::unique_ptr<isaacsim::ros2::bridge::Ros2Factory> createFactory();
+#endif
+
+/**
+ * @brief C wrapper for factory creation function for dynamic symbol loading
+ * @details
+ * This function provides a C interface for dynamic symbol loading.
+ * It returns a raw pointer that should be managed by the caller.
+ *
+ * @return isaacsim::ros2::bridge::Ros2Factory* Raw pointer to the created factory
+ */
+#ifdef _MSC_VER
+extern "C" __declspec(dllexport) isaacsim::ros2::bridge::Ros2Factory* createFactoryC();
+#else
+extern "C" isaacsim::ros2::bridge::Ros2Factory* createFactoryC();
 #endif

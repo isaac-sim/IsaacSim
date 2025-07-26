@@ -43,17 +43,22 @@ class InverseKinematicsSolver(BaseInverseKinematicsSolver):
         mg_extension_path = get_extension_path_from_name("isaacsim.robot_motion.motion_generation")
         if robot_urdf_path is None:
             if attach_gripper:
-                robot_urdf_path = os.path.join(mg_extension_path, "policy_configs/ur10/ur10_robot_suction.urdf")
+                robot_urdf_path = os.path.join(
+                    mg_extension_path, "motion_policy_configs/universal_robots/ur10/ur10_robot_suction.urdf"
+                )
             else:
-                robot_urdf_path = os.path.join(mg_extension_path, "policy_configs/ur10/ur10_robot.urdf")
+                robot_urdf_path = os.path.join(
+                    mg_extension_path, "motion_policy_configs/universal_robots/ur10/ur10_robot.urdf"
+                )
         if robot_description_yaml_path is None:
             if attach_gripper:
                 robot_description_yaml_path = os.path.join(
-                    mg_extension_path, "policy_configs/ur10/rmpflow_suction/ur10_robot_description.yaml"
+                    mg_extension_path,
+                    "motion_policy_configs/universal_robots/ur10/rmpflow_suction/ur10_robot_description.yaml",
                 )
             else:
                 robot_description_yaml_path = os.path.join(
-                    mg_extension_path, "policy_configs/ur10/rmpflow/ur10_robot_description.yaml"
+                    mg_extension_path, "motion_policy_configs/universal_robots/ur10/rmpflow/ur10_robot_description.yaml"
                 )
         if end_effector_frame_name is None:
             if attach_gripper:

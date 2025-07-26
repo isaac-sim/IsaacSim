@@ -1,4 +1,16 @@
 # Changelog
+## [1.1.12] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 1.1.11)
+
+## [1.1.11] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [1.1.10] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
 ## [1.1.9] - 2025-06-08
 ### Changed
 - Update sdg pipeline golden images on windows

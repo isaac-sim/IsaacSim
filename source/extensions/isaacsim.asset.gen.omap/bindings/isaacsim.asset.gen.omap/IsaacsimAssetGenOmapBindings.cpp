@@ -60,27 +60,6 @@ PYBIND11_MODULE(_omap, m)
 This module provides functionality for generating 2D and 3D occupancy maps from USD stages.
 It allows for spatial representation of environments for robotics applications such as
 navigation, path planning, and collision avoidance.
-
-Example:
-    >>> import omni
-    >>> from isaacsim.asset.gen.omap import _omap
-    >>> 
-    >>> physx = omni.physx.get_physx_interface()
-    >>> stage_id = omni.usd.get_context().get_stage_id()
-    >>> 
-    >>> generator = _omap.Generator(physx, stage_id)
-    >>> # 0.05m cell size, output buffer will have 4 for occupied cells, 
-    >>> # 5 for unoccupied, and 6 for cells that cannot be seen
-    >>> generator.update_settings(.05, 4, 5, 6)
-    >>> # Set location to map from and the min and max bounds to map to
-    >>> generator.set_transform((0, 0, 0), (-2, -2, 0), (2, 2, 0))
-    >>> generator.generate2d()
-    >>> # Get locations of the occupied cells in the stage
-    >>> points = generator.get_occupied_positions()
-    >>> # Get computed 2d occupancy buffer
-    >>> buffer = generator.get_buffer()
-    >>> # Get dimensions for 2d buffer
-    >>> dims = generator.get_dimensions()
 )doc";
 
 
@@ -94,26 +73,29 @@ Attributes:
     None
 
 Example:
-    >>> import omni
-    >>> from isaacsim.asset.gen.omap import _omap
-    >>> 
-    >>> physx = omni.physx.get_physx_interface()
-    >>> stage_id = omni.usd.get_context().get_stage_id()
-    >>> 
-    >>> generator = _omap.Generator(physx, stage_id)
-    >>> # 0.05m cell size, output buffer will have 4 for occupied cells, 
-    >>> # 5 for unoccupied, and 6 for cells that cannot be seen
-    >>> # this assumes your usd stage units are in m, and not cm
-    >>> generator.update_settings(.05, 4, 5, 6)
-    >>> # Set location to map from and the min and max bounds to map to
-    >>> generator.set_transform((0, 0, 0), (-2, -2, 0), (2, 2, 0))
-    >>> generator.generate2d()
-    >>> # Get locations of the occupied cells in the stage
-    >>> points = generator.get_occupied_positions()
-    >>> # Get computed 2d occupancy buffer
-    >>> buffer = generator.get_buffer()
-    >>> # Get dimensions for 2d buffer
-    >>> dims = generator.get_dimensions()
+
+    .. code-block:: python
+
+        >>> import omni
+        >>> from isaacsim.asset.gen.omap.bindings import _omap
+        >>> 
+        >>> physx = omni.physx.get_physx_interface()
+        >>> stage_id = omni.usd.get_context().get_stage_id()
+        >>> 
+        >>> generator = _omap.Generator(physx, stage_id)
+        >>> # 0.05m cell size, output buffer will have 4 for occupied cells, 
+        >>> # 5 for unoccupied, and 6 for cells that cannot be seen
+        >>> # this assumes your usd stage units are in m, and not cm
+        >>> generator.update_settings(.05, 4, 5, 6)
+        >>> # Set location to map from and the min and max bounds to map to
+        >>> generator.set_transform((0, 0, 0), (-2, -2, 0), (2, 2, 0))
+        >>> generator.generate2d()
+        >>> # Get locations of the occupied cells in the stage
+        >>> points = generator.get_occupied_positions()
+        >>> # Get computed 2d occupancy buffer
+        >>> buffer = generator.get_buffer()
+        >>> # Get dimensions for 2d buffer
+        >>> dims = generator.get_dimensions()
 )doc")
         .def(py::init(
                  [](omni::physx::IPhysx* physXPtr, const long int stageId)

@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
+import os
+import unittest
 
 import carb
 import numpy as np
@@ -36,6 +37,8 @@ from isaacsim.core.utils.torch.rotations import euler_angles_to_quats as euler_a
 from isaacsim.core.utils.types import DynamicsViewState
 from isaacsim.core.utils.warp.rotations import euler_angles_to_quats as euler_angles_to_quats_warp
 from omni.physx.scripts import physicsUtils
+
+from .common import CoreTestCase
 
 default_physics_material = {"static_friction": 1.0, "dynamic_friction": 1.0, "restitution": 0.0}
 
@@ -86,17 +89,18 @@ default_sim_params = {
 }
 
 
-# Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestRigidPrimView(omni.kit.test.AsyncTestCase):
+class TestRigidPrimView(CoreTestCase):
     async def setUp(self):
+        await super().setUp()
         World.clear_instance()
         self._sim_params = default_sim_params
         self._test_cfg = dict()
 
     async def tearDown(self):
-        self._my_world.clear_instance()
         carb.settings.get_settings().set_bool("/physics/suppressReadback", False)
+        await super().tearDown()
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_rigid_prim_view_gpu_pipeline(self):
         test_configs = {"use_gpu": True, "use_gpu_pipeline": True, "device": "gpu"}
         for backend in ["torch", "warp"]:
@@ -125,6 +129,7 @@ class TestRigidPrimView(omni.kit.test.AsyncTestCase):
 
             await self._runner()
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_rigid_prim_view_cpu_pipeline(self):
         test_configs = {"use_gpu_pipeline": False, "device": "cpu"}
 
@@ -272,41 +277,23 @@ class TestRigidPrimView(omni.kit.test.AsyncTestCase):
             print(indexed, self._test_cfg)
             await self._setup_scene()
             await self.com_test()
-            await self._setup_scene()
             await self.inertias_test()
-            await self._setup_scene()
             await self.world_poses_test()
-            await self._setup_scene()
             await self.linear_velocities_test()
-            await self._setup_scene()
             await self.angular_velocities_test()
-            await self._setup_scene()
             await self.transforms_test()
-            await self._setup_scene()
             await self.apply_forces_test()
-            await self._setup_scene()
             await self.apply_forces_and_torques_at_pos_test(is_global=True, apply_at_pos=False)
-            await self._setup_scene()
             await self.apply_forces_and_torques_at_pos_test(is_global=True, apply_at_pos=True)
-            await self._setup_scene()
             await self.apply_forces_and_torques_at_pos_test(is_global=False, apply_at_pos=False)
-            await self._setup_scene()
             await self.apply_forces_and_torques_at_pos_test(is_global=False, apply_at_pos=True)
-            await self._setup_scene()
             await self.velocities_test()
-            await self._setup_scene()
             await self.enable_disable_physics_test()
-            await self._setup_scene()
             await self.enable_disable_gravity_test()
-            await self._setup_scene()
             await self.default_state_post_reset_test()
-            await self._setup_scene()
             await self.default_state_before_reset_test()
-            await self._setup_scene()
             await self.masses_test()
-            await self._setup_scene()
             await self.densities_test()
-            await self._setup_scene()
             await self.sleep_thresholds_test()
 
             await self._setup_contacts_scene()
@@ -328,25 +315,16 @@ class TestRigidPrimView(omni.kit.test.AsyncTestCase):
                 await self.local_poses_test()  # this is a cpu only test since it uses XFormPrim which doesn't use physics tensors with gpu pipeline
                 await self._setup_scene()
                 await self.world_poses_test(usd=True)
-                await self._setup_scene()
                 await self.local_poses_test(usd=True)
-                await self._setup_scene()
                 await self.linear_velocities_test(usd=True)
-                await self._setup_scene()
                 await self.angular_velocities_test(usd=True)
-                await self._setup_scene()
                 await self.velocities_test(usd=True)
-                await self._setup_scene()
                 await self.enable_disable_physics_test(usd=True)
                 await self._setup_scene()
                 await self.enable_disable_gravity_test(usd=True)
-                await self._setup_scene()
                 await self.masses_test(usd=True)
-                await self._setup_scene()
                 await self.densities_test(usd=True)
-                await self._setup_scene()
                 await self.sleep_thresholds_test(usd=True)
-                await self._setup_scene()
                 await self.default_state_post_reset_test(usd=True)
 
         self._my_world.clear_instance()

@@ -67,20 +67,19 @@ public:
             state.m_unitScale = UsdGeomGetStageMetersPerUnit(stage);
 
             auto& robotFrontVector = db.inputs.robotFront();
-            state.m_robotFront =
-                pxr::GfVec3f(static_cast<float>(robotFrontVector[0]), static_cast<float>(robotFrontVector[1]),
-                             0.0); // Z-component of zero will always be assumed
+            state.m_robotFront = pxr::GfVec3d(robotFrontVector[0], robotFrontVector[1], 0.0); // Z-component of zero
+                                                                                              // will always be assumed
 
             state.m_robotFront = pxr::GfGetNormalized(state.m_robotFront, 1.0f);
 
             if (state.m_zUp)
             {
-                state.m_robotUp = pxr::GfVec3f(0.0, 0.0, 1.0);
+                state.m_robotUp = pxr::GfVec3d(0.0, 0.0, 1.0);
                 state.m_robotSide = pxr::GfCross(state.m_robotUp, state.m_robotFront);
             }
             else
             {
-                state.m_robotUp = pxr::GfVec3f(0.0, 1.0, 0.0);
+                state.m_robotUp = pxr::GfVec3d(0.0, 1.0, 0.0);
                 state.m_robotSide = pxr::GfCross(state.m_robotUp, state.m_robotFront);
             }
 
@@ -166,9 +165,9 @@ private:
     bool m_zUp = true;
 
     // The front of the robot
-    pxr::GfVec3f m_robotFront = pxr::GfVec3f(1.0, 0.0, 0.0);
-    pxr::GfVec3f m_robotSide = pxr::GfVec3f(0.0, 1.0, 0.0);
-    pxr::GfVec3f m_robotUp = pxr::GfVec3f(0.0, 0.0, 1.0);
+    pxr::GfVec3d m_robotFront = pxr::GfVec3d(1.0, 0.0, 0.0);
+    pxr::GfVec3d m_robotSide = pxr::GfVec3d(0.0, 1.0, 0.0);
+    pxr::GfVec3d m_robotUp = pxr::GfVec3d(0.0, 0.0, 1.0);
 
     std::string m_odometryFrameId = "odom";
     std::string m_chassisFrameId = "base_link";

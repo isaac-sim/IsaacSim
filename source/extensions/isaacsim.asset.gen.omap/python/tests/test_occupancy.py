@@ -20,10 +20,10 @@ import numpy as np
 #   omni.kit.test - std python's unittest module with additional wrapping to add suport for async/await tests
 #   For most things refer to unittest docs: https://docs.python.org/3/library/unittest.html
 import omni.kit.test
-
-# Import extension python module we are testing with absolute import path, as if we are external user (other extension)
 from isaacsim.asset.gen.omap.bindings import _omap
 from isaacsim.asset.gen.omap.utils import compute_coordinates, generate_image, update_location
+
+# Import extension python module we are testing with absolute import path, as if we are external user (other extension)
 from isaacsim.core.utils.stage import open_stage_async
 from isaacsim.storage.native import get_assets_root_path_async
 from pxr import PhysxSchema, Sdf, UsdGeom, UsdPhysics

@@ -26,6 +26,16 @@
                 "description" : "Cuda Stream Input",
                 "type" : "uint64",
                 "default" : 0
+            },
+            "accumulateLidarScan": {
+                "type": "bool",
+                "description": "Lidar only. Set to true if dataPtr input is expected to be accumulated Lidar scan.",
+                "default": false
+            },
+            "newData": {
+                "type": "bool",
+                "description": "Lidar only. Set to true if dataPtr input is accumulated Lidar scan; only tested if accumulateLidarScan is true.",
+                "default": false
             }
         },
         "outputs": {
@@ -35,17 +45,14 @@
             },
             "transform": {
                 "type": "matrixd[4]",
-                "description": "The transform matrix from lidar to world coordinates"
+                "description": "The transform matrix from lidar to world coordinates",
+                "default": [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
             },
             "dataPtr": {
                 "type": "uint64",
                 "description": "Buffer containing point cloud data",
-                "uiName": "Point Cloud Data"
-            },
-            "sensorOutputBuffer": {
-                "type": "uint64",
-                "description": "Pointer to RTX sensor's output buffer",
-                "uiName": "RTX sensor output buffer"
+                "uiName": "Point Cloud Data",
+                "default": 0
             },
             "cudaDeviceIndex": {
                 "type": "int",
@@ -59,7 +66,8 @@
             },
             "bufferSize": {
                 "type": "uint64",
-                "description": "Size (in bytes) of the point cloud buffer (0 if the input is a texture)"
+                "description": "Size (in bytes) of the point cloud buffer (0 if the input is a texture)",
+                "default": 0
             },
             "height":{
                 "type": "uint",
@@ -70,6 +78,11 @@
                 "type": "uint",
                 "description": "3 x Width or number of points in point cloud buffer",
                 "default": 0
+            },
+            "accumulatedData": {
+                "type": "bool",
+                "description": "If accumulateLidarScan is true, this will be true if the point cloud data is new (i.e. not a repeat of the previous frame)",
+                "default": false
             }
         }
     }

@@ -300,8 +300,11 @@ StartupWMClass=IsaacSim"""
                     )
 
     async def __enable_ros_bridge(self):
-        ros_bridge_name = self._settings.get("isaac/startup/ros_bridge_extension")
-        if ros_bridge_name is not None and len(ros_bridge_name):
-            await omni.kit.app.get_app().next_update_async()
-            self._ext_manager.set_extension_enabled_immediate(ros_bridge_name, True)
-            await omni.kit.app.get_app().next_update_async()
+        try:
+            ros_bridge_name = self._settings.get("isaac/startup/ros_bridge_extension")
+            if ros_bridge_name is not None and len(ros_bridge_name):
+                await omni.kit.app.get_app().next_update_async()
+                self._ext_manager.set_extension_enabled_immediate(ros_bridge_name, True)
+                await omni.kit.app.get_app().next_update_async()
+        except Exception as e:
+            carb.log_warn(f"isaacsim.app.setup shutdown before ros bridge enabled")

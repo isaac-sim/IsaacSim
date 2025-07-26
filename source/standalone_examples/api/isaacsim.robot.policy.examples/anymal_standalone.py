@@ -50,7 +50,6 @@ class Anymal_runner(object):
         self._anymal = AnymalFlatTerrainPolicy(
             prim_path="/World/Anymal",
             name="Anymal",
-            usd_path=assets_root_path + "/Isaac/Robots/ANYbotics/AnymalC/anymal_c.usd",
             position=np.array([0, 0, 0.7]),
         )
 

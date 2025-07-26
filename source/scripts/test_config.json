@@ -1,0 +1,111 @@
+{
+  "suites": [
+    {
+      "name": "startuptests",
+      "include": ["tests-startup*"],
+      "exclude": [],
+      "buckets": [
+        {"name": "default", "include": ["tests-startup*"]}
+      ],
+      "default_bucket": "default"
+    },
+    {
+      "name": "selectortests",
+      "include": ["tests-selector*"],
+      "exclude": [],
+      "buckets": [
+        {"name": "default", "include": ["tests-selector*"]}
+      ],
+      "default_bucket": "default"
+    },
+    {
+      "name": "postinstalltests",
+      "include": ["post_install*"],
+      "exclude": [],
+      "buckets": [
+        {"name": "default", "include": ["post_install*"]}
+      ],
+      "default_bucket": "default"
+    },
+    {
+      "name": "warmuptests",
+      "include": ["warmup*"],
+      "exclude": [],
+      "buckets": [
+        {"name": "default", "include": ["warmup*"]}
+      ],
+      "default_bucket": "default"
+    },
+    {
+      "name": "pythontests",
+      "include": ["tests-*.sh"],
+      "exclude": [
+        "tests-startup*.sh",
+        "tests-selector*.sh",
+        "tests-unit*.sh",
+        "tests-isaacsim.benchmarks*.sh",
+        "tests-standalone*.sh",
+        "tests-nativepython*.sh",
+        "tests-internaldocker*.sh"
+      ],
+      "buckets": [
+        {"name": "deprecated", "include": ["tests-omni.isaac*.sh"]},
+        {"name": "asset", "include": ["tests-isaacsim.asset*.sh"]},
+        {"name": "core", "include": ["tests-isaacsim.core*.sh"]},
+        {"name": "examples_tests", "include": ["tests-isaacsim.examples*.sh", "tests-isaacsim.test*.sh"]},
+        {"name": "replicator", "include": ["tests-isaacsim.replicator*.sh"]},
+        {"name": "ros", "include": ["tests-isaacsim.ros2*.sh"]},
+        {"name": "sensors", "include": ["tests-isaacsim.sensors*.sh"]},
+        {"name": "utils_gui", "include": ["tests-isaacsim.gui*.sh", "tests-isaacsim.utils*.sh"]},
+        {"name": "robot", "include": ["tests-isaacsim.robot_motion*.sh", "tests-isaacsim.robot_setup*.sh", "tests-isaacsim.robot*.sh"]}
+      ],
+      "default_bucket": "default"
+    },
+    {
+      "name": "benchmarks",
+      "include": ["tests-isaacsim.benchmark.*.sh", "tests-standalone_benchmarks*.sh"],
+      "exclude": [],
+      "buckets": [
+        {"name": "default", "include": ["tests-isaacsim.benchmark.*.sh", "tests-standalone_benchmarks*.sh"]}
+      ],
+      "default_bucket": "default"
+    },
+    {
+      "name": "nativepythontests",
+      "include": ["tests-nativepython*.sh"],
+      "exclude": [],
+      "buckets": [
+        {"name": "replicator", "include": ["tests-nativepython-replicator*.sh"]},
+        {"name": "testing", "include": ["tests-nativepython-testing*.sh"]}
+      ],
+      "default_bucket": "api"
+    },
+    {
+      "name": "external",
+      "include": ["tests-external*.sh"],
+      "exclude": [],
+      "buckets": [
+        {"name": "ar", "include": ["tests-external-ar*.sh"]}
+      ],
+      "default_bucket": "default"
+    },
+    {
+      "name": "gympythontests",
+      "include": ["tests-omni.isaac.gym*.sh"],
+      "exclude": [],
+      "buckets": [
+        {"name": "default", "include": ["tests-omni.isaac.gym*.sh"]}
+      ],
+      "default_bucket": "default"
+    },
+    {
+      "name": "alltests",
+      "include": ["*"],
+      "exclude": [],
+      "buckets": [
+        {"name": "default", "include": ["*"]}
+      ],
+      "default_bucket": "default"
+    }
+  ]
+} 

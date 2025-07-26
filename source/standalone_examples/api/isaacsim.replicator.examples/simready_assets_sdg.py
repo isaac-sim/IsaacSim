@@ -26,6 +26,7 @@ import omni.replicator.core as rep
 import omni.timeline
 import omni.usd
 from isaacsim.core.utils.semantics import upgrade_prim_semantics_to_labels
+from isaacsim.core.utils.stage import add_reference_to_stage
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 
 # Make sure the simready explorer extension is enabled
@@ -40,6 +41,14 @@ def enable_simready_explorer():
         import omni.kit.actions.core as actions
 
         actions.execute_action("omni.simready.explorer", "toggle_window")
+
+
+def set_prim_variants(prim: Usd.Prim, variants: dict[str, str]):
+    vsets = prim.GetVariantSets()
+    for name, value in variants.items():
+        vset = vsets.GetVariantSet(name)
+        if vset:
+            vset.SetVariantSelection(value)
 
 
 async def search_assets_async():
@@ -69,15 +78,17 @@ def run_simready_randomization(stage, camera_prim, render_product, tables, dishe
         # Choose a random table from the list of tables and add it to the stage with physics
         table_asset = random.choice(tables)
         print(f"\tAdding table '{table_asset.name}' with colliders and disabled rigid body properties")
-        _, table_prim_path = sre.add_asset_to_stage(table_asset.main_url, variants=variants, payload=True)
-        table_prim = stage.GetPrimAtPath(table_prim_path)
+        table_prim_path = omni.usd.get_stage_next_free_path(stage, f"/Assets/{table_asset.name}", False)
+        table_prim = add_reference_to_stage(usd_path=table_asset.main_url, prim_path=table_prim_path)
+        set_prim_variants(table_prim, variants)
         upgrade_prim_semantics_to_labels(table_prim)
+
+        # Keep only the colliders on the table without rigid body properties
         if not table_prim.HasAPI(UsdPhysics.RigidBodyAPI):
             rigid_body_api = UsdPhysics.RigidBodyAPI.Apply(table_prim)
         else:
             rigid_body_api = UsdPhysics.RigidBodyAPI(table_prim)
         rigid_body_api.CreateRigidBodyEnabledAttr(False)
-        simulation_app.update()
 
         # Compute the height of the table from its bounding box
         bbox_cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), includedPurposes=[UsdGeom.Tokens.default_])
@@ -86,9 +97,10 @@ def run_simready_randomization(stage, camera_prim, render_product, tables, dishe
 
         # Choose one random plate from the list of plates
         dish_asset = random.choice(dishes)
-        _, dish_prim_path = sre.add_asset_to_stage(dish_asset.main_url, variants=variants, payload=True)
-
-        dish_prim = stage.GetPrimAtPath(dish_prim_path)
+        # _, dish_prim_path = sre.add_asset_to_stage(dish_asset.main_url, variants=variants, payload=True)
+        dish_prim_path = omni.usd.get_stage_next_free_path(stage, f"/Assets/{dish_asset.name}", False)
+        dish_prim = add_reference_to_stage(usd_path=dish_asset.main_url, prim_path=dish_prim_path)
+        set_prim_variants(dish_prim, variants)
         upgrade_prim_semantics_to_labels(dish_prim)
 
         # Compute the height of the plate from its bounding box
@@ -107,7 +119,6 @@ def run_simready_randomization(stage, camera_prim, render_product, tables, dishe
         dish_location = Gf.Vec3f(dish_x, dish_y, dish_z)
         dish_prim.GetAttribute("xformOp:translate").Set(dish_location)
         print(f"\tAdded '{dish_asset.name}' at: {dish_location}")
-        simulation_app.update()
 
         # Spawn a random number of items above the plate
         num_items = random.randint(2, 4)
@@ -115,8 +126,9 @@ def run_simready_randomization(stage, camera_prim, render_product, tables, dishe
         item_prims = []
         for _ in range(num_items):
             item_asset = random.choice(items)
-            _, item_prim_path = sre.add_asset_to_stage(item_asset.main_url, variants=variants, payload=True)
-            item_prim = stage.GetPrimAtPath(item_prim_path)
+            item_prim_path = omni.usd.get_stage_next_free_path(stage, f"/Assets/{item_asset.name}", False)
+            item_prim = add_reference_to_stage(usd_path=item_asset.main_url, prim_path=item_prim_path)
+            set_prim_variants(item_prim, variants)
             upgrade_prim_semantics_to_labels(item_prim)
             item_prims.append(item_prim)
 
@@ -132,30 +144,30 @@ def run_simready_randomization(stage, camera_prim, render_product, tables, dishe
             item_prim.GetAttribute("xformOp:translate").Set(item_location)
             print(f"\t\t'{item_prim.GetName()}' at: {item_location}")
             current_z += item_size[2]
-        simulation_app.update()
 
         num_sim_steps = 25
         print(f"\tRunning the simulation for {num_sim_steps} steps for the items to settle...")
+        timeline = omni.timeline.get_timeline_interface()
         timeline.play()
         for _ in range(num_sim_steps):
             simulation_app.update()
         print(f"\tPausing the simulation")
         timeline.pause()
 
-        print(f"\tMoving the camera above the scene to capture the scene...")
-        camera_prim.GetAttribute("xformOp:translate").Set(Gf.Vec3f(dish_x, dish_y, dish_z + 2))
-        render_product.hydra_texture.set_updates_enabled(True)
-        rep.orchestrator.step(delta_time=0.0, rt_subframes=16)
-        render_product.hydra_texture.set_updates_enabled(False)
+    print(f"\tMoving the camera above the scene to capture the scene...")
+    camera_prim.GetAttribute("xformOp:translate").Set(Gf.Vec3f(dish_x, dish_y, dish_z + 2))
+    render_product.hydra_texture.set_updates_enabled(True)
+    rep.orchestrator.step(delta_time=0.0, rt_subframes=16)
+    render_product.hydra_texture.set_updates_enabled(False)
+    simulation_app.update()
 
-        print("\tStopping the timeline")
-        timeline.stop()
-        simulation_app.update()
+    print("\tStopping the timeline")
+    timeline.stop()
+    simulation_app.update()
 
-        print(f"\tRemoving the temp layer")
-        session.subLayerPaths.remove(simready_temp_layer.identifier)
-        simready_temp_layer = None
-        simulation_app.update()
+    print(f"\tRemoving the temp layer")
+    session.subLayerPaths.remove(simready_temp_layer.identifier)
+    simready_temp_layer = None
 
 
 def run_simready_randomizations(num_scenarios):

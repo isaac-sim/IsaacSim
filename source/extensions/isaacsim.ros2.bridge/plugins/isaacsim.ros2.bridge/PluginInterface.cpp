@@ -76,33 +76,9 @@ omni::kit::StageUpdateNode* g_stageUpdateNode = nullptr;
 std::shared_ptr<isaacsim::ros2::bridge::Ros2ContextHandle> g_defaultContextHandle;
 std::shared_ptr<isaacsim::core::includes::LibraryLoader> g_factoryLoader;
 isaacsim::core::includes::MultiLibraryLoader g_backupLibraryLoader;
-isaacsim::ros2::bridge::Ros2Factory* g_factory = nullptr;
+std::unique_ptr<isaacsim::ros2::bridge::Ros2Factory> g_factory = nullptr;
 std::string g_extensionPath;
 
-void onResume(float currentTime, void* userData)
-{
-    if (!g_defaultContextHandle->isValid())
-    {
-        CARB_LOG_INFO("rcl::init()");
-        int argc = 0;
-        char** argv = nullptr;
-
-        g_defaultContextHandle->init(argc, argv);
-    }
-    else
-    {
-        CARB_LOG_INFO("ROS2 already initialized");
-    }
-}
-
-void onStop(void* userData)
-{
-    if (g_defaultContextHandle->isValid())
-    {
-        CARB_LOG_INFO("rcl::shutdown()");
-        g_defaultContextHandle->shutdown();
-    }
-}
 
 uint64_t const CARB_ABI getDefaultContextHandleAddr()
 {
@@ -111,7 +87,7 @@ uint64_t const CARB_ABI getDefaultContextHandleAddr()
 
 isaacsim::ros2::bridge::Ros2Factory* const CARB_ABI getFactory()
 {
-    return g_factory;
+    return g_factory.get();
 }
 
 bool const CARB_ABI getStartupStatus()
@@ -215,11 +191,12 @@ CARB_EXPORT void carbOnPluginStartup()
 
             carb::tokens::ITokens* tokens = carb::getCachedInterface<carb::tokens::ITokens>();
 #if defined(_WIN32)
-            std::filesystem::path p = carb::tokens::resolveString(tokens, "${app}");
+            std::filesystem::path p = carb::tokens::resolveString(tokens, "${isaacsim.ros2.bridge}");
 #else
-            std::experimental::filesystem::path p = carb::tokens::resolveString(tokens, "${app}");
+            std::experimental::filesystem::path p = carb::tokens::resolveString(tokens, "${isaacsim.ros2.bridge}");
 #endif
-            g_extensionPath = p.parent_path().string() + "/exts/isaacsim.ros2.bridge/" + std::string(rosDistro) + "/lib/";
+
+            g_extensionPath = (p / std::string(rosDistro) / "lib").string();
 
             // Try and load internal lib, this will fail if ENV vars are not set correctly due to dependency tree.
             // Do not print lib specific errors
@@ -244,30 +221,41 @@ CARB_EXPORT void carbOnPluginStartup()
 
     omni::kit::StageUpdateNodeDesc desc = { nullptr };
     desc.displayName = "IsaacRos2Bridge";
-    desc.onResume = onResume;
-    desc.onStop = onStop;
+
     desc.order = 100;
     g_stageUpdateNode = g_stageUpdate->createStageUpdateNode(desc);
 
     if (g_factoryLoader)
     {
         typedef isaacsim::ros2::bridge::Ros2Factory* (*createFactory_binding)(void);
-        createFactory_binding createFactory = (g_factoryLoader->getSymbol<createFactory_binding>("createFactory"));
+        createFactory_binding createFactory = (g_factoryLoader->getSymbol<createFactory_binding>("createFactoryC"));
 
         if (createFactory)
         {
-            g_factory = (isaacsim::ros2::bridge::Ros2Factory*)createFactory();
+            g_factory = std::unique_ptr<isaacsim::ros2::bridge::Ros2Factory>(createFactory());
         }
         else
         {
             CARB_LOG_WARN(
-                "Could not load ROS2 Bridge due to missing library dependencies, please make sure your sourced ROS2 workspace has the correct packages/libraries installed");
+                "Create Factory Failed: Could not load ROS2 Bridge due to missing library dependencies, please make sure your sourced ROS2 workspace has the correct packages/libraries installed");
             return;
         }
     }
 
     g_defaultContextHandle = g_factory->createContextHandle();
 
+
+    if (!g_defaultContextHandle->isValid())
+    {
+        CARB_LOG_INFO("rcl::init()");
+        int argc = 0;
+        char** argv = nullptr;
+        g_defaultContextHandle->init(argc, argv);
+    }
+    else
+    {
+        CARB_LOG_INFO("ROS2 already initialized");
+    }
     INITIALIZE_OGN_NODES()
 }
 
@@ -278,15 +266,18 @@ CARB_EXPORT void carbOnPluginShutdown()
         g_stageUpdate->destroyStageUpdateNode(g_stageUpdateNode);
         g_stageUpdateNode = nullptr;
     }
+
+    if (g_defaultContextHandle->isValid())
+    {
+        CARB_LOG_INFO("rcl::shutdown()");
+        g_defaultContextHandle->shutdown();
+    }
+
     g_defaultContextHandle.reset();
 
     RELEASE_OGN_NODES()
+    g_factory.reset();
     g_factoryLoader.reset();
-    if (g_factory)
-    {
-        delete g_factory;
-        g_factory = nullptr;
-    }
 }
 
 void fillInterface(isaacsim::ros2::bridge::Ros2Bridge& iface)

@@ -98,7 +98,7 @@ SUPPORTED_LIDAR_CONFIGS = {
     "/Isaac/Sensors/SICK/microScan3/SICK_microScan3.usd": {
         "Normal_1",
         "Normal_2",
-        # "Normal_3", # TODO: CUDA error
+        "Normal_3",
         "Normal_4",
         "Normal_5",
         "Normal_6",
@@ -110,15 +110,15 @@ SUPPORTED_LIDAR_CONFIGS = {
     # },
     "/Isaac/Sensors/SICK/multiScan136/SICK_multiScan136.usd": set(),
     "/Isaac/Sensors/SICK/multiScan165/SICK_multiScan165.usd": set(),
-    "/Isaac/Sensors/SICK/nanoScan3/SICK_nanoScan3.usd": {
-        "CAAZ30AN1",
-    },
+    # "/Isaac/Sensors/SICK/nanoScan3/SICK_nanoScan3.usd": {
+    #     "CAAZ30AN1",
+    # },
     "/Isaac/Sensors/SICK/picoScan150/SICK_picoScan150.usd": {
         "Normal_1",
         "Normal_2",
         "Normal_3",
         "Normal_4",
-        # "Normal_5", # TODO: CUDA error
+        "Normal_5",
         "Normal_6",
         "Normal_7",
         "Normal_8",

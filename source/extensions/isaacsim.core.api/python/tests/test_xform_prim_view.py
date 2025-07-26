@@ -31,10 +31,12 @@ from isaacsim.core.utils.stage import add_reference_to_stage, create_new_stage_a
 from isaacsim.storage.native import get_assets_root_path_async
 from pxr import UsdGeom
 
+from .common import CoreTestCase
 
-# Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestXFormPrimView(omni.kit.test.AsyncTestCase):
+
+class TestXFormPrimView(CoreTestCase):
     async def setUp(self):
+        await super().setUp()
         World.clear_instance()
         await create_new_stage_async()
         self._my_world = World()
@@ -55,7 +57,7 @@ class TestXFormPrimView(omni.kit.test.AsyncTestCase):
         pass
 
     async def tearDown(self):
-        self._my_world.clear_instance()
+        await super().tearDown()
 
     async def test_list_of_regular_exprs(self):
         view = XFormPrim(prim_paths_expr=["/World/Franka_[1-2]", "/World/Frame_*"], name="random_view")

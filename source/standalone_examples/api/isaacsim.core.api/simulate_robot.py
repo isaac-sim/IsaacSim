@@ -41,5 +41,7 @@ simulation_context.play()
 for i in range(1000):
     simulation_context.step(render=True)
 
+print("Finished simulating for 1000 steps")
+
 simulation_context.stop()
 simulation_app.close()

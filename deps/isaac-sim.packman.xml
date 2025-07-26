@@ -1,11 +1,11 @@
 <project toolsVersion="5.6">
     <dependency name="nv_ros2_humble" linkPath="../_build/target-deps/nv_ros2_humble">
-        <package name="nv_ros2" version="humble_py_3.11_20250603_49d4870-linux-x86_64_release" platforms="manylinux_2_35_x86_64"/>
-        <package name="nv_ros2" version="humble_py_3.11_20250604_windows-x86_64_release.7z" platforms="windows-x86_64"/>
+        <package name="nv_ros2" version="humble_py_3.11_20250617_97d81e9_manylinux_2_35_x86_64_release" platforms="manylinux_2_35_x86_64"/>
+        <package name="nv_ros2" version="humble_py_3.11_20250617_97d81e9_windows-x86_64_release" platforms="windows-x86_64"/>
     </dependency>
     <dependency name="nv_ros2_jazzy" linkPath="../_build/target-deps/nv_ros2_jazzy">
-        <package name="nv_ros2" version="jazzy_py_3.11_20250603_49d4870-linux-x86_64_release" platforms="manylinux_2_35_x86_64"/>
-        <package name="nv_ros2" version="jazzy_py_3.11_20250604_windows-x86_64_release.7z" platforms="windows-x86_64"/>
+        <package name="nv_ros2" version="jazzy_py_3.11_20250617_97d81e9_manylinux_2_35_x86_64_release" platforms="manylinux_2_35_x86_64"/>
+        <package name="nv_ros2" version="jazzy_py_3.11_20250617_97d81e9_windows-x86_64_release" platforms="windows-x86_64"/>
     </dependency>
     <dependency name="lula" linkPath="../_build/target-deps/lula">
         <package name="lula" version="v0.10.1_f39b9da.linux-x86_64.release" platforms="manylinux_2_35_x86_64"/>
@@ -29,7 +29,7 @@
         <package name="nlohmann_json" version="3.11.3-a3143f5-0"/>
    </dependency>
   <dependency name="generic_model_output_${config}" linkPath="../_build/target-deps/generic_model_output/${platform_target}/${config}">
-    <package name="generic-model-output" version="107.3.1+production.201676.74a0c37b.gl.${platform_target_abi}.${config}"/>
+    <package name="generic-model-output" version="107.3.1+production.206797.8131b85d.gl.${platform_target_abi}.${config}"/>
   </dependency>
   <dependency name="rapidjson" linkPath="../_build/target-deps/rapidjson">
     <package name="rapidjson" version="5.2.1-5-b4cf59b6" />

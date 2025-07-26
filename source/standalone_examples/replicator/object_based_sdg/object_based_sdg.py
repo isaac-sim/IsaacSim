@@ -364,6 +364,15 @@ def apply_velocities_towards_target(assets, target=(0, 0, 0)):
         prim.GetAttribute("physics:velocity").Set(pull_vel)
 
 
+# Apply random velocities to assets
+def randomize_floating_distractor_velocities(assets):
+    for prim in assets:
+        lin_vel = (random.uniform(-2.5, 2.5), random.uniform(-2.5, 2.5), random.uniform(-2.5, 2.5))
+        ang_vel = (random.uniform(-45, 45), random.uniform(-45, 45), random.uniform(-45, 45))
+        prim.GetAttribute("physics:velocity").Set(lin_vel)
+        prim.GetAttribute("physics:angularVelocity").Set(ang_vel)
+
+
 # Randomize camera poses to look at a random target asset (random distance and center offset)
 camera_distance_to_target_min_max = config.get("camera_distance_to_target_min_max", (0.1, 0.5))
 camera_look_at_target_offset = config.get("camera_look_at_target_offset", 0.2)
@@ -407,16 +416,6 @@ with rep.trigger.on_custom_event(event_name="randomize_shape_distractor_colors")
     shape_distractors_group = rep.create.group(shape_distractors_paths)
     with shape_distractors_group:
         rep.randomizer.color(colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1)))
-
-# Create a randomizer to apply random velocities to the floating shape distractors
-with rep.trigger.on_custom_event(event_name="randomize_floating_distractor_velocities"):
-    shape_distractors_paths = [prim.GetPath() for prim in chain(floating_shape_distractors, floating_mesh_distractors)]
-    shape_distractors_group = rep.create.group(shape_distractors_paths)
-    with shape_distractors_group:
-        rep.physics.rigid_body(
-            velocity=rep.distribution.uniform((-2.5, -2.5, -2.5), (2.5, 2.5, 2.5)),
-            angular_velocity=rep.distribution.uniform((-45, -45, -45), (45, 45, 45)),
-        )
 
 
 # Create a randomizer for lights in the working area, manually triggered at custom events
@@ -571,7 +570,7 @@ for i in range(num_frames):
     # Apply a random velocity on the floating distractors (shapes and meshes)
     if i % 17 == 0:
         print(f"\t Randomizing shape distractors velocities")
-        rep.utils.send_og_event(event_name="randomize_floating_distractor_velocities")
+        randomize_floating_distractor_velocities(chain(floating_shape_distractors, floating_mesh_distractors))
 
     # Enable render products only at capture time
     if disable_render_products_between_captures:

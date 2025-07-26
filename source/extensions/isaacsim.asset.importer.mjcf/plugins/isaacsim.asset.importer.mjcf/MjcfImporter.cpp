@@ -1119,7 +1119,6 @@ void MJCFImporter::CreatePhysicsBodyAndJoint(std::unordered_map<std::string, pxr
                     nameToUsdCollisionPrim[body->geoms[i]->name] = bodyPath;
                 }
             }
-
             collisionPrim.GetReferences().AddInternalReference(basePrim.GetPath());
             // applyCollisionGeom(stages["stage"], collisionPrim, config.convexDecomp);
             collisionPrim.SetInstanceable(true);

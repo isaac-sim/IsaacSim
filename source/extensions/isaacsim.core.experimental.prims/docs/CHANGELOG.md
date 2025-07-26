@@ -1,4 +1,19 @@
 # Changelog
+## [0.5.6] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 0.5.5)
+
+## [0.5.5] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [0.5.4] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
+## [0.5.3] - 2025-06-18
+### Changed
+- Update docstrings for Warp version change
 
 ## [0.5.2] - 2025-06-12
 ### Fixed

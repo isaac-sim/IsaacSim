@@ -1,5 +1,29 @@
 # Changelog
 
+## [2.4.19] - 2025-07-07
+### Changed
+- Add unit test for pybind11 module docstrings
+
+## [2.4.18] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 2.4.17)
+
+## [2.4.17] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [2.4.16] - 2025-06-26
+### Changed
+- Skip tests from ETM that fail to load assets.
+
+## [2.4.15] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
+## [2.4.14] - 2025-06-24
+### Fixed
+- Compound Inertial Origin to the inertia principal axis on import.
+
 ## [2.4.13] - 2025-06-12
 ### Fixed
 - Fix section header syntax in api.rst

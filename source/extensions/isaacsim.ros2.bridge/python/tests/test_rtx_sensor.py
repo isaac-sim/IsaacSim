@@ -13,12 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# NOTE:
-#   omni.kit.test - std python's unittest module with additional wrapping to add suport for async/await tests
-#   For most things refer to unittest docs: https://docs.python.org/3/library/unittest.html
 
-import asyncio
-import math
 import time
 
 import carb.tokens
@@ -29,16 +24,11 @@ import omni.kit
 import omni.kit.commands
 import omni.kit.test
 import omni.replicator.core as rep
-import usdrt.Sdf
-
-# Import extension python module we are testing with absolute import path, as if we are external user (other extension)
 from isaacsim.core.utils.physics import simulate_async
-from isaacsim.core.utils.viewports import add_aov_to_viewport
-from omni.kit.viewport.utility import get_active_viewport
 from omni.syntheticdata import sensors
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
+from pxr import UsdGeom, UsdPhysics
 
-from .common import fields_to_dtype, get_qos_profile
+from .common import ROS2TestCase, fields_to_dtype, get_qos_profile
 
 
 def add_cube(stage, path, scale, offset, physics=False):
@@ -56,25 +46,14 @@ def add_cube(stage, path, scale, offset, physics=False):
 
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestROS2RTXSensor(omni.kit.test.AsyncTestCase):
+class TestROS2RTXSensor(ROS2TestCase):
     # Before running each test
     async def setUp(self):
-        import rclpy
+        await super().setUp()
 
         await omni.usd.get_context().new_stage_async()
         # This needs to be set so that kit updates match physics updates
-        self._physics_rate = 60
         self._sensor_rate = 120
-        carb.settings.get_settings().set_bool("/app/runLoops/main/rateLimitEnabled", True)
-        carb.settings.get_settings().set_int("/app/runLoops/main/rateLimitFrequency", int(self._physics_rate))
-        carb.settings.get_settings().set_int("/persistent/simulation/minFrameRate", int(self._physics_rate))
-        rclpy.init()
-
-        self._timeline = omni.timeline.get_timeline_interface()
-
-        ext_manager = omni.kit.app.get_app().get_extension_manager()
-        ext_id = ext_manager.get_enabled_extension_id("isaacsim.ros2.bridge")
-        self._extension_path = ext_manager.get_extension_path(ext_id)
         self._stage = omni.usd.get_context().get_stage()
 
         self._sensor = None
@@ -84,17 +63,7 @@ class TestROS2RTXSensor(omni.kit.test.AsyncTestCase):
         pass
 
     async def tearDown(self):
-        import rclpy
-
-        await omni.kit.app.get_app().next_update_async()
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            print("tearDown, assets still loading, waiting to finish...")
-            await asyncio.sleep(1.0)
-        # rospy.signal_shutdown("test_complete")
-        self._timeline.stop()
-        self._timeline = None
-        rclpy.shutdown()
-        pass
+        await super().tearDown()
 
     async def _build_lidar_scene(self, sensor_config):
         _, self._sensor = omni.kit.commands.execute(
@@ -241,10 +210,7 @@ class TestROS2RTXSensor(omni.kit.test.AsyncTestCase):
 
         self._system_time = time.time()
 
-        await simulate_async(15, callback=spin)
-        # for _ in range(10):
-        #     if self._scan_data is None:
-        #         await simulate_async(1, callback=spin)
+        await simulate_async(1, callback=spin)
         self.assertIsNotNone(self._scan_data)
 
         node.destroy_node()

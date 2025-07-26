@@ -413,6 +413,20 @@ void UrdfImporter::addRigidBody(std::unordered_map<std::string, pxr::UsdStageRef
             massAPI.CreateCenterOfMassAttr().Set(pxr::GfVec3f(float(config.distanceScale * link.inertial.origin.p.x),
                                                               float(config.distanceScale * link.inertial.origin.p.y),
                                                               float(config.distanceScale * link.inertial.origin.p.z)));
+
+            pxr::GfQuatf orientation = pxr::GfQuatf(
+                link.inertial.origin.q.w, link.inertial.origin.q.x, link.inertial.origin.q.y, link.inertial.origin.q.z);
+            if (link.inertial.hasInertia)
+            {
+                pxr::GfQuatf principalAxis;
+                massAPI.GetPrincipalAxesAttr().Get(&principalAxis);
+                orientation = orientation * principalAxis;
+                massAPI.GetPrincipalAxesAttr().Set(orientation);
+            }
+            else
+            {
+                massAPI.CreatePrincipalAxesAttr().Set(orientation);
+            }
         }
     }
     else

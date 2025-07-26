@@ -16,7 +16,6 @@
 local ext = get_current_extension_info()
 project_ext(ext)
 
-
 repo_build.prebuild_link {
     { "python/impl", ext.target_dir .. "/isaacsim/ros2/sim_control/impl" },
     { "python/tests", ext.target_dir .. "/isaacsim/ros2/sim_control/tests" },

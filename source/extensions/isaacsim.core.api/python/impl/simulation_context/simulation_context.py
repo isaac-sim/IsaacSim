@@ -142,6 +142,9 @@ class SimulationContext:
                 self._initial_rendering_dt = 1.0 / 60.0
             if self._initial_stage_units_in_meters is None:
                 self._initial_stage_units_in_meters = 1.0
+        else:
+            if self._initial_rendering_dt is None:
+                self._initial_rendering_dt = 1.0 / get_current_stage().GetTimeCodesPerSecond()
 
         if builtins.ISAAC_LAUNCHED_FROM_TERMINAL is False:
 
@@ -223,6 +226,7 @@ class SimulationContext:
             SimulationContext._instance = None
             SimulationContext._sim_context_initialized = False
             SimulationManager.set_backend("numpy")
+            SimulationManager.set_physics_sim_device("cpu")
         return
 
     """
@@ -517,7 +521,10 @@ class SimulationContext:
             import omni.kit.loop._loop as omni_loop
 
             _loop_runner = omni_loop.acquire_loop_interface()
-            return _loop_runner.get_manual_step_size()
+            if _loop_runner.get_manual_mode():
+                return _loop_runner.get_manual_step_size()
+            else:
+                return _get_dt_from_frequency()
         except Exception:
             return _get_dt_from_frequency()
 

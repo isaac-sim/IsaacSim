@@ -92,4 +92,6 @@ for i in range(10000):
     if args.test is True:
         break
 
+print("Finished simulating for 10000 steps")
+
 simulation_app.close()

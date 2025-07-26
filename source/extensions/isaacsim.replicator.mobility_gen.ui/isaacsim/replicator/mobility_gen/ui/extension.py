@@ -163,7 +163,7 @@ class MobilityGenExtension(omni.ext.IExt):
             world.remove_physics_callback("scenario_physics")
 
     def start_new_recording(self):
-        recording_name = datetime.datetime.now().isoformat()
+        recording_name = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
         recording_path = os.path.join(RECORDINGS_DIR, recording_name)
         writer = MobilityGenWriter(recording_path)
         writer.write_config(self.config)

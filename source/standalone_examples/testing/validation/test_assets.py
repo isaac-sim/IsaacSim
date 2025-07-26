@@ -283,6 +283,31 @@ def check_deprecated_og(usd_path, prim):
     return []
 
 
+def check_incorrect_delta(usd_path):
+    """Check if prim uses incorrect delta.
+
+    Args:
+        usd_path: Path to the USD file.
+        prim: The USD prim to check.
+
+    Returns:
+        List of error messages if prim has delta on non-anonymous layer.
+    """
+    stage = omni.usd.get_context().get_stage()
+    if stage is None:
+        return []
+    results = []
+    paths = ["/Render/PostProcess"]
+    for path in paths:
+        prim = stage.GetPrimAtPath(path)
+        if prim is not None and prim.IsValid():
+            stack = prim.GetPrimStack()
+
+            if not all([s.layer.anonymous for s in stack]):
+                results.append(f"stage has delta for {path} on non-anonymous layer")
+    return results
+
+
 def validate_usd_file(usd_path, root_path):
     """Validate a single USD file against all validation checks.
 
@@ -310,7 +335,7 @@ def validate_usd_file(usd_path, root_path):
     file_results.extend(check_abs_refs(usd_path))
     file_results.extend(check_external_refs(root_path, usd_path))
     file_results.extend(check_rel_refs_scope(usd_path))
-
+    file_results.extend(check_incorrect_delta(usd_path))
     # Check prim-level issues
     for prim in stage.Traverse():
         file_results.extend(check_missing_ref(usd_path, prim))

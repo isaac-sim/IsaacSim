@@ -2646,13 +2646,13 @@ class Articulation(XformPrim):
             >>>
             >>> # get default state (default state is set)
             >>> prims.get_default_state()
-            (<warp.types.array object at 0x...>,
-             <warp.types.array object at 0x...>,
-             <warp.types.array object at 0x...>,
-             <warp.types.array object at 0x...>,
-             <warp.types.array object at 0x...>,
-             <warp.types.array object at 0x...>,
-             <warp.types.array object at 0x...>)
+            (array(shape=(3, 3), dtype=float32),
+             array(shape=(3, 4), dtype=float32),
+             array(shape=(3, 3), dtype=float32),
+             array(shape=(3, 3), dtype=float32),
+             array(shape=(3, 9), dtype=float32),
+             array(shape=(3, 9), dtype=float32),
+             array(shape=(3, 9), dtype=float32))
             >>>
             >>> # reset prims to default state
             >>> prims.reset_to_default_state()

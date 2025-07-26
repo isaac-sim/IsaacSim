@@ -28,6 +28,8 @@ from isaacsim.core.utils.torch.rotations import euler_angles_to_quats as euler_a
 from isaacsim.core.utils.warp.rotations import euler_angles_to_quats as euler_angles_to_quats_warp
 from omni.physx.scripts import physicsUtils
 
+from .common import CoreTestCase
+
 default_sim_params = {
     ### Per-scene settings
     "use_gpu": False,
@@ -74,16 +76,16 @@ default_sim_params = {
 }
 
 
-# Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestRigidPrimView(omni.kit.test.AsyncTestCase):
+class TestRigidPrimView(CoreTestCase):
     async def setUp(self):
+        await super().setUp()
         World.clear_instance()
         self._sim_params = default_sim_params
         self._test_cfg = dict()
 
     async def tearDown(self):
-        self._my_world.clear_instance()
         carb.settings.get_settings().set_bool("/physics/suppressReadback", False)
+        await super().tearDown()
 
     async def test_sdf_shape_view_gpu_pipeline(self):
         test_configs = {"use_gpu": True, "use_gpu_pipeline": True, "device": "gpu"}

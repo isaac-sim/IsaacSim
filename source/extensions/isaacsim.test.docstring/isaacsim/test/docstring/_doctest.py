@@ -46,8 +46,10 @@ class DocTest:
     def _get_names(self, obj, privates: bool = False) -> list[str]:
         """Get class/module names without including special methods"""
         names = []
+        is_pybind11_mod = self._is_pybind11_module(obj)
+
         for name, value in inspect.getmembers(obj):
-            if inspect.isfunction(value) or inspect.isdatadescriptor(value):
+            if self._is_function_like(value):
                 # ignore special names, e.g., __str__
                 if name.startswith("__"):
                     continue
@@ -55,14 +57,21 @@ class DocTest:
                 elif name.startswith("_") and not privates:
                     continue
                 # ignore functions not defined in current module
-                elif inspect.ismodule(obj) and inspect.getmodule(value) != obj:
+                elif inspect.ismodule(obj) and not is_pybind11_mod and inspect.getmodule(value) != obj:
                     continue
+                # for pybind11 modules, skip the module check since getmodule returns None
+                elif inspect.ismodule(obj) and is_pybind11_mod:
+                    # accept all functions in pybind11 modules since getmodule doesn't work
+                    pass
                 # ignore properties/methods not defined in current class
                 elif inspect.isclass(obj) and not obj.__dict__.get(name):
                     continue
                 names.append(f"{obj.__name__}.{name}")
         # add class name to list
         if inspect.isclass(obj):
+            names.insert(0, obj.__name__)
+        # add module name to list
+        if inspect.ismodule(obj):
             names.insert(0, obj.__name__)
         # order methods
         if "initialize" in names:
@@ -118,3 +127,26 @@ class DocTest:
             if status.failed:
                 return False
         return True
+
+    def _is_pybind11_module(self, obj):
+        """Check if this is a pybind11 module"""
+        if not inspect.ismodule(obj):
+            return False
+
+        # check if it's a binary extension module
+        if hasattr(obj, "__file__") and obj.__file__:
+            import os
+
+            _, ext = os.path.splitext(obj.__file__)
+            if ext in [".so", ".pyd", ".dll"]:
+                return True
+
+        return False
+
+    def _is_function_like(self, obj):
+        """Check if object is function-like (including pybind11 functions)"""
+        return (
+            inspect.isfunction(obj)
+            or inspect.isdatadescriptor(obj)
+            or (callable(obj) and hasattr(obj, "__doc__") and not inspect.isclass(obj) and not inspect.ismodule(obj))
+        )

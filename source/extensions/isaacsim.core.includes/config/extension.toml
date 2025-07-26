@@ -1,5 +1,5 @@
 [package]
-version = "2.1.2"
+version = "2.4.0"
 category = "Internal"
 title = "Isaac Sim Common Includes"
 description = "Extension containing common isaac sim headers"
@@ -9,3 +9,17 @@ readme = "docs/README.md"
 preview_image = "data/preview.png"
 icon = "data/icon.png"
 writeTarget.kit = true
+
+# define the C++ plugins that the extension provides
+[[native.plugin]]
+path = "bin/*.plugin"
+recursive = false
+
+[[test]]
+enabled = true
+dependencies = [
+    "omni.kit.test",
+]
+cppTests.libraries = [
+    "bin/${lib_prefix}isaacsim.core.includes.tests${lib_ext}",
+]

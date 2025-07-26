@@ -13,35 +13,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 
-# Import extension python module we are testing with absolute import path, as if we are external user (other extension)
 import omni.kit.commands
-
-# NOTE:
-#   omni.kit.test - std python's unittest module with additional wrapping to add suport for async/await tests
-#   For most things refer to unittest docs: https://docs.python.org/3/library/unittest.html
 import omni.kit.test
 import omni.kit.usd
 
+from .common import ROS2TestCase
+
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestRclpy(omni.kit.test.AsyncTestCase):
+class TestRclpy(ROS2TestCase):
     # Before running each test
     async def setUp(self):
+        await super().setUp()
         await omni.kit.app.get_app().next_update_async()
 
     # After running each test
     async def tearDown(self):
         await omni.kit.app.get_app().next_update_async()
-        gc.collect()
-        pass
+        await super().tearDown()
 
     async def test_rclpy(self):
         import rclpy
-
-        rclpy.init()
-
         from std_msgs.msg import String
 
         msg = String()
@@ -49,5 +42,4 @@ class TestRclpy(omni.kit.test.AsyncTestCase):
         publisher = node.create_publisher(String, "topic", 10)
         publisher.publish(msg)
         node.destroy_node()
-        rclpy.shutdown()
         pass

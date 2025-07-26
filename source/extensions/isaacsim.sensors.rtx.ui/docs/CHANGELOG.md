@@ -1,4 +1,16 @@
 # Changelog
+## [1.1.4] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 1.1.3)
+
+## [1.1.3] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [1.1.2] - 2025-06-25
+### Changed
+- Fixed sensor naming for context menu tests
+- Omitted nanoSensor3 from test due to reference load failures.
 
 ## [1.1.1] - 2025-06-13
 ### Changed

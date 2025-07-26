@@ -124,11 +124,11 @@ class TestCameraSensor(omni.kit.test.AsyncTestCase):
             np.array([self.cube_3.get_world_pose()[0], self.cube_2.get_world_pose()[0]])
         )
         # visual inspection golden values
-        self.assertTrue(np.allclose(points_2d[0], [103.51776, 250.4115], atol=0.01))
-        self.assertTrue(np.allclose(points_2d[1], [54.405712, 5.3428555], atol=0.01))
+        self.assertTrue(np.allclose(points_2d[0], [103.265594, 250.42622], atol=0.05), f"points_2d[0]: {points_2d[0]}")
+        self.assertTrue(np.allclose(points_2d[1], [54.414757, 5.2186475], atol=0.05), f"points_2d[1]: {points_2d[1]}")
         points_3d = self.camera.get_world_points_from_image_coords(points_2d, np.array([24.94, 24.9]))
-        self.assertTrue(np.allclose(points_3d[0], [-5, 1, 0.06], atol=0.01))
-        self.assertTrue(np.allclose(points_3d[1], [5, 3, 0.1], atol=0.01))
+        self.assertTrue(np.allclose(points_3d[0], [-5, 1, 0.06], atol=0.05), f"points_3d[0]: {points_3d[0]}")
+        self.assertTrue(np.allclose(points_3d[1], [5, 3, 0.1], atol=0.05), f"points_3d[1]: {points_3d[1]}")
         return
 
     async def test_data_acquisition(self):

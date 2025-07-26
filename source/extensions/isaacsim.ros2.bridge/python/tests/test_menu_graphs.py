@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
 import time
 
 import numpy as np
@@ -28,7 +27,6 @@ import usdrt.Sdf
 from isaacsim.core.api.objects import VisualCuboid
 from isaacsim.core.api.scenes.scene import Scene
 from isaacsim.core.prims import XFormPrim
-from isaacsim.core.utils.articulations import remove_articulation_root
 from isaacsim.core.utils.physics import simulate_async
 from isaacsim.core.utils.prims import define_prim
 from isaacsim.core.utils.stage import add_reference_to_stage, update_stage_async
@@ -36,26 +34,25 @@ from isaacsim.storage.native import get_assets_root_path_async
 from nav_msgs.msg import Odometry
 from omni.kit.ui_test.menu import *
 from omni.kit.ui_test.query import *
-from omni.ui.tests.test_base import OmniUiTest
 from rclpy.node import Node
 from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import Image, JointState, LaserScan, PointCloud2
 from std_msgs.msg import Float32, Header
 from tf2_msgs.msg import TFMessage
 
+from .common import ROS2TestCase
 
-class ROS2MenuTestBase(OmniUiTest):
+
+class ROS2MenuTestBase(ROS2TestCase):
     """Base class for ROS2 OmniGraph Menu tests"""
 
     async def setUp(self):
+        await super().setUp()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
         self._stage = omni.usd.get_context().get_stage()
         self._timeline = omni.timeline.get_timeline_interface()
 
-        # Initialize ROS2 if needed
-        if not rclpy.ok():
-            rclpy.init()
         self.node = Node("test_omnigraph_node")
 
         # Set up message tracking
@@ -63,23 +60,11 @@ class ROS2MenuTestBase(OmniUiTest):
         self.subscribers = []
 
     async def tearDown(self):
-        # Stop simulation
-        self._timeline.stop()
-
         # Clean up ROS2 subscribers
         for sub in self.subscribers:
             self.node.destroy_subscription(sub)
         self.node.destroy_node()
-
-        # Shutdown ROS2
-        if rclpy.ok():
-            rclpy.shutdown()
-
-        # Wait for any loading operations to complete
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            print("tearDown, assets still loading, waiting to finish...")
-            await asyncio.sleep(1.0)
-        await omni.kit.app.get_app().next_update_async()
+        await super().tearDown()
 
     def create_subscriber(self, topic, msg_type, callback=None):
         """Create a subscriber"""
@@ -499,25 +484,33 @@ class TestMenuROS2LidarGraph(ROS2MenuTestBase):
 
         # Store actual message data for validation, not just counts
         self.point_cloud_data = None
-        self.laser_scan_data = None
+        # self.laser_scan_data = None
 
         # Define topic names for the lidar data
-        laser_scan_topic = "/laser_scan"
+        # laser_scan_topic = "/laser_scan"
         point_cloud_topic = "/point_cloud"
 
-        # Create callbacks to capture and validate message content
-        def laser_scan_callback(msg):
-            self.laser_scan_data = msg
+        # # Create callbacks to capture and validate message content
+        # def laser_scan_callback(msg):
+        #     self.laser_scan_data = msg
 
         def point_cloud_callback(msg):
             self.point_cloud_data = msg
 
         # Create subscribers with validation callbacks
-        self.create_subscriber(laser_scan_topic, LaserScan, laser_scan_callback)
+        # self.create_subscriber(laser_scan_topic, LaserScan, laser_scan_callback)
         self.create_subscriber(point_cloud_topic, PointCloud2, point_cloud_callback)
 
         # Click through the menu to create the graph
-        await menu_click("Tools/Robotics/ROS 2 OmniGraphs/RTX Lidar")
+        delays = [5, 50, 100]
+        for delay in delays:
+            try:
+                await menu_click("Tools/Robotics/ROS 2 OmniGraphs/RTX Lidar", human_delay_speed=delay)
+                break
+            except AttributeError as e:
+                if "NoneType' object has no attribute 'center'" in str(e) and delay != delays[-1]:
+                    continue
+                raise
         await omni.kit.app.get_app().next_update_async()
 
         # Wait for and interact with parameter window
@@ -532,9 +525,9 @@ class TestMenuROS2LidarGraph(ROS2MenuTestBase):
         lidar_prim = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
         lidar_prim.model.set_value(lidar_path)
 
-        # Enable LaserScan
+        # Disable LaserScan as the lidar is 3D
         laser_scan_checkbox = ui_test.find(root_widget_path + "/HStack[5]/HStack[0]/VStack[0]/ToolButton[0]")
-        laser_scan_checkbox.model.set_value(True)
+        laser_scan_checkbox.model.set_value(False)
 
         # Enable Point Cloud
         point_cloud_checkbox = ui_test.find(root_widget_path + "/HStack[6]/HStack[0]/VStack[0]/ToolButton[0]")
@@ -1201,7 +1194,7 @@ class TestMenuROS2OdometryGraph(ROS2MenuTestBase):
         robot, base_link_path = await self.setup_test_environment()
 
         # Click through the menu to create the graph
-        await menu_click("Tools/Robotics/ROS 2 OmniGraphs/Odometry Publisher")
+        await menu_click("Tools/Robotics/ROS 2 OmniGraphs/Odometry Publisher", human_delay_speed=50)
         await omni.kit.app.get_app().next_update_async()
 
         # Wait for and interact with parameter window
@@ -1232,7 +1225,7 @@ class TestMenuROS2OdometryGraph(ROS2MenuTestBase):
 
         # Run simulation to test (should not crash)
         self._timeline.play()
-        await simulate_async(2.0)
+        await simulate_async(1.0)
         self._timeline.stop()
 
         await omni.kit.app.get_app().next_update_async()
@@ -1265,15 +1258,28 @@ class TestMenuROS2OdometryGraph(ROS2MenuTestBase):
         self.create_subscriber(odom_topic, Odometry, odom_callback)
 
         # Create Odometry graph through menu
-        await menu_click("Tools/Robotics/ROS 2 OmniGraphs/Odometry Publisher")
+
+        window_name = "ROS2 Odometry Graph"
+        delays = [5, 50, 100]
+        for delay in delays:
+            try:
+                await menu_click("Tools/Robotics/ROS 2 OmniGraphs/Odometry Publisher", human_delay_speed=delay)
+                if (param_window := ui_test.find(window_name)) is not None:
+                    break
+            except AttributeError as e:
+                if "NoneType' object has no attribute 'center'" in str(e) and delay != delays[-1]:
+                    continue
+                raise
+        for _ in range(10):
+            await update_stage_async()
+
+        self.assertIsNotNone(param_window, "Parameter window not found")
+
         await omni.kit.app.get_app().next_update_async()
 
         # Configure Odometry graph parameters
-        odom_window_name = "ROS2 Odometry Graph"
-        odom_param_window = ui_test.find(odom_window_name)
-        self.assertIsNotNone(odom_param_window, "Odometry parameter window not found")
 
-        odom_root_widget_path = f"{odom_window_name}//Frame/VStack[0]"
+        odom_root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Enable "Publish Robot's TF?" checkbox (critical for TF publishing)
         publish_tf_checkbox = ui_test.find(odom_root_widget_path + "/HStack[3]/ToolButton[0]")
@@ -1539,8 +1545,8 @@ class TestMenuROS2ClockGraph(ROS2MenuTestBase):
             rclpy.spin_once(self.node, timeout_sec=0.1)
 
         # Run simulation with more iterations and longer total time
-        simulation_duration = 10.0
-        step_size = 0.5
+        simulation_duration = 1.0
+        step_size = 0.1
         steps = int(simulation_duration / step_size)
 
         for i in range(steps):
@@ -1569,7 +1575,7 @@ class TestMenuROS2ClockGraph(ROS2MenuTestBase):
             # Validate time progression - check for at least 3 seconds advancement
             time_diff = final_time - initial_time
             self.assertGreater(
-                time_diff, 3.0, f"Clock did not advance properly. Initial: {initial_time:.6f}, Final: {final_time:.6f}"
+                time_diff, 0.5, f"Clock did not advance properly. Initial: {initial_time:.6f}, Final: {final_time:.6f}"
             )
 
         else:

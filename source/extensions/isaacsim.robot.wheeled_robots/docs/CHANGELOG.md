@@ -1,4 +1,28 @@
 # Changelog
+## [4.0.23] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 4.0.22)
+
+## [4.0.22] - 2025-07-05
+### Changed
+- Update tests to pass without a custom loop runner
+
+## [4.0.21] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [4.0.20] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
+## [4.0.19] - 2025-06-18
+### Fixed
+- Fixed WheelBasePoseController for moving forward along -x axis
+
+## [4.0.18] - 2025-06-18
+### Changed
+- Add units to differential and holonomic controller nodes descriptions
+
 ## [4.0.17] - 2025-05-31
 ### Changed
 - Use default nucleus server for all tests

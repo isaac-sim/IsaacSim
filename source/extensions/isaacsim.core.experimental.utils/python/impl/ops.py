@@ -77,9 +77,9 @@ def place(
         >>> import warp as wp
         >>>
         >>> # list
-        >>> array = ops_utils.place([1, 2, 3], device="cpu")  # doctest: +NO_CHECK
+        >>> array = ops_utils.place([1.0, 2.0, 3.0], device="cpu")  # doctest: +NO_CHECK
         >>> print(array, array.dtype, array.device, array.shape)
-        [1 2 3] <class 'warp.types.int64'> cpu (3,)
+        [1. 2. 3.] <class 'warp.types.float64'> cpu (3,)
         >>>
         >>> # NumPy array (with shape (3, 1))
         >>> array = ops_utils.place(np.array([[1], [2], [3]], dtype=np.uint8), dtype=wp.float32)  # doctest: +NO_CHECK
@@ -87,9 +87,9 @@ def place(
         [[1.] [2.] [3.]] <class 'warp.types.float32'> cuda:0 (3, 1)
         >>>
         >>> # Warp array (with different device)
-        >>> array = ops_utils.place(wp.array([1, 2, 3], device="cpu"), device="cuda")  # doctest: +NO_CHECK
+        >>> array = ops_utils.place(wp.array([1.0, 2.0, 3.0], device="cpu"), device="cuda")  # doctest: +NO_CHECK
         >>> print(array, array.dtype, array.device, array.shape)
-        [1 2 3] <class 'warp.types.int64'> cuda:0 (3,)
+        [1. 2. 3.] <class 'warp.types.float64'> cuda:0 (3,)
     """
     # hint: don't use wp.from_numpy as it returns vector/matrix for arrays of dimensions 2/3
     if isinstance(x, wp.array):

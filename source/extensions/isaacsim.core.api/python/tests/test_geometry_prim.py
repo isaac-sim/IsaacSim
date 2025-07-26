@@ -25,16 +25,18 @@ from isaacsim.core.prims import SingleGeometryPrim
 from isaacsim.core.utils.prims import define_prim
 from pxr import UsdPhysics
 
+from .common import CoreTestCase
 
-# Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestSingleGeometryPrim(omni.kit.test.AsyncTestCase):
+
+class TestSingleGeometryPrim(CoreTestCase):
     async def setUp(self):
+        await super().setUp()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
         pass
 
     async def tearDown(self):
-        await omni.kit.app.get_app().next_update_async()
+        await super().tearDown()
         pass
 
     async def test_collision_approximation(self):

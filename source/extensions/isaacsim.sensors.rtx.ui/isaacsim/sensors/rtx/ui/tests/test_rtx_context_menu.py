@@ -122,7 +122,7 @@ class TestRTXContextMenu(OmniUiTest):
                 if key != "_":
                     current_path.append(key)
                 # # TODO:Skip ZVISION by starting over, something werid about the ZVISION sensors, bad for testing.
-                if key in ["ZVISION", "OUSTER", "HESAI", "Velodyne"]:
+                if key in ["ZVISION", "Ouster", "HESAI", "Velodyne"]:
                     return get_random_menu_path(menu_dict)
                 current_dict = current_dict[key]
 

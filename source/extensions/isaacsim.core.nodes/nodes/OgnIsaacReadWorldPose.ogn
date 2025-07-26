@@ -11,21 +11,24 @@
         "inputs": {
             "prim":{
                 "type": "target",
-                "description": "Usd prim reference from which fabric pose will be read"
-            },
-            "includeScale": {
-                "type": "bool",
-                "description": "If True the output bundle would include scale",
-                "uiName": "include scale",
-                "default": false
+                "description": "Usd prim reference from which the fabric pose will be read"
             }
         },
         "outputs": {
-            "primsBundle": {
-                "type": "bundle",
-                "description": [
-                    "An output bundle containing xformOp data"
-                ]
+            "translation": {
+                "type": "vectord[3]",
+                "description": "Translation vector in meters",
+                "default": [0.0, 0.0, 0.0]
+            },
+            "orientation": {
+                "type": "quatd[4]",
+                "description": "Orientation as a quaternion (IJKR)",
+                "default": [0.0, 0.0, 0.0, 1.0]
+            },
+            "scale": {
+                "type": "vectord[3]",
+                "description": "Scale vector in meters",
+                "default": [0.0, 0.0, 0.0]
             }
         }
     }

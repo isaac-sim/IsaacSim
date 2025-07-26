@@ -31,10 +31,12 @@ from isaacsim.core.utils.types import DynamicsViewState
 from omni.physx.scripts import deformableUtils, physicsUtils
 from pxr import Gf, Usd, UsdGeom
 
+from .common import CoreTestCase
 
-# Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestDeformablePrim(omni.kit.test.AsyncTestCase):
+
+class TestDeformablePrim(CoreTestCase):
     async def setUp(self):
+        await super().setUp()
         World.clear_instance()
         await create_new_stage_async()
         self.my_world = World(backend="torch", device="cuda")
@@ -42,8 +44,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         self._test_cfg = dict()
 
     async def tearDown(self):
-        self.my_world.clear_instance()
-        await update_stage_async()
+        await super().tearDown()
 
     async def test_deformable_prim_view_gpu_pipeline(self):
         self.isclose = torch.isclose

@@ -1,4 +1,20 @@
 # Changelog
+## [2.3.16] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 1.1.8)
+
+## [2.3.15] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [2.3.14] - 2025-06-26
+### Changed
+- Add increasing delay to menu click for environment test
+
+## [2.3.13] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+- Add delay to menu click for apriltag test
 
 ## [2.3.12] - 2025-06-13
 ### Changed

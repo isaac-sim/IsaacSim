@@ -12,29 +12,81 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Callable, List, Optional, Tuple, Union
 
-import numpy as np
 import omni.ui as ui
-from isaacsim.gui.components.element_wrappers import DropDown, Frame
-from isaacsim.gui.components.widgets import DynamicComboBoxModel
 
-LABEL_WIDTH = 90
+###########################################
+### copied from robot_setup.wizard.utils
+###########################################
 
 
-class CustomDropDown(DropDown):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+class ComboListItem(ui.AbstractItem):
+    def __init__(self, item):
+        """
+        item is a string
+        """
+        super().__init__()
+        self.model = ui.SimpleStringModel(item)
+        self.item = item
 
-    def _create_ui_widget(self, label, tooltip):
-        items = []
-        combobox_model = DynamicComboBoxModel(items)
-        containing_frame = Frame().frame
-        with containing_frame:
-            with ui.HStack():
-                self._label = ui.Label(
-                    label, name="dropdown_label", width=LABEL_WIDTH, alignment=ui.Alignment.LEFT_CENTER, tooltip=tooltip
-                )
-                self._combobox = ui.ComboBox(combobox_model)
 
-        return containing_frame
+class ComboListModel(ui.AbstractItemModel):
+    def __init__(self, item_list, default_index):
+        super().__init__()
+        self._default_index = default_index
+        self._current_index = ui.SimpleIntModel(default_index)
+        self._current_index.add_value_changed_fn(self.selection_changed)
+        self._item_list = item_list
+        self._items = []
+        if item_list:
+            for item in item_list:
+                self._items.append(ComboListItem(item))
+
+    def get_item_children(self, item):
+        return self._items
+
+    def get_item_value_model(self, item, column_id):
+        if item is None:
+            return self._current_index
+        return item.model
+
+    def get_current_index(self):
+        return self._current_index.get_value_as_int()
+
+    def set_current_index(self, index):
+        self._current_index.set_value(index)
+
+    def get_current_string(self):
+        return self._items[self._current_index.get_value_as_int()].model.get_value_as_string()
+
+    def set_current_string(self, string):
+        for index, item in enumerate(self._items):
+            if item.model.get_value_as_string() == string:
+                self.set_current_index(index)
+                break
+
+    def get_current_item(self):
+        return self._items[self._current_index.get_value_as_int()].item
+
+    def is_default(self):
+        return self.get_current_index() == self._default_index
+
+    def add_item(self, item):
+        self._items.append(ComboListItem(item))
+        self._item_changed(None)
+
+    def refresh_list(self, items_list):
+        self._items = []
+        for item in items_list:
+            self._items.append(ComboListItem(item))
+        self._item_changed(None)
+
+    def selection_changed(self, model):
+        self._item_changed(None)
+
+    def has_item(self):
+        return len(self._items) > 0
+
+
+def create_combo_list_model(items_list, index):
+    return ComboListModel(items_list, index)

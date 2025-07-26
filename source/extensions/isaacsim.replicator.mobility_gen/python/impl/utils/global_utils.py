@@ -16,6 +16,7 @@
 
 import isaacsim.core
 import omni.kit
+from pxr import Sdf
 
 
 def new_world(physics_dt: float = 0.01, stage_units_in_meters: float = 1.0) -> isaacsim.core.api.World:
@@ -28,3 +29,18 @@ def new_world(physics_dt: float = 0.01, stage_units_in_meters: float = 1.0) -> i
 
 def get_world() -> isaacsim.core.api.World:
     return isaacsim.core.api.World.instance()
+
+
+def join_sdf_paths(*subpaths):
+
+    path = Sdf.Path(subpaths[0])
+
+    for subpath in subpaths[1:]:
+
+        # consecutive paths are relative
+        subpath = subpath.strip("/")
+
+        if len(subpath) > 0:
+            path = path.AppendPath(subpath)
+
+    return str(path)

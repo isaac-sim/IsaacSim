@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 from enum import IntEnum
 
 import carb
@@ -23,7 +24,6 @@ import pxr
 import usd.schema.isaac.robot_schema as robot_schema
 import usd.schema.isaac.robot_schema.utils as rs_utils
 from isaacsim.core.experimental.prims import Articulation
-from isaacsim.core.utils.types import ArticulationAction
 from pxr import Gf, Usd, UsdPhysics
 from usd.schema.isaac.robot_schema.utils import RobotLinkNode
 
@@ -183,6 +183,8 @@ class GainTuner:
         self._gains_test_generator = None
         self._joint_acumulated_inertia = {}
 
+        self.step = 0
+
     def stop_test(self):
         self._articulation.reset_to_default_state()
 
@@ -192,6 +194,8 @@ class GainTuner:
             robot_path = self._robot_prim_path
             self.reset()
             self.setup(robot_path)
+        else:
+            self.setup(None)
         self.step = 0
 
     def setup(self, robot_path):
@@ -204,6 +208,17 @@ class GainTuner:
         self._robot_links = [l for l in pxr.Usd.PrimRange(self._robot) if l.HasAPI(robot_schema.Classes.LINK_API.value)]
         self._link_mass = query_prims(stage, [l.GetPath() for l in self._robot_links])
 
+        async def update_link_mass():
+            playing = True
+            if not self._timeline.is_playing():
+                self._timeline.play()
+                playing = False
+            await omni.kit.app.get_app().next_update_async()
+            self.compute_joints_acumulated_inertia()
+            if not playing:
+                self._timeline.stop()
+
+        asyncio.ensure_future(update_link_mass())
         self._robot_tree = rs_utils.GenerateRobotLinkTree(stage, self._robot)
         self._articulation_root = find_articulation_root(stage, self._robot_prim_path)
         self._articulation = Articulation(self._articulation_root)
@@ -217,6 +232,9 @@ class GainTuner:
         self._all_joint_indices = self._articulation.get_dof_indices(self._joint_names.values()).list()
 
         self.initialize()
+
+    def get_dof_type(self, dof_index: int):
+        return self._articulation.dof_types[dof_index]
 
     def __del__(self):
         self._articulation = None
@@ -444,9 +462,10 @@ class GainTuner:
         phases = np.array(
             [self.test_params["sequence"][sequence_index]["joint_phases"][i] for i in position_joint_indices]
         )
+        range = upper_joint_limits - lower_joint_limits
+        center = (upper_joint_limits + lower_joint_limits) / 2
         next_position_step = np.clip(
-            (upper_joint_limits - lower_joint_limits) * amplitudes * (np.sin(2 * np.pi * timestep / periods + phases))
-            + offsets,
+            range * amplitudes * (np.sin(2 * np.pi * timestep / periods + phases)) + center + offsets,
             lower_joint_limits,
             upper_joint_limits,
         )

@@ -52,11 +52,9 @@ class Extension(omni.ext.IExt):
     def _register_property_menu(self):
         self._registered = True
         # +add menu item(s)
-        from omni.kit.property.usd import PrimPathWidget
 
         context_menu = omni.kit.context_menu.get_instance()
         if context_menu is None:
-            self._menu_button1 = None
             carb.log_error("context_menu is disabled!")
             return None
 
@@ -64,10 +62,7 @@ class Extension(omni.ext.IExt):
         # prevent unregistering multiple times
         if self._registered is False:
             return
-        from omni.kit.property.usd import PrimPathWidget
 
-        if self._menu_button1:
-            PrimPathWidget.remove_button_menu_entry(self._menu_button1)
         self._registered = False
 
     def _is_material(self, objects):

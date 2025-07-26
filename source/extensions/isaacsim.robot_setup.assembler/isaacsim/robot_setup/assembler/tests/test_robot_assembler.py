@@ -202,7 +202,7 @@ class TestRobotAssembler(omni.kit.test.AsyncTestCase):
     async def test_robot_assembler_finish_assembly(self):
         await self.test_robot_assembler_assemble()
         self._robot_assembler.finish_assemble()
-        await self._wait_n_frames(1)
+        await self._wait_n_frames(10)
         attachment_root_joint = self.stage.GetPrimAtPath(self._robot_attach + "/root_joint")
         self.assertFalse(attachment_root_joint.IsActive())
 

@@ -1,6 +1,6 @@
 <project toolsVersion="5.6">
   <dependency name="kit_sdk_${config}" linkPath="../_build/${platform_target}/${config}/kit" tags="${config} non-redist">
-        <package name="kit-kernel" version="107.3.0+feature.199947.b0a86421.gl.${platform_target_abi}.${config}" platforms="manylinux_2_35_aarch64 manylinux_2_35_x86_64 windows-x86_64" />
+        <package name="kit-kernel" version="107.3.1+isaac.206797.8131b85d.gl.${platform_target_abi}.${config}" platforms="manylinux_2_35_aarch64 manylinux_2_35_x86_64 windows-x86_64" />
         <!-- <source path="/home/path/to/kit/kit/_build/${platform_target}/${config}"/> -->
   </dependency>
 </project>

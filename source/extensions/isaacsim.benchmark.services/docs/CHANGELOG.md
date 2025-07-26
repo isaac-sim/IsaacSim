@@ -1,4 +1,28 @@
 # Changelog
+## [3.0.5] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 3.0.4)
+
+## [3.0.4] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [3.0.3] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
+## [3.0.2] - 2025-06-18
+### Added
+- Enabled multi-gpu frametime collection and reporting + average GPU frametime in mGPU setups
+
+## [3.0.1] - 2025-06-18
+### Removed
+- Removed unused CPU load metrics
+
+## [3.0.0] - 2025-06-16
+### Added
+- Created validation tooling for render product evaluation
+
 ## [2.8.5] - 2025-06-09
 ### Changed
 - Removed unneeded default settings for omni connection

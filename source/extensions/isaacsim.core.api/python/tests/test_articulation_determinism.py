@@ -24,11 +24,14 @@ from isaacsim.core.utils.stage import add_reference_to_stage, open_stage_async, 
 from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.storage.native import get_assets_root_path_async
 
+from .common import CoreTestCase
 
-class TestArticulationDeterminism(omni.kit.test.AsyncTestCase):
+
+class TestArticulationDeterminism(CoreTestCase):
 
     # Before running each test
     async def setUp(self):
+        await super().setUp()
         World.clear_instance()
         self._timeline = omni.timeline.get_timeline_interface()
 
@@ -40,12 +43,7 @@ class TestArticulationDeterminism(omni.kit.test.AsyncTestCase):
         pass
 
     async def tearDown(self):
-        self._timeline.stop()
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            print("tearDown, assets still loading, waiting to finish...")
-            await asyncio.sleep(1.0)
-        await update_stage_async()
-        World.clear_instance()
+        await super().tearDown()
         pass
 
     async def test_inconsistent_result(self):

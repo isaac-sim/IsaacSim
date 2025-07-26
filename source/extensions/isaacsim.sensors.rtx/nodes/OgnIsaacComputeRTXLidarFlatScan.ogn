@@ -1,12 +1,12 @@
 {
     "IsaacComputeRTXLidarFlatScan": {
         "version": 3,        "icon": "icons/isaac-sim.svg",
-        "description": "Accumulates full scan from the lowest elevation emitter on an RTX Lidar",
+        "description": "Extracts depth and intensity values from returns of accumulated scan of 2D RTX Lidar.",
         "language": "C++",
         "metadata": {
             "categories": ["Sensor"],
             "keywords": ["rtx", "lidar", "sensor"],
-            "tooltip": "Accumulates full scan from the lowest elevation emitter on an RTX Lidar",
+            "tooltip": "Extracts depth and intensity values from returns of accumulated scan of 2D RTX Lidar.",
             "display_name": "Compute RTX Lidar Flat Scan"
         },
         "categoryDefinitions": "config/CategoryDefinition.json",
@@ -25,7 +25,7 @@
             },
             "cudaDeviceIndex": {
                 "type": "int",
-                "description": "DEPRECATED - Index of the device where the data lives (-1 for host data)",
+                "description": "DEPRECATED - Index of the device on which data was originally generated.",
                 "default": -1
             },
             "bufferSize": {
@@ -35,6 +35,11 @@
             "renderProductPath": {
                 "type": "token",
                 "description": "Used to retrieve lidar configuration."
+            },
+            "newData": {
+                "type": "bool",
+                "description": "Set to true if dataPtr input is accumulated Lidar scan.",
+                "default": false
             },
             "cudaStream": {
                 "description" : "Cuda Stream Input",

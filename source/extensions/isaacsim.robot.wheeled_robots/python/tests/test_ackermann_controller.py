@@ -424,10 +424,8 @@ class TestAckermannControllerOgn(ogts.OmniGraphTestCase):
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
 
-        dt_value = og.Controller.attribute("outputs:deltaSeconds", play_node).get()
-
         # Move robot in a circle and check it is at quarter turn position.
-        desired_forward_vel = 0.5  # m/s
+        desired_forward_vel = 1.5  # m/s
         desired_steer_angle = 0.3  # rad
         wheel_base = og.Controller.attribute("inputs:wheelBase", acker_node).get()
 
@@ -475,7 +473,7 @@ class TestAckermannControllerOgn(ogts.OmniGraphTestCase):
         await omni.kit.app.get_app().next_update_async()
 
         # Simulate full circle turn
-        desired_forward_vel = 0.5  # m/s
+        desired_forward_vel = 1.5  # m/s
         desired_steer_angle = -0.3  # rad
         wheel_base = og.Controller.attribute("inputs:wheelBase", acker_node).get()
 
@@ -575,8 +573,6 @@ class TestAckermannControllerOgn(ogts.OmniGraphTestCase):
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
 
-        dt_value = og.Controller.attribute("outputs:deltaSeconds", play_node).get()
-
         # Move robot in a circle and check it is at quarter turn position.
         desired_forward_vel = 1.5  # m/s
         desired_steer_angle = 0.0  # rad
@@ -592,7 +588,7 @@ class TestAckermannControllerOgn(ogts.OmniGraphTestCase):
         curr_lin_vel = og.Controller.attribute("outputs:linearVelocity", compute_odom_node).get()
         curr_accel = og.Controller.attribute("outputs:linearAcceleration", compute_odom_node).get()
 
-        await simulate_async(dt_value * 30)
+        await simulate_async(0.5)
 
         # Compare forward linear velocity in x axis to desired
         self.assertLess(curr_lin_vel[0], desired_forward_vel)
@@ -600,7 +596,7 @@ class TestAckermannControllerOgn(ogts.OmniGraphTestCase):
         # Compare linear acceleration in x axis to desired
         self.assertAlmostEquals(curr_accel[0], acceleration, delta=0.1)
 
-        await simulate_async(5.0)
+        await simulate_async(4.0)
 
         # Compare forward linear velocity in x axis to desired
         self.assertAlmostEquals(curr_lin_vel[0], desired_forward_vel, delta=0.2)
@@ -698,8 +694,6 @@ class TestAckermannControllerOgn(ogts.OmniGraphTestCase):
         self.assertAlmostEquals(sign * joint_pos[left_rotator_joint_index], 0.0, delta=0.05)
         self.assertAlmostEquals(sign * joint_pos[right_rotator_joint_index], 0.0, delta=0.05)
 
-        dt_value = og.Controller.attribute("outputs:deltaSeconds", play_node).get()
-
         desired_forward_vel = 0.0  # m/s
         desired_steer_angle = 0.4  # rad
 
@@ -711,12 +705,12 @@ class TestAckermannControllerOgn(ogts.OmniGraphTestCase):
         og.Controller.attribute("inputs:steeringAngleVelocity", acker_node).set(steering_angle_vel)
         og.Controller.attribute("inputs:acceleration", acker_node).set(acceleration)
 
-        await simulate_async(dt_value * 30)
+        await simulate_async(1.0)
         joint_pos = robot.get_joint_positions()
         self.assertLess(sign * joint_pos[left_rotator_joint_index], desired_steer_angle)
         self.assertLess(sign * joint_pos[right_rotator_joint_index], desired_steer_angle)
 
-        await simulate_async(5.0)
+        await simulate_async(2.0)
         joint_pos = robot.get_joint_positions()
         self.assertAlmostEquals(sign * joint_pos[left_rotator_joint_index], desired_steer_angle, delta=0.2)
         self.assertAlmostEquals(sign * joint_pos[right_rotator_joint_index], desired_steer_angle, delta=0.2)
@@ -744,8 +738,6 @@ class TestAckermannControllerOgn(ogts.OmniGraphTestCase):
         self.assertAlmostEquals(sign * joint_pos[left_rotator_joint_index], 0.0, delta=0.05)
         self.assertAlmostEquals(sign * joint_pos[right_rotator_joint_index], 0.0, delta=0.05)
 
-        dt_value = og.Controller.attribute("outputs:deltaSeconds", play_node).get()
-
         desired_forward_vel = 0.0  # m/s
         desired_steer_angle = -0.4  # rad
 
@@ -757,12 +749,12 @@ class TestAckermannControllerOgn(ogts.OmniGraphTestCase):
         og.Controller.attribute("inputs:steeringAngleVelocity", acker_node).set(steering_angle_vel)
         og.Controller.attribute("inputs:acceleration", acker_node).set(acceleration)
 
-        await simulate_async(dt_value * 30)
+        await simulate_async(0.5)
         joint_pos = robot.get_joint_positions()
         self.assertGreater(sign * joint_pos[left_rotator_joint_index], desired_steer_angle)
         self.assertGreater(sign * joint_pos[right_rotator_joint_index], desired_steer_angle)
 
-        await simulate_async(5.0)
+        await simulate_async(4.0)
         joint_pos = robot.get_joint_positions()
         self.assertAlmostEquals(sign * joint_pos[left_rotator_joint_index], desired_steer_angle, delta=0.2)
         self.assertAlmostEquals(sign * joint_pos[right_rotator_joint_index], desired_steer_angle, delta=0.2)

@@ -74,7 +74,6 @@ class MemoryRecorder(MeasurementDataRecorder):
     def get_data(self) -> MeasurementData:
 
         (
-            cpu_load,
             rss,
             vms,
             uss,
@@ -100,9 +99,6 @@ class MemoryRecorder(MeasurementDataRecorder):
         self,
     ) -> Tuple[float, float, float, float, float, float, float]:
         """Get hardware stats."""
-
-        # NOTE: CPU - maybe we don't need to measure this?
-        cpu_load = round(psutil.cpu_percent(3), 2)  # %
 
         # RAM used for kit.exe.
         process = psutil.Process(os.getpid())
@@ -154,4 +150,4 @@ class MemoryRecorder(MeasurementDataRecorder):
         except:
             pass
 
-        return cpu_load, rss, vms, uss, pb, tracked_gpu_memory, dedicated_gpu_memory
+        return rss, vms, uss, pb, tracked_gpu_memory, dedicated_gpu_memory

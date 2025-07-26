@@ -569,57 +569,58 @@ class RobotAssembler:
         )
 
     def finish_assemble(self):
-        attachment_prim = self._stage.GetPrimAtPath(self._attachment_robot_prim)
-        attachment_mount_frame_prim = self._stage.GetPrimAtPath(self._attachment_mount_frame_prim)
-
-        base_mount_frame_prim = self._stage.GetPrimAtPath(self._base_mount_frame_prim)
 
         if self._direct_edit:
-            omni.kit.commands.execute(
-                "MovePrimSpecsToLayer",
-                src_layer_identifier=self._stage.GetRootLayer().identifier,
-                dst_layer_identifier=self._assembly_layer.identifier,
-                prim_spec_path=self._attachment_robot_prim,
-                dst_stronger_than_src=True,
-            )
 
-            stop_assembly_session_sublayer(self._stage, self._assembly_identifier, save=True)
-            assembly_stage = Usd.Stage.Open(self._assembly_identifier)
-            assembly_stage.SetDefaultPrim(assembly_stage.DefinePrim(self._base_robot_prim, "Xform"))
-            assembly_stage.Save()
+            async def stop_sublayer():
+                omni.kit.commands.execute(
+                    "MovePrimSpecsToLayer",
+                    src_layer_identifier=self._stage.GetRootLayer().identifier,
+                    dst_layer_identifier=self._assembly_layer.identifier,
+                    prim_spec_path=self._attachment_robot_prim,
+                    dst_stronger_than_src=True,
+                )
+                await omni.kit.app.get_app().next_update_async()
+                stop_assembly_session_sublayer(self._stage, self._assembly_identifier, save=True)
+                await omni.kit.app.get_app().next_update_async()
+                assembly_stage = Usd.Stage.Open(self._assembly_identifier)
+                assembly_stage.SetDefaultPrim(assembly_stage.DefinePrim(self._base_robot_prim, "Xform"))
+                assembly_stage.Save()
 
-            base_prim = self._stage.GetPrimAtPath(self._base_robot_prim)
-            variant_set = base_prim.GetVariantSet(self._variant_set)
-            if not variant_set:
-                variant_set = base_prim.CreateVariantSet(self._variant_set)
+                base_prim = self._stage.GetPrimAtPath(self._base_robot_prim)
+                variant_set = base_prim.GetVariantSet(self._variant_set)
+                if not variant_set:
+                    variant_set = base_prim.CreateVariantSet(self._variant_set)
 
-            variant_set.AddVariant("None")
-            variant_set.AddVariant(self._variant_name)
-            variant_set.SetVariantSelection(self._variant_name)
+                variant_set.AddVariant("None")
+                variant_set.AddVariant(self._variant_name)
+                variant_set.SetVariantSelection(self._variant_name)
 
-            with variant_set.GetVariantEditContext():
-                base_prim.GetPayloads().AddPayload(self._local_assembly_identifier)
+                with variant_set.GetVariantEditContext():
+                    base_prim.GetPayloads().AddPayload(self._local_assembly_identifier)
+                    links_rel = base_prim.GetRelationship(robot_schema.Relations.ROBOT_LINKS.name)
+                    links_rel.AddTarget(self._stage.GetPrimAtPath(self._attachment_robot_prim).GetPath())
+                    joints_rel = base_prim.GetRelationship(robot_schema.Relations.ROBOT_JOINTS.name)
+                    joints_rel.AddTarget(self._stage.GetPrimAtPath(self._attachment_robot_prim).GetPath())
+
+            asyncio.ensure_future(stop_sublayer())
+
+        else:
+
+            async def stop_sublayer():
+                base_prim = self._stage.GetPrimAtPath(self._base_robot_prim)
                 links_rel = base_prim.GetRelationship(robot_schema.Relations.ROBOT_LINKS.name)
                 links_rel.AddTarget(self._stage.GetPrimAtPath(self._attachment_robot_prim).GetPath())
                 joints_rel = base_prim.GetRelationship(robot_schema.Relations.ROBOT_JOINTS.name)
                 joints_rel.AddTarget(self._stage.GetPrimAtPath(self._attachment_robot_prim).GetPath())
-
-        else:
-            base_prim = self._stage.GetPrimAtPath(self._base_robot_prim)
-            links_rel = base_prim.GetRelationship(robot_schema.Relations.ROBOT_LINKS.name)
-            links_rel.AddTarget(self._stage.GetPrimAtPath(self._attachment_robot_prim).GetPath())
-            joints_rel = base_prim.GetRelationship(robot_schema.Relations.ROBOT_JOINTS.name)
-            joints_rel.AddTarget(self._stage.GetPrimAtPath(self._attachment_robot_prim).GetPath())
-
-            omni.kit.commands.execute(
-                "MovePrimSpecsToLayer",
-                src_layer_identifier=self._assembly_layer.identifier,
-                dst_layer_identifier=self._stage.GetRootLayer().identifier,
-                prim_spec_path=self._attachment_robot_prim,
-                dst_stronger_than_src=True,
-            )
-
-            async def stop_sublayer():
+                await omni.kit.app.get_app().next_update_async()
+                omni.kit.commands.execute(
+                    "MovePrimSpecsToLayer",
+                    src_layer_identifier=self._assembly_layer.identifier,
+                    dst_layer_identifier=self._stage.GetRootLayer().identifier,
+                    prim_spec_path=self._attachment_robot_prim,
+                    dst_stronger_than_src=False,
+                )
                 await omni.kit.app.get_app().next_update_async()
                 stop_assembly_session_sublayer(self._stage, self._assembly_identifier, save=False)
 
@@ -653,14 +654,14 @@ class RobotAssembler:
         if base_mount_frame == "":
             base_mount_path = base_path + "/assembler_mount_frame"
             base_mount_path = find_unique_string_name(base_mount_path, lambda x: not is_prim_path_valid(x))
-            SingleXFormPrim(base_mount_path, translation=np.array([0, 0, 0]))
+            # SingleXFormPrim(base_mount_path, translation=np.array([0, 0, 0]))
         else:
             base_mount_path = base_mount_frame
 
         if attach_mount_frame == "":
             attach_mount_path = attach_path + "/assembler_mount_frame"
             attach_mount_path = find_unique_string_name(attach_mount_path, lambda x: not is_prim_path_valid(x))
-            SingleXFormPrim(attach_mount_path, translation=np.array([0, 0, 0]))
+            # SingleXFormPrim(attach_mount_path, translation=np.array([0, 0, 0]))
         else:
             attach_mount_path = attach_mount_frame
 

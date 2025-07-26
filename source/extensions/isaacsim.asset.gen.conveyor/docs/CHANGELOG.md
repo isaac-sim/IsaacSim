@@ -1,4 +1,24 @@
 # Changelog
+## [1.0.22] - 2025-07-07
+### Changed
+- Cleanup docstring for bindings
+
+## [1.0.21] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 1.0.20)
+
+## [1.0.20] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [1.0.19] - 2025-06-28
+### Changed
+- Increase delay in test to account for slower hardware
+
+## [1.0.18] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
 ## [1.0.17] - 2025-05-31
 ### Changed
 - Use default nucleus server for all tests

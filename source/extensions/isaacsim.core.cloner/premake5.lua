@@ -54,8 +54,6 @@ filter { "configurations:release" }
 defines { "NDEBUG" }
 filter {}
 
-
-
 repo_build.prebuild_link {
     { "python/impl", ext.target_dir .. "/isaacsim/core/cloner/impl" },
     { "python/tests", ext.target_dir .. "/isaacsim/core/cloner/tests" },

@@ -24,12 +24,7 @@ import omni.timeline
 import omni.ui as ui
 import omni.usd
 import pxr
-from isaacsim.core.prims import SingleArticulation, SingleXFormPrim
-from isaacsim.core.utils.articulations import find_all_articulation_base_paths
-from isaacsim.core.utils.numpy.rotations import quats_to_rot_matrices, rot_matrices_to_quats
-from isaacsim.core.utils.prims import get_prim_object_type
 from isaacsim.core.utils.stage import update_stage_async
-from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.gui.components.element_wrappers import (
     CollapsableFrame,
     DropDown,
@@ -232,10 +227,6 @@ class UIBuilder:
                         self.wrapped_ui_elements.append(robot_selection_menu)
                         self.wrapped_ui_elements.append(attachment_selection_menu)
 
-                        robot_control_frame = Frame(build_fn=lambda idx=idx: self._build_set_robot_position_frame(idx))
-                        robot_control_frame.rebuild()
-                        self._robot_control_frames.append(robot_control_frame)
-
                     with ui.HStack():
                         ui.Line(width=ui.Fraction(1.0))
 
@@ -343,6 +334,8 @@ class UIBuilder:
 
             async def async_assemble():
                 self._robot_assembler.assemble()
+                await omni.kit.app.get_app().next_update_async()
+                self._timeline.play()
 
             asyncio.ensure_future(async_assemble())
 
@@ -351,14 +344,14 @@ class UIBuilder:
             self.simulate_and_assemble_button.visible = False
             self.end_simulation_and_continue_button.enabled = True
             self.end_simulation_and_continue_button.visible = True
-            self._timeline.play()
 
         def on_end_simulation_and_continue_button_clicked(make_single_robot):
             #
-            self._timeline.stop()
 
             async def async_finish_assemble():
-                await omni.kit.app.get_app().next_update_async()
+                if self._timeline.is_playing():
+                    self._timeline.stop()
+                    await omni.kit.app.get_app().next_update_async()
                 self._robot_assembler.finish_assemble()
 
             asyncio.ensure_future(async_finish_assemble())
@@ -429,43 +422,7 @@ class UIBuilder:
                 ui.Spacer(width=12)
 
     def _build_set_robot_position_frame(self, idx):
-        if self._collapsable_robot_control_frames[idx] is None:
-            collapsed = True
-        else:
-            collapsed = self._collapsable_robot_control_frames[idx].collapsed
-
-        if self._articulations[idx] is None:
-            Frame()
-            self._collapsable_robot_control_frames[idx] = None
-            return
-        articulation = self._articulations[idx]
-        num_dof = articulation.num_dof
-        dof_names = articulation.dof_names
-        joint_positions = articulation.get_joint_positions()
-
-        lower_joint_limits = articulation.dof_properties["lower"]
-        upper_joint_limits = articulation.dof_properties["upper"]
-
-        robot_control_frame = ui.CollapsableFrame("Set Robot Position", style=get_style(), collapsed=collapsed)
-        self._collapsable_robot_control_frames[idx] = robot_control_frame
-
-        with robot_control_frame:
-            # Stack the frames vertically so that they don't cover each other
-            with ui.VStack(style=get_style(), spacing=6, height=0):
-
-                for i in range(num_dof):
-                    field = FloatField(
-                        label=f"{dof_names[i]}",
-                        tooltip="Set joint position target",
-                        default_value=joint_positions[i],
-                        lower_limit=lower_joint_limits[i],
-                        upper_limit=upper_joint_limits[i],
-                    )
-                    field.set_on_value_changed_fn(
-                        lambda value, index=i, robot_index=idx: self._on_set_joint_position_target(
-                            robot_index, index, value
-                        )
-                    )
+        pass
 
     ##########################################################################################
     #                              Robot Assembler Frame Functions
@@ -599,32 +556,13 @@ class UIBuilder:
             dropdown.trigger_on_selection_fn_with_current_selection()
 
     def _on_prim_selection(self, art_ind: int, selection: str):
-        if selection is None or self._timeline.is_stopped() or selection not in self._articulation_options:
-            self._articulations[art_ind] = None
-
-        else:
-            try:
-                articulation = SingleArticulation(selection)
-                articulation.initialize()
-
-                self._articulations[art_ind] = articulation
-            except:
-                self._articulations[art_ind] = None
-
-        self._robot_control_frames[art_ind].rebuild()
 
         self._repopulate_all_dropdowns()
 
         # self._articulation_attach_point_dropdowns[art_ind].repopulate()
 
     def _on_set_joint_position_target(self, robot_index: int, joint_index: int, position_target: float):
-        articulation = self._articulations[robot_index]
-        robot_action = ArticulationAction(
-            joint_positions=np.array([position_target]),
-            joint_velocities=np.array([0]),
-            joint_indices=np.array([joint_index]),
-        )
-        articulation.apply_action(robot_action)
+        pass
 
     def _repopulate_all_dropdowns(self):
         for d in self._robot_dropdowns:

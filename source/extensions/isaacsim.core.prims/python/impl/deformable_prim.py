@@ -110,6 +110,9 @@ class DeformablePrim(XFormPrim):
         self._invalidate_physics_handle_event = timeline.get_timeline_event_stream().create_subscription_to_pop(
             self._invalidate_physics_handle_callback
         )
+        carb.log_warn(
+            "Please note that support for deformable prims in the current form is now deprecated. Some features including stress/strain APIs may be removed in the future."
+        )
 
     """
     Properties.

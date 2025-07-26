@@ -14,6 +14,8 @@
 # limitations under the License.
 
 import asyncio
+import os
+import unittest
 
 import carb
 import numpy as np
@@ -34,6 +36,8 @@ from isaacsim.core.utils.stage import add_reference_to_stage, create_new_stage_a
 from isaacsim.core.utils.torch.rotations import euler_angles_to_quats
 from isaacsim.storage.native import get_assets_root_path_async
 
+from .common import CoreTestCase
+
 INDEXED = [True, False]
 USD_PATH = [True, False]
 BACKEND = ["torch", "numpy", "warp"]
@@ -43,11 +47,10 @@ template_cartpole_position_configs = {
     "infeasible states": torch.Tensor([[5, 3.1415 / 2], [5, 3.1415 / 2]]),
 }
 
-# Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
 
-
-class TestArticulationView(omni.kit.test.AsyncTestCase):
+class TestArticulationView(CoreTestCase):
     async def setUp(self):
+        await super().setUp()
         World.clear_instance()
         await create_new_stage_async()
         self._assets_root_path = await get_assets_root_path_async()
@@ -55,13 +58,9 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
 
     # After running each test
     async def tearDown(self):
-        World.clear_instance()
         carb.settings.get_settings().set_bool("/physics/suppressReadback", False)
         await update_stage_async()
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            print("tearDown, assets still loading, waiting to finish...")
-            await asyncio.sleep(1.0)
-        await update_stage_async()
+        await super().tearDown()
 
     async def setUpWorld(self, backend="torch", device="cpu", report_residuals=True):
         World.clear_instance()
@@ -232,6 +231,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     assertion_function(np.isclose(position.cpu(), value.cpu(), atol=pos_tol).all())
                     assertion_function(np.isclose(art_res.cpu(), torch.Tensor([0, 0]), atol=res_tol).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_joint_residuals_critically_damped_gains(self):
         stiffness = torch.tile(torch.Tensor([[500.0, 180 / 3.1415 * 500.0]]), (2, 1))
         damping = torch.tile(torch.Tensor([[20.0, 180 / 3.1415 * 50.0]]), (2, 1))
@@ -257,6 +257,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 desc, positions, stiffness, damping, criteria["assertion"], criteria["pos_tol"], criteria["res_tol"]
             )
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_joint_residuals_under_damped_gains(self):
         stiffness = torch.tile(torch.Tensor([[10.0, 10]]), (2, 1))
         damping = torch.tile(torch.Tensor([[0.0, 0.0]]), (2, 1))
@@ -282,6 +283,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 desc, positions, stiffness, damping, criteria["assertion"], criteria["pos_tol"], criteria["res_tol"]
             )
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_joint_residuals_over_damped_gains(self):
         stiffness = torch.tile(torch.Tensor([[1.0, 180 / 3.1415 * 1.0]]), (2, 1))
         damping = torch.tile(torch.Tensor([[5.0, 180 / 3.1415 * 5.0]]), (2, 1))
@@ -307,6 +309,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 desc, positions, stiffness, damping, criteria["assertion"], criteria["pos_tol"], criteria["res_tol"]
             )
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_joint_residuals_critically_damped_gains_with_cart_blocker(self):
         stiffness = torch.tile(torch.Tensor([[50.0, 180 / 3.1415 * 50.0]]), (2, 1))
         damping = torch.tile(torch.Tensor([[2.0, 180 / 3.1415 * 5.0]]), (2, 1))
@@ -339,6 +342,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 add_blocker=True,
             )
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_joint_residuals_critically_damped_gains_with_pole_blocker(self):
         stiffness = torch.tile(torch.Tensor([[50.0, 180 / 3.1415 * 50.0]]), (2, 1))
         damping = torch.tile(torch.Tensor([[2.0, 180 / 3.1415 * 5.0]]), (2, 1))
@@ -372,6 +376,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 add_blocker=True,
             )
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_world_poses_torch(self):
         for usd in USD_PATH:
             for device in ["cpu"] if usd else ["cpu", "cuda:0"]:
@@ -413,6 +418,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                         ).all()
                     )
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_world_poses_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -442,6 +448,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     ).all()
                 )
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_world_poses_warp(self):
         for device in ["cuda:0", "cpu"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -482,6 +489,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                         ).all()
                     )
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_velocities_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -503,6 +511,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     new_v1 = self._humanoids_view.get_velocities()
                 self.assertTrue(np.isclose(new_v1.cpu().numpy(), gt_v1.cpu().numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_velocities_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_humanoids(backend="numpy")
@@ -517,6 +526,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 new_v1 = self._humanoids_view.get_velocities()
             self.assertTrue(np.isclose(new_v1, gt_v1, atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_velocities_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -538,6 +548,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     new_v1 = self._humanoids_view.get_velocities()
                 self.assertTrue(np.isclose(new_v1.numpy(), gt_v1.numpy(), atol=1e-05).all(), f"{new_v1}, {gt_v1}")
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_velocities_torch(self):
         await self.setUpWorld(backend="torch")
         await self.add_humanoids(backend="torch")
@@ -552,6 +563,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 new_v1 = self._humanoids_view.get_velocities()
             self.assertTrue(np.isclose(new_v1.cpu().numpy(), gt_v1.cpu().numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_linear_velocities_torch(self):
         await self.setUpWorld(backend="torch")
         await self.add_frankas(backend="torch")
@@ -566,6 +578,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 new_v1 = self._frankas_view.get_linear_velocities()
             self.assertTrue(np.isclose(new_v1.cpu().numpy(), gt_v1.cpu().numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_linear_velocities_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -580,6 +593,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 new_v1 = self._frankas_view.get_linear_velocities()
             self.assertTrue(np.isclose(new_v1, gt_v1, atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_linear_velocities_warp(self):
         await self.setUpWorld(backend="warp")
         await self.add_frankas(backend="warp")
@@ -594,6 +608,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 new_v1 = self._frankas_view.get_linear_velocities()
             self.assertTrue(np.isclose(new_v1.numpy(), gt_v1.numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_angular_velocities_torch(self):
         await self.setUpWorld(backend="torch")
         await self.add_frankas(backend="torch")
@@ -608,6 +623,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 new_v1 = self._frankas_view.get_angular_velocities()
             self.assertTrue(np.isclose(new_v1.cpu().numpy(), gt_v1.cpu().numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_angular_velocities_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -622,6 +638,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 new_v1 = self._frankas_view.get_angular_velocities()
             self.assertTrue(np.isclose(new_v1, gt_v1, atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_angular_velocities_warp(self):
         await self.setUpWorld(backend="warp")
         await self.add_frankas(backend="warp")
@@ -636,6 +653,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 new_v1 = self._frankas_view.get_angular_velocities()
             self.assertTrue(np.isclose(new_v1.numpy(), gt_v1.numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_friction_coefficients_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -660,6 +678,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     friction = self._frankas_view.get_friction_coefficients()
                     self.assertTrue(np.isclose(new_friction.cpu().numpy(), friction.cpu().numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_friction_coefficients_numpy(self):
         await self.setUpWorld(backend="numpy", device="cpu")
         await self.add_frankas(backend="numpy")
@@ -680,6 +699,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 friction = self._frankas_view.get_friction_coefficients()
                 self.assertTrue(np.isclose(new_friction, friction, atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_friction_coefficients_warp(self):
         for device in ["cuda:0", "cpu"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -705,6 +725,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     value = self._frankas_view.get_friction_coefficients()
                     self.assertTrue(np.isclose(new_value.numpy(), value.numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_armatures_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -728,6 +749,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     value = self._frankas_view.get_armatures()
                     self.assertTrue(np.isclose(new_value.cpu().numpy(), value.cpu().numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_armatures_numpy(self):
         await self.setUpWorld(backend="numpy", device="cpu")
         await self.add_frankas(backend="numpy")
@@ -746,6 +768,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 value = self._frankas_view.get_armatures()
                 self.assertTrue(np.isclose(new_value, value, atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_armatures_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -772,6 +795,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     value = self._frankas_view.get_armatures()
                     self.assertTrue(np.isclose(new_value.numpy(), value.numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_physics_callback(self):
         for backend in BACKEND:
             for device in ["cpu", "cuda:0"] if backend != "numpy" else ["cpu"]:
@@ -792,6 +816,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     await self._my_world.reset_async()
                     physx_subs = None
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_local_pose_torch(self):
         for usd in USD_PATH:
             for device in ["cpu"] if usd else ["cpu", "cuda:0"]:
@@ -822,6 +847,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     self.assertTrue(np.isclose(new_trans.cpu().numpy(), trans.cpu().numpy(), atol=1e-05).all())
                     self.assertTrue(np.isclose(new_ori.cpu().numpy(), rot.cpu().numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_local_pose_numpy(self):
         await self.setUpWorld(backend="numpy", device="cpu")
         await self.add_frankas(backend="numpy")
@@ -844,6 +870,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 self.assertTrue(np.isclose(new_trans, trans, atol=1e-05).all())
                 self.assertTrue(np.isclose(new_ori, rot, atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_local_pose_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -875,6 +902,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     self.assertTrue(np.isclose(new_trans.numpy(), trans.numpy(), atol=1e-05).all())
                     self.assertTrue(np.isclose(new_ori.numpy(), rot.numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_effort_modes(self):
         for backend in BACKEND:
             for device in ["cpu", "cuda:0"] if backend != "numpy" else ["cpu"]:
@@ -894,6 +922,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     new_values = self._frankas_view.get_effort_modes()
                     self.assertTrue(values == new_values)
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_gains_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -923,6 +952,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     self.assertTrue(np.isclose(new_kps.cpu().numpy(), kps.cpu().numpy(), atol=1e-05).all())
                     self.assertTrue(np.isclose(old_kds.cpu().numpy(), kds.cpu().numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_gains_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -950,6 +980,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 self.assertTrue(np.isclose(new_kps, kps, atol=1e-05).all())
                 self.assertTrue(np.isclose(old_kds, kds, atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_gains_warp(self):
         for device in ["cuda:0", "cpu"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -980,6 +1011,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     self.assertTrue(np.isclose(new_kps.numpy(), kps.numpy(), atol=1e-05).all())
                     self.assertTrue(np.isclose(old_kds.numpy(), kds.numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_switch_control_mode(self):
         for indexed in INDEXED:
             for backend in BACKEND:
@@ -999,6 +1031,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                         self.assertTrue(not np.any(kps.numpy()))
                         self.assertTrue(np.any(kds.numpy()))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_switch_dof_control_mode(self):
         for backend in BACKEND:
             for device in ["cpu", "cuda:0"] if backend != "numpy" else ["cpu"]:
@@ -1024,6 +1057,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                         self.assertTrue(not np.any(kps.numpy()))
                         self.assertTrue(np.any(kds.numpy()))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_max_efforts_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -1058,6 +1092,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                         efforts = self._frankas_view.get_max_efforts()
                     self.assertTrue(np.isclose(new_efforts.cpu().numpy(), efforts.cpu().numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_max_efforts_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -1084,6 +1119,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     efforts = self._frankas_view.get_max_efforts()
                 self.assertTrue(np.isclose(new_efforts, efforts, atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_max_efforts_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -1113,6 +1149,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                         efforts = self._frankas_view.get_max_efforts()
                     self.assertTrue(np.isclose(new_efforts.numpy(), efforts.numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_physics_properties_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -1144,6 +1181,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
             self._frankas_view.switch_control_mode("position", joint_indices=[7, 8])
             self._frankas_view.set_max_efforts(max_efforts_tensor)
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_physics_properties_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -1171,6 +1209,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
         self._frankas_view.switch_control_mode("position", joint_indices=[7, 8])
         self._frankas_view.set_max_efforts(max_efforts_tensor)
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_physics_properties_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -1205,6 +1244,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
             self._frankas_view.switch_control_mode("position", joint_indices=[7, 8])
             self._frankas_view.set_max_efforts(max_efforts_tensor)
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_initializing_views(self):
         for backend in BACKEND:
             for device in ["cpu", "cuda:0"] if backend != "numpy" else ["cpu"]:
@@ -1219,6 +1259,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 self.right_fingers = RigidPrim(prim_paths_expr="/World/Franka_[1-2]/panda_rightfinger")
                 self.right_fingers.initialize()
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_physics_handles_none(self):
         for backend in BACKEND:
             for device in ["cpu", "cuda:0"] if backend != "numpy" else ["cpu"]:
@@ -1238,6 +1279,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 self.assertTrue(robots.is_physics_handle_valid())
                 self.assertTrue(robots.get_joint_positions() is not None)
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_position_targets_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -1258,6 +1300,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 value = self._frankas_view.get_applied_actions().joint_positions
                 self.assertTrue(np.isclose(new_value.cpu().numpy(), value.cpu().numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_position_targets_numpy(self):
         await self.setUpWorld(backend="numpy", device="cpu")
         await self.add_frankas(backend="numpy")
@@ -1275,6 +1318,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
             value = self._frankas_view.get_applied_actions().joint_positions
             self.assertTrue(np.isclose(new_value, value, atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_position_targets_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -1299,6 +1343,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 value = self._frankas_view.get_applied_actions().joint_positions
                 self.assertTrue(np.isclose(new_value.numpy(), value.numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_velocity_targets_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -1319,6 +1364,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 value = self._frankas_view.get_applied_actions().joint_velocities
                 self.assertTrue(np.isclose(new_value.cpu().numpy(), value.cpu().numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_velocity_targets_numpy(self):
         await self.setUpWorld(backend="numpy", device="cpu")
         await self.add_frankas(backend="numpy")
@@ -1335,6 +1381,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
             value = self._frankas_view.get_applied_actions().joint_velocities
             self.assertTrue(np.isclose(new_value, value, atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_velocity_targets_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -1359,6 +1406,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 value = self._frankas_view.get_applied_actions().joint_velocities
                 self.assertTrue(np.isclose(new_value.numpy(), value.numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_joint_velocities_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -1381,6 +1429,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     value = self._cartpoles_view.get_joint_velocities()
                 self.assertTrue(np.isclose(new_value.cpu().numpy(), value.cpu().numpy(), atol=1e-03).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_joint_velocities_numpy(self):
         await self.setUpWorld(backend="numpy", device="cpu")
         await self.add_cartpoles(backend="numpy")
@@ -1399,6 +1448,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 value = self._cartpoles_view.get_joint_velocities()
             self.assertTrue(np.isclose(new_value, value, atol=1e-03).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_joint_velocities_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -1422,6 +1472,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
 
                 self.assertTrue(np.isclose(new_value.numpy(), value.numpy(), atol=1e-03).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_joint_positions_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -1449,6 +1500,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     value = self._frankas_view.get_joint_positions()
                 self.assertTrue(np.isclose(new_value.cpu().numpy(), value.cpu().numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_joint_positions_numpy(self):
         await self.setUpWorld(backend="numpy", device="cpu")
         await self.add_frankas(backend="numpy")
@@ -1470,6 +1522,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 value = self._frankas_view.get_joint_positions()
             self.assertTrue(np.isclose(new_value, value, atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_joint_positions_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -1498,6 +1551,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     value = self._frankas_view.get_joint_positions()
                 self.assertTrue(np.isclose(new_value.numpy(), value.numpy(), atol=1e-05).all())
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_joint_efforts_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -1516,6 +1570,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 self._frankas_view.set_joint_efforts(new_value)
             await update_stage_async()
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_joint_efforts_numpy(self):
         await self.setUpWorld(backend="numpy", device="cpu")
         await self.add_frankas(backend="numpy")
@@ -1530,6 +1585,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 new_value = cur_value + 0.5
                 self._frankas_view.set_joint_efforts(new_value)
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_joint_efforts_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -1553,6 +1609,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     self._frankas_view.set_joint_efforts(new_value)
                 await update_stage_async()
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_body_indices(self):
         await self.setUpWorld(backend="numpy", device="cpu")
         await self.add_frankas(backend="numpy")
@@ -1563,6 +1620,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
         for name, value in body_names.items():
             self.assertEqual(self._frankas_view.get_body_index(name), value)
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_efforts(self):
         await self.setUpWorld(backend="numpy", device="cpu")
         await self.add_frankas(backend="numpy")
@@ -1602,6 +1660,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
             np.isclose(current_forces, self._frankas_view.get_applied_actions().joint_efforts.numpy()).all()
         )
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_jacobians(self):
 
         for backend in BACKEND:
@@ -1627,6 +1686,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     for i in is_nan:
                         self.assertTrue(len(i) == 0)
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_mass_matrices(self):
 
         for backend in BACKEND:
@@ -1651,6 +1711,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     for i in is_nan:
                         self.assertTrue(len(i) == 0)
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_coriolis_centrifugal(self):
 
         for backend in BACKEND:
@@ -1669,6 +1730,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                         forces = self._frankas_view.get_coriolis_and_centrifugal_forces()
                         self.assertTrue(forces.shape == (self._frankas_view.count, self._frankas_view.num_dof))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_generalized_gravity(self):
 
         for backend in BACKEND:
@@ -1718,6 +1780,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                             np.count_nonzero(forces) == self._frankas_view.count * self._frankas_view.num_dof
                         )
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_masses_torch(self):
 
         for device in ["cpu", "cuda:0"]:
@@ -1744,6 +1807,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     self.assertTrue(inv_masses.shape == (self._frankas_view.count, self._frankas_view._num_bodies))
                 self.assertTrue(np.allclose(values.cpu().numpy(), new_values.cpu().numpy()))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_masses_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -1765,6 +1829,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 self.assertTrue(inv_masses.shape == (self._frankas_view.count, self._frankas_view._num_bodies))
             self.assertTrue(np.allclose(values, new_values, atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_masses_warp(self):
 
         for device in ["cpu", "cuda:0"]:
@@ -1791,6 +1856,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     self.assertTrue(inv_masses.shape == (self._frankas_view.count, self._frankas_view._num_bodies))
                 self.assertTrue(np.allclose(values.numpy().squeeze(), new_values.numpy().squeeze(), atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_com_torch(self):
         await self.setUpWorld(backend="torch")
         await self.add_frankas(backend="torch")
@@ -1809,6 +1875,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
             self.assertTrue(np.allclose(new_pos.cpu().numpy(), pos.cpu().numpy(), atol=1e-05))
             self.assertTrue(np.allclose(cur_ori.cpu().numpy(), ori.cpu().numpy(), atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_com_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -1826,6 +1893,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
             self.assertTrue(np.allclose(new_pos, pos, atol=1e-05))
             self.assertTrue(np.allclose(cur_ori, ori, atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_com_warp(self):
         await self.setUpWorld(backend="warp")
         await self.add_frankas(backend="warp")
@@ -1845,6 +1913,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
             self.assertTrue(np.allclose(new_pos.numpy(), pos.numpy(), atol=1e-05))
             self.assertTrue(np.allclose(cur_ori.numpy(), ori.numpy(), atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_inertia_torch(self):
 
         for device in ["cpu", "cuda:0"]:
@@ -1873,6 +1942,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     self.assertTrue(inv_masses.shape == (self._frankas_view.count, self._frankas_view.num_bodies, 9))
                 self.assertTrue(np.allclose(new_value.cpu().numpy(), value.cpu().numpy(), atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_inertia_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -1899,6 +1969,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 self.assertTrue(inv_masses.shape == (self._frankas_view.count, self._frankas_view.num_bodies, 9))
             self.assertTrue(np.allclose(new_value, value, atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_inertia_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -1932,6 +2003,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
 
                 self.assertTrue(np.allclose(new_value.numpy(), value.numpy(), atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_fixed_tendon_properties_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -2069,6 +2141,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                             )
                         )
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_fixed_tendon_properties_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_shadow_hands(backend="numpy")
@@ -2146,6 +2219,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 )
                 self.assertTrue(np.allclose(self._hands_view.get_fixed_tendon_offsets(), new_offsets, atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_fixed_tendon_properties_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -2290,6 +2364,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                             )
                         )
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_position_iteration_count_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -2308,6 +2383,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     values = self._frankas_view.get_solver_position_iteration_counts()
                 self.assertTrue(np.allclose(values.cpu().numpy(), new_values.cpu().numpy()))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_position_iteration_count_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -2323,6 +2399,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 values = self._frankas_view.get_solver_position_iteration_counts()
             self.assertTrue(np.allclose(values, new_values, atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_position_iteration_count_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -2341,6 +2418,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     values = self._frankas_view.get_solver_position_iteration_counts()
                 self.assertTrue(np.allclose(values.numpy(), new_values.numpy(), atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_velocity_iteration_count_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -2359,6 +2437,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     values = self._frankas_view.get_solver_velocity_iteration_counts()
                 self.assertTrue(np.allclose(values.cpu().numpy(), new_values.cpu().numpy()))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_velocity_iteration_count_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -2374,6 +2453,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 values = self._frankas_view.get_solver_velocity_iteration_counts()
             self.assertTrue(np.allclose(values, new_values, atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_velocity_iteration_count_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -2392,6 +2472,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     values = self._frankas_view.get_solver_velocity_iteration_counts()
                 self.assertTrue(np.allclose(values.numpy(), new_values.numpy(), atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_stabilization_thresholds_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -2410,6 +2491,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     values = self._frankas_view.get_stabilization_thresholds()
                 self.assertTrue(np.allclose(values.cpu().numpy(), new_values.cpu().numpy()))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_stabilization_thresholds_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -2425,6 +2507,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 values = self._frankas_view.get_stabilization_thresholds()
             self.assertTrue(np.allclose(values, new_values, atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_stabilization_thresholds_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -2443,6 +2526,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     values = self._frankas_view.get_stabilization_thresholds()
                 self.assertTrue(np.allclose(values.numpy(), new_values.numpy(), atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_sleep_thresholds_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -2461,6 +2545,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     values = self._frankas_view.get_sleep_thresholds()
                 self.assertTrue(np.allclose(values.cpu().numpy(), new_values.cpu().numpy()))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_sleep_thresholds_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -2476,6 +2561,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 values = self._frankas_view.get_sleep_thresholds()
             self.assertTrue(np.allclose(values, new_values, atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_sleep_thresholds_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -2494,6 +2580,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     values = self._frankas_view.get_sleep_thresholds()
                 self.assertTrue(np.allclose(values.numpy(), new_values.numpy(), atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_enabled_self_collisions_torch(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="torch", device=device)
@@ -2512,6 +2599,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     values = self._frankas_view.get_enabled_self_collisions()
                 self.assertTrue(np.allclose(values.cpu().numpy(), new_values.cpu().numpy()))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_enabled_self_collisions_numpy(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -2527,6 +2615,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                 values = self._frankas_view.get_enabled_self_collisions()
             self.assertTrue(np.allclose(values, new_values, atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_enabled_self_collisions_warp(self):
         for device in ["cpu", "cuda:0"]:
             await self.setUpWorld(backend="warp", device=device)
@@ -2545,6 +2634,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                     values = self._frankas_view.get_enabled_self_collisions()
                 self.assertTrue(np.allclose(values.numpy(), new_values.numpy(), atol=1e-05))
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_get_dof_types(self):
         await self.setUpWorld(backend="numpy")
         await self.add_frankas(backend="numpy")
@@ -2555,6 +2645,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
             value = self._frankas_view.get_dof_types([dof_name])[0].value
             self.assertTrue(value == dof_type)
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_get_measured_joint_efforts(self):
         for backend in BACKEND:
             for clone in [True, False]:
@@ -2565,6 +2656,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                         await self.add_frankas(backend=backend)
                         cur_value = self._frankas_view.get_measured_joint_efforts(clone=clone)
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_get_measured_joint_forces(self):
         for backend in BACKEND:
             for clone in [True, False]:
@@ -2575,6 +2667,7 @@ class TestArticulationView(omni.kit.test.AsyncTestCase):
                         await self.add_frankas(backend=backend)
                         cur_value = self._frankas_view.get_measured_joint_forces(clone=clone)
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_pause_resume_motion(self):
         await self.setUpWorld(backend="numpy", device="cpu")
         await self.add_frankas(backend="numpy")

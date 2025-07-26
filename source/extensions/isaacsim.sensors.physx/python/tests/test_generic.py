@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import carb
 import numpy as np
 import omni.kit.commands
 import omni.kit.test
@@ -46,9 +47,10 @@ class TestGeneric(omni.kit.test.AsyncTestCase):
         scene.CreateGravityDirectionAttr().Set(Gf.Vec3f(0.0, 0.0, -1.0))
         scene.CreateGravityMagnitudeAttr().Set(9.81)
 
-        ext_manager = omni.kit.app.get_app().get_extension_manager()
-        ext_id = ext_manager.get_enabled_extension_id("isaacsim.sensors.physx")
-        self._extension_path = ext_manager.get_extension_path(ext_id)
+        rendering_hz = 60.0
+        carb.settings.get_settings().set_bool("/app/runLoops/main/rateLimitEnabled", True)
+        carb.settings.get_settings().set_float("/app/runLoops/main/rateLimitFrequency", rendering_hz)
+        self._timeline.set_target_framerate(rendering_hz)
 
     # After running each test
     async def tearDown(self):
@@ -105,10 +107,12 @@ class TestGeneric(omni.kit.test.AsyncTestCase):
             if self._sensor.send_next_batch(sensorPath):
                 self._sensor.set_next_batch_rays(sensorPath, sensor_pattern)
         self._timeline.pause()
-
+        await omni.kit.app.get_app().next_update_async()
+        await omni.kit.app.get_app().next_update_async()
         # # Get linear depth and check the depth:
         # # for randomly selected 4 continuous terms, one of them should be a hit, the others three should be misses
         linear_depth = self._sensor.get_linear_depth_data(sensorPath)
+        self.assertGreater(np.size(linear_depth), 5)
         n_length = np.size(linear_depth)
         random_idx = np.random.randint(0, n_length - 5)
         random_segment = linear_depth[random_idx : (random_idx + 4)]

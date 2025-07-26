@@ -13,19 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
-import gc
 
 import carb
 import numpy as np
 import omni.graph.core as og
-
-# Import extension python module we are testing with absolute import path, as if we are external user (other extension)
 import omni.kit.commands
-
-# NOTE:
-#   omni.kit.test - std python's unittest module with additional wrapping to add suport for async/await tests
-#   For most things refer to unittest docs: https://docs.python.org/3/library/unittest.html
 import omni.kit.test
 import omni.kit.usd
 import omni.kit.viewport.utility
@@ -36,24 +28,17 @@ from isaacsim.core.utils.stage import open_stage_async
 from isaacsim.core.utils.viewports import set_camera_view
 from isaacsim.storage.native import get_assets_root_path_async
 
-from .common import get_qos_profile
+from .common import ROS2TestCase, get_qos_profile
 
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestRos2SemanticLabels(omni.kit.test.AsyncTestCase):
+class TestRos2SemanticLabels(ROS2TestCase):
     # Before running each test
     async def setUp(self):
-        import rclpy
+        await super().setUp()
 
         await omni.usd.get_context().new_stage_async()
-        self._timeline = omni.timeline.get_timeline_interface()
-        ext_manager = omni.kit.app.get_app().get_extension_manager()
-        ext_id = ext_manager.get_enabled_extension_id("isaacsim.ros2.bridge")
-        self._ros_extension_path = ext_manager.get_extension_path(ext_id)
-        self._physics_rate = 60
-        carb.settings.get_settings().set_bool("/app/runLoops/main/rateLimitEnabled", True)
-        carb.settings.get_settings().set_int("/app/runLoops/main/rateLimitFrequency", int(self._physics_rate))
-        carb.settings.get_settings().set_int("/persistent/simulation/minFrameRate", int(self._physics_rate))
+
         await omni.kit.app.get_app().next_update_async()
         # acquire the viewport window
         viewport_api = omni.kit.viewport.utility.get_active_viewport()
@@ -61,21 +46,11 @@ class TestRos2SemanticLabels(omni.kit.test.AsyncTestCase):
         viewport_api.set_texture_resolution((1280, 720))
         await omni.kit.app.get_app().next_update_async()
 
-        rclpy.init()
-
         pass
 
     # After running each test
     async def tearDown(self):
-        import rclpy
-
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            print("tearDown, assets still loading, waiting to finish...")
-            await asyncio.sleep(1.0)
-        self._timeline = None
-        rclpy.shutdown()
-        gc.collect()
-        pass
+        await super().tearDown()
 
     async def test_semantic_labels(self):
         import json

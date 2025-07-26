@@ -29,6 +29,7 @@
 
 #include <omni/ext/IExt.h>
 #include <omni/extras/DictHelpers.h>
+#include <omni/kit/EventUtils.h>
 #include <omni/kit/IApp.h>
 #include <omni/kit/IRunLoopRunner.h>
 
@@ -255,6 +256,15 @@ public:
         {
             messageBusName = RStringKey(loop->messageBus->getName());
             messageBusQ = getCachedInterface<eventdispatcher::IMessageQueueFactory>()->getMessageQueue(messageBusName);
+            if (!messageBusQ)
+            {
+                auto [queue, created] = getCachedInterface<eventdispatcher::IMessageQueueFactory>()
+                                            ->createMessageQueue(messageBusName, {})
+                                            .value();
+                messageBusQ = queue;
+                CARB_LOG_ERROR("Failed to find existing message queue '%s', created = %s",
+                               messageBusName.toString().c_str(), created ? "true" : "false");
+            }
             CARB_CHECK(messageBusQ);
         }
     }
@@ -385,7 +395,7 @@ public:
         if (messageBusQ)
         {
             // Pump the message queue
-            (void)eventdispatcher::popAllAndDispatch(messageBusQ.get());
+            pumpQueue(*messageBusQ);
         }
         else
         {

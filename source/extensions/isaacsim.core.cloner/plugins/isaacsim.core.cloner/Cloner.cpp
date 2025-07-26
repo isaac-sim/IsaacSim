@@ -26,6 +26,106 @@
 #include <usdrt/population/IUtils.h>
 #include <usdrt/scenegraph/usd/usd/stage.h>
 
+const omni::fabric::IToken* omni::fabric::Token::iToken = nullptr;
+
+void initializeRigidBodyBatched(const std::vector<usdrt::SdfPath>& rbPaths,
+                                omni::fabric::IStageReaderWriter* iStageReaderWriter,
+                                omni::fabric::StageReaderWriterId stageInProgress,
+                                usdrt::UsdStageRefPtr usdrtStage)
+{
+
+    omni::fabric::Token::iToken = carb::getFramework()->tryAcquireInterface<omni::fabric::IToken>();
+
+    omni::fabric::StageReaderWriter stage(stageInProgress);
+
+    struct RigidBodyInitData
+    {
+        bool validPath;
+        bool usdPath;
+        omni::fabric::PathC path;
+        bool dynamicBody;
+    };
+
+    const size_t numPaths = rbPaths.size();
+    std::vector<RigidBodyInitData> rbInitData(numPaths);
+
+    usdrt::TfToken kinematicEnabledToken("physics:kinematicEnabled");
+
+    for (size_t i = 0; i < numPaths; i++)
+    {
+        const omni::fabric::PathC pathC(rbPaths[i]);
+        usdrt::UsdPrim usdrt_prim = usdrtStage->GetPrimAtPath(usdrt::SdfPath(pathC));
+        if (!usdrt_prim)
+        {
+            rbInitData[i].validPath = false;
+            continue;
+        }
+        else
+        {
+            bool kinematic = false;
+            usdrt_prim.GetAttribute(kinematicEnabledToken).Get(&kinematic);
+            rbInitData[i].path = omni::fabric::PathC(rbPaths[i]);
+            rbInitData[i].dynamicBody = !kinematic;
+            rbInitData[i].validPath = true;
+            rbInitData[i].usdPath = false;
+        }
+    }
+
+    omni::fabric::Token rigidBodyWorldPositionToken = omni::fabric::Token::iToken->getHandle("_rigidBodyWorldPosition");
+    omni::fabric::Token rigidBodyWorldOrientationToken =
+        omni::fabric::Token::iToken->getHandle("_rigidBodyWorldOrientation");
+    omni::fabric::Token rigidBodyWorldScaleToken = omni::fabric::Token::iToken->getHandle("_rigidBodyWorldScale");
+
+
+    omni::fabric::Token worldForceToken = omni::fabric::Token::iToken->getHandle("_worldForce");
+    omni::fabric::Token worldTorqueToken = omni::fabric::Token::iToken->getHandle("_worldTorque");
+
+    omni::fabric::Token physXPtrToken = omni::fabric::Token::iToken->getHandle("_physxPtr");
+
+    omni::fabric::Token dynamicBodyToken = omni::fabric::Token::iToken->getHandle("dynamicBody");
+
+    omni::fabric::Token linVelToken = omni::fabric::Token::iToken->getHandle("physics:velocity");
+    omni::fabric::Token angVelToken = omni::fabric::Token::iToken->getHandle("physics:angularVelocity");
+
+    omni::fabric::Type float3Type(omni::fabric::BaseDataType::eFloat, 3, 0, omni::fabric::AttributeRole::eNone);
+    omni::fabric::Type double3Type(omni::fabric::BaseDataType::eDouble, 3, 0, omni::fabric::AttributeRole::eNone);
+    omni::fabric::Type quatType(omni::fabric::BaseDataType::eFloat, 4, 0, omni::fabric::AttributeRole::eQuaternion);
+    omni::fabric::Type matrix4dType(omni::fabric::BaseDataType::eDouble, 16, 0, omni::fabric::AttributeRole::eMatrix);
+
+    omni::fabric::Type ptrType(omni::fabric::BaseDataType::eUInt64, 1, 0, omni::fabric::AttributeRole::eNone);
+
+    omni::fabric::Type tagType(omni::fabric::BaseDataType::eTag, 1, 0, omni::fabric::AttributeRole::eNone);
+
+    for (const RigidBodyInitData& initData : rbInitData)
+    {
+        if (!initData.validPath)
+            continue;
+
+        if (initData.dynamicBody)
+        {
+            std::array<omni::fabric::AttrNameAndType, 9> attrNameTypeVec = {
+                omni::fabric::AttrNameAndType(ptrType, physXPtrToken),
+
+                omni::fabric::AttrNameAndType(float3Type, worldForceToken),
+                omni::fabric::AttrNameAndType(float3Type, worldTorqueToken),
+
+                omni::fabric::AttrNameAndType(float3Type, linVelToken),
+                omni::fabric::AttrNameAndType(float3Type, angVelToken),
+
+                // token
+                omni::fabric::AttrNameAndType(tagType, dynamicBodyToken),
+
+                // world trs attributes
+                omni::fabric::AttrNameAndType(double3Type, rigidBodyWorldPositionToken),
+                omni::fabric::AttrNameAndType(quatType, rigidBodyWorldOrientationToken),
+                omni::fabric::AttrNameAndType(float3Type, rigidBodyWorldScaleToken),
+            };
+
+            stage.createAttributes(initData.path, attrNameTypeVec);
+        }
+    }
+}
+
 
 /**
  * @brief Creates clones of a source prim at specified target paths in the USD stage
@@ -74,34 +174,70 @@ bool isaacsim::core::cloner::fabricClone(long int stageId,
 
             stageReaderWriterId = iStageReaderWriter->get(stageId);
             fabricId = iStageReaderWriter->getFabricId(stageReaderWriterId);
+
+            auto iFabricUsd = carb::getCachedInterface<omni::fabric::IFabricUsd>();
+            if (!iFabricUsd)
+            {
+                CARB_LOG_ERROR("fabricClone - IFabricUsd not found");
+                return false;
+            }
+            iFabricUsd->setEnableChangeNotifies(fabricId, false);
+
+            auto populationUtils = omni::core::createType<usdrt::population::IUtils>();
+            if (!populationUtils)
+            {
+                CARB_LOG_ERROR("fabricClone - IUtils not found");
+                return false;
+            }
+            populationUtils->setEnableUsdNoticeHandling(stageId, fabricId, true);
+
+            // Fill the stage in progress with USD values
+            {
+                CARB_PROFILE_ZONE(0, "fabricClone - fabric populate");
+                populationUtils->populateFromUsd(stageReaderWriterId, stageId,
+                                                 omni::fabric::asInt(PXR_NS::SdfPath::AbsoluteRootPath()), nullptr, 0.0);
+            }
         }
         else
         {
             fabricId = iStageReaderWriter->getFabricId(stageReaderWriterId);
+
+            auto iFabricUsd = carb::getCachedInterface<omni::fabric::IFabricUsd>();
+            if (!iFabricUsd)
+            {
+                CARB_LOG_ERROR("fabricClone - IFabricUsd not found");
+                return false;
+            }
+            iFabricUsd->setEnableChangeNotifies(fabricId, false);
+
+            auto populationUtils = omni::core::createType<usdrt::population::IUtils>();
+            if (!populationUtils)
+            {
+                CARB_LOG_ERROR("fabricClone - IUtils not found");
+                return false;
+            }
+            populationUtils->setEnableUsdNoticeHandling(stageId, fabricId, true);
+
+            // Fill the stage in progress with USD values
+            {
+                CARB_PROFILE_ZONE(0, "fabricClone - fabric populate");
+                populationUtils->populateFromUsd(stageReaderWriterId, stageId,
+                                                 omni::fabric::asInt(PXR_NS::SdfPath::AbsoluteRootPath()), nullptr, 0.0);
+            }
+
+            fabricId = iStageReaderWriter->getFabricId(stageReaderWriterId);
+            usdrt::UsdStageRefPtr stage = usdrt::UsdStage::Attach(stageId, stageReaderWriterId);
+            stage->SynchronizeToFabric(usdrt::TimeChange::NoUpdate);
         }
 
-
-        auto iFabricUsd = carb::getCachedInterface<omni::fabric::IFabricUsd>();
-        if (!iFabricUsd)
         {
-            CARB_LOG_ERROR("fabricClone - IFabricUsd not found");
-            return false;
-        }
-        iFabricUsd->setEnableChangeNotifies(fabricId, false);
-
-        auto populationUtils = omni::core::createType<usdrt::population::IUtils>();
-        if (!populationUtils)
-        {
-            CARB_LOG_ERROR("fabricClone - IUtils not found");
-            return false;
-        }
-        populationUtils->setEnableUsdNoticeHandling(stageId, fabricId, true);
-
-        // Fill the stage in progress with USD values
-        {
-            CARB_PROFILE_ZONE(0, "fabricClone - fabric populate");
-            populationUtils->populateFromUsd(
-                stageReaderWriterId, stageId, omni::fabric::asInt(PXR_NS::SdfPath::AbsoluteRootPath()), nullptr, 0.0);
+            // prepare the rigid bodies before cloning creating all attributes
+            {
+                CARB_PROFILE_ZONE(0, "FabricManager::resume:rigidBodyInitialization");
+                usdrt::UsdStageRefPtr usdrtStage = usdrt::UsdStage::Attach(stageId, stageReaderWriterId);
+                initializeRigidBodyBatched(usdrtStage->GetPrimsWithAppliedAPIName(usdrt::TfToken("PhysicsRigidBodyAPI")),
+                                           iStageReaderWriter, stageReaderWriterId, usdrtStage);
+            }
         }
     }
 

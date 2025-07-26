@@ -14,6 +14,11 @@
 # limitations under the License.
 
 import asyncio
+import functools
+import gc
+import time
+import types
+import unittest
 
 import carb
 import numpy as np
@@ -21,6 +26,42 @@ import omni
 from isaacsim.core.utils.stage import open_stage_async
 from isaacsim.storage.native import get_assets_root_path_async
 from pxr import PhysxSchema, UsdGeom, UsdPhysics
+
+
+class ROS2TestCase(omni.kit.test.AsyncTestCase):
+    """Base test class that automatically times all test methods.
+
+    This class extends omni.kit.test.AsyncTestCase to automatically print
+    the execution time of each test method. All test classes should inherit
+    from this instead of omni.kit.test.AsyncTestCase directly.
+    """
+
+    async def setUp(self):
+        """Set up test timing before each test method."""
+        self._test_start_time = time.time()
+        self._timeline = omni.timeline.get_timeline_interface()
+        import rclpy
+
+        if not rclpy.ok():
+            rclpy.init()
+
+    async def tearDown(self):
+        self._timeline.stop()
+        await omni.kit.app.get_app().next_update_async()
+        """Print test execution time after each test method."""
+        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
+            print("tearDown, assets still loading, waiting to finish...")
+            await asyncio.sleep(1.0)
+
+        import rclpy
+
+        if rclpy.ok():
+            rclpy.shutdown()
+
+        test_duration = time.time() - self._test_start_time
+        test_name = self._testMethodName
+        print(f"\n[TEST TIMING] {test_name}: {test_duration:.3f} seconds")
+        gc.collect()
 
 
 def set_translate(prim, new_loc):
@@ -106,12 +147,18 @@ async def add_carter_ros():
     import omni.graph.core as og
 
     ros_cameras_graph_path = "/Carter/ROS_Cameras"
-    og.Controller.set(
-        og.Controller.attribute(ros_cameras_graph_path + "/isaac_create_render_product_left.inputs:enabled"), False
-    )
-    og.Controller.set(
-        og.Controller.attribute(ros_cameras_graph_path + "/isaac_create_render_product_right.inputs:enabled"), False
-    )
+
+    prims_to_disable = [
+        ros_cameras_graph_path + "/isaac_create_render_product_left.inputs:enabled",
+        ros_cameras_graph_path + "/isaac_create_render_product_right.inputs:enabled",
+        ros_cameras_graph_path + "/ros2_camera_helper.inputs:enabled",
+        ros_cameras_graph_path + "/ros2_camera_helper_01.inputs:enabled",
+        ros_cameras_graph_path + "/ros2_camera_helper_03.inputs:enabled",
+        ros_cameras_graph_path + "/ros2_camera_helper_04.inputs:enabled",
+        ros_cameras_graph_path + "/ros2_camera_info_helper.inputs:enabled",
+    ]
+    for prim_to_disable in prims_to_disable:
+        og.Controller.set(og.Controller.attribute(prim_to_disable), False)
 
     stage = omni.usd.get_context().get_stage()
 

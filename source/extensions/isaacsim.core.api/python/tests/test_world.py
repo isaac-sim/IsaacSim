@@ -32,16 +32,19 @@ from isaacsim.core.utils.stage import (
 from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.storage.native import get_assets_root_path_async
 
+from .common import CoreTestCase
 
-class TestScene(omni.kit.test.AsyncTestCase):
+
+class TestScene(CoreTestCase):
     # Before running each test
     async def setUp(self):
+        await super().setUp()
         World.clear_instance()
         pass
 
     # After running each test
     async def tearDown(self):
-        World.clear_instance()
+        await super().tearDown()
         pass
 
     async def test_clear_instance(self):

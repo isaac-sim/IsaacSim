@@ -18,6 +18,7 @@ from typing import Tuple
 from isaacsim.core.utils.stage import add_reference_to_stage, get_current_stage
 from isaacsim.replicator.mobility_gen.impl.camera import MobilityGenCamera
 from isaacsim.replicator.mobility_gen.impl.common import Module
+from isaacsim.replicator.mobility_gen.impl.utils.global_utils import join_sdf_paths
 from isaacsim.storage.native import get_assets_root_path
 
 
@@ -44,7 +45,7 @@ class HawkCamera(Module):
     @classmethod
     def attach(cls, prim_path: str) -> "HawkCamera":
 
-        left_camera = MobilityGenCamera(os.path.join(prim_path, cls.left_camera_path), cls.resolution)
-        right_camera = MobilityGenCamera(os.path.join(prim_path, cls.right_camera_path), cls.resolution)
+        left_camera = MobilityGenCamera(join_sdf_paths(prim_path, cls.left_camera_path), cls.resolution)
+        right_camera = MobilityGenCamera(join_sdf_paths(prim_path, cls.right_camera_path), cls.resolution)
 
         return HawkCamera(left_camera, right_camera)

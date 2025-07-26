@@ -1,4 +1,59 @@
 # Changelog
+
+## [4.8.16] - 2025-07-15
+### Fixed
+- Fix issue with default ROS2 context not being initialized before use
+
+## [4.8.15] - 2025-07-08
+### Fixed
+- Corrects regression when selecting debug draw output in Lidar helper without selecting full scan
+
+## [4.8.14] - 2025-07-07
+### Changed
+- Add unit test for prim validation for `OgnROS2PublishTransformTree` and `OgnROS2PublishJointState`
+- Add unit test for frame name collision
+
+## [4.8.13] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 4.8.12)
+
+## [4.8.12] - 2025-07-03
+### Changed
+- Fix crash on shutdown for ROS2 bridge
+
+## [4.8.11] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [4.8.10] - 2025-07-02
+### Changed
+- Fix path resolution for ROS2 libraries
+
+## [4.8.9] - 2025-06-30
+### Changed
+- Fix menu graph test failure and disable laser scan in RTX Lidar test for 3D lidar
+
+## [4.8.8] - 2025-06-27
+### Changed
+- Refactor tests, add print statements for total time and reduce total test time
+
+## [4.8.7] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
+## [4.8.6] - 2025-06-24
+### Fixed
+- Select correct RtxLidarDebugDraw annotator based on fullScan input in ROS2RtxLidarHelper
+- Set annotator's doTransform input to False if using OmniLidar prim with "WORLD" output reference frame
+
+## [4.8.5] - 2025-06-18
+### Changed
+- Track change from isaacsim.core.include Pose.h
+
+## [4.8.4] - 2025-06-17
+### Fixed
+- Remove unnecessarily casting vectors to floats in OgnROS2PublishOdometry
+
 ## [4.8.3] - 2025-06-13
 ### Changed
 - Switched CUDA files to Apache license.

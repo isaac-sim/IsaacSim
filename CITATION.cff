@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+title: Isaac Sim
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - name: NVIDIA
+identifiers:
+  - type: url
+    value: 'https://github.com/isaac-sim/IsaacSim'
+repository-code: 'https://github.com/isaac-sim/IsaacSim'
+url: >-
+  https://docs.isaacsim.omniverse.nvidia.com/latest/index.html
+abstract: >-
+  NVIDIA Isaac Sim™ is a reference application built on
+  NVIDIA Omniverse that enables developers to develop,
+  simulate, and test AI-driven robots in physically-based
+  virtual environments.
+license: Apache-2.0
+version: 5.0.0

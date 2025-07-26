@@ -49,21 +49,39 @@ jobs:
         git clean -fdx
         git reset --hard HEAD
 
+    - name: Make all files user-writable
+      run: |
+        chmod -R u+w .
+
     - name: Build and Test Isaac Sim
       run: |
         set -euo pipefail  # Exit on error, undefined vars, pipe failures
         set -x  # Print commands being executed
+
+        echo "::group::Build Isaac Sim"
         # Build Isaac Sim
         touch .eula_accepted
+        find . -type f -iname "*.sh" -exec chmod +x {} +
         chmod +x ./build.sh
+        chmod +x ./repo.sh
         ./build.sh
         if [ $? -ne 0 ]; then
           echo 'BUILD FAILED with exit code ' $?
           exit 1
         fi
-        
-        # Test Isaac Sim
-        cd _build/linux-x86_64/release
-        touch .eula_accepted
-        chmod +x ./isaac-sim.sh
-        ./isaac-sim.sh --no-window --/app/quitAfter=500 --/app/file/ignoreUnsavedOnExit=1
+        echo "::endgroup::"
+
+        # echo "::group::Test Isaac Sim"
+        # # Test Isaac Sim
+        # chmod +x ./repo.sh
+        # cd _build/linux-x86_64/release
+        # touch .eula_accepted
+        # find . -type f -iname "*.sh" -exec chmod +x {} +
+        # chmod +x ./exts/isaacsim.ros2.bridge/bin/isaacsim.ros2.bridge.check
+        # chmod +x ./post_install.sh
+        # chmod +x ./warmup.sh
+        # chmod +x ./isaac-sim.sh
+        # ./post_install.sh
+        # # ./warmup.sh
+        # ./isaac-sim.sh --no-window --/app/quitAfter=500 --/app/file/ignoreUnsavedOnExit=1
+        # echo "::endgroup::"

@@ -137,7 +137,7 @@ class GroundPlane(object):
             self._xform_prim.set_default_state(position=position)
             self._collision_prim.set_world_pose(position=position)
             self._collision_prim.set_default_state(position=position)
-        if physics_material is None:
+        if physics_material is not None:
             self._collision_prim.apply_physics_material(physics_material)
         if visual_material is not None:
             self._xform_prim.apply_visual_material(visual_material)

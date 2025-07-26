@@ -32,7 +32,7 @@ if "%ROS_DISTRO%"=="" (
     set ROS_DISTRO=%DEFAULT_ROS_DISTRO%
 
     REM Update PATH to include ROS2 bridge libraries
-    set PATH=!PATH!;%BRIDGE_EXT_PATH%\%DEFAULT_ROS_DISTRO%\lib
+    set "PATH=%PATH%;%BRIDGE_EXT_PATH%\%DEFAULT_ROS_DISTRO%\lib"
     
 )
 

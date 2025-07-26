@@ -127,7 +127,17 @@ class OgnROS2RtxLidarHelper:
                         )
                         db.per_instance_state.append_writer(writer)
                         if db.inputs.showDebugView:
-                            writer = rep.writers.get("RtxLidar" + "DebugDrawPointCloud" + "Buffer")
+                            # Disable transform for OmniLidar prims whose output frame of reference is WORLD
+                            doTransform = not (
+                                prim.GetTypeName() == "OmniLidar"
+                                and prim.HasAttribute("omni:sensor:Core:outputFrameOfReference")
+                                and prim.GetAttribute("omni:sensor:Core:outputFrameOfReference").Get() == "WORLD"
+                            )
+                            # Use the correct writer based on the fullScan input
+                            writer = rep.writers.get(
+                                "RtxLidarDebugDrawPointCloud" + ("Buffer" if db.inputs.fullScan else "")
+                            )
+                            writer.initialize(doTransform=doTransform)
                             db.per_instance_state.append_writer(writer)
                     db.per_instance_state.attach_writers(render_product_path)
                 except Exception as e:

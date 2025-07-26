@@ -1,4 +1,16 @@
 # Changelog
+## [2.1.10] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 2.1.9)
+
+## [2.1.9] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [2.1.8] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
 ## [2.1.7] - 2025-06-04
 ### Fixed
 - Grids are available while paused, if Grid Mode is ON

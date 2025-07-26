@@ -103,7 +103,7 @@ for i in range(n_robots):
     robot_positions.append([-3 * (i % max_line) + 3, -3 * (i // max_line), 0.1])
 
 # Collect all robot prims into Articulation wrapper
-robot_prim_paths = f"/Robots/Robot_[0-9]"
+robot_prim_paths = "/Robots/Robot_*"
 robots = Articulation(robot_prim_paths, positions=robot_positions)
 
 viewport = get_active_viewport()

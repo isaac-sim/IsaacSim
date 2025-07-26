@@ -11,9 +11,9 @@ icon = "data/icon.png"
 writeTarget.kit = true
 
 [dependencies]
+"isaacsim.core.utils" = {}
 "isaacsim.gui.components" = {}
 "isaacsim.robot.schema" = {}
-"isaacsim.core.utils" = {}
 
 [[python.module]]
 name = "isaacsim.robot_setup.wizard"

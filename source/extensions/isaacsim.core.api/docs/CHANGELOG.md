@@ -1,5 +1,40 @@
 # Changelog
 
+## [4.6.9] - 2025-07-09
+### Changed
+- Reduce test runtime
+- Add timing to test methods
+
+## [4.6.8] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 4.6.7)
+
+## [4.6.7] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [4.6.6] - 2025-06-30
+### Fixed
+- SimulationContext clear_instance will set the physics device to default "cpu"
+
+## [4.6.5] - 2025-06-26
+### Fixed
+- Fix default rendering dt when set_defaults is false by using the stage's time codes per second as the rendering dt
+- Check if manual mode is enabled before returning the manual step size
+- Fix joint forces test
+
+## [4.6.4] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
+## [4.6.3] - 2025-06-25
+### Fixed
+- Fix GrounPlane's physical material apply during instance construction
+
+## [4.6.2] - 2025-06-18
+### Changed
+- Skip articulation and rigid body view tests in ETM
+
 ## [4.6.1] - 2025-06-06
 ### Fixed
 - Force commit timeline changes on play_async to properly initialize views

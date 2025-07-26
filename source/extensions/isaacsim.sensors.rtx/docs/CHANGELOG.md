@@ -1,4 +1,42 @@
 # Changelog
+
+## [15.4.5] - 2025-07-09
+### Fixed
+- Explicitly lock the pre-release versions of omni.sensors.nv.* to ensure that the correct versions are loaded in all scenarios including ETM.
+
+## [15.4.4] - 2025-07-07
+### Fixed
+- IsaacComputeRTXLidarFlatScan outputs azimuth range guaranted to be in [0, 360], with linear depth data appropriately sorted.
+
+## [15.4.3] - 2025-07-07
+### Changed
+- Cleanup docstring for bindings
+
+## [15.4.2] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 15.4.1)
+
+## [15.4.1] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [15.4.0] - 2025-06-27
+### Changed
+- Lidar and Radar data now on GPU by default
+- IsaacExtractRTXSensorPointCloud CUDA operations fully rewritten
+- Preallocating buffers in all nodes to avoid costly reallocation during compute
+
+### Fixed
+- IsaacComputeRTXLidarFlatScan synchronizes on CUDA stream before testing inputs to ensure data buffer is properly filled before processing.
+
+## [15.3.3] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
+## [15.3.2] - 2025-06-25
+### Changed
+- Removed nanoScan3 from supported lidar configs.
+
 ## [15.3.1] - 2025-06-13
 ### Changed
 - Switched CUDA files to Apache license.
@@ -14,6 +52,7 @@
 ## [15.2.0] - 2025-06-06
 ### Added
 - SUPPORTED_LIDAR_CONFIGS maps official Lidar asset paths to variants
+
 ### Changed
 - Autogenerate test structures, valid commands from SUPPORTED_LIDAR_CONFIGS
 

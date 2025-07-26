@@ -349,7 +349,10 @@ class TestLidarRtx(omni.kit.test.AsyncTestCase):
         current_frame = lidar.get_current_frame()
 
         # Verify annotator and frame data
-        # TODO (adevalla): Pausing and resuming the timeline results in empty GMO buffers - why?
+        # TOOD - re-enable in later release.
+        # Pausing and resuming the timeline results in empty GMO buffers since the clock the lidar renderer uses
+        # increases monotonically even while the animation timeline is paused. This means GMO timestamps will fall
+        # out-of-sync when handed to LidarPointAccumulator, so a full scan is never accumulated.
         # self.verify_frame_data(lidar, current_frame)
 
     def verify_frame_data(self, lidar, current_frame):

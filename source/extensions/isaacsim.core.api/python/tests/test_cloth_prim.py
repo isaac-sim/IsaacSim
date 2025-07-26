@@ -30,10 +30,12 @@ from omni.physx.scripts import deformableUtils, physicsUtils
 # Import extension python module we are testing with absolute import path, as if we are external user (other extension)
 from pxr import Gf, Usd, UsdGeom
 
+from .common import CoreTestCase
 
-# Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestSingleClothPrim(omni.kit.test.AsyncTestCase, TestProperties):
+
+class TestSingleClothPrim(CoreTestCase, TestProperties):
     async def setUp(self):
+        await super().setUp()
         World.clear_instance()
         await create_new_stage_async()
         self.my_world = World(backend="torch", device="cuda")
@@ -42,6 +44,7 @@ class TestSingleClothPrim(omni.kit.test.AsyncTestCase, TestProperties):
     async def tearDown(self):
         self.my_world.clear_instance()
         await update_stage_async()
+        await super().tearDown()
 
     async def test_cloth_prim(self):
         await update_stage_async()

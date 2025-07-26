@@ -279,8 +279,14 @@ public:
 
         for (const auto& mesh : meshPrims)
         {
+            pxr::TfToken meshName = mesh.GetName();
+            if (meshName == "mesh")
+            {
+                meshName = pxr::TfToken(basePrim.GetPath().GetName());
+            }
+            // CARB_LOG_INFO("Mesh name: %s", mesh.GetName().c_str());
             moveMeshAndMaterials(meshStage, usdStage, usdStage->GetDefaultPrim().GetPath(), mesh.GetPath(),
-                                 basePrim.GetPath().AppendChild(pxr::TfToken(mesh.GetName())), materialPaths);
+                                 basePrim.GetPath().AppendChild(meshName), materialPaths);
         }
         // Clean up
         // omniClientWait(omniClientDelete(mesh_usd_path.c_str(), {}, {}));

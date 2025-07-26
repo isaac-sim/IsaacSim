@@ -102,8 +102,8 @@ function setup_isaacsim_folder_links()
         { "source/scripts/python/shared/*", "_build/%{platform}/%{config}" },
         { "source/scripts/python/%{platform}/*", "_build/%{platform}/%{config}" },
         { "source/scripts/jupyter_kernel", "_build/%{platform}/%{config}/jupyter_kernel" },
-        { "source/scripts/run_all_tests${shell_ext}", "_build/%{platform}/%{config}" },
-        { "source/scripts/run_all_benchmarks${shell_ext}", "_build/%{platform}/%{config}" },
+        { "source/scripts/run_tests.py", "_build/%{platform}/%{config}" },
+        { "source/scripts/test_config.json", "_build/%{platform}/%{config}/tests" },
         { "source/scripts/warmup${shell_ext}", "_build/%{platform}/%{config}" },
         { "source/scripts/isaac-sim.docker*${shell_ext}", "_build/%{platform}/%{config}" },
         { "source/scripts/clear_caches*${shell_ext}", "_build/%{platform}/%{config}" },
@@ -219,7 +219,10 @@ function group_apps(kit)
     define_local_experience("isaac-sim.selector", "isaacsim.exp.selector")
     define_local_experience("isaac-sim.streaming", "isaacsim.exp.full.streaming", "--no-window ")
     define_local_experience("isaac-sim.xr.vr", "isaacsim.exp.base.xr.vr")
-    define_local_experience("isaac-sim.action_and_event_data_generation", "isaacsim.exp.action_and_event_data_generation.full")
+    define_local_experience(
+        "isaac-sim.action_and_event_data_generation",
+        "isaacsim.exp.action_and_event_data_generation.full"
+    )
 end
 
 nvccPath = path.getabsolute("_build/target-deps/cuda/bin/nvcc")

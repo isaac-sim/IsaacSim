@@ -22,6 +22,9 @@ Visit the next link for more details:
   https://docs.omniverse.nvidia.com/kit/docs/kit-manual/latest/guide/testing_exts_python.html
 """
 
+import os
+import unittest
+
 import omni.kit.test
 import omni.timeline
 from isaacsim.core.simulation_manager import IsaacEvents, SimulationManager
@@ -94,6 +97,8 @@ class TestExtension(omni.kit.test.AsyncTestCase):
             SimulationManager.deregister_callback(callback_id)
         self.assertEqual(var, 13)
 
+    # TODO: ETM will always have 2 steps of simulation at start and not increment.
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM. Physics steps are not handled the same way in ETM")
     async def test_simulation_manager_interface(self):
         timeline = omni.timeline.get_timeline_interface()
         await create_new_stage_async()

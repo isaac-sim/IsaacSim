@@ -1,5 +1,5 @@
 [package]
-version = "3.0.4"
+version = "3.0.5"
 category = "Simulation"
 title = "Gain Tuner"
 description = "Gain Tuner for Articulation PD Gains"
@@ -16,6 +16,7 @@ writeTarget.kit = true
 "isaacsim.gui.components" = {}
 "isaacsim.robot.schema" = {}
 "omni.kit.uiapp" = {}
+"omni.kit.window.file" = {}
 
 [[python.module]]
 name = "isaacsim.robot_setup.gain_tuner"

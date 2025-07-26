@@ -1,4 +1,32 @@
 # Changelog
+## [1.2.9] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 1.2.8)
+
+## [1.2.8] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [1.2.7] - 2025-06-29
+### Fixed
+- Camera view issues with different backends and devices (ISIM-3498)
+- Avoid slicing None data if data is not yet available in Camera View and Camera sensor
+
+### Changed
+- Removed unused local backend variables in Camera sensor
+- Update image comparison tolerance for camera view sensor tests
+
+### Added
+- Camera view sensor tests for different backends and devices
+
+## [1.2.6] - 2025-06-26
+### Changed
+- Update unit test golden values and tolerances
+
+## [1.2.5] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
 ## [1.2.4] - 2025-06-05
 ### Changed
 - Added checks to camera sensor horizontal and vertical aperture to ensure square pixels are maintained

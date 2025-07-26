@@ -23,16 +23,20 @@ from isaacsim.core.utils.prims import find_matching_prim_paths, get_all_matching
 from isaacsim.core.utils.stage import add_reference_to_stage
 from isaacsim.storage.native import get_assets_root_path_async
 
+from .common import CoreTestCase
 
-class TestPrims(omni.kit.test.AsyncTestCase):
+
+class TestPrims(CoreTestCase):
     # Before running each test
     async def setUp(self):
+        await super().setUp()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
         pass
 
     # After running each test
     async def tearDown(self):
+        await super().tearDown()
         pass
 
     async def test_get_all_matching_child_prims(self):

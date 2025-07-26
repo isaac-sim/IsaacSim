@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.5.5] - 2025-07-07
+### Changed
+- Add unit test for pybind11 module docstrings
+
+## [2.5.4] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 2.5.3)
+
+## [2.5.3] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [2.5.2] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
+## [2.5.1] - 2025-06-24
+### Fixed
+- Importing bodies with multiple mesh geom
+
 ## [2.5.0] - 2025-06-10
 ### Changed
 - Removed unused assets from data folder

@@ -18,7 +18,7 @@ import argparse
 
 from isaacsim import SimulationApp
 
-simulation_app = SimulationApp({"headless": False})
+simulation_app = SimulationApp({"headless": True})
 
 import carb
 import omni
@@ -55,18 +55,14 @@ custom_attributes = {"omni:sensor:Core:auxOutputType": args.aux_data_level}
 lidar = my_world.scene.add(LidarRtx(prim_path="/World/lidar", name="lidar", **custom_attributes))
 
 # Initialize the lidar and attach an annotator
-ANNOTATOR_NAME = "IsaacExtractRTXSensorPointCloudNoAccumulator"
+ANNOTATOR_NAME = "GenericModelOutput"
 lidar.initialize()
 lidar.attach_annotator(ANNOTATOR_NAME)
 
 
 # Run for a few frames, inspecting the data at each step
-def inspect_lidar_metadata(frame: int, pc_data: dict) -> None:
-    # Retrieve GenericModelOutput buffer
-    gmo_buffer = pc_data["info"]["sensorOutputBuffer"]
+def inspect_lidar_metadata(frame: int, gmo_buffer: dict) -> None:
     # Read GenericModelOutput struct from buffer
-    print(gmo_buffer)
-    carb.log_warn("attempting to get data from buffer")
     gmo = get_gmo_data(gmo_buffer)
     # Print some useful information
     carb.log_warn(f"Frame {frame} -- Lidar auxiliary level: {args.aux_data_level}")
@@ -95,7 +91,9 @@ i = 0
 print(aux_data_level)
 while simulation_app.is_running() and (not args.test or i < 10):
     simulation_app.update()
-    inspect_lidar_metadata(frame=i, pc_data=lidar.get_current_frame()[ANNOTATOR_NAME])
+    data = lidar.get_current_frame()[ANNOTATOR_NAME]
+    if len(data) > 0:
+        inspect_lidar_metadata(frame=i, gmo_buffer=data)
     i += 1
 timeline.stop()
 

@@ -37,6 +37,7 @@ task_params = my_world.get_task("ur10e_pick_place").get_params()
 articulation_controller = my_ur10e.get_articulation_controller()
 
 reset_needed = False
+task_completed = False
 
 while simulation_app.is_running():
     my_world.step(render=True)
@@ -45,6 +46,7 @@ while simulation_app.is_running():
             my_world.reset()
             reset_needed = False
             my_controller.reset()
+            task_completed = False
         if my_world.current_time_step_index == 0:
             my_controller.reset()
 
@@ -57,8 +59,9 @@ while simulation_app.is_running():
             # This offset needs tuning as well
             end_effector_offset=np.array([0, 0, 0.20]),
         )
-        if my_controller.is_done():
+        if my_controller.is_done() and not task_completed:
             print("done picking and placing")
+            task_completed = True
         articulation_controller.apply_action(actions)
 
     if my_world.is_stopped():

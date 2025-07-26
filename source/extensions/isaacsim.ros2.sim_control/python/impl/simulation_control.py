@@ -284,7 +284,10 @@ class ROS2ServiceManager:
         import rclpy
 
         while self.running and rclpy.ok():
-            rclpy.spin_once(self.node, timeout_sec=0.1)
+            try:
+                rclpy.spin_once(self.node, timeout_sec=0.1)
+            except rclpy.executors.ExternalShutdownException:
+                break
 
 
 class SimulationControl:

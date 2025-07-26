@@ -47,7 +47,7 @@ Software is furnished to do so, subject to the following conditions:""",
 ]
 
 
-def find_license_file(link_path, package_name, config_tags=None):
+def find_license_file(link_path, package_name, config_tags=None, full_details=False):
     """Search for license files in common locations.
 
     Args:
@@ -55,9 +55,19 @@ def find_license_file(link_path, package_name, config_tags=None):
         package_name: Name of the package to find licenses for
         config_tags: Dictionary of configuration tags to replace in the link path (e.g.,
             {'config': 'release', 'platform_target': 'linux-x86_64', 'platform_target_abi': 'manylinux_2_35_x86_64'})
+        full_details: If True, include individual PACKAGE-LICENSES files in output. If False, only show count.
 
     Returns:
-        Union[dict, list, str, None]: License information found, or None if no license found
+        dict: License information found with keys:
+            - main_license: Main license file path (LICENSE.md, LICENSE.txt, LICENSE) or None
+            - package_licenses_count: Number of PACKAGE-LICENSES files found
+            - package_licenses_files: List of PACKAGE-LICENSES file paths (only if full_details=True)
+            - other_licenses: List of other license files found
+            - nvidia_proprietary: List of NVIDIA proprietary license files
+            - mit_licenses: List of MIT license files
+            - spdx_licenses: List of SPDX license files
+            - spdx_license_types: List of SPDX license types found
+            Or None if no license found
     """
     if config_tags is None:
         config_tags = {"config": "release", "platform_target": "linux-x86_64", "platform_target_abi": "linux-x86_64"}
@@ -76,6 +86,8 @@ def find_license_file(link_path, package_name, config_tags=None):
     all_matches = set()
     package_specific_matches = set()
     root_license_matches = set()
+    package_licenses_count = 0
+    package_licenses_files = set()
 
     # First pass: categorize files without scanning content
     possible_patterns = [
@@ -101,6 +113,11 @@ def find_license_file(link_path, package_name, config_tags=None):
                 continue
             if rel_path in all_matches:
                 continue
+
+            # Count and track PACKAGE-LICENSES files
+            if "PACKAGE-LICENSES" in rel_path:
+                package_licenses_count += 1
+                package_licenses_files.add(rel_path)
 
             # Categorize the file
             if package_name.lower() in os.path.basename(match).lower():
@@ -138,25 +155,46 @@ def find_license_file(link_path, package_name, config_tags=None):
         except Exception as e:
             pass
 
-    # Return results in priority order
-    if len(nvidia_proprietary_matches) == 1:
-        return {"type": "NVIDIA proprietary", "location": nvidia_proprietary_matches[0]}
-    elif len(nvidia_proprietary_matches) > 1:
-        pass
+    # Build the result dictionary
+    result = {
+        "main_license": None,
+        "package_licenses_count": package_licenses_count,
+        "package_licenses_files": sorted(package_licenses_files) if full_details else [],
+        "other_licenses": [],
+        "nvidia_proprietary": sorted(nvidia_proprietary_matches),
+        "mit_licenses": sorted(mit_license_matches),
+        "spdx_licenses": sorted([match[0] for match in spdx_matches]),
+        "spdx_license_types": sorted([match[1] for match in spdx_matches]),
+    }
 
-    if len(mit_license_matches) == 1:
-        return {"type": "MIT", "location": mit_license_matches[0]}
-    elif len(mit_license_matches) > 1:
-        pass
-
-    if len(spdx_matches) == 1:
-        return {"type": spdx_matches[0][1], "location": spdx_matches[0][0]}
-    elif len(spdx_matches) > 1:
-        pass
-
-    # If no special licenses found, return file lists in priority order
-    if package_specific_matches:
-        return sorted(package_specific_matches)
+    # Set main license file if found
     if root_license_matches:
-        return [next(iter(sorted(root_license_matches)))]
-    return sorted(all_matches) if all_matches else None
+        result["main_license"] = next(iter(sorted(root_license_matches)))
+
+    # Add other license files (excluding PACKAGE-LICENSES when full_details=False)
+    if package_specific_matches:
+        if full_details:
+            result["other_licenses"].extend(sorted(package_specific_matches))
+        else:
+            non_package_licenses = [f for f in sorted(package_specific_matches) if "PACKAGE-LICENSES" not in f]
+            result["other_licenses"].extend(non_package_licenses)
+
+    if all_matches:
+        if full_details:
+            result["other_licenses"].extend(sorted(all_matches))
+        else:
+            non_package_licenses = [f for f in sorted(all_matches) if "PACKAGE-LICENSES" not in f]
+            result["other_licenses"].extend(non_package_licenses)
+
+    # Only return result if we found any license information
+    if (
+        result["main_license"]
+        or result["package_licenses_count"] > 0
+        or result["other_licenses"]
+        or result["nvidia_proprietary"]
+        or result["mit_licenses"]
+        or result["spdx_licenses"]
+    ):
+        return result
+
+    return None

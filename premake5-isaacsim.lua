@@ -177,6 +177,7 @@ function add_cuda_dependencies()
     libdirs { target_deps .. "/cuda/lib64/stubs" }
     -- lib dir in case you link against 'cudart_static'.
     libdirs { target_deps .. "/cuda/lib64/" }
+    links { "cuda" }
 
     -- linking to cudart_static requires libpthread, libdl, and librt
     -- https://gitlab.kitware.com/cmake/cmake/-/issues/20249
@@ -184,6 +185,7 @@ function add_cuda_dependencies()
     links { "dl", "pthread", "rt" }
     filter { "system:windows" }
     libdirs { target_deps .. "/cuda/lib/x64" }
+    links { "cuda" }
     filter {}
 
     -- CUDA-specific include directory
@@ -547,3 +549,4 @@ setlocal
         f:close()
     end
 end
+

@@ -1,4 +1,19 @@
 # Changelog
+## [4.6.10] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 4.6.9)
+
+## [4.6.9] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [4.6.8] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
+## [4.6.7] - 2025-06-25
+### Changed
+- Update surface gripper gantry stage to allow manual update of joint targets
 
 ## [4.6.6] - 2025-06-11
 ### Changed

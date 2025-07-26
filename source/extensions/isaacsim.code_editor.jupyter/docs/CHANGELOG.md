@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.1.1] - 2025-06-25
+### Removed
+- Remove `chardet` from extension's Python dependencies
+
 ## [1.1.0] - 2025-06-10
 ### Changed
 - Set the default IP address for the Jupyter and extension servers to 127.0.0.1

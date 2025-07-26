@@ -1,4 +1,24 @@
 # Changelog
+## [3.0.8] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 3.0.7)
+
+## [3.0.7] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [3.0.6] - 2025-06-26
+### Fixed
+- Fixed failed tests
+
+## [3.0.5] - 2025-06-26
+### Fixed
+- Error messages when assembling robots
+
+## [3.0.4] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
 ## [3.0.3] - 2025-05-31
 ### Changed
 - Use default nucleus server for all tests

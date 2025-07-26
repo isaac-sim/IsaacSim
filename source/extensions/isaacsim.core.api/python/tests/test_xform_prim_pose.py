@@ -25,17 +25,19 @@ from isaacsim.core.prims import SingleXFormPrim
 from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.core.utils.rotations import euler_angles_to_quat
 
+from .common import CoreTestCase
 
-# Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestXformPrimPose(omni.kit.test.AsyncTestCase):
+
+class TestXformPrimPose(CoreTestCase):
     async def setUp(self):
+        await super().setUp()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
         SimulationManager.set_backend("numpy")
         pass
 
     async def tearDown(self):
-        await omni.kit.app.get_app().next_update_async()
+        await super().tearDown()
         pass
 
     async def test_position_orientation_scale(self):

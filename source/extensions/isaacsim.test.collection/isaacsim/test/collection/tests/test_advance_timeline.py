@@ -13,9 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import carb
 import numpy as np
+import omni.kit.app
 import omni.kit.test
+import omni.replicator.core as rep
+import omni.syntheticdata._syntheticdata as sd
 import omni.timeline
+from isaacsim.core.utils.prims import get_prim_at_path
 from pxr import PhysxSchema, UsdPhysics
 
 
@@ -168,3 +173,96 @@ class TestAdvanceTimelineAndPhysics(omni.kit.test.AsyncTestCase):
         print_unique_values_and_counts(delta_times_without_first)
         all_equal = np.all(np.abs(delta_times_without_first - delta_times_without_first[0]) < 1e-6)
         self.assertTrue(all_equal, f"All delta times should be equal, stage_fps={stage_fps}, physx_fps={physx_fps}")
+
+    async def step_simulation(self, step_method: str = "timeline_forward"):
+        """Step the simulation using the specified method.
+
+        Args:
+            step_method: The method to use for stepping the simulation.
+                Options are:
+                - "rep_orchestrator": Use rep.orchestrator.step_async
+                - "timeline_api": Use timeline API methods
+                - "timeline_forward": Use timeline.play() and timeline.pause()
+        """
+        timeline = omni.timeline.get_timeline_interface()
+        time_before = timeline.get_current_time()
+        frame_before = time_before * timeline.get_time_codes_per_seconds()
+        print(f"step_method: {step_method}")
+        print(f"Before - Time: {time_before:.4f}, Frame: {frame_before:.2f}")
+        is_timeline_auto_updating = timeline.is_auto_updating()
+
+        if step_method == "rep_orchestrator":
+            await rep.orchestrator.step_async(delta_time=0, pause_timeline=True)
+            await rep.orchestrator.step_async(delta_time=None, pause_timeline=True)
+        elif step_method == "timeline_two_steps":
+            timeline.play()
+            timeline.commit()
+            await omni.kit.app.get_app().next_update_async()
+            timeline.set_auto_update(False)
+            timeline.commit_silently()
+            await omni.kit.app.get_app().next_update_async()
+            timeline.set_auto_update(True)
+            timeline.commit_silently()
+            timeline.pause()
+            timeline.commit()
+        elif step_method == "timeline_one_step":
+            timeline.play()
+            timeline.commit()
+            await omni.kit.app.get_app().next_update_async()
+            timeline.pause()
+            timeline.commit()
+        else:
+            raise ValueError(
+                f"Unknown step_method: {step_method}. Valid options are: 'rep_orchestrator', 'timeline_api', 'timeline_forward'"
+            )
+
+        time_after = timeline.get_current_time()
+        frame_after = time_after * timeline.get_time_codes_per_seconds()
+        print(f"After Pause - Time: {time_after:.4f}, Frame: {frame_after:.2f}")
+        self.assertAlmostEqual(frame_after, 1.0, 3, msg=f"Frame after should be 1.0, got {frame_after}")
+        self.assertAlmostEqual(time_after, 0.0167, 3, msg=f"Time after should be 0.0167, got {time_after}")
+        self.assertFalse(timeline.is_playing())
+        # Run some number of frames
+        for i in range(3):
+            await omni.kit.app.get_app().next_update_async()
+
+        time_after = timeline.get_current_time()
+        frame_after = time_after * timeline.get_time_codes_per_seconds()
+        print(f"After app update- Time: {time_after:.4f}, Frame: {frame_after:.2f}")
+        self.assertAlmostEqual(frame_after, 1.0, 3, msg=f"Frame after should be 1.0, got {frame_after}")
+        self.assertAlmostEqual(time_after, 0.0167, 3, msg=f"Time after should be 0.0167, got {time_after}")
+
+    async def step_simulation_method(self, step_method: str, no_replicator: bool = False):
+        # Wait for a few frames to ensure all extensions are loaded.
+        for i in range(5):
+            await omni.kit.app.get_app().next_update_async()
+
+        camera_prim_path = "/OmniverseKit_Persp"
+        camera_prim = get_prim_at_path(camera_prim_path)
+        if not camera_prim.IsValid():
+            carb.log_error(f"Error: Camera prim not found at {camera_prim_path}")
+            return
+
+        carb.log_info(f"Found camera prim at {camera_prim_path}")
+
+        render_product = rep.create.render_product(camera_prim.GetPath().pathString, (1024, 1024))
+        rv = omni.syntheticdata.SyntheticData.convert_sensor_type_to_rendervar(sd.SensorType.Rgb.name)
+        writer_name = f"{rv}ROS2PublishImage"
+
+        writer = rep.writers.get(writer_name)
+        if not no_replicator:
+            writer.attach([render_product])
+        await omni.kit.app.get_app().next_update_async()
+        await self.step_simulation(step_method=step_method)
+
+    async def test_rep_orchestrator(self):
+        await self.step_simulation_method(step_method="rep_orchestrator")
+
+    async def test_timeline_two_steps(self):
+        await self.step_simulation_method(step_method="timeline_two_steps")
+
+    async def test_timeline_one_step(self):
+        await self.step_simulation_method(step_method="timeline_one_step")
+
+    async def test_timeline_one_step_no_replicator(self):
+        await self.step_simulation_method(step_method="timeline_one_step", no_replicator=True)

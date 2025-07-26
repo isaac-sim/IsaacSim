@@ -1,4 +1,20 @@
 # Changelog
+## [0.1.8] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 0.1.7)
+
+## [0.1.7] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [0.1.6] - 2025-06-27
+### Changed
+- Fix recording naming for windows filesystems
+
+## [0.1.5] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
 ## [0.1.4] - 2025-06-04
 ### Changed
 - Added fix for saving stage by setting save_and_reload_in_place=False

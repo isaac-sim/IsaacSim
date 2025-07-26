@@ -15,6 +15,9 @@
 from enum import Enum, IntEnum
 from functools import partial
 
+import carb
+import numpy as np
+import omni.physics.tensors as physics_tensors
 import omni.ui as ui
 import pxr
 
@@ -52,6 +55,7 @@ class TestJointItem(TableItem):
         joint_index,
         test,
         sequence,
+        dof_type,
         amplitude,
         offset,
         period,
@@ -64,16 +68,20 @@ class TestJointItem(TableItem):
     ):
         super().__init__(joint_index, value_changed_fn)
         self.model = model
+        self.dof_type = dof_type
+        self.values_scale = 1.0
+        if dof_type == physics_tensors.DofType.Rotation:
+            self.values_scale = 180.0 / np.pi
         self.model_cols = [
             ui.SimpleStringModel(name),
             ui.SimpleBoolModel(test),
             ui.SimpleIntModel(joint_index + 1),
             ui.SimpleFloatModel(amplitude),
-            ui.SimpleFloatModel(offset),
+            ui.SimpleFloatModel(offset * self.values_scale),
             ui.SimpleFloatModel(period),
             ui.SimpleFloatModel(phase),
-            ui.SimpleFloatModel(step_max),
-            ui.SimpleFloatModel(step_min),
+            ui.SimpleFloatModel(step_max * self.values_scale),
+            ui.SimpleFloatModel(step_min * self.values_scale),
             ui.SimpleStringModel(user_provided),
         ]
         self.joint_index = joint_index
@@ -174,6 +182,7 @@ class TestJointItem(TableItem):
     @test.setter
     def test(self, value: bool):
         self.model_cols[ColumnIndex.TEST].set_value(value)
+        self.model._item_changed(self)
 
     @property
     def amplitude(self):
@@ -406,7 +415,7 @@ class TestJointItemDelegate(TableItemDelegate):
                     min_value = item.step_min
                     max_value = item.step_max
 
-                unit = ""
+                unit = "deg"
 
                 if model_col_id in [ColumnIndex.AMPLITUDE]:
                     unit = "%"
@@ -460,10 +469,10 @@ class TestJointModel(TableModel):
                 ColumnIndex.JOINT,
                 ColumnIndex.TEST,
                 ColumnIndex.SEQUENCE,
-                ColumnIndex.PERIOD,
-                ColumnIndex.PHASE,
                 ColumnIndex.STEP_MIN,
                 ColumnIndex.STEP_MAX,
+                ColumnIndex.PERIOD,
+                ColumnIndex.PHASE,
             ],
             TestMode.USER_PROVIDED: [ColumnIndex.JOINT, ColumnIndex.TEST, ColumnIndex.USER_PROVIDED],
         }
@@ -484,6 +493,7 @@ class TestJointModel(TableModel):
                 joint_index=joint_index,
                 test=True,
                 sequence=i,
+                dof_type=self._gains_tuner.get_dof_type(joint_index),
                 amplitude=100.0,
                 offset=0.0,
                 period=1.0,
@@ -551,12 +561,18 @@ class TestJointWidget(TableWidget):
         if self.list:
             self.list.column_widths = [self.column_widths[i] for i in self.model.column_id_map[self.model.mode]]
 
+    # def switch_radian_degree(self, radian_degree_mode):
+    #     # TODO: Implement this
+    #     carb.log_error("switch_radian_degree is not implemented")
+
     def _on_value_changed(self, joint_item, col_id=1, adjusted_col_id=None):
         if adjusted_col_id is None:
             value_col_id = self.model.column_id_map[self.model.mode][col_id]
         else:
             value_col_id = adjusted_col_id
         if self._enable_bulk_edit:
+            if joint_item not in self.list.selection:
+                self.list.selection = [joint_item]
             self.set_bulk_edit(False)
             for item in self.list.selection:
                 if item is not joint_item:
@@ -578,3 +594,11 @@ class TestJointWidget(TableWidget):
             header_visible=True,
             height=ui.Fraction(1),
         )
+
+    def select_all(self):
+        for item in self.model.get_item_children():
+            item.test = True
+
+    def clear_all(self):
+        for item in self.model.get_item_children():
+            item.test = False

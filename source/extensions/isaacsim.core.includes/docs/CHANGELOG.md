@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.4.0] - 2025-07-10
+### Added
+- Device-generic (CPU or CUDA device) memory buffer implementation
+
+## [2.3.0] - 2025-06-29
+### Changed
+- Add resizeAsync function to DeviceBufferBase
+
+## [2.2.0] - 2025-06-17
+### Changed
+- Implement `computeWorldXformNoCache` using Fabric Scene Delegate and IFabricHierarchy
+
 ## [2.1.2] - 2025-06-12
 ### Fixed
 - Fix missing parameter description in doxygen comment

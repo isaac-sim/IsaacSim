@@ -20,97 +20,6 @@
 #include <pybind11/stl.h>
 
 CARB_BINDINGS("isaacsim.sensors.physx.python")
-// PYBIND11_MAKE_OPAQUE(std::vector<carb::Float2>);
-// PYBIND11_MAKE_OPAQUE(std::vector<carb::Float3>);
-
-
-namespace isaacsim
-{
-namespace sensors
-{
-namespace physx
-{
-// // A simple point instancer that can visualize multiple range sensors
-// class RangeSensorVisualizer
-// {
-// public:
-//     RangeSensorVisualizer(const std::string& visualizerPath, const carb::Float3& pointColor, const float pointSize =
-//     0.1)
-//     {
-
-//         framework = carb::getFramework();
-//         if (!framework)
-//         {
-//             CARB_LOG_ERROR("*** Failed to get Carbonite framework\n");
-//             return;
-//         }
-
-//         mRangeSensorInterface = carb::getCachedInterface<isaacsim::sensors::physx::RangeSensorInterface>();
-//         if (!mRangeSensorInterface)
-//         {
-//             CARB_LOG_ERROR("Failed to acquire isaacsim::sensors::physx interface");
-//             return;
-//         }
-//         m_stage = omni::usd::UsdContext::getContext()->getStage();
-//         pxr::VtArray<pxr::GfVec3f> colors;
-//         colors.push_back(pxr::GfVec3f(pointColor.x, pointColor.y, pointColor.z));
-//         pxr::UsdGeomCube occupiedCube = pxr::UsdGeomCube::Define(m_stage, pxr::SdfPath(visualizerPath + "/cube"));
-//         occupiedCube.CreateDisplayColorPrimvar().Set(colors);
-
-//         mInstancer = pxr::UsdGeomPointInstancer::Define(m_stage, pxr::SdfPath(visualizerPath));
-//         pxr::SdfPathVector mSelectedPaths;
-//         mSelectedPaths.push_back(pxr::SdfPath(visualizerPath + "/cube"));
-//         mInstancer.GetPrototypesRel().SetTargets(mSelectedPaths);
-//     }
-
-//     void setSensorsToVisualize(const std::vector<std::string>& sensorPaths)
-//     {
-//         msensorPaths = sensorPaths;
-//     }
-//     // get new data from sensors and render it
-//     void updateVisualization()
-//     {
-//         mPositions.clear();
-//         mProtoIndices.clear();
-//         for (auto& path : msensorPaths)
-//         {
-//             if (!mRangeSensorInterface->isRangeSensor(path.c_str()))
-//             {
-//                 CARB_LOG_ERROR("Prim %s is not registered with Range Sensor extension", path.c_str());
-//                 return;
-//             }
-//             else
-//             {
-//                 carb::Float3* rangeSensorData = mRangeSensorInterface->getPointCloud(path.c_str());
-
-//                 int rows = mRangeSensorInterface->getNumRows(path.c_str());
-//                 int numColsTicked = mRangeSensorInterface->getNumColsTicked(path.c_str());
-//                 for (int i = 0; i < rows * numColsTicked; i++)
-//                 {
-
-
-//                     mPositions.push_back(pxr::GfVec3f(rangeSensorData[i].x, rangeSensorData[i].y,
-//                     rangeSensorData[i].z)); mProtoIndices.push_back(0);
-//                 }
-//             }
-//         }
-//         mInstancer.GetPositionsAttr().Set(mPositions);
-//         mInstancer.GetProtoIndicesAttr().Set(mProtoIndices);
-//     }
-
-// private:
-//     std::vector<std::string> msensorPaths;
-//     pxr::VtArray<pxr::GfVec3f> mPositions;
-//     pxr::VtArray<int> mProtoIndices;
-//     pxr::UsdGeomPointInstancer mInstancer;
-//     isaacsim::sensors::physx::RangeSensorInterface* mRangeSensorInterface;
-//     carb::Framework* framework;
-//     pxr::UsdStageWeakPtr m_stage;
-// };
-}
-}
-}
-
 
 namespace
 {
@@ -126,20 +35,16 @@ PYBIND11_MODULE(_range_sensor, m)
             To use this interface you must first call the acquire interface function.
             It is also recommended to use the `is_range_sensor` function to check if a given USD path is valid
 
-            ::
+            .. code-block:: python
 
-                import isaacsim.sensors.physx._range_sensor.acquire_lidar_sensor_interface
-                lidar_sensor_interface = acquire_lidar_sensor_interface()
-                if lidar_sensor_interface.is_lidar_sensor("/World/Lidar"):
-                    print("range_sensor is valid")
+                >>> import isaacsim.sensors.physx._range_sensor as _range_sensor
+                >>> lidar_sensor_interface = _range_sensor.acquire_lidar_sensor_interface()
+                >>> if lidar_sensor_interface.is_lidar_sensor("/World/Lidar"):
+                ...     print("range_sensor is valid")
+                range_sensor is valid
 
         Refer to the sample documentation for more examples and usage
                 )pbdoc";
-
-    // auto lidar_visualizer = py::class_<LidarVisualizer>(m, "LidarVisualizer")
-    //                             .def(py::init<const std::string&, const carb::Float3&, const float>())
-    //                             .def("set_lidars_to_visualize", &LidarVisualizer::setLidarsToVisualize)
-    //                             .def("update_visualization", &LidarVisualizer::updateVisualization);
 
     defineInterfaceClass<LidarSensorInterface>(
         m, "LidarSensorInterface", "acquire_lidar_sensor_interface", "release_lidar_sensor_interface")

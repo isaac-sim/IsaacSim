@@ -86,11 +86,12 @@ docs/source/*
 # ignore the cache
 data/cache
 
+# ignore browser cache
+source/extensions/isaacsim.asset.browser/cache/isaacsim.asset.browser.cache.json
+
 symbols.txt
 /.vs
 
-# petert: temp file i create for debugging
-output.txt
 
 # OVAT files
 gcn_local.yml
@@ -152,9 +153,8 @@ Temp_Config*.json
 .nvcode.json
 
 # Ignore packman verification results
-packman_verification_results.json
-packman_full_results.json
 packman_full_results.csv
+packman_private_results.csv
 
 # Ignore results from banned word check
 results.json

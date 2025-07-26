@@ -23,7 +23,7 @@ import omni.kit
 import omni.physx
 import omni.timeline
 import omni.usd
-from isaacsim.core.utils.prims import get_prim_at_path
+from isaacsim.core.utils.prims import get_prim_at_path, is_prim_path_valid
 from isaacsim.core.utils.stage import get_current_stage, get_current_stage_id
 from pxr import PhysxSchema
 
@@ -246,6 +246,13 @@ class SimulationManager:
             SimulationManager._default_physics_scene_idx = list(SimulationManager._physics_scene_apis.keys()).index(
                 physics_scene_prim_path
             )
+        elif is_prim_path_valid(physics_scene_prim_path):
+            prim = get_prim_at_path(physics_scene_prim_path)
+            if prim.GetTypeName() == "PhysicsScene":
+                SimulationManager._physics_scene_apis[physics_scene_prim_path] = PhysxSchema.PhysxSceneAPI.Apply(prim)
+                SimulationManager._default_physics_scene_idx = list(SimulationManager._physics_scene_apis.keys()).index(
+                    physics_scene_prim_path
+                )
         else:
             raise Exception("physics scene specified {} doesn't exist".format(physics_scene_prim_path))
 

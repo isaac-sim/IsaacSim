@@ -1,5 +1,5 @@
 [package]
-version = "2.2.12"
+version = "2.2.15"
 category = "SyntheticData"
 title = "Isaac Sim Replicator Synthetic Data Recorder"
 description = "The extension provides a UI to record synthetic data using Replicator writers. By default the UI uses the Replicator BasicWriter, it however also supports custom writers with custom parameters loaded through config files as key-value pairs."
@@ -24,16 +24,24 @@ name = "isaacsim.replicator.synthetic_recorder"
 dependencies = [
 ]
 args = [
+    "--enable",
+    "omni.kit.loop-isaac",
+    "--reset-user",
+    "--vulkan",
     "--/app/asyncRendering=0",
     "--/app/asyncRenderingLowLatency=0",
     "--/app/fastShutdown=1",
     "--/app/file/ignoreUnsavedOnExit=1",
     "--/app/hydraEngine/waitIdle=0",
+    "--/app/player/useFixedTimeStepping=false",
     "--/app/renderer/skipWhileMinimized=0",
     "--/app/renderer/sleepMsOnFocus=0",
     "--/app/renderer/sleepMsOutOfFocus=0",
+    "--/app/runLoops/main/manualModeEnabled=true",
+    "--/app/runLoops/main/rateLimitEnabled=false",
     "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
     "--/app/settings/persistent=0",
+    "--/app/useFabricSceneDelegate=true",
     "--/app/viewport/createCameraModelRep=0",
     "--/crashreporter/skipOldDumpUpload=1",
     "--/exts/omni.usd/locking/onClose=0",
@@ -51,18 +59,13 @@ args = [
     "--/renderer/multiGpu/autoEnable=0",
     "--/renderer/multiGpu/enabled=0",
     "--/rtx-transient/dlssg/enabled=0",
-    "--/'rtx-transient'/resourcemanager/enableTextureStreaming=1",
+    "--/rtx-transient/resourcemanager/enableTextureStreaming=1",
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
     "--/rtx/reservedDescriptors=900000",
-    "--vulkan",
-    "--/app/useFabricSceneDelegate=true",
-    "--/app/player/useFixedTimeStepping=false",
-    "--/app/runLoops/main/rateLimitEnabled=false",
-    "--/app/runLoops/main/manualModeEnabled=true",
 ]
 
 [[test]]

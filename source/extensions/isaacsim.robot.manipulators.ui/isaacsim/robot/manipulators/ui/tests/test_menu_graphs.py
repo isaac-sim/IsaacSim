@@ -412,12 +412,15 @@ class TestArticulationGraphs(OmniUiTest):
         for _ in range(10):
             await update_stage_async()
 
-        # Create gripper controller graph
+        # Create gripper controller graph. Check for parameter window before continuing.
+        # If the parameter window is not found, retry with increasing delays
+        window_name = "Gripper Controller"
         delays = [5, 50, 100]
         for delay in delays:
             try:
                 await menu_click("Tools/Robotics/OmniGraph Controllers/Open Loop Gripper", human_delay_speed=delay)
-                break
+                if (param_window := ui_test.find(window_name)) is not None:
+                    break
             except AttributeError as e:
                 if "NoneType' object has no attribute 'center'" in str(e) and delay != delays[-1]:
                     continue
@@ -425,8 +428,6 @@ class TestArticulationGraphs(OmniUiTest):
         for _ in range(10):
             await update_stage_async()
 
-        window_name = "Gripper Controller"
-        param_window = ui_test.find(window_name)
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         # Enable "Add to existing graph"

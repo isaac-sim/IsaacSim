@@ -1,4 +1,16 @@
 # Changelog
+## [3.3.5] - 2025-07-07
+### Changed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 3.3.4)
+
+## [3.3.4] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [3.3.3] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
 ## [3.3.2] - 2025-05-31
 ### Changed
 - Use default nucleus server for all tests

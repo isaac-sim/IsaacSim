@@ -31,19 +31,6 @@ PYBIND11_MODULE(_isaacsim_sensors_rtx, m)
 
     m.doc() = R"pbdoc(
         Internal interface that is automatically called when the extension is loaded so that Omnigraph nodes are registered.
-
-        Example:
-
-            # import  isaacsim.sensors.rtx.bindings._isaacsim_sensors_rtx as _isaacsim_sensors_rtx
-
-            # Acquire the interface
-            interface = _isaacsim_sensors_rtx.acquire_interface()
-
-            # Use the interface
-            # ...
-
-            # Release the interface
-            _isaacsim_sensors_rtx.release_interface(interface)
     )pbdoc";
 
     defineInterfaceClass<isaacsim::sensors::rtx::IIsaacSimSensorsRtx>(m, "IIsaacSimSensorsRtx", "acquire_interface", "release_interface");

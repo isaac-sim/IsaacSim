@@ -23,6 +23,8 @@
 #include <omni/renderer/IDebugDraw.h>
 #include <omni/usd/UsdContext.h>
 #include <omni/usd/UsdContextIncludes.h>
+#include <pxr/base/gf/quatd.h>
+#include <pxr/base/gf/vec3d.h>
 #include <pxr/usd/usd/inherits.h>
 #include <usdrt/gf/matrix.h>
 #include <usdrt/gf/transform.h>
@@ -43,14 +45,8 @@ class OgnIsaacReadWorldPose
 public:
     static bool compute(OgnIsaacReadWorldPoseDatabase& db)
     {
-        auto& context = db.abi_context();
-
-        const auto* const iToken = context.iToken;
-        const auto* const iBundle = context.iBundle;
-
         auto& state = db.perInstanceState<OgnIsaacReadWorldPose>();
         const auto& inputPrim = db.inputs.prim();
-        const auto& includeScale = db.inputs.includeScale();
         pxr::SdfPath primPath;
         if (!inputPrim.empty())
         {
@@ -83,40 +79,16 @@ public:
             usdTransform.ExtractRotationMatrix().ExtractRotation().GetImaginary().GetArray();
         const double sourceOrientationR = usdTransform.ExtractRotationMatrix().ExtractRotation().GetReal();
         const double* sourceTranslation = usdTransform.ExtractTranslation().GetArray();
-        auto& bundleContents = db.outputs.primsBundle();
-        auto bundleHandle = bundleContents.abi_bundleHandle();
+        auto transform = usdrt::GfTransform(usdTransform);
+        const double* sourceScale = transform.GetScale().data();
 
-        AttributeDataHandle orientationAttr =
-            iBundle->addAttribute(context, bundleHandle, iToken->getHandle("xformOp:orient"),
-                                  Type(BaseDataType::eDouble, 4, 0, AttributeRole::eQuaternion));
-        AttributeDataHandle positionAttr =
-            iBundle->addAttribute(context, bundleHandle, iToken->getHandle("xformOp:translate"),
-                                  Type(BaseDataType::eDouble, 3, 0, AttributeRole::eNone));
+        auto& orientation = db.outputs.orientation();
+        auto& translation = db.outputs.translation();
+        auto& scale = db.outputs.scale();
 
-        double* orientationData = getDataW<double>(context, orientationAttr);
-        double* positionData = getDataW<double>(context, positionAttr);
-
-        if (includeScale)
-        {
-            auto transform = usdrt::GfTransform(usdTransform);
-            AttributeDataHandle scaleAttr =
-                iBundle->addAttribute(context, bundleHandle, iToken->getHandle("xformOp:scale"),
-                                      Type(BaseDataType::eDouble, 3, 0, AttributeRole::eNone));
-            double* scaleData = getDataW<double>(context, scaleAttr);
-            const double* sourceScale = transform.GetScale().data();
-            scaleData[0] = sourceScale[0];
-            scaleData[1] = sourceScale[1];
-            scaleData[2] = sourceScale[2];
-        }
-
-        orientationData[0] = sourceOrientationR;
-        orientationData[1] = sourceOrientationI[0];
-        orientationData[2] = sourceOrientationI[1];
-        orientationData[3] = sourceOrientationI[2];
-
-        positionData[0] = sourceTranslation[0];
-        positionData[1] = sourceTranslation[1];
-        positionData[2] = sourceTranslation[2];
+        orientation = GfQuatd(sourceOrientationR, sourceOrientationI[0], sourceOrientationI[1], sourceOrientationI[2]);
+        translation = GfVec3d(sourceTranslation[0], sourceTranslation[1], sourceTranslation[2]);
+        scale = GfVec3d(sourceScale[0], sourceScale[1], sourceScale[2]);
 
         return true;
     }

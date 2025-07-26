@@ -33,6 +33,7 @@ from isaacsim.core.utils.stage import get_current_stage
 # Extension imports
 from .common import Buffer, Module
 from .types import Pose2d
+from .utils.global_utils import join_sdf_paths
 from .utils.prim_utils import prim_rotate_x, prim_rotate_y, prim_rotate_z, prim_translate
 from .utils.registry import Registry
 from .utils.stage_utils import stage_add_camera
@@ -137,7 +138,7 @@ class MobilityGenRobot(Module):
     def build_front_camera(cls, prim_path):
 
         # Add camera
-        camera_path = os.path.join(prim_path, cls.front_camera_base_path)
+        camera_path = join_sdf_paths(prim_path, cls.front_camera_base_path)
         front_camera_xform = XFormPrim(camera_path)
 
         stage = get_current_stage()
@@ -153,7 +154,8 @@ class MobilityGenRobot(Module):
 
         stage = get_current_stage()
 
-        camera_path = os.path.join(self.prim_path, self.chase_camera_base_path, "chase_camera")
+        camera_path = join_sdf_paths(self.prim_path, self.chase_camera_base_path, "chase_camera")
+
         stage_add_camera(stage, camera_path, focal_length=10, horizontal_aperature=30, vertical_aperature=30)
         camera_prim = get_prim_at_path(camera_path)
         prim_rotate_x(camera_prim, self.chase_camera_tilt_angle)

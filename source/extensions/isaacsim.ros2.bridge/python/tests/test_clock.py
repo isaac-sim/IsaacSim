@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
-import gc
 
 import carb
 import omni.graph.core as og
@@ -29,40 +27,28 @@ import omni.kit.test
 import omni.kit.usd
 from isaacsim.core.utils.physics import simulate_async
 
-from .common import get_qos_profile
+from .common import ROS2TestCase, get_qos_profile
 
 
 # Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestRos2BridgeCommands(omni.kit.test.AsyncTestCase):
+class TestRos2BridgeCommands(ROS2TestCase):
     # Before running each test
     async def setUp(self):
-        import rclpy
-
+        await super().setUp()
         await omni.usd.get_context().new_stage_async()
-        self._timeline = omni.timeline.get_timeline_interface()
         self._stage = omni.usd.get_context().get_stage()
-        self._physics_rate = 60
-        carb.settings.get_settings().set_bool("/app/runLoops/main/rateLimitEnabled", True)
-        carb.settings.get_settings().set_int("/app/runLoops/main/rateLimitFrequency", int(self._physics_rate))
-        carb.settings.get_settings().set_int("/persistent/simulation/minFrameRate", int(self._physics_rate))
+
         await omni.kit.app.get_app().next_update_async()
         self._stage = omni.usd.get_context().get_stage()
-        self._timeline = omni.timeline.get_timeline_interface()
-        self._stage.SetTimeCodesPerSecond(self._physics_rate)
-        self._timeline.set_target_framerate(self._physics_rate)
-        rclpy.init()
+
         await omni.kit.app.get_app().next_update_async()
         pass
 
     # After running each test
     async def tearDown(self):
-        import rclpy
 
         self._stage = None
-        self._timeline = None
-        rclpy.shutdown()
-        gc.collect()
-        pass
+        await super().tearDown()
 
     async def test_sim_clock(self):
         import rclpy
@@ -135,18 +121,18 @@ class TestRos2BridgeCommands(omni.kit.test.AsyncTestCase):
         def spin():
             rclpy.spin_once(node, timeout_sec=0.1)
 
-        await simulate_async(1.0, callback=spin)
+        await simulate_async(0.1, callback=spin)
         self._timeline.play()
 
         await omni.kit.app.get_app().next_update_async()
         self.assertEqual(self._time_sec, 0.0)
         og.Controller.attribute("/controller_graph/Impulse.state:enableImpulse").set(True)
         # after first step we need to wait for ros node to initialize
-        await simulate_async(1.0, callback=spin)
+        await simulate_async(0.1, callback=spin)
 
         og.Controller.attribute("/controller_graph/Impulse.state:enableImpulse").set(True)
         # wait for message
-        await simulate_async(1.0, callback=spin)
+        await simulate_async(0.1, callback=spin)
         self.assertGreater(self._time_sec, 0.0)
 
         self._timeline.stop()
@@ -187,7 +173,7 @@ class TestRos2BridgeCommands(omni.kit.test.AsyncTestCase):
 
         self._timeline.play()
 
-        await simulate_async(1.0, callback=spin)
+        await simulate_async(0.1, callback=spin)
         self.assertAlmostEqual(self._time_sec, time.time(), delta=0.5)
         self._timeline.stop()
         spin()

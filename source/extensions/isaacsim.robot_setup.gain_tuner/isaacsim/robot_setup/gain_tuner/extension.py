@@ -184,7 +184,7 @@ class Extension(omni.ext.IExt):
             # stage was opened or closed, cleanup
             self._physx_subscription = None
             self._render_subscription = None
-            self.ui_builder.cleanup()
+            self.ui_builder.reset()
 
         self.ui_builder.on_stage_event(event)
 

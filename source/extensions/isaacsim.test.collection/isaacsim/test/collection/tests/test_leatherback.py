@@ -108,11 +108,11 @@ class TestLeatherback(omni.kit.test.AsyncTestCase):
 
             await omni.kit.app.get_app().next_update_async()
 
-        target = np.array([0.18823782, -0.00128498, 0.01113574])
+        target = np.array([0.17790918, -0.00121224, 0.0291148])
         x, r = get_world_pose("/Leatherback/Rigid_Bodies/Chassis")
 
         delta = np.linalg.norm(x - target)
-        self.assertAlmostEqual(delta, 0, delta=0.01)
+        self.assertAlmostEqual(delta, 0, delta=0.01, msg=f"delta: {delta}, target: {target}, actual: {x}")
 
         pass
 

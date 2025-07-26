@@ -75,31 +75,35 @@ class WheelBasePoseController(BaseController):
         Returns:
             ArticulationAction: [description]
         """
-        # TODO: Should this be 1 and 2? not 1 and 0? since we use the last two columns in the distance calculation?
-        steering_yaw = math.atan2(
-            goal_position[1] - start_position[1], float(goal_position[0] - start_position[0] + 1e-5)
-        )
+        # Compute steering yaw in world frame
+        steering_yaw = math.atan2(goal_position[1] - start_position[1], goal_position[0] - start_position[0])
+
+        # Extract current heading from quaternion
         current_yaw_heading = quat_to_euler_angles(start_orientation)[-1]
-        yaw_error = steering_yaw - current_yaw_heading
-        # TODO: Why not just np.linalg.norm(start_position[:2] - goal_position[:2])?
-        if np.mean(np.abs(start_position[:2] - goal_position[:2])) < position_tol:
-            if self._is_holonomic:
-                command = [0.0, 0.0, 0.0]
-            else:
-                command = [0.0, 0.0]
+
+        # Normalize yaw error to [-π, π]
+        yaw_error = (steering_yaw - current_yaw_heading + np.pi) % (2 * np.pi) - np.pi
+
+        # Compute 2D Euclidean distance
+        distance_to_goal = np.linalg.norm(start_position[:2] - goal_position[:2])
+
+        if distance_to_goal < position_tol:
+            # Stop
+            command = [0.0, 0.0, 0.0] if self._is_holonomic else [0.0, 0.0]
+
         elif abs(yaw_error) > heading_tol:
-            direction = 1
-            if yaw_error < 0:
-                direction = -1
-            if self._is_holonomic:
-                command = [0.0, 0.0, direction * yaw_velocity]
-            else:
-                command = [0.0, direction * yaw_velocity]
+            # Turn to align with goal
+            turn_direction = 1 if yaw_error > 0 else -1
+            command = (
+                [0.0, 0.0, turn_direction * yaw_velocity]
+                if self._is_holonomic
+                else [0.0, turn_direction * yaw_velocity]
+            )
+
         else:
-            if self._is_holonomic:
-                command = [lateral_velocity, 0.0, 0.0]
-            else:
-                command = [lateral_velocity, 0]
+            # Go forward
+            command = [lateral_velocity, 0.0, 0.0] if self._is_holonomic else [lateral_velocity, 0]
+
         return self._open_loop_wheel_controller.forward(command)
 
     def reset(self) -> None:

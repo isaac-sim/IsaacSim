@@ -79,6 +79,7 @@ class BodyInfo:
             query_mode=PhysxPropertyQueryMode.QUERY_RIGID_BODY_WITH_COLLIDERS,
             rigid_body_fn=rigid_body_fn,
         )
+        return self
 
 
 def query_prims(stage: Usd.Stage, prim_paths: list[Sdf.Path]):

@@ -1,4 +1,24 @@
 # Changelog
+## [0.3.27] - 2025-07-07
+### Fixed
+- Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 0.3.26)
+
+## [0.3.26] - 2025-07-03
+### Changed
+- Make omni.kit.loop-isaac an explicit test dependency
+
+## [0.3.25] - 2025-06-27
+### Fixed
+- Use rolling average for the Imu Ogn node test
+
+## [0.3.24] - 2025-06-25
+### Changed
+- Add --reset-user to test args
+
+## [0.3.23] - 2025-06-18
+### Changed
+- Track change from isaacsim.core.include Pose.h
+
 ## [0.3.22] - 2025-05-31
 ### Changed
 - Use default nucleus server for all tests

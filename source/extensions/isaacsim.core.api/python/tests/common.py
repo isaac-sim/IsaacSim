@@ -12,8 +12,43 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import asyncio
+import gc
+import time
+
 import omni
 import torch
+from isaacsim.core.api import World
+from isaacsim.core.utils.stage import update_stage_async
+
+
+class CoreTestCase(omni.kit.test.AsyncTestCase):
+    """Base test class that automatically times all test methods.
+
+    This class extends omni.kit.test.AsyncTestCase to automatically print
+    the execution time of each test method. All test classes should inherit
+    from this instead of omni.kit.test.AsyncTestCase directly.
+    """
+
+    async def setUp(self):
+        """Set up test timing before each test method."""
+        self._test_start_time = time.time()
+        self._timeline = omni.timeline.get_timeline_interface()
+
+    async def tearDown(self):
+        self._timeline.stop()
+        await omni.kit.app.get_app().next_update_async()
+        """Print test execution time after each test method."""
+        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
+            print("tearDown, assets still loading, waiting to finish...")
+            await asyncio.sleep(1.0)
+        await update_stage_async()
+        World.clear_instance()
+
+        test_duration = time.time() - self._test_start_time
+        test_name = self._testMethodName
+        print(f"\n[TEST TIMING] {test_name}: {test_duration:.3f} seconds")
+        gc.collect()
 
 
 class TestProperties:

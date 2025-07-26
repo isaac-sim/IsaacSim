@@ -84,7 +84,17 @@ def should_filter_package(platform_filter, pkg):
     return all(platform_filter.lower() in platform.lower() for platform in platform_list)
 
 
-def gather_package_data(files, config, platform_abi, platform_target, package=None, platform_filter=None):
+def gather_package_data(
+    files,
+    config,
+    platform_abi,
+    platform_target,
+    package=None,
+    platform_filter=None,
+    full_license_details=False,
+    exclude_packages=None,
+    allowed_external=None,
+):
     """Gather package data from XML files.
 
     Args:
@@ -94,6 +104,9 @@ def gather_package_data(files, config, platform_abi, platform_target, package=No
         platform_target: Platform target string
         package: Optional specific package to check
         platform_filter: Optional string to filter out platforms (e.g., 'linux' or 'aarch64')
+        full_license_details: If True, include individual PACKAGE-LICENSES files in output
+        exclude_packages: Optional list of package names to exclude from processing
+        allowed_external: Optional list of package names that are allowed to be external/private
 
     Returns:
         tuple: (results_by_file, deps_count_by_file, json_output, full_package_listing)
@@ -105,11 +118,38 @@ def gather_package_data(files, config, platform_abi, platform_target, package=No
     imported_packages = {}  # Store package info from imported files
     filtered_package_names = set()  # Track which package names were filtered
 
-    def substitute_variables(path):
+    if exclude_packages:
+        print(f"Excluding packages: {exclude_packages}")
+
+    def should_exclude_package(package_name):
+        """Check if a package should be excluded based on the exclude_packages list.
+
+        Args:
+            package_name: Name of the package to check
+
+        Returns:
+            bool: True if the package should be excluded, False otherwise
+        """
+        if not exclude_packages:
+            return False
+
+        for exclude_name in exclude_packages:
+            # Direct exact match
+            if exclude_name == package_name:
+                print(f"    Excluding package '{package_name}' (exact match with '{exclude_name}')")
+                return True
+            # Substring match (case insensitive)
+            if exclude_name.lower() in package_name.lower():
+                print(f"    Excluding package '{package_name}' (contains '{exclude_name}')")
+                return True
+        return False
+
+    def substitute_variables(path, platforms_attr=None):
         """Substitute variables in a path string.
 
         Args:
             path: Path string that may contain variables
+            platforms_attr: Optional platforms attribute to determine ABI vs target preference
 
         Returns:
             str: Path with variables substituted
@@ -117,7 +157,13 @@ def gather_package_data(files, config, platform_abi, platform_target, package=No
         path = path.replace("${config}", config)
         path = path.replace("${platform_target}", platform_target)
         path = path.replace("${platform_target_abi}", platform_abi)
-        path = path.replace("${platform}", platform_target)
+
+        # For ${platform}, prefer ABI format if both target and ABI are supported
+        platform_value = platform_target
+        if platforms_attr and platform_abi.lower() in platforms_attr.lower():
+            platform_value = platform_abi
+
+        path = path.replace("${platform}", platform_value)
         return path
 
     def process_imported_file(import_path, filters):
@@ -128,6 +174,15 @@ def gather_package_data(files, config, platform_abi, platform_target, package=No
             filters: List of package names to include from the imported file
         """
         try:
+            # Check if the file exists before trying to parse it
+            if not os.path.exists(import_path):
+                print(f"  Skipping imported file (not found): {import_path}")
+                return
+
+            print(f"  Processing imported file: {import_path}")
+            if filters:
+                print(f"    Filters: {filters}")
+
             import_tree = ET.parse(import_path)
             import_root = import_tree.getroot()
 
@@ -137,66 +192,135 @@ def gather_package_data(files, config, platform_abi, platform_target, package=No
                 if not name:
                     continue
 
-                # Get package name if it exists
-                package_elem = dependency.find("package")
-                package_name = package_elem.get("name") if package_elem is not None else None
+                # Substitute variables in name for comparison
+                substituted_name = substitute_variables(name)
 
-                # Only store packages that match the filters
-                if filters:
-                    # Substitute variables in name for comparison
-                    substituted_name = substitute_variables(name)
-                    substituted_package_name = substitute_variables(package_name) if package_name else None
-
-                    if not any(
-                        substitute_variables(filter_name) in substituted_name
-                        or (substituted_package_name and substitute_variables(filter_name) in substituted_package_name)
-                        for filter_name in filters
-                    ):
-                        continue
-
-                # Check if this package is for our platform
-                platforms = dependency.get("platforms", "")
+                # Get all package elements within this dependency
                 package_elements = dependency.findall("package")
 
-                # If there's exactly one package and it has no platform info, accept it
-                if len(package_elements) == 1 and not platforms:
-                    filtered_package_names.add(substituted_name)
+                if package_elements:
+                    # Process each package element separately
+                    for package_elem in package_elements:
+                        package_name = package_elem.get("name")
+                        if not package_name:
+                            continue
 
-                    # Get version from the package element
-                    version = package_elements[0].get("version", "")
+                        # Substitute variables in package name for comparison
+                        substituted_package_name = substitute_variables(package_name)
+
+                        # Only store packages that match the filters
+                        if filters:
+
+                            def normalize_name(name):
+                                """Normalize a name for comparison by removing common separators and suffixes."""
+                                # Remove platform suffixes
+                                name = name.split(".")[0]  # Remove everything after first dot
+                                # Replace common separators with underscores
+                                name = name.replace("+", "_").replace("-", "_")
+                                return name.lower()
+
+                            def filter_matches_package(filter_name, package_name):
+                                """Check if a filter matches a package name using various strategies."""
+                                # Direct substring matching
+                                if filter_name in package_name or package_name in filter_name:
+                                    return True
+                                # Exact match
+                                if filter_name == package_name:
+                                    return True
+                                # Normalized match
+                                if normalize_name(filter_name) == normalize_name(package_name):
+                                    return True
+                                # Split filter by separators and check if all parts appear in package
+                                filter_parts = filter_name.replace("-", " ").replace("_", " ").split()
+                                package_lower = package_name.lower()
+                                if all(part.lower() in package_lower for part in filter_parts):
+                                    return True
+                                return False
+
+                            filter_match = any(
+                                filter_matches_package(substitute_variables(filter_name), substituted_package_name)
+                                for filter_name in filters
+                            )
+                            if not filter_match:
+                                continue
+
+                        # Check if this package is for our platform
+                        platforms = package_elem.get("platforms", "")
+                        if platforms:
+                            platform_list = platforms.split()
+                            # Skip if none of the platforms match our target
+                            if not any(
+                                platform_abi.lower() in platform.lower() or platform_target.lower() in platform.lower()
+                                for platform in platform_list
+                            ):
+                                continue
+
+                        # Skip if this package should be excluded
+                        if should_exclude_package(substituted_package_name):
+                            continue
+
+                        # Get version from the package element
+                        version = package_elem.get("version", "")
+                        # Replace variables in version string
+                        version = substitute_variables(version, platforms)
+
+                        # Skip packages without valid version information
+                        if not version or version.strip() == "":
+                            continue
+
+                        # Use composite key
+                        imported_packages[(substituted_name, package_name, version)] = {
+                            "dependency_name": substituted_name,
+                            "name": package_name,  # Use package name
+                            "version": version,
+                            "license_file": find_license_file(
+                                dependency.get("linkPath", ""), substituted_name, None, full_license_details
+                            ),
+                        }
+
+                        filtered_package_names.add((substituted_name, package_name, version))
+                else:
+                    # No package elements, check dependency-level platform info
+                    platforms = dependency.get("platforms", "")
+                    if platforms:
+                        platform_list = platforms.split()
+                        # Skip if none of the platforms match our target
+                        if not any(
+                            platform_target.lower() in platform.lower() or platform_abi.lower() in platform.lower()
+                            for platform in platform_list
+                        ):
+                            print(
+                                f"    Skipping {substituted_name} (platform mismatch: {platforms} vs {platform_target})"
+                            )
+                            continue
+
+                    # Get version from dependency level
+                    version = dependency.get("version", "")
                     # Replace variables in version string
-                    version = substitute_variables(version)
+                    version = substitute_variables(version, platforms)
 
-                    imported_packages[substituted_name] = {
-                        "name": package_name if package_name else substituted_name,
-                        "version": version,
-                        "license_file": find_license_file(dependency.get("linkPath", ""), substituted_name),
-                    }
-                    continue
-
-                # Otherwise, check platform compatibility
-                if platforms:
-                    platform_list = platforms.split()
-                    # Skip if none of the platforms match our target
-                    if not any(platform_target.lower() in platform.lower() for platform in platform_list):
+                    # Skip dependencies without valid version information
+                    if not version or version.strip() == "":
+                        print(f"    Skipping {substituted_name} (no version)")
                         continue
 
-                filtered_package_names.add(substituted_name)
+                    # Skip if this package should be excluded
+                    if should_exclude_package(substituted_name):
+                        print(f"    Skipping {substituted_name} (excluded)")
+                        continue
 
-                # Look for version in nested package element first
-                if package_elem is not None:
-                    version = package_elem.get("version", "")
-                else:
-                    version = dependency.get("version", "")
+                    print(f"    Adding {substituted_name} version {version}")
 
-                # Replace variables in version string
-                version = substitute_variables(version)
+                    imported_packages[(substituted_name, substituted_name, version)] = {
+                        "dependency_name": substituted_name,
+                        "name": substituted_name,  # Use dependency name
+                        "version": version,
+                        "license_file": find_license_file(
+                            dependency.get("linkPath", ""), substituted_name, None, full_license_details
+                        ),
+                    }
 
-                imported_packages[substituted_name] = {
-                    "name": package_name if package_name else substituted_name,
-                    "version": version,
-                    "license_file": find_license_file(dependency.get("linkPath", ""), substituted_name),
-                }
+                    filtered_package_names.add((substituted_name, substituted_name, version))
         except Exception as e:
             print(f"Warning: Failed to process imported file {import_path}: {e}")
 
@@ -237,6 +361,7 @@ def gather_package_data(files, config, platform_abi, platform_target, package=No
         total_deps = 0
         full_package_listing[file][config] = []
 
+        # Process all dependencies from the main file
         for dependency in root.findall(".//dependency"):
             name = dependency.get("name")
             if not name:
@@ -246,33 +371,98 @@ def gather_package_data(files, config, platform_abi, platform_target, package=No
             name = substitute_variables(name)
 
             # Skip if this package matches our filter
-            if should_filter_package(platform_filter, dependency):
+            if should_filter_package(platform_filter, dependency) or should_exclude_package(name):
                 continue
 
             total_deps += 1
 
             # Use imported package info if available, otherwise use local info
-            if name in imported_packages:
-                package_info = imported_packages[name]
-            else:
-                # Look for version in nested package element first
-                package_elem = dependency.find("package")
-                if package_elem is not None:
-                    version = package_elem.get("version", "")
+            imported_found = False
+            for imported_key, imported_info in imported_packages.items():
+                dependency_name, package_name, version = imported_key
+                # Try to match by dependency name or package name
+                if dependency_name == name or package_name == name:
+                    imported_found = True
+                    if not package or package_name == package:
+                        full_package_listing[file][config].append(imported_info)
+
+            if not imported_found:
+                # Process all package elements within this dependency
+                package_elements = dependency.findall("package")
+
+                if package_elements:
+                    # Process each package element separately
+                    for package_elem in package_elements:
+                        version = package_elem.get("version", "")
+                        # Check platforms for version substitution
+                        platforms = package_elem.get("platforms", "")
+                        # Replace variables in version string
+                        version = substitute_variables(version, platforms)
+
+                        # Skip packages without valid version information
+                        if not version or version.strip() == "":
+                            continue
+
+                        # Check if this package is for our platform
+                        if platforms:
+                            platform_list = platforms.split()
+                            # Skip if none of the platforms match our target
+                            if not any(
+                                platform_abi.lower() in platform.lower() or platform_target.lower() in platform.lower()
+                                for platform in platform_list
+                            ):
+                                continue
+
+                        # Skip if this package should be excluded
+                        package_name = package_elem.get("name") if package_elem is not None else name
+                        if should_exclude_package(package_name):
+                            continue
+
+                        package_info = {
+                            "name": package_name,
+                            "version": version,
+                            "license_file": find_license_file(
+                                dependency.get("linkPath", ""), name, None, full_license_details
+                            ),
+                        }
+
+                        if not package or name == package:
+                            full_package_listing[file][config].append(package_info)
                 else:
+                    # No package elements, use dependency-level version
                     version = dependency.get("version", "")
+                    # Get dependency-level platforms for version substitution
+                    dep_platforms = dependency.get("platforms", "")
+                    # Replace variables in version string
+                    version = substitute_variables(version, dep_platforms)
 
-                # Replace variables in version string
-                version = substitute_variables(version)
+                    # Skip dependencies without valid version information
+                    if not version or version.strip() == "":
+                        continue
 
-                package_info = {
-                    "name": package_elem.get("name") if package_elem is not None else name,
-                    "version": version,
-                    "license_file": find_license_file(dependency.get("linkPath", ""), name),
-                }
+                    package_info = {
+                        "name": name,
+                        "version": version,
+                        "license_file": find_license_file(
+                            dependency.get("linkPath", ""), name, None, full_license_details
+                        ),
+                    }
 
-            if not package or name == package:
-                full_package_listing[file][config].append(package_info)
+                    if not package or name == package:
+                        full_package_listing[file][config].append(package_info)
+
+        # Also include packages from imported_packages that don't have corresponding dependency elements
+        for imported_key, imported_info in imported_packages.items():
+            # Check if this imported package was already processed above
+            already_processed = any(
+                pkg["name"] == imported_info["name"] and pkg["version"] == imported_info["version"]
+                for pkg in full_package_listing[file][config]
+            )
+
+            if not already_processed:
+                if not package or imported_info["name"] == package:
+                    full_package_listing[file][config].append(imported_info)
+                    total_deps += 1
 
         deps_count_by_file[file][config] = total_deps
 
@@ -280,8 +470,13 @@ def gather_package_data(files, config, platform_abi, platform_target, package=No
             file,
             exclude_local=True,
             remotes=["cloudfront"],
-            tokens={"config": config, "platform_target": platform_target, "platform_target_abi": platform_target},
-            platform=platform_target,
+            tokens={
+                "config": config,
+                "platform_target": platform_target,
+                "platform_target_abi": platform_abi,
+                "platform": platform_abi,
+            },
+            platform=platform_abi,
             tags={"public": "true"},
         )
 
@@ -301,7 +496,15 @@ def gather_package_data(files, config, platform_abi, platform_target, package=No
     return results_by_file, deps_count_by_file, json_output, full_package_listing
 
 
-def write_output_files(results_by_file, deps_count_by_file, json_output, full_package_listing, configs):
+def write_output_files(
+    results_by_file,
+    deps_count_by_file,
+    json_output,
+    full_package_listing,
+    configs,
+    full_license_details=False,
+    allowed_external=None,
+):
     """Write gathered data to output files and print summary.
 
     Args:
@@ -310,9 +513,11 @@ def write_output_files(results_by_file, deps_count_by_file, json_output, full_pa
         json_output: Dict of problem packages by file and config
         full_package_listing: Dict of all packages by file and config
         configs: List of configs that were checked
+        full_license_details: If True, include individual PACKAGE-LICENSES files in output
+        allowed_external: Optional list of package names that are allowed to be external/private
 
     Returns:
-        int: Total number of issues found
+        tuple: (total_issues, private_package_count)
     """
     # Print summary and count total issues
     total_issues = 0
@@ -331,19 +536,14 @@ def write_output_files(results_by_file, deps_count_by_file, json_output, full_pa
 
     print(f"\nTotal issues found: {total_issues} across {total_deps} total dependencies")
 
-    # Write JSON outputs
-    with open("packman_verification_results.json", "w") as f:
-        json.dump(json_output, f, indent=2)
-
-    with open("packman_full_results.json", "w") as f:
-        json.dump(full_package_listing, f, indent=2)
-
     # Write CSV output with alphabetically sorted entries
-    with open("packman_full_results.csv", "w") as f:
-        f.write("Package Name,Version,Public/Private,License Files,License Type\n")
+    with open("packman_full_results.csv", "w") as full_csv, open("packman_private_results.csv", "w") as private_csv:
+        full_csv.write("Package Name,Version,Public/Private,Expected Public/Private,License Files,License Type\n")
+        private_csv.write("Package Name,Version,Public/Private,License Files,License Type\n")
 
         # Create a dictionary to track unique package entries
         unique_packages = {}
+        private_package_count = 0
 
         for file in full_package_listing:
             for config in configs:
@@ -354,49 +554,112 @@ def write_output_files(results_by_file, deps_count_by_file, json_output, full_pa
                     version = package["version"]
                     is_public = "private" if name in private_packages else "public"
 
+                    # Determine expected public/private based on allowed_external list
+                    expected_public_private = "private" if allowed_external and name in allowed_external else "public"
+
                     # Create a key for the package based on its identifying information
                     package_key = (name, version)
 
                     # Store package info if we haven't seen it before
                     if package_key not in unique_packages:
                         license_info = package.get("license_file")
-                        if not license_info:
-                            license_files = ""
-                            license_type = ""
-                        elif isinstance(license_info, list):
-                            license_files = ";".join(license_info)
-                            license_type = ""
-                        elif isinstance(license_info, dict):
-                            license_files = license_info["location"]
-                            license_type = license_info.get("type", "")
-                        else:
-                            license_files = str(license_info)
-                            license_type = ""
+                        license_type = ""
+                        license_files = ""
+                        if license_info:
+                            # Handle the new dictionary format from find_license_file
+                            if isinstance(license_info, dict):
+                                license_files_list = []
+                                license_types_list = []
 
+                                # Always include main license file first if present
+                                if license_info.get("main_license"):
+                                    license_files_list.append(license_info["main_license"])
+
+                                # Handle PACKAGE-LICENSES
+                                if license_info.get("package_licenses_count", 0) > 0:
+                                    if full_license_details:
+                                        # Include individual files
+                                        license_files_list.extend(license_info.get("package_licenses_files", []))
+                                    else:
+                                        # Just show count
+                                        license_files_list.append(
+                                            f"PACKAGE-LICENSES found ({license_info['package_licenses_count']})"
+                                        )
+
+                                # Add other license files in priority order
+                                license_files_list.extend(license_info.get("nvidia_proprietary", []))
+                                license_files_list.extend(license_info.get("mit_licenses", []))
+                                license_files_list.extend(license_info.get("spdx_licenses", []))
+                                license_files_list.extend(license_info.get("other_licenses", []))
+
+                                # Extract license types
+                                if license_info.get("nvidia_proprietary"):
+                                    license_types_list.append("NVIDIA Proprietary")
+                                if license_info.get("mit_licenses"):
+                                    license_types_list.append("MIT")
+                                if license_info.get("spdx_license_types"):
+                                    license_types_list.extend(license_info.get("spdx_license_types", []))
+
+                                license_files = ";".join(license_files_list)
+                                license_type = ";".join(license_types_list)
+                            else:
+                                # Fallback for old string format
+                                license_files = str(license_info)
                         unique_packages[package_key] = {
                             "name": name,
                             "version": version,
                             "public_private": is_public,
+                            "expected_public_private": expected_public_private,
                             "license_files": license_files,
                             "license_type": license_type,
                         }
+                        # Count private packages
+                        if is_public == "private":
+                            private_package_count += 1
 
-        # Sort packages by name first, then by version
-        sorted_packages = sorted(unique_packages.values(), key=lambda x: (x["name"].lower(), x["version"].lower()))
+        # Sort packages with custom priority: private+expected_public first, public+expected_public second, private+expected_private last
+        def sort_key(package_info):
+            is_private = package_info["public_private"] == "private"
+            expected_private = package_info["expected_public_private"] == "private"
 
-        # Write sorted packages to CSV
+            # Priority order: private+expected_public (0), public+expected_public (1), private+expected_private (2)
+            if is_private and not expected_private:
+                priority = 0
+            elif not is_private and not expected_private:
+                priority = 1
+            else:  # private+expected_private
+                priority = 2
+
+            return (priority, package_info["name"].lower(), package_info["version"].lower())
+
+        sorted_packages = sorted(unique_packages.values(), key=sort_key)
+
+        # Write sorted packages to both CSVs
         for package_info in sorted_packages:
-            f.write(
+            # Generate the CSV line for full results
+            full_csv_line = (
                 f"{package_info['name']},{package_info['version']},"
-                f"{package_info['public_private']},{package_info['license_files']},"
-                f"{package_info['license_type']}\n"
+                f"{package_info['public_private']},{package_info['expected_public_private']},"
+                f"{package_info['license_files']},{package_info['license_type']}\n"
             )
+            # Write to full CSV
+            full_csv.write(full_csv_line)
 
-    print("\nDetailed results written to packman_verification_results.json")
-    print("Full package listing written to packman_full_results.json")
-    print("CSV summary written to packman_full_results.csv")
-
-    return total_issues
+            # Write to private CSV if it's a private package AND not in allowed_external
+            if package_info["public_private"] == "private" and (
+                not allowed_external or package_info["name"] not in allowed_external
+            ):
+                # Generate CSV line for private results (without expected public/private column)
+                private_csv_line = (
+                    f"{package_info['name']},{package_info['version']},"
+                    f"{package_info['public_private']},{package_info['license_files']},"
+                    f"{package_info['license_type']}\n"
+                )
+                private_csv.write(private_csv_line)
+    print("\nFull package listing written to packman_full_results.csv")
+    print("Private packages only written to packman_private_results.csv")
+    print(f"Found {private_package_count} private package(s)")
+    return total_issues, private_package_count
 
 
 def merge_verification_results(*results_list):
@@ -442,7 +705,16 @@ def merge_verification_results(*results_list):
     return merged_results, merged_deps, merged_json, merged_listing
 
 
-def verify_externals(xml_files=None, package=None, platform_abi=None, platform_target=None, platform_filter=None):
+def verify_externals(
+    xml_files=None,
+    package=None,
+    platform_abi=None,
+    platform_target=None,
+    platform_filter=None,
+    full_license_details=False,
+    exclude_packages=None,
+    allowed_external=None,
+):
     """Verify external dependencies and their licenses.
 
     Args:
@@ -451,6 +723,9 @@ def verify_externals(xml_files=None, package=None, platform_abi=None, platform_t
         platform_abi: Platform ABI string (e.g., 'manylinux_2_35_x86_64'). If None, detects from system.
         platform_target: Platform target string (e.g., 'linux-x86_64'). If None, detects from system.
         platform_filter: String to filter out platforms (e.g., 'linux' will skip all linux platforms)
+        full_license_details: If True, include individual PACKAGE-LICENSES files in output
+        exclude_packages: Optional list of package names to exclude from processing
+        allowed_external: Optional list of package names that are allowed to be external/private
 
     Returns:
         int: Number of issues found (non-zero indicates verification failure)
@@ -500,6 +775,9 @@ def verify_externals(xml_files=None, package=None, platform_abi=None, platform_t
             combo.get("platform_target", platform_target),
             package,
             platform_filter,
+            full_license_details,
+            exclude_packages,
+            allowed_external,
         )
         all_results.append(results)
 
@@ -508,7 +786,15 @@ def verify_externals(xml_files=None, package=None, platform_abi=None, platform_t
 
     # Write output and get total issues
     configs = list(set(combo["config"] for combo in combinations))
-    return write_output_files(*merged_results, configs)
+    total_issues, private_package_count = write_output_files(
+        *merged_results, configs, full_license_details, allowed_external
+    )
+
+    # Return 1 if there are private packages found
+    if private_package_count > 0:
+        return 1
+
+    return total_issues
 
 
 def main():
@@ -529,6 +815,18 @@ def main():
         "--platform", "-t", help="Explicitly set platform target (e.g., 'linux-x86_64' or 'windows-x86_64')"
     )
     parser.add_argument("--config", "-c", help="Explicitly set config (e.g., 'release' or 'debug')")
+    parser.add_argument(
+        "--full-package-license-details", "-l", help="Include full package license details", action="store_true"
+    )
+    parser.add_argument(
+        "--exclude-package", "-e", help="Exclude packages with this name (can be used multiple times)", action="append"
+    )
+    parser.add_argument(
+        "--allowed-external",
+        "-a",
+        help="Package names that are allowed to be external/private (can be used multiple times)",
+        action="append",
+    )
     args = parser.parse_args()
 
     # Get platform info
@@ -576,6 +874,9 @@ def main():
             combo.get("platform_target", platform_target),
             args.package,
             args.skip_platform,
+            args.full_package_license_details,
+            args.exclude_package,
+            args.allowed_external,
         )
         all_results.append(results)
 
@@ -584,7 +885,15 @@ def main():
 
     # Write output and get total issues
     configs = list(set(combo["config"] for combo in combinations))
-    return write_output_files(*merged_results, configs)
+    total_issues, private_package_count = write_output_files(
+        *merged_results, configs, args.full_package_license_details, args.allowed_external
+    )
+
+    # Return 1 if there are private packages found
+    if private_package_count > 0:
+        exit(1)
+
+    return total_issues
 
 
 if __name__ == "__main__":
