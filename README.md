@@ -218,7 +218,7 @@ docker run -it --gpus all --name isaac \
 ```
 Start again:
 ```bash
-docker start isaac && docker logs isaac -f
+docker start isaac && docker logs isaac -f -n 1
 ```
 
 ## Troubleshooting
