@@ -196,6 +196,30 @@ Isaac Sim uses a custom build system with the following key options:
 - `--post-build-only`: Only perform post-build step
 
 
+### Run in docker
+
+Create:
+```bash
+xhost +"local:docker@"
+docker build -t isaac -f build.dockerfile .
+docker run -it --gpus all --name isaac \
+           --network host \
+           -e DISPLAY=$DISPLAY \
+           -e XAUTHORITY=$XAUTHORITY \
+           -e XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+           -e OMNI_KIT_ALLOW_ROOT=1 \
+           -e NVIDIA_VISIBLE_DEVICES=all \
+           -e NVIDIA_DRIVER_CAPABILITIES=all \
+           -v $XAUTHORITY=$$XAUTHORITY \
+           -v /tmp/.X11-unix:/tmp/.X11-unix \
+           -v $XDG_RUNTIME_DIR:$XDG_RUNTIME_DIR \
+           -v $HOME:$HOME \
+           isaac
+```
+Start again:
+```bash
+docker start isaac && docker logs isaac -f -n 1
+```
 
 ## Troubleshooting
 
