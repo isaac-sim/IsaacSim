@@ -313,6 +313,7 @@ class SimulationControl:
                 SetSimulationState,
                 SpawnEntity,
                 StepSimulation,
+                GetEntityBounds,
             )
 
             self.GetSimulationState = GetSimulationState
@@ -327,6 +328,7 @@ class SimulationControl:
             self.GetEntitiesStates = GetEntitiesStates
             self.SetEntityState = SetEntityState
             self.GetSimulatorFeatures = GetSimulatorFeatures
+            self.GetEntityBounds = GetEntityBounds
 
             # Import action types
             from simulation_interfaces.action import SimulateSteps
@@ -347,6 +349,7 @@ class SimulationControl:
             self.SetEntityState = None
             self.SimulateSteps = None
             self.GetSimulatorFeatures = None
+            self.GetEntityBounds = None
 
         # Initialize and register services
         self._initialize_ros2_services()
@@ -471,6 +474,14 @@ class SimulationControl:
                 )
             else:
                 carb.log_error("GetSimulatorFeatures service type not available")
+
+            # Register the GetEntityBounds service
+            if hasattr(self, "GetEntityBounds") and self.GetEntityBounds:
+                self.service_manager.register_service(
+                    f"{service_prefix}/GetEntityBounds", self.GetEntityBounds, self._handle_get_entity_bounds
+                )
+            else:
+                carb.log_error("GetEntityBounds service type not available")
 
             self.is_initialized = True
             carb.log_info("ROS 2 Simulation Control services initialized")
@@ -1446,6 +1457,55 @@ class SimulationControl:
         except Exception as e:
             carb.log_error(f"Error in GetSimulatorFeatures service handler: {e}")
             # There's no result field in GetSimulatorFeatures response, so we can only log the error
+
+        return response
+    
+    async def _handle_get_entity_bounds(self, request, response):
+        """Handle GetEntityBounds service request
+
+        This service retrieves the bounding box of a specific entity in the simulation.
+        The bounding box is returned as a type and a list of points representing the corners of the bounding box.
+
+        Args:
+            request: GetEntityBounds request with entity path
+            response: GetEntityBounds response with bounds type and points
+
+        Returns:
+            response: Completed GetEntityBounds response
+        """
+        try:
+            import isaacsim.core.utils.prims as prim_utils
+            from simulation_interfaces.msg import Result, Bounds
+            from geometry_msgs.msg import Vector3
+            import isaacsim.core.utils.bounds as bounds_utils
+            # Check if the entity exists
+            if not prim_utils.is_prim_path_valid(request.entity):
+                response.result = Result(
+                    result=Result.RESULT_NOT_FOUND, error_message=f"Entity '{request.entity}' does not exist"
+                )
+                return response
+
+            # Get the bounds of the entity
+            cache = bounds_utils.create_bbox_cache()
+            bounds = bounds_utils.compute_aabb(cache, prim_path=request.entity)
+
+
+            # Set the bounds in the response
+            response.bounds = bounds
+
+            # Set success result
+            response.result = Result(result=Result.RESULT_OK, error_message="")
+            response.bounds = Bounds(type=1, points=[
+                Vector3(x=bounds[0], y=bounds[1], z=bounds[2]),
+                Vector3(x=bounds[3], y=bounds[4], z=bounds[5])
+            ])
+            carb.log_info(f"Successfully retrieved bounds for entity: {request.entity}")
+
+        except Exception as e:
+            response.result = Result(
+                result=Result.RESULT_OPERATION_FAILED, error_message=f"Error getting entity bounds: {e}"
+            )
+            carb.log_error(f"Error in GetEntityBounds service handler: {e}")
 
         return response
 
