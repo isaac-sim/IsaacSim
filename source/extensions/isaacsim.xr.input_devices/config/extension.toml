@@ -1,0 +1,31 @@
+[package]
+version = "1.0.0"
+category = "XR"
+title = "Isaac Sim XR Input Devices"
+description = "Provides XR input device support for Manus gloves and Vive trackers"
+authors = ["yuanchenl@nvidia.com"]
+repository = "https://gitlab-master.nvidia.com/omniverse/isaac/omni_isaac_sim/-/tree/develop/source/extensions/isaacsim.xr.input_devices"
+keywords = ["isaac", "xr", "manus", "vive", "trackers", "gloves", "input", "devices"]
+changelog = "docs/CHANGELOG.md"
+readme = "docs/README.md"
+writeTarget.kit = true
+
+[dependencies]
+"omni.kit.xr.core" = {}
+"isaacsim.core.api" = {}
+"isaacsim.core.deprecation_manager" = {}
+"isaacsim.core.utils" = {}
+
+[[python.module]]
+name = "isaacsim.xr.input_devices"
+
+[[test]]
+dependencies = [
+    "isaacsim.core.api",
+    "isaacsim.core.utils",
+]
+args = [
+    "--/app/asyncRendering=0",
+    "--/app/fastShutdown=1",
+    "--vulkan",
+] 
