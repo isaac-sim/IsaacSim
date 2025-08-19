@@ -50,7 +50,7 @@ hidden_prim = create_prim("/Hidden/Prototypes", "Scope")
 base_cube_path = "/Hidden/Prototypes/BaseCube"
 VisualCuboid(
     prim_path=base_cube_path,
-    size=0.02,  # Slightly larger cubes for better visibility
+    size=0.01, 
     color=np.array([255, 0, 0]),  # Red color
 )
 set_prim_visibility(hidden_prim, False)
@@ -60,18 +60,16 @@ instancer_path = "/World/DeviceCubeInstancer"
 point_instancer = UsdGeom.PointInstancer.Define(my_world.stage, instancer_path)
 point_instancer.CreatePrototypesRel().SetTargets([Sdf.Path(base_cube_path)])
 
-# Calculate total device count (2 manus gloves + variable vive trackers, let's assume max 4 trackers)
-max_devices = 6  # 2 manus gloves + up to 4 vive trackers
-device_count = max_devices
+max_devices = 60
 
 # Initially hide all cubes until devices are tracked
-point_instancer.CreateProtoIndicesAttr().Set([1 for _ in range(device_count)])
+point_instancer.CreateProtoIndicesAttr().Set([1 for _ in range(max_devices)])
 
 # Initialize positions and orientations
-positions = [Gf.Vec3f(0.0, 0.0, 0.0) for i in range(device_count)]
+positions = [Gf.Vec3f(0.0, 0.0, 0.0) for i in range(max_devices)]
 point_instancer.CreatePositionsAttr().Set(positions)
 
-orientations = [Gf.Quath(1.0, 0.0, 0.0, 0.0) for _ in range(device_count)]
+orientations = [Gf.Quath(1.0, 0.0, 0.0, 0.0) for _ in range(max_devices)]
 point_instancer.CreateOrientationsAttr().Set(orientations)
 
 # Add instancer to world scene
@@ -85,12 +83,15 @@ carb.log_info("Using XR device integration from extension")
 my_world.reset()
 reset_needed = False
 
+# Frame counter for sequential device updates
+frame_counter = 0
+
 # Get attribute references for faster access
 positions_attr = point_instancer.GetPositionsAttr()
 orientations_attr = point_instancer.GetOrientationsAttr()
 proto_idx_attr = point_instancer.GetProtoIndicesAttr()
 
-carb.log_info("Starting Manus Glove and Vive Tracker visualization")
+carb.log_info("Starting Manus Glove and Vive Tracker visualization with sequential updates")
 carb.log_info("Red cubes will appear at device positions when data is available")
 
 # Main simulation loop
@@ -103,76 +104,54 @@ while simulation_app.is_running():
             my_world.reset()
             reset_needed = False
 
-        # Update device data
-        xr_integration.update_all_devices()
+        # Sequential device updates to avoid resource contention
+        # Alternate between Manus and Vive every frame
+        update_manus = (frame_counter % 2 == 0)
+        frame_counter += 1
         
         # Get current cube arrays
         current_positions = positions_attr.Get()
         current_orientations = orientations_attr.Get()
         proto_indices = proto_idx_attr.Get()
 
-        # Initially hide all cubes
-        proto_indices = [1 for _ in range(device_count)]
+        # Initialize all cubes as hidden (following hand_tracking_sample pattern)
+        proto_indices = [1 for _ in range(max_devices)]
+        proto_idx_attr.Set(proto_indices)
         cube_idx = 0
-
-        # Get all device data
+        
+        if update_manus:
+            # Update manus glove positions
+            xr_integration.update_manus()
+        else:
+            # Update vive tracker positions
+            xr_integration.update_vive()
+        
         all_device_data = xr_integration.get_all_device_data()
-        
-        # Update manus glove positions
         manus_data = all_device_data.get('manus_gloves', {})
-        
-        # Left glove
-        if 'left_glove' in manus_data and cube_idx < device_count:
-            glove_data = manus_data['left_glove']
-            if glove_data.get('valid', False):
-                pos = glove_data['position']
-                ori = glove_data['orientation']
-                
-                current_positions[cube_idx] = Gf.Vec3f(float(pos[0]), float(pos[1]), float(pos[2]))
-                current_orientations[cube_idx] = Gf.Quath(
-                    float(ori[0]), float(ori[1]), float(ori[2]), float(ori[3])
-                )
-                proto_indices[cube_idx] = 0  # Show cube
-                cube_idx += 1
-
-        # Right glove
-        if 'right_glove' in manus_data and cube_idx < device_count:
-            glove_data = manus_data['right_glove']
-            if glove_data.get('valid', False):
-                pos = glove_data['position']
-                ori = glove_data['orientation']
-                
-                current_positions[cube_idx] = Gf.Vec3f(float(pos[0]), float(pos[1]), float(pos[2]))
-                current_orientations[cube_idx] = Gf.Quath(
-                    float(ori[0]), float(ori[1]), float(ori[2]), float(ori[3])
-                )
-                proto_indices[cube_idx] = 0  # Show cube
-                cube_idx += 1
-
-        # Update vive tracker positions
         vive_data = all_device_data.get('vive_trackers', {})
-        
-        # Process all vive tracker devices
-        for device_key, device_values in vive_data.items():
-            if cube_idx >= device_count:
-                break
+            
+        # Process all devices
+        for device_data in [manus_data, vive_data]:
+            for joint, joint_data in device_data.items():
+                if cube_idx >= max_devices:
+                    break
+                pos = joint_data['position']
+                ori = joint_data['orientation']
                 
-            if device_key.endswith('_position'):
-                # Extract device name (remove '_position' suffix)
-                device_name = device_key[:-9]
-                orientation_key = f"{device_name}_orientation"
-                
-                if orientation_key in vive_data:
-                    pos = device_values
-                    ori = vive_data[orientation_key]
-                    
-                    current_positions[cube_idx] = Gf.Vec3f(float(pos[0]), float(pos[1]), float(pos[2]))
-                    current_orientations[cube_idx] = Gf.Quath(
-                        float(ori[0]), float(ori[1]), float(ori[2]), float(ori[3])
-                    )
-                    proto_indices[cube_idx] = 0  # Show cube
-                    cube_idx += 1
+                current_positions[cube_idx] = Gf.Vec3f(float(pos[0]), float(pos[1]), float(pos[2]))
+                current_orientations[cube_idx] = Gf.Quath(
+                    float(ori[0]), float(ori[1]), float(ori[2]), float(ori[3])
+                )
+                proto_indices[cube_idx] = 0  # Show cube
+                cube_idx += 1
 
+        # Debug: Log cube visibility and positions
+        visible_cubes = sum(1 for idx in proto_indices if idx == 0)
+
+        if frame_counter % 100 == 0:
+            carb.log_info(f"Showing {visible_cubes} cubes at positions: {current_positions[:visible_cubes]}")
+            carb.log_info(f"Frame {frame_counter}, data: {all_device_data}")
+        
         # Update the instancer with new positions and orientations
         positions_attr.Set(current_positions)
         orientations_attr.Set(current_orientations)
