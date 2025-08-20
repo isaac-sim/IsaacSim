@@ -45,25 +45,36 @@ stage = omni.usd.get_context().get_stage()
 distantLight = UsdLux.DistantLight.Define(stage, Sdf.Path("/DistantLight"))
 distantLight.CreateIntensityAttr(300)
 
-# Create red cube prototype
+# Create cube prototypes
 hidden_prim = create_prim("/Hidden/Prototypes", "Scope")
-base_cube_path = "/Hidden/Prototypes/BaseCube"
+
+# Red cube for Manus gloves (small)
+manus_cube_path = "/Hidden/Prototypes/ManusCube"
 VisualCuboid(
-    prim_path=base_cube_path,
+    prim_path=manus_cube_path,
     size=0.01, 
     color=np.array([255, 0, 0]),  # Red color
 )
+
+# Blue cube for Vive trackers (larger)
+vive_cube_path = "/Hidden/Prototypes/ViveCube"
+VisualCuboid(
+    prim_path=vive_cube_path,
+    size=0.02, 
+    color=np.array([0, 0, 255]),  # Blue color
+)
+
 set_prim_visibility(hidden_prim, False)
 
 # Create point instancer for cubes
 instancer_path = "/World/DeviceCubeInstancer"
 point_instancer = UsdGeom.PointInstancer.Define(my_world.stage, instancer_path)
-point_instancer.CreatePrototypesRel().SetTargets([Sdf.Path(base_cube_path)])
+point_instancer.CreatePrototypesRel().SetTargets([Sdf.Path(manus_cube_path), Sdf.Path(vive_cube_path)])
 
 max_devices = 60
 
-# Initially hide all cubes until devices are tracked
-point_instancer.CreateProtoIndicesAttr().Set([1 for _ in range(max_devices)])
+# Initially hide all cubes until devices are tracked (index 2 = hidden, since we have 2 prototypes: 0=manus, 1=vive)
+point_instancer.CreateProtoIndicesAttr().Set([2 for _ in range(max_devices)])
 
 # Initialize positions and orientations
 positions = [Gf.Vec3f(0.0, 0.0, 0.0) for i in range(max_devices)]
@@ -92,7 +103,7 @@ orientations_attr = point_instancer.GetOrientationsAttr()
 proto_idx_attr = point_instancer.GetProtoIndicesAttr()
 
 carb.log_info("Starting Manus Glove and Vive Tracker visualization with sequential updates")
-carb.log_info("Red cubes will appear at device positions when data is available")
+carb.log_info("Red cubes (0.01) for Manus gloves, Blue cubes (0.02) for Vive trackers")
 
 # Main simulation loop
 while simulation_app.is_running():
@@ -106,7 +117,7 @@ while simulation_app.is_running():
 
         # Sequential device updates to avoid resource contention
         # Alternate between Manus and Vive every frame
-        update_manus = (frame_counter % 2 == 0)
+        update_manus = (frame_counter % 2 == 1)
         frame_counter += 1
         
         # Get current cube arrays
@@ -114,8 +125,8 @@ while simulation_app.is_running():
         current_orientations = orientations_attr.Get()
         proto_indices = proto_idx_attr.Get()
 
-        # Initialize all cubes as hidden (following hand_tracking_sample pattern)
-        proto_indices = [1 for _ in range(max_devices)]
+        # Initialize all cubes as hidden (index 2 = hidden, since we have 2 prototypes: 0=manus, 1=vive)
+        proto_indices = [2 for _ in range(max_devices)]
         proto_idx_attr.Set(proto_indices)
         cube_idx = 0
         
@@ -130,20 +141,25 @@ while simulation_app.is_running():
         manus_data = all_device_data.get('manus_gloves', {})
         vive_data = all_device_data.get('vive_trackers', {})
             
-        # Process all devices
-        for device_data in [manus_data, vive_data]:
-            for joint, joint_data in device_data.items():
-                if cube_idx >= max_devices:
-                    break
-                pos = joint_data['position']
-                ori = joint_data['orientation']
-                
-                current_positions[cube_idx] = Gf.Vec3f(float(pos[0]), float(pos[1]), float(pos[2]))
-                current_orientations[cube_idx] = Gf.Quath(
-                    float(ori[0]), float(ori[1]), float(ori[2]), float(ori[3])
-                )
-                proto_indices[cube_idx] = 0  # Show cube
-                cube_idx += 1
+        # Process Manus gloves (red cubes, index 0)
+        for joint, joint_data in manus_data.items():
+            if cube_idx >= max_devices:
+                break
+            pos, ori = joint_data['position'], joint_data['orientation']
+            current_positions[cube_idx] = Gf.Vec3f(float(pos[0]), float(pos[1]), float(pos[2]))
+            current_orientations[cube_idx] = Gf.Quath(float(ori[0]), float(ori[1]), float(ori[2]), float(ori[3]))
+            proto_indices[cube_idx] = 0  # Red Manus cube
+            cube_idx += 1
+
+        # Process Vive trackers (blue cubes, index 1)
+        for joint, joint_data in vive_data.items():
+            if cube_idx >= max_devices:
+                break
+            pos, ori = joint_data['position'], joint_data['orientation']
+            current_positions[cube_idx] = Gf.Vec3f(float(pos[0]), float(pos[1]), float(pos[2]))
+            current_orientations[cube_idx] = Gf.Quath(float(ori[0]), float(ori[1]), float(ori[2]), float(ori[3]))
+            proto_indices[cube_idx] = 1  # Blue Vive cube
+            cube_idx += 1
 
         # Debug: Log cube visibility and positions
         visible_cubes = sum(1 for idx in proto_indices if idx == 0)
