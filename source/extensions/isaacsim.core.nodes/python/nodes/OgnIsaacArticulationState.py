@@ -38,7 +38,7 @@ class OgnIsaacArticulationStateInternalState(BaseResetNode):
         super().__init__(initialize=False)
 
     def initialize_articulation(self):
-        self._articulation = SingleArticulation(self.robot_prim)
+        self._articulation = SingleArticulation(self.robot_prim, reset_xform_properties=False)
         self._articulation.initialize()
         self.initialized = True
 

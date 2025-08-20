@@ -1,5 +1,5 @@
 [package]
-version = "3.1.10"
+version = "3.1.11"
 category = "Simulation"
 title = "Robot Description Editor"
 description = "Generates and edit Lula robot_description YAML files"

@@ -21,6 +21,7 @@ import omni.kit.commands
 from isaacsim.core.utils.prims import create_prim
 from isaacsim.core.utils.stage import get_next_free_path
 from isaacsim.gui.components.menu import make_menu_item_description
+from isaacsim.sensors.camera import SingleViewDepthSensorAsset
 from isaacsim.storage.native import get_assets_root_path
 from omni.kit.menu.utils import MenuItemDescription, add_menu_items, remove_menu_items
 
@@ -32,24 +33,29 @@ class Extension(omni.ext.IExt):
             "Intel Realsense D455": {
                 "prim_prefix": "/Realsense",
                 "usd_path": "/Isaac/Sensors/Intel/RealSense/rsd455.usd",
+                "is_depth_sensor": True,
             }
         },
         "Orbbec": {
             "Orbbec Gemini 2": {
                 "prim_prefix": "/Gemini2",
                 "usd_path": "/Isaac/Sensors/Orbbec/Gemini2/orbbec_gemini2_v1.0.usd",
+                "is_depth_sensor": True,
             },
             "Orbbec FemtoMega": {
                 "prim_prefix": "/Femto",
                 "usd_path": "/Isaac/Sensors/Orbbec/FemtoMega/orbbec_femtomega_v1.0.usd",
+                "is_depth_sensor": True,
             },
             "Orbbec Gemini 335": {
                 "prim_prefix": "/Gemini335",
                 "usd_path": "/Isaac/Sensors/Orbbec/Gemini335/orbbec_gemini_335.usd",
+                "is_depth_sensor": True,
             },
             "Orbbec Gemini 335L": {
                 "prim_prefix": "/Gemini335L",
                 "usd_path": "/Isaac/Sensors/Orbbec/Gemini335L/orbbec_gemini_335L.usd",
+                "is_depth_sensor": True,
             },
         },
         "Leopard Imaging": {
@@ -86,7 +92,13 @@ class Extension(omni.ext.IExt):
                 "usd_path": "/Isaac/Sensors/Sensing/SG8/H60SA/SG8S-AR0820C-5300-G2A-H60SA.usd",
             },
         },
-        "Stereolabs": {"ZED_X": {"prim_prefix": "/ZED_X", "usd_path": "/Isaac/Sensors/Stereolabs/ZED_X/ZED_X.usd"}},
+        "Stereolabs": {
+            "ZED_X": {
+                "prim_prefix": "/ZED_X",
+                "usd_path": "/Isaac/Sensors/Stereolabs/ZED_X/ZED_X.usd",
+                "is_depth_sensor": True,
+            }
+        },
     }
 
     def on_startup(self, ext_id: str) -> None:
@@ -107,12 +119,15 @@ class Extension(omni.ext.IExt):
         for vendor, sensors in self.SENSORS.items():
             sensor_items = []
             for sensor_name, sensor_data in sensors.items():
-                sensor_items.append(
-                    {
-                        "name": sensor_name,
-                        "onclick_fn": _add_sensor(sensor_data["prim_prefix"], sensor_data["usd_path"]),
-                    }
-                )
+                prim_prefix = sensor_data["prim_prefix"]
+                usd_path = sensor_data["usd_path"]
+                if sensor_data.get("is_depth_sensor", False):
+                    on_click_fn = lambda *_, prim_prefix=prim_prefix, usd_path=usd_path: self._create_depth_sensor(
+                        prim_prefix, usd_path
+                    )
+                else:
+                    on_click_fn = _add_sensor(prim_prefix, usd_path)
+                sensor_items.append({"name": sensor_name, "onclick_fn": on_click_fn})
 
             vendor_dicts[vendor] = {"name": {vendor: sensor_items}}
 
@@ -196,3 +211,10 @@ class Extension(omni.ext.IExt):
         else:
             curr_prim = None
         return curr_prim
+
+    def _create_depth_sensor(self, prim_prefix, usd_path):
+        depth_sensor = SingleViewDepthSensorAsset(
+            prim_path=get_next_free_path(prim_prefix, None),
+            asset_path=get_assets_root_path() + usd_path,
+        )
+        depth_sensor.initialize()

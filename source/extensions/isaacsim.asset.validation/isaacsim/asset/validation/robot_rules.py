@@ -14,8 +14,7 @@
 # limitations under the License.
 import omni.asset_validator.core as av_core
 import omni.client
-from omni.asset_validator.base.fix import AuthoringLayers
-from omni.asset_validator.core import registerRule
+from omni.asset_validator.core import AuthoringLayers, registerRule
 from pxr import Usd
 from usd.schema.isaac import robot_schema
 

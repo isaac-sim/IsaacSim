@@ -21,6 +21,8 @@ The following table summarizes the available materials.
 
     PhysicsMaterial
     RigidBodyMaterial
+    SurfaceDeformableMaterial
+    VolumeDeformableMaterial
 
 .. rubric:: visual materials
 .. autosummary::
@@ -49,6 +51,18 @@ Physics Materials
     :show-inheritance:
 
 .. autoclass:: isaacsim.core.experimental.materials.RigidBodyMaterial
+    :members:
+    :undoc-members:
+    :inherited-members:
+    :show-inheritance:
+
+.. autoclass:: isaacsim.core.experimental.materials.SurfaceDeformableMaterial
+    :members:
+    :undoc-members:
+    :inherited-members:
+    :show-inheritance:
+
+.. autoclass:: isaacsim.core.experimental.materials.VolumeDeformableMaterial
     :members:
     :undoc-members:
     :inherited-members:

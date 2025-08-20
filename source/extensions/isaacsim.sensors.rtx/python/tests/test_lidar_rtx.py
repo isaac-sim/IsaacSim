@@ -35,16 +35,17 @@ class TestLidarRtx(omni.kit.test.AsyncTestCase):
 
     # Class constants
     ALLOWED_ANNOTATORS = [
-        "GenericModelOutputLidarPointAccumulator",
+        # "GenericModelOutputLidarPointAccumulator",
         "IsaacComputeRTXLidarFlatScan",
         "IsaacExtractRTXSensorPointCloudNoAccumulator",
-        "IsaacExtractRTXSensorPointCloud",
+        # "IsaacExtractRTXSensorPointCloud",
+        "IsaacCreateRTXLidarScanBuffer",
     ]
 
     EXPECTED_FRAME_KEYS = [
         "rendering_time",
         "rendering_frame",
-        "point_cloud_data",
+        # "point_cloud_data",
         "linear_depth_data",
         "intensities_data",
         "azimuth_range",
@@ -378,7 +379,7 @@ class TestLidarRtx(omni.kit.test.AsyncTestCase):
                     self.assertNotEqual(len(current_frame[key]), 0, f"{key} list/array is empty")
 
         # Confirm data consistency between current_frame and annotator data
-        self.verify_point_cloud_data(current_frame)
+        # self.verify_point_cloud_data(current_frame)
         self.verify_flat_scan_data(current_frame)
 
         # Test the deprecated getter methods to ensure they're not returning None

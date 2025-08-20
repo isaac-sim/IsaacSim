@@ -49,6 +49,10 @@ class SingleXFormPrim(_SinglePrimWrapper):
         scale (Optional[Sequence[float]], optional): local scale to be applied to the prim's dimensions. shape is (3, ).
                                                 Defaults to None, which means left unchanged.
         visible (bool, optional): set to false for an invisible prim in the stage while rendering. Defaults to True.
+        reset_xform_properties (bool, optional): True if the prims don't have the right set of xform properties
+                                                (i.e: translate, orient and scale) ONLY and in that order.
+                                                Set this parameter to False if the object were cloned using using
+                                                the cloner api in isaacsim.core.cloner. Defaults to True.
 
     Raises:
         Exception: if translation and position defined at the same time
@@ -79,6 +83,7 @@ class SingleXFormPrim(_SinglePrimWrapper):
         orientation: Optional[Sequence[float]] = None,
         scale: Optional[Sequence[float]] = None,
         visible: Optional[bool] = None,
+        reset_xform_properties: bool = True,
     ) -> None:
 
         if is_prim_path_valid(prim_path):
@@ -114,6 +119,7 @@ class SingleXFormPrim(_SinglePrimWrapper):
             orientations=orientation,
             scales=scale,
             visibilities=visible,
+            reset_xform_properties=reset_xform_properties,
         )
         self._binding_api = None
         _SinglePrimWrapper.__init__(self, view=self._xform_prim_view)

@@ -1589,12 +1589,15 @@ class Extension(omni.ext.IExt):
         self._update_command_ui()
 
     def _is_valid_xrdf_file(self, path):
+        warning_msg = f"XRDF file {path} is not a valid XRDF file for Merging. Save to a new XRDF file."
         if not os.path.isfile(path):
+            carb.log_warn(warning_msg)
             return False
         with open(path, "r") as stream:
             try:
                 parsed_file = yaml.safe_load(stream)
             except yaml.YAMLError as exc:
+                carb.log_warn(warning_msg + f" {exc}")
                 return False
 
         if "format" in parsed_file and parsed_file["format"] == "xrdf" and "format_version" in parsed_file:
@@ -1604,6 +1607,7 @@ class Extension(omni.ext.IExt):
                 )
             return True
         else:
+            carb.log_warn(warning_msg)
             return False
 
     def recursive_cast_to_float(self, d):

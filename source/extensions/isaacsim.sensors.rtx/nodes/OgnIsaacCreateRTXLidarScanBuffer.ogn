@@ -1,0 +1,272 @@
+{
+    "IsaacCreateRTXLidarScanBuffer": {
+        "version": 2,
+        "icon": "icons/isaac-sim.svg",
+        "description": [
+            "This node creates a full scan buffer for RTX Lidar sensor."
+        ],
+        "metadata": {
+            "uiName": "Isaac Create RTX Lidar Scan Buffer"
+        },
+        "categoryDefinitions": "config/CategoryDefinition.json",
+        "categories": "isaacRtxSensor",
+        "state": {"$comment": ["Internal state"]},
+        "inputs": {
+            "exec": {
+                "type": "execution",
+                "description": "The input execution port"
+            },
+            "dataPtr": {
+                "type": "uint64",
+                "description": "Pointer to Lidar render result.",
+                "uiName": "Data Pointer"
+            },
+            "metadataPtr": {
+                "type": "uint64",
+                "description": "Pointer to Lidar metadata.",
+                "uiName": "Metadata Pointer"
+            },
+            "cudaDeviceIndex": {
+                "type": "int",
+                "description": "Index of the device where the data lives (-1 for host data)",
+                "default": -1
+            },
+            "keepOnlyPositiveDistance": {
+                "type": "bool",
+                "description": "DEPRECATED - Keep points only if the return distance is > 0",
+                "default": true,
+                "uiName": "Keep Only Positive Distance"
+            },
+            "transformPoints": {
+                "type": "bool",
+                "description": "DEPRECATED - Transform point cloud to world coordinates",
+                "default": false,
+                "uiName": "Output in World Coordinates"
+            },
+            "accuracyErrorAzimuthDeg": {
+                "type": "float",
+                "description": "DEPRECATED - Accuracy error of azimuth in degrees applied to all points equally",
+                "uiName": "Error Azimuth"
+            },
+            "accuracyErrorElevationDeg": {
+                "type": "float",
+                "description": "DEPRECATED - Accuracy error of elevation in degrees applied to all points equally",
+                "uiName": "Error Elevation"
+            },
+            "accuracyErrorPosition": {
+                "type": "float[3]",
+                "description": "DEPRECATED - Position offset applied to all points equally",
+                "uiName": "Error Position"
+            },
+            "renderProductPath": {
+                "type": "token",
+                "description": "DEPRECATED - Config is gotten from this"
+            },
+            "outputIntensity": {
+                "type": "bool",
+                "description": "Create an output array for the Intensity.",
+                "default": false,
+                "uiName": "Output The Intensity"
+            },
+            "outputDistance": {
+                "type": "bool",
+                "description": "Create an output array for the Distance.",
+                "default": false,
+                "uiName": "Output The Distance"
+            },
+            "outputObjectId": {
+                "type": "bool",
+                "description": "Create an output array for the ObjectId.",
+                "default": false,
+                "uiName": "Output The ObjectId"
+            },
+            "outputVelocity": {
+                "type": "bool",
+                "description": "Create an output array for the Velocity.",
+                "default": false,
+                "uiName": "Output The Velocity"
+            },
+            "outputAzimuth": {
+                "type": "bool",
+                "description": "Create an output array for the Azimuth.",
+                "default": false,
+                "uiName": "Output The Azimuth"
+            },
+            "outputElevation": {
+                "type": "bool",
+                "description": "Create an output array for the Elevation.",
+                "default": false,
+                "uiName": "Output The Elevation"
+            },
+            "outputNormal": {
+                "type": "bool",
+                "description": "Create an output array for the Normals.",
+                "default": false,
+                "uiName": "Output The Normals"
+            },
+            "outputTimestamp": {
+                "type": "bool",
+                "description": "Create an output array for the Timestamp.",
+                "default": false,
+                "uiName": "Output The Timestamp"
+            },
+            "outputEmitterId": {
+                "type": "bool",
+                "description": "Create an output array for the EmitterId.",
+                "default": false,
+                "uiName": "Output The EmitterId"
+            },
+            "outputBeamId": {
+                "type": "bool",
+                "description": "DEPRECATED - Create an output array for the BeamId.",
+                "default": false,
+                "uiName": "Output The BeamId"
+            },
+            "outputMaterialId": {
+                "type": "bool",
+                "description": "Create an output array for the MaterialId.",
+                "default": false,
+                "uiName": "Output The MaterialId"
+            }
+        },
+        "outputs": {
+            "exec": {
+                "type": "execution",
+                "description": "Output execution triggers when lidar sensor has data"
+            },
+            "dataPtr": {
+                "type": "uint64",
+                "description": "Pointer to LiDAR render result.",
+                "uiName": "Point Cloud Data"
+            },
+            "cudaDeviceIndex": {
+                "type": "int",
+                "description": "Index of the device where the data lives (-1 for host data)",
+                "default": -1
+            },
+            "bufferSize": {
+                "type": "uint64",
+                "description": "Size (in bytes) of the buffer (0 if the input is a texture)"
+            },
+            "transform": {
+                "type": "matrixd[4]",
+                "description": "The transform matrix from Lidar to world coordinates at the end of the full scan."
+            },
+            "intensityPtr":{"uiName": "intensity","type": "uint64",
+                "description": "intensity [0,1]"},
+                "intensityDataType":{
+                    "type": "float",
+                    "default": 4,"description": "type","metadata": {"hidden": "true"}},"intensityBufferSize":{"type": "uint64","description": "size","metadata": {"hidden": "true"
+                }
+            },
+            "distancePtr":{"uiName": "distance","type": "uint64",
+                "description": "range in m"},
+                "distanceDataType":{
+                    "type": "float",
+                    "default": 4,"description": "type","metadata": {"hidden": "true"}},"distanceBufferSize":{"type": "uint64","description": "size","metadata": {"hidden": "true"
+                }
+            },
+            "azimuthPtr":{"uiName": "azimuth","type": "uint64",
+                "description": "azimuth in rad [-pi,pi]"},
+                "azimuthDataType":{
+                    "type": "float",
+                    "default": 4,"description": "type","metadata": {"hidden": "true"}},"azimuthBufferSize":{"type": "uint64","description": "size","metadata": {"hidden": "true"
+                }
+            },
+            "elevationPtr":{"uiName": "elevation","type": "uint64",
+                "description": "elevation in rad [-pi/2, pi/2]"},
+                "elevationDataType":{
+                    "type": "float",
+                    "default": 4,"description": "type","metadata": {"hidden": "true"}},"elevationBufferSize":{"type": "uint64","description": "size","metadata": {"hidden": "true"
+                }
+            },
+            "velocityPtr":{"uiName": "velocity","type": "uint64",
+                "description": "elevation in rad [-pi/2, pi/2]"},
+                "velocityDataType":{
+                    "type": "float[3]",
+                    "default": [4,0,0],"description": "type","metadata": {"hidden": "true"}},"velocityBufferSize":{"type": "uint64","description": "size","metadata": {"hidden": "true"
+                }
+            },
+            "objectIdPtr":{"uiName": "objectId","type": "uint64",
+                "description": "ObjectId for getting usd prim information"},
+                "objectIdDataType":{
+                    "type": "uint",
+                    "default": 4,"description": "type","metadata": {"hidden": "true"}},"objectIdBufferSize":{"type": "uint64","description": "size","metadata": {"hidden": "true"
+                }
+            },
+            "normalPtr":{"uiName": "normal","type": "uint64",
+                "description": "Normal at the hit location"},
+                "normalDataType":{
+                    "type": "float[3]",
+                    "default": [4,0,0],"description": "type","metadata": {"hidden": "true"}},"normalBufferSize":{"type": "uint64","description": "size","metadata": {"hidden": "true"
+                }
+            },
+            "timestampPtr":{"uiName": "timestamp","type": "uint64",
+                "description": "timestamp in ns"},
+                "timestampDataType":{
+                    "type": "uint64",
+                    "default": 8,"description": "type","metadata": {"hidden": "true"}},"timestampBufferSize":{"type": "uint64","description": "size","metadata": {"hidden": "true"
+                }
+            },
+            "emitterIdPtr":{"uiName": "emitterId","type": "uint64",
+                "description": "emitterId"},
+                "emitterIdDataType":{
+                    "type": "uint",
+                    "default": 4,"description": "type","metadata": {"hidden": "true"}},"emitterIdBufferSize":{"type": "uint64","description": "size","metadata": {"hidden": "true"
+                }
+            },
+            "beamIdPtr":{"uiName": "beamId","type": "uint64",
+                "description": "DEPRECATED - beamId"},
+                "beamIdDataType":{
+                    "type": "uint",
+                    "default": 4,"description": "type","metadata": {"hidden": "true"}},"beamIdBufferSize":{"type": "uint64","description": "size","metadata": {"hidden": "true"
+                }
+            },
+            "materialIdPtr":{"uiName": "materialId","type": "uint64",
+                "description": "materialId at hit location"},
+                "materialIdDataType":{
+                    "type": "uint",
+                    "default": 4,"description": "type","metadata": {"hidden": "true"}},"materialIdBufferSize":{"type": "uint64","description": "size","metadata": {"hidden": "true"
+                }
+            },
+            "indexPtr":{"uiName": "index","type": "uint64",
+                "description": "DEPRECATED -Index into the full array if keepOnlyPositiveDistance ((startTick+tick)*numChannels*numEchos + channel*numEchos + echo)"},
+                "indexDataType":{
+                    "type": "uint",
+                    "default": 4,"description": "type","metadata": {"hidden": "true"}},"indexBufferSize":{"type": "uint64","description": "size","metadata": {"hidden": "true"
+                }
+            },
+            "numReturnsPerScan": {
+                "type": "uint",
+                "description": "DEPRECATED - Number of returns in the full scan"
+            },
+            "ticksPerScan": {
+                "type": "uint",
+                "description": "DEPRECATED - Number of ticks in a full scan"
+            },
+            "numChannels": {
+                "type": "uint",
+                "description": "DEPRECATED - Number of channels of the lidar"
+            },
+            "numEchos": {
+                "type": "uint",
+                "description": "DEPRECATED - Number of echos of the lidar"
+            },
+            "renderProductPath": {
+                "type": "token",
+                "description": "Config is gotten from this"
+            },
+            "height":{
+                "type": "uint",
+                "description": "Height of point cloud buffer, will always return 1",
+                "default": 1
+            },
+            "width":{
+                "type": "uint",
+                "description": "3 x Width or number of points in point cloud buffer",
+                "default": 0
+            }
+
+        }
+    }
+}

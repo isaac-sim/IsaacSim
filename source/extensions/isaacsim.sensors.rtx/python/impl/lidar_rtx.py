@@ -191,20 +191,18 @@ class LidarRtx(BaseSensor):
     def attach_annotator(
         self,
         annotator_name: Literal[
-            "GenericModelOutputLidarPointAccumulator",
             "IsaacComputeRTXLidarFlatScan",
             "IsaacExtractRTXSensorPointCloudNoAccumulator",
-            "IsaacExtractRTXSensorPointCloud",
+            "IsaacCreateRTXLidarScanBuffer",
         ],
     ) -> None:
         """Attach an annotator to the Lidar sensor.
 
         Args:
             param annotator_name (Literal): Name of the annotator to attach. Must be one of:
-                - "GenericModelOutputLidarPointAccumulator"
                 - "IsaacComputeRTXLidarFlatScan"
                 - "IsaacExtractRTXSensorPointCloudNoAccumulator"
-                - "IsaacExtractRTXSensorPointCloud"
+                - "IsaacCreateRTXLidarScanBuffer"
         """
         if annotator_name in self._annotators:
             carb.log_warn(f"Annotator {annotator_name} already attached to {self._render_product_path}")
@@ -400,10 +398,6 @@ class LidarRtx(BaseSensor):
         for annotator_name, annotator in self._annotators.items():
             self._current_frame[annotator_name] = annotator.get_data()
 
-        # Handle deprecated attributes
-        if "IsaacExtractRTXSensorPointCloud" in self._annotators:
-            point_cloud_data = self._annotators["IsaacExtractRTXSensorPointCloud"].get_data()
-            self._current_frame["point_cloud_data"] = point_cloud_data["data"]
         if "IsaacComputeRTXLidarFlatScan" in self._annotators:
             flat_scan_data = self._annotators["IsaacComputeRTXLidarFlatScan"].get_data()
             self._current_frame["linear_depth_data"] = flat_scan_data["linearDepthData"]

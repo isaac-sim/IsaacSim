@@ -8,32 +8,30 @@
 [![Windows platform](https://img.shields.io/badge/platform-windows--64-orange.svg)](https://www.microsoft.com/en-us/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-yellow.svg)](https://opensource.org/license/apache-2-0)
 
-> **⚠️ PRE-RELEASE SOFTWARE NOTICE**
-> This is pre-release, currently in development. You may encounter bugs, incomplete features, and other issues that will be addressed in future releases. Please [report](#support) any issues you encounter. This will be finalized into a stable release in the future.
 
 NVIDIA Isaac Sim™ is a simulation platform built on NVIDIA Omniverse, designed to develop, test, train, and deploy AI-powered robots in realistic virtual environments. It supports importing robotic systems from common formats such as URDF, MJCF, and CAD. The simulator leverages high-fidelity, GPU-accelerated physics engines to simulate accurate dynamics and support multi-sensor RTX rendering at scale. It comes equipped with end-to-end workflows including synthetic data generation, reinforcement learning, ROS integration, and digital twin simulation. Isaac Sim provides the infrastructure needed to support robotics development at any stage.
 
 
 ## Key Features
 
-- [Asset Import & Export](https://docs.isaacsim.omniverse.nvidia.com/5.0.0/importer_exporter/importers_exporters.html): Importing and exporting robots and environments from and to non-USD format.
-- [Robot Tuning](https://docs.isaacsim.omniverse.nvidia.com/5.0.0/robot_setup/index.html): Optimize robot for physics accuracy, computation efficiency, or photorealism
-- [Robot Simulation](https://docs.isaacsim.omniverse.nvidia.com/5.0.0/robot_simulation/index.html): Tools for moving robots, such as controllers, motion generation and kinematics solvers, and policy integration.
-- [Sensors](https://docs.isaacsim.omniverse.nvidia.com/5.0.0/sensors/index.html): RTX and physics-based sensors
+- [Asset Import & Export](https://docs.isaacsim.omniverse.nvidia.com/latest/importer_exporter/importers_exporters.html): Importing and exporting robots and environments from and to non-USD format.
+- [Robot Tuning](https://docs.isaacsim.omniverse.nvidia.com/latest/robot_setup/index.html): Optimize robot for physics accuracy, computation efficiency, or photorealism
+- [Robot Simulation](https://docs.isaacsim.omniverse.nvidia.com/latest/robot_simulation/index.html): Tools for moving robots, such as controllers, motion generation and kinematics solvers, and policy integration.
+- [Sensors](https://docs.isaacsim.omniverse.nvidia.com/latest/sensors/index.html): RTX and physics-based sensors
 
 ## Key Applications
 
-- [Isaac Lab](https://docs.isaacsim.omniverse.nvidia.com/5.0.0/isaac_lab_tutorials/index.html): GPU-accelerated framework built for reinforcement learning, imitation learning, and motion planning.
-- [ROS Bridge](https://docs.isaacsim.omniverse.nvidia.com/5.0.0/ros2_tutorials/ros2_landing_page.html): Integration with Robot Operating System (ROS).
-- [Synthetic Data Generation](https://docs.isaacsim.omniverse.nvidia.com/5.0.0/synthetic_data_generation/index.html): Collection of SDG tools
+- [Isaac Lab](https://docs.isaacsim.omniverse.nvidia.com/latest/isaac_lab_tutorials/index.html): GPU-accelerated framework built for reinforcement learning, imitation learning, and motion planning.
+- [ROS Bridge](https://docs.isaacsim.omniverse.nvidia.com/latest/ros2_tutorials/ros2_landing_page.html): Integration with Robot Operating System (ROS).
+- [Synthetic Data Generation](https://docs.isaacsim.omniverse.nvidia.com/latest/synthetic_data_generation/index.html): Collection of SDG tools
 
 ## Documentation
 
 For the latest Isaac Sim documentation, see [Isaac Sim Documentation](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html).
 Follow these links to get started:
 
-- [Tutorials](https://docs.isaacsim.omniverse.nvidia.com/5.0.0/introduction/quickstart_index.html)
-- [Assets](https://docs.isaacsim.omniverse.nvidia.com/5.0.0/assets/usd_assets_overview.html)
+- [Tutorials](https://docs.isaacsim.omniverse.nvidia.com/latest/introduction/quickstart_index.html)
+- [Assets](https://docs.isaacsim.omniverse.nvidia.com/latest/assets/usd_assets_overview.html)
 
 
 ## Prerequisites and Environment Setup
@@ -195,6 +193,8 @@ Isaac Sim uses a custom build system with the following key options:
 - `-b, --build-only`: Only perform building step, skip others
 - `--post-build-only`: Only perform post-build step
 
+## Usage
+Congratulations on installing Isaac Sim! To get started with using Isaac Sim, follow these [Quick Tutorials](https://docs.isaacsim.omniverse.nvidia.com/latest/introduction/quickstart_index.html). For more information, visit our full [documentation](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html).
 
 ### Run in docker
 
@@ -223,7 +223,14 @@ docker start isaac && docker logs isaac -f -n 1
 
 ## Troubleshooting
 
-Please see the [FAQ](https://docs.isaacsim.omniverse.nvidia.com/5.0.0/overview/faq_index.html), [Troubleshooting](https://docs.isaacsim.omniverse.nvidia.com/5.0.0/overview/troubleshooting.html), and [Known Issues](https://docs.isaacsim.omniverse.nvidia.com/5.0.0/overview/known_issues.html) for common questions, fixes, and workarounds.
+- Please see the [FAQ](https://docs.isaacsim.omniverse.nvidia.com/latest/overview/faq_index.html), [Troubleshooting](https://docs.isaacsim.omniverse.nvidia.com/latest/overview/troubleshooting.html), and [Known Issues](https://docs.isaacsim.omniverse.nvidia.com/latest/overview/known_issues.html) for common questions, fixes, and workarounds.
+
+- On Linux, if you encounter network connectivity issues when building (such as corporate firewalls), run the following commands:
+
+  ```bash
+  export http_proxy="http://{Your IP address}:7890"
+  export https_proxy="http://{Your IP address}:7890"
+  ```
 
 
 ## Support
@@ -248,4 +255,3 @@ To cite Isaac Sim, click on "Cite this repository" in the right sidebar of the [
 ## Contributing
 
 We do not support direct community contributions at the moment.
-

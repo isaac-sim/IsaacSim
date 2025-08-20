@@ -77,13 +77,13 @@ class ROS2BridgeExtension(omni.ext.IExt):
         if self.check_status(os.environ["ROS_DISTRO"]) is False:
             if sys.platform == "linux":
                 omni.kit.app.get_app().print_and_log(
-                    f"To use the internal libraries included with the extension please set the following environment variables to use with FastDDS (default) or CycloneDDS (ROS2 Humble only) before starting Isaac Sim:\n\n"
+                    f"To use the internal libraries included with the extension please set the following environment variables to use with FastDDS (default) or CycloneDDS before starting Isaac Sim:\n\n"
                     f"FastDDS (default):\n"
                     f"export ROS_DISTRO={ros_distro}\n"
                     f"export RMW_IMPLEMENTATION=rmw_fastrtps_cpp\n"
                     f"export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{self._extension_path}/{ros_distro}/lib\n\n"
                     f"OR\n\n"
-                    f"CycloneDDS (ROS2 Humble only):\n"
+                    f"CycloneDDS:\n"
                     f"export ROS_DISTRO={ros_distro}\n"
                     f"export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp\n"
                     f"export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{self._extension_path}/{ros_distro}/lib\n\n"
@@ -347,7 +347,7 @@ class ROS2BridgeExtension(omni.ext.IExt):
                 name=f"RtxLidar{BRIDGE_PREFIX}{time_type[1]}PublishPointCloudBuffer",
                 node_type_id=f"{BRIDGE_NAME}.{BRIDGE_PREFIX}PublishPointCloud",
                 annotators=[
-                    "IsaacExtractRTXSensorPointCloud",
+                    "IsaacCreateRTXLidarScanBuffer",
                     "PostProcessDispatchIsaacSimulationGate",
                     omni.syntheticdata.SyntheticData.NodeConnectionTemplate(
                         f"IsaacReadS{time_type[0]}", attributes_mapping={f"outputs:s{time_type[0]}": "inputs:timeStamp"}
@@ -361,7 +361,7 @@ class ROS2BridgeExtension(omni.ext.IExt):
                 name=f"RtxRadar{BRIDGE_PREFIX}{time_type[1]}PublishPointCloud",
                 node_type_id=f"{BRIDGE_NAME}.{BRIDGE_PREFIX}PublishPointCloud",
                 annotators=[
-                    "IsaacExtractRTXSensorPointCloud",
+                    "IsaacExtractRTXSensorPointCloudNoAccumulator",
                     "PostProcessDispatchIsaacSimulationGate",
                     omni.syntheticdata.SyntheticData.NodeConnectionTemplate(
                         f"IsaacReadS{time_type[0]}", attributes_mapping={f"outputs:s{time_type[0]}": "inputs:timeStamp"}

@@ -87,11 +87,14 @@ public:
     /** @brief Flag indicating if Generic Model Output is on device */
     bool gmoOnDevice;
 
+    /** @brief Pinned host memory for Generic Model Output data */
+    omni::sensors::GenericModelOutput* gmoHostPtr;
+
     /** @brief Default constructor */
     IsaacExtractRTXSensorPointCloudDeviceBuffers() = default;
 
     /** @brief Default destructor */
-    ~IsaacExtractRTXSensorPointCloudDeviceBuffers() = default;
+    ~IsaacExtractRTXSensorPointCloudDeviceBuffers();
 
     /** @brief Deleted copy constructor */
     IsaacExtractRTXSensorPointCloudDeviceBuffers(const IsaacExtractRTXSensorPointCloudDeviceBuffers&) = delete;
@@ -108,9 +111,22 @@ public:
     void initialize(void* dataPtr, cudaStream_t cudaStream);
 
     /**
+     * @brief Initializes the CUDA device buffers and resources
+     * @param[in] dataPtr Pointer to the input data
+     * @param[in] cudaDeviceIndex Index of the device on which data was originally generated
+     * @throws std::runtime_error If CUDA initialization fails
+     */
+    void initialize(void* dataPtr, int cudaDeviceIndex);
+
+    /**
      * @brief Resizes the device buffers to the current buffer size
      */
     void resizeBuffers();
+
+    /**
+     * @brief Resizes the device buffers to the current buffer size
+     */
+    void resizeBuffersNoStream();
 
     /**
      * @brief Fills the point cloud buffer with data from the input pointer
@@ -120,7 +136,18 @@ public:
      * @throws std::runtime_error If data transfer or processing fails
      */
     void fillPointCloudBuffer(void* dataPtr, size_t& numValidPointsHost, omni::sensors::FrameAtTime& frameAtEndHost);
+
 };
+
+void findValidIndices(size_t* dataIn, size_t* dataOut, int* numValidPoints, int numPoints, uint8_t* flags, int cudaDeviceIndex, cudaStream_t stream);
+
+void fillIndices(size_t* indices, size_t numIndices, int cudaDeviceIndex, cudaStream_t stream = 0);
+
+void fillValidCartesianPoints(float* azimuth, float* elevation, float* range, float3* cartesianPoints, size_t* validIndices, int* numValidPoints, int maxPoints,int cudaDeviceIndex, cudaStream_t stream);
+
+template <typename T>
+void selectValidPoints(T* inData, T* outData, size_t* validIndices, int* numValidPoints, int maxPoints, int cudaDeviceIndex, cudaStream_t stream);
+
 }
 }
 }

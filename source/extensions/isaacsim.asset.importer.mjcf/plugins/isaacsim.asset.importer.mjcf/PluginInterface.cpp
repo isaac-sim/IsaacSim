@@ -192,11 +192,11 @@ void createAssetFromMJCF(const char* fileName,
             physics_subLayerPaths.push_back(base_layer);
         }
         auto robot_subLayerPaths = stages["robot_stage"]->GetRootLayer()->GetSubLayerPaths();
-        auto robot_layer = resolve_relative(
-            stages["stage"]->GetRootLayer()->GetIdentifier(), stages["robot_stage"]->GetRootLayer()->GetIdentifier());
+        auto robot_layer = resolve_relative(stages["base_stage"]->GetRootLayer()->GetIdentifier(),
+                                            stages["robot_stage"]->GetRootLayer()->GetIdentifier());
         if (std::find(robot_subLayerPaths.begin(), robot_subLayerPaths.end(), robot_layer) == robot_subLayerPaths.end())
         {
-            robot_subLayerPaths.push_back(robot_layer);
+            stages["base_stage"]->GetRootLayer()->GetSubLayerPaths().push_back(robot_layer);
         }
     }
     std::string result = "";
@@ -331,16 +331,6 @@ void createAssetFromMJCF(const char* fileName,
             }
 
 
-            pxr::UsdVariantSet robot = variantSets.AddVariantSet("Robot");
-            robot.AddVariant("None");
-            robot.AddVariant("Robot");
-            robot.SetVariantSelection("Robot");
-            {
-                pxr::UsdEditContext ctxt(robot.GetVariantEditContext());
-                stages["stage"]->GetDefaultPrim().GetPayloads().AddPayload(
-                    pxr::SdfPayload(resolve_relative(stages["stage"]->GetRootLayer()->GetIdentifier(),
-                                                     stages["robot_stage"]->GetRootLayer()->GetIdentifier())));
-            }
             CARB_LOG_INFO("Import Done, saving");
 
             stages["stage"]->Save();

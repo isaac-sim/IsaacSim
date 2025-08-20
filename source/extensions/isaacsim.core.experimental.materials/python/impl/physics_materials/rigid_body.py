@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Literal
 
 import isaacsim.core.experimental.utils.ops as ops_utils
+import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
 import warp as wp
@@ -30,7 +31,12 @@ from .physics_material import PhysicsMaterial
 class RigidBodyMaterial(PhysicsMaterial):
     """High level wrapper for creating/encapsulating Rigid Body material prims.
 
-    This class is a wrapper over one or more USD Rigid Body material prims in the stage...
+    .. note::
+
+        This class creates or wraps (one of both) Rigid Body material prims according to the following rules:
+
+        * If the prim paths exist, a wrapper is placed over the Rigid Body material prims.
+        * If the prim paths do not exist, Rigid Body material prims are created at each path and a wrapper is placed over them.
 
     Args:
         paths: Single path or list of paths to USD prims. Can include regular expressions for matching multiple prims.
@@ -685,6 +691,6 @@ class RigidBodyMaterial(PhysicsMaterial):
             path = item if isinstance(item, str) else item.GetPath()
             material = PhysicsMaterial._get_material(stage, path)
             if material is not None:
-                status = True  # TODO: check if the material is a rigid body material
+                status = prim_utils.has_api(material.GetPrim(), ["PhysicsMaterialAPI", "PhysxMaterialAPI"], test="any")
             data.append(status)
         return ops_utils.place(data, device="cpu").reshape((-1, 1))

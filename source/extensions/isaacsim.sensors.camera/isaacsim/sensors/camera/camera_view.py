@@ -193,16 +193,19 @@ class CameraView(XFormPrim):
         self._setup_tiled_sensor()
 
     def __del__(self):
-        XFormPrim.__del__(self)
+        self.destroy()
+
+    def destroy(self) -> None:
         self._clean_up_tiled_sensor()
+        super().destroy()
 
     def _clean_up_tiled_sensor(self):
         """Clean up the sensor by detaching annotators and destroying render products, and removing related prims."""
         if self._tiled_render_product is not None:
-            # detach annotators from render product
-            self._tiled_annotator.detach([self._tiled_render_product.path])
-            # delete tiled render products
+            for annotator in self._annotators.values():
+                annotator.detach([self._tiled_render_product.path])
             self._tiled_render_product.destroy()
+            self._tiled_render_product = None
 
     def _get_tiled_resolution(self, num_cameras, resolution) -> Tuple[int, int]:
         """Calculate the resolution for the tiled sensor based on the number of cameras and individual camera resolution.
@@ -224,13 +227,13 @@ class CameraView(XFormPrim):
         self._clean_up_tiled_sensor()
 
         self.tiled_resolution = self._get_tiled_resolution(len(self.prims), self.camera_resolution)
-        self._render_product = rep.create.render_product_tiled(
+        self._tiled_render_product = rep.create.render_product_tiled(
             cameras=self.prim_paths,
             tile_resolution=self.camera_resolution,
             name=f"{self.name}_tiled_sensor",
         )
         # define the annotators based on defined types
-        self._render_product_path = self._render_product.path
+        self._render_product_path = self._tiled_render_product.path
         for annotator_type in self._output_annotators:
             # check for supported annotator
             if annotator_type not in ANNOTATOR_SPEC:

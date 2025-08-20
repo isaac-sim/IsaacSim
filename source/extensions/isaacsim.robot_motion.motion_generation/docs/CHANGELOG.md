@@ -1,4 +1,9 @@
 # Changelog
+
+## [8.0.25] - 2025-07-15
+### Fixed
+- Use carb.log_warn instead of carb.log_warning
+
 ## [8.0.24] - 2025-07-07
 ### Fixed
 - Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 8.0.23)

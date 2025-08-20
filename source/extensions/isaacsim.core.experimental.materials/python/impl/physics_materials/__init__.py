@@ -15,3 +15,5 @@
 
 from .physics_material import PhysicsMaterial
 from .rigid_body import RigidBodyMaterial
+from .surface_deformable import SurfaceDeformableMaterial
+from .volume_deformable import VolumeDeformableMaterial

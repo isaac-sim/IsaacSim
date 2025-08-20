@@ -1,5 +1,4 @@
 # Changelog
-
 ## [2.2.12] - 2025-07-21
 ### Changed
 - Fix error on shutdown 

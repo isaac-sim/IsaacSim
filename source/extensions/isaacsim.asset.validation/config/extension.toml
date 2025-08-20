@@ -1,5 +1,5 @@
 [package]
-version = "1.0.2"
+version = "1.0.3"
 category = "SyntheticData"
 title = "Isaac Sim Asset Validation Rules"
 description = "The extension provides various custom rules to validate content for Isaac Sim."

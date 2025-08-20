@@ -27,15 +27,15 @@
                 "type" : "uint64",
                 "default" : 0
             },
-            "accumulateLidarScan": {
-                "type": "bool",
-                "description": "Lidar only. Set to true if dataPtr input is expected to be accumulated Lidar scan.",
-                "default": false
+            "cudaDeviceIndex": {
+                "type": "int",
+                "description": "Index of the device on which data was originally generated.",
+                "default": -1
             },
-            "newData": {
-                "type": "bool",
-                "description": "Lidar only. Set to true if dataPtr input is accumulated Lidar scan; only tested if accumulateLidarScan is true.",
-                "default": false
+            "bufferSize": {
+                "type": "uint64",
+                "description": "Size (in bytes) of the point cloud buffer (0 if the input is a texture)",
+                "default": 0
             }
         },
         "outputs": {
@@ -59,11 +59,6 @@
                 "description": "Index of the device where the data lives (-1 for host data)",
                 "default": -1
             },
-            "cudaStream": {
-                "description" : "Cuda Stream Input",
-                "type" : "uint64",
-                "default" : 0
-            },
             "bufferSize": {
                 "type": "uint64",
                 "description": "Size (in bytes) of the point cloud buffer (0 if the input is a texture)",
@@ -78,11 +73,6 @@
                 "type": "uint",
                 "description": "3 x Width or number of points in point cloud buffer",
                 "default": 0
-            },
-            "accumulatedData": {
-                "type": "bool",
-                "description": "If accumulateLidarScan is true, this will be true if the point cloud data is new (i.e. not a repeat of the previous frame)",
-                "default": false
             }
         }
     }

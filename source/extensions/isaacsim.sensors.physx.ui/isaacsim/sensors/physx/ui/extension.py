@@ -62,7 +62,6 @@ class Extension(omni.ext.IExt):
         # prevent unregistering multiple times
         if self._registered is False:
             return
-
         self._registered = False
 
     def _is_material(self, objects):

@@ -13,6 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import unittest
+
 import omni.kit
 import omni.usd
 
@@ -32,6 +35,7 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "Skipped in ETM.")
     async def test_sdg_ur10_palletizing(self):
         import asyncio
         import json

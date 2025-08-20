@@ -1,5 +1,27 @@
 # Changelog
 
+## [4.9.3] - 2025-07-29
+## Changed
+- CycloneDDS is now supported for Jazzy
+
+## [4.9.2] - 2025-07-26
+## Changed
+- Update test settings and exclude error messages from test logs
+
+## [4.9.1] - 2025-07-26
+## Changed
+- PublishPointCloudBuffer writer uses IsaacCreateRTXLidarScanBuffer annotator.
+
+## [4.9.0] - 2025-07-25
+## Changed
+- NITROS bridge image publishing is disabled by default
+## Added
+- Added carb setting enable_nitros_bridge to enable NITROS image publishing
+
+## [4.8.17] - 2025-07-16
+### Fixed
+- Fix issue with ROS2 CameraInfo message not validating input parameters before use
+
 ## [4.8.16] - 2025-07-15
 ### Fixed
 - Fix issue with default ROS2 context not being initialized before use

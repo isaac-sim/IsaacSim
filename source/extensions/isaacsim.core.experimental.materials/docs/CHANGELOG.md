@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.0] - 2025-07-16
+### Added
+- Add surface and volume deformable physics materials
+
 ## [0.2.1] - 2025-06-07
 ### Changed
 - Set test timeout to 900 seconds

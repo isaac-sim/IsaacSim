@@ -1,4 +1,9 @@
 # Changelog
+
+## [1.0.12] - 2025-07-16
+### Fixed
+- Only send action to active joints
+
 ## [1.0.11] - 2025-05-19
 ### Changed
 - Update copyright and license to apache v2.0

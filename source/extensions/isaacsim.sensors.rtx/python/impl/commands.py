@@ -145,6 +145,9 @@ class IsaacSensorCreateRtxSensor(omni.kit.commands.Command):
                             if child.GetTypeName() == self._desired_prim_type:
                                 carb.log_info(f"Using {self._desired_prim_type} prim at path {child.GetPath()}")
                                 prim = child
+                    for attr, value in self._prim_creation_kwargs.items():
+                        if prim.HasAttribute(attr):
+                            prim.GetAttribute(attr).Set(value)
                     return prim
             if not found_config:
                 carb.log_warn(
@@ -268,6 +271,13 @@ class IsaacSensorCreateRtxLidar(IsaacSensorCreateRtxSensor):
             carb.log_warn(
                 f"Example: omni.kit.commands.execute('IsaacSensorCreateRtxLidar', config='{self._config}', variant='{self._variant}')"
             )
+
+    def do(self) -> Usd.Prim:
+        """Executes the sensor creation command."""
+        prim = super().do()
+        if prim.IsValid() and prim.HasAttribute("omni:sensor:Core:skipDroppingInvalidPoints"):
+            prim.GetAttribute("omni:sensor:Core:skipDroppingInvalidPoints").Set(True)
+        return prim
 
 
 class IsaacSensorCreateRtxRadar(IsaacSensorCreateRtxSensor):

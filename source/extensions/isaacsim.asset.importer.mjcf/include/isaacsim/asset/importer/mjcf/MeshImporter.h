@@ -69,6 +69,154 @@ private:
     // carb::gym::TriangleMeshHandle> cylinderCache; std::map<std::string, Mesh*>
     // simulationMeshCache;
 
+    /**
+     * @brief Extracts folder paths from source and destination stages.
+     * @param[in] sourceStage Source USD stage
+     * @param[in] dstStage Destination USD stage
+     * @return Pair of source folder path and destination folder path
+     */
+    std::pair<std::string, std::string> _extractFolderPaths(const pxr::UsdStageRefPtr& sourceStage,
+                                                            const pxr::UsdStageRefPtr& dstStage)
+    {
+        std::string source_stage_path = sourceStage->GetRootLayer()->GetIdentifier();
+        std::string dst_stage_path = dstStage->GetRootLayer()->GetIdentifier();
+        std::string source_folder = source_stage_path.substr(0, source_stage_path.find_last_of("/"));
+        std::string dst_folder = dst_stage_path.substr(0, dst_stage_path.find_last_of("/"));
+        return std::make_pair(source_folder, dst_folder);
+    }
+
+    /**
+     * @brief Copies material asset files from source to destination folder.
+     * @param[in] newMaterial Material primitive containing asset references
+     * @param[in] sourceFolderPath Source folder path for resolving relative paths
+     * @param[in] dstFolderPath Destination folder path for copying files
+     */
+    void _copyMaterialAssetFiles(const pxr::UsdShadeMaterial& newMaterial,
+                                 const std::string& sourceFolderPath,
+                                 const std::string& dstFolderPath)
+    {
+        // Iterate through all child prims (shaders) of the material
+        for (const auto& childPrim : newMaterial.GetPrim().GetChildren())
+        {
+            pxr::UsdShadeShader shader(childPrim);
+            if (shader)
+            {
+                // Check all attributes for file path references
+                for (const auto& attr : childPrim.GetAttributes())
+                {
+                    pxr::VtValue value;
+                    if (attr.Get(&value) && value.IsHolding<pxr::SdfAssetPath>())
+                    {
+                        pxr::SdfAssetPath assetPath = value.Get<pxr::SdfAssetPath>();
+                        std::string originalPath = assetPath.GetAssetPath();
+                        if (originalPath == "OmniPBR.mdl") // Ignore OmniPBR.mdl
+                        {
+                            continue;
+                        }
+                        if (!originalPath.empty() && originalPath.find("://") == std::string::npos) // Is Local file and
+                                                                                                    // authored in USD
+                        {
+                            _copyAssetFile(originalPath, sourceFolderPath, dstFolderPath);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * @brief Copies a single asset file from source to destination.
+     * @param[in] originalPath Original asset path from material attribute
+     * @param[in] sourceFolderPath Source folder path for resolving relative paths
+     * @param[in] dstFolderPath Destination folder path for copying files
+     */
+    void _copyAssetFile(const std::string& originalPath,
+                        const std::string& sourceFolderPath,
+                        const std::string& dstFolderPath)
+    {
+        // Resolve the source file path
+        std::string sourceFilePath;
+        // Check if the path is relative
+        if (originalPath[1] != ':' && originalPath[0] != '/')
+        {
+            sourceFilePath = resolve_relative(sourceFolderPath, originalPath);
+        }
+        else
+        {
+            sourceFilePath = resolve_relative(sourceFolderPath, sourceFolderPath + "/" + originalPath);
+        }
+
+        // Create destination file path
+        std::string dstFilePath = dstFolderPath + "/" + sourceFilePath;
+        std::string userData[2] = { (sourceFolderPath + "/" + sourceFilePath), dstFilePath };
+
+        // Check if destination file already exists
+        omniClientWait(omniClientStat(
+            dstFilePath.c_str(), &userData,
+            [](void* userData, OmniClientResult result, OmniClientListEntry const* entry) noexcept
+            {
+                std::string* userPaths = static_cast<std::string*>(userData);
+                if (result != eOmniClientResult_Ok)
+                {
+                    omniClientCopy(userPaths[0].c_str(), userPaths[1].c_str(), userData,
+                                   [](void* userData, OmniClientResult result) noexcept
+                                   {
+                                       std::string* userPaths = static_cast<std::string*>(userData);
+                                       if (result != eOmniClientResult_Ok)
+                                       {
+                                           CARB_LOG_WARN("Failed to copy file from %s to %s (omniClient error: %s)",
+                                                         userPaths[0].c_str(), userPaths[1].c_str(),
+                                                         omniClientGetResultString(result));
+                                       }
+                                   });
+                }
+            }));
+    }
+
+    /**
+     * @brief Gets or creates material path in destination stage.
+     * @param[in] sourceStage Source USD stage containing the material
+     * @param[in] dstStage Destination USD stage
+     * @param[in] rootPath Root path in destination stage
+     * @param[in] material Source material to copy
+     * @param[in] sourceFolderPath Source folder path for asset copying
+     * @param[in] dstFolderPath Destination folder path for asset copying
+     * @param[in,out] materialPaths Map tracking material paths to avoid duplicates
+     * @return Path to material in destination stage
+     */
+    pxr::SdfPath _getOrCreateMaterialPath(const pxr::UsdStageRefPtr& sourceStage,
+                                          const pxr::UsdStageRefPtr& dstStage,
+                                          const pxr::SdfPath& rootPath,
+                                          const pxr::UsdShadeMaterial& material,
+                                          const std::string& sourceFolderPath,
+                                          const std::string& dstFolderPath,
+                                          std::map<pxr::TfToken, pxr::SdfPath>& materialPaths)
+    {
+        pxr::TfToken materialToken = getMaterialToken(sourceStage, material.GetPrim().GetPath());
+
+        if (materialPaths.count(materialToken))
+        {
+            return materialPaths[materialToken];
+        }
+
+        // Create new material path
+        pxr::SdfPath materialPath = pxr::SdfPath(isaacsim::core::includes::utils::usd::GetNewSdfPathString(
+            dstStage,
+            rootPath.AppendChild(pxr::TfToken("Looks")).AppendChild(pxr::TfToken(material.GetPath().GetName())).GetString()));
+
+        pxr::SdfCopySpec(sourceStage->GetRootLayer(), material.GetPath(), dstStage->GetRootLayer(), materialPath);
+        materialPaths.emplace(materialToken, materialPath);
+
+        // Check for attributes containing file path references and copy files
+        pxr::UsdShadeMaterial newMaterial = pxr::UsdShadeMaterial(dstStage->GetPrimAtPath(materialPath));
+        if (newMaterial)
+        {
+            _copyMaterialAssetFiles(newMaterial, sourceFolderPath, dstFolderPath);
+        }
+
+        return materialPath;
+    }
+
 public:
     /**
      * @brief Default constructor for MeshImporter.
@@ -151,28 +299,18 @@ public:
                              const pxr::SdfPath& dstPath,
                              std::map<pxr::TfToken, pxr::SdfPath>& materialPaths)
     {
+        auto [sourceFolderPath, dstFolderPath] = _extractFolderPaths(sourceStage, dstStage);
         auto sourceImageable = sourceStage->GetPrimAtPath(sourcePath);
         auto dstImageable = dstStage->GetPrimAtPath(dstPath);
+
         pxr::UsdShadeMaterialBindingAPI bindingAPI(sourceImageable);
         pxr::UsdShadeMaterialBindingAPI::DirectBinding directBinding = bindingAPI.GetDirectBinding();
         pxr::UsdShadeMaterial material = directBinding.GetMaterial();
+
         if (material)
         {
-            pxr::TfToken materialToken = getMaterialToken(sourceStage, material.GetPrim().GetPath());
-            pxr::SdfPath materialPath;
-            if (materialPaths.count(materialToken))
-            {
-                materialPath = materialPaths[materialToken];
-            }
-            else
-            {
-                materialPath = pxr::SdfPath(isaacsim::core::includes::utils::usd::GetNewSdfPathString(
-                    dstStage, rootPath.AppendChild(pxr::TfToken("Looks"))
-                                  .AppendChild(pxr::TfToken(material.GetPath().GetName()))
-                                  .GetString()));
-                pxr::SdfCopySpec(sourceStage->GetRootLayer(), material.GetPath(), dstStage->GetRootLayer(), materialPath);
-                materialPaths.emplace(materialToken, materialPath);
-            }
+            pxr::SdfPath materialPath = _getOrCreateMaterialPath(
+                sourceStage, dstStage, rootPath, material, sourceFolderPath, dstFolderPath, materialPaths);
 
             pxr::UsdShadeMaterial newMaterial = pxr::UsdShadeMaterial(dstStage->GetPrimAtPath(materialPath));
             if (newMaterial)
@@ -199,6 +337,8 @@ public:
                               const pxr::SdfPath& targetPrimPath,
                               std::map<pxr::TfToken, pxr::SdfPath>& materialPaths)
     {
+
+
         pxr::UsdGeomMesh mesh = pxr::UsdGeomMesh(sourceStage->GetPrimAtPath(meshPath));
         if (!mesh)
         {
@@ -214,7 +354,41 @@ public:
         }
 
         pxr::SdfCopySpec(sourceStage->GetRootLayer(), mesh.GetPath(), dstStage->GetRootLayer(), newMesh.GetPath());
+
+        // Get the global transform of the source mesh and apply it to the new mesh
+        pxr::UsdGeomXformable sourceMeshXformable(mesh);
+        pxr::UsdGeomXformable newMeshXformable(newMesh);
+
+        // Get the global transform matrix using Omni USD
+        pxr::GfMatrix4d globalTransform = mesh.ComputeLocalToWorldTransform(pxr::UsdTimeCode::Default());
+
+        // Clear existing transform operations on the new mesh
+        newMeshXformable.ClearXformOpOrder();
+
+        // Decompose the global transform matrix
+        pxr::GfVec3d translation = globalTransform.ExtractTranslation();
+        pxr::GfRotation rotation = globalTransform.ExtractRotation();
+
+        // Calculate scale from the magnitude of the rotation matrix columns
+        pxr::GfMatrix3d rotationMatrix = globalTransform.ExtractRotationMatrix();
+        pxr::GfVec3d scaleX = rotationMatrix.GetColumn(0);
+        pxr::GfVec3d scaleY = rotationMatrix.GetColumn(1);
+        pxr::GfVec3d scaleZ = rotationMatrix.GetColumn(2);
+        pxr::GfVec3d scale(scaleX.GetLength(), scaleY.GetLength(), scaleZ.GetLength());
+
+
+        // Create standardized transform operations: Translate, Orient, Scale
+        pxr::UsdGeomXformOp translateOp = newMeshXformable.AddTranslateOp(pxr::UsdGeomXformOp::PrecisionDouble);
+        pxr::UsdGeomXformOp orientOp = newMeshXformable.AddOrientOp(pxr::UsdGeomXformOp::PrecisionDouble);
+        pxr::UsdGeomXformOp scaleOp = newMeshXformable.AddScaleOp(pxr::UsdGeomXformOp::PrecisionDouble);
+
+        // Set the decomposed values
+        translateOp.Set(translation);
+        orientOp.Set(rotation.GetQuat().GetNormalized());
+        scaleOp.Set(pxr::GfVec3d(scale));
+
         // Move materials and bind them to the new mesh
+
         for (const auto& subset : pxr::UsdGeomSubset::GetAllGeomSubsets(mesh))
         {
             pxr::TfToken subsetName = subset.GetPrim().GetName();
@@ -289,7 +463,7 @@ public:
                                  basePrim.GetPath().AppendChild(meshName), materialPaths);
         }
         // Clean up
-        // omniClientWait(omniClientDelete(mesh_usd_path.c_str(), {}, {}));
+        omniClientWait(omniClientDelete(getParent(mesh_usd_path).c_str(), {}, {}));
         pxr::UsdGeomImageable(usdStage->GetPrimAtPath(pxr::SdfPath(meshStagePath)))
             .CreateVisibilityAttr()
             .Set(pxr::UsdGeomTokens->inherited);
@@ -306,7 +480,8 @@ public:
     void importMesh(Mesh* mesh, std::string relativeMeshPath, const Vec3& scale, bool flip = false)
     {
         std::string meshPath = resolveMeshPath(relativeMeshPath);
-        std::string mesh_usd_path = pathJoin(getParent(meshPath), getPathStem(meshPath.c_str()) + ".tmp.usd");
+        std::string mesh_usd_path = pathJoin(pathJoin(getParent(meshPath), getPathStem(meshPath.c_str())) + "_tmp",
+                                             getPathStem(meshPath.c_str()) + ".tmp.usd");
 
         CARB_LOG_INFO("Importing Mesh %s\n    (%s)", meshPath.c_str(), mesh_usd_path.c_str());
         // Set up the Omni Converter flags

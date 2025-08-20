@@ -1,5 +1,5 @@
 [package]
-version = "0.2.1"
+version = "0.3.0"
 category = "Simulation"
 title = "Isaac Sim Core (Materials)"
 description = "The Core Materials extension provides a set of APIs to create and/or wrap one or more USD materials in the stage..."
@@ -30,5 +30,8 @@ name = "isaacsim.core.experimental.materials.tests"
 timeout = 900
 dependencies = [
     "omni.physx.commands",
+]
+args = [
+    '--/persistent/physics/enableDeformableBeta=true',
 ]
 pythonTests.include = ["isaacsim.core.experimental.materials.tests.*"]

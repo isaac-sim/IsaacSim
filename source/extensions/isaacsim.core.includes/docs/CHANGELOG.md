@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.4.1] - 2025-07-28
+### Changed
+- Defaulting to non-FabricHierarchy usage in `computeWorldXformNoCache`
+
 ## [2.4.0] - 2025-07-10
 ### Added
 - Device-generic (CPU or CUDA device) memory buffer implementation

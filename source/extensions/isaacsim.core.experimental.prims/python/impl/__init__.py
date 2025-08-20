@@ -14,6 +14,7 @@
 # limitations under the License.
 
 from .articulation import Articulation
+from .deformable_prim import DeformablePrim
 from .geom_prim import GeomPrim
 from .prim import Prim
 from .rigid_prim import RigidPrim

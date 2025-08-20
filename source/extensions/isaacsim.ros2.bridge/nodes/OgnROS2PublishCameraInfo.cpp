@@ -103,10 +103,18 @@ public:
 
         state.m_message->writeHeader(db.inputs.timeStamp(), state.m_frameId);
         state.m_message->writeResolution(db.inputs.height(), db.inputs.width());
-        state.m_message->writeIntrinsicMatrix(db.inputs.k().data(), 9);
-        state.m_message->writeRectificationMatrix(db.inputs.r().data(), 9);
-        state.m_message->writeProjectionMatrix(db.inputs.p().data(), 12);
-
+        if (db.inputs.k().data())
+        {
+            state.m_message->writeIntrinsicMatrix(db.inputs.k().data(), db.inputs.k().size());
+        }
+        if (db.inputs.r().data())
+        {
+            state.m_message->writeRectificationMatrix(db.inputs.r().data(), db.inputs.r().size());
+        }
+        if (db.inputs.p().data())
+        {
+            state.m_message->writeProjectionMatrix(db.inputs.p().data(), db.inputs.p().size());
+        }
         std::string physicalDistortion = db.tokenToString(db.inputs.physicalDistortionModel());
         if (physicalDistortion.length() > 0)
         {

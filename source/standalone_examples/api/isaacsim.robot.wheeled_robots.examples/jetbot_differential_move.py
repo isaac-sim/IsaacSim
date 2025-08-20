@@ -42,7 +42,7 @@ my_jetbot = my_world.scene.add(
         wheel_dof_names=["left_wheel_joint", "right_wheel_joint"],
         create_robot=True,
         usd_path=jetbot_asset_path,
-        position=np.array([0, 0.0, 2.0]),
+        position=np.array([0, 0.0, 0.05]),
     )
 )
 my_world.scene.add_default_ground_plane()
@@ -62,7 +62,7 @@ while simulation_app.is_running():
             reset_needed = False
         if i >= 0 and i < 1000:
             # forward
-            my_jetbot.apply_wheel_actions(my_controller.forward(command=[0.05, 0]))
+            my_jetbot.apply_wheel_actions(my_controller.forward(command=[0.1, 0]))
             print(my_jetbot.get_linear_velocity())
         elif i >= 1000 and i < 1300:
             # rotate
@@ -70,7 +70,7 @@ while simulation_app.is_running():
             print(my_jetbot.get_angular_velocity())
         elif i >= 1300 and i < 2000:
             # forward
-            my_jetbot.apply_wheel_actions(my_controller.forward(command=[0.05, 0]))
+            my_jetbot.apply_wheel_actions(my_controller.forward(command=[0.1, 0]))
         elif i == 2000:
             i = 0
         i += 1

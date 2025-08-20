@@ -1,4 +1,8 @@
 # Changelog
+## [1.3.19] - 2025-07-25
+### Changed
+- Update assets path to production
+
 ## [1.3.18] - 2025-07-07
 ### Fixed
 - Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 1.3.17)

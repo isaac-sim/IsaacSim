@@ -1260,7 +1260,7 @@ class TestMenuROS2OdometryGraph(ROS2MenuTestBase):
         # Create Odometry graph through menu
 
         window_name = "ROS2 Odometry Graph"
-        delays = [5, 50, 100]
+        delays = [10, 100, 200]
         for delay in delays:
             try:
                 await menu_click("Tools/Robotics/ROS 2 OmniGraphs/Odometry Publisher", human_delay_speed=delay)

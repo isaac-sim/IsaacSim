@@ -106,8 +106,10 @@ class PhysicsMaterial(Prim, ABC):
         """
         # defer imports to avoid circular dependencies
         from .rigid_body import RigidBodyMaterial
+        from .surface_deformable import SurfaceDeformableMaterial
+        from .volume_deformable import VolumeDeformableMaterial
 
-        classes = [RigidBodyMaterial]
+        classes = [RigidBodyMaterial, SurfaceDeformableMaterial, VolumeDeformableMaterial]
 
         instances = []
         stage = stage_utils.get_current_stage(backend="usd")

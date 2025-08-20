@@ -75,7 +75,7 @@ class WorldInterface:
             return self.add_ground_plane(obstacle)
 
         else:
-            carb.log_warning(
+            carb.log_warn(
                 "Obstacle added with unsuported type: "
                 + str(type(obstacle))
                 + "\nObstacle should be from the package isaacsim.core.api.objects"
@@ -95,7 +95,7 @@ class WorldInterface:
         Returns:
             bool: Return True if underlying WorldInterface has implemented add_cuboid()
         """
-        carb.log_warning("Function add_cuboid() has not been implemented for this WorldInterface")
+        carb.log_warn("Function add_cuboid() has not been implemented for this WorldInterface")
         return False
 
     def add_sphere(self, sphere: Union[sphere.DynamicSphere, sphere.VisualSphere], static: bool = False) -> bool:
@@ -109,7 +109,7 @@ class WorldInterface:
         Returns:
             bool: Return True if underlying WorldInterface has implemented add_sphere()
         """
-        carb.log_warning("Function add_sphere() has not been implemented for this WorldInterface")
+        carb.log_warn("Function add_sphere() has not been implemented for this WorldInterface")
         return False
 
     def add_capsule(self, capsule: Union[capsule.DynamicCapsule, capsule.VisualCapsule], static: bool = False) -> bool:
@@ -123,7 +123,7 @@ class WorldInterface:
         Returns:
             bool: Return True if underlying WorldInterface has implemented add_capsule()
         """
-        carb.log_warning("Function add_capsule() has not been implemented for this WorldInterface")
+        carb.log_warn("Function add_capsule() has not been implemented for this WorldInterface")
         return False
 
     def add_cylinder(
@@ -139,7 +139,7 @@ class WorldInterface:
         Returns:
             bool: Return True if underlying WorldInterface has implemented add_cylinder()
         """
-        carb.log_warning("Function add_cylinder() has not been implemented for this WorldInterface")
+        carb.log_warn("Function add_cylinder() has not been implemented for this WorldInterface")
         return False
 
     def add_cone(self, cone: Union[cone.DynamicCone, cone.VisualCone], static: bool = False) -> bool:
@@ -153,7 +153,7 @@ class WorldInterface:
         Returns:
             bool: Return True if underlying WorldInterface has implemented add_cone()
         """
-        carb.log_warning("Function add_cone() has not been implemented for this WorldInterface")
+        carb.log_warn("Function add_cone() has not been implemented for this WorldInterface")
         return False
 
     def add_ground_plane(self, ground_plane: ground_plane.GroundPlane) -> bool:
@@ -165,7 +165,7 @@ class WorldInterface:
         Returns:
             bool: Return True if underlying WorldInterface has implemented add_ground_plane()
         """
-        carb.log_warning("Function add_ground_plane() has not been implemented for this WorldInterface")
+        carb.log_warn("Function add_ground_plane() has not been implemented for this WorldInterface")
         return False
 
     def disable_obstacle(self, obstacle: isaacsim.core.api.objects) -> bool:
@@ -177,7 +177,7 @@ class WorldInterface:
         Returns:
             bool: Return True if obstacle was identified and successfully disabled.
         """
-        carb.log_warning("Function disable_obstacle() has not been implemented for this WorldInterface")
+        carb.log_warn("Function disable_obstacle() has not been implemented for this WorldInterface")
         return False
 
     def enable_obstacle(self, obstacle: isaacsim.core.api.objects) -> bool:
@@ -189,7 +189,7 @@ class WorldInterface:
         Returns:
             bool: Return True if obstacle was identified and successfully enabled.
         """
-        carb.log_warning("Function enable_obstacle() has not been implemented for this WorldInterface")
+        carb.log_warn("Function enable_obstacle() has not been implemented for this WorldInterface")
         return False
 
     def remove_obstacle(self, obstacle: isaacsim.core.api.objects) -> bool:
@@ -202,7 +202,7 @@ class WorldInterface:
         Returns:
             bool: Return True if obstacle was identified and successfully removed.
         """
-        carb.log_warning("Function remove_obstacle() has not been implemented for this WorldInterface")
+        carb.log_warn("Function remove_obstacle() has not been implemented for this WorldInterface")
         return False
 
     def reset(self) -> None:

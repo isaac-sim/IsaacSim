@@ -100,10 +100,10 @@ for i in range(n_robots):
     prim_path = f"/Robots/Robot_{i}"
     stage_utils.add_reference_to_stage(robot_path, prim_path=prim_path)
     # Position robots in a grid pattern:
-    robot_positions.append([-3 * (i % max_line) + 3, -3 * (i // max_line), 0.1])
+    robot_positions.append([-3 * (i % max_line) + 3, -3 * (i // max_line), 1.05])
 
 # Collect all robot prims into Articulation wrapper
-robot_prim_paths = f"/Robots/Robot_[0-9]"
+robot_prim_paths = f"/Robots/Robot_*"
 robots = Articulation(robot_prim_paths, positions=robot_positions)
 
 viewport = get_active_viewport()
@@ -112,7 +112,7 @@ omni.kit.app.get_app().update()
 omni.kit.app.get_app().update()
 
 # Start basic robot movement - elbow rotation
-joint_name = "left_elbow_joint"
+joint_name = "left_elbow"
 dof_index = robots.get_dof_indices(joint_name)
 
 stiffness_values = np.zeros((n_robots, 1), dtype=np.float32)

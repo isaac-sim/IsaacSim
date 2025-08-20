@@ -63,13 +63,13 @@ class Extension(omni.ext.IExt):
                     omni.kit.app.get_app().print_and_log(f"Could not import internal rclpy: {e}")
                     if sys.platform == "linux":
                         omni.kit.app.get_app().print_and_log(
-                            f"To use the internal libraries included with the extension please set the following environment variables to use with FastDDS (default) or CycloneDDS (ROS2 Humble only) before starting Isaac Sim:\n\n"
+                            f"To use the internal libraries included with the extension please set the following environment variables to use with FastDDS (default) or CycloneDDS before starting Isaac Sim:\n\n"
                             f"FastDDS (default):\n"
                             f"export ROS_DISTRO={ros_distro}\n"
                             f"export RMW_IMPLEMENTATION=rmw_fastrtps_cpp\n"
                             f"export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{self._extension_path}/{ros_distro}/lib\n\n"
                             f"OR\n\n"
-                            f"CycloneDDS (ROS2 Humble only):\n"
+                            f"CycloneDDS:\n"
                             f"export ROS_DISTRO={ros_distro}\n"
                             f"export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp\n"
                             f"export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{self._extension_path}/{ros_distro}/lib\n\n"

@@ -168,6 +168,10 @@ Ros2ImuMessageImpl::~Ros2ImuMessageImpl()
 Ros2CameraInfoMessageImpl::Ros2CameraInfoMessageImpl() : Ros2MessageInterfaceImpl("sensor_msgs", "msg", "CameraInfo")
 {
     m_msg = sensor_msgs__msg__CameraInfo__create();
+    if (!m_msg)
+    {
+        CARB_LOG_ERROR("Failed to create sensor_msgs CameraInfo message");
+    }
 }
 
 const void* Ros2CameraInfoMessageImpl::getTypeSupportHandle()
@@ -196,13 +200,29 @@ void Ros2CameraInfoMessageImpl::writeResolution(const uint32_t height, const uin
     cameraInfoMsg->width = width;
 }
 
-void Ros2CameraInfoMessageImpl::writeIntrinsicMatrix(const double array[], const int arraySize)
+void Ros2CameraInfoMessageImpl::writeIntrinsicMatrix(const double array[], const size_t arraySize)
 {
     if (!m_msg)
     {
         return;
     }
+
+    // Validate input parameters
+    if (!array)
+    {
+        CARB_LOG_ERROR("writeIntrinsicMatrix: input array is null");
+        return;
+    }
+
+    if (arraySize != 9)
+    {
+        CARB_LOG_ERROR("writeIntrinsicMatrix: invalid array size %zu, expected 9 for 3x3 matrix", arraySize);
+        return;
+    }
+
     sensor_msgs__msg__CameraInfo* cameraInfoMsg = static_cast<sensor_msgs__msg__CameraInfo*>(m_msg);
+
+    // The k field in sensor_msgs CameraInfo is a fixed-size array of 9 doubles
     memcpy(cameraInfoMsg->k, array, arraySize * sizeof(double));
 }
 
@@ -223,23 +243,55 @@ void Ros2CameraInfoMessageImpl::writeDistortionParameters(std::vector<double>& a
     Ros2MessageInterfaceImpl::writeRosString(distortionModel, cameraInfoMsg->distortion_model);
 }
 
-void Ros2CameraInfoMessageImpl::writeProjectionMatrix(const double array[], const int arraySize)
+void Ros2CameraInfoMessageImpl::writeProjectionMatrix(const double array[], const size_t arraySize)
 {
     if (!m_msg)
     {
         return;
     }
+
+    // Validate input parameters
+    if (!array)
+    {
+        CARB_LOG_ERROR("writeProjectionMatrix: input array is null");
+        return;
+    }
+
+    if (arraySize != 12)
+    {
+        CARB_LOG_ERROR("writeProjectionMatrix: invalid array size %zu, expected 12 for 3x4 matrix", arraySize);
+        return;
+    }
+
     sensor_msgs__msg__CameraInfo* cameraInfoMsg = static_cast<sensor_msgs__msg__CameraInfo*>(m_msg);
+
+    // The p field in sensor_msgs CameraInfo is a fixed-size array of 12 doubles
     memcpy(cameraInfoMsg->p, array, arraySize * sizeof(double));
 }
 
-void Ros2CameraInfoMessageImpl::writeRectificationMatrix(const double array[], const int arraySize)
+void Ros2CameraInfoMessageImpl::writeRectificationMatrix(const double array[], const size_t arraySize)
 {
     if (!m_msg)
     {
         return;
     }
+
+    // Validate input parameters
+    if (!array)
+    {
+        CARB_LOG_ERROR("writeRectificationMatrix: input array is null");
+        return;
+    }
+
+    if (arraySize != 9)
+    {
+        CARB_LOG_ERROR("writeRectificationMatrix: invalid array size %zu, expected 9 for 3x3 matrix", arraySize);
+        return;
+    }
+
     sensor_msgs__msg__CameraInfo* cameraInfoMsg = static_cast<sensor_msgs__msg__CameraInfo*>(m_msg);
+
+    // The r field in sensor_msgs CameraInfo is a fixed-size array of 9 doubles
     memcpy(cameraInfoMsg->r, array, arraySize * sizeof(double));
 }
 

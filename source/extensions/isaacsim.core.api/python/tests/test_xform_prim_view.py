@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import os
+import unittest
 
 import numpy as np
 import omni.kit.test
@@ -83,6 +84,7 @@ class TestXFormPrimView(CoreTestCase):
         )
         return
 
+    @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM")
     async def test_world_poses_fabric(self):
         current_positions, current_orientations = self._frankas_view.get_world_poses(usd=False)
         self.assertTrue(np.isclose(current_positions, np.zeros([2, 3], dtype=np.float32)).all())

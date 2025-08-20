@@ -19,6 +19,7 @@ The following table summarizes the available wrappers.
     :nosignatures:
 
     Articulation
+    DeformablePrim
     GeomPrim
     Prim
     RigidPrim
@@ -93,6 +94,12 @@ Wrappers
 ^^^^^^^^
 
 .. autoclass:: isaacsim.core.experimental.prims.Articulation
+    :members:
+    :undoc-members:
+    :inherited-members:
+    :show-inheritance:
+
+.. autoclass:: isaacsim.core.experimental.prims.DeformablePrim
     :members:
     :undoc-members:
     :inherited-members:

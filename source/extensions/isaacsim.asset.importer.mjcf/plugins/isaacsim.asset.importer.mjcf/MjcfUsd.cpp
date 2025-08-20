@@ -841,120 +841,7 @@ pxr::UsdPrim createPrimitiveGeom(pxr::UsdStageWeakPtr stage,
                    ->GetPath();
         CARB_LOG_INFO("Created mesh at path %s", geomPath.c_str());
     }
-    pxr::UsdPrim prim = stage->GetPrimAtPath(path);
-    if (prim)
-    {
-        CARB_LOG_INFO("Prim Exists");
-        // set the transformations first
-        pxr::GfMatrix4d mat;
-        mat.SetIdentity();
-        mat.SetTranslateOnly(pxr::GfVec3d(geom->pos.x, geom->pos.y, geom->pos.z));
-        mat.SetRotateOnly(pxr::GfQuatd(geom->quat.w, geom->quat.x, geom->quat.y, geom->quat.z));
 
-        pxr::GfMatrix4d scale;
-        scale.SetIdentity();
-        scale.SetScale(pxr::GfVec3d(config.distanceScale, config.distanceScale, config.distanceScale));
-        if (geom->type == MJCFVisualElement::ELLIPSOID)
-        {
-            scale.SetScale(config.distanceScale * pxr::GfVec3d(geom->size.x, geom->size.y, geom->size.z));
-        }
-        else if (geom->type == MJCFVisualElement::SPHERE)
-        {
-            Vec3 cen = geom->pos;
-            Quat q = geom->quat;
-            // scale.SetIdentity();
-            mat.SetTranslateOnly(config.distanceScale * pxr::GfVec3d(cen.x, cen.y, cen.z));
-            mat.SetRotateOnly(pxr::GfQuatd(q.w, q.x, q.y, q.z));
-        }
-        else if (geom->type == MJCFVisualElement::CAPSULE)
-        {
-            Vec3 cen;
-            Quat q;
-
-            if (geom->hasFromTo)
-            {
-                Vec3 diff = geom->to - geom->from;
-                diff = Normalize(diff);
-                Vec3 rotVec = Cross(Vec3(1.0f, 0.0f, 0.0f), diff);
-                if (Length(rotVec) < 1e-5)
-                {
-                    rotVec = Vec3(0.0f, 1.0f, 0.0f); // default rotation about y-axis
-                }
-                else
-                {
-                    rotVec = Normalize(rotVec); // z axis
-                }
-
-                float angle = acos(diff.x);
-                cen = 0.5f * (geom->from + geom->to);
-                q = QuatFromAxisAngle(rotVec, angle);
-            }
-            else
-            {
-                cen = geom->pos;
-                q = geom->quat * QuatFromAxisAngle(Vec3(0.0f, 1.0f, 0.0f), -kPi * 0.5f);
-            }
-
-            mat.SetTranslateOnly(config.distanceScale * pxr::GfVec3d(cen.x, cen.y, cen.z));
-            mat.SetRotateOnly(pxr::GfQuatd(q.w, q.x, q.y, q.z));
-        }
-        else if (geom->type == MJCFVisualElement::CYLINDER)
-        {
-            Vec3 cen;
-            Quat q;
-            if (geom->hasFromTo)
-            {
-                cen = 0.5f * (geom->from + geom->to);
-                Vec3 axis = geom->to - geom->from;
-                q = GetRotationQuat(Vec3(0.0f, 0.0f, 1.0f), Normalize(axis));
-            }
-            else
-            {
-                cen = geom->pos;
-                q = geom->quat;
-            }
-
-            mat.SetRotateOnly(pxr::GfQuatd(q.w, q.x, q.y, q.z));
-            mat.SetTranslateOnly(config.distanceScale * pxr::GfVec3d(cen.x, cen.y, cen.z));
-        }
-        else if (geom->type == MJCFVisualElement::BOX)
-        {
-            Vec3 s = geom->size;
-            Vec3 cen = geom->pos;
-            Quat q = geom->quat;
-            scale.SetScale(config.distanceScale * pxr::GfVec3d(s.x, s.y, s.z));
-            mat.SetTranslateOnly(config.distanceScale * pxr::GfVec3d(cen.x, cen.y, cen.z));
-            mat.SetRotateOnly(pxr::GfQuatd(q.w, q.x, q.y, q.z));
-        }
-        else if (geom->type == MJCFVisualElement::MESH)
-        {
-            Vec3 cen = geom->pos;
-            Quat q = geom->quat;
-
-            MeshInfo meshInfo = simulationMeshCache.find(geom->mesh)->second;
-            scale.SetScale(config.distanceScale *
-                           pxr::GfVec3d(meshInfo.mesh->scale.x, meshInfo.mesh->scale.y, meshInfo.mesh->scale.z));
-
-            mat.SetTranslateOnly(config.distanceScale * pxr::GfVec3d(cen.x, cen.y, cen.z));
-            mat.SetRotateOnly(pxr::GfQuatd(q.w, q.x, q.y, q.z));
-        }
-        else if (geom->type == MJCFVisualElement::PLANE)
-        {
-            Vec3 cen = geom->pos;
-            Quat q = geom->quat;
-            scale.SetIdentity();
-            mat.SetTranslateOnly(config.distanceScale * pxr::GfVec3d(cen.x, cen.y, cen.z));
-            mat.SetRotateOnly(pxr::GfQuatd(q.w, q.x, q.y, q.z));
-        }
-
-        pxr::UsdGeomXformable gprim = pxr::UsdGeomXformable(stage->GetPrimAtPath(path));
-        gprim.ClearXformOpOrder();
-        gprim.AddTranslateOp(pxr::UsdGeomXformOp::PrecisionDouble).Set(mat.ExtractTranslation());
-        gprim.AddOrientOp(pxr::UsdGeomXformOp::PrecisionDouble).Set(mat.ExtractRotationQuat());
-        gprim.AddScaleOp(pxr::UsdGeomXformOp::PrecisionDouble)
-            .Set(pxr::GfVec3d(scale.GetRow3(0)[0], scale.GetRow3(1)[1], scale.GetRow3(2)[2]));
-        CARB_LOG_INFO("Done Adding Mesh");
-    }
 
     return stage->GetPrimAtPath(pxr::SdfPath(geomPath));
 }
@@ -1131,7 +1018,7 @@ pxr::UsdPrim createPrimitiveGeom(pxr::UsdStageWeakPtr stage,
 void applyCollisionGeom(pxr::UsdStageWeakPtr stage, pxr::UsdPrim prim, bool ConvexDecomposition)
 {
     pxr::UsdPhysicsCollisionAPI::Apply(prim);
-    for (const auto& mesh_prim : prim.GetChildren())
+    for (const auto mesh_prim : pxr::UsdPrimRange(prim))
     {
         if (pxr::UsdGeomMesh(mesh_prim))
         {

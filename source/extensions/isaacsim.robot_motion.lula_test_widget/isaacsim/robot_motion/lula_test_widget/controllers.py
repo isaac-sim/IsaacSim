@@ -64,28 +64,31 @@ class TrajectoryController(LulaController):
     def forward(
         self, target_end_effector_position: np.ndarray, target_end_effector_orientation: Optional[np.ndarray] = None
     ):
+        # if active joints no the same as the size of the articulation, need to set active and passive joints separately
+        robot_articulation = self._art_trajectory.get_robot_articulation()
+        active_joints = self._art_trajectory.get_active_joints_subset()
+        active_joint_indices = active_joints.joint_indices
+
         if self._action_index == 0:
             first_action = self._actions[0]
             desired_joint_positions = first_action.joint_positions
-
-            robot_articulation = self._art_trajectory.get_robot_articulation()
             current_joint_positions = robot_articulation.get_joint_positions()
 
             is_none_mask = desired_joint_positions == None
-            desired_joint_positions[is_none_mask] = current_joint_positions[is_none_mask]
+            desired_joint_positions[is_none_mask] = current_joint_positions[active_joint_indices][is_none_mask]
 
-            robot_articulation.set_joint_positions(desired_joint_positions)
-            action = first_action
         elif self._action_index >= len(self._actions):
-            return ArticulationAction(
-                self._actions[-1].joint_positions,
-                np.zeros_like(self._actions[-1].joint_velocities),
-                self._actions[-1].joint_indices,
-            )
+            desired_joint_positions = self._actions[-1].joint_positions
         else:
-            action = self._actions[self._action_index]
+            desired_joint_positions = self._actions[self._action_index].joint_positions
 
+        action = ArticulationAction(
+            desired_joint_positions,
+            np.zeros_like(desired_joint_positions),
+            joint_indices=active_joint_indices,
+        )
         self._action_index += 1
+
         return action
 
 

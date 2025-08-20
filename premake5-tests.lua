@@ -116,6 +116,10 @@ function create_tests()
             "tests-nativepython-testing-isaacsim.simulation_app.test_createstage_config",
             "standalone_examples/testing/isaacsim.simulation_app/test_createstage_config.py",
         },
+        {
+            "tests-nativepython-testing-isaacsim.simulation_app.test_multiprocess",
+            "standalone_examples/testing/isaacsim.simulation_app/test_multiprocess.py",
+        },
     }
 
     for _, test in ipairs(simulation_app_tests) do
@@ -187,6 +191,10 @@ function create_tests()
     end
 
     -- isaacsim.sensors.camera
+    python_sample_test(
+        "tests-nativepython-isaacsim.sensors.camera.camera_add_depth_sensor",
+        "standalone_examples/api/isaacsim.sensors.camera/camera_add_depth_sensor.py"
+    )
     python_sample_test(
         "tests-nativepython-isaacsim.sensors.camera.camera_opencv_fisheye",
         "standalone_examples/api/isaacsim.sensors.camera/camera_opencv_fisheye.py"
@@ -725,6 +733,11 @@ function create_tests()
             "tests-standalone_benchmarks-benchmark_single_view_depth_sensor",
             "standalone_examples/benchmarks/benchmark_single_view_depth_sensor.py",
             "--num-frames 10 --num-cameras 2",
+        },
+        {
+            "tests-standalone_benchmarks-benchmark_robots_humanoid",
+            "standalone_examples/benchmarks/benchmark_robots_humanoid.py",
+            "--num-frames 10 --num-robots 2",
         },
     }
 

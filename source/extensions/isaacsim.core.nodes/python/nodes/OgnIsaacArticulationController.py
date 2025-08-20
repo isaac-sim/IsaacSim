@@ -36,7 +36,7 @@ class OgnIsaacArticulationControllerInternalState(BaseResetNode):
         super().__init__(initialize=False)
 
     def initialize_controller(self):
-        self.controller_handle = SingleArticulation(self.robot_prim)
+        self.controller_handle = SingleArticulation(self.robot_prim, reset_xform_properties=False)
         self.controller_handle.initialize()
         self.num_dof = self.controller_handle.num_dof
         self.initialized = True

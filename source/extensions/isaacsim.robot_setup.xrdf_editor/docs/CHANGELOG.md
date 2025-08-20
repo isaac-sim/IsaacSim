@@ -1,4 +1,8 @@
 # Changelog
+## [3.1.11] - 2025-07-14
+### Added
+- Warning message when an existing XRDF file isn't valid for merging
+
 ## [3.1.10] - 2025-05-19
 ### Changed
 - Update copyright and license to apache v2.0

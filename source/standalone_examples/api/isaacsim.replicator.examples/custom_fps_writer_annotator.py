@@ -104,6 +104,7 @@ def run_custom_fps_example(duration_seconds):
         previous_time = current_time
         # Advance the app (timeline) by one frame
         simulation_app.update()
+        loop_iteration_count += 1
 
     # Make sure the writer finishes writing the data to disk
     rep.orchestrator.wait_until_complete()

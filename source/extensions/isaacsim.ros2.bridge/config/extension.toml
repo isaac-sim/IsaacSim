@@ -1,5 +1,5 @@
 [package]
-version = "4.8.16"
+version = "4.9.3"
 category = "Simulation"
 title = "ROS 2 Bridge"
 description = "The ROS 2 Bridge extension enables communication between the Isaac Sim and ROS 2 systems. It allows for the publishing and subscribing of ROS 2 topics and services via OmniGraph nodes and Action graphs. ROS 2 publishers, subscribers and services are only active when play is pressed. To enable this extension, ensure ROS 2 libraries are sourced in the terminal before running Isaac Sim or source the lightweight ROS 2 libraries included with Isaac Sim as an alternative."
@@ -59,6 +59,8 @@ exts."isaacsim.ros2.bridge".ros_distro = "humble"
 exts."isaacsim.ros2.bridge".publish_without_verification = false
 # Whether to disable multithreading use in the *ROS2PublishImage* OmniGraph node.
 exts."isaacsim.ros2.bridge".publish_multithreading_disabled = false
+# Whether to enable image publishing via NITROS
+exts."isaacsim.ros2.bridge".enable_nitros_bridge = false
 
 [fswatcher.patterns]
 include = ["*.ogn", "*.py", "*.toml"]
@@ -89,7 +91,11 @@ stdoutFailPatterns.exclude = [
     "*[Error] [omni.physx.tensors.plugin] Failed to create simulation view: no active physics scene found*",
     "*[Error] [omni.graph.core.plugin] /Graph/ROS_Odometry/ComputeOdometry: [/Graph/ROS_Odometry] The prim  is not valid. Please specify at least one valid chassis prim*",
     "*[Error] [omni.graph.core.plugin] /Graph/ROS_Odometry/TFRobot: [/Graph/ROS_Odometry] The prim  is not valid. Please specify at least one valid target prim for the ROS pose tree component*",
-    "*[Error] [omni.graph.core.plugin] /Graph/ROS_TF/PublisherTF: [/Graph/ROS_TF] The prim  is not valid. Please specify at least one valid target prim for the ROS pose tree component*"
+    "*[Error] [omni.graph.core.plugin] /Graph/ROS_TF/PublisherTF: [/Graph/ROS_TF] The prim  is not valid. Please specify at least one valid target prim for the ROS pose tree component*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishJointState: [/TestGraph] The prim /NonExistentPrim is not valid*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishJointState: [/TestGraph] Could not find target prim*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishTransformTree: [/TestGraph] Please specify at least one valid target prim for the ROS pose tree component*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishTransformTree: [/TestGraph] The prim /NonExistentPrim* is not valid. Please specify at least one valid target prim for the ROS pose tree component*"
 ]
 
 

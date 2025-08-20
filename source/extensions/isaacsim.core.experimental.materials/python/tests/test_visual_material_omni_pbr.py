@@ -24,6 +24,7 @@ from isaacsim.core.experimental.prims.tests.common import (
     check_allclose,
     check_array,
     check_lists,
+    cprint,
     draw_choice,
     draw_indices,
     draw_sample,
@@ -51,7 +52,7 @@ def parametrize(
                             assert backend in ["usd", "fabric", "tensor"], f"Invalid backend: {backend}"
                             assert instance in ["one", "many"], f"Invalid instance: {instance}"
                             assert operation in ["wrap", "create"], f"Invalid operation: {operation}"
-                            print(
+                            cprint(
                                 f"  |-- device: {device}, backend: {backend}, instance: {instance}, operation: {operation}"
                             )
                             # create new stage
@@ -198,9 +199,9 @@ class TestOmniPBR(omni.kit.test.AsyncTestCase):
         # test cases
         for name, sample_func in cases.items():
             sdf_type = prim._inputs[name]
-            print(f"  |   input: {name}, sdf_type: {sdf_type}")
+            cprint(f"  |   input: {name}, sdf_type: {sdf_type}")
             for indices, expected_count in draw_indices(count=num_prims, step=2):
-                print(f"  |    |-- indices: {type(indices).__name__}, expected_count: {expected_count}")
+                cprint(f"  |    |-- indices: {type(indices).__name__}, expected_count: {expected_count}")
                 for v0, expected_v0 in sample_func(expected_count):
                     prim.set_input_values(name, values=v0, indices=indices)
                     output = prim.get_input_values(name, indices=indices)

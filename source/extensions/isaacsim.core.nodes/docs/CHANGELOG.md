@@ -1,4 +1,18 @@
 # Changelog
+
+## [3.2.16] - 2025-07-25
+### Fixed
+- Fix issue where multiple upstream connections to execIn were causing duplicate node executions
+- Fix issue where correct frame time was not returned by Simulation Time annotator
+
+## [3.2.15] - 2025-07-18
+### Fixed
+- Disable `xformOp` resetting when instantiating the articulation wrapper in the articulation state/controller nodes
+
+## [3.2.14] - 2025-07-17
+### Fixed
+- Fix issue where explicit render product destruction caused crashes on stage cleanup
+
 ## [3.2.13] - 2025-07-07
 ### Fixed
 - Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 3.2.12)

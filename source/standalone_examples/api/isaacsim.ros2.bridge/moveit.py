@@ -112,7 +112,6 @@ try:
                 ("PublishJointState.inputs:topicName", "isaac_joint_states"),
                 ("SubscribeJointState.inputs:topicName", "isaac_joint_commands"),
                 ("PublishJointState.inputs:targetPrim", [usdrt.Sdf.Path(FRANKA_STAGE_PATH)]),
-                ("PublishTF.inputs:targetPrims", [usdrt.Sdf.Path(FRANKA_STAGE_PATH)]),
             ],
         },
     )
@@ -121,7 +120,7 @@ except Exception as e:
 
 simulation_app.update()
 
-# need to initialize physics getting any articulation..etc
+# need to initialize physics getting any articulation etc.
 simulation_context.initialize_physics()
 
 simulation_context.play()

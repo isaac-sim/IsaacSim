@@ -44,7 +44,7 @@ public:
     {
         CARB_PROFILE_ZONE(0, "IsaacExtractRTXSensorPointCloud initialize");
 
-        m_deviceBuffers.initialize(reinterpret_cast<void*>(db.inputs.dataPtr()), (cudaStream_t)db.inputs.cudaStream());
+        m_deviceBuffers.initialize(reinterpret_cast<void*>(db.inputs.dataPtr()), db.inputs.cudaDeviceIndex());
         if (!m_deviceBuffers.gmoOnDevice)
         {
             // Preallocate host buffer to store point cloud
@@ -60,28 +60,10 @@ public:
         // Enable downstream execution by default
         db.outputs.exec() = kExecutionAttributeStateEnabled;
 
-        // Store CUDA stream on which data pointer will be provided
-        cudaStream_t cudaStream = (cudaStream_t)db.inputs.cudaStream();
-        // Get CUDA context corresponding to incoming CUDA stream
-        CUcontext cudaContext;
-        cuStreamGetCtx(cudaStream, &cudaContext);
-        // Set thread running this node's CUDA context to this one
-        cuCtxPushCurrent(cudaContext);
-        // Get CUDA device corresponding to incoming CUDA stream from current CUDA context
-        int cudaDevice;
-        cuCtxGetDevice(&cudaDevice);
+        int cudaDevice = db.inputs.cudaDeviceIndex();
+        isaacsim::core::includes::ScopedDevice scopedDevice(cudaDevice);
+        CUDA_CHECK(cudaStreamSynchronize((cudaStream_t)db.inputs.cudaStream()));
 
-        // Synchronize the stream to ensure the GMO is populated and newData is set, if necessary
-        if (db.inputs.accumulateLidarScan())
-        {
-            isaacsim::core::includes::ScopedDevice scopedDevice(cudaDevice);
-            CUDA_CHECK(cudaStreamSynchronize((cudaStream_t)db.inputs.cudaStream()));
-            if (!db.inputs.newData())
-            {
-                CARB_LOG_INFO("IsaacExtractRTXSensorPointCloud: newData input is false. Skipping execution.");
-                return false;
-            }
-        }
 
         // Test if input data pointer is nullptr before we initialize the node, to avoid incorrect CUDA memory
         // allocation
@@ -104,13 +86,6 @@ public:
             return false;
         }
 
-        // Determine if input data pointer is on device or host
-        if ((cudaStream_t)db.inputs.cudaStream() != state.m_deviceBuffers.cudaStream)
-        {
-            CARB_LOG_ERROR(
-                "IsaacExtractRTXSensorPointCloud: dataPtr input stream changed mid-execution. This is not supported. Node will not execute.");
-            return false;
-        }
 
         // Fill the point cloud buffer with the valid points
         state.m_deviceBuffers.fillPointCloudBuffer(dataPtr, state.m_numValidPointsHost, state.m_frameAtEnd);
@@ -125,15 +100,14 @@ public:
         else
         {
             // Synchronize the stream to ensure the point cloud buffer is populated
-            CUDA_CHECK(cudaStreamSynchronize(state.m_deviceBuffers.cudaStream));
-            // Copy the point cloud buffer to the host
+            CUDA_CHECK(cudaStreamSynchronize((cudaStream_t)db.inputs.cudaStream()));
             if (state.hostPcBuffer.size() < state.m_deviceBuffers.bufferSize)
             {
                 state.hostPcBuffer.resize(state.m_deviceBuffers.bufferSize);
             }
-            CUDA_CHECK(cudaMemcpyAsync(state.hostPcBuffer.data(), state.m_deviceBuffers.pointCloudBuffer.data(),
-                                       state.m_numValidPointsHost * sizeof(float3), cudaMemcpyDeviceToHost,
-                                       state.m_deviceBuffers.cudaStream));
+            CUDA_CHECK(cudaMemcpy(state.hostPcBuffer.data(), state.m_deviceBuffers.pointCloudBuffer.data(),
+                                  state.m_numValidPointsHost * sizeof(float3), cudaMemcpyDeviceToHost));
+
             db.outputs.dataPtr() = reinterpret_cast<uint64_t>(state.hostPcBuffer.data());
             db.outputs.cudaDeviceIndex() = -1;
         }
@@ -141,11 +115,9 @@ public:
         // Resolve transform from sensor pose at end of scan as 4x4 matrix
         auto& matrixOutput = *reinterpret_cast<omni::math::linalg::matrix4d*>(&db.outputs.transform());
         getTransformFromSensorPose(state.m_frameAtEnd, matrixOutput);
-        db.outputs.cudaStream() = db.inputs.cudaStream();
         db.outputs.bufferSize() = state.m_numValidPointsHost * sizeof(float3);
         db.outputs.width() = static_cast<uint32_t>(state.m_numValidPointsHost);
         db.outputs.height() = 1;
-        db.outputs.accumulatedData() = !db.inputs.accumulateLidarScan() || db.inputs.newData();
         return true;
     }
 

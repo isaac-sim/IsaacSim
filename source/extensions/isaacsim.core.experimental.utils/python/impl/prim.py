@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Literal
 
 import usdrt
 from pxr import Usd
@@ -185,7 +185,7 @@ def get_prim_path(prim: Usd.Prim | usdrt.Usd.Prim) -> str:
 def get_all_matching_child_prims(
     prim: str | Usd.Prim | usdrt.Usd.Prim,
     *,
-    predicate: Callable[[str], bool],
+    predicate: Callable[[Usd.Prim | usdrt.Usd.Prim, str], bool],
     include_self: bool = False,
     max_depth: int | None = None,
 ) -> list[Usd.Prim | usdrt.Usd.Prim]:
@@ -196,6 +196,8 @@ def get_all_matching_child_prims(
     Args:
         prim: Prim path or prim instance.
         predicate: Function to test the prims against.
+            The function should take two positional arguments: a prim instance and its path.
+            The function should return a boolean value indicating whether a prim passes the predicate.
         include_self: Whether to include the given prim in the search.
         max_depth: Maximum depth to search (current prim is at depth 0). If ``None``, search till the end of the tree.
 
@@ -217,7 +219,7 @@ def get_all_matching_child_prims(
         >>> stage_utils.define_prim("/World/Cube_0/Cube_1", "Cube")  # doctest: +NO_CHECK
         >>>
         >>> # get all `/World`'s child prims of type Cube
-        >>> predicate = lambda path: prim_utils.get_prim_at_path(path).GetTypeName() == "Cube"
+        >>> predicate = lambda prim, path: prim.GetTypeName() == "Cube"
         >>> prim_utils.get_all_matching_child_prims("/World", predicate=predicate)
         [Usd.Prim(</World/Cube_0>), Usd.Prim(</World/Cube_0/Cube_1>)]
         >>>
@@ -234,14 +236,17 @@ def get_all_matching_child_prims(
         prim, current_depth = stack.pop(0)
         if max_depth is not None and current_depth > max_depth:
             break
-        if predicate(get_prim_path(prim)):
+        if predicate(prim, get_prim_path(prim)):
             children.append(prim)
         stack.extend([(child, current_depth + 1) for child in prim.GetChildren()])
     return children
 
 
 def get_first_matching_child_prim(
-    prim: str | Usd.Prim | usdrt.Usd.Prim, *, predicate: Callable[[str], bool], include_self: bool = False
+    prim: str | Usd.Prim | usdrt.Usd.Prim,
+    *,
+    predicate: Callable[[Usd.Prim | usdrt.Usd.Prim, str], bool],
+    include_self: bool = False,
 ) -> Usd.Prim | usdrt.Usd.Prim | None:
     """Get the first prim child of the given prim (excluding itself by default) that passes the predicate.
 
@@ -250,6 +255,8 @@ def get_first_matching_child_prim(
     Args:
         prim: Prim path or prim instance.
         predicate: Function to test the prims against.
+            The function should take two positional arguments: a prim instance and its path.
+            The function should return a boolean value indicating whether a prim passes the predicate.
         include_self: Whether to include the given prim in the search.
 
     Returns:
@@ -268,7 +275,7 @@ def get_first_matching_child_prim(
         >>> stage_utils.define_prim("/World/Sphere", "Sphere")  # doctest: +NO_CHECK
         >>>
         >>> # get the first `/World`'s child prim of type Sphere
-        >>> predicate = lambda path: prim_utils.get_prim_at_path(path).GetTypeName() == "Sphere"
+        >>> predicate = lambda prim, path: prim.GetTypeName() == "Sphere"
         >>> prim_utils.get_first_matching_child_prim("/World", predicate=predicate)
         Usd.Prim(</World/Sphere>)
     """
@@ -276,14 +283,17 @@ def get_first_matching_child_prim(
     stack = [prim] if include_self else prim.GetChildren()
     while stack:
         prim = stack.pop(0)
-        if predicate(get_prim_path(prim)):
+        if predicate(prim, get_prim_path(prim)):
             return prim
         stack.extend(prim.GetChildren())
     return None
 
 
 def get_first_matching_parent_prim(
-    prim: str | Usd.Prim | usdrt.Usd.Prim, *, predicate: Callable[[str], bool], include_self: bool = False
+    prim: str | Usd.Prim | usdrt.Usd.Prim,
+    *,
+    predicate: Callable[[Usd.Prim | usdrt.Usd.Prim, str], bool],
+    include_self: bool = False,
 ) -> Usd.Prim | usdrt.Usd.Prim | None:
     """Get the first prim parent of the given prim (excluding itself by default) that passes the predicate.
 
@@ -297,18 +307,88 @@ def get_first_matching_parent_prim(
     Args:
         prim: Prim path or prim instance.
         predicate: Function to test the prims against.
+            The function should take two positional arguments: a prim instance and its path.
+            The function should return a boolean value indicating whether a prim passes the predicate.
         include_self: Whether to include the given prim in the search.
 
     Returns:
         First prim parent or ``None`` if no prim parent passes the predicate.
 
     Example:
+
+    .. code-block:: python
+
+        >>> import isaacsim.core.experimental.utils.prim as prim_utils
+        >>> import isaacsim.core.experimental.utils.stage as stage_utils
+        >>>
+        >>> # define some nested prims
+        >>> stage_utils.define_prim("/World/Cube", "Cube")  # doctest: +NO_CHECK
+        >>> stage_utils.define_prim("/World/Cube/Cylinder", "Cylinder")  # doctest: +NO_CHECK
+        >>> stage_utils.define_prim("/World/Cube/Cylinder/Sphere", "Sphere")  # doctest: +NO_CHECK
+        >>>
+        >>> # get the first `Sphere`'s parent prim of type Cube
+        >>> predicate = lambda prim, path: prim.GetTypeName() == "Cube"
+        >>> prim_utils.get_first_matching_parent_prim("/World/Cube/Cylinder/Sphere", predicate=predicate)
+        Usd.Prim(</World/Cube>)
     """
     prim = stage_utils.get_current_stage().GetPrimAtPath(prim) if isinstance(prim, str) else prim
     if not include_self:
         prim = prim.GetParent()
     while prim.GetPath().pathString != "/":  # prim.IsPseudoRoot() is not implemented in USDRT
-        if predicate(get_prim_path(prim)):
+        if predicate(prim, get_prim_path(prim)):
             return prim
         prim = prim.GetParent()
     return None
+
+
+def has_api(
+    prim: str | Usd.Prim, api: str | type | list[str | type], *, test: Literal["all", "any", "none"] = "all"
+) -> bool:
+    """Check if a prim has or not the given API schema(s) applied.
+
+    Backends: :guilabel:`usd`.
+
+    Args:
+        prim: Prim path or prim instance.
+        api: API schema name or type, or a list of them.
+        test: Checking operation to test for.
+            - "all": All APIs must be present.
+            - "any": Any API must be present.
+            - "none": No APIs must be present.
+
+    Returns:
+        Whether the prim has or not (depending on the test) the given API schema applied.
+
+    Raises:
+        ValueError: If the test operation is invalid.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> import isaacsim.core.experimental.utils.prim as prim_utils
+        >>> import isaacsim.core.experimental.utils.stage as stage_utils
+        >>> from pxr import UsdLux
+        >>>
+        >>> prim = stage_utils.define_prim("/World/Light", "SphereLight")
+        >>> prim_utils.has_api(prim, UsdLux.LightAPI)
+        True
+    """
+    prim = stage_utils.get_current_stage().GetPrimAtPath(prim) if isinstance(prim, str) else prim
+    # get applied status
+    status = []
+    applied_schemas = prim.GetAppliedSchemas()
+    for item in api if isinstance(api, (list, tuple)) else [api]:
+        if isinstance(item, str):
+            status.append(item in applied_schemas)
+        else:
+            status.append(prim.HasAPI(item))
+    # test condition
+    if test == "all":
+        return all(status)
+    elif test == "any":
+        return any(status)
+    elif test == "none":
+        return not any(status)
+    else:
+        raise ValueError(f"Invalid test operation: '{test}'")

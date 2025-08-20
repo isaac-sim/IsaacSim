@@ -28,3 +28,4 @@ entry_point = "${config_root}/tools/isaac_build/edit_sysconfig.py:setup_repo_too
 command = "generate_vscode_settings"
 entry_point = "${config_root}/tools/isaac_build/generate_vscode_settings.py:setup_repo_tool"
 
+

@@ -1,5 +1,5 @@
 [package]
-version = "2.3.16"
+version = "2.3.17"
 category = "Simulation"
 title = "Isaac Sim Menus"
 description = "Menus specific to Isaac Sim"
@@ -90,7 +90,9 @@ stdoutFailPatterns.exclude = [
     '*[Error] [carb] [Plugin: omni.sensors.nv.lidar.ext.plugin] Dependency: [omni::sensors::lidar::IGenericModelOutputIOFactory v0.1] failed to be resolved.*', # feature not included in Windows
     '*[Error] [isaacsim.sensors.physics.plugin] *** error: /Cube/Contact_Sensor parent prim is missing contact report API, automatically adding contact report API, stop and play the simulation for this change to take effect*',
     '*[Error] [isaacsim.sensors.physx.plugin] isLightBeamSensor: Light Beam Sensor does not exist*',
-    '*[Error] [omni.hydra] Unsupported data type 0 on primvar *doNotCastShadows*'
+    '*[Error] [omni.hydra] Unsupported data type 0 on primvar *doNotCastShadows*',
+    '*[Error] [rtx.postprocessing.plugin] DepthSensor: Texture sizes do not match:*',
+    '*[Error] [rtx.postprocessing.plugin] DepthSensor: Failed to allocate view resources*'
 ]
 
 [[test]]

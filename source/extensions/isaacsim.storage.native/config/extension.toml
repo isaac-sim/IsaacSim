@@ -1,5 +1,5 @@
 [package]
-version = "1.2.7"
+version = "1.2.8"
 category = "Simulation"
 title = "Isaac Sim Native Storage"
 description = "Isaac Sim Native Storage"
@@ -22,7 +22,7 @@ name = "isaacsim.storage.native.tests"
 
 [settings]
 # Default asset root path for Isaac Sim
-persistent.isaac.asset_root.default = "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0"
+persistent.isaac.asset_root.default = "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0"
 # Timeout in seconds for asset root path to be resolved
 persistent.isaac.asset_root.timeout = 5.0
 

@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import random
+import string
 
 import carb
 import omni.kit.window.property
@@ -228,8 +229,9 @@ class TextureRandomizer(BehaviorScript):
         # Create a unique looks path in the given behavior scope
         looks_path = omni.usd.get_stage_next_free_path(self.stage, f"{SCOPE_NAME}/{self.BEHAVIOR_NS}/Looks", False)
         for prim in self._valid_prims:
-            # Create a unique path for the material
-            mtl_path = omni.usd.get_stage_next_free_path(self.stage, f"{looks_path}/{mtl_name}", False)
+            # Create a unique path for the material (WAR for ISIM-4054)
+            rand_postfix = "".join(random.choices(string.ascii_letters + string.digits, k=4))
+            mtl_path = omni.usd.get_stage_next_free_path(self.stage, f"{looks_path}/{mtl_name}_{rand_postfix}", False)
 
             # Create the material and bind it to the prim
             material = create_mdl_material(MDL, mtl_name, mtl_path)

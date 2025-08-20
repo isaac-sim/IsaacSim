@@ -1,5 +1,5 @@
 [package]
-version = "0.4.4"
+version = "0.5.1"
 category = "Simulation"
 title = "Isaac Sim Core API (Prims)"
 description = "The Core Prims extension provides a set of APIs to read and write state information to the different types of prims."

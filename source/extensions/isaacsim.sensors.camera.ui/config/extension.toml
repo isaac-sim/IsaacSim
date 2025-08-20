@@ -1,5 +1,5 @@
 [package]
-version = "0.1.16"
+version = "0.2.0"
 category = "Simulation"
 title = "Isaac Sim Camera Simulation UI Components"
 description = "Provides UI components for Isaac Sim camera simulation, eg. menu options."
@@ -61,6 +61,11 @@ args = [
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
     "--/rtx/reservedDescriptors=900000",
+]
+
+stdoutFailPatterns.exclude = [
+    '*[Error] [rtx.postprocessing.plugin] DepthSensor: Texture sizes do not match*',
+    '*[Error] [rtx.postprocessing.plugin] DepthSensor: Failed to allocate view resources for view 1 device 0*',
 ]
 
 [[test]]

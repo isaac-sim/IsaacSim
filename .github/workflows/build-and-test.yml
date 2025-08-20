@@ -58,12 +58,20 @@ jobs:
         set -euo pipefail  # Exit on error, undefined vars, pipe failures
         set -x  # Print commands being executed
 
+        echo "::group::Clear Caches"
+        rm -rf ~/.local/share/ov
+        rm -rf ~/.cache/ov
+        rm -rf ~/.cache/packman
+        # rm -rf /tmp/*
+        # chmod -R u+w /tmp
+        echo "::endgroup::"
+
         echo "::group::Build Isaac Sim"
         # Build Isaac Sim
         touch .eula_accepted
         find . -type f -iname "*.sh" -exec chmod +x {} +
-        chmod +x ./build.sh
-        chmod +x ./repo.sh
+        chmod +x build.sh
+        chmod +x repo.sh
         ./build.sh
         if [ $? -ne 0 ]; then
           echo 'BUILD FAILED with exit code ' $?
@@ -73,14 +81,13 @@ jobs:
 
         # echo "::group::Test Isaac Sim"
         # # Test Isaac Sim
-        # chmod +x ./repo.sh
         # cd _build/linux-x86_64/release
         # touch .eula_accepted
         # find . -type f -iname "*.sh" -exec chmod +x {} +
-        # chmod +x ./exts/isaacsim.ros2.bridge/bin/isaacsim.ros2.bridge.check
-        # chmod +x ./post_install.sh
-        # chmod +x ./warmup.sh
-        # chmod +x ./isaac-sim.sh
+        # chmod +x exts/isaacsim.ros2.bridge/bin/isaacsim.ros2.bridge.check
+        # chmod +x post_install.sh
+        # chmod +x warmup.sh
+        # chmod +x isaac-sim.sh
         # ./post_install.sh
         # # ./warmup.sh
         # ./isaac-sim.sh --no-window --/app/quitAfter=500 --/app/file/ignoreUnsavedOnExit=1

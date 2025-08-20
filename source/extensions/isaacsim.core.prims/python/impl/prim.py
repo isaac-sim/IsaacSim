@@ -59,9 +59,16 @@ class Prim(object):
         return
 
     def __del__(self):
+        self.destroy()
+
+    def destroy(self):
         for callback_id in self._callbacks:
             SimulationManager.deregister_callback(callback_id)
-        return
+        self._callbacks = []
+        self._prims = []
+        self._prim_paths = []
+        self._count = 0
+        self._is_valid = False
 
     @property
     def prim_paths(self) -> List[str]:

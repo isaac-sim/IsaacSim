@@ -44,11 +44,7 @@ def get_filtered_entities(usdrt_stage, filter_pattern=None):
         return [], "usdrt Stage not available for traversing"
 
     # Get all prim paths from the usdrt stage
-    all_prim_paths = []
-
-    # Use the usdrt stage's Traverse method to get all prims
-    for prim in usdrt_stage.Traverse():
-        all_prim_paths.append(str(prim.GetPath()))
+    all_prim_paths = [prim.GetPrimPath().pathString for prim in list(usdrt_stage.Traverse())[1:]]
 
     # Filter entities based on pattern if provided
     if filter_pattern:
@@ -84,9 +80,16 @@ async def get_entity_state(entity_path):
     # Check if entity exists
     if not prim_utils.is_prim_path_valid(entity_path):
         return None, f"Entity '{entity_path}' does not exist", Result.RESULT_NOT_FOUND
-
     # Get the prim
     prim = prim_utils.get_prim_at_path(entity_path)
+
+    # Instance Proxy prims are currently not supported
+    if prim.IsInstanceProxy():
+        return (
+            None,
+            f"Entity '{entity_path}' is of InstanceProxy type. Cannot retrieve state.",
+            Result.RESULT_FEATURE_UNSUPPORTED,
+        )
 
     # Get the frame_id - use isaac:nameOverride if available and not empty, otherwise use prim name
     if prim.HasAttribute("isaac:nameOverride"):
@@ -116,7 +119,7 @@ async def get_entity_state(entity_path):
         try:
 
             # Create a RigidPrim for the rigid body prim
-            rigid_prim = RigidPrim(paths=entity_path)
+            rigid_prim = RigidPrim(paths=entity_path, reset_xform_op_properties=False)
 
             # Get world poses (position and orientation)
             positions, orientations = rigid_prim.get_world_poses()
@@ -167,7 +170,7 @@ async def get_entity_state(entity_path):
         try:
 
             # Create an XformPrim for the entity
-            xform_prim = XformPrim(paths=entity_path)
+            xform_prim = XformPrim(paths=entity_path, reset_xform_op_properties=False)
 
             # Get world poses (position and orientation)
             positions, orientations = xform_prim.get_world_poses()

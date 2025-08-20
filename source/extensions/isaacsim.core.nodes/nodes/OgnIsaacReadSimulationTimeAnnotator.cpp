@@ -23,7 +23,7 @@
 #include <carb/logging/Logger.h>
 
 #include <isaacsim/core/includes/BaseResetNode.h>
-#include <isaacsim/core/nodes/ICoreNodes.h>
+#include <isaacsim/core/simulation_manager/ISimulationManager.h>
 #include <omni/usd/UsdContextIncludes.h>
 //
 #include <omni/usd/UsdContext.h>
@@ -44,7 +44,8 @@ public:
     {
         auto& state = OgnIsaacReadSimulationTimeAnnotatorDatabase::sPerInstanceState<OgnIsaacReadSimulationTimeAnnotator>(
             nodeObj, instanceId);
-        state.m_coreNodeFramework = carb::getCachedInterface<isaacsim::core::nodes::CoreNodes>();
+        state.m_simulationManagerFramework =
+            carb::getCachedInterface<isaacsim::core::simulation_manager::ISimulationManager>();
     }
 
     static bool compute(OgnIsaacReadSimulationTimeAnnotatorDatabase& db)
@@ -56,12 +57,12 @@ public:
         {
             if (state.m_resetOnStop)
             {
-                db.outputs.simulationTime() = state.m_coreNodeFramework->getSimTimeAtTime(omni::fabric::RationalTime(
-                    db.inputs.referenceTimeNumerator(), db.inputs.referenceTimeDenominator()));
+                db.outputs.simulationTime() = state.m_simulationManagerFramework->getSimulationTimeAtTime(
+                    omni::fabric::RationalTime(db.inputs.referenceTimeNumerator(), db.inputs.referenceTimeDenominator()));
             }
             else
             {
-                db.outputs.simulationTime() = state.m_coreNodeFramework->getSimTimeMonotonicAtTime(
+                db.outputs.simulationTime() = state.m_simulationManagerFramework->getSimulationTimeMonotonicAtTime(
                     omni::fabric::RationalTime(db.inputs.referenceTimeNumerator(), db.inputs.referenceTimeDenominator()));
             }
         }
@@ -69,11 +70,11 @@ public:
         {
             if (state.m_resetOnStop)
             {
-                db.outputs.simulationTime() = state.m_coreNodeFramework->getSimTime();
+                db.outputs.simulationTime() = state.m_simulationManagerFramework->getSimulationTime();
             }
             else
             {
-                db.outputs.simulationTime() = state.m_coreNodeFramework->getSimTimeMonotonic();
+                db.outputs.simulationTime() = state.m_simulationManagerFramework->getSimulationTimeMonotonic();
             }
         }
         db.outputs.execOut() = ExecutionAttributeState::kExecutionAttributeStateEnabled;
@@ -84,7 +85,7 @@ public:
 
 private:
     bool m_resetOnStop = true;
-    isaacsim::core::nodes::CoreNodes* m_coreNodeFramework;
+    isaacsim::core::simulation_manager::ISimulationManager* m_simulationManagerFramework;
 };
 
 REGISTER_OGN_NODE()

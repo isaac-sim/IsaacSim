@@ -494,8 +494,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
 
         # Test entity state for DynamicCube (has RigidBody API)
         # Set specific transform and velocity values using RigidPrim API
-        cube_prim = RigidPrim("/World/Objects/DynamicCube")
-        cube_prim.reset_xform_op_properties()
+        cube_prim = RigidPrim("/World/Objects/DynamicCube", reset_xform_op_properties=True)
 
         # Set specific pose and velocities
         test_position = np.array([1.5, 2.0, 3.0])
@@ -537,8 +536,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         cone_orientation = np.array([0.707, 0.0, 0.0, 0.707])  # 90 degree rotation around X
 
         # Use XformPrim for static objects
-        cone_prim = XformPrim("/World/Objects/StaticCone")
-        cone_prim.reset_xform_op_properties()
+        cone_prim = XformPrim("/World/Objects/StaticCone", reset_xform_op_properties=True)
         cone_prim.set_world_poses(positions=cone_position, orientations=cone_orientation)
 
         await omni.kit.app.get_app().next_update_async()
@@ -594,8 +592,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
 
         # Set up DynamicCube (has RigidBody API)
-        cube_prim = RigidPrim("/World/Objects/DynamicCube")
-        cube_prim.reset_xform_op_properties()
+        cube_prim = RigidPrim("/World/Objects/DynamicCube", reset_xform_op_properties=True)
 
         # Set specific pose and velocities for cube
         test_position = np.array([1.5, 2.0, 3.0])
@@ -608,8 +605,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
 
         # Set up StaticCone (no RigidBody API)
-        cone_prim = XformPrim("/World/Objects/StaticCone")
-        cone_prim.reset_xform_op_properties()
+        cone_prim = XformPrim("/World/Objects/StaticCone", reset_xform_op_properties=True)
 
         # Set specific pose for cone
         cone_position = np.array([3.0, 4.0, 1.0])
@@ -721,8 +717,8 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
 
         # Create prim objects for direct state checking
-        cube_prim = RigidPrim("/World/Objects/DynamicCube")
-        cone_prim = XformPrim("/World/Objects/StaticCone")
+        cube_prim = RigidPrim("/World/Objects/DynamicCube", reset_xform_op_properties=True)
+        cone_prim = XformPrim("/World/Objects/StaticCone", reset_xform_op_properties=True)
 
         # Test with simulation playing
         self._timeline.play()
@@ -911,7 +907,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         from isaacsim.core.experimental.prims import XformPrim
 
         # Create XformPrim for the spawned entity
-        entity_prim = XformPrim("/BasicEntity")
+        entity_prim = XformPrim("/BasicEntity", reset_xform_op_properties=True)
 
         # Get the actual world poses
         positions, orientations = entity_prim.get_world_poses()
@@ -1023,7 +1019,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         from isaacsim.core.experimental.prims import XformPrim
 
         # Create XformPrim for the spawned entity
-        entity_prim = XformPrim("/PositionedEntity")
+        entity_prim = XformPrim("/PositionedEntity", reset_xform_op_properties=True)
 
         # Get the actual world poses
         positions, orientations = entity_prim.get_world_poses()
@@ -1413,8 +1409,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self.assertTrue(spawned_prim.IsValid(), "SpawnedForReset should exist before reset")
 
         # Modify cube state to test state reset behavior
-        cube_prim = RigidPrim("/World/Objects/DynamicCube")
-        cube_prim.reset_xform_op_properties()
+        cube_prim = RigidPrim("/World/Objects/DynamicCube", reset_xform_op_properties=True)
         test_position = np.array([5.0, 5.0, 5.0])
         test_velocity = np.array([2.0, 2.0, 2.0])
         cube_prim.set_world_poses(positions=test_position)
@@ -1485,8 +1480,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self.assertFalse(self._timeline.is_stopped())
 
         # Set up cube with initial velocity for stepping test
-        cube_prim = RigidPrim("/World/Objects/DynamicCube")
-        cube_prim.reset_xform_op_properties()
+        cube_prim = RigidPrim("/World/Objects/DynamicCube", reset_xform_op_properties=True)
 
         initial_position = np.array([0.0, 0.0, 5.0])
         initial_velocity = np.array([0.0, 0.0, -1.0])  # Falling down
@@ -1574,8 +1568,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self.assertFalse(self._timeline.is_stopped())
 
         # Set up cube for action testing
-        cube_prim = RigidPrim("/World/Objects/DynamicCube")
-        cube_prim.reset_xform_op_properties()
+        cube_prim = RigidPrim("/World/Objects/DynamicCube", reset_xform_op_properties=True)
 
         initial_position = np.array([0.0, 0.0, 5.0])
         initial_velocity = np.array([0.0, 0.0, -1.0])  # Falling down

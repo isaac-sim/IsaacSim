@@ -101,8 +101,15 @@ class Extension(omni.ext.IExt):
             name=annotator_name,
             input_rendervars=[
                 omni.syntheticdata.SyntheticData.NodeConnectionTemplate(
-                    f"ReferenceTime", attributes_mapping={f"outputs:exec": "inputs:execIn"}
-                )
+                    f"DispatchSync",
+                    attributes_mapping={
+                        "outputs:referenceTimeNumerator": "inputs:referenceTimeNumerator",
+                        "outputs:referenceTimeDenominator": "inputs:referenceTimeDenominator",
+                    },
+                ),
+                omni.syntheticdata.SyntheticData.NodeConnectionTemplate(
+                    f"PostProcessDispatch",
+                ),
             ],
             node_type_id="isaacsim.core.nodes.IsaacReadSimulationTimeAnnotator",
         )

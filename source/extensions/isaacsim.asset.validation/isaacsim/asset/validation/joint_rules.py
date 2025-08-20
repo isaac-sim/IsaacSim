@@ -13,8 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import omni.asset_validator.core as av_core
-from omni.asset_validator.base.fix import AuthoringLayers
-from omni.asset_validator.core import registerRule
+from omni.asset_validator.core import AuthoringLayers, registerRule
 from pxr import Gf, PhysxSchema, Usd, UsdGeom, UsdPhysics
 
 

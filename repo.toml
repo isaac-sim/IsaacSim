@@ -329,6 +329,16 @@ archive_format = "zip"
 omniverse_flow_version_scheme = true
 strip_package_infos = true
 
+[repo_package.packages.isaac-sim-assets-4]
+archive_format = "zip"
+omniverse_flow_version_scheme = true
+strip_package_infos = true
+
+[repo_package.packages.isaac-sim-assets-5]
+archive_format = "zip"
+omniverse_flow_version_scheme = true
+strip_package_infos = true
+
 ########################################################################################################################
 # Package publishing to packman
 ########################################################################################################################

@@ -100,7 +100,9 @@ class OgnIsaacCreateRenderProduct:
             pass
 
         if state is not None:
-            if state.handle:
-                state.handle.destroy()
+            # TODO:
+            # The render product is not explicitly destroyed here.
+            # Manually calling destroy() here leads to a crash in some cases.
+            # Instead it will be destroyed when the node is deleted.
             state.handle = None
             state.rp_sub = None

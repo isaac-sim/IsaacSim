@@ -1,8 +1,8 @@
 [package]
-version = "1.1.4"
+version = "1.1.6"
 category = "Simulation"
 title = "ROS 2 Simulation Control"
-description = "Extension that provides ROS2 services to control (play/pause) Isaac Sim"
+description = "Extension that uses the ROS 2 Simulation Interfaces to control Isaac Sim"
 keywords = ["isaac", "ROS2", "simulation", "control"]
 changelog = "docs/CHANGELOG.md"
 readme = "docs/README.md"

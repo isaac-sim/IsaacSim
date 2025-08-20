@@ -1,4 +1,8 @@
 # Changelog
+## [0.2.0] - 2025-07-17
+### Changed
+- Depth sensors now added using SingleViewDepthSensorAsset API
+
 ## [0.1.16] - 2025-07-07
 ### Fixed
 - Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 0.1.15)

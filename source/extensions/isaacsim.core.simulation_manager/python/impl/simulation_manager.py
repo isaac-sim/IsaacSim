@@ -37,16 +37,12 @@ class SimulationManager:
     on post reset, on physics ready..etc."""
 
     _warmup_needed = True
-    _warm_start_callback = None
-    _on_stop_callback = None
     _timeline = omni.timeline.get_timeline_interface()
     _message_bus = carb.eventdispatcher.get_eventdispatcher()
     _physx_sim_interface = omni.physx.get_physx_simulation_interface()
     _physx_interface = omni.physx.get_physx_interface()
     _physics_sim_view = None
     _physics_sim_view__warp = None
-    _post_warm_start_callback = None
-    _stage_open_callback = None
     _backend = "numpy"
     _carb_settings = carb.settings.get_settings()
     _physics_scene_apis = OrderedDict()
@@ -58,43 +54,71 @@ class SimulationManager:
     _assets_loaded_callback = None
     _default_physics_scene_idx = -1
 
+    # callback handles
+    _warm_start_callback = None
+    _on_stop_callback = None
+    _post_warm_start_callback = None
+    _stage_open_callback = None
+
+    # Add callback state tracking
+    _callbacks_enabled = {
+        "warm_start": True,
+        "on_stop": True,
+        "post_warm_start": True,
+        "stage_open": True,
+    }
+
     @classmethod
     def _initialize(cls) -> None:
-        SimulationManager._warm_start_callback = (
-            SimulationManager._timeline.get_timeline_event_stream().create_subscription_to_pop_by_type(
-                int(omni.timeline.TimelineEventType.PLAY), SimulationManager._warm_start
-            )
-        )
-        SimulationManager._on_stop_callback = (
-            SimulationManager._timeline.get_timeline_event_stream().create_subscription_to_pop_by_type(
-                int(omni.timeline.TimelineEventType.STOP), SimulationManager._on_stop
-            )
-        )
-        SimulationManager._post_warm_start_callback = SimulationManager._message_bus.observe_event(
-            event_name=IsaacEvents.PHYSICS_WARMUP.value,
-            on_event=SimulationManager._create_simulation_view,
-            observer_name="SimulationManager._post_warm_start_callback",
-        )
-        SimulationManager._stage_open_callback = SimulationManager._message_bus.observe_event(
-            event_name=omni.usd.get_context().stage_event_name(omni.usd.StageEventType.OPENED),
-            on_event=SimulationManager._post_stage_open,
-            observer_name="SimulationManager._stage_open_callback",
-        )
+        # Initialize all callbacks as enabled by default
+        SimulationManager.enable_all_default_callbacks(True)
         SimulationManager._track_physics_scenes()
 
     @classmethod
+    def _setup_warm_start_callback(cls) -> None:
+        if cls._callbacks_enabled["warm_start"] and cls._warm_start_callback is None:
+            cls._warm_start_callback = cls._timeline.get_timeline_event_stream().create_subscription_to_pop_by_type(
+                int(omni.timeline.TimelineEventType.PLAY), cls._warm_start
+            )
+
+    @classmethod
+    def _setup_on_stop_callback(cls) -> None:
+        if cls._callbacks_enabled["on_stop"] and cls._on_stop_callback is None:
+            cls._on_stop_callback = cls._timeline.get_timeline_event_stream().create_subscription_to_pop_by_type(
+                int(omni.timeline.TimelineEventType.STOP), cls._on_stop
+            )
+
+    @classmethod
+    def _setup_post_warm_start_callback(cls) -> None:
+        if cls._callbacks_enabled["post_warm_start"] and cls._post_warm_start_callback is None:
+            cls._post_warm_start_callback = cls._message_bus.observe_event(
+                event_name=IsaacEvents.PHYSICS_WARMUP.value,
+                on_event=cls._create_simulation_view,
+                observer_name="SimulationManager._post_warm_start_callback",
+            )
+
+    @classmethod
+    def _setup_stage_open_callback(cls) -> None:
+        if cls._callbacks_enabled["stage_open"] and cls._stage_open_callback is None:
+            cls._stage_open_callback = cls._message_bus.observe_event(
+                event_name=omni.usd.get_context().stage_event_name(omni.usd.StageEventType.OPENED),
+                on_event=cls._post_stage_open,
+                observer_name="SimulationManager._stage_open_callback",
+            )
+
+    @classmethod
     def _clear(cls) -> None:
-        SimulationManager._warm_start_callback = None
-        SimulationManager._on_stop_callback = None
-        SimulationManager._physics_sim_view = None
-        SimulationManager._physics_sim_view__warp = None
-        SimulationManager._post_warm_start_callback = None
-        SimulationManager._stage_open_callback = None
-        SimulationManager._assets_loading_callback = None
-        SimulationManager._assets_loaded_callback = None
-        SimulationManager._simulation_manager_interface.reset()
-        SimulationManager._physics_scene_apis.clear()
-        SimulationManager._callbacks.clear()
+        # Use callback management system for main callbacks
+        cls.enable_all_default_callbacks(False)
+
+        # Handle additional cleanup not covered by enable_all_default_callbacks
+        cls._physics_sim_view = None
+        cls._physics_sim_view__warp = None
+        cls._assets_loading_callback = None
+        cls._assets_loaded_callback = None
+        cls._simulation_manager_interface.reset()
+        cls._physics_scene_apis.clear()
+        cls._callbacks.clear()
 
     def _post_stage_open(event) -> None:
         SimulationManager._simulation_manager_interface.reset()
@@ -398,6 +422,8 @@ class SimulationManager:
         """
         if physics_scene is None:
             for path, physx_scene_api in SimulationManager._physics_scene_apis.items():
+                if not physx_scene_api.GetPrim().IsValid():
+                    continue
                 if physx_scene_api.GetBroadphaseTypeAttr().Get() is None:
                     physx_scene_api.CreateBroadphaseTypeAttr(val)
                 else:
@@ -423,6 +449,8 @@ class SimulationManager:
         """
         if physics_scene is None:
             for path, physx_scene_api in SimulationManager._physics_scene_apis.items():
+                if not physx_scene_api.GetPrim().IsValid():
+                    continue
                 if physx_scene_api.GetEnableCCDAttr().Get() is None:
                     physx_scene_api.CreateEnableCCDAttr(flag)
                 else:
@@ -462,10 +490,12 @@ class SimulationManager:
             Exception: If the prim path registered in context doesn't correspond to a valid prim path currently.
         """
         if flag and "cuda" in SimulationManager.get_physics_sim_device():
-            carb.log_warning("CCD is not supported on GPU, ignoring request to enable it")
+            carb.log_warn("CCD is not supported on GPU, ignoring request to enable it")
             return
         if physics_scene is None:
             for path, physx_scene_api in SimulationManager._physics_scene_apis.items():
+                if not physx_scene_api.GetPrim().IsValid():
+                    continue
                 if physx_scene_api.GetEnableCCDAttr().Get() is None:
                     physx_scene_api.CreateEnableCCDAttr(flag)
                 else:
@@ -519,6 +549,8 @@ class SimulationManager:
         """
         if physics_scene is None:
             for path, physx_scene_api in SimulationManager._physics_scene_apis.items():
+                if not physx_scene_api.GetPrim().IsValid():
+                    continue
                 if physx_scene_api.GetEnableGPUDynamicsAttr().Get() is None:
                     physx_scene_api.CreateEnableGPUDynamicsAttr(flag)
                 else:
@@ -560,6 +592,11 @@ class SimulationManager:
 
     @classmethod
     def enable_fabric(cls, enable):
+        """Enables or disables physics fabric integration and associated settings.
+
+        Args:
+            enable: Whether to enable or disable fabric.
+        """
         manager = omni.kit.app.get_app().get_extension_manager()
         fabric_was_enabled = manager.is_extension_enabled("omni.physx.fabric")
         if not fabric_was_enabled and enable:
@@ -574,6 +611,14 @@ class SimulationManager:
 
     @classmethod
     def is_fabric_enabled(cls, enable):
+        """Checks if fabric is enabled.
+
+        Args:
+            enable: Whether to check if fabric is enabled.
+
+        Returns:
+            bool: True if fabric is enabled, otherwise False.
+        """
         return omni.kit.app.get_app().get_extension_manager().is_extension_enabled("omni.physx.fabric")
 
     @classmethod
@@ -591,6 +636,8 @@ class SimulationManager:
             raise Exception("Solver type {} is not supported".format(solver_type))
         if physics_scene is None:
             for path, physx_scene_api in SimulationManager._physics_scene_apis.items():
+                if not physx_scene_api.GetPrim().IsValid():
+                    continue
                 if physx_scene_api.GetSolverTypeAttr().Get() is None:
                     physx_scene_api.CreateSolverTypeAttr(solver_type)
                 else:
@@ -631,6 +678,8 @@ class SimulationManager:
         """
         if physics_scene is None:
             for path, physx_scene_api in SimulationManager._physics_scene_apis.items():
+                if not physx_scene_api.GetPrim().IsValid():
+                    continue
                 if physx_scene_api.GetEnableStabilizationAttr().Get() is None:
                     physx_scene_api.CreateEnableStabilizationAttr(flag)
                 else:
@@ -660,6 +709,17 @@ class SimulationManager:
 
     @classmethod
     def register_callback(cls, callback: callable, event, order: int = 0, name: str = None):
+        """Registers a callback to be triggered when a specific event occurs.
+
+        Args:
+            callback: The callback function to register.
+            event: The event to trigger the callback.
+            order: The order in which the callback should be triggered.
+            name: The name of the callback.
+
+        Returns:
+            int: The ID of the callback.
+        """
         proxy_needed = False
         if hasattr(callback, "__self__"):
             proxy_needed = True
@@ -753,6 +813,11 @@ class SimulationManager:
 
     @classmethod
     def deregister_callback(cls, callback_id):
+        """Deregisters a callback which was previously registered using register_callback.
+
+        Args:
+            callback_id: The ID of the callback returned by register_callback to deregister.
+        """
         if callback_id in SimulationManager._callbacks:
             del SimulationManager._callbacks[callback_id]
         elif SimulationManager._simulation_manager_interface.deregister_callback(callback_id):
@@ -762,16 +827,35 @@ class SimulationManager:
 
     @classmethod
     def enable_usd_notice_handler(cls, flag):
+        """Enables or disables the usd notice handler.
+
+        Args:
+            flag: Whether to enable or disable the handler.
+        """
         SimulationManager._simulation_manager_interface.enable_usd_notice_handler(flag)
         return
 
     @classmethod
     def enable_fabric_usd_notice_handler(cls, stage_id, flag):
+        """Enables or disables the fabric usd notice handler.
+
+        Args:
+            stage_id: The stage ID to enable or disable the handler for.
+            flag: Whether to enable or disable the handler.
+        """
         SimulationManager._simulation_manager_interface.enable_fabric_usd_notice_handler(stage_id, flag)
         return
 
     @classmethod
     def is_fabric_usd_notice_handler_enabled(cls, stage_id):
+        """Checks if fabric usd notice handler is enabled.
+
+        Args:
+            stage_id: The stage ID to check.
+
+        Returns:
+            bool: True if fabric usd notice handler is enabled, otherwise False.
+        """
         return SimulationManager._simulation_manager_interface.is_fabric_usd_notice_handler_enabled(stage_id)
 
     @classmethod
@@ -782,3 +866,102 @@ class SimulationManager:
             bool: True if textures are loading and not done yet, otherwise False.
         """
         return not SimulationManager._assets_loaded
+
+    # Public API methods for enabling/disabling callbacks
+    @classmethod
+    def enable_warm_start_callback(cls, enable: bool = True) -> None:
+        """Enable or disable the warm start callback.
+
+        Args:
+            enable: Whether to enable the callback.
+        """
+        cls._callbacks_enabled["warm_start"] = enable
+        if enable:
+            cls._setup_warm_start_callback()
+        else:
+            if cls._warm_start_callback is not None:
+                cls._warm_start_callback = None
+
+    @classmethod
+    def enable_on_stop_callback(cls, enable: bool = True) -> None:
+        """Enable or disable the on stop callback.
+
+        Args:
+            enable: Whether to enable the callback.
+        """
+        cls._callbacks_enabled["on_stop"] = enable
+        if enable:
+            cls._setup_on_stop_callback()
+        else:
+            if cls._on_stop_callback is not None:
+                cls._on_stop_callback = None
+
+    @classmethod
+    def enable_post_warm_start_callback(cls, enable: bool = True) -> None:
+        """Enable or disable the post warm start callback.
+
+        Args:
+            enable: Whether to enable the callback.
+        """
+        cls._callbacks_enabled["post_warm_start"] = enable
+        if enable:
+            cls._setup_post_warm_start_callback()
+        else:
+            if cls._post_warm_start_callback is not None:
+                cls._post_warm_start_callback = None
+
+    @classmethod
+    def enable_stage_open_callback(cls, enable: bool = True) -> None:
+        """Enable or disable the stage open callback.
+        Note: This also enables/disables the assets loading and loaded callbacks. If disabled, assets_loading() will always return True.
+
+        Args:
+            enable: Whether to enable the callback.
+        """
+        cls._callbacks_enabled["stage_open"] = enable
+        if enable:
+            cls._setup_stage_open_callback()
+        else:
+            if cls._stage_open_callback is not None:
+                cls._stage_open_callback = None
+                # Reset assets loading and loaded callbacks
+                cls._assets_loaded = True
+                cls._assets_loading_callback = None
+                cls._assets_loaded_callback = None
+
+    # Convenience methods for bulk operations
+    @classmethod
+    def enable_all_default_callbacks(cls, enable: bool = True) -> None:
+        """Enable or disable all default callbacks.
+        Default callbacks are: warm_start, on_stop, post_warm_start, stage_open.
+
+        Args:
+            enable: Whether to enable all callbacks.
+        """
+        cls.enable_warm_start_callback(enable)
+        cls.enable_on_stop_callback(enable)
+        cls.enable_post_warm_start_callback(enable)
+        cls.enable_stage_open_callback(enable)
+
+    @classmethod
+    def is_default_callback_enabled(cls, callback_name: str) -> bool:
+        """Check if a specific default callback is enabled.
+        Default callbacks are: warm_start, on_stop, post_warm_start, stage_open.
+
+        Args:
+            callback_name: Name of the callback to check.
+
+        Returns:
+            Whether the callback is enabled.
+        """
+        return cls._callbacks_enabled.get(callback_name, False)
+
+    @classmethod
+    def get_default_callback_status(cls) -> dict:
+        """Get the status of all default callbacks.
+        Default callbacks are: warm_start, on_stop, post_warm_start, stage_open.
+
+        Returns:
+            Dictionary with callback names and their enabled status.
+        """
+        return cls._callbacks_enabled.copy()

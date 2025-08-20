@@ -326,7 +326,7 @@ class XformPrim(Prim):
         Backends: :guilabel:`usd`.
 
         Args:
-            visual_materials: Visual materials to be applied to the prims (shape ``(N, 1)``).
+            visual_materials: Visual materials to be applied to the prims (shape ``(N,)``).
                 If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).
             weaker_than_descendants: Boolean flags to indicate whether descendant materials should be overridden (shape ``(N, 1)``).
                 If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).

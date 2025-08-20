@@ -1,4 +1,19 @@
 # Changelog
+## [2.5.8] - 2025-07-18
+### Fixed
+- Fixed importing assets where multiple meshes are defined per body
+- Fixed placement of bodies when meshes are reused at different transforms
+- Fixed material assignment on meshes when material is defined on Mjcf file
+
+## [2.5.7] - 2025-07-17
+### Fixed
+- Fixed saving texture files (moving to imported folder) for materials on import. 
+- Deleting partial files created when converting meshes
+
+## [2.5.6] - 2025-07-15
+### Fixed
+- Fixed application of Collision APIs in the collision scope and in the meshes directly as per OpenUSD Physics. 
+- Fix cyclic import of robot schema and leave it as sublayer on the base layer
 
 ## [2.5.5] - 2025-07-07
 ### Changed

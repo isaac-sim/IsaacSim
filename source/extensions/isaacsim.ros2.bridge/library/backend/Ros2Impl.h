@@ -181,21 +181,21 @@ public:
      * @param[in] array Flattened 3x3 intrinsic matrix
      * @param[in] arraySize Size of the array (should be 9)
      */
-    virtual void writeIntrinsicMatrix(const double array[], const int arraySize);
+    virtual void writeIntrinsicMatrix(const double array[], const size_t arraySize);
 
     /**
      * @brief Sets the camera projection matrix
      * @param[in] array Flattened 3x4 projection matrix
      * @param[in] arraySize Size of the array (should be 12)
      */
-    virtual void writeProjectionMatrix(const double array[], const int arraySize);
+    virtual void writeProjectionMatrix(const double array[], const size_t arraySize);
 
     /**
      * @brief Sets the rectification matrix
      * @param[in] array Flattened 3x3 rectification matrix
      * @param[in] arraySize Size of the array (should be 9)
      */
-    virtual void writeRectificationMatrix(const double array[], const int arraySize);
+    virtual void writeRectificationMatrix(const double array[], const size_t arraySize);
 
     /**
      * @brief Sets the distortion parameters

@@ -127,8 +127,15 @@ public:
                 return false;
             }
 
+            // Get extension settings for multithreading
+            carb::settings::ISettings* threadSettings = carb::getCachedInterface<carb::settings::ISettings>();
+            static constexpr char s_kThreadDisable[] = "/exts/isaacsim.ros2.bridge/publish_multithreading_disabled";
+            state.m_multithreadingDisabled = threadSettings->getAsBool(s_kThreadDisable);
+            // Get extension settings for nitros bridge
+            static constexpr char s_kNitrosBridgeEnabled[] = "/exts/isaacsim.ros2.bridge/enable_nitros_bridge";
+            state.m_nitrosBridgeEnabled = threadSettings->getAsBool(s_kNitrosBridgeEnabled);
+
             state.m_message = state.m_factory->createImageMessage();
-            state.m_nitrosBridgeMessage = state.m_factory->createNitrosBridgeImageMessage();
 
             Ros2QoSProfile qos;
             const std::string& qosProfile = db.inputs.qosProfile();
@@ -146,24 +153,25 @@ public:
 
             state.m_publisher = state.m_factory->createPublisher(
                 state.m_nodeHandle.get(), fullTopicName.c_str(), state.m_message->getTypeSupportHandle(), qos);
-            if (state.m_nitrosBridgeMessage && state.m_nitrosBridgeMessage->getPtr())
+
+            if (state.m_nitrosBridgeEnabled)
             {
-                state.m_nitrosBridgePublisher = state.m_factory->createPublisher(
-                    state.m_nodeHandle.get(), (fullTopicName + "/nitros_bridge").c_str(),
-                    state.m_nitrosBridgeMessage->getTypeSupportHandle(), qos);
-            }
-            else
-            {
-                CARB_LOG_INFO(
-                    "isaac_ros_nitros_bridge_interfaces NitrosBridgeImage message type not found. The NITROS bridge publisher was not created");
+                state.m_nitrosBridgeMessage = state.m_factory->createNitrosBridgeImageMessage();
+                if (state.m_nitrosBridgeMessage && state.m_nitrosBridgeMessage->getPtr())
+                {
+                    state.m_nitrosBridgePublisher = state.m_factory->createPublisher(
+                        state.m_nodeHandle.get(), (fullTopicName + "/nitros_bridge").c_str(),
+                        state.m_nitrosBridgeMessage->getTypeSupportHandle(), qos);
+                }
+                else
+                {
+                    CARB_LOG_INFO(
+                        "isaac_ros_nitros_bridge_interfaces NitrosBridgeImage message type not found. The NITROS bridge publisher was not created");
+                }
             }
 
             state.m_frameId = db.inputs.frameId();
 
-            // Get extension settings for multithreading
-            carb::settings::ISettings* threadSettings = carb::getCachedInterface<carb::settings::ISettings>();
-            static constexpr char s_kThreadDisable[] = "/exts/isaacsim.ros2.bridge/publish_multithreading_disabled";
-            state.m_multithreadingDisabled = threadSettings->getAsBool(s_kThreadDisable);
             return true;
         }
 
@@ -635,6 +643,7 @@ private:
     bool m_nitrosBridgeStreamNotCreated = true;
 
     bool m_multithreadingDisabled = false;
+    bool m_nitrosBridgeEnabled = false;
 };
 
 REGISTER_OGN_NODE()

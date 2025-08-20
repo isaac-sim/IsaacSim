@@ -13,5 +13,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .physics_materials import PhysicsMaterial, RigidBodyMaterial
+from .physics_materials import PhysicsMaterial, RigidBodyMaterial, SurfaceDeformableMaterial, VolumeDeformableMaterial
 from .visual_materials import OmniGlassMaterial, OmniPbrMaterial, PreviewSurfaceMaterial, VisualMaterial

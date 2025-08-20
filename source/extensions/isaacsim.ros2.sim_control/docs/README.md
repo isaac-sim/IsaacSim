@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ROS 2 Simulation Control extension provides ROS 2 services to control Isaac Sim simulations. This extension is designed to be scalable, allowing multiple services to run simultaneously.
+The ROS 2 Simulation Control extension uses the ROS 2 Simulation Interfaces to control Isaac Sim functions. This extension is designed to be scalable, allowing multiple services and actions to run simultaneously with little performance overhead.
 
 ## Features
 
@@ -28,7 +28,7 @@ The ROS 2 Simulation Control extension provides ROS 2 services to control Isaac 
 
 - Isaac Sim 5.0 or later
 - ROS 2 (Humble or later)
-- [Simulation Interfaces](https://github.com/ros-simulation/simulation_interfaces) ROS 2 package installed
+- [Simulation Interfaces](https://github.com/ros-simulation/simulation_interfaces) ROS 2 package installed. This extension is currently tested with [v1.0.1](https://github.com/ros-simulation/simulation_interfaces/releases/tag/1.0.1).  
 
 ## Usage
 

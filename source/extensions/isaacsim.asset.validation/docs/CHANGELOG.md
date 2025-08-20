@@ -1,4 +1,9 @@
 # Changelog
+
+## [1.0.3] - 2025-07-16
+### Changed
+- Fix asset validator module import
+
 ## [1.0.2] - 2025-06-03
 ### Changed
 - Fix incorrect licenses and add missing licenses

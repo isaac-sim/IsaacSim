@@ -70,8 +70,9 @@ namespace pose
  * @param[in] usdrtStage Reference to the USDRT stage
  * @param[in] path Path to the prim whose transform to compute
  * @param[in] timecode Time code for the transform evaluation (default: Default())
- * @param[in] useFabricHierarchy Whether to use IFabricHierarchy (default: true). If enabled, but Fabric Scene Delegate
+ * @param[in] useFabricHierarchy Whether to use IFabricHierarchy (default: false). If enabled, but Fabric Scene Delegate
  * (/app/useFabricSceneDelegate) is not enabled, the call will fall back to non-IFabricHierarchy implementation.
+ * Note: Using IFabricHierarchy is experimental and enabling it may result in undefined behavior.
  * @return usdrt::GfMatrix4d The computed world transform matrix
  *
  * @warning May be computationally expensive for deep hierarchies
@@ -80,7 +81,7 @@ static usdrt::GfMatrix4d computeWorldXformNoCache(pxr::UsdStageRefPtr usdStage,
                                                   usdrt::UsdStageRefPtr usdrtStage,
                                                   const pxr::SdfPath& path,
                                                   pxr::UsdTimeCode timecode = pxr::UsdTimeCode::Default(),
-                                                  bool useFabricHierarchy = true)
+                                                  bool useFabricHierarchy = false)
 {
     // Compute the world transform using IFabricHierarchy
     if (useFabricHierarchy)

@@ -282,12 +282,18 @@ class Camera(BaseSensor):
         return
 
     def __del__(self):
-        """detach annotators on destroy and destroy the internal render product if it exists"""
+        """Destructor that calls destroy() to clean up resources."""
+        self.destroy()
+
+    def destroy(self) -> None:
+        """Destroy the camera by detaching all annotators and destroying the internal render product."""
         custom_annotators = list(self._custom_annotators.keys())
         for annotator_name in custom_annotators:
             self.detach_annotator(annotator_name)
+
         if self._render_product is not None:
             self._render_product.destroy()
+            self._render_product = None
 
     @property
     def supported_annotators(self) -> List[str]:

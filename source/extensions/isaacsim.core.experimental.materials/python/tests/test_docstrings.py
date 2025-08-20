@@ -21,7 +21,9 @@ from isaacsim.core.experimental.materials import (
     PhysicsMaterial,
     PreviewSurfaceMaterial,
     RigidBodyMaterial,
+    SurfaceDeformableMaterial,
     VisualMaterial,
+    VolumeDeformableMaterial,
 )
 from isaacsim.core.simulation_manager import SimulationManager
 
@@ -44,6 +46,14 @@ class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
 
     async def test_physics_material_rigid_body_docstrings(self):
         await self.assertDocTests(RigidBodyMaterial)
+        await self.assertDocTests(PhysicsMaterial)
+
+    async def test_physics_material_surface_deformable_docstrings(self):
+        await self.assertDocTests(SurfaceDeformableMaterial)
+        await self.assertDocTests(PhysicsMaterial)
+
+    async def test_physics_material_volume_deformable_docstrings(self):
+        await self.assertDocTests(VolumeDeformableMaterial)
         await self.assertDocTests(PhysicsMaterial)
 
     # --------------------------------------------------------------------

@@ -15,9 +15,11 @@
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import isaacsim.test.docstring
-from isaacsim.core.experimental.prims import Articulation, GeomPrim, Prim, RigidPrim, XformPrim
+from isaacsim.core.experimental.prims import Articulation, DeformablePrim, GeomPrim, Prim, RigidPrim, XformPrim
 from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.storage.native import get_assets_root_path_async
+
+from .test_deformable_prim import _define_tetmesh
 
 
 class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
@@ -76,3 +78,12 @@ class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
             )
         # test case
         await self.assertDocTests(Articulation, stop_on_failure=False)
+
+    async def test_deformable_prim_docstrings(self):
+        # define prims
+        for i in range(3):
+            _define_tetmesh(stage_utils.get_current_stage(), f"/World/prim_{i}")
+        # test case
+        SimulationManager.set_physics_sim_device("cuda")  # deformable prims are only supported on GPU
+        await self.assertDocTests(DeformablePrim)
+        SimulationManager.set_physics_sim_device("cpu")

@@ -154,7 +154,7 @@ public:
      * @param[in] array Flattened intrinsic camera matrix.
      * @param[in] arraySize Array size.
      */
-    virtual void writeIntrinsicMatrix(const double array[], const int arraySize) = 0;
+    virtual void writeIntrinsicMatrix(const double array[], const size_t arraySize) = 0;
 
     /**
      * @brief Write the projection/camera matrix (`P`).
@@ -164,7 +164,7 @@ public:
      * @param[in] array Flattened projection/camera matrix.
      * @param[in] arraySize Array size.
      */
-    virtual void writeProjectionMatrix(const double array[], const int arraySize) = 0;
+    virtual void writeProjectionMatrix(const double array[], const size_t arraySize) = 0;
 
     /**
      * @brief Write the rectification matrix (`R`).
@@ -174,7 +174,7 @@ public:
      * @param[in] array Flattened rectification matrix.
      * @param[in] arraySize Array size.
      */
-    virtual void writeRectificationMatrix(const double array[], const int arraySize) = 0;
+    virtual void writeRectificationMatrix(const double array[], const size_t arraySize) = 0;
 
     /**
      * @brief Write the distortion parameters (`D`).

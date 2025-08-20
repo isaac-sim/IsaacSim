@@ -1,4 +1,10 @@
 # Changelog
+
+## [2.3.17] - 2025-07-22
+### Changed
+- Add delay to menu click for sensor tests
+- Create new stage rather than clear stage for sensor tests
+
 ## [2.3.16] - 2025-07-07
 ### Fixed
 - Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 1.1.8)

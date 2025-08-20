@@ -1,5 +1,5 @@
 [package]
-version = "2.5.5"
+version = "2.5.8"
 category = "Simulation"
 title = "Omniverse MJCF Importer"
 description = "MJCF Importer"

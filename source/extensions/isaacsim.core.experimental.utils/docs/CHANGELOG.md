@@ -1,4 +1,12 @@
 # Changelog
+
+## [0.2.0] - 2025-07-16
+### Added
+- Add funtion to check if a prim has or not the given API schema(s) applied
+
+### Changed
+- Update the predicate function signatures of the prim utils to forward the test prim instance
+
 ## [0.1.5] - 2025-07-07
 ### Fixed
 - Correctly enable omni.kit.loop-isaac in test dependency (fixes issue from 0.1.4)

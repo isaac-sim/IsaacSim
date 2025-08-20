@@ -1,5 +1,9 @@
 # Changelog
 
+## [4.6.10] - 2025-07-23
+### Fixed
+- Exclude test_world_poses_fabric from ETM
+
 ## [4.6.9] - 2025-07-09
 ### Changed
 - Reduce test runtime

@@ -600,7 +600,7 @@ class GeomPrim(XformPrim):
         If no physics material is defined, default values from Physics will be used.
 
         Args:
-            materials: Physics materials to be applied to the prims (shape ``(N, 1)``).
+            materials: Physics materials to be applied to the prims (shape ``(N)``).
                 If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).
             weaker_than_descendants: Boolean flags to indicate whether descendant materials should be overridden (shape ``(N, 1)``).
                 If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).
