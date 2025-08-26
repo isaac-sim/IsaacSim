@@ -13,12 +13,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+Manus Glove and Vive Tracker Visualization Sample
+
+This sample demonstrates simultaneous tracking of Manus gloves and Vive trackers
+in Isaac Sim. The devices are visualized as colored cubes:
+- Red cubes (0.01 size): Manus glove joints
+- Blue cubes (0.02 size): Vive tracker positions
+
+IMPORTANT: To avoid resource contention and crashes, ensure Manus and Vive devices
+are connected to different USB controllers/buses. Use 'lsusb -t' to identify
+different buses and connect devices accordingly.
+"""
+
 import os
 import numpy as np
 from isaacsim import SimulationApp
 
 # Initialize simulation app
-simulation_app = SimulationApp({"headless": False})
+simulation_app = SimulationApp(
+    {"headless": False}, 
+    experience=f'/home/yuanchenl/Desktop/IsaacSim/source/apps/isaacsim.exp.base.xr.openxr.kit'
+)
 
 import carb
 import omni.usd
@@ -131,10 +147,8 @@ while simulation_app.is_running():
         cube_idx = 0
         
         if update_manus:
-            # Update manus glove positions
             xr_integration.update_manus()
         else:
-            # Update vive tracker positions
             xr_integration.update_vive()
         
         all_device_data = xr_integration.get_all_device_data()
@@ -160,13 +174,6 @@ while simulation_app.is_running():
             current_orientations[cube_idx] = Gf.Quath(float(ori[0]), float(ori[1]), float(ori[2]), float(ori[3]))
             proto_indices[cube_idx] = 1  # Blue Vive cube
             cube_idx += 1
-
-        # Debug: Log cube visibility and positions
-        visible_cubes = sum(1 for idx in proto_indices if idx == 0)
-
-        if frame_counter % 100 == 0:
-            carb.log_info(f"Showing {visible_cubes} cubes at positions: {current_positions[:visible_cubes]}")
-            carb.log_info(f"Frame {frame_counter}, data: {all_device_data}")
         
         # Update the instancer with new positions and orientations
         positions_attr.Set(current_positions)
