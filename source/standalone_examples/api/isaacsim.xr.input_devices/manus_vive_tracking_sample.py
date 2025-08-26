@@ -133,7 +133,7 @@ while simulation_app.is_running():
 
         # Sequential device updates to avoid resource contention
         # Alternate between Manus and Vive every frame
-        update_manus = (frame_counter % 2 == 1)
+        update_manus = (frame_counter % 2 == 0)
         frame_counter += 1
         
         # Get current cube arrays

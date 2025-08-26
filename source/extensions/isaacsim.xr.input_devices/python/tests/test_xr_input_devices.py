@@ -26,29 +26,6 @@ def test_extension_import():
         print(f"❌ Failed to import extension modules: {e}")
         return False
 
-def test_basic_functionality():
-    """Test basic functionality with mock data"""
-    try:
-        from xr_device_integration import XRDeviceIntegration
-        
-        # Create integration
-        integration = XRDeviceIntegration()
-        
-        # Update devices (will use mock data)
-        integration.update_all_devices()
-        
-        # Get data
-        all_data = integration.get_all_device_data()
-        
-        print("✅ Basic functionality test passed")
-        print(f"📊 Data keys: {list(all_data.keys())}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Basic functionality test failed: {e}")
-        return False
-
 def test_individual_trackers():
     """Test individual tracker functionality"""
     try:

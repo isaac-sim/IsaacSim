@@ -4,6 +4,7 @@
 import sys
 import carb
 from typing import Dict
+from pxr import Gf
 
 try:
     # Add libsurvive pysurvive bindings to Python path
@@ -55,28 +56,26 @@ class IsaacSimViveTracker:
             return
             
         try:
-            max_iterations = 1000  # Prevent infinite loops
+            max_iterations = 10  # Prevent infinite loops
             iteration = 0
             while iteration < max_iterations:
                 updated = self._ctx.NextUpdated()
                 if not updated:
                     break
                 iteration += 1
-
+                
                 pose_obj, _ = updated.Pose()
                 pos = pose_obj.Pos  # (x, y, z)
                 ori = pose_obj.Rot  # (w, x, y, z)
                 device_id = updated.Name().decode('utf-8')
-                
-                # Capture ALL devices like isaac-deploy does (no filtering)
+
                 self.device_data[device_id] = {
-                    'position': [float(pos[i]) for i in range(3)],
-                    'orientation': [float(ori[i]) for i in range(4)]
+                    'position': [float(pos[0]), float(-pos[2]), float(pos[1])], # x, z, -y
+                    'orientation': [float(ori[0]), float(ori[1]), float(-ori[3]), float(ori[2])]
                 }
 
         except Exception as e:
             carb.log_error(f"Failed to update Vive tracker data: {e}")
-
     
     def get_all_tracker_data(self) -> Dict:
         return self.device_data
