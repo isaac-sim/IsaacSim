@@ -67,4 +67,4 @@ repo_build.prebuild_link {
 
 repo_build.prebuild_copy {
     { "python/*.py", ext.target_dir .. "/isaacsim/xr/input_devices" },
-} 
+}

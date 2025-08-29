@@ -68,4 +68,4 @@ private:
 
 } // namespace input_devices
 } // namespace xr
-} // namespace isaacsim 
+} // namespace isaacsim

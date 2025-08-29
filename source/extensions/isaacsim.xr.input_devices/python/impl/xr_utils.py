@@ -53,7 +53,7 @@ def average_transforms(mats: List[Gf.Matrix4d]) -> Gf.Matrix4d:
     return Gf.Matrix4d(rot3, trans)
 
 
-def select_mode_cluster(mats: List[Gf.Matrix4d], trans_thresh_m: float = 0.02, rot_thresh_deg: float = 5.0) -> List[Gf.Matrix4d]:
+def select_mode_cluster(mats: List[Gf.Matrix4d], trans_thresh_m: float = 0.03, rot_thresh_deg: float = 10.0) -> List[Gf.Matrix4d]:
     """Return the largest cluster (mode) under proximity thresholds."""
     if not mats:
         return []
@@ -125,3 +125,10 @@ def get_pairing_error(trans_errs: list, rot_errs: list) -> float:
         except Exception:
             return float('inf')
     return _median(trans_errs) + 0.01 * _median(rot_errs)
+
+def get_palm(transformed_data: Dict, hand: str) -> Dict:
+    """Get palm position and orientation from transformed data."""
+    metacarpal = transformed_data[f'{hand}_6']
+    proximal = transformed_data[f'{hand}_7']
+    pos = (np.array(metacarpal['position']) + np.array(proximal['position'])) / 2.0
+    return {'position': [pos[0], pos[1], pos[2]], 'orientation': metacarpal['orientation']}

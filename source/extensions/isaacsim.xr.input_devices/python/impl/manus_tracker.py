@@ -45,11 +45,11 @@ class IsaacSimManusGloveTracker:
         else:
             # Provide mock data
             self.glove_data = {
-                'left_joint_0': {
+                'left_0': {
                     'position': [0.0, 0.0, 0.0],
                     'orientation': [1.0, 0.0, 0.0, 0.0]
                 },
-                'right_joint_0': {
+                'right_0': {
                     'position': [0.1, 0.0, 0.0],
                     'orientation': [1.0, 0.0, 0.0, 0.0]
                 }
@@ -68,7 +68,7 @@ class IsaacSimManusGloveTracker:
         joint_count = len(position) // 3  # 3 values per position
             
         for joint_idx in range(joint_count):
-            joint_name = f"{hand}_joint_{joint_idx}"
+            joint_name = f"{hand}_{joint_idx}"
             self.glove_data[joint_name] = {
                 'position': [float(position[i]) for i in range(joint_idx * 3, joint_idx * 3 + 3)],
                 'orientation': [float(orientation[i]) for i in range(joint_idx * 4, joint_idx * 4 + 4)]
@@ -83,4 +83,4 @@ class IsaacSimManusGloveTracker:
                 self._manus_tracker.cleanup()
             self.is_connected = False
         except Exception as e:
-            carb.log_error(f"Error during Manus tracker cleanup: {e}") 
+            carb.log_error(f"Error during Manus tracker cleanup: {e}")

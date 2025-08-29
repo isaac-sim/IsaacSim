@@ -25,4 +25,4 @@ class Extension(omni.ext.IExt):
     
     @classmethod
     def get_instance(cls):
-        return cls._instance 
+        return cls._instance

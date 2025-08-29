@@ -1,55 +1,55 @@
 # IsaacSim XR Input Devices Extension
 
-This extension provides XR input device support for Manus gloves and Vive trackers, adapted from isaac-deploy Holoscan implementations.
+This extension provides XR input device support for Manus gloves and Vive trackers, with a unified Python API and automatic wrist mapping between trackers and OpenXR wrists.
 
 ## Features
 
-- **Manus Glove Integration**: Real-time hand and finger tracking with full skeletal data
-- **Vive Tracker Integration**: 6DOF pose tracking for HMDs, controllers, and trackers  
-- **Live Data Visualization**: Red cubes appear at device positions in Isaac Sim
-- **Automatic Setup**: Library paths configured automatically
-- **Device Status Monitoring**: Connection state and data freshness tracking
-- **Error Handling**: Graceful degradation when hardware/SDKs are unavailable
-- **Mock Data Support**: Testing without physical hardware
+- **Manus gloves**: Real-time hand/finger joint poses via C++ tracker with Python bindings
+- **Vive trackers**: 6DOF poses via libsurvive (`pysurvive`) with mock fallback
+- **Left/Right mapping**: Resolves which Vive tracker corresponds to left/right wrist
+- **Scene alignment**: Estimates a stable scene↔lighthouse transform from early samples
+- **Unified API**: Single call to fetch all device data and device status
+- **Visualization sample**: Renders gloves/trackers as cubes in Isaac Sim
 
 ## Prerequisites
 
-### Hardware Requirements
-- **Manus Gloves**: Manus Prime or MetaGloves with license dongle
-- **Vive Trackers**: SteamVR/Lighthouse tracking system with trackers
+### Hardware
+- **Manus Gloves**: Manus Prime/MetaGloves with license dongle
+- **Vive Trackers**: Lighthouse tracking (SteamVR base stations + trackers)
 
-### Software Dependencies
+### Software
+- **Manus SDK**: Bundled in Isaac Sim target-deps (mock used if missing)
+- **libsurvive / pysurvive**: Required for real Vive tracking; otherwise mock data is used
 
-#### Manus SDK
-- ManusSDK is automatically included in Isaac Sim's target dependencies
-- Requires Manus license dongle for operation
-- Falls back to mock data if unavailable
+Install libsurvive (either system-wide or in your home directory):
 
-#### libsurvive (for Vive trackers)
-Currently requires manual installation. Choose one option:
-
-**Option 1: System Installation**
+System-wide:
 ```bash
 sudo apt update
-sudo apt install build-essential zlib1g-dev libx11-dev libusb-1.0-0-dev freeglut3-dev liblapacke-dev libopenblas-dev libatlas-base-dev cmake
+sudo apt install -y build-essential zlib1g-dev libx11-dev libusb-1.0-0-dev \
+  freeglut3-dev liblapacke-dev libopenblas-dev libatlas-base-dev cmake
 
 git clone https://github.com/cntools/libsurvive.git
 cd libsurvive
 sudo cp ./useful_files/81-vive.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
-make && cmake . && make -j$(nproc)
+make && cmake . && make -j"$(nproc)"
 sudo make install && sudo ldconfig
 ```
 
-**Option 2: User Installation (Recommended)**
+User (home) install (recommended during development):
 ```bash
-# Build in home directory (detected automatically)
 git clone https://github.com/cntools/libsurvive.git ~/libsurvive
 cd ~/libsurvive
 sudo cp ./useful_files/81-vive.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
-make && cmake . && make -j$(nproc)
+make && cmake . && make -j"$(nproc)"
+
+# Ensure Python can find pysurvive bindings
+export PYTHONPATH="$HOME/libsurvive/bindings/python:$PYTHONPATH"
 ```
+
+Note: The Vive tracker wrapper currently prepends a libsurvive Python path. Adjust it as needed for your environment or set `PYTHONPATH` as shown above.
 
 ## Building
 
@@ -58,124 +58,106 @@ make && cmake . && make -j$(nproc)
 ./build.sh
 ```
 
-The extension is automatically built as part of Isaac Sim's build process.
-
 ## Usage
 
-### Running the Sample
-A complete sample script demonstrates both Manus and Vive tracking:
+### Sample
+Run the visualization sample that renders Manus joints (red cubes) and Vive trackers (blue cubes):
 
 ```bash
 cd /path/to/IsaacSim
-./_build/linux-x86_64/release/python.sh source/standalone_examples/api/isaacsim.xr.input_devices/manus_vive_tracking_sample.py
+./_build/linux-x86_64/release/python.sh \
+  source/standalone_examples/api/isaacsim.xr.input_devices/manus_vive_tracking_sample.py
 ```
 
-### Python API Usage
+### Python API
 
 ```python
 from isaacsim.xr.input_devices.impl.xr_device_integration import get_xr_device_integration
 
-# Get the extension's device integration instance
+# Obtain the shared integration instance from the extension
 integration = get_xr_device_integration()
 
-# Get all device data
+# Fetch all device data
 all_data = integration.get_all_device_data()
 
-# Access specific device data
 manus_data = all_data.get('manus_gloves', {})
 vive_data = all_data.get('vive_trackers', {})
-
-# Check device status
 status = all_data.get('device_status', {})
-manus_connected = status.get('manus_gloves', {}).get('connected', False)
-vive_connected = status.get('vive_trackers', {}).get('connected', False)
 
-print(f"Manus connected: {manus_connected}")
-print(f"Vive connected: {vive_connected}")
+print(f"Manus connected: {status.get('manus_gloves', {}).get('connected', False)}")
+print(f"Vive connected: {status.get('vive_trackers', {}).get('connected', False)}")
 ```
 
 ### Data Format
 
-**Manus Glove Data:**
 ```python
 {
-    'manus_gloves': {
-        'left_glove': {
-            'position': np.array([...]),      # 75 joint positions (x,y,z per joint)
-            'orientation': np.array([...]),   # 75 joint orientations (w,x,y,z per joint)  
-            'valid': True
-        },
-        'right_glove': { ... }
-    }
+  'manus_gloves': {
+    'left_0': {
+      'position': [x, y, z],
+      'orientation': [w, x, y, z]
+    },
+    'left_1': { ... },
+    'right_0': { ... },
+    # ... per-joint entries
+  },
+  'vive_trackers': {
+    '<device_id>': {
+      'position': [x, y, z],
+      'orientation': [w, x, y, z]
+    },
+    # e.g., 'WM0', 'WM1', or device names from libsurvive
+  },
+  'device_status': {
+    'manus_gloves': {'connected': bool, 'last_data_time': float},
+    'vive_trackers': {'connected': bool, 'last_data_time': float},
+    'left_hand_connected': bool,
+    'right_hand_connected': bool
+  }
 }
 ```
 
-**Vive Tracker Data:**
-```python
-{
-    'vive_trackers': {
-        'WM0_position': [x, y, z],           # Tracker position
-        'WM0_orientation': [w, x, y, z],     # Tracker orientation
-        'LH1_position': [x, y, z],           # Lighthouse position
-        'LH1_orientation': [w, x, y, z]      # Lighthouse orientation
-    }
-}
-```
+## How left/right mapping is determined
 
-## Extension Architecture
-
-```
-isaacsim.xr.input_devices/
-├── bindings/               # Pybind11 C++ bindings
-├── include/               # C++ headers
-├── plugins/               # C++ implementation
-│   └── ManusTracker.cpp   # Manus SDK integration
-├── python/
-│   └── impl/
-│       ├── extension.py           # Extension lifecycle
-│       ├── xr_device_integration.py  # Main orchestrator
-│       ├── manus_tracker.py       # Manus wrapper
-│       └── vive_tracker.py        # Vive wrapper
-└── config/extension.toml   # Extension configuration
-```
+- Detect connected OpenXR wrists (left/right) and available Vive wrist markers (e.g., WM0/WM1)
+- For each frame, compute candidate transforms for both pairings:
+  - Pair A: WM0→Left, WM1→Right
+  - Pair B: WM1→Left, WM0→Right
+- Accumulate translation/rotation deltas per pairing when both wrists and trackers are present
+- Choose the pairing:
+  - Prefer the pairing with more samples initially
+  - Once there are enough paired frames, choose the one with lower accumulated error
+- Cluster the chosen pairing’s transforms and average them to estimate a stable
+  scene↔lighthouse transform (`scene_T_lighthouse_static`)
+- Use the resolved mapping and transform to place all Vive and Manus data in scene coordinates
 
 ## Troubleshooting
 
-### Manus Issues
-- **License Error**: Unplug and replug the Manus license dongle
-- **No Data**: Check if `ManusSDK_Integrated.so` is in `LD_LIBRARY_PATH`
-- **Connection Failed**: Ensure Manus Core isn't running simultaneously
+- Manus license issues: replug license dongle; ensure SDK libraries are discoverable
+- libsurvive conflicts: ensure SteamVR is NOT running concurrently
+- No Vive devices: verify udev rules and USB connections (solid tracker LED)
+- Python import for `pysurvive`: set `PYTHONPATH` to libsurvive bindings path
 
-### Vive Issues  
-- **No Trackers Found**: Verify SteamVR is not running (conflicts with libsurvive)
-- **Lighthouse Only**: Check that trackers have tracking lock (LED should be solid)
-- **pysurvive Import Error**: Install libsurvive (see Prerequisites section)
+## Extension Layout
 
-### Build Issues
-- Verify Isaac Sim build environment is set up correctly
-- Check that Manus SDK is in `_build/target-deps/manus_sdk/`
-- Ensure all C++ dependencies are available
-
-### Runtime Issues
-```bash
-# Check device connections
-lsusb | grep -i manus
-lsusb | grep -i lighthouse
-
-# Monitor Isaac Sim logs for device initialization
-# Look for: "Manus glove tracker initialized with SDK"
-# Look for: "Adding tracked object WM0 from HTC"
 ```
-
-## Contributing
-
-This extension follows Isaac Sim's extension development guidelines:
-- C++ code uses pybind11 for Python bindings
-- Python code follows Isaac Sim coding standards  
-- All changes should maintain backward compatibility
-- Include tests for new functionality
+isaacsim.xr.input_devices/
+├── bindings/                    # Pybind11 bindings
+├── include/                     # C++ headers
+├── plugins/                     # C++ implementations
+├── python/
+│   └── impl/
+│       ├── extension.py                 # Extension lifecycle
+│       ├── xr_device_integration.py     # Orchestrates devices & transforms
+│       ├── manus_tracker.py             # Manus wrapper
+│       └── vive_tracker.py              # Vive wrapper
+└── docs/
+    ├── README.md
+    └── CHANGELOG.md
+```
 
 ## License
 
-Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
+
 SPDX-License-Identifier: Apache-2.0 

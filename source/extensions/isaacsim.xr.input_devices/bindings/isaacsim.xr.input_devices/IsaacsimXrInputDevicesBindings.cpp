@@ -33,4 +33,4 @@ PYBIND11_MODULE(_isaac_xr_input_devices, m)
             Cleanup SDK resources.
         )");
 }
-} 
+}

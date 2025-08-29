@@ -298,4 +298,4 @@ void IsaacSimManusTracker::OnErgonomicsStream(const ErgonomicsStream* ergonomics
 
 } // namespace input_devices
 } // namespace xr
-} // namespace isaacsim 
+} // namespace isaacsim

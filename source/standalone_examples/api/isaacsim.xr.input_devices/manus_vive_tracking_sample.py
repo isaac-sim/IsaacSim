@@ -110,9 +110,6 @@ carb.log_info("Using XR device integration from extension")
 my_world.reset()
 reset_needed = False
 
-# Frame counter for sequential device updates
-frame_counter = 0
-
 # Get attribute references for faster access
 positions_attr = point_instancer.GetPositionsAttr()
 orientations_attr = point_instancer.GetOrientationsAttr()
@@ -131,11 +128,6 @@ while simulation_app.is_running():
             my_world.reset()
             reset_needed = False
 
-        # Sequential device updates to avoid resource contention
-        # Alternate between Manus and Vive every frame
-        update_manus = (frame_counter % 2 == 0)
-        frame_counter += 1
-        
         # Get current cube arrays
         current_positions = positions_attr.Get()
         current_orientations = orientations_attr.Get()
@@ -145,11 +137,6 @@ while simulation_app.is_running():
         proto_indices = [2 for _ in range(max_devices)]
         proto_idx_attr.Set(proto_indices)
         cube_idx = 0
-        
-        if update_manus:
-            xr_integration.update_manus()
-        else:
-            xr_integration.update_vive()
         
         all_device_data = xr_integration.get_all_device_data()
         manus_data = all_device_data.get('manus_gloves', {})

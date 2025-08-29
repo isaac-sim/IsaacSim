@@ -15,4 +15,4 @@
 
 from .impl.extension import Extension
 
-__all__ = ["Extension"] 
+__all__ = ["Extension"]

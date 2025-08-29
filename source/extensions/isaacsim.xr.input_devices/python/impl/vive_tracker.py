@@ -87,4 +87,4 @@ class IsaacSimViveTracker:
                 survive_simple_close(self._ctx.ptr)
             self.is_connected = False
         except Exception as e:
-            carb.log_error(f"Error during Vive tracker cleanup: {e}") 
+            carb.log_error(f"Error during Vive tracker cleanup: {e}")

@@ -28,4 +28,4 @@ args = [
     "--/app/asyncRendering=0",
     "--/app/fastShutdown=1",
     "--vulkan",
-] 
+]
