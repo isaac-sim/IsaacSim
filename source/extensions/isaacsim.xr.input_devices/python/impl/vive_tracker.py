@@ -3,19 +3,24 @@
 
 import sys
 import carb
+import os
 from typing import Dict
 from pxr import Gf
 
 try:
-    # Add libsurvive pysurvive bindings to Python path
-    libsurvive_python_path = "/home/yuanchenl/libsurvive/bindings/python"  ###FIXME: hardcoded path
-    if libsurvive_python_path not in sys.path:
-        sys.path.insert(0, libsurvive_python_path)
-    
+    # Optionally add libsurvive pysurvive bindings to Python path via env var
+    libsurvive_python_path = os.environ.get("LIBSURVIVE_PYTHON_PATH")
+    if libsurvive_python_path:
+        if libsurvive_python_path not in sys.path:
+            sys.path.insert(0, libsurvive_python_path)
+        carb.log_info(f"Using LIBSURVIVE_PYTHON_PATH={libsurvive_python_path}")
+    else:
+        carb.log_warn("LIBSURVIVE_PYTHON_PATH is not set; trying to import pysurvive from default sys.path")
+
     import pysurvive
     from pysurvive.pysurvive_generated import survive_simple_close
     PYSURVIVE_AVAILABLE = True
-    carb.log_info("pysurvive imported successfully from libsurvive source")
+    carb.log_info("pysurvive imported successfully")
 except ImportError as e:
     carb.log_warn(f"pysurvive not available - using mock data for vive: {e}")
     PYSURVIVE_AVAILABLE = False
@@ -77,7 +82,7 @@ class IsaacSimViveTracker:
         except Exception as e:
             carb.log_error(f"Failed to update Vive tracker data: {e}")
     
-    def get_all_tracker_data(self) -> Dict:
+    def get_data(self) -> Dict:
         return self.device_data
     
     def cleanup(self):

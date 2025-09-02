@@ -74,7 +74,7 @@ class IsaacSimManusGloveTracker:
                 'orientation': [float(orientation[i]) for i in range(joint_idx * 4, joint_idx * 4 + 4)]
             }
     
-    def get_all_glove_data(self) -> Dict:
+    def get_data(self) -> Dict:
         return self.glove_data
     
     def cleanup(self):

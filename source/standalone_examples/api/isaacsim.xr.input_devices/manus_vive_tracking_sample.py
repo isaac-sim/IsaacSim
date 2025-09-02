@@ -21,9 +21,8 @@ in Isaac Sim. The devices are visualized as colored cubes:
 - Red cubes (0.01 size): Manus glove joints
 - Blue cubes (0.02 size): Vive tracker positions
 
-IMPORTANT: To avoid resource contention and crashes, ensure Manus and Vive devices
-are connected to different USB controllers/buses. Use 'lsusb -t' to identify
-different buses and connect devices accordingly.
+DEPRECATED: This sample is deprecated. The coordinate transformation logic has 
+been moved to IsaacLab.
 """
 
 import os
@@ -32,8 +31,7 @@ from isaacsim import SimulationApp
 
 # Initialize simulation app
 simulation_app = SimulationApp(
-    {"headless": False}, 
-    experience=f'/home/yuanchenl/Desktop/IsaacSim/source/apps/isaacsim.exp.base.xr.openxr.kit'
+    {"headless": False}, experience=f'{os.environ["EXP_PATH"]}/isaacsim.exp.base.xr.openxr.kit'
 )
 
 import carb

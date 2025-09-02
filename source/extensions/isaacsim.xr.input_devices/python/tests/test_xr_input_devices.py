@@ -33,12 +33,12 @@ def test_individual_trackers():
 
         manus = IsaacSimManusGloveTracker()
         manus.update()
-        manus_data = manus.get_all_glove_data()
+        manus_data = manus.get_data()
         print(f"Manus tracker: {len(manus_data)} joint entries")
 
         vive = IsaacSimViveTracker()
         vive.update()
-        vive_data = vive.get_all_tracker_data()
+        vive_data = vive.get_data()
         print(f"Vive tracker: {len(vive_data)} device entries")
 
         return True
