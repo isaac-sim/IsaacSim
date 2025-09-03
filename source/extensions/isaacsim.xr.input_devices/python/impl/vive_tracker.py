@@ -8,21 +8,21 @@ from typing import Dict
 from pxr import Gf
 
 try:
-    # Optionally add libsurvive pysurvive bindings to Python path via env var
-    libsurvive_python_path = os.environ.get("LIBSURVIVE_PYTHON_PATH")
-    if libsurvive_python_path:
-        if libsurvive_python_path not in sys.path:
-            sys.path.insert(0, libsurvive_python_path)
-        carb.log_info(f"Using LIBSURVIVE_PYTHON_PATH={libsurvive_python_path}")
-    else:
-        carb.log_warn("LIBSURVIVE_PYTHON_PATH is not set; trying to import pysurvive from default sys.path")
+    if 'pysurvive' not in sys.modules:
+        ext_root = os.path.abspath(os.path.join(__file__, "../../../../.."))
+        vendor_path = os.path.join(ext_root, 'pysurvive')
+        if os.path.isdir(vendor_path) and vendor_path not in sys.path:
+            sys.path.insert(0, vendor_path)
+            carb.log_info(f"Using vendored pysurvive at {vendor_path}")
+        else:
+            carb.log_warn(f"Failed to add vendored pysurvive: {vendor_path}")
 
     import pysurvive
     from pysurvive.pysurvive_generated import survive_simple_close
     PYSURVIVE_AVAILABLE = True
     carb.log_info("pysurvive imported successfully")
 except ImportError as e:
-    carb.log_warn(f"pysurvive not available - using mock data for vive: {e}")
+    carb.log_error(f"pysurvive not available")
     PYSURVIVE_AVAILABLE = False
 
 class IsaacSimViveTracker:
@@ -46,16 +46,7 @@ class IsaacSimViveTracker:
     
     def update(self):
         if not PYSURVIVE_AVAILABLE:
-            self.device_data = {
-                'tracker_1': {
-                    'position': [0.0, 0.0, 0.0],
-                    'orientation': [1.0, 0.0, 0.0, 0.0]
-                },
-                'tracker_2': {
-                    'position': [0.1, 0.0, 0.0],
-                    'orientation': [1.0, 0.0, 0.0, 0.0]
-                }
-            }
+            raise RuntimeError("pysurvive not available")
             return
         if not self.is_connected:
             return

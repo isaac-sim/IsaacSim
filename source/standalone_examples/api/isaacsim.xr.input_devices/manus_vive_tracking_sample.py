@@ -107,6 +107,7 @@ carb.log_info("Using XR device integration from extension")
 
 my_world.reset()
 reset_needed = False
+frame_count = 0
 
 # Get attribute references for faster access
 positions_attr = point_instancer.GetPositionsAttr()
@@ -136,10 +137,17 @@ while simulation_app.is_running():
         proto_idx_attr.Set(proto_indices)
         cube_idx = 0
         
-        all_device_data = xr_integration.get_all_device_data()
-        manus_data = all_device_data.get('manus_gloves', {})
-        vive_data = all_device_data.get('vive_trackers', {})
-            
+        if frame_count % 2 == 0:
+            xr_integration.manus_tracker.update()
+        else:
+            xr_integration.vive_tracker.update()
+        frame_count += 1
+        manus_data = xr_integration.manus_tracker.get_data()
+        vive_data = xr_integration.vive_tracker.get_data()
+        if frame_count % 100 == 0:
+            carb.log_warn(f"Manus data: {manus_data}")
+            carb.log_warn(f"Vive data: {vive_data}")
+
         # Process Manus gloves (red cubes, index 0)
         for joint, joint_data in manus_data.items():
             if cube_idx >= max_devices:

@@ -25,5 +25,10 @@ if [ $EULA_STATUS -ne 0 ]; then
     exit 1
 fi
 
+# Provision libsurvive into _build/target-deps on Linux (no-op if already installed)
+if [[ "$(uname -s)" == "Linux" ]]; then
+    bash "${SCRIPT_DIR}/source/scripts/build_libsurvive.sh" "${SCRIPT_DIR}"
+fi
+
 set -e
 source "$SCRIPT_DIR/repo.sh" build $@ || exit $?
