@@ -19,17 +19,29 @@ import sys
 if sys.platform == "win32":
     pass
 else:
-    icon_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "omni.isaac.sim.png")
-    user_apps_folder = os.path.expanduser("~/.local/share/applications")
-    if os.path.exists(user_apps_folder):
-        with open(os.path.expanduser("~/.local/share/applications/IsaacSim.desktop"), "w") as file:
-            print("Writing Isaac Sim icon file")
-            file.write(
-                f"""[Desktop Entry]
+
+    this_dir = os.path.dirname(os.path.realpath(__file__))
+
+    icon_path = os.path.join(this_dir, "omni.isaac.sim.png")
+    exec_path = os.path.normpath(os.path.join(this_dir, "..", "..", "isaac-sim.sh"))
+    desktop_file_path = os.path.expanduser("~/.local/share/applications/IsaacSim.desktop")
+
+    # write the .desktop file to the user's applications folder
+    # (will appear under ubuntu logo)
+    if os.path.exists(os.path.dirname(desktop_file_path)):
+        with open(desktop_file_path, "w") as file:
+            print(f"Writing Isaac Sim icon file to {desktop_file_path}")
+            file.write(f"""\
+[Desktop Entry]
 Version=1.0
 Name=Isaac Sim
 Icon={icon_path}
 Terminal=false
 Type=Application
-StartupWMClass=IsaacSim"""
-            )
+StartupWMClass=IsaacSim
+Exec={exec_path}\
+""")
+
+    # set trusted flag on the .desktop file via shell:
+    os.system(f'gio set "{desktop_file_path}" metadata::trusted true')
+
