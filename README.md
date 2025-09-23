@@ -133,6 +133,14 @@ g++ --version
 > **⚠️ Windows Path Length Limitation**
 > Windows has a path length limitation of 260 characters. If you encounter errors related missing files or other build errors, try moving the repository to a shorter path.
 
+> **⚠️ Packman Temp Directory Setting**
+> If you receive the error "The system cannot find the file specified." multiple times during the build you may need to set the **PM_PACKAGES_ROOT** in windows.
+> To remedy this please execute the follow commands.
+>
+> ```powershell
+> setx PM_PACKAGES_ROOT <path_to_temporary_directory>
+> ```
+
 ```powershell
 build.bat
 ```
