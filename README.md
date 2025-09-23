@@ -135,7 +135,7 @@ g++ --version
 
 > **⚠️ Packman Temp Directory Setting**
 > If you receive the error "The system cannot find the file specified." multiple times during the build you may need to set the **PM_PACKAGES_ROOT** in windows.
-> To remedy this please execute the follow commands.
+> To remedy this please execute the follow command.
 >
 > ```powershell
 > setx PM_PACKAGES_ROOT <path_to_temporary_directory>
