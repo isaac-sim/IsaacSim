@@ -110,6 +110,8 @@ if __name__ == "__main__":
     if not argv[3]:
         notebook_dir = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "notebooks"))
         notebook_dir = "--notebook-dir={}".format(notebook_dir)
+    else:
+        notebook_dir = argv[3]
 
     # get token
     token = "--ServerApp.token={}".format(token)
