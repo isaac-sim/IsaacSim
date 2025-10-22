@@ -133,10 +133,10 @@ def generate_vscode_settings():
 
     # update 'python.defaultInterpreterPath'
     template = VSCODE_SETTINGS_TEMPLATE[:]
-    template = template.replace("PYTHON.DEFAULTINTERPRETERPATH", sys.executable)
+    template = template.replace("PYTHON.DEFAULTINTERPRETERPATH", sys.executable.replace("\\", "/"))
 
     # update 'python.analysis.extraPaths'
-    content = "\n".join([f'"{path}",' for path in extensions_paths])
+    content = "\n".join([f'"{path.replace(chr(92), "/")}",' for path in extensions_paths])
     content = textwrap.indent(content, prefix=" " * 8)[8:]
     template = template.replace("PYTHON.ANALYSIS.EXTRAPATHS", content)
 
