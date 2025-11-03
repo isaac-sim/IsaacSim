@@ -450,6 +450,7 @@ public:
      * @param[in] jointEfforts Vector of joint efforts
      * @param[in] dofTypes Vector of DOF types
      * @param[in] stageUnits Stage unit scale factor
+     * @param[in] cudaDeviceIndex Index of the device where the data lives (-1 for host data)
      */
     virtual void writeData(const double& timeStamp,
                            omni::physics::tensors::IArticulationView* articulation,
@@ -458,7 +459,8 @@ public:
                            std::vector<float>& jointVelocities,
                            std::vector<float>& jointEfforts,
                            std::vector<uint8_t>& dofTypes,
-                           const double& stageUnits);
+                           const double& stageUnits,
+                           const int& cudaDeviceIndex);
 
     /**
      * @brief Reads the joint state data
