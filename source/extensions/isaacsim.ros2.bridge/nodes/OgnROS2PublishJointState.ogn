@@ -1,6 +1,6 @@
 {
     "ROS2PublishJointState":{
-        "version": 1,
+        "version": 2,
         "icon": "icons/isaac-sim.svg",
         "description": [
             "This node publishes joint states of a robot in ROS2 JointState message"
@@ -49,7 +49,12 @@
                 "description": "ROS2 Timestamp in seconds",
                 "uiName": "Timestamp",
                 "default": 0.0
-                
+
+            },
+            "cudaDeviceIndex": {
+                "type": "int",
+                "description": "Index of the device where the data lives (-1 for host data)",
+                "default": -1
             }
         }
     }
