@@ -132,7 +132,7 @@ g++ --version
 **Windows:**
 
 > **⚠️ Windows Path Length Limitation**
-> Windows has a path length limitation of 260 characters. If you encounter errors related missing files or other build errors, try moving the repository to a shorter path.
+> Windows has a path length limitation of 260 characters. If you encounter errors related to missing files or other build errors, try moving the repository to a shorter path.
 
 ```powershell
 build.bat
