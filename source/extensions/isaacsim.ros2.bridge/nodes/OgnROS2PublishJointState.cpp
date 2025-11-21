@@ -164,7 +164,7 @@ public:
         m_stage = pxr::UsdUtilsStageCache::Get().Find(pxr::UsdStageCache::Id::FromLongInt(stageId));
 
         state.m_message->writeData(db.inputs.timeStamp(), m_articulation, m_stage, m_jointPositions, m_jointVelocities,
-                                   m_jointEfforts, m_dofTypes, stageUnits);
+                                   m_jointEfforts, m_dofTypes, stageUnits, db.inputs.cudaDeviceIndex());
         state.m_publisher.get()->publish(state.m_message->getPtr());
         return true;
     }

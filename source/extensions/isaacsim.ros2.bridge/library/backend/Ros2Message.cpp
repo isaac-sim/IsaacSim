@@ -998,7 +998,8 @@ template <typename T>
 static void createTensorDesc(omni::physics::tensors::TensorDesc& tensorDesc,
                              std::vector<T>& buffer,
                              int numElements,
-                             omni::physics::tensors::TensorDataType type)
+                             omni::physics::tensors::TensorDataType type,
+                             int cudaDeviceIndex)
 {
     buffer.resize(numElements);
     tensorDesc.dtype = type;
@@ -1006,7 +1007,7 @@ static void createTensorDesc(omni::physics::tensors::TensorDesc& tensorDesc,
     tensorDesc.dims[0] = numElements;
     tensorDesc.data = buffer.data();
     tensorDesc.ownData = true;
-    tensorDesc.device = -1;
+    tensorDesc.device = cudaDeviceIndex;
 }
 
 void Ros2JointStateMessageImpl::writeData(const double& timeStamp,
@@ -1016,7 +1017,8 @@ void Ros2JointStateMessageImpl::writeData(const double& timeStamp,
                                           std::vector<float>& jointVelocities,
                                           std::vector<float>& jointEfforts,
                                           std::vector<uint8_t>& dofTypes,
-                                          const double& stageUnits)
+                                          const double& stageUnits,
+                                          const int& cudaDeviceIndex)
 {
     if (!m_msg)
     {
@@ -1030,10 +1032,11 @@ void Ros2JointStateMessageImpl::writeData(const double& timeStamp,
     omni::physics::tensors::TensorDesc velocityTensor;
     omni::physics::tensors::TensorDesc effortTensor;
     omni::physics::tensors::TensorDesc dofTypeTensor;
-    createTensorDesc(positionTensor, jointPositions, numDofs, omni::physics::tensors::TensorDataType::eFloat32);
-    createTensorDesc(velocityTensor, jointVelocities, numDofs, omni::physics::tensors::TensorDataType::eFloat32);
-    createTensorDesc(effortTensor, jointEfforts, numDofs, omni::physics::tensors::TensorDataType::eFloat32);
-    createTensorDesc(dofTypeTensor, dofTypes, numDofs, omni::physics::tensors::TensorDataType::eUint8);
+    createTensorDesc(positionTensor, jointPositions, numDofs, omni::physics::tensors::TensorDataType::eFloat32, cudaDeviceIndex);
+    createTensorDesc(velocityTensor, jointVelocities, numDofs, omni::physics::tensors::TensorDataType::eFloat32, cudaDeviceIndex);
+    createTensorDesc(effortTensor, jointEfforts, numDofs, omni::physics::tensors::TensorDataType::eFloat32, cudaDeviceIndex);
+    // The DOF type data always lives on host.
+    createTensorDesc(dofTypeTensor, dofTypes, numDofs, omni::physics::tensors::TensorDataType::eUint8, -1);
     bool hasDofStates = true;
     if (!articulation->getDofPositions(&positionTensor))
     {
