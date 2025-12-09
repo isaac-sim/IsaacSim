@@ -81,10 +81,10 @@ def read_camera_info(render_product_path: str) -> Tuple:
         width, height = get_resolution(render_product_path=render_product_path)
         focalLength = camera_prim.GetAttribute("focalLength").Get()
         horizontalAperture = camera_prim.GetAttribute("horizontalAperture").Get()
-        verticalAperture = camera_prim.GetAttribute("verticalAperture").Get()
 
+        # We assume that we have square pixels so fy = height * focalLength / (horizontalAperture * (height / width))
         fx = width * focalLength / horizontalAperture
-        fy = height * focalLength / verticalAperture
+        fy = height * focalLength / (horizontalAperture * (height / width))
         cx = width * 0.5
         cy = height * 0.5
 
