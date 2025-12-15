@@ -95,6 +95,9 @@ name = "isaacsim.examples.interactive.franka"
 [[python.module]]
 name = "isaacsim.examples.interactive.pick_place"
 
+[[python.module]]
+name = "isaacsim.examples.interactive.robot_joint_control"
+
 [[test]]
 timeout = 900
 
