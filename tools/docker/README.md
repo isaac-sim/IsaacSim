@@ -9,6 +9,7 @@ Before running these scripts, ensure you have the following installed on your ho
 - **rsync** - Required for file synchronization during the preparation phase
 - **python3** - Required for running the preparation scripts and installing dependencies
 - **Docker** - Required for building the final image
+- **NVIDIA Container Toolkit** - Required for GPU access in containers
 
 ### Installing Prerequisites
 
@@ -31,8 +32,8 @@ Use `prep_docker_build.sh` to prepare the Docker build context:
 ```
 
 #### Options:
-- `--build` - Run the full Isaac Sim build sequence before preparing Docker files:
-  - Executes `build.sh -r`
+- `--build` - Run the full Isaac Sim build sequence before preparing Docker files (requires GCC 11)
+- `--docker-build` - Build Isaac Sim inside a container (no host dependencies except Docker). **Recommended for Ubuntu 24.04+** which ships with GCC 13.
 - `--x86_64` - Build x86_64 container (default)
 - `--aarch64` - Build aarch64 container
 - `--skip-dedupe` - Skip the file deduplication process (faster but larger image)
@@ -63,7 +64,13 @@ Use `build_docker.sh` to build the actual Docker image:
 
 ## Example Usage
 
-### Basic build:
+### Containerized build (Ubuntu 24.04+ or no native dependencies):
+```bash
+./tools/docker/prep_docker_build.sh --docker-build
+./tools/docker/build_docker.sh
+```
+
+### Native build (requires GCC 11):
 ```bash
 # Prepare build environment (includes full build)
 ./tools/docker/prep_docker_build.sh --build
@@ -90,9 +97,27 @@ Use `build_docker.sh` to build the actual Docker image:
 ./tools/docker/build_docker.sh
 ```
 
+## Running Isaac Sim
+
+Use `run_docker.sh` to run the built image. Reference: [NVIDIA Container Docs](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_container.html)
+
+```bash
+./tools/docker/run_docker.sh -c "./isaac-sim.sh"           # GUI
+./tools/docker/run_docker.sh -c "./runheadless.sh -v"      # Headless + livestream
+./tools/docker/run_docker.sh -c "./isaac-sim.sh --help"    # Help
+```
+
+**Persistent cache**: Extensions and shaders are cached in `_isaac_cache/`. First run downloads ~150 extensions (~3-5 min); subsequent runs are fast.
+
+**Cleaning**: Remove all Docker artifacts (build context and runtime cache):
+```bash
+./tools/docker/clean_docker.sh
+```
+
 ## Important Notes
 
-- **Build Requirements**: The `_build/$CONTAINER_PLATFORM/release` directory must exist before running the Docker preparation. Use `--build` option if you haven't built Isaac Sim yet.
+- **Build Requirements**: The `_build/$CONTAINER_PLATFORM/release` directory must exist before running the Docker preparation. Use `--build` or `--docker-build` option if you haven't built Isaac Sim yet.
+- **Ubuntu 24.04+**: Use `--docker-build` which includes GCC 11. Native build requires manually installing GCC 11.
 - **Deduplication**: The deduplication process can significantly reduce Docker image size by replacing duplicate files with symlinks, but it takes time. Use `--skip-dedupe` for faster rebuilds during development.
 - **File Paths**: The deduplication process skips files with spaces in their paths for reliability.
 - **Build Context**: The final Docker build uses `_container_temp` as the build context and `tools/docker/Dockerfile` as the Dockerfile.
@@ -100,7 +125,9 @@ Use `build_docker.sh` to build the actual Docker image:
 
 ## Troubleshooting
 
-- **Error: "_build/$CONTAINER_PLATFORM/release does not exist"**: Run the script with `--build` option to build Isaac Sim first.
+- **Error: "_build/$CONTAINER_PLATFORM/release does not exist"**: Run the script with `--build` or `--docker-build` option to build Isaac Sim first.
 - **rsync not found**: Install rsync using your system's package manager.
 - **Python requirements installation fails**: Ensure python3 and pip are properly installed.
 - **Docker build fails**: Check that Docker daemon is running and you have sufficient disk space.
+- **GCC version not supported (Ubuntu 24.04+)**: Use `--docker-build` which includes GCC 11.
+- **No GUI window**: Check `xhost +local:docker` ran successfully and `$DISPLAY` is set.

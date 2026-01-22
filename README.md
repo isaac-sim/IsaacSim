@@ -40,6 +40,10 @@ Ensure your system is set up with the following before building Isaac Sim:
 
   > **(Linux) Ubuntu 24.04**
   > Ubuntu 24.04 is not fully supported at this time. Building with Ubuntu 24.04 requires GCC/G++ 11 to be installed, GCC/G++ 12+ is not supported.
+  > Alternatively, use the containerized build which includes GCC 11:
+  > ```bash
+  > ./tools/docker/prep_docker_build.sh --docker-build
+  > ```
 
 - **GPU**: For additional information on GPU features and requirements, see [NVIDIA GPU Requirements](https://docs.omniverse.nvidia.com/dev-guide/latest/common/technical-requirements.html)
 
@@ -166,6 +170,21 @@ isaac-sim.bat
 ```
 
 > NOTE: If this is your first time building Isaac Sim, you will be prompted to accept the Omniverse Licensing Terms.
+
+### Docker Deployment (Linux)
+
+Build and run Isaac Sim in a Docker container:
+
+```bash
+# Build (one-time)
+./tools/docker/prep_docker_build.sh --docker-build
+./tools/docker/build_docker.sh
+
+# Run
+./tools/docker/run_docker.sh -c "./isaac-sim.sh"
+```
+
+See [tools/docker/README.md](tools/docker/README.md) for details.
 
 
 

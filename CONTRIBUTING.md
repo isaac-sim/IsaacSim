@@ -7,4 +7,4 @@
 
 #### Contribution
 
-- We currently do not acccept any contributions to this repository.
+- We currently do not accept any contributions to this repository.

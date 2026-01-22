@@ -6,6 +6,9 @@ ENV NVIDIA_VISIBLE_DEVICES=all NVIDIA_DRIVER_CAPABILITIES=all
 RUN touch /etc/ld.so.nohwcap
 
 # Install dependencies
+# Note: GCC 11 is included to support containerized builds on hosts with incompatible
+# compilers (e.g., Ubuntu 24.04 with GCC 13). Isaac Sim requires GCC 11 for compilation.
+# This enables: ./tools/docker/prep_docker_build.sh --docker-build
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         curl \
@@ -23,6 +26,14 @@ RUN apt-get update \
         ca-certificates \
         libglib2.0-0 \
         libnghttp2-14 \
+        # Build and prep tools
+        build-essential \
+        gcc-11 \
+        g++-11 \
+        python3-pip \
+        rsync \
+    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100 \
+    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 100 \
     && apt-get -y autoremove \
     && apt-get clean autoclean \
     && rm -rf /var/lib/apt/lists/*
