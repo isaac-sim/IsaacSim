@@ -892,7 +892,9 @@ inline bool writeNodeAttributeFromMessage(OmniGraphDatabase& db,
             }
             else
             {
-                auto outputValue = getAttributeWritableData<float>(db.abi_node(), "outputs:" + messageField.name);
+		//auto outputValue = getAttributeWritableData<float>(db.abi_node(), "outputs:" + messageField.name);
+		auto outputValue = getAttributeWritableData<float>(
+        		db.abi_node(), inputOutput(isOutput) + ":" + prependStr + messageField.name);
                 if (checkCondition(outputValue, "Unable to write float value"))
                 {
                     *outputValue = *std::static_pointer_cast<float>(messageData.at(i));
