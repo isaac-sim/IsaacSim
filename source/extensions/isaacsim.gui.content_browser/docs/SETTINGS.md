@@ -21,7 +21,7 @@
    - **Description**: Default content root url index into the content_root_urls list above
 
 ### exts."omni.simready.content.browser".usd_search_endpoint
-   - **Default Value**: "https://search.dev.simready.omniverse.nvidia.com/"
+   - **Default Value**: "https://search.stg.simready.omniverse.nvidia.com/"
    - **Description**: USD search server endpoint
 
 ### exts."isaacsim.gui.content_browser".folders
