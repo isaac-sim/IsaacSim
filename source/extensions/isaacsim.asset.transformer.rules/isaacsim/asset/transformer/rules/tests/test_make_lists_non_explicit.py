@@ -1,10 +1,12 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
+#
 # http://www.apache.org/licenses/LICENSE-2.0
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -34,6 +36,7 @@ def _matches_any(name: str, patterns: list[str]) -> bool:
 
     Returns:
         True if name matches any pattern, False otherwise.
+
     """
     return matches_any_pattern(name, compile_patterns(patterns))
 
@@ -41,12 +44,12 @@ def _matches_any(name: str, patterns: list[str]) -> bool:
 class TestMakeListsNonExplicitRule(omni.kit.test.AsyncTestCase):
     """Async tests for MakeListsNonExplicitRule."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Create a temporary directory for test output."""
         self._tmpdir = tempfile.mkdtemp()
         self._success = False
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Remove temporary directory after successful tests."""
         if self._success:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
@@ -56,6 +59,7 @@ class TestMakeListsNonExplicitRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             Absolute path to the copied test asset.
+
         """
         temp_asset = os.path.join(self._tmpdir, "test_advanced.usda")
         shutil.copy(_TEST_ADVANCED_USD, temp_asset)
@@ -74,6 +78,7 @@ class TestMakeListsNonExplicitRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             Tuple of (prim_path, metadata_key, explicit_items) or None if not found.
+
         """
         layer = stage.GetRootLayer()
         for prim in Usd.PrimRange(stage.GetPseudoRoot()):
@@ -104,6 +109,7 @@ class TestMakeListsNonExplicitRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             Tuple of (prim_path, property_name, explicit_items) or None if not found.
+
         """
         layer = stage.GetRootLayer()
         for prim in Usd.PrimRange(stage.GetPseudoRoot()):
@@ -123,7 +129,7 @@ class TestMakeListsNonExplicitRule(omni.kit.test.AsyncTestCase):
                     return prim_spec.path.pathString, prop_name, explicit_items
         return None
 
-    async def test_get_configuration_parameters(self):
+    async def test_get_configuration_parameters(self) -> None:
         """Verify configuration parameters are exposed."""
         stage = Usd.Stage.Open(_TEST_ADVANCED_USD)
         rule = MakeListsNonExplicitRule(
@@ -140,7 +146,7 @@ class TestMakeListsNonExplicitRule(omni.kit.test.AsyncTestCase):
         self.assertIn("list_op_type", param_names)
         self._success = True
 
-    async def test_process_rule_converts_explicit_lists_prepend(self):
+    async def test_process_rule_converts_explicit_lists_prepend(self) -> None:
         """Verify explicit list ops are converted to prepended list ops."""
         temp_asset = self._copy_test_asset()
         stage = Usd.Stage.Open(temp_asset)
@@ -189,7 +195,7 @@ class TestMakeListsNonExplicitRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_converts_explicit_lists_append(self):
+    async def test_process_rule_converts_explicit_lists_append(self) -> None:
         """Verify explicit list ops are converted to appended list ops."""
         temp_asset = self._copy_test_asset()
         stage = Usd.Stage.Open(temp_asset)
@@ -226,7 +232,7 @@ class TestMakeListsNonExplicitRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_converts_explicit_schemas_prepend(self):
+    async def test_process_rule_converts_explicit_schemas_prepend(self) -> None:
         """Verify explicit apiSchemas are converted to prepended list ops."""
         temp_asset = self._copy_test_asset()
         stage = Usd.Stage.Open(temp_asset)
@@ -260,4 +266,244 @@ class TestMakeListsNonExplicitRule(omni.kit.test.AsyncTestCase):
         self.assertFalse(updated_metadata.isExplicit)
         self.assertEqual(list(updated_metadata.prependedItems), metadata_items)
 
+        self._success = True
+
+
+def _build_sublayered_stage(
+    tmpdir: str,
+    *,
+    rel_name: str = "isaac:physics:robotJoints",
+    explicit_targets: list[str] | None = None,
+) -> tuple[Usd.Stage, str, str]:
+    """Build a root USDA that sublayers a payload with an explicit-list-op relationship.
+
+    Args:
+        tmpdir: Temporary directory to author the layers in.
+        rel_name: Relationship name to author on ``/Robot`` in the sublayer.
+        explicit_targets: Target paths for the explicit-list-op relationship.
+
+    Returns:
+        Tuple of (opened stage, root layer path, sublayer path).
+
+    """
+    if explicit_targets is None:
+        explicit_targets = ["/Robot/joints/j1", "/Robot/joints/j2"]
+
+    sublayer_path = os.path.join(tmpdir, "payload.usda")
+    root_path = os.path.join(tmpdir, "root.usda")
+
+    # Author the sublayer: /Robot prim with an explicit-list-op relationship.
+    sublayer = Sdf.Layer.CreateNew(sublayer_path)
+    prim_spec = Sdf.CreatePrimInLayer(sublayer, "/Robot")
+    prim_spec.specifier = Sdf.SpecifierDef
+    prim_spec.typeName = "Xform"
+    rel_spec = Sdf.RelationshipSpec(prim_spec, rel_name, custom=True)
+    rel_spec.targetPathList.ClearEditsAndMakeExplicit()
+    rel_spec.targetPathList.explicitItems = [Sdf.Path(p) for p in explicit_targets]
+    sublayer.Save()
+
+    # Root layer sublayers the payload.
+    root = Sdf.Layer.CreateNew(root_path)
+    root.subLayerPaths.append(os.path.basename(sublayer_path))
+    root.Save()
+
+    stage = Usd.Stage.Open(root_path)
+    return stage, root_path, sublayer_path
+
+
+class TestSublayerRelationshipWalk(omni.kit.test.AsyncTestCase):
+    """Regression tests for the per-prim ``PrimStack`` walk.
+
+    The property-conversion branch of ``MakeListsNonExplicitRule.process_rule``
+    must enumerate every contributing ``PrimSpec`` via ``prim.GetPrimStack()``
+    so that explicit-list-op relationships authored in sublayers (e.g. in a
+    payload) are converted to ``prepend``. Root-layer-authored relationships
+    (existing behavior) remain converted.
+    """
+
+    async def setUp(self) -> None:
+        """Create a temporary directory for test output."""
+        self._tmpdir = tempfile.mkdtemp()
+        self._success = False
+
+    async def tearDown(self) -> None:
+        """Remove temporary directory after successful tests."""
+        if self._success:
+            shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _invoke_rule(
+        self,
+        stage: Usd.Stage,
+        *,
+        property_names: list[str],
+        list_op_type: str = "prepend",
+        metadata_names: list[str] | None = None,
+    ) -> MakeListsNonExplicitRule:
+        """Invoke `MakeListsNonExplicitRule` on a stage with the given params.
+
+        Args:
+            stage: Working stage.
+            property_names: Property-name regex patterns to convert.
+            list_op_type: Target list-op type (``prepend`` or ``append``).
+            metadata_names: Metadata-name regex patterns (root-layer-only path).
+
+        Returns:
+            The invoked rule instance.
+
+        """
+        rule = MakeListsNonExplicitRule(
+            source_stage=stage,
+            package_root=self._tmpdir,
+            destination_path="",
+            args={
+                "params": {
+                    "metadata_names": metadata_names or [],
+                    "property_names": property_names,
+                    "list_op_type": list_op_type,
+                }
+            },
+        )
+        rule.process_rule()
+        return rule
+
+    async def test_sublayer_relationship_converted_to_prepend(self) -> None:
+        """Per-prim ``PrimStack`` walk reaches the sublayer's relationship spec."""
+        stage, _root_path, sublayer_path = _build_sublayered_stage(self._tmpdir)
+        self._invoke_rule(
+            stage,
+            property_names=["isaac:physics:robotJoints"],
+            list_op_type="prepend",
+        )
+
+        sublayer = Sdf.Layer.FindOrOpen(sublayer_path)
+        self.assertIsNotNone(sublayer, "Expected sublayer to reopen successfully.")
+        prim_spec = sublayer.GetPrimAtPath("/Robot")
+        self.assertIsNotNone(prim_spec, "Expected `/Robot` spec in sublayer.")
+        rel_spec = prim_spec.relationships.get("isaac:physics:robotJoints")
+        self.assertIsNotNone(rel_spec)
+        # After conversion: targetPathList is no longer explicit; items moved to prepend.
+        self.assertFalse(
+            rel_spec.targetPathList.isExplicit,
+            "Expected list-op to be non-explicit after conversion to prepend.",
+        )
+        self.assertEqual(
+            sorted(str(p) for p in rel_spec.targetPathList.prependedItems),
+            ["/Robot/joints/j1", "/Robot/joints/j2"],
+        )
+        self._success = True
+
+    async def test_root_layer_relationship_still_converted(self) -> None:
+        """Regression: root-layer-authored rels are still converted (existing behavior)."""
+        root_path = os.path.join(self._tmpdir, "root_only.usda")
+        root_layer = Sdf.Layer.CreateNew(root_path)
+        prim_spec = Sdf.CreatePrimInLayer(root_layer, "/Robot")
+        prim_spec.specifier = Sdf.SpecifierDef
+        prim_spec.typeName = "Xform"
+        rel_spec = Sdf.RelationshipSpec(prim_spec, "isaac:physics:robotJoints", custom=True)
+        rel_spec.targetPathList.ClearEditsAndMakeExplicit()
+        rel_spec.targetPathList.explicitItems = [Sdf.Path("/Robot/j1"), Sdf.Path("/Robot/j2")]
+        root_layer.Save()
+
+        # Sanity: confirm the authored list-op is explicit before invoking the rule.
+        self.assertTrue(
+            rel_spec.targetPathList.isExplicit,
+            "Fixture precondition: expected explicit list-op on authored relationship.",
+        )
+
+        stage = Usd.Stage.Open(root_path)
+        self._invoke_rule(
+            stage,
+            property_names=["isaac:physics:robotJoints"],
+            list_op_type="prepend",
+        )
+
+        # Re-check root spec.
+        reopened_layer = Sdf.Layer.FindOrOpen(root_path)
+        self.assertIsNotNone(reopened_layer)
+        rel_prim_spec = reopened_layer.GetPrimAtPath("/Robot")
+        self.assertIsNotNone(rel_prim_spec)
+        updated_rel = rel_prim_spec.relationships.get("isaac:physics:robotJoints")
+        self.assertIsNotNone(updated_rel)
+        self.assertFalse(
+            updated_rel.targetPathList.isExplicit,
+            "Expected list-op to be non-explicit after conversion to prepend.",
+        )
+        self.assertEqual(
+            sorted(str(p) for p in updated_rel.targetPathList.prependedItems),
+            ["/Robot/j1", "/Robot/j2"],
+        )
+        self._success = True
+
+    async def test_prepend_relationship_is_noop(self) -> None:
+        """Idempotency: rel already `prepend` -> no change, no crash."""
+        sublayer_path = os.path.join(self._tmpdir, "payload_prepend.usda")
+        root_path = os.path.join(self._tmpdir, "root_prepend.usda")
+
+        sublayer = Sdf.Layer.CreateNew(sublayer_path)
+        prim_spec = Sdf.CreatePrimInLayer(sublayer, "/Robot")
+        prim_spec.specifier = Sdf.SpecifierDef
+        prim_spec.typeName = "Xform"
+        rel_spec = Sdf.RelationshipSpec(prim_spec, "isaac:physics:robotJoints", custom=True)
+        rel_spec.targetPathList.prependedItems = [Sdf.Path("/Robot/j1")]
+        sublayer.Save()
+
+        root = Sdf.Layer.CreateNew(root_path)
+        root.subLayerPaths.append(os.path.basename(sublayer_path))
+        root.Save()
+
+        stage = Usd.Stage.Open(root_path)
+        self._invoke_rule(
+            stage,
+            property_names=["isaac:physics:robotJoints"],
+            list_op_type="prepend",
+        )
+
+        # No change expected — already non-explicit, so the rule should leave it alone.
+        reopened = Sdf.Layer.FindOrOpen(sublayer_path)
+        reopened_rel = reopened.GetPrimAtPath("/Robot").relationships.get("isaac:physics:robotJoints")
+        self.assertIsNotNone(reopened_rel)
+        self.assertFalse(
+            reopened_rel.targetPathList.isExplicit,
+            "Expected already-prepend list-op to remain non-explicit.",
+        )
+        self.assertEqual(
+            sorted(str(p) for p in reopened_rel.targetPathList.prependedItems),
+            ["/Robot/j1"],
+        )
+        self._success = True
+
+    async def test_unrelated_property_untouched(self) -> None:
+        """Property-name filter: `material:binding` should NOT be converted by the new entry."""
+        sublayer_path = os.path.join(self._tmpdir, "payload_other.usda")
+        root_path = os.path.join(self._tmpdir, "root_other.usda")
+
+        sublayer = Sdf.Layer.CreateNew(sublayer_path)
+        prim_spec = Sdf.CreatePrimInLayer(sublayer, "/Robot")
+        prim_spec.specifier = Sdf.SpecifierDef
+        prim_spec.typeName = "Xform"
+        # Unrelated relationship authored as explicit list-op.
+        other_spec = Sdf.RelationshipSpec(prim_spec, "material:binding", custom=True)
+        other_spec.targetPathList.explicitItems = [Sdf.Path("/Materials/red")]
+        sublayer.Save()
+
+        root = Sdf.Layer.CreateNew(root_path)
+        root.subLayerPaths.append(os.path.basename(sublayer_path))
+        root.Save()
+
+        stage = Usd.Stage.Open(root_path)
+        self._invoke_rule(
+            stage,
+            property_names=["isaac:physics:robotJoints"],  # filter does NOT match material:binding
+            list_op_type="prepend",
+        )
+
+        reopened = Sdf.Layer.FindOrOpen(sublayer_path)
+        reopened_other = reopened.GetPrimAtPath("/Robot").relationships.get("material:binding")
+        self.assertIsNotNone(reopened_other)
+        # Still explicit — filter did not match, no conversion occurred.
+        self.assertTrue(reopened_other.targetPathList.isExplicit)
+        self.assertEqual(
+            [str(p) for p in reopened_other.targetPathList.explicitItems],
+            ["/Materials/red"],
+        )
         self._success = True

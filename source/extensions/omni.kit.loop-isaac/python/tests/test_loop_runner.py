@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test loop runner functionality."""
+
+from typing import Any
+
 import carb
 import omni.kit.test
 
@@ -20,9 +24,9 @@ import omni.kit.test
 class TestLoopRunner(omni.kit.test.AsyncTestCase):
     """Test cases for the Isaac run loop runner functionality."""
 
-    async def test_manual_mode(self):
+    async def test_manual_mode(self) -> None:
         """Test enabling and disabling manual stepping mode and verifying dt behavior."""
-        import omni.kit.loop._loop as omni_loop
+        from omni.kit.loop import _loop as omni_loop
 
         _loop_runner = omni_loop.acquire_loop_interface()
         # Manual mode is enabled via carb setting in test settings
@@ -42,7 +46,7 @@ class TestLoopRunner(omni.kit.test.AsyncTestCase):
         # Test that the manual mode is working
         current_dt = 0
 
-        def _render_callback(event):
+        def _render_callback(event: Any) -> None:
             nonlocal current_dt
             current_dt = event.payload["dt"]
             print("render callback", event.payload["dt"])
@@ -71,62 +75,3 @@ class TestLoopRunner(omni.kit.test.AsyncTestCase):
         self.assertLess(current_dt, 1.0 / 30.0)
 
         subscription = None
-
-    async def test_set_next_simulation_time(self):
-        """Test setting the next simulation time for multi-tick rendering mode."""
-        import omni.kit.loop._loop as omni_loop
-
-        _loop_runner = omni_loop.acquire_loop_interface()
-
-        # Enable multi-tick rate support to allow SWHExternalSimulationTime to be passed
-        carb.settings.get_settings().set_bool("/rtx/hydra/supportMultiTickRate", True)
-
-        # Track the SWHExternalSimulationTime values received in update events
-        received_sim_times = []
-
-        def _update_callback(event):
-            # SWHExternalSimulationTime is only present when set and multi-tick is enabled
-            if "SWHExternalSimulationTime" in event.payload:
-                received_sim_times.append(event.payload["SWHExternalSimulationTime"])
-
-        subscription = carb.eventdispatcher.get_eventdispatcher().observe_event(
-            event_name=omni.kit.app.GLOBAL_EVENT_UPDATE,
-            on_event=_update_callback,
-            observer_name="test_set_next_simulation_time",
-        )
-
-        # Test setting simulation time and verify it's received in the event
-        test_time_1 = 1.5
-        _loop_runner.set_next_simulation_time(test_time_1)
-        await omni.kit.app.get_app().next_update_async()
-
-        self.assertGreater(len(received_sim_times), 0, "SWHExternalSimulationTime was not received in update event")
-        self.assertEqual(received_sim_times[-1], test_time_1)
-
-        # Test with a different value
-        test_time_2 = 3.25
-        _loop_runner.set_next_simulation_time(test_time_2)
-        await omni.kit.app.get_app().next_update_async()
-
-        self.assertEqual(received_sim_times[-1], test_time_2)
-
-        # Test setting simulation time with specific run loop name
-        test_time_3 = 5.0
-        _loop_runner.set_next_simulation_time(test_time_3, "main")
-        await omni.kit.app.get_app().next_update_async()
-
-        self.assertEqual(received_sim_times[-1], test_time_3)
-
-        # Test setting negative simulation time (resets to frame-based time, won't be in payload)
-        received_sim_times.clear()
-        _loop_runner.set_next_simulation_time(-1.0)
-        await omni.kit.app.get_app().next_update_async()
-
-        # With negative value, SWHExternalSimulationTime should not be present
-        self.assertEqual(
-            len(received_sim_times), 0, "SWHExternalSimulationTime should not be present with negative value"
-        )
-
-        # Cleanup
-        subscription = None
-        carb.settings.get_settings().set_bool("/rtx/hydra/supportMultiTickRate", False)

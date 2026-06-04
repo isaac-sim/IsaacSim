@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 #include <pch/UsdPCH.h>
 // clang-format on
 
+#include <isaacsim/core/includes/PhysicsEngine.h>
 #include <isaacsim/core/includes/PoseTree.h>
 #include <isaacsim/ros2/core/Ros2Node.h>
 #include <omni/fabric/FabricUSD.h>
@@ -84,49 +85,71 @@ public:
             }
 
             state.m_stageUnits = UsdGeomGetStageMetersPerUnit(state.m_usdStage);
-            state.m_simView = state.m_tensorInterface->createSimulationView(state.m_stageId);
 
-            //  Finding target prims
-            const auto& targetPrims = db.inputs.targetPrims();
-            if (!targetPrims.empty())
+            // Check if external transform data is provided (preferred path via OgnIsaacComputeTransformTree)
+            const auto& externalParentFrames = db.inputs.parentFrames();
+            if (!externalParentFrames.empty())
             {
-                state.m_targets.resize(targetPrims.size());
+                state.m_useExternalData = true;
+            }
+            else
+            {
+                // Deprecated path: compute transforms internally from targetPrims
+                CARB_LOG_WARN_ONCE(
+                    "OgnROS2PublishTransformTree: using targetPrims for internal computation is deprecated. "
+                    "Connect OgnIsaacComputeTransformTree to inputs:parentFrames/childFrames/translations/orientations instead.");
+                state.m_useExternalData = false;
 
-                for (size_t i = 0; i < targetPrims.size(); i++)
+                state.m_simView = state.m_tensorInterface->createSimulationView(
+                    state.m_stageId, isaacsim::core::includes::getActivePhysicsEngineName());
+                if (!state.m_simView)
                 {
-
-                    if (!state.m_usdStage->GetPrimAtPath(omni::fabric::toSdfPath(targetPrims[i])))
-                    {
-                        db.logError(
-                            "The prim %s is not valid. Please specify at least one valid target prim for the ROS pose tree component",
-                            omni::fabric::toSdfPath(targetPrims[i]).GetText());
-                        return false;
-                    }
-                    state.m_targets[i] = omni::fabric::toSdfPath(targetPrims[i]);
+                    db.logError("Failed to create simulation view - physics backend may not be initialized");
+                    return false;
                 }
-            }
-            else
-            {
-                db.logError("Please specify at least one valid target prim for the ROS pose tree component");
-                return false;
-            }
 
-            // Finding Parent Prim
-            const auto& parentPrim = db.inputs.parentPrim();
-            if (!parentPrim.empty())
-            {
-                state.m_parentPath = omni::fabric::toSdfPath(parentPrim[0]);
-            }
-            else
-            {
-                state.m_parentPath = pxr::SdfPath();
-            }
+                //  Finding target prims
+                const auto& targetPrims = db.inputs.targetPrims();
+                if (!targetPrims.empty())
+                {
+                    state.m_targets.resize(targetPrims.size());
 
-            // Reset this object
-            state.m_poseTree =
-                std::make_unique<isaacsim::core::includes::posetree::PoseTree>(state.m_stageId, state.m_simView);
-            state.m_poseTree->setParentPrimPath(state.m_parentPath, "world");
-            state.m_poseTree->setTargetPrimPaths(state.m_targets);
+                    for (size_t i = 0; i < targetPrims.size(); i++)
+                    {
+                        pxr::SdfPath primPath = omni::fabric::toSdfPath(targetPrims[i]);
+                        if (primPath.IsEmpty() || !state.m_usdStage->GetPrimAtPath(primPath))
+                        {
+                            db.logError(
+                                "The prim %s is not valid. Please specify at least one valid target prim for the ROS pose tree component",
+                                primPath.GetText());
+                            return false;
+                        }
+                        state.m_targets[i] = primPath;
+                    }
+                }
+                else
+                {
+                    db.logError("Please specify at least one valid target prim for the ROS pose tree component");
+                    return false;
+                }
+
+                // Finding Parent Prim
+                const auto& parentPrim = db.inputs.parentPrim();
+                if (!parentPrim.empty())
+                {
+                    state.m_parentPath = omni::fabric::toSdfPath(parentPrim[0]);
+                }
+                else
+                {
+                    state.m_parentPath = pxr::SdfPath();
+                }
+
+                // Reset this object
+                state.m_poseTree =
+                    std::make_unique<isaacsim::core::includes::posetree::PoseTree>(state.m_stageId, state.m_simView);
+                state.m_poseTree->setParentPrimPath(state.m_parentPath, "world");
+                state.m_poseTree->setTargetPrimPaths(state.m_targets);
+            }
 
             // Setup ROS publisher
             const std::string& topicName = db.inputs.topicName();
@@ -168,10 +191,6 @@ public:
 
     bool publishTF(OgnROS2PublishTransformTreeDatabase& db, const GraphContextObj& context)
     {
-        //  Find our stage
-        long stageId = context.iContext->getStageId(context);
-        auto stage = pxr::UsdUtilsStageCache::Get().Find(pxr::UsdStageCache::Id::FromLongInt(stageId));
-
         auto& state = db.perInstanceState<OgnROS2PublishTransformTree>();
 
         // If we're a static publisher we only publish once on the first iteration.
@@ -196,39 +215,91 @@ public:
             }
         }
 
-        if (!stage)
-        {
-            db.logError("Could not find USD stage %ld", stageId);
-            return false;
-        }
-
         const double time = db.inputs.timeStamp();
         std::vector<TfTransformStamped> transforms;
 
-        double stageUnits = m_stageUnits;
-
-        std::function<void(const std::string&, const std::string&, const physx::PxTransform&)> addPoseLambda =
-            [stageUnits, &transforms, &time](
-                const std::string& parentFrame, const std::string& childFrame, const physx::PxTransform& t)
+        if (m_useExternalData)
         {
-            TfTransformStamped currentMsg;
-            currentMsg.timeStamp = time;
-            currentMsg.childFrame = childFrame;
-            currentMsg.parentFrame = parentFrame;
+            // External data path: consume parallel arrays from OgnIsaacComputeTransformTree
+            const auto& parentFrames = db.inputs.parentFrames();
+            const auto& childFrames = db.inputs.childFrames();
+            const auto& translations = db.inputs.translations();
+            const auto& orientations = db.inputs.orientations();
 
-            currentMsg.translationX = t.p.x * static_cast<float>(stageUnits);
-            currentMsg.translationY = t.p.y * static_cast<float>(stageUnits);
-            currentMsg.translationZ = t.p.z * static_cast<float>(stageUnits);
+            if (parentFrames.empty())
+            {
+                return false;
+            }
 
-            currentMsg.rotationX = t.q.x;
-            currentMsg.rotationY = t.q.y;
-            currentMsg.rotationZ = t.q.z;
-            currentMsg.rotationW = t.q.w;
+            const double stageUnits = m_stageUnits;
+            const size_t count = parentFrames.size();
+            if (childFrames.size() != count || translations.size() != count || orientations.size() != count)
+            {
+                db.logError(
+                    "External transform arrays have mismatched sizes: parentFrames=%zu, childFrames=%zu, "
+                    "translations=%zu, orientations=%zu",
+                    count, childFrames.size(), translations.size(), orientations.size());
+                return false;
+            }
 
-            transforms.push_back(currentMsg);
-        };
+            for (size_t i = 0; i < count; i++)
+            {
+                TfTransformStamped msg;
+                msg.timeStamp = time;
+                msg.parentFrame = db.tokenToString(parentFrames[i]);
+                msg.childFrame = db.tokenToString(childFrames[i]);
 
-        m_poseTree->processAllFrames(addPoseLambda);
+                const pxr::GfVec3d& trans = translations[i];
+                msg.translationX = trans[0] * stageUnits;
+                msg.translationY = trans[1] * stageUnits;
+                msg.translationZ = trans[2] * stageUnits;
+
+                // orientations are stored as (x, y, z, w)
+                const pxr::GfVec4d& ori = orientations[i];
+                msg.rotationX = ori[0];
+                msg.rotationY = ori[1];
+                msg.rotationZ = ori[2];
+                msg.rotationW = ori[3];
+
+                transforms.push_back(msg);
+            }
+        }
+        else
+        {
+            // Legacy path: internal PoseTree computation from targetPrims
+            long stageId = context.iContext->getStageId(context);
+            auto stage = pxr::UsdUtilsStageCache::Get().Find(pxr::UsdStageCache::Id::FromLongInt(stageId));
+            if (!stage)
+            {
+                db.logError("Could not find USD stage %ld", stageId);
+                return false;
+            }
+
+            const double stageUnits = m_stageUnits;
+
+            std::function<void(const std::string&, const std::string&, const physx::PxTransform&)> addPoseLambda =
+                [stageUnits, &transforms, &time](
+                    const std::string& parentFrame, const std::string& childFrame, const physx::PxTransform& t)
+            {
+                TfTransformStamped currentMsg;
+                currentMsg.timeStamp = time;
+                currentMsg.childFrame = childFrame;
+                currentMsg.parentFrame = parentFrame;
+
+                currentMsg.translationX = t.p.x * static_cast<float>(stageUnits);
+                currentMsg.translationY = t.p.y * static_cast<float>(stageUnits);
+                currentMsg.translationZ = t.p.z * static_cast<float>(stageUnits);
+
+                currentMsg.rotationX = t.q.x;
+                currentMsg.rotationY = t.q.y;
+                currentMsg.rotationZ = t.q.z;
+                currentMsg.rotationW = t.q.w;
+
+                transforms.push_back(currentMsg);
+            };
+
+            m_poseTree->processAllFrames(addPoseLambda);
+        }
 
         state.m_message->writeData(time, transforms);
         state.m_publisher.get()->publish(state.m_message->getPtr());
@@ -249,6 +320,7 @@ public:
         Ros2Node::reset();
         m_poseTree.reset();
         m_firstIteration = true;
+        m_useExternalData = false;
     }
 
 private:
@@ -256,6 +328,7 @@ private:
     std::shared_ptr<Ros2TfTreeMessage> m_message = nullptr;
 
     bool m_firstIteration = true;
+    bool m_useExternalData = false;
 
     TensorApi* m_tensorInterface = nullptr;
     ISimulationView* m_simView = nullptr;

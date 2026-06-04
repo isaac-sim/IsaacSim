@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""High level wrapper for creating/encapsulating USD Preview Surface material prims."""
 
 from __future__ import annotations
 
@@ -220,7 +222,7 @@ class PreviewSurfaceMaterial(VisualMaterial):
         for item in paths if isinstance(paths, (list, tuple)) else [paths]:
             status = False
             path = item if isinstance(item, str) else item.GetPath()
-            material, shader = VisualMaterial._get_material_and_shader_from_material(stage, path)
+            material, shader = VisualMaterial._get_material_and_shader(stage, path)
             if material is not None and shader is not None:
                 shader_id = shader.GetIdAttr().Get()
                 status = shader_id == "UsdPreviewSurface"

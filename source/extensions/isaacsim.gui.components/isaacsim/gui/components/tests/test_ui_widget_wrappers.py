@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for UI widget wrapper components."""
+
 # This import is included for visualization of UI elements as demonstrated in testXYPlotWrapper
-import asyncio
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
@@ -42,22 +43,26 @@ from isaacsim.gui.components.element_wrappers import (
 from isaacsim.storage.native import get_assets_root_path
 
 
-async def update_stage_async():
+async def update_stage_async() -> None:
+    """Wait for the next stage update."""
     await omni.kit.app.get_app().next_update_async()
 
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
 class TestUI(omni.kit.test.AsyncTestCase):
+    """Test suite for UI widget wrapper components."""
+
     # Before running each test
-    async def setUp(self):
-        pass
+    async def setUp(self) -> None:
+        """Set up the test environment."""
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Clean up after each test."""
         await update_stage_async()
-        pass
 
-    async def _create_window(self, title, width, height):
+    async def _create_window(self, title: object, width: object, height: object) -> object:
+        """Create a scrolling window for testing."""
         window = ScrollingWindow(
             title=title,
             width=width,
@@ -68,7 +73,8 @@ class TestUI(omni.kit.test.AsyncTestCase):
         await update_stage_async()
         return window
 
-    async def testButtonWrapper(self):
+    async def testButtonWrapper(self) -> None:  # noqa: N802
+        """Test the Button widget wrapper click behavior."""
         # Width and height chosen such that Button is visible in UI Window
         window_title = "UI_Widget_Wrapper_Test_Window_Button_Test"
         width = 500
@@ -77,7 +83,7 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         self.btn_counter = 0
 
-        def on_click_fn():
+        def on_click_fn() -> None:
             self.btn_counter += 1
 
         with window.frame:
@@ -94,7 +100,8 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         window.destroy()
 
-    async def testCheckBoxWrapper(self):
+    async def testCheckBoxWrapper(self) -> None:  # noqa: N802
+        """Test the CheckBox widget wrapper toggle behavior."""
         # There is buggy behavior of the ui_test.find(...).click() function
         # where it clicks the wrong place on the screen for checkboxes
         # The width and height chosen here happen to get it to click the right part of the screen
@@ -106,7 +113,7 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         self.cb_callbacks = []
 
-        def on_click_fn(value):
+        def on_click_fn(value: object) -> None:
             self.cb_callbacks.append(value)
 
         with window.frame:
@@ -128,7 +135,8 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         window.destroy()
 
-    async def testColorPickerWrapper(self):
+    async def testColorPickerWrapper(self) -> None:  # noqa: N802
+        """Test the ColorPicker widget wrapper color selection."""
         # This test emulates clicking on the widget wrapper and choosing a new color through clicking and through API
         window_title = "UI_Widget_Wrapper_Test_Window_ColorPicker_Test"
         width = 500
@@ -137,11 +145,11 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         self._selected_colors = []
 
-        def on_color_picked(color):
+        def on_color_picked(color: object) -> None:
             # The chosen colors should be the same every time
             self._selected_colors.append(color)
             self.assertTrue(
-                (color == [0.2545888423919678, 0.3593621551990509, 0.4641350507736206, 1.0] or color == [1, 1, 1, 1])
+                color == [0.2545888423919678, 0.3593621551990509, 0.4641350507736206, 1.0] or color == [1, 1, 1, 1]
             )
 
         with window.frame:
@@ -161,7 +169,8 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         window.destroy()
 
-    async def testDropDownWrapperBasicFunctionality(self):
+    async def testDropDownWrapperBasicFunctionality(self) -> None:  # noqa: N802
+        """Test the DropDown widget wrapper basic selection functionality."""
         # This test emulates selecting an item from a DropDown and setting one manually using the API
         window_title = "UI_Widget_Wrapper_Test_Window_DropDown_Test"
         width = 500
@@ -171,11 +180,11 @@ class TestUI(omni.kit.test.AsyncTestCase):
         self.selections = ["A", "B", "C", "D"]
         self.sel_ind = 0
 
-        def on_dropdown_selected(selection):
+        def on_dropdown_selected(selection: object) -> None:
             self.assertTrue(selection == self.selections[min(self.sel_ind, len(self.selections) - 1)])
             self.sel_ind += 1
 
-        def populate_fn():
+        def populate_fn() -> object:
             return self.selections
 
         with window.frame:
@@ -212,7 +221,8 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         window.destroy()
 
-    async def testDropDownWrapperArticulationSelection(self):
+    async def testDropDownWrapperArticulationSelection(self) -> None:  # noqa: N802
+        """Test the DropDown widget wrapper with articulation selection."""
         window_title = "UI_Widget_Wrapper_Test_Window_DropDown_Articulation_Selection_Test"
         width = 500
         height = 200
@@ -225,7 +235,7 @@ class TestUI(omni.kit.test.AsyncTestCase):
         self._root_path = "/ur10/root_joint"
         stage_utils.create_new_stage()
 
-        def on_articulation_selected(articulation_path):
+        def on_articulation_selected(articulation_path: object) -> None:
             if articulation_path is None:
                 self._no_path_ct += 1
             elif articulation_path == self._root_path:
@@ -261,7 +271,8 @@ class TestUI(omni.kit.test.AsyncTestCase):
         dropdown.repopulate()
         self.assertTrue(self._no_path_ct == 2)
 
-    async def testFloatFieldWrapper(self):
+    async def testFloatFieldWrapper(self) -> None:  # noqa: N802
+        """Test the FloatField widget wrapper value changes."""
         # This test emulates modifying a FloatField by dragging
         window_title = "UI_Widget_Wrapper_Test_Window_Float_Test"
         width = 500
@@ -275,7 +286,7 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         self.value_changed_ct = 0
 
-        def on_value_changed(value):
+        def on_value_changed(value: object) -> None:
             self.value_changed_ct += 1
             value = np.round(value, decimals=2)
             self.assertTrue(value <= self.max_value)
@@ -317,7 +328,8 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         window.destroy()
 
-    async def testIntFieldWrapper(self):
+    async def testIntFieldWrapper(self) -> None:  # noqa: N802
+        """Test the IntField widget wrapper value changes."""
         # This test emulates modifying a IntField by dragging
         window_title = "UI_Widget_Wrapper_Test_Window_Int_Test"
         width = 500
@@ -330,7 +342,7 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         self.value_changed_ct = 0
 
-        def on_value_changed(value):
+        def on_value_changed(value: object) -> None:
             self.value_changed_ct += 1
             self.assertTrue(value <= self.max_value)
             self.assertTrue(value >= self.min_value)
@@ -371,7 +383,8 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         window.destroy()
 
-    async def testFrameWrapper(self):
+    async def testFrameWrapper(self) -> None:  # noqa: N802
+        """Test the Frame widget wrapper build and rebuild behavior."""
         window_title = "UI_Widget_Wrapper_Test_Window_Frame_Test"
         width = 500
         height = 200
@@ -379,11 +392,11 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         self.btn_fun_clicks = [0, 0]
 
-        def build_fn():
-            def on_click_fn():
+        def build_fn() -> None:
+            def on_click_fn() -> None:
                 self.btn_fun_clicks[0] += 1
 
-            btn = Button("Button", "BUTTON", on_click_fn=on_click_fn)
+            Button("Button", "BUTTON", on_click_fn=on_click_fn)
 
         with window.frame:
             frame = Frame(build_fn=build_fn)
@@ -392,11 +405,11 @@ class TestUI(omni.kit.test.AsyncTestCase):
         await ui_test.emulate_mouse_move_and_click(ui_test.Vec2(300, 120))
         await update_stage_async()
 
-        def new_build_fn():
-            def on_new_click_fn():
+        def new_build_fn() -> None:
+            def on_new_click_fn() -> None:
                 self.btn_fun_clicks[1] += 1
 
-            btn = Button("Button", "BUTTON", on_click_fn=on_new_click_fn)
+            Button("Button", "BUTTON", on_click_fn=on_new_click_fn)
 
         frame.set_build_fn(new_build_fn)
         await update_stage_async()
@@ -412,7 +425,8 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         window.destroy()
 
-    async def testScrollingFrameWrapper(self):
+    async def testScrollingFrameWrapper(self) -> None:  # noqa: N802
+        """Test the ScrollingFrame widget wrapper."""
         window_title = "UI_Widget_Wrapper_Test_Window_ScrollingFrame_Test"
         width = 500
         height = 200
@@ -420,11 +434,11 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         self.btn_fun_clicks = [0, 0]
 
-        def build_fn():
-            def on_click_fn():
+        def build_fn() -> None:
+            def on_click_fn() -> None:
                 self.btn_fun_clicks[0] += 1
 
-            btn = Button("Button", "BUTTON", on_click_fn=on_click_fn)
+            Button("Button", "BUTTON", on_click_fn=on_click_fn)
 
         with window.frame:
             frame = ScrollingFrame(build_fn=build_fn, num_lines=3)
@@ -435,11 +449,11 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         frame.set_num_lines(4)
 
-        def new_build_fn():
-            def on_new_click_fn():
+        def new_build_fn() -> None:
+            def on_new_click_fn() -> None:
                 self.btn_fun_clicks[1] += 1
 
-            btn = Button("Button", "BUTTON", on_click_fn=on_new_click_fn)
+            Button("Button", "BUTTON", on_click_fn=on_new_click_fn)
 
         frame.set_build_fn(new_build_fn)
         await update_stage_async()
@@ -455,7 +469,8 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         window.destroy()
 
-    async def testStateButtonWrapper(self):
+    async def testStateButtonWrapper(self) -> None:  # noqa: N802
+        """Test the StateButton widget wrapper state toggling."""
         # Width and height chosen such that Button is visible in UI Window
         window_title = "UI_Widget_Wrapper_Test_Window_StateButton_Test"
         width = 500
@@ -464,10 +479,10 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         self.btn_clicks = [0, 0]
 
-        def on_a_click_fn():
+        def on_a_click_fn() -> None:
             self.btn_clicks[0] += 1
 
-        def on_b_click_fn():
+        def on_b_click_fn() -> None:
             self.btn_clicks[1] += 1
 
         with window.frame:
@@ -485,7 +500,7 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         self.physics_step_count = 0
 
-        def physics_step_count(step_size, context):
+        def physics_step_count(step_size: object, context: object) -> None:
             self.physics_step_count += 1
 
         timeline = omni.timeline.get_timeline_interface()
@@ -523,7 +538,8 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         window.destroy()
 
-    async def testStringFieldWrapper(self):
+    async def testStringFieldWrapper(self) -> None:  # noqa: N802
+        """Test the StringField widget wrapper."""
         # There is no easy way to rigorously test this one using ui_test
         # Significant functionality is missing from this test
 
@@ -534,7 +550,7 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         self.values = []
 
-        def on_value_changed_fn(value: str):
+        def on_value_changed_fn(value: str) -> None:
             self.values.append(value)
 
         with window.frame:
@@ -547,7 +563,8 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         window.destroy()
 
-    async def testTextBlockWrapper(self):
+    async def testTextBlockWrapper(self) -> None:  # noqa: N802
+        """Test the TextBlock widget wrapper."""
         # TextBlock does not allow user interaction, so this test is complete
 
         window_title = "UI_Widget_Wrapper_Test_Window_TextBlock_Test"
@@ -563,7 +580,8 @@ class TestUI(omni.kit.test.AsyncTestCase):
 
         window.destroy()
 
-    async def testXYPlotWrapper(self):
+    async def testXYPlotWrapper(self) -> None:  # noqa: N802
+        """Test the XYPlot widget wrapper data display."""
         window_title = "UI_Widget_Wrapper_Test_Window_XYPlot_Test"
         width = 800
         height = 1000

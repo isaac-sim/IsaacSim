@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,19 +15,18 @@
 
 """Provides high level functions to deal with batched data from surface gripper views in Isaac Sim."""
 
-
 from __future__ import annotations
 
 import isaacsim.core.experimental.utils.ops as ops_utils
-import isaacsim.robot.surface_gripper._surface_gripper as surface_gripper
 import numpy as np
 import warp as wp
 from isaacsim.core.experimental.prims import XformPrim
+from isaacsim.robot.surface_gripper import _surface_gripper as surface_gripper
 from usd.schema.isaac import robot_schema
 
 
 class GripperView(XformPrim):
-    """Provides high level functions to deal with batched data from surface gripper
+    """Provides high level functions to deal with batched data from surface gripper.
 
     Args:
         paths: Prim paths regex to encapsulate all prims that match it. E.g.: "/World/Env[1-5]/Gripper" will match
@@ -49,7 +48,7 @@ class GripperView(XformPrim):
                       Defaults to None, which means left unchanged.
         scales: Local scales to be applied to the prim's dimensions. Shape is (N, 3).
                 Defaults to None, which means left unchanged.
-        reset_xform_properties: True if the prims don't have the right set of xform properties (i.e: translate,
+        reset_xform_op_properties: True if the prims don't have the right set of xform properties (i.e: translate,
                                 orient and scale) ONLY and in that order. Set this parameter to False if the object
                                 were cloned using using the cloner api in isaacsim.core.cloner. Defaults to True.
 
@@ -70,7 +69,7 @@ class GripperView(XformPrim):
         orientations: np.ndarray | wp.array | None = None,
         scales: np.ndarray | wp.array | None = None,
         reset_xform_op_properties: bool = True,
-    ):
+    ) -> None:
         XformPrim.__init__(
             self,
             paths=paths,
@@ -97,7 +96,7 @@ class GripperView(XformPrim):
         self._attr_retry_interval = [p.GetAttribute(robot_schema.Attributes.RETRY_INTERVAL.name) for p in self.prims]
         self.set_surface_gripper_properties(max_grip_distance, coaxial_force_limit, shear_force_limit, retry_interval)
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Clean up the gripper view resources."""
         XformPrim.__del__(self)
 
@@ -123,7 +122,6 @@ class GripperView(XformPrim):
         Returns:
             List of gripped object paths for each gripper. Shape (M,).
         """
-
         indices = ops_utils.resolve_indices(indices, count=self.count, device="cpu").numpy()
         prim_paths = [self._prim_paths[i] for i in indices]
         return self.surface_gripper_interface.get_gripped_objects_batch(prim_paths)
@@ -160,7 +158,7 @@ class GripperView(XformPrim):
         self,
         values: list[float],
         indices: list | np.ndarray | wp.array | None = None,
-    ):
+    ) -> None:
         """Set up the status for the surface grippers.
 
         Args:
@@ -190,7 +188,7 @@ class GripperView(XformPrim):
         shear_force_limit: list[float] | None = None,
         retry_interval: list[float] | None = None,
         indices: list | np.ndarray | wp.array | None = None,
-    ):
+    ) -> None:
         """Set up the properties for the surface grippers.
 
         Args:

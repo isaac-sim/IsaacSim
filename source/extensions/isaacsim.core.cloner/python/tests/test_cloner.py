@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test for cloner."""
+
 import os
+from unittest import mock
 
 import numpy as np
 import omni.kit
@@ -26,7 +29,10 @@ from pxr import Gf, Usd, UsdGeom, UsdPhysics, UsdUtils, Vt
 
 
 class TestSimpleCloner(omni.kit.test.AsyncTestCase):
+    """Test simple cloner."""
+
     async def setUp(self):
+        """Set up test environment."""
         ext_manager = omni.kit.app.get_app().get_extension_manager()
         ext_id = ext_manager.get_enabled_extension_id("isaacsim.core.cloner")
         self._extension_path = ext_manager.get_extension_path(ext_id)
@@ -34,6 +40,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
 
     async def test_simple_cloner(self):
+        """Test simple cloner."""
         stage = omni.usd.get_context().get_stage()
 
         # create our base environment with one cube
@@ -64,7 +71,46 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
                 == target_translations[i]
             )
 
+    async def test_enable_change_listener_without_prior_disable(self):
+        """Test enable_change_listener is safe before disable_change_listener."""
+        cloner = Cloner()
+
+        cloner.enable_change_listener()
+
+    async def test_clone_rejects_none_source_prim_path(self):
+        """Test clone rejects None source path before USD binding calls."""
+        cloner = Cloner()
+
+        with self.assertRaisesRegex(TypeError, "source_prim_path"):
+            cloner.clone(source_prim_path=None, prim_paths=[])
+
+    async def test_clone_rejects_invalid_source_prim_path(self):
+        """Test clone distinguishes invalid SdfPath strings from missing prims."""
+        cloner = Cloner()
+
+        with self.assertRaisesRegex(ValueError, "valid SdfPath"):
+            cloner.clone(source_prim_path="not a valid path!!!", prim_paths=[])
+
+    async def test_clone_restores_change_listener_when_validation_raises(self):
+        """Test clone restores listeners when an exception interrupts cloning."""
+        stage = omni.usd.get_context().get_stage()
+        UsdGeom.Cube.Define(stage, "/World/Cube_0")
+        cloner = Cloner()
+
+        with mock.patch.object(cloner, "disable_change_listener") as disable_listener:
+            with mock.patch.object(cloner, "enable_change_listener") as enable_listener:
+                with self.assertRaisesRegex(ValueError, "positions"):
+                    cloner.clone(
+                        source_prim_path="/World/Cube_0",
+                        prim_paths=["/World/Cube_0"],
+                        positions=np.array([[0, 0, 0], [1, 1, 1]]),
+                    )
+
+        disable_listener.assert_called_once()
+        enable_listener.assert_called_once()
+
     async def test_quatf_cloner(self):
+        """Test quatf cloner."""
         await omni.usd.get_context().open_stage_async(
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "data/quatf_d.usda")
         )
@@ -95,6 +141,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
             )
 
     async def test_quatd_cloner(self):
+        """Test quatd cloner."""
         await omni.usd.get_context().open_stage_async(
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "data/quatf_d.usda")
         )
@@ -125,6 +172,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
             )
 
     async def test_simple_cloner_physics_replication(self):
+        """Test simple cloner physics replication."""
         stage = omni.usd.get_context().get_stage()
 
         # create our base environment with one cube
@@ -162,6 +210,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
             )
 
     async def test_simple_cloner_copy_randomization(self):
+        """Test simple cloner copy randomization."""
         stage = omni.usd.get_context().get_stage()
 
         # create our base environment with one cube
@@ -209,6 +258,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
             )
 
     async def test_grid_cloner(self):
+        """Test grid cloner."""
         stage = omni.usd.get_context().get_stage()
 
         # create our base environment with one cube
@@ -238,7 +288,32 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
                 == target_translations[i]
             )
 
+    async def test_grid_cloner_recomputes_transforms_when_count_changes(self):
+        """Test grid cloner recomputes transforms when clone count changes."""
+        stage = omni.usd.get_context().get_stage()
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+
+        cloner = GridCloner(spacing=2.0)
+
+        positions_4, _ = cloner.get_clone_transforms(4)
+        positions_9, _ = cloner.get_clone_transforms(9)
+
+        self.assertEqual(len(positions_4), 4)
+        self.assertEqual(len(positions_9), 9)
+        self.assertEqual(positions_9[0], [2.0, -2.0, 0])
+        self.assertEqual(positions_9[-1], [-2.0, 2.0, 0])
+
+    async def test_grid_cloner_empty_clone_count_returns_empty_transforms(self):
+        """Test grid cloner returns empty transforms for zero clones."""
+        cloner = GridCloner(spacing=2.0)
+
+        positions, orientations = cloner.get_clone_transforms(0)
+
+        self.assertEqual(positions, [])
+        self.assertEqual(orientations, [])
+
     async def test_grid_cloner_physics_replication(self):
+        """Test grid cloner physics replication."""
         stage = omni.usd.get_context().get_stage()
 
         # create our base environment with one cube
@@ -273,6 +348,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
             )
 
     async def test_grid_cloner_articulation(self):
+        """Test grid cloner articulation."""
         stage = omni.usd.get_context().get_stage()
 
         # create our base environment with one cube
@@ -303,6 +379,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
             )
 
     async def test_grid_cloner_articulation_physics_replication(self):
+        """Test grid cloner articulation physics replication."""
         stage = omni.usd.get_context().get_stage()
 
         # create our base environment with one cube
@@ -336,6 +413,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
             )
 
     async def test_grid_cloner_articulation_physics_replication_envIds(self):
+        """Test grid cloner articulation physics replication envIds."""
         stage = omni.usd.get_context().get_stage()
 
         # create our base environment with one cube
@@ -370,6 +448,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
             )
 
     async def test_grid_cloner_copy_addition(self):
+        """Test grid cloner copy addition."""
         stage = omni.usd.get_context().get_stage()
 
         # create our base environment with one cube
@@ -411,6 +490,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
         self.assertTrue(stage.GetPrimAtPath(f"/World/envs/env_1/Sphere").IsValid() == True)
 
     async def test_grid_cloner_inherit_addition(self):
+        """Test grid cloner inherit addition."""
         stage = omni.usd.get_context().get_stage()
 
         # create our base environment with one cube
@@ -452,6 +532,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
         self.assertTrue(stage.GetPrimAtPath(f"/World/envs/env_1/Sphere").IsValid() == True)
 
     async def test_grid_cloner_offsets(self):
+        """Test grid cloner offsets."""
         stage = omni.usd.get_context().get_stage()
 
         # create our base environment with one cube
@@ -498,6 +579,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
             )
 
     async def test_simple_cloner_on_stage_in_memory(self):
+        """Test simple cloner on stage in memory."""
         stage = Usd.Stage.CreateInMemory()
 
         # create our base environment with one cube
@@ -529,6 +611,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
             )
 
     async def test_fabric_cloner(self):
+        """Test fabric cloner."""
         stage = Usd.Stage.CreateInMemory()
 
         cache = UsdUtils.StageCache.Get()
@@ -566,6 +649,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
         cache.Erase(stage)
 
     async def test_fabric_grid_cloner_offsets(self):
+        """Test fabric grid cloner offsets."""
         stage = omni.usd.get_context().get_stage()
 
         # create our base environment with one ant
@@ -613,10 +697,12 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
             )
 
     def get_num_dynamic_rigid_bodies(self):
+        """Get num dynamic rigid bodies."""
         sim_stats = get_physxunittests_interface().get_physics_stats()
         return sim_stats["numDynamicRigids"]
 
     async def test_fabric_physics_cloner(self):
+        """Test fabric physics cloner."""
         stage = Usd.Stage.CreateInMemory()
 
         cache = UsdUtils.StageCache.Get()
@@ -658,6 +744,7 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
         cache.Erase(stage)
 
     async def test_fabric_physics_cloner_usd_context(self):
+        """Test fabric physics cloner usd context."""
 
         await omni.usd.get_context().new_stage_async()
 

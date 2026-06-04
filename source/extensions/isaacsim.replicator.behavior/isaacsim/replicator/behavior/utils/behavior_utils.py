@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,17 +13,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Utility functions for managing exposed behavior variables on USD prims."""
+
+from __future__ import annotations
+
+from typing import Any
+
 import carb
+import carb.eventdispatcher
 import carb.events
 import omni.kit.app
 import omni.kit.commands
 from pxr import Sdf, Usd
 
+from ..global_variables import EXPOSED_VARS_CHANGED_EVENT
+
+
+def _notify_exposed_variables_changed() -> None:
+    """Dispatch an event signaling that exposed USD variables were created or removed.
+
+    The UI extension (``isaacsim.replicator.behavior.ui``) subscribes to this event to
+    refresh the property window. Dispatched unconditionally; if no subscriber is
+    registered (e.g. headless / no-UI mode) the event is a no-op.
+    """
+    carb.eventdispatcher.get_eventdispatcher().dispatch_event(event_name=EXPOSED_VARS_CHANGED_EVENT, payload={})
+
 
 def create_exposed_variable(
-    prim: Usd.Prim, full_attr_name: str, attr_type: Sdf.ValueTypeName, default_value, doc: str = None
+    prim: Usd.Prim, full_attr_name: str, attr_type: Sdf.ValueTypeName, default_value: object, doc: str = None
 ) -> Usd.Attribute:
-    """Creates a USD attribute on the prim to expose the variable to the UI, if the variable exits it returns it."""
+    """Create a USD attribute on the prim to expose the variable to the UI, if the variable exits it returns it.
+
+    Args:
+        prim: The USD prim to create the attribute on.
+        full_attr_name: The full namespaced attribute name.
+        attr_type: The Sdf value type for the attribute.
+        default_value: The default value for the attribute.
+        doc: Optional documentation string for the attribute.
+
+    Returns:
+        The created or existing USD attribute.
+    """
     attr = prim.GetAttribute(full_attr_name)
     if attr:
         return attr
@@ -35,7 +65,14 @@ def create_exposed_variable(
 
 
 def create_exposed_variables(prim: Usd.Prim, exposed_attr_ns: str, behavior_ns: str, variables_to_expose: dict) -> None:
-    """Create exposed variables based on the provided namespaces and data dictionary"""
+    """Create exposed variables based on the provided namespaces and data dictionary.
+
+    Args:
+        prim: The USD prim to create attributes on.
+        exposed_attr_ns: The namespace for exposed attributes.
+        behavior_ns: The behavior namespace.
+        variables_to_expose: Dictionary of variables to expose.
+    """
     # Check if there are any attributes to lock (e.g. constant placeholders -- cannot be edited in the UI)
     attr_to_lock = []
     for var in variables_to_expose:
@@ -54,15 +91,29 @@ def create_exposed_variables(prim: Usd.Prim, exposed_attr_ns: str, behavior_ns: 
 
     asyncio.ensure_future(lock_exposed_variables(attr_to_lock))
 
+    _notify_exposed_variables_changed()
 
-async def lock_exposed_variables(attr_paths):
-    """Lock exposed variables to prevent editing in the UI."""
+
+async def lock_exposed_variables(attr_paths: object) -> None:
+    """Lock exposed variables to prevent editing in the UI.
+
+    Args:
+        attr_paths: List of attribute paths to lock.
+    """
     await omni.kit.app.get_app().next_update_async()
     omni.kit.commands.execute("LockSpecsCommand", spec_paths=attr_paths)
 
 
 def check_if_exposed_variables_should_be_removed(prim: Usd.Prim, script_file_path: str) -> bool:
-    """Remove exposed variables if the script is no longer assigned to the prim."""
+    """Remove exposed variables if the script is no longer assigned to the prim.
+
+    Args:
+        prim: The USD prim to check.
+        script_file_path: The file path of the script.
+
+    Returns:
+        True if exposed variables should be removed, False otherwise.
+    """
     if prim is None or not prim.IsValid():
         # Invalid prim, cannot remove variables
         return False
@@ -82,7 +133,13 @@ def check_if_exposed_variables_should_be_removed(prim: Usd.Prim, script_file_pat
 
 
 def remove_exposed_variable(prim: Usd.Prim, full_attr_name: str, remove_from_fabric: bool = True) -> None:
-    """Remove the exposed variable from the prim."""
+    """Remove the exposed variable from the prim.
+
+    Args:
+        prim: The USD prim to remove the attribute from.
+        full_attr_name: The full namespaced attribute name.
+        remove_from_fabric: Whether to also remove the attribute from fabric.
+    """
     if prim is None or not prim.IsValid():
         carb.log_warn(f"Prim {prim.GetPath()} is not valid, cannot remove exposed variable {full_attr_name}")
         return
@@ -106,15 +163,32 @@ def remove_exposed_variable(prim: Usd.Prim, full_attr_name: str, remove_from_fab
 
 
 def remove_exposed_variables(prim: Usd.Prim, exposed_attr_ns: str, behavior_ns: str, variables_to_expose: dict) -> None:
-    """Remove exposed variables based on the provided namespaces and data dictionary"""
+    """Remove exposed variables based on the provided namespaces and data dictionary.
+
+    Args:
+        prim: The USD prim to remove attributes from.
+        exposed_attr_ns: The namespace for exposed attributes.
+        behavior_ns: The behavior namespace.
+        variables_to_expose: Dictionary of variables to remove.
+    """
     for var in variables_to_expose:
         attr_name = var["attr_name"]
         full_attr_name = f"{exposed_attr_ns}:{behavior_ns}:{attr_name}"
         remove_exposed_variable(prim, full_attr_name)
 
+    _notify_exposed_variables_changed()
 
-def get_exposed_variable(prim: Usd.Prim, full_attr_name: str):
-    """Helper function to get the value of an exposed attribute."""
+
+def get_exposed_variable(prim: Usd.Prim, full_attr_name: str) -> Any:
+    """Get the value of an exposed attribute.
+
+    Args:
+        prim: The USD prim to get the attribute from.
+        full_attr_name: The full namespaced attribute name.
+
+    Returns:
+        The value of the exposed attribute, or None if not found.
+    """
     if prim is None or not prim.IsValid():
         carb.log_warn(f"Prim is not valid, cannot receive exposed variable {full_attr_name}")
         return None
@@ -126,7 +200,12 @@ def get_exposed_variable(prim: Usd.Prim, full_attr_name: str):
 
 
 def set_exposed_variables(prim: Usd.Prim, exposed_variables: dict) -> None:
-    """Sets exposed variables based on the provided data dictionary"""
+    """Set exposed variables based on the provided data dictionary.
+
+    Args:
+        prim: The USD prim to set attributes on.
+        exposed_variables: Dictionary mapping attribute names to values.
+    """
     if prim is None or not prim.IsValid():
         carb.log_warn(f"Prim is not valid, cannot receive exposed variable")
         return
@@ -139,7 +218,12 @@ def set_exposed_variables(prim: Usd.Prim, exposed_variables: dict) -> None:
 
 
 def remove_empty_scopes(prim: Usd.Prim, stage: Usd.Stage) -> None:
-    """Recursively (post-order) remove Scope or GenericPrim prims with no valid children from stage."""
+    """Recursively (post-order) remove Scope or GenericPrim prims with no valid children from stage.
+
+    Args:
+        prim: The root prim to start removing empty scopes from.
+        stage: The USD stage containing the prims.
+    """
     if prim is None or not prim.IsValid():
         return
 
@@ -154,7 +238,13 @@ def remove_empty_scopes(prim: Usd.Prim, stage: Usd.Stage) -> None:
 
 
 def add_behavior_script(prim: Usd.Prim, script_path: str, allow_duplicates: bool = False) -> None:
-    """Adds a behavior script to the prim avoiding duplicates by default."""
+    """Add a behavior script to the prim avoiding duplicates by default.
+
+    Args:
+        prim: The USD prim to add the script to.
+        script_path: The path to the behavior script.
+        allow_duplicates: Whether to allow duplicate scripts.
+    """
     if prim is None or not prim.IsValid():
         carb.log_warn(f"Prim is not valid, cannot add behavior script.")
         return
@@ -177,9 +267,16 @@ def add_behavior_script(prim: Usd.Prim, script_path: str, allow_duplicates: bool
 
 
 async def add_behavior_script_with_parameters_async(
-    prim: Usd.Prim, script_path: str, exposed_variables: dict = {}, allow_duplicates: bool = False
+    prim: Usd.Prim, script_path: str, exposed_variables: dict | None = None, allow_duplicates: bool = False
 ) -> None:
-    """Add a behavior script to a prim and set its parameters."""
+    """Add a behavior script to a prim and set its parameters.
+
+    Args:
+        prim: The USD prim to add the script to.
+        script_path: The path to the behavior script.
+        exposed_variables: Dictionary of exposed variables to set.
+        allow_duplicates: Whether to allow duplicate scripts.
+    """
     if prim is None or not prim.IsValid():
         carb.log_warn(f"Prim is not valid, cannot add behavior script.")
         return
@@ -192,7 +289,7 @@ async def add_behavior_script_with_parameters_async(
         await omni.kit.app.get_app().next_update_async()
 
     # Set the behavior script parameters
-    set_exposed_variables(prim, exposed_variables)
+    set_exposed_variables(prim, exposed_variables or {})
 
 
 async def publish_event_and_wait_for_completion_async(
@@ -203,13 +300,29 @@ async def publish_event_and_wait_for_completion_async(
     max_wait_updates: int,
     verbose: bool = True,
 ) -> bool:
-    """Publishes an event and waits for a response that matches the expected payload."""
+    """Publish an event and waits for a response that matches the expected payload.
+
+    Args:
+        publish_payload: The payload to publish.
+        expected_payload: The expected payload to match in the response.
+        publish_event_name: The name of the event to publish.
+        subscribe_event_name: The name of the event to subscribe to.
+        max_wait_updates: Maximum number of update frames to wait.
+        verbose: Whether to print verbose output.
+
+    Returns:
+        True if the expected payload was received, False on timeout.
+    """
     # Keep track of whether the action is complete
     is_action_complete = False
 
     # Callback to listen to incoming events
     def on_event_received(event: carb.events.IEvent) -> None:
-        """Checks if the event payload matches the expected key-value pairs."""
+        """Check if the event payload matches the expected key-value pairs.
+
+        Args:
+            event: The incoming event to check.
+        """
         if all(item in event.payload.items() for item in expected_payload.items()):
             if verbose:
                 print(f"\tAction completed, received payload: {event.payload}")

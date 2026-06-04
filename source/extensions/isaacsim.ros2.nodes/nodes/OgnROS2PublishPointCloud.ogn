@@ -1,6 +1,6 @@
 {
     "isaacsim.ros2.bridge.ROS2PublishPointCloud": {
-        "version": 1,
+        "version": 3,
         "icon": "icons/isaac-sim.svg",
         "description": [
             "This node publishes LiDAR scans as a ROS2 PointCloud2 message"
@@ -51,6 +51,66 @@
                 "description": "ROS2 Timestamp in seconds",
                 "uiName": "Timestamp",
                 "default": 0.0
+            },
+            "outputIntensity": {
+                "type": "bool",
+                "description": "Include per-point intensity in the published PointCloud2 message. Requires intensityPtr to be connected.",
+                "default": false
+            },
+            "outputTimestamp": {
+                "type": "bool",
+                "description": "Include per-point timestamps in the published PointCloud2 message. Requires timestampPtr to be connected.",
+                "default": false
+            },
+            "outputEmitterId": {
+                "type": "bool",
+                "description": "Include per-point emitter IDs in the published PointCloud2 message. Requires emitterIdPtr to be connected.",
+                "default": false
+            },
+            "outputChannelId": {
+                "type": "bool",
+                "description": "Include per-point channel IDs in the published PointCloud2 message. Requires channelIdPtr to be connected.",
+                "default": false
+            },
+            "outputMaterialId": {
+                "type": "bool",
+                "description": "Include per-point material IDs in the published PointCloud2 message. Requires materialIdPtr to be connected.",
+                "default": false
+            },
+            "outputTickId": {
+                "type": "bool",
+                "description": "Include per-point tick IDs in the published PointCloud2 message. Requires tickIdPtr to be connected.",
+                "default": false
+            },
+            "outputHitNormal": {
+                "type": "bool",
+                "description": "Include per-point hit normals in the published PointCloud2 message. Requires hitNormalPtr to be connected.",
+                "default": false
+            },
+            "outputVelocity": {
+                "type": "bool",
+                "description": "Include per-point velocity vectors in the published PointCloud2 message. Requires velocityPtr to be connected.",
+                "default": false
+            },
+            "outputObjectId": {
+                "type": "bool",
+                "description": "Include per-point object IDs in the published PointCloud2 message. Requires objectIdPtr to be connected.",
+                "default": false
+            },
+            "outputEchoId": {
+                "type": "bool",
+                "description": "Include per-point echo IDs in the published PointCloud2 message. Requires echoIdPtr to be connected.",
+                "default": false
+            },
+            "outputTickState": {
+                "type": "bool",
+                "description": "Include per-point tick states in the published PointCloud2 message. Requires tickStatePtr to be connected.",
+                "default": false
+            },
+            "outputRadialVelocityMS": {
+                "type": "bool",
+                "description": "Include per-point radial velocity (m/s) in the published PointCloud2 message. Requires radialVelocityMSPtr to be connected. Radar only.",
+                "default": false
             },
             "dataPtr": {
                 "type": "uint64",

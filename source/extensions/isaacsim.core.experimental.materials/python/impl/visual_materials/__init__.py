@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .omni_glass import OmniGlassMaterial
-from .omni_pbr import OmniPbrMaterial
-from .preview_surface import PreviewSurfaceMaterial
-from .visual_material import VisualMaterial
+"""Provide visual material implementations including PBR, glass, and preview surface materials for scene rendering."""
+
+from .omni_glass import OmniGlassMaterial as OmniGlassMaterial
+from .omni_pbr import OmniPbrMaterial as OmniPbrMaterial
+from .preview_surface import PreviewSurfaceMaterial as PreviewSurfaceMaterial
+from .visual_material import VisualMaterial as VisualMaterial

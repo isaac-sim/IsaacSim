@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,16 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Tuple
+"""Utility functions for occupancy map generation and visualization."""
 
 import numpy as np
 
 
 def update_location(
-    om,
-    start_location: Tuple[float, float, float],
-    lower_bound: Tuple[float, float, float],
-    upper_bound: Tuple[float, float, float],
+    om: object,
+    start_location: tuple[float, float, float],
+    lower_bound: tuple[float, float, float],
+    upper_bound: tuple[float, float, float],
 ) -> None:
     """Updates the occupancy map transform and visualization.
 
@@ -50,8 +50,8 @@ def update_location(
 
 
 def compute_coordinates(
-    om, cell_size: float
-) -> Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float], np.matrix]:
+    om: object, cell_size: float
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float], np.ndarray]:
     """Computes the corner coordinates and image transformation for the occupancy map.
 
     Calculates the world coordinates of the four corners of the occupancy map image
@@ -83,12 +83,12 @@ def compute_coordinates(
     bottom_left = (max_b[0] - half_w, max_b[1] - half_w)
     bottom_right = (min_b[0] + half_w, max_b[1] - half_w)
 
-    image_coords = np.matrix([[0, 1], [-1, 0]]) * np.matrix([[-top_left[0]], [-top_left[1]]])
+    image_coords = np.array([[0, 1], [-1, 0]]) @ np.array([[-top_left[0]], [-top_left[1]]])
 
     return top_left, top_right, bottom_left, bottom_right, image_coords
 
 
-def generate_image(om, occupied_col: List[int], unknown_col: List[int], freespace_col: List[int]) -> List[int]:
+def generate_image(om: object, occupied_col: list[int], unknown_col: list[int], freespace_col: list[int]) -> list[int]:
     """Generates a colored RGBA image from the occupancy map buffer (optimized).
 
     Creates an image representation of the occupancy map where each cell is colored

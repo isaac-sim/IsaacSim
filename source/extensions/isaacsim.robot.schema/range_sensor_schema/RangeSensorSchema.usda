@@ -1,0 +1,66 @@
+#usda 1.0
+(
+	subLayers = [
+    @usdGeom/schema.usda@
+	]
+)
+
+over "GLOBAL" (
+	customData = {
+	string libraryName = "rangeSensorSchema"
+	string libraryPath = "./"
+	string libraryPrefix = "RangeSensor"
+	bool skipCodeGeneration = true
+	}
+)
+{
+
+}
+class "RangeSensor" (
+	  inherits = </Xformable>
+	  doc = """DEPRECATED since isaacsim.robot.schema 6.2.0.
+	  Used only by the deprecated isaacsim.sensors.physx extension.
+	  Use IsaacRaycastSensor with isaacsim.sensors.experimental.physics
+	  or isaacsim.sensors.experimental.rtx instead."""
+)
+{
+	bool enabled = true (doc = """Flag used to enable or disable this sensor""")
+
+	bool drawPoints = false (doc = """Set to true to draw debug points on sensor hit locations""")
+	bool drawLines = false (doc = """Set to true to draw debug lines representing sensor ray casts""")
+
+	float minRange = 0.4   (doc = """Minimum range for sensor to detect a hit""")
+	float maxRange = 100.0 (doc = """Maximum range for sensor to detect a hit""")
+}
+
+
+class Lidar "Lidar" (
+	  inherits = </RangeSensor>
+	  doc = """DEPRECATED since isaacsim.robot.schema 6.2.0.
+	  Used only by the deprecated isaacsim.sensors.physx extension.
+	  Use IsaacRaycastSensor with isaacsim.sensors.experimental.rtx instead."""
+)
+{
+	float yawOffset = 0.0 (doc = """Offset along yaw axis to account for sensor having a different forward direction""")
+
+	float rotationRate = 20.0 (doc = """Rotation rate of sensor in Hz, set to zero to make sensor fire all rays at once""")
+	bool highLod = true (doc = """Enable High Lod for 3D Lidar sensor""")
+
+	float horizontalFov = 360.0 (doc = """Horizontal Field of View in degrees""")
+	float verticalFov = 30.0 (doc = """Vertical Field of View in degrees""")
+	float horizontalResolution = 0.4 (doc = """Degrees in between rays for horizontal axis""")
+	float verticalResolution = 4.0 (doc = """Degrees in between rays for vertical axis""")
+
+	bool enableSemantics = false (doc = """Set to true to get semantic information of sensor hit locations""")
+}
+
+class Generic "Generic" (
+	  inherits = </RangeSensor>
+	  doc = """DEPRECATED since isaacsim.robot.schema 6.2.0.
+	  Used only by the deprecated isaacsim.sensors.physx extension.
+	  Use IsaacRaycastSensor with isaacsim.sensors.experimental.rtx instead."""
+)
+{
+	int samplingRate = 60 (doc = """sampling rate of the custom sensor data in Hz""")
+	bool streaming = True (doc = """Streaming lidar point data. Default to true""")
+}

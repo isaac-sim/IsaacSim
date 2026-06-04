@@ -1,0 +1,6 @@
+[isaacsim-ui-extension]
+extension_name = "isaacsim.template_test.ui_ext"
+title = "Test UI Extension"
+version = "0.1.0"
+description = "A test UI extension."
+category = "Examples"

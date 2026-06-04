@@ -93,17 +93,20 @@ template_name = "action_and_event_data_generation_full"
 
 # Action and Event Data Generation Extensions
 #############################################
-"isaacsim.replicator.agent.ui" = { version = "1.0.20", exact = true }
-"isaacsim.replicator.object.ui" = { version = "0.11.3", exact = true }
-"isaacsim.replicator.incident.ui" = { version = "0.6.3", exact = true }
-"omni.ai.langchain.agent.chat_iro" = { version = "2.2.8", exact = true }
+"isaacsim.replicator.agent.ui" = { version = "1.0.36", exact = true }
+"isaacsim.replicator.object.ui" = { version = "0.11.5", exact = true }
+"isaacsim.replicator.incident.ui" = { version = "0.6.4", exact = true }
+"omni.ai.langchain.agent.chat_iro" = { version = "2.2.11", exact = true }
+
 # Animation Extensions
 #############################################
 "omni.anim.curve.bundle" = {} # For "Set Key" option in right-click menu
 "omni.anim.curve_editor" = {}
-"omni.anim.graph.bundle" = {}
 "omni.anim.retarget.bundle" = {}
 "omni.anim.window.timeline" = {}
+"omni.anim.behavior.bundle" = {}
+"omni.behavior.scripting.bundle" = {}
+"omni.behavior.tree.bundle" = {}
 
 # Other useful Extensions
 #############################################
@@ -131,7 +134,7 @@ file.ignoreUnsavedStage = false
 enableDeveloperWarnings = false        # Disable developer warnings to reduce log noise
 window.title = "Action and Event Data Generation"
 vulkan = true
-runLoops.main.rateLimitEnabled = true  # Enable rate limiting, simulation runs at specified rendering rate (default 60 hz)
+runLoops.main.rateLimitEnabled = true  # Enable main run-loop rate limit (loop sleeps at end of frame to cap tick rate); paired with rateLimitFrequency (default 60 hz)
 runLoops.main.manualModeEnabled = true # Enable manual mode, dt is fixed at requested rate
 gatherRenderResults = true # True to prevent artifacts in multiple viewport configurations, can be set to false for better performance in some cases
 
@@ -145,6 +148,7 @@ gatherRenderResults = true # True to prevent artifacts in multiple viewport conf
 	"${app}/../apps",
     "${app}/../exts",
     "${app}/../extscache",
+    "${app}/../extsDeprecated",
 ]
 
 [settings.app.extensions]

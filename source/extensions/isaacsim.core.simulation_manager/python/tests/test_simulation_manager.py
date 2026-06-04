@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test for simulation manager."""
 
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -816,7 +818,6 @@ class TestSimulationManagerStageTransitions(omni.kit.test.AsyncTestCase):
         4. The cached PhysxScene now has a stale prim reference
         5. Try to play - without fix, this raises RuntimeError for expired prim
         """
-        from pxr import Sdf
 
         # Create physics scene and start simulation
         stage_utils.define_prim(self._physics_scene_path, type_name="PhysicsScene")
@@ -1006,8 +1007,9 @@ class TestSimulationManagerMultiTickRendering(omni.kit.test.AsyncTestCase):
     async def setUp(self):
         """Method called to prepare the test fixture."""
         super().setUp()
-        # Enable multi-tick rate support
-        carb.settings.get_settings().set_bool("/rtx/hydra/supportMultiTickRate", True)
+        # /rtx/hydra/supportMultiTickRate must be set at app startup (see the
+        # "multitick_rendering" test block in config/extension.toml); toggling it
+        # here at runtime does not reconfigure the rtx.hydra render pipeline.
         await stage_utils.create_new_stage_async()
         self._physics_scene_path = "/World/PhysicsScene"
         stage_utils.define_prim(self._physics_scene_path, type_name="PhysicsScene")
@@ -1019,69 +1021,64 @@ class TestSimulationManagerMultiTickRendering(omni.kit.test.AsyncTestCase):
         timeline.stop()
         await omni.kit.app.get_app().next_update_async()
         super().tearDown()
-        carb.settings.get_settings().set_bool("/rtx/hydra/supportMultiTickRate", False)
 
     async def test_multi_tick_simulation_time_update(self):
-        """Test that simulation time is updated correctly with multi-tick rendering mode.
+        """Test that simulation time is written to the Fabric prim in multi-tick mode.
 
-        This test verifies that when /rtx/hydra/supportMultiTickRate is enabled,
-        the simulation time is properly propagated to the run loop for SWH synchronization.
-        The SWHExternalSimulationTime should start at zero and increase with each physics step.
+        When /rtx/hydra/supportMultiTickRate is enabled, the physics callback writes
+        the current simulation time to the /ExternalSimulationTime Fabric prim.
+        This test verifies the value starts at zero and increases with each physics step.
         """
+        import omni.usd
 
-        # Track the SWHExternalSimulationTime values received in update events
-        received_sim_times = []
+        usd_context = omni.usd.get_context()
+        stage_id = usd_context.get_stage_id()
 
-        def _update_callback(event):
-            if "SWHExternalSimulationTime" in event.payload:
-                received_sim_times.append(event.payload["SWHExternalSimulationTime"])
+        def _read_fabric_sim_time():
+            """Read the omni:time attribute from /ExternalSimulationTime in Fabric."""
+            try:
+                import usdrt
 
-        subscription = carb.eventdispatcher.get_eventdispatcher().observe_event(
-            event_name=omni.kit.app.GLOBAL_EVENT_UPDATE,
-            on_event=_update_callback,
-            observer_name="test_multi_tick_simulation_time",
-        )
+                fabric_stage = usdrt.Usd.Stage.Attach(stage_id)
+                prim = fabric_stage.GetPrimAtPath("/ExternalSimulationTime")
+                if prim and prim.HasAttribute("omni:time"):
+                    attr = prim.GetAttribute("omni:time")
+                    return float(attr.Get())
+            except Exception:
+                pass
+            return None
 
-        # Start simulation
+        # Before play, the Fabric prim was seeded to 0 by onAttach; verify that
+        # here rather than after play, since play+next_update advances physics
+        # before Python can observe the initial state.
+        initial_time = _read_fabric_sim_time()
+        self.assertIsNotNone(initial_time, "Fabric /ExternalSimulationTime prim not found")
+        self.assertAlmostEqual(initial_time, 0.0, places=5, msg="Initial Fabric simulation time should be zero")
+
         timeline = omni.timeline.get_timeline_interface()
         timeline.play()
 
-        # First update after play - simulation time should be zero initially
         await omni.kit.app.get_app().next_update_async()
 
         self.assertTrue(SimulationManager.is_simulating())
-        self.assertGreater(len(received_sim_times), 0, "SWHExternalSimulationTime was not received")
 
-        # The first received time should be zero (or very close to zero)
-        first_time = received_sim_times[0]
-        self.assertAlmostEqual(first_time, 0.0, places=5, msg="Initial SWHExternalSimulationTime should be zero")
-
-        # Run several more updates and verify time increases
+        prev_time = initial_time
         for i in range(5):
-            prev_time = received_sim_times[-1]
-            previous_sim_time = SimulationManager.get_simulation_time()
             await omni.kit.app.get_app().next_update_async()
 
-            # Should have received new time values
-            self.assertGreater(len(received_sim_times), i + 1)
+            current_time = _read_fabric_sim_time()
+            self.assertIsNotNone(current_time)
+            self.assertGreater(current_time, prev_time, f"Fabric simulation time should increase on step {i + 1}")
+            prev_time = current_time
 
-            # Each new time should be greater than the previous
-            current_time = received_sim_times[-1]
-            self.assertGreater(current_time, prev_time, f"SWHExternalSimulationTime should increase on step {i + 1}")
-
-        # Verify the times match - SWH time is updated after sim time advances,
-        # so the final SWH time should match the second-to-last simulation time
-        final_swh_time = received_sim_times[-1]
+        final_fabric_time = _read_fabric_sim_time()
+        sim_time = SimulationManager.get_simulation_time()
         self.assertAlmostEqual(
-            final_swh_time,
-            previous_sim_time,
+            final_fabric_time,
+            sim_time,
             places=5,
-            msg="SWHExternalSimulationTime should advance by physics dt each step",
+            msg="Fabric simulation time should match SimulationManager time",
         )
 
-        # Stop simulation
         timeline.stop()
         await omni.kit.app.get_app().next_update_async()
-
-        # Cleanup
-        subscription = None

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Extension for generating heightmap terrain from heightmap and occupancy map images."""
 
 import asyncio
 import gc
@@ -29,6 +31,10 @@ from isaacsim.gui.components.menu import make_menu_item_description
 from isaacsim.gui.components.ui_utils import btn_builder, float_builder
 from omni.kit.menu.utils import MenuItemDescription, add_menu_items, remove_menu_items
 from PIL import Image
+
+__all__ = [
+    "HeightmapImporter",
+]
 
 EXTENSION_NAME = "Heightmap Importer"
 
@@ -163,6 +169,7 @@ class Extension(omni.ext.IExt):
             item_filter_options=[".png Files (*.png, *.PNG)"],
             item_filter_fn=_on_filter_png_files,
         )
+        self._filepicker.show()
 
     def _load_image(self, filename: str, folder_path: str) -> None:
         """Load a PNG image file and display it in a visualization window.

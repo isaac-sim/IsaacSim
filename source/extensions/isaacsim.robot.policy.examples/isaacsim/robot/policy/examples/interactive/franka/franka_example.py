@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +15,8 @@
 
 """Example demonstration of a Franka robot performing an open drawer task using a policy-based approach."""
 
-
 import numpy as np
+import omni.timeline
 from isaacsim.core.experimental.prims import Articulation
 from isaacsim.core.experimental.utils.stage import add_reference_to_stage
 from isaacsim.core.simulation_manager import SimulationManager
@@ -50,6 +50,7 @@ class FrankaExample(BaseSample):
         self._physics_ready = False
         self.franka = None
         self.cabinet = None
+        self._timeline = omni.timeline.get_timeline_interface()
         self._physics_callback_id = None
         self._time_elapsed = 0.0
 
@@ -122,7 +123,7 @@ class FrankaExample(BaseSample):
         self._physics_ready = False
         self._time_elapsed = 0.0
 
-    def on_physics_step(self, dt, context):
+    def on_physics_step(self, dt: float, context: object) -> None:
         """Physics step callback - initialize on first step, then run policy.
 
         Args:

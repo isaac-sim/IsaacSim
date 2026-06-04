@@ -1,0 +1,12 @@
+---
+description: Documentation change policy for repository tasks
+globs:
+  - "**/*"
+alwaysApply: true
+---
+# Documentation Update Policy
+
+- Avoid creating new documentation files (README, CHANGELOG, API refs, etc.) when refactoring, adding features, or fixing bugs unless the user explicitly asks for them.
+- Update existing documentation as needed to keep current files accurate, but avoid introducing new documentation unless specifically requested.
+- If documentation changes are required, limit edits to the relevant existing files and describe any need for additional docs and request approval before creating them.
+- Exception: when creating a brand-new extension, required baseline files mandated by `extension_structure.mdc` (for example extension metadata/docs scaffolding) are allowed.

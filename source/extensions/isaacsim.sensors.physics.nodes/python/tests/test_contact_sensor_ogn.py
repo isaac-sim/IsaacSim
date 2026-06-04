@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,21 +12,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 import asyncio
 
-import carb
 import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
-import numpy as np
 import omni.graph.core as og
-import omni.kit.commands
 import omni.kit.test
 import omni.timeline
 import usdrt.Sdf
 from isaacsim.core.experimental.objects import Cube, GroundPlane
 from isaacsim.core.experimental.prims import GeomPrim, RigidPrim
 from isaacsim.core.simulation_manager import SimulationManager
-from pxr import Gf, PhysxSchema
+from isaacsim.sensors.experimental.physics import Contact
+from pxr import PhysxSchema
 
 from .common import setup_ant_scene, step_simulation
 
@@ -57,10 +56,8 @@ class TestContactSensorOgn(omni.kit.test.AsyncTestCase):
         RigidPrim("/World/Cube", masses=[1.0])
         contact_report_api = PhysxSchema.PhysxContactReportAPI.Apply(prim_utils.get_prim_at_path("/World/Cube"))
         contact_report_api.CreateThresholdAttr().Set(0)
-        omni.kit.commands.execute(
-            "IsaacSensorExperimentalCreateContactSensor",
-            path="/contact_sensor",
-            parent="/World/Cube",
+        Contact.create(
+            "/World/Cube/contact_sensor",
             max_threshold=10000000,
         )
 
@@ -175,17 +172,14 @@ class TestContactSensorOgnWithAnt(omni.kit.test.AsyncTestCase):
     async def _add_sensor_prims(self):
         """Helper to add contact sensors to ant legs."""
         for i in range(4):
-            result, sensor = omni.kit.commands.execute(
-                "IsaacSensorExperimentalCreateContactSensor",
-                path="/sensor",
-                parent=self.leg_paths[i],
+            sensor = Contact.create(
+                f"{self.leg_paths[i]}/sensor",
                 min_threshold=0,
                 max_threshold=10000000,
                 color=self.color[i],
                 radius=0.12,
-                translation=self.sensor_offsets[i],
+                translations=self.sensor_offsets[i],
             )
-            self.assertTrue(result)
             self.assertIsNotNone(sensor)
 
     def _setup_contact_sensor_ogn_graph(self, sensor_path: str, graph_path: str = "/controller_graph"):
@@ -193,7 +187,7 @@ class TestContactSensorOgnWithAnt(omni.kit.test.AsyncTestCase):
         if self._stage.GetPrimAtPath(graph_path).IsValid():
             stage_utils.delete_prim(graph_path)
 
-        (_, (_, test_node), _, _) = og.Controller.edit(
+        _, (_, test_node), _, _ = og.Controller.edit(
             {"graph_path": graph_path, "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
@@ -210,17 +204,14 @@ class TestContactSensorOgnWithAnt(omni.kit.test.AsyncTestCase):
 
     async def test_node_outputs_reset(self):
         """Ensure OGN node outputs reset after playback stops."""
-        result, sensor = omni.kit.commands.execute(
-            "IsaacSensorExperimentalCreateContactSensor",
-            path="/sensor",
-            parent=self.leg_paths[0],
+        sensor = Contact.create(
+            f"{self.leg_paths[0]}/sensor",
             min_threshold=0,
             max_threshold=10000000,
             color=self.color[0],
             radius=0.12,
-            translation=self.sensor_offsets[0],
+            translations=self.sensor_offsets[0],
         )
-        self.assertTrue(result)
         self.assertIsNotNone(sensor)
 
         await omni.kit.app.get_app().next_update_async()

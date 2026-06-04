@@ -1,4 +1,36 @@
 # Changelog
+
+## [3.6.1] - 2026-05-22
+### Changed
+- Info paragraphs to prioritize cuMotion over Lula.
+- Documentation link.
+
+### Fixed
+- `UIBuilder.on_stage_closed` was referencing the stage, causing a ValueError to be raised.
+
+## [3.6.0] - 2026-05-20
+### Changed
+- Decompose monolithic `extension.py` into focused modules.
+  - `xrdf_io.py` and `lula_io.py` expose pure, UI-free read/write/merge helpers (`write_xrdf_file`, `read_xrdf_file`, `is_valid_xrdf_file`, `merge_passthrough_dict`, `write_lula_robot_description_file`, `read_lula_robot_description_file`).
+  - `articulation_discovery.py` and `sphere_generation.py` hold the stage-graph algorithms previously embedded in the `Extension` class.
+  - `editor_state.py` provides a UI-free `EditorState` domain object that owns articulation data and high-level import/export operations; tests can use it directly without instantiating the UI.
+  - UI is split into per-panel modules under `ui/` (`InfoPanel`, `SelectionPanel`, `JointPropertiesPanel`, `SphereEditorPanel`, `EditorToolsPanel`).
+  - Magic strings and per-DOF default constants moved to `constants.py`.
+- Adopt the standard `isaacsim` UIBuilder pattern
+- Replace `sphere_generation.compute_link_frame_mesh` with `isaacsim.core.experimental.utils.xform.get_relative_transform`; removes the local `gf_quat_to_np_array` helper.
+- Per-DOF arrays now size exactly to the selected articulation's DOF count instead of using a fixed `MAX_DOF_NUM = 100` buffer.
+
+### Fixed
+- Exported XRDF does not contain mimic joints.
+
+## [3.5.0] - 2026-04-28
+### Changed
+- Migrate extension implementation to core experimental API
+
+## [3.4.2] - 2026-03-06
+### Fixed
+- Clear physics subscription when window is hidden to stop per-physics-step callbacks while the panel is not visible
+
 ## [3.4.1] - 2026-03-04
 ### Fixed
 - Fix api errors

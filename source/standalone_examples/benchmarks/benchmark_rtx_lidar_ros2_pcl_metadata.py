@@ -81,14 +81,14 @@ if "ObjectId" in metadata_fields:
     extra_args.append("--/rtx-transient/stableIds/enabled=true")
 if "HitNormal" in metadata_fields:
     extra_args.append("--/app/sensors/nv/lidar/publishNormals=true")
-
 simulation_app = SimulationApp({"headless": headless, "max_gpu_count": n_gpu, "extra_args": extra_args})
 
 import carb
+import numpy as np
 import omni
 import omni.graph.core as og
 from isaacsim.core.utils.extensions import enable_extension
-from pxr import Gf
+from isaacsim.sensors.experimental.rtx import Lidar, LidarSensor
 
 enable_extension("isaacsim.benchmark.services")
 enable_extension("isaacsim.ros2.bridge")
@@ -127,59 +127,75 @@ timeline = omni.timeline.get_timeline_interface()
 # Set this to true so that we always publish regardless of subscribers
 carb.settings.get_settings().set_bool("/exts/isaacsim.ros2.bridge/publish_without_verification", True)
 
-sensors = []
+# Determine the minimum aux_output_level needed for the requested metadata.
+# Levels form a hierarchy: NONE < BASIC < EXTRA < FULL.  Each metadata field
+# maps to the minimum GMO AuxType that includes it (see LidarAuxiliaryData in
+# the GenericModelOutput docs).
+_METADATA_AUX_LEVEL = {
+    "Intensity": "NONE",
+    "Timestamp": "NONE",
+    "EmitterId": "BASIC",
+    "ChannelId": "BASIC",
+    "TickId": "BASIC",
+    "EchoId": "BASIC",
+    "TickState": "BASIC",
+    "MaterialId": "EXTRA",
+    "ObjectId": "EXTRA",
+    "HitNormal": "FULL",
+    "Velocity": "FULL",
+}
+_AUX_LEVEL_ORDER = ["NONE", "BASIC", "EXTRA", "FULL"]
+aux_output_level = _AUX_LEVEL_ORDER[max(_AUX_LEVEL_ORDER.index(_METADATA_AUX_LEVEL[f]) for f in metadata_fields)]
+print(f"Aux output level for metadata {metadata_fields}: {aux_output_level}")
+
+lidars = []
+lidar_sensors = []
 graphs = []
 
 for i in range(n_sensor):
-    lidar_prim_path = f"/RtxLidar_{lidar_type}_{i}"
-    lidar_parent_path = "/World"
-    lidar_path = f"{lidar_parent_path}{lidar_prim_path}"
+    lidar_path = f"/World/RtxLidar_{lidar_type}_{i}"
     graph_path = f"/World/ROS2_Lidar_Graph_{i}"
 
-    # Position sensors in a line
-    sensor_translation = Gf.Vec3f([-8 + i * 2.0, 13, 2.0])
+    sensor_translation = np.array([-8 + i * 2.0, 13, 2.0])
 
     lidar_config = f"Example_{lidar_type}"
     print(f"Creating Lidar {i}: Config={lidar_config}, Path={lidar_path}")
 
-    # Create the RTX Lidar sensor
-    _, sensor = omni.kit.commands.execute(
-        "IsaacSensorCreateRtxLidar",
-        path=lidar_prim_path,
-        parent=lidar_parent_path,
+    lidar = Lidar.create(
+        lidar_path,
         config=lidar_config,
-        translation=sensor_translation,
-        orientation=Gf.Quatd(1.0, 0.0, 0.0, 0.0),
+        translations=sensor_translation,
+        aux_output_level=aux_output_level,
     )
-    sensors.append(sensor)
-    print(sensor.GetPath())
+    lidars.append(lidar)
 
-    # Create OmniGraph for ROS2 publishing with metadata
+    print(lidar.paths[0])
+
+    lidar_sensor = LidarSensor(lidar)
+    lidar_sensors.append(lidar_sensor)
+
+    render_product_path = str(lidar_sensor.render_product.GetPath())
+
     keys = og.Controller.Keys
 
-    # Define node names
     tick_node = f"{graph_path}/on_playback_tick"
     context_node = f"{graph_path}/ros2_context"
     sim_frame_node = f"{graph_path}/simulation_frame"
-    render_product_node = f"{graph_path}/create_render_product"
     pcl_config_node = f"{graph_path}/point_cloud_config"
     lidar_helper_node = f"{graph_path}/lidar_helper"
 
-    # Build SET_VALUES for metadata config
     config_set_values = [(f"{pcl_config_node}.inputs:output{field}", True) for field in metadata_fields]
 
-    # Build helper set values
     helper_set_values = [
         (f"{lidar_helper_node}.inputs:topicName", f"/lidar_{i}/point_cloud"),
         (f"{lidar_helper_node}.inputs:type", "point_cloud"),
         (f"{lidar_helper_node}.inputs:frameId", f"lidar_{i}"),
+        (f"{lidar_helper_node}.inputs:renderProductPath", render_product_path),
     ]
 
-    # Enable object ID map if ObjectId metadata is selected
     if "ObjectId" in metadata_fields:
         helper_set_values.append((f"{lidar_helper_node}.inputs:enableObjectIdMap", True))
 
-    # Create the graph
     graph_handle, _, _, _ = og.Controller.edit(
         {"graph_path": graph_path, "evaluator_name": "execution"},
         {
@@ -187,21 +203,13 @@ for i in range(n_sensor):
                 (tick_node, "omni.graph.action.OnPlaybackTick"),
                 (context_node, "isaacsim.ros2.bridge.ROS2Context"),
                 (sim_frame_node, "isaacsim.core.nodes.OgnIsaacRunOneSimulationFrame"),
-                (render_product_node, "isaacsim.core.nodes.IsaacCreateRenderProduct"),
                 (pcl_config_node, "isaacsim.ros2.bridge.ROS2RtxLidarPointCloudConfig"),
                 (lidar_helper_node, "isaacsim.ros2.bridge.ROS2RtxLidarHelper"),
             ],
-            keys.SET_VALUES: [
-                (f"{render_product_node}.inputs:cameraPrim", lidar_path),
-                (f"{render_product_node}.inputs:enabled", True),
-            ]
-            + config_set_values
-            + helper_set_values,
+            keys.SET_VALUES: config_set_values + helper_set_values,
             keys.CONNECT: [
                 (f"{tick_node}.outputs:tick", f"{sim_frame_node}.inputs:execIn"),
-                (f"{sim_frame_node}.outputs:step", f"{render_product_node}.inputs:execIn"),
-                (f"{render_product_node}.outputs:execOut", f"{lidar_helper_node}.inputs:execIn"),
-                (f"{render_product_node}.outputs:renderProductPath", f"{lidar_helper_node}.inputs:renderProductPath"),
+                (f"{sim_frame_node}.outputs:step", f"{lidar_helper_node}.inputs:execIn"),
                 (f"{context_node}.outputs:context", f"{lidar_helper_node}.inputs:context"),
                 (f"{pcl_config_node}.outputs:selectedMetadata", f"{lidar_helper_node}.inputs:selectedMetadata"),
             ],
@@ -209,14 +217,12 @@ for i in range(n_sensor):
     )
     graphs.append(graph_handle)
 
-    # omni.kit.app.get_app().update()
-
 print(f"Created {n_sensor} sensors with metadata: {metadata_fields}")
 
 benchmark.store_measurements()
 
 # Perform benchmark
-benchmark.set_phase("benchmark")
+benchmark.set_phase("benchmark", warmup_frames=15)
 timeline.play()
 
 for _ in range(1, n_frames):

@@ -17,9 +17,9 @@ name: Build and Test
 
 on:
   push:
-    branches: [ main, public-main, develop, public-develop ]
+    branches: [ main, public-main, develop, public-develop, staging ]
   pull_request:
-    branches: [ main, public-main, develop, public-develop ]
+    branches: [ main, public-main, develop, public-develop, staging ]
 
 
 # Concurrency control to prevent parallel runs on the same PR
@@ -27,16 +27,38 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  pull-requests: write
-
 # ==============================================================================================================
 # Build Job - Compiles Isaac Sim, packages it, and uploads artifacts
 # ==============================================================================================================
 jobs:
+  check-code-format:
+    runs-on: [self-hosted, cpu]
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    env:
+      OMNI_KIT_ALLOW_ROOT: 1
+      PM_PACKAGES_ROOT: /mnt/data/cache/packman-cache
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        lfs: true
+
+    - name: Verify formatting
+      run: |
+        set -euo pipefail
+        touch .eula_accepted
+        chmod -R u+w .
+        find . -type f -iname "*.sh" -exec chmod +x {} +
+        ./repo.sh format --verify
+
   build:
     runs-on: [self-hosted, cpu]
+    permissions:
+      contents: read
     timeout-minutes: 300
     env:
       OMNI_KIT_ALLOW_ROOT: 1
@@ -89,6 +111,7 @@ jobs:
         ./build.sh -r
 
         echo "Starting package at $(date)"
+        mkdir -p _build/docs/isaac-sim/latest/py
         ./repo.sh package -c release -m isaac-sim-standalone --temp-dir /mnt/data/cache/package_temp/${{ github.run_id }}
 
 
@@ -98,8 +121,19 @@ jobs:
 
     - name: List packaged artifacts
       run: |
+        set -euo pipefail
         echo "=== Packages created ==="
-        ls -lah _build/packages/ || echo "No packages directory found"
+        ls -lah _build/packages/
+
+    - name: Generate package checksums
+      run: |
+        set -euo pipefail
+        cd _build/packages
+        package_count="$(find . -maxdepth 1 -type f -name '*.7z' | wc -l)"
+        test "${package_count}" -gt 0
+        find . -maxdepth 1 -type f \( -name '*.7z' -o -name '*latest.txt' \) -print0 | sort -z | xargs -0 -r sha256sum > SHA256SUMS
+        test -s SHA256SUMS
+        cat SHA256SUMS
 
     - name: Upload packaged artifacts
       uses: actions/upload-artifact@v4
@@ -107,25 +141,151 @@ jobs:
         name: isaac-sim-packages
         path: |
           _build/packages/
+        if-no-files-found: error
+        compression-level: 0
         retention-days: 7
       if: success()
 
-    - name: Upload build logs (on failure)
-      uses: actions/upload-artifact@v4
+# ==============================================================================================================
+# Docker Job - Builds the Isaac Sim container image from the packaged artifact
+# ==============================================================================================================
+  docker-image:
+    runs-on: [self-hosted, cpu]
+    permissions:
+      contents: read
+    timeout-minutes: 300
+    needs: build
+    env:
+      OMNI_KIT_ALLOW_ROOT: 1
+      PM_PACKAGES_ROOT: /mnt/data/cache/packman-cache
+      DOCKER_ISAACSIM_IMAGE: isaac-sim-gha:${{ github.run_id }}-${{ github.sha }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
       with:
-        name: build-logs
-        path: |
-          _build/**/*.log
-          _repo/repo.log
-          _repo/repolog*.txt
-        retention-days: 7
-      if: failure()
+        fetch-depth: 0
+        lfs: true
+
+    - name: Prepare checkout
+      run: |
+        set -euo pipefail
+        git clean -fdx
+        git reset --hard HEAD
+        chmod -R u+w .
+        find . -type f -iname "*.sh" -exec chmod +x {} +
+        touch .eula_accepted
+        mkdir -p _build/docker-image-build
+
+    - name: Download packaged artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: isaac-sim-packages
+        path: _build/packages/
+
+    - name: Check Docker daemon
+      run: |
+        set -euo pipefail
+        for attempt in $(seq 1 90); do
+          if docker info > _build/docker-image-build/docker-info-preflight.log 2>&1; then
+            break
+          fi
+          echo "Waiting for Docker daemon at ${DOCKER_HOST:-default} (${attempt}/90)"
+          sleep 2
+        done
+        docker version --format 'Docker client={{.Client.Version}} server={{.Server.Version}}'
+        docker info > _build/docker-image-build/docker-info.log
+
+    - name: Restore packaged release
+      run: |
+        set -euo pipefail
+        package="$(find _build/packages -maxdepth 1 -name 'isaac-sim-standalone*.release.7z' | head -n 1)"
+        if [ -z "$package" ]; then
+          echo "ERROR: isaac-sim-standalone release package was not found in _build/packages"
+          find _build/packages -maxdepth 2 -type f -print
+          exit 1
+        fi
+        mkdir -p _build/linux-x86_64/release
+        ./tools/packman/python.sh -c "import packmanapi; packmanapi.extract_archive7z_to_folder('$package', '_build/linux-x86_64/release')"
+
+    - name: Prepare Docker build context
+      run: |
+        set -euo pipefail
+        ./tools/docker/prep_docker_build.sh --x86_64
+
+    - name: Check Docker build context integrity
+      run: |
+        set -euo pipefail
+        integrity_log="_build/docker-image-build/docker-context-integrity.log"
+        {
+          echo "Checking Docker build context integrity"
+          echo "Generated at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+          mapfile -t gpu_foundation_dirs < <(compgen -G "_container_temp/extscache/omni.gpu_foundation-*" || true)
+          if [ "${#gpu_foundation_dirs[@]}" -eq 0 ]; then
+            echo "ERROR: _container_temp/extscache/omni.gpu_foundation-* was not found"
+            exit 1
+          fi
+
+          gpu_foundation_dir="${gpu_foundation_dirs[0]}"
+          echo "Using ${gpu_foundation_dir}"
+
+          required_patterns=(
+            "${gpu_foundation_dir}/bin/libomni.gpu_foundation_factory.plugin.so"
+            "${gpu_foundation_dir}/omni/gpu_foundation_factory/__init__.py"
+            "${gpu_foundation_dir}/omni/gpu_foundation_factory/_gpu_foundation_factory*.so"
+            "${gpu_foundation_dir}/bin/deps/libgpu.foundation.plugin.so"
+            "${gpu_foundation_dir}/bin/deps/libcarb.blockcompression.plugin.so"
+            "${gpu_foundation_dir}/bin/deps/libcarb.failureinjector.plugin.so"
+            "${gpu_foundation_dir}/bin/deps/libcarb.memorytracking.plugin.so"
+            "${gpu_foundation_dir}/bin/deps/libcarb.glinterop.plugin.so"
+            "${gpu_foundation_dir}/bin/deps/libGLEW.so*"
+          )
+
+          missing=0
+          for pattern in "${required_patterns[@]}"; do
+            mapfile -t matches < <(compgen -G "$pattern" || true)
+            if [ "${#matches[@]}" -eq 0 ]; then
+              echo "MISSING: ${pattern}"
+              missing=1
+            else
+              for path in "${matches[@]}"; do
+                echo "OK: ${path}"
+              done
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            echo "ERROR: Docker build context is missing required GPU Foundation runtime files."
+            echo "This usually means _build or _container_temp was stale or incomplete; remove both and rerun prep_docker_build.sh."
+            find _container_temp/extscache -maxdepth 1 -type d -name 'omni.gpu_foundation*' -print || true
+            exit 1
+          fi
+
+          echo "Docker build context integrity check passed."
+        } 2>&1 | tee "$integrity_log"
+
+    - name: Build Docker image
+      run: |
+        set -euo pipefail
+        # Public NGC base images pull anonymously; runner nvcr.io creds trigger a
+        # license-acceptance denial, so build with a credential-less docker config.
+        DOCKER_CONFIG="$(mktemp -d)"
+        export DOCKER_CONFIG
+        ./tools/docker/build_docker.sh --x86_64 --tag "$DOCKER_ISAACSIM_IMAGE"
+
+    - name: Remove local Docker image
+      run: |
+        docker image rm "$DOCKER_ISAACSIM_IMAGE" || true
+      if: always()
 
 # ==============================================================================================================
 # Test Job - Downloads packaged artifacts and runs the built-in test suite
 # ==============================================================================================================
   test:
     runs-on: [self-hosted, gpu]
+    permissions:
+      contents: read
     timeout-minutes: 120
     needs: build
     env:
@@ -157,6 +317,14 @@ jobs:
         name: isaac-sim-packages
         path: _build/packages/
 
+    - name: Verify downloaded artifacts
+      run: |
+        set -euo pipefail
+        echo "=== Downloaded packages ==="
+        ls -lah _build/packages/
+        cd _build/packages
+        test -f SHA256SUMS
+        sha256sum -c SHA256SUMS
 
     - name: Run startup tests
       run: |
@@ -170,14 +338,3 @@ jobs:
         echo "Running tests at $(date)"
         ./repo.sh --ci-env gitlab test -c release -s startuptests --from-package
         echo "Finished tests at $(date)"
-
-    - name: Upload test artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results
-        path: |
-          _build/packages/*/_testoutput/**
-          _build/packages/*/kit/logs/**
-        retention-days: 7
-      if: always()
-

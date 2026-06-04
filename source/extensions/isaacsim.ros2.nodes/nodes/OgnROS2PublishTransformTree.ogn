@@ -62,6 +62,26 @@
                 "type": "bool",
                 "description": "If enabled this will override QoS settings to publish static transform trees, similar to tf2::StaticTransformBroadcaster",
                 "default": false
+            },
+            "parentFrames": {
+                "type": "token[]",
+                "description": "Parent frame names from OgnIsaacComputeTransformTree. If provided, skips internal computation from targetPrims.",
+                "optional": true
+            },
+            "childFrames": {
+                "type": "token[]",
+                "description": "Child frame names from OgnIsaacComputeTransformTree.",
+                "optional": true
+            },
+            "translations": {
+                "type": "double[3][]",
+                "description": "Translations (x, y, z) in stage units from OgnIsaacComputeTransformTree.",
+                "optional": true
+            },
+            "orientations": {
+                "type": "double[4][]",
+                "description": "Quaternions (x, y, z, w) from OgnIsaacComputeTransformTree.",
+                "optional": true
             }
         }
     }

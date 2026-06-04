@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Measurement and metadata models for benchmark results."""
 
 import json
@@ -19,6 +20,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, cast
+
+from .. import utils
 
 
 class _MetadataWithData(Protocol):
@@ -38,10 +41,6 @@ class _MetadataWithData(Protocol):
     name: str
     data: Any
 
-
-import carb
-
-from .. import utils
 
 logger = utils.set_up_logging(__name__)
 
@@ -336,7 +335,7 @@ class TestPhase(object):
             metric_path = os.path.join(json_folder_path, f)
             if os.path.isfile(metric_path):
                 if f.startswith("metrics") and f.endswith(".json"):
-                    with open(metric_path, "r") as json_file:
+                    with open(metric_path, encoding="utf-8") as json_file:
                         try:
                             test_run_json_list = json.load(json_file)
                             for m in test_run_json_list:

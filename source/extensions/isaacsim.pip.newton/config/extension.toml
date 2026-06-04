@@ -4,13 +4,13 @@ order = -1000
 reloadable = false
 
 [package]
-version = "0.4.0"
+version = "0.6.0"
 category = "Internal"
 title = "Newton Physics Pip Archive"
-description = "Pip packages for Newton physics"
+description = "Pip packages for the Newton physics engine"
 keywords = ["isaac", "pip", "newton"]
 changelog = "docs/CHANGELOG.md"
-readme = "docs/README.md"
+readme = "docs/Overview.md"
 preview_image = "data/preview.png"
 icon = "data/icon.png"
 writeTarget.kit = true

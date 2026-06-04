@@ -1,0 +1,17 @@
+{
+  "profile_name": "URDF to MJC PhysX Conversion",
+  "version": "1.0",
+  "rules": [
+    {
+      "name": "Convert URDF to MJC PhysX",
+      "type": "isaacsim.asset.transformer.rules.isaac_sim.urdf_to_mjc_physx_conversion.UrdfToMjcPhysxConversionRule",
+      "destination": "",
+      "params": {},
+      "enabled": true
+    }
+  ],
+  "interface_asset_name": null,
+  "output_package_root": null,
+  "flatten_source": false,
+  "base_name": null
+}

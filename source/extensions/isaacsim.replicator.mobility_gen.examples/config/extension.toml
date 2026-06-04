@@ -1,5 +1,5 @@
 [package]
-version = "0.2.0"
+version = "0.3.2"
 category = "Simulation"
 title = "MobilityGen Examples"
 description = "Example robot and scenario implementations for MobilityGen"
@@ -11,12 +11,11 @@ icon = "data/icon.png"
 writeTarget.kit = true
 
 [dependencies]
-"isaacsim.core.api" = {}
-"isaacsim.core.prims" = {}
-"isaacsim.core.utils" = {}
-"isaacsim.replicator.mobility_gen" = {}
+"isaacsim.core.experimental.prims" = {}
+"isaacsim.core.experimental.utils" = {}
+"isaacsim.replicator.experimental.mobility_gen" = {}
+"isaacsim.robot.experimental.wheeled_robots" = {}
 "isaacsim.robot.policy.examples" = {}
-"isaacsim.robot.wheeled_robots" = {}
 "omni.kit.pip_archive" = {}
 "omni.kit.uiapp" = {}
 
@@ -28,9 +27,6 @@ name = "isaacsim.replicator.mobility_gen.examples.tests"
 
 [[test]]
 name = "startup"
-dependencies = [
-    "omni.isaac.ml_archive",
-]
 args = [
     "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
 ]
@@ -40,9 +36,6 @@ stdoutFailPatterns.exclude = [
 ]
 
 [[test]]
-dependencies = [
-    "omni.isaac.ml_archive",
-]
 args = [
     "--enable",
     "omni.kit.loop-isaac",
@@ -84,8 +77,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 

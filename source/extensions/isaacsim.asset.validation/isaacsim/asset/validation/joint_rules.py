@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,9 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Validation rules for USD joint prims in Isaac Sim assets."""
+
 import omni.asset_validator.core as av_core
-from omni.asset_validator.core import AuthoringLayers, registerRule
+from omni.asset_validator.core import registerRule
 from pxr import Gf, PhysxSchema, Usd, UsdGeom, UsdPhysics
+
+from .util import DedupBaseRuleChecker
 
 
 # utils functions
@@ -32,8 +37,28 @@ def get_world_translation(prim: Usd.Prim) -> Gf.Vec3d:
     return Gf.Vec3d(world_xform.ExtractTranslation())
 
 
+def _rotations_match_orientation(qa: Gf.Quatd, qb: Gf.Quatd, tol: float) -> bool:
+    """Return True if two quaternions represent the same orientation (double-cover safe).
+
+    q and -q are treated as the same rotation. Uses abs(dot) >= 1.0 - tol,
+    matching physics_joint_pose_fix._pose_equal.
+    """
+    qa_n = qa.GetNormalized()
+    qb_n = qb.GetNormalized()
+    dot = qa_n.GetReal() * qb_n.GetReal() + Gf.Dot(qa_n.GetImaginary(), qb_n.GetImaginary())
+    return abs(dot) >= 1.0 - tol
+
+
+def _rotation_error_magnitude(qa: Gf.Quatd, qb: Gf.Quatd) -> float:
+    """Return 1.0 - abs(dot) for two quaternions; 0 when same or antipodal, up to 2 when opposite."""
+    qa_n = qa.GetNormalized()
+    qb_n = qb.GetNormalized()
+    dot = qa_n.GetReal() * qb_n.GetReal() + Gf.Dot(qa_n.GetImaginary(), qb_n.GetImaginary())
+    return 1.0 - abs(dot)
+
+
 @registerRule("IsaacSim.PhysicsRules")
-class JointHasCorrectTransformAndState(av_core.BaseRuleChecker):
+class JointHasCorrectTransformAndState(DedupBaseRuleChecker):
     """Validates that joint transforms and states are consistent with the connected bodies.
 
     This rule checks that the joint's transform and state values correctly define the
@@ -46,8 +71,18 @@ class JointHasCorrectTransformAndState(av_core.BaseRuleChecker):
         "Y": Gf.Vec3d(0, 1, 0),
         "Z": Gf.Vec3d(0, 0, 1),
     }
+    """Mapping from axis string identifiers to their corresponding 3D vector representations."""
 
-    def CheckPrim(self, prim: Usd.Prim) -> None:
+    def CheckPrim(self, prim: Usd.Prim) -> None:  # noqa: N802
+        """Validates that joint transform and state values are consistent with the connected bodies.
+
+        Checks revolute and prismatic joints to ensure their transforms and joint states correctly
+        define the relationship between connected bodies. Reports errors when joint positions or
+        rotations are not well-defined or when joint states don't match the robot pose.
+
+        Args:
+            prim: The joint prim to validate.
+        """
         # print(f"JointHasCorrectTransform: {prim.GetPath()}")
 
         joint = UsdPhysics.Joint(prim)
@@ -125,28 +160,34 @@ class JointHasCorrectTransformAndState(av_core.BaseRuleChecker):
                     at=prim,
                 )
 
-        # Check if the orientation is as expected
+        # Check if the orientation is as expected (double-cover safe: q and -q same rotation)
+        _ROT_TOL = 1e-3
         expected_state_rot_0 = joint_state_pos_0.GetRotation()
         expected_rot_0 = expected_tm_0.GetRotation()
         expected_rot_1 = expected_tm_1.GetRotation()
-        expected_state_rot0_as_vec4d = GfQuatToVec4d(expected_state_rot_0.GetQuat())
-        expected_rot0_as_vec4d = GfQuatToVec4d(expected_rot_0.GetQuat().GetNormalized())
-        expected_rot1_as_vec4d = GfQuatToVec4d(expected_rot_1.GetQuat().GetNormalized())
+        q_state = expected_state_rot_0.GetQuat().GetNormalized()
+        q0 = expected_rot_0.GetQuat().GetNormalized()
+        q1 = expected_rot_1.GetQuat().GetNormalized()
 
-        if not Gf.IsClose(expected_state_rot0_as_vec4d, expected_rot1_as_vec4d, 1e-3):
-            if not Gf.IsClose(expected_rot0_as_vec4d, expected_rot1_as_vec4d, 1e-3):
+        base_rot_match = _rotations_match_orientation(q0, q1, _ROT_TOL)
+        state_rot_match = _rotations_match_orientation(q_state, q1, _ROT_TOL)
+
+        if not state_rot_match:
+            if not base_rot_match:
+                mag = _rotation_error_magnitude(q0, q1)
                 self._AddError(
-                    message=f"Joint {prim.GetPath()} Rotation not well defined ({(expected_state_rot0_as_vec4d - expected_rot1_as_vec4d).GetLength()}), From body 0: {expected_rot_0}, From body 1: {expected_rot_1}",
+                    message=f"Joint {prim.GetPath()} Rotation not well defined ({mag}), From body 0: {expected_rot_0}, From body 1: {expected_rot_1}",
                     at=prim,
                 )
             else:
+                mag = _rotation_error_magnitude(q_state, q1)
                 self._AddError(
-                    message=f"Joint {prim.GetPath()} state not matching robot pose ({(expected_rot0_as_vec4d - expected_rot1_as_vec4d).GetLength()}). From body 0: {expected_state_rot_0}, from body 1: {expected_rot_1}",
+                    message=f"Joint {prim.GetPath()} state not matching robot pose ({mag}). From body 0: {expected_state_rot_0}, from body 1: {expected_rot_1}",
                     at=prim,
                 )
 
 
-def GfQuatToVec4d(quat: Gf.Quatd) -> Gf.Vec4d:
+def gf_quat_to_vec4d(quat: Gf.Quatd) -> Gf.Vec4d:
     """Convert a quaternion to a 4D vector.
 
     Args:
@@ -158,7 +199,7 @@ def GfQuatToVec4d(quat: Gf.Quatd) -> Gf.Vec4d:
     return Gf.Vec4d(quat.GetReal(), quat.GetImaginary()[0], quat.GetImaginary()[1], quat.GetImaginary()[2])
 
 
-def GfRotationToVec4d(rot: Gf.Rotation) -> Gf.Vec4d:
+def gf_rotation_to_vec4d(rot: Gf.Rotation) -> Gf.Vec4d:
     """Convert a rotation to a 4D vector.
 
     Args:
@@ -167,11 +208,11 @@ def GfRotationToVec4d(rot: Gf.Rotation) -> Gf.Vec4d:
     Returns:
         A Vec4d representation of the rotation's quaternion.
     """
-    return GfQuatToVec4d(rot.GetQuat())
+    return gf_quat_to_vec4d(rot.GetQuat())
 
 
 @registerRule("IsaacSim.PhysicsRules")
-class JointHasJointStateAPI(av_core.BaseRuleChecker):
+class JointHasJointStateAPI(DedupBaseRuleChecker):
     """Validates that joints have the JointStateAPI applied.
 
     This rule checks that all joints (except fixed joints) have the PhysxSchema.JointStateAPI
@@ -183,7 +224,7 @@ class JointHasJointStateAPI(av_core.BaseRuleChecker):
         """Apply the appropriate JointStateAPI to a joint prim.
 
         Args:
-            stage: The USD stage containing the joint.
+            _: Unused; reserved for API consistency with other validators.
             joint_prim: The joint prim to apply the API to.
         """
         actuator_type = None
@@ -203,7 +244,7 @@ class JointHasJointStateAPI(av_core.BaseRuleChecker):
             PhysxSchema.JointStateAPI.Apply(prim, actuator_type)
             edit_stage.Save()
 
-    def CheckPrim(self, prim: Usd.Prim) -> None:
+    def CheckPrim(self, prim: Usd.Prim) -> None:  # noqa: N802
         """Check if a prim has the required JointStateAPI applied.
 
         Args:
@@ -250,14 +291,14 @@ def get_prismatic_or_revolute_limits(joint_prim: Usd.Prim) -> tuple[float, float
 
 
 @registerRule("IsaacSim.PhysicsRules")
-class MimicAPICheck(av_core.BaseRuleChecker):
+class MimicAPICheck(DedupBaseRuleChecker):
     """Validates proper configuration of mimic joint APIs.
 
     This rule checks that mimic joints have proper reference joints, gear ratios,
     natural frequencies, damping ratios, and compatible joint limits.
     """
 
-    def CheckPrim(self, prim: Usd.Prim) -> None:
+    def CheckPrim(self, prim: Usd.Prim) -> None:  # noqa: N802
         """Check if a prim with mimic API is properly configured.
 
         Args:
@@ -377,7 +418,7 @@ class MimicAPICheck(av_core.BaseRuleChecker):
 # RG - Modified the code below to return the world transform of the joint computed from the body 0 or body 1
 
 
-def get_world_body_transform(stage, cache, joint, body0base):
+def get_world_body_transform(stage: object, cache: object, joint: object, body0base: bool) -> Gf.Transform:
     """Get the world transform of a joint computed from either body 0 or body 1.
 
     Args:

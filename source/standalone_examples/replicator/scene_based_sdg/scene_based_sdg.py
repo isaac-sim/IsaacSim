@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Generate offline synthetic dataset"""
+"""Generate offline synthetic dataset."""
 
 import argparse
 import json
@@ -104,10 +104,10 @@ import carb.settings
 import omni.replicator.core as rep
 import omni.usd
 import scene_based_sdg_utils
-from isaacsim.core.experimental.utils.semantics import remove_all_labels
-from isaacsim.core.utils import prims
-from isaacsim.core.utils.rotations import euler_angles_to_quat
-from isaacsim.core.utils.stage import get_current_stage, open_stage
+from isaacsim.core.experimental.prims import XformPrim
+from isaacsim.core.experimental.utils.semantics import add_labels, remove_all_labels
+from isaacsim.core.experimental.utils.stage import add_reference_to_stage, define_prim, get_current_stage, open_stage
+from isaacsim.core.experimental.utils.transform import euler_angles_to_quaternion
 from isaacsim.storage.native import get_assets_root_path
 from pxr import Gf
 
@@ -119,7 +119,8 @@ if assets_root_path is None:
 
 # Load environment stage
 print(f"[SDG] Loading Stage {config['env_url']}")
-if not open_stage(assets_root_path + config["env_url"]):
+stage_opened, _ = open_stage(assets_root_path + config["env_url"])
+if not stage_opened:
     carb.log_error(f"Could not open stage{config['env_url']}, closing application..")
     simulation_app.close()
 
@@ -139,49 +140,52 @@ if config["clear_previous_semantics"]:
         remove_all_labels(prim, include_descendants=True)
 
 # Create SDG scope for organizing all generated objects
-stage = get_current_stage()
-sdg_scope = stage.DefinePrim("/SDG", "Scope")
+define_prim("/SDG", "Scope")
 
 # Spawn forklift at random pose
-forklift_prim = prims.create_prim(
-    prim_path="/SDG/Forklift",
-    position=(rng.uniform(-20, -2), rng.uniform(-1, 3), 0),
-    orientation=euler_angles_to_quat([0, 0, rng.uniform(0, math.pi)]),
-    usd_path=assets_root_path + config["forklift"]["url"],
-    semantic_label=config["forklift"]["class"],
+forklift_path = "/SDG/Forklift"
+forklift_prim = define_prim(forklift_path)
+add_reference_to_stage(assets_root_path + config["forklift"]["url"], forklift_path)
+add_labels(forklift_prim, labels=[config["forklift"]["class"]], taxonomy="class")
+XformPrim(
+    forklift_path,
+    positions=(rng.uniform(-20, -2), rng.uniform(-1, 3), 0),
+    orientations=euler_angles_to_quaternion([0, 0, rng.uniform(0, math.pi)]).numpy(),
+    reset_xform_op_properties=True,
 )
 
 # Spawn pallet in front of forklift with random offset
 forklift_tf = omni.usd.get_world_transform_matrix(forklift_prim)
 pallet_offset_tf = Gf.Matrix4d().SetTranslate(Gf.Vec3d(0, rng.uniform(-1.8, -1.2), 0))
-pallet_pos = (pallet_offset_tf * forklift_tf).ExtractTranslation()
+pallet_pos = tuple((pallet_offset_tf * forklift_tf).ExtractTranslation())
 forklift_quat = forklift_tf.ExtractRotationQuat()
 forklift_quat_xyzw = (forklift_quat.GetReal(), *forklift_quat.GetImaginary())
 
-pallet_prim = prims.create_prim(
-    prim_path="/SDG/Pallet",
-    position=pallet_pos,
-    orientation=forklift_quat_xyzw,
-    usd_path=assets_root_path + config["pallet"]["url"],
-    semantic_label=config["pallet"]["class"],
+pallet_path = "/SDG/Pallet"
+pallet_prim = define_prim(pallet_path)
+add_reference_to_stage(assets_root_path + config["pallet"]["url"], pallet_path)
+add_labels(pallet_prim, labels=[config["pallet"]["class"]], taxonomy="class")
+XformPrim(
+    pallet_path,
+    positions=pallet_pos,
+    orientations=forklift_quat_xyzw,
+    reset_xform_op_properties=True,
 )
 
 # Create cardboxes for pallet scattering
 cardboxes = []
 for i in range(5):
-    cardbox = prims.create_prim(
-        prim_path=f"/SDG/CardBox_{i}",
-        usd_path=assets_root_path + config["cardbox"]["url"],
-        semantic_label=config["cardbox"]["class"],
-    )
+    cardbox_path = f"/SDG/CardBox_{i}"
+    cardbox = define_prim(cardbox_path)
+    add_reference_to_stage(assets_root_path + config["cardbox"]["url"], cardbox_path)
+    add_labels(cardbox, labels=[config["cardbox"]["class"]], taxonomy="class")
     cardboxes.append(cardbox)
 
 # Create traffic cone for corner placement
-cone = prims.create_prim(
-    prim_path="/SDG/Cone",
-    usd_path=assets_root_path + config["cone"]["url"],
-    semantic_label=config["cone"]["class"],
-)
+cone_path = "/SDG/Cone"
+cone = define_prim(cone_path)
+add_reference_to_stage(assets_root_path + config["cone"]["url"], cone_path)
+add_labels(cone, labels=[config["cone"]["class"]], taxonomy="class")
 
 # Create cameras
 rep.functional.create.scope(name="Cameras", parent="/SDG")

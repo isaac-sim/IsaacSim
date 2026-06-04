@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test for docstrings."""
+
 import isaacsim.core.experimental.utils.impl.stage as stage_utils
 import isaacsim.test.docstring
 import warp as wp
@@ -22,20 +24,24 @@ wp.init()  # init warp to avoid undesired stdout output
 
 
 class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
+    """Test extension docstrings."""
+
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
         # create new stage
         await stage_utils.create_new_stage_async()
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         super().tearDown()
 
     async def test_physx_scene_docstrings(self):
+        """Test physx scene docstrings."""
         await self.assertDocTests(PhysxScene)
 
     async def test_simulation_manager_docstrings(self):
+        """Test simulation manager docstrings."""
         if (SimulationManager.get_default_engine() or "").lower() == "newton":
             self.skipTest("Skipping SimulationManager docstrings test (engine: newton)")
         SimulationManager.initialize_physics()

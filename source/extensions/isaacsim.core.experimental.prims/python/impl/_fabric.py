@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,11 +12,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Internal fabric utilities for USDRT stage operations and data transformations between Warp and fabric arrays."""
+
 import usdrt
 import warp as wp
 
 
 def update_fabric_selection(*, stage: usdrt.Usd.Stage, data: dict, device: wp.Device, attr: str, count: int) -> bool:
+    """Update fabric selection and create index mapping for prims.
+
+    Args:
+        stage: The USDRT stage to select prims from.
+        data: Dictionary containing selection data and specifications.
+        device: The Warp device to use for operations.
+        attr: The attribute name to read from selected prims.
+        count: Expected number of selected prims.
+
+    Returns:
+        True if selection was successfully updated, False otherwise.
+    """
     # update selection
     selection = data["selection"]
     if selection is None or device.alias.startswith("cuda"):
@@ -44,7 +59,15 @@ def update_fabric_selection(*, stage: usdrt.Usd.Stage, data: dict, device: wp.De
 
 
 @wp.kernel(enable_backward=False)
-def _wk_selection_mapping(fabricarray: wp.fabricarray(dtype=wp.uint32), mapping: wp.array(ndim=1, dtype=wp.uint32)):
+def _wk_selection_mapping(
+    fabricarray: wp.fabricarray(dtype=wp.uint32), mapping: wp.array(ndim=1, dtype=wp.uint32)
+) -> None:
+    """Map fabric array indices to create a mapping array.
+
+    Args:
+        fabricarray: Warp fabric array containing indices.
+        mapping: Output Warp array to store the index mapping.
+    """
     i = wp.tid()
     mapping[fabricarray[i]] = wp.uint32(i)
 
@@ -56,7 +79,16 @@ def wk_write_to_fabric_float(
     indices: wp.array(ndim=1, dtype=wp.int32),
     mapping: wp.array(ndim=1, dtype=wp.uint32),
     broadcast: bool,
-):
+) -> None:
+    """Write float values from a Warp array to a fabric array.
+
+    Args:
+        array: Source Warp array containing float values.
+        fabric_array: Target fabric array to write values to.
+        indices: Array of indices to process.
+        mapping: Array mapping indices to fabric array positions.
+        broadcast: Whether to broadcast the first value to all target positions.
+    """
     i = wp.tid()
     if broadcast:
         value = array[0, 0]
@@ -66,8 +98,15 @@ def wk_write_to_fabric_float(
 
 
 @wp.func
-def _decompose(m: wp.mat44f):  # -> tuple[wp.vec3f, wp.quatf, wp.vec3f]
-    """Decompose a 4x4 transformation matrix into position, orientation, and scale."""
+def _decompose(m: wp.mat44f) -> tuple[wp.vec3f, wp.quatf, wp.vec3f]:
+    """Decompose a 4x4 transformation matrix into position, orientation, and scale.
+
+    Args:
+        m: The 4x4 transformation matrix to decompose.
+
+    Returns:
+        Tuple of (position, rotation, scale) where position and scale are vec3f and rotation is quatf.
+    """
     # extract position
     position = wp.vec3f(m[3, 0], m[3, 1], m[3, 2])
     # extract rotation matrix components
@@ -106,7 +145,17 @@ def wk_decompose_fabric_transformation_matrix_to_warp_arrays(
     array_scales: wp.array(ndim=2, dtype=wp.float32),
     indices: wp.array(ndim=1, dtype=wp.int32),
     mapping: wp.array(ndim=1, dtype=wp.uint32),
-):
+) -> None:
+    """Decompose fabric transformation matrices into separate position, orientation, and scale arrays.
+
+    Args:
+        fabric_matrices: Input fabric array of transformation matrices.
+        array_positions: Output array for positions (shape (N, 3)).
+        array_orientations: Output array for orientations as quaternions (shape (N, 4)).
+        array_scales: Output array for scales (shape (N, 3)).
+        indices: Array of indices to process.
+        mapping: Array mapping indices to fabric array positions.
+    """
     # resolve array index
     index = indices[wp.tid()]
     # decompose transform matrix
@@ -140,7 +189,20 @@ def wk_compose_fabric_transformation_matrix_from_warp_arrays(
     broadcast_scales: bool,
     indices: wp.array(ndim=1, dtype=wp.int32),
     mapping: wp.array(ndim=1, dtype=wp.uint32),
-):
+) -> None:
+    """Compose fabric transformation matrices from separate position, orientation, and scale arrays.
+
+    Args:
+        fabric_matrices: Output fabric array of transformation matrices.
+        array_positions: Input array of positions (shape (N, 3)).
+        array_orientations: Input array of orientations as quaternions (shape (N, 4)).
+        array_scales: Input array of scales (shape (N, 3)).
+        broadcast_positions: Whether to broadcast the first position to all matrices.
+        broadcast_orientations: Whether to broadcast the first orientation to all matrices.
+        broadcast_scales: Whether to broadcast the first scale to all matrices.
+        indices: Array of indices to process.
+        mapping: Array mapping indices to fabric array positions.
+    """
     i = wp.tid()
     # resolve fabric index
     fabric_index = mapping[indices[i]]

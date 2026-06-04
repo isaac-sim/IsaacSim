@@ -1,0 +1,22 @@
+include "header.fbs";
+include "math_types.fbs";
+include "tensor.fbs";
+
+namespace isaac;
+
+// Inertial measurement unit message (orientation as Tensor, order: w, x, y, z).
+table Imu {
+  // Header (frame and timestamps).
+  header: Header (id: 0);
+
+  // Orientation as a tensor: float32, shape [4], in order [w, x, y, z].
+  orientation: Tensor (id: 1);
+
+  // Angular velocity (x, y, z) in radians per second.
+  angular_velocity: Vector3f (id: 2, native_inline);
+
+  // Linear acceleration (x, y, z) in meters per second squared.
+  linear_acceleration: Vector3f (id: 3, native_inline);
+}
+
+root_type Imu;

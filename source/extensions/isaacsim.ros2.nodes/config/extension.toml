@@ -1,32 +1,31 @@
 [package]
-version = "1.10.1"
+version = "1.18.11"
 category = "Simulation"
 title = "ROS 2 Nodes"
 description = "The ROS 2 Nodes extension provides OmniGraph nodes for ROS 2 communication. It contains publisher, subscriber, and service nodes that can be used in Action graphs to interface with ROS 2 systems. This extension depends on the isaacsim.ros2.core extension for underlying ROS 2 functionality."
 keywords = ["isaac", "ROS2", "nodes", "omniGraph"]
 changelog = "docs/CHANGELOG.md"
-readme = "docs/README.md"
+readme = "docs/Overview.md"
 preview_image = "data/preview.png"
 icon = "data/icon.png"
 writeTarget.kit = true
 writeTarget.platform = true
 
 [dependencies]
-"isaacsim.core.api" = {}
+"isaacsim.core.experimental.objects" = {}
+"isaacsim.core.experimental.prims" = {}
+"isaacsim.core.experimental.utils" = {}
 "isaacsim.core.nodes" = {}
-"isaacsim.examples.browser" = {}
-"isaacsim.gui.components" = {}
+"isaacsim.core.rendering_manager" = {}
+"isaacsim.core.simulation_manager" = {}
 "isaacsim.robot.schema" = {}
 "isaacsim.ros2.core" = {}
-"isaacsim.sensors.camera" = {}
+"isaacsim.sensors.experimental.physics" = {}
 "isaacsim.sensors.physics.nodes" = {}
-"isaacsim.sensors.physx" = {}
-"isaacsim.sensors.rtx" = {}
+"isaacsim.sensors.rtx.nodes" = {}
 "isaacsim.storage.native" = {}
 "omni.graph" = {}
 "omni.graph.tools" = {}
-"omni.kit.menu.utils" = {}
-"omni.kit.uiapp" = {}
 "omni.pip.compute" = {}
 "omni.replicator.core" = {}
 "omni.syntheticdata" = {}
@@ -56,28 +55,37 @@ exclude = ["*/rclpy/*", "*/bin", "*/__pycache__/*", "*/.git/*"]
 
 [[test]]
 name = "startup"
-dependencies = [
-    "omni.isaac.ml_archive",
-]
 args = [
     "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
 ]
 
 stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
+    "*Failed to create simulation view - physics backend may not be initialized*",
 ]
 
 [[test]]
 timeout = 1200
+enabled = true
 dependencies = [
-    "isaacsim.robot.wheeled_robots",
+    "isaacsim.robot.wheeled_robots.nodes",
+    "isaacsim.sensors.rtx",
     "isaacsim.test.utils",
     "omni.isaac.ml_archive"
 ]
+pythonTests.exclude = [
+    "isaacsim.ros2.nodes.tests.test_camera*test_rgb_golden_image_comparison*",
+    "isaacsim.ros2.nodes.tests.test_camera.TestRos2Camera.test_tick_rate_reduces_publish_frequency",
+]
+
+# TestConfiguredSrtxSensorSets is unsupported on Windows
+"filter:platform"."windows-x86_64".pythonTests.exclude = [
+    "isaacsim.ros2.nodes.tests.test_srtx_sensor_set_config.TestConfiguredSrtxSensorSets.*",
+]
 
 stdoutFailPatterns.exclude = [
-    "*[Error] [omni.graph.core.plugin] /ActionGraph/ReadLidarPCL: [/ActionGraph] no prim path found for the lidar*",
     "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_bridge_ROS2PublishJointState: [/TestGraph] Could not find target prim*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_bridge_ROS2PublishJointState: [/TestGraph] Specify targetPrim or connect Isaac Read Joint State node outputs*",
     "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_bridge_ROS2PublishImage: [/TestGraph] Width 0 or height 0 is not valid*",
     "*[Error] [omni.physx.plugin] Setting rigidBodyEnabled to false is not supported if the rigid body is part of an articulation*",
     "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_nodes_*: [/TestGraph] Unable to create ROS2 node, please check that namespace is valid*",
@@ -87,11 +95,13 @@ stdoutFailPatterns.exclude = [
     "*[Error] [omni.graph.core.plugin] Failed to create ComputeGraph \"/Graph/ROS_Nav2_Waypoint_Follower\". A graph already exists at this path*",
     "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_bridge_ROS2PublishTransformTree: [/TestGraph] Please specify at least one valid target prim for the ROS pose tree component*",
     "*[Error] [omni.physx.tensors.plugin] Failed to create simulation view: no active physics scene found*",
+    "*Failed to create simulation view - physics backend may not be initialized*",
     "*[Error] [omni.graph.core.plugin] /Graph/ROS_Odometry/ComputeOdometry: [/Graph/ROS_Odometry] The prim  is not valid. Please specify at least one valid chassis prim*",
     "*[Error] [omni.graph.core.plugin] /Graph/ROS_Odometry/TFRobot: [/Graph/ROS_Odometry] The prim  is not valid. Please specify at least one valid target prim for the ROS pose tree component*",
     "*[Error] [omni.graph.core.plugin] /Graph/ROS_TF/PublisherTF: [/Graph/ROS_TF] The prim  is not valid. Please specify at least one valid target prim for the ROS pose tree component*",
     "*[Error] [omni.graph.core.plugin] /TestGraph/PublishJointState: [/TestGraph] The prim /NonExistentPrim is not valid*",
     "*[Error] [omni.graph.core.plugin] /TestGraph/PublishJointState: [/TestGraph] Could not find target prim*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishJointState: [/TestGraph] Specify targetPrim or connect Isaac Read Joint State node outputs*",
     "*[Error] [omni.graph.core.plugin] /TestGraph/PublishTransformTree: [/TestGraph] Please specify at least one valid target prim for the ROS pose tree component*",
     "*[Error] [omni.graph.core.plugin] /TestGraph/PublishTransformTree: [/TestGraph] The prim /NonExistentPrim* is not valid. Please specify at least one valid target prim for the ROS pose tree component*",
     '*The NumPy module was reloaded*',
@@ -138,8 +148,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
     ### Extension specific args
     '--/exts/isaacsim.ros2.bridge/# ROS distro and settings centrally managed',
@@ -152,12 +164,15 @@ args = [
 
 [[test]]
 name = "enable_async_rendering"
+enabled = false
 pythonTests.include = [
     "isaacsim.ros2.nodes.tests.test_camera*test_rgb_golden_image_comparison*"
 ]
+pythonTests.exclude = []
 timeout = 1200
 dependencies = [
-    "isaacsim.robot.wheeled_robots",
+    "isaacsim.robot.wheeled_robots.nodes",
+    "isaacsim.sensors.rtx",
     "isaacsim.test.utils",
     "omni.isaac.ml_archive"
 ]
@@ -207,8 +222,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
     ### Extension specific args
     '--/exts/isaacsim.ros2.bridge/# ROS distro and settings centrally managed',
@@ -222,3 +239,6 @@ args = [
     "--/app/asyncRendering=1",
     "--/app/omni.usd/asyncHandshake=1",
 ]
+
+[documentation]
+pages = ["docs/Overview.md"]

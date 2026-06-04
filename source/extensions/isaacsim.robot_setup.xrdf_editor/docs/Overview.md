@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.robot_setup.xrdf_editor extension provides an interactive editor for creating and modifying Lula Robot Description files and cuMotion XRDF files. This extension enables users to generate collision sphere representations of robots, configure joint properties, and export robot configuration data for use with Lula-based algorithms and Isaac cuMotion.
@@ -33,17 +29,17 @@ The extension includes a visual filtering system with customizable colors for di
 
 ### File Operations and Data Management
 
-**Import/Export Capabilities**: The extension supports importing and exporting robot descriptions in both Lula YAML format and cuMotion XRDF format. It includes file format detection utilities with [is_yaml_file](isaacsim.robot_setup.xrdf_editor/isaacsim.robot_setup.xrdf_editor.is_yaml_file) and [is_xrdf_file](isaacsim.robot_setup.xrdf_editor/isaacsim.robot_setup.xrdf_editor.is_xrdf_file) functions.
+**Import/Export Capabilities**: The extension supports importing and exporting robot descriptions in both Lula YAML format and cuMotion XRDF format. It includes file format detection utilities with {func}`is_yaml_file <isaacsim.robot_setup.xrdf_editor.is_yaml_file>` and {func}`is_xrdf_file <isaacsim.robot_setup.xrdf_editor.is_xrdf_file>` functions.
 
-**File Browser Integration**: The extension provides filter functions [on_filter_xrdf_item](isaacsim.robot_setup.xrdf_editor/isaacsim.robot_setup.xrdf_editor.on_filter_xrdf_item) and [on_filter_item](isaacsim.robot_setup.xrdf_editor/isaacsim.robot_setup.xrdf_editor.on_filter_item) for file browsers to show appropriate file types and folders.
+**File Browser Integration**: The extension provides filter functions {func}`on_filter_xrdf_item <isaacsim.robot_setup.xrdf_editor.on_filter_xrdf_item>` and {func}`on_filter_item <isaacsim.robot_setup.xrdf_editor.on_filter_item>` for file browsers to show appropriate file types and folders.
 
 **Self-Collision Configuration**: The extension generates self-collision ignore rules based on joint connections between robot links, automatically creating ignore dictionaries for collision detection optimization.
 
 ## Key Components
 
-### [CollisionSphereEditor](isaacsim.robot_setup.xrdf_editor/isaacsim.robot_setup.xrdf_editor.CollisionSphereEditor)
+### {class}`CollisionSphereEditor <isaacsim.robot_setup.xrdf_editor.CollisionSphereEditor>`
 
-The [CollisionSphereEditor](isaacsim.robot_setup.xrdf_editor/isaacsim.robot_setup.xrdf_editor.CollisionSphereEditor) class serves as the core component for interactive collision sphere management. It maintains sphere data organized by link paths and provides comprehensive editing capabilities including creation, deletion, scaling, and interpolation operations. The editor supports both preview mode for testing sphere placements and permanent modifications with undo/redo tracking.
+The {class}`CollisionSphereEditor <isaacsim.robot_setup.xrdf_editor.CollisionSphereEditor>` class serves as the core component for interactive collision sphere management. It maintains sphere data organized by link paths and provides comprehensive editing capabilities including creation, deletion, scaling, and interpolation operations. The editor supports both preview mode for testing sphere placements and permanent modifications with undo/redo tracking.
 
 ### Extension Class
 

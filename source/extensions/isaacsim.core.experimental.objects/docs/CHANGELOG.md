@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.0] - 2026-03-10
+### Added
+- Add the `templates` parameter to GroundPlane to apply visual templates and set the default to `"wireframe-blue"`
+- Allow colors to be specified as case-insensitive string representations
+
+## [0.7.0] - 2026-03-04
+### Changed
+- Add Overview.md, python_api.md and updated docstrings
+
 ## [0.6.0] - 2026-02-25
 ### Added
 - Add USD `Camera`

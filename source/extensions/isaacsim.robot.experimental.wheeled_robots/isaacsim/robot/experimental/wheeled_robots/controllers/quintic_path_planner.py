@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -179,6 +179,9 @@ def quintic_polynomials_planner(
 
     Returns:
         Tuple of (time, rx, ry, ryaw, rv, ra, rj) lists for the planned trajectory.
+
+    Raises:
+        ValueError: If no trajectory satisfies the acceleration and jerk constraints.
     """
     vxs = sv * math.cos(syaw)
     vys = sv * math.sin(syaw)
@@ -231,6 +234,9 @@ def quintic_polynomials_planner(
             rj.append(j)
 
         if max([abs(i) for i in ra]) <= max_accel and max([abs(i) for i in rj]) <= max_jerk:
-            break
+            return time, rx, ry, ryaw, rv, ra, rj
 
-    return time, rx, ry, ryaw, rv, ra, rj
+    raise ValueError(
+        f"could not find a valid trajectory with max_accel={max_accel}, max_jerk={max_jerk}, "
+        f"and dt={dt} for T in [{MIN_T}, {MAX_T})"
+    )

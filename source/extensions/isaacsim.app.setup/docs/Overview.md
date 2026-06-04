@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.app.setup extension handles the initial configuration and layout setup for the Isaac Sim application. This extension configures window arrangements, application menus, and various Isaac Sim-specific UI components during application startup.
@@ -10,7 +6,7 @@ The isaacsim.app.setup extension handles the initial configuration and layout se
 
 The extension manages several key aspects of Isaac Sim application initialization:
 
-**Window Layout Management** - The [load_layout](isaacsim.app.setup/isaacsim.app.setup.load_layout) function provides programmatic control over window arrangements by loading saved layout configurations from JSON files. This allows for consistent workspace setups across different Isaac Sim sessions.
+**Window Layout Management** - The {func}`load_layout <isaacsim.app.setup.load_layout>` function provides programmatic control over window arrangements by loading saved layout configurations from JSON files. This allows for consistent workspace setups across different Isaac Sim sessions.
 
 **Application Configuration** - The extension handles core application setup including window docking order, property window delegate configuration, and menu system initialization. It establishes the standard Isaac Sim window arrangement with proper positioning for Stage, Layer, Console, Content, and Assets windows.
 
@@ -20,7 +16,7 @@ The extension manages several key aspects of Isaac Sim application initializatio
 
 ### Layout Loading
 
-The [load_layout](isaacsim.app.setup/isaacsim.app.setup.load_layout) function accepts a JSON layout file path and applies the saved window configuration:
+The {func}`load_layout <isaacsim.app.setup.load_layout>` function accepts a JSON layout file path and applies the saved window configuration:
 
 ```python
 await load_layout("path/to/layout.json", keep_windows_open=False)

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Rigid body view for Newton physics tensor interface."""
 
 from __future__ import annotations
@@ -53,7 +54,7 @@ class NewtonRigidBodyView:
         frontend: Tensor framework frontend.
     """
 
-    def __init__(self, backend: Any, frontend: Any):
+    def __init__(self, backend: Any, frontend: Any) -> None:
         self._backend = backend
         self._frontend = frontend
         self._newton_stage = backend.newton_stage
@@ -74,15 +75,15 @@ class NewtonRigidBodyView:
 
         # Initialize COM cache with identity quaternions [qx=0, qy=0, qz=0, qw=1] for orientation part
         coms_warp = self._convert_to_warp(self._coms)
-        coms_warp.fill_(0.0)
+        coms_warp.fill_(0.0)  # type: ignore[union-attr]
         # Set qw=1 for identity quaternion (index 6 is qw in [x, y, z, qx, qy, qz, qw])
         if self.count > 0:
 
-            coms_np = coms_warp.numpy()
+            coms_np = coms_warp.numpy()  # type: ignore[union-attr]
             coms_np[:, 6] = 1.0
-            coms_warp.assign(coms_np)
+            coms_warp.assign(coms_np)  # type: ignore[union-attr]
 
-    def _wrap_input_tensor(self, tensor: Any, dtype: "wp.dtype | None" = None) -> "wp.array | None":
+    def _wrap_input_tensor(self, tensor: Any, dtype: "wp.dtype | None" = None) -> "wp.array | None":  # type: ignore[name-defined]
         """Helper to wrap an input tensor as a warp array for kernel input.
 
         Args:
@@ -141,13 +142,13 @@ class NewtonRigidBodyView:
         """
         return self._backend.body_names
 
-    def update(self, dt: float):
+    def update(self, dt: float) -> None:
         """Update simulation timestamp.
 
         Args:
             dt: Time delta.
         """
-        self._sim_timestamp += dt
+        self._sim_timestamp += dt  # type: ignore[assignment]
 
     @carb.profiler.profile
     def get_transforms(self, copy: bool = copy_data) -> Any:
@@ -199,25 +200,30 @@ class NewtonRigidBodyView:
     def get_accelerations(self, copy: bool = copy_data) -> Any:
         """Get body accelerations [linear(3) + angular(3)].
 
+        Requires ``body_qdd`` to be allocated on the state via
+        ``model.request_state_attributes("body_qdd")`` before state creation.
+
         Args:
             copy: Whether to return a copy.
 
         Returns:
-            Tensor of shape (count, 6). Currently returns velocities
-            (Newton doesn't expose accelerations directly).
+            Tensor of shape (count, 6), or None if body_qdd is not available.
         """
         state = self._newton_stage.state_0
+        if state.body_qdd is None:
+            carb.log_warn("body_qdd not allocated; call model.request_state_attributes('body_qdd') before play")
+            return None
         if copy:
             wp.launch(
                 get_body_velocity,
                 dim=self._backend.count,
-                inputs=[state.body_qd, self._backend.body_indices],
+                inputs=[state.body_qdd, self._backend.body_indices],
                 outputs=[self._convert_to_warp(self._accelerations)],
                 device=str(self._frontend.device),
             )
             return self._accelerations
         else:
-            return wp.indexedarray(state.body_qd, self._backend.body_indices)
+            return wp.indexedarray(state.body_qdd, self._backend.body_indices)
 
     def get_masses(self, copy: bool = copy_data) -> Any:
         """Get body masses.
@@ -340,7 +346,7 @@ class NewtonRigidBodyView:
             return self._inv_inertias
 
     @carb.profiler.profile
-    def set_transforms(self, data: Any, indices: Any, indices_mask: Any | None = None):
+    def set_transforms(self, data: Any, indices: Any, indices_mask: Any | None = None) -> None:
         """Set body transforms.
 
         For free rigid bodies, this also updates their FREE joint coordinates.
@@ -385,7 +391,7 @@ class NewtonRigidBodyView:
         )
 
     @carb.profiler.profile
-    def set_velocities(self, data: Any, indices: Any, indices_mask: Any | None = None):
+    def set_velocities(self, data: Any, indices: Any, indices_mask: Any | None = None) -> None:
         """Set body velocities.
 
         Args:
@@ -408,7 +414,7 @@ class NewtonRigidBodyView:
         )
 
     @carb.profiler.profile
-    def set_masses(self, data: Any, indices: Any, indices_mask: Any | None = None):
+    def set_masses(self, data: Any, indices: Any, indices_mask: Any | None = None) -> None:
         """Set body masses.
 
         Args:
@@ -443,7 +449,7 @@ class NewtonRigidBodyView:
         )
 
     @carb.profiler.profile
-    def set_coms(self, data: Any, indices: Any, indices_mask: Any | None = None):
+    def set_coms(self, data: Any, indices: Any, indices_mask: Any | None = None) -> None:
         """Set body centers of mass.
 
         Position is written to Newton's body_com. Orientation is cached in _coms buffer
@@ -482,7 +488,7 @@ class NewtonRigidBodyView:
         )
 
     @carb.profiler.profile
-    def set_inertias(self, data: Any, indices: Any, indices_mask: Any | None = None):
+    def set_inertias(self, data: Any, indices: Any, indices_mask: Any | None = None) -> None:
         """Set body inertias.
 
         Args:
@@ -530,7 +536,7 @@ class NewtonRigidBodyView:
         # Always return zeros (all bodies are enabled)
         return self._disable_simulations
 
-    def set_disable_simulations(self, data: Any, indices: Any, indices_mask: Any | None = None):
+    def set_disable_simulations(self, data: Any, indices: Any, indices_mask: Any | None = None) -> None:
         """Set disable simulation flags for bodies.
 
         Newton doesn't support disabling individual bodies; this is a no-op.
@@ -560,7 +566,7 @@ class NewtonRigidBodyView:
         # Always return zeros (gravity enabled for all bodies)
         return self._disable_gravities
 
-    def set_disable_gravities(self, data: Any, indices: Any, indices_mask: Any | None = None):
+    def set_disable_gravities(self, data: Any, indices: Any, indices_mask: Any | None = None) -> None:
         """Set disable gravity flags for bodies.
 
         Newton doesn't support per-body gravity disabling; this is a no-op.
@@ -580,7 +586,7 @@ class NewtonRigidBodyView:
         indices: Any | None = None,
         is_global: bool = True,
         indices_mask: Any | None = None,
-    ):
+    ) -> None:
         """Apply forces to rigid bodies (deprecated, use apply_forces_and_torques_at_position).
 
         Args:
@@ -590,7 +596,7 @@ class NewtonRigidBodyView:
             indices_mask: Optional mask for the indices.
         """
         if indices is None:
-            indices = wp.arange(self.count, dtype=wp.int32, device=str(self._frontend.device))
+            indices = wp.arange(self.count, dtype=wp.int32, device=str(self._frontend.device))  # type: ignore[attr-defined]
 
         self.apply_forces_and_torques_at_position(force_data, None, None, indices, is_global, indices_mask)
 
@@ -603,7 +609,7 @@ class NewtonRigidBodyView:
         indices: Any,
         is_global: bool = True,
         indices_mask: Any | None = None,
-    ):
+    ) -> None:
         """Apply forces and torques to rigid bodies at specified positions.
 
         This function provides flexible force application with the following capabilities:
@@ -655,7 +661,7 @@ class NewtonRigidBodyView:
         # Apply forces to state
         wp.launch(
             apply_body_forces_at_position,
-            dim=indices_tensor.shape[0],
+            dim=indices_tensor.shape[0],  # type: ignore[union-attr]
             inputs=[
                 force_tensor,
                 torque_tensor,

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Provides a base test class that automatically times test method execution for performance monitoring."""
-
 
 import gc
 import time
@@ -50,7 +49,7 @@ class TimedAsyncTestCase(omni.kit.test.AsyncTestCase):
         >>> # [TEST TIMING] test_example: 0.100 seconds
     """
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test timing before each test method.
 
         This method is called before each test method execution to record the start time.
@@ -69,7 +68,7 @@ class TimedAsyncTestCase(omni.kit.test.AsyncTestCase):
             carb.log_error("Could not find Isaac Sim assets folder")
             return
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up and display test timing after each test method.
 
         This method is called after each test method execution to calculate and display

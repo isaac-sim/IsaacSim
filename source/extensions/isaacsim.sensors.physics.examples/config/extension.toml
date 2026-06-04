@@ -1,5 +1,5 @@
 [package]
-version = "1.1.0"
+version = "1.2.3"
 category = "Simulation"
 title = "Isaac Sim Physics Sensor Simulation Examples"
 description = "Isaac Sim Physics Sensor Simulation Examples extension provides example usage and snippets for Isaac Sim physics-based sensors."
@@ -15,7 +15,9 @@ writeTarget.kit = true
 "isaacsim.examples.browser" = {}
 "isaacsim.gui.components" = {}
 "isaacsim.sensors.experimental.physics" = {}
+"isaacsim.sensors.physics.nodes" = {}
 "isaacsim.storage.native" = {}
+"isaacsim.util.debug_draw" = {}
 
 [[python.module]]
 name = "isaacsim.sensors.physics.examples"
@@ -26,19 +28,19 @@ name = "isaacsim.sensors.physics.examples.contact_sensor"
 [[python.module]]
 name = "isaacsim.sensors.physics.examples.imu_sensor"
 
+[[python.module]]
+name = "isaacsim.sensors.physics.examples.raycast_sensor"
+
+[[python.module]]
+name = "isaacsim.sensors.physics.examples.tests"
+
 [[test]]
 name = "startup"
-dependencies = [
-    "omni.isaac.ml_archive",
-]
 args = [
     "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
 ]
 
 [[test]]
-dependencies = [
-    "omni.isaac.ml_archive",
-]
 stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
 ]
@@ -83,8 +85,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 

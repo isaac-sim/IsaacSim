@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.sensors.physics.ui extension provides menu integration for Isaac Sim physics-based sensor simulation. This extension adds menu items that enable users to create and configure physics sensors through the application's menu system, making sensor creation accessible through standard UI interactions.

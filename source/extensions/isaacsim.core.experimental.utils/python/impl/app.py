@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Functions for interacting with the application and its available extensions.
-"""
+"""Functions for interacting with the application and its available extensions."""
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import omni.kit.app
 import omni.timeline
@@ -42,17 +40,17 @@ def update_app(*, steps: int = 1, callback: Callable[[int, int], bool | None] | 
         >>> import isaacsim.core.experimental.utils.app as app_utils
         >>>
         >>> # perform one update step
-        >>> app_utils.update_app()
+        >>> app_utils.update_app()  # doctest: +SKIP
         >>>
         >>> # perform 10 update steps
-        >>> app_utils.update_app(steps=10)
+        >>> app_utils.update_app(steps=10)  # doctest: +SKIP
         >>>
         >>> # perform 10 update steps with a callback
         >>> def callback(step, steps):
         ...     print(f"update step {step}/{steps}")
         ...     return step < 3  # stop after 3 steps (return False to break the loop)
         ...
-        >>> app_utils.update_app(steps=10, callback=callback)
+        >>> app_utils.update_app(steps=10, callback=callback)  # doctest: +SKIP
         update step 1/10
         update step 2/10
         update step 3/10
@@ -192,6 +190,9 @@ def stop(*, commit: bool | None = True) -> None:
 def is_playing() -> bool:
     """Check if the application timeline is playing.
 
+    Returns:
+        Whether the application timeline is playing.
+
     Example:
 
     .. code-block:: python
@@ -206,6 +207,9 @@ def is_playing() -> bool:
 
 def is_paused() -> bool:
     """Check if the application timeline is paused.
+
+    Returns:
+        Whether the application timeline is paused.
 
     Example:
 
@@ -222,6 +226,9 @@ def is_paused() -> bool:
 
 def is_stopped() -> bool:
     """Check if the application timeline is stopped.
+
+    Returns:
+        Whether the application timeline is stopped.
 
     Example:
 

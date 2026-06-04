@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,6 +32,7 @@
 #include <isaacsim/ros2/core/Ros2Types.h>
 
 #include <chrono>
+#include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -60,11 +61,19 @@ class Ros2TestBase
 public:
     /**
      * @brief Constructor that loads the ROS2 factory for the specified distribution
-     * @param distro ROS2 distribution name (default: "humble")
+     * @param distro ROS2 distribution name (default: value of ROS_DISTRO environment variable,
+     *               falling back to "humble" when unset).  Using the sourced distro avoids
+     *               loading an ABI-incompatible backend on top of the ROS 2 runtime libraries
+     *               already loaded by the core plugin.
      */
-    explicit Ros2TestBase(const std::string& distro = "humble")
+    explicit Ros2TestBase(const std::string& distro = "")
         : m_distro(distro), m_factory(nullptr), m_context(nullptr), m_node(nullptr)
     {
+        if (m_distro.empty())
+        {
+            const char* envDistro = std::getenv("ROS_DISTRO");
+            m_distro = (envDistro && *envDistro) ? std::string(envDistro) : std::string("humble");
+        }
         m_factory = loadRos2Factory(m_distro);
     }
 
@@ -275,10 +284,10 @@ public:
     }
 
 protected:
-    std::string m_distro;
-    std::shared_ptr<isaacsim::ros2::core::Ros2Factory> m_factory;
-    std::shared_ptr<isaacsim::ros2::core::Ros2ContextHandle> m_context;
-    std::shared_ptr<isaacsim::ros2::core::Ros2NodeHandle> m_node;
+    std::string m_distro; ///< Active ROS 2 distribution name.
+    std::shared_ptr<isaacsim::ros2::core::Ros2Factory> m_factory; ///< ROS 2 factory for creating contexts and nodes.
+    std::shared_ptr<isaacsim::ros2::core::Ros2ContextHandle> m_context; ///< ROS 2 context handle for the test.
+    std::shared_ptr<isaacsim::ros2::core::Ros2NodeHandle> m_node; ///< ROS 2 node handle for the test.
 };
 
 /**

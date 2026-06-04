@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,7 +30,7 @@ from omni.kit.helper.file_utils import (
     asset_types,
     get_latest_urls_from_event_queue,
 )
-from omni.kit.menu.utils import IconMenuDelegate, LayoutSourceSearch, MenuItemDescription, MenuLayout
+from omni.kit.menu.utils import IconMenuDelegate, MenuItemDescription, MenuLayout
 from omni.ui import color as cl
 
 from .file_actions import deregister_actions, register_actions
@@ -71,7 +71,7 @@ class FileMenuExtension:
         ext_id: Extension identifier provided by the extension manager.
     """
 
-    def __init__(self, ext_id: str = ""):
+    def __init__(self, ext_id: str = "") -> None:
         super().__init__()
         omni.kit.menu.utils.set_default_menu_priority("File", -10)
         self._ext_name = ""
@@ -146,7 +146,7 @@ class FileMenuExtension:
 
         omni.kit.menu.utils.add_layout(self.__menu_layout)
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Remove menu items and deregister file actions.
 
         Example:
@@ -168,7 +168,7 @@ class FileMenuExtension:
         self._event_sub = None
         self._stage_event_subscription = None
 
-    def _on_stage_event(self, event: carb.events.IEvent):
+    def _on_stage_event(self, event: carb.events.IEvent) -> None:
         """Handle stage events that require rebuilding the menu.
 
         Args:
@@ -176,7 +176,7 @@ class FileMenuExtension:
         """
         self._build_file_menu()
 
-    def _build_file_menu(self):
+    def _build_file_menu(self) -> None:
         """Build the File menu items."""
         # setup menu
         self._file_menu_list = [
@@ -243,7 +243,7 @@ class FileMenuExtension:
         self._build_sample_menu()
         omni.kit.menu.utils.add_menu_items(self._file_menu_list, "File", -10, delegate=self._file_delegate)
 
-    def _build_recent_menu(self, event: carb.events.IEvent | None = None):
+    def _build_recent_menu(self, event: carb.events.IEvent | None = None) -> None:
         """Build or refresh the Open Recent submenu.
 
         Args:

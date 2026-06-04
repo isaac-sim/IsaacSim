@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,12 +36,8 @@ from usd.schema.isaac.robot_schema.math import (
     Transform,
     Vec3,
     VecN,
-    _gf_quat_to_array,
-    _gf_vec3_to_array,
     _mat4_to_transform,
     _prim_pose_in_robot_frame,
-    adjoint,
-    axis_angle_to_quat,
     quat_mul,
     quat_rotate,
     quat_to_matrix,
@@ -53,6 +49,7 @@ from usd.schema.isaac.robot_schema.utils import (
     _compute_zero_config_poses,
     _find_tree_node,
     _get_joint_local_transform,
+    _get_world_transform_matrix,
 )
 
 _AXIS_VEC: dict[str, np.ndarray] = {
@@ -103,6 +100,7 @@ def _joint_motion_matrix(joint_prim: Any, q_value: float) -> Any:
 
     Returns:
         pxr.Gf.Matrix4d representing the joint motion.
+
     """
     import pxr
 
@@ -132,13 +130,13 @@ def _apply_world_transform(prim: Any, world_mat: Any) -> None:
     Args:
         prim: USD prim to update.
         world_mat: Desired world-space pxr.Gf.Matrix4d.
+
     """
-    import omni.usd
     import pxr
 
     parent = prim.GetParent()
     if parent and parent.IsValid():
-        parent_world = pxr.Gf.Matrix4d(omni.usd.get_world_transform_matrix(parent))
+        parent_world = pxr.Gf.Matrix4d(_get_world_transform_matrix(parent))
         local = world_mat * parent_world.GetInverse()
     else:
         local = pxr.Gf.Matrix4d(world_mat)
@@ -177,11 +175,11 @@ def _read_subtree_transforms(node: Any, transforms: dict[str, Any]) -> None:
     Args:
         node: Robot link tree node (from GenerateRobotLinkTree).
         transforms: Dict to populate: prim-path str → pxr.Gf.Matrix4d.
+
     """
-    import omni.usd
     import pxr
 
-    transforms[str(node.prim.GetPath())] = pxr.Gf.Matrix4d(omni.usd.get_world_transform_matrix(node.prim))
+    transforms[str(node.prim.GetPath())] = pxr.Gf.Matrix4d(_get_world_transform_matrix(node.prim))
     for child in node.children:
         _read_subtree_transforms(child, transforms)
 
@@ -192,15 +190,15 @@ def _rigid_propagate(node: Any, old_transforms: dict[str, Any]) -> None:
     Args:
         node: Robot link tree node to reposition.
         old_transforms: World-transform snapshot taken before any parent moves.
+
     """
-    import omni.usd
     import pxr
 
     parent_path = str(node.parent.prim.GetPath())
     node_path = str(node.prim.GetPath())
-    parent_new = pxr.Gf.Matrix4d(omni.usd.get_world_transform_matrix(node.parent.prim))
+    parent_new = pxr.Gf.Matrix4d(_get_world_transform_matrix(node.parent.prim))
     parent_old = old_transforms.get(parent_path, parent_new)
-    body_old = old_transforms.get(node_path, pxr.Gf.Matrix4d(omni.usd.get_world_transform_matrix(node.prim)))
+    body_old = old_transforms.get(node_path, pxr.Gf.Matrix4d(_get_world_transform_matrix(node.prim)))
     _apply_world_transform(node.prim, body_old * parent_old.GetInverse() * parent_new)
 
 
@@ -224,8 +222,8 @@ def _fk_propagate_node(
         joint_dict: Joint prim-path to value (radians or meters).
         old_transforms: World-transform snapshot taken before any modifications.
         affected: True when an ancestor was already repositioned.
+
     """
-    import omni.usd
     import pxr
 
     joint_prim = node._joint_to_parent
@@ -235,7 +233,7 @@ def _fk_propagate_node(
         joint_path = str(joint_prim.GetPath())
 
         if joint_path in joint_dict:
-            parent_world = pxr.Gf.Matrix4d(omni.usd.get_world_transform_matrix(node.parent.prim))
+            parent_world = pxr.Gf.Matrix4d(_get_world_transform_matrix(node.parent.prim))
             joint_usd = pxr.UsdPhysics.Joint(joint_prim)
             local0 = _get_joint_local_transform(joint_usd, 0)
             local1 = _get_joint_local_transform(joint_usd, 1)
@@ -268,6 +266,7 @@ def _set_joint_attributes_stage(stage: Any, joint_dict: dict[str, float]) -> Non
     Args:
         stage: USD stage.
         joint_dict: Joint prim-path to value (radians or meters).
+
     """
     import pxr
 
@@ -309,6 +308,7 @@ class KinematicChain:
         start_prim: Chain start link or site prim. Optional.
         end_prim: Chain end link or site prim. Optional.
         debug: Enable verbose chain-building and FK debug output.
+
     """
 
     def __init__(
@@ -343,8 +343,8 @@ class KinematicChain:
         Returns:
             Movable joints in FK order. Each Joint carries its prim_path so
             the IK solution can be mapped back to USD.
+
         """
-        import omni.usd
         import pxr
 
         if self._tree_root is None:
@@ -352,7 +352,7 @@ class KinematicChain:
 
         # ---- 1. Compute zero-config body world poses ----
         zero_world = _compute_zero_config_poses(self._tree_root)
-        robot_world = pxr.Gf.Matrix4d(omni.usd.get_world_transform_matrix(self._robot_prim))
+        robot_world = pxr.Gf.Matrix4d(_get_world_transform_matrix(self._robot_prim))
         robot_inv = robot_world.GetInverse()
 
         # ---- 2. Resolve each prim to its tree node (parent Link for Sites) ----
@@ -382,8 +382,8 @@ class KinematicChain:
                 parent_path = str(parent.GetPath())
                 if parent_path in zero_world:
                     parent_zero = zero_world[parent_path]
-                    parent_cur = pxr.Gf.Matrix4d(omni.usd.get_world_transform_matrix(parent))
-                    site_cur = pxr.Gf.Matrix4d(omni.usd.get_world_transform_matrix(prim))
+                    parent_cur = pxr.Gf.Matrix4d(_get_world_transform_matrix(parent))
+                    site_cur = pxr.Gf.Matrix4d(_get_world_transform_matrix(prim))
                     site_local = site_cur * parent_cur.GetInverse()
                     return _mat4_to_transform(site_local * parent_zero * robot_inv)
             elif prim_path in zero_world:
@@ -573,6 +573,7 @@ class KinematicChain:
 
         Returns:
             ``(end_effector_transform, per_joint_transforms)`` in chain-local frame.
+
         """
         T = Transform()
         chain: list[Transform] = []
@@ -606,6 +607,7 @@ class KinematicChain:
 
         Returns:
             ``(end_effector_transform, 6×N_jacobian)`` in chain-local frame.
+
         """
         joints = self._joints
         n = len(joints)
@@ -655,6 +657,7 @@ class KinematicChain:
 
         Returns:
             Mapping of joint prim-path to value.
+
         """
         all_joints: dict[str, float] = {}
         if self._tree_root is None:
@@ -683,6 +686,7 @@ class KinematicChain:
 
         Returns:
             Mapping of joint prim-path to value (radians or meters).
+
         """
         all_states = self._read_all_joint_states()
         chain_paths = {j.prim_path for j in self._joints}
@@ -693,6 +697,7 @@ class KinematicChain:
 
         Args:
             joint_dict: Joint prim-path to value (radians or meters).
+
         """
         _set_joint_attributes_stage(self._stage, joint_dict)
 
@@ -704,6 +709,7 @@ class KinematicChain:
 
         Args:
             joint_dict: Joint prim-path to value (radians or meters).
+
         """
         if not joint_dict or self._tree_root is None:
             return
@@ -730,8 +736,8 @@ class KinematicChain:
         Args:
             joint_dict: Joint prim-path to value (radians or meters).
             anchor_prim: Prim to hold fixed. Defaults to :attr:`start_prim`.
+
         """
-        import omni.usd
         import pxr
 
         anchor = anchor_prim if anchor_prim is not None else self._start_prim
@@ -743,7 +749,7 @@ class KinematicChain:
         full_joints = self._read_all_joint_states()
         full_joints.update(joint_dict)
 
-        anchor_before = pxr.Gf.Matrix4d(omni.usd.get_world_transform_matrix(anchor))
+        anchor_before = pxr.Gf.Matrix4d(_get_world_transform_matrix(anchor))
 
         old_transforms: dict[str, Any] = {}
         _read_subtree_transforms(self._tree_root, old_transforms)
@@ -751,10 +757,10 @@ class KinematicChain:
         for child in self._tree_root.children:
             _fk_propagate_node(self._stage, child, full_joints, old_transforms, affected=False)
 
-        anchor_after = pxr.Gf.Matrix4d(omni.usd.get_world_transform_matrix(anchor))
+        anchor_after = pxr.Gf.Matrix4d(_get_world_transform_matrix(anchor))
         C = anchor_after.GetInverse() * anchor_before
 
-        root_world = pxr.Gf.Matrix4d(omni.usd.get_world_transform_matrix(self._tree_root.prim))
+        root_world = pxr.Gf.Matrix4d(_get_world_transform_matrix(self._tree_root.prim))
         _apply_world_transform(self._tree_root.prim, root_world * C)
 
         old_corrected: dict[str, Any] = {}

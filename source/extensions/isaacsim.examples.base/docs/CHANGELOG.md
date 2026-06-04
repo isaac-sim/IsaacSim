@@ -1,4 +1,11 @@
 # Changelog
+## [1.3.1] - 2026-03-04
+### Changed
+- Changed default physics device to CPU in BaseSampleExperimental
+
+### Fixed
+- Fixed physics device reapplication after simulation reset in BaseSampleExperimental
+
 ## [1.3.0] - 2026-03-04
 ### Changed
 - Added Overview.md, python_api.md and updated docstrings

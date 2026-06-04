@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,8 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Recorder for wall-clock runtime per benchmark phase."""
 
+"""Recorder for wall-clock runtime per benchmark phase."""
 
 import omni.kit.app
 
@@ -32,13 +32,13 @@ class RuntimeRecorder(MeasurementDataRecorder):
         context: Input context for the recorder.
     """
 
-    def __init__(self, context: InputContext | None = None):
+    def __init__(self, context: InputContext | None = None) -> None:
         self.context = context
         self._start_ms: float = 0.0
         self._elapsed_ms: float | None = None
         self._phase: str | None = None
 
-    def start_collecting(self):
+    def start_collecting(self) -> None:
         """Start timing.
 
         Example:
@@ -53,7 +53,7 @@ class RuntimeRecorder(MeasurementDataRecorder):
         self._start_ms = omni.kit.app.get_app().get_time_since_start_ms()
         logger.info("RuntimeRecorder: Started timing at %fms", self._start_ms)
 
-    def stop_collecting(self):
+    def stop_collecting(self) -> None:
         """Stop timing.
 
         Example:

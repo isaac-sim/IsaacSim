@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.17.1] - 2026-04-28
+### Changed
+- Cache `arange` index arrays globally in `ops.resolve_indices` (keyed by `(count, dtype, device)`) so repeated `x=None` calls across all callers reuse the same Warp array without re-allocating
+
+## [0.17.0] - 2026-04-24
+### Added
+- Add `upgrade_prim_semantics_to_labels` to semantics utils for migrating deprecated `Semantics.SemanticsAPI` to `UsdSemantics.LabelsAPI`
+
+## [0.16.2] - 2026-04-17
+### Fixed
+- Fix docstring example in `get_simstate_mode()`
+
+## [0.16.1] - 2026-04-16
+### Added
+- Add `SimStateMode` enum and `get_simstate_mode()` for SimState backend selection
+
+## [0.16.0] - 2026-04-03
+### Changed
+- **Breaking:** `euler_angles_to_quaternion` and `euler_angles_to_rotation_matrix` now expect `[roll, pitch, yaw]` (XYZ) input order for both extrinsic and intrinsic conventions, enabling clean euler-to-quaternion-to-euler round trips
+
+## [0.15.0] - 2026-04-01
+### Added
+- Add `get_relative_transform` to xform utils for computing relative transforms between USD prims
+- Add `compute_relative_transform` to transform utils for computing relative transforms from world matrices (accepts `list`, `np.ndarray`, or `wp.array`)
+
+## [0.14.0] - 2026-03-25
+### Added
+- Add `look_at_matrix` to `transform` to compute a USD camera transform (`Gf.Matrix4d`) from eye and target positions, with automatic collinearity fallback
+
+## [0.13.1] - 2026-03-20
+### Changed
+- Skip update_app tests in async environment
+
+## [0.13.0] - 2026-03-10
+### Added
+- Add Isaac Sim's `gridroom` stage template
+
+## [0.12.0] - 2026-03-04
+### Changed
+- Add Overview.md, python_api.md and updated docstrings
+
 ## [0.11.4] - 2026-02-06
 ### Changed
 - Update deprecated Warp API calls to their updated names

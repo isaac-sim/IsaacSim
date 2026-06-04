@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for ROS 2 service OmniGraph nodes."""
+
 import importlib
 
 import omni.graph.core as og
 import omni.kit.test
-from isaacsim.core.utils.stage import create_new_stage_async
-
-from .common import ROS2TestCase
+from isaacsim.core.experimental.utils import stage as stage_utils
+from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 
 # Each test case exercises writeNodeAttributeFromMessage for specific primitive types
 # by creating a service client/server pair and verifying that request fields are correctly
@@ -87,16 +88,20 @@ SERVICE_FIELD_TYPE_CASES = [
 
 
 class TestRos2Service(ROS2TestCase):
+    """Test suite for ros2 service."""
+
     async def setUp(self):
+        """Set up test fixtures."""
         await super().setUp()
-        await create_new_stage_async()
+        await stage_utils.create_new_stage_async()
 
     async def tearDown(self):
+        """Tear down test fixtures."""
         await super().tearDown()
 
     def _create_service_graph(self, graph_path, service_name, package, subfolder, message):
         """Create a service client/server action graph and return (graph, server_req_node, client_node)."""
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": graph_path, "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
@@ -133,9 +138,7 @@ class TestRos2Service(ROS2TestCase):
 
     # ----------------------------------------------------------------------
     async def test_service(self):
-        import builtin_interfaces.msg
-        import rclpy
-
+        """Test service."""
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
 

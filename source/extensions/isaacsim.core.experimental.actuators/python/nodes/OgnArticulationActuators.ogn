@@ -1,0 +1,54 @@
+{
+    "ArticulationActuators": {
+        "version": 1,
+        "description": [
+            "Drives an articulation via Newton actuators parsed from USD.",
+            "On each execIn pulse: lazily constructs an ArticulationActuators instance for the given",
+            "robot path, applies any feedforward effort targets, and (when autoStepPrePhysics is false)",
+            "calls step_actuators with the provided stepDt.",
+            "When autoStepPrePhysics is true the step is driven automatically by the pre-physics callback",
+            "and execIn only applies feedforward commands."
+        ],
+        "language": "Python",
+        "categories": {
+            "newtonActuators": "Nodes implementing Newton Actuator functionality"
+        },
+        "metadata": {
+            "uiName": "Articulation Actuators"
+        },
+        "$categoryDefinitions": "config/CategoryDefinition.json",
+        "icon": "icons/isaac-sim.svg",
+        "inputs": {
+            "execIn": {
+                "type": "execution",
+                "description": "Trigger. No-op for physics stepping when autoStepPrePhysics is true."
+            },
+            "robotPath": {
+                "type": "string",
+                "description": "Path to the robot articulation root prim. Changing this value after initialization destroys and recreates the ArticulationActuators instance."
+            },
+            "autoStepPrePhysics": {
+                "type": "bool",
+                "description": "When true (default), ArticulationActuators registers a pre-physics callback and steps automatically each tick. When false, step_actuators is called manually on each execIn using stepDt.",
+                "default": true
+            },
+            "stepDt": {
+                "type": "double",
+                "description": "Physics timestep in seconds used for manual stepping. Only consumed when autoStepPrePhysics is false.",
+                "default": 0.016667
+            },
+            "feedforwardCommand": {
+                "type": "float[]",
+                "description": "Per-DOF feedforward effort targets [N or N·m]. Applied via set_dof_feedforward_effort_targets on every execIn. Empty array skips the call."
+            },
+            "indices": {
+                "type": "int[]",
+                "description": "Articulation instance indices to which feedforwardCommand is applied. Empty array applies to all instances."
+            },
+            "dofIndices": {
+                "type": "int[]",
+                "description": "DOF indices to which feedforwardCommand is applied. Empty array applies to all DOFs."
+            }
+        }
+    }
+}

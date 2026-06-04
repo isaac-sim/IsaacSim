@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,18 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 """Tests for NVBlox functionality in Isaac Sim."""
-
-
-import carb
 
 # NOTE:
 #   omni.kit.test - std python's unittest module with additional wrapping to add suport for async/await tests
 #   For most things refer to unittest docs: https://docs.python.org/3/library/unittest.html
-import omni.kit.test
-from isaacsim.core.experimental.utils.stage import open_stage_async
-from isaacsim.storage.native import get_assets_root_path_async
 
 # Disabled test due to issues with sensor paths not working correctly in test setup.
 # class TestNvBloxScenes(omni.kit.test.AsyncTestCase):

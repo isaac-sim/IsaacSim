@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Extension that provides a Hello World example demonstrating basic Isaac Sim scripting concepts through interactive tutorials."""
-
 
 import os
 
@@ -35,7 +34,7 @@ class HelloWorldExtension(omni.ext.IExt):
     through practical demonstrations and hands-on interaction.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize the Hello World extension.
 
         Sets up the example UI template and registers it with the examples browser.
@@ -64,7 +63,7 @@ class HelloWorldExtension(omni.ext.IExt):
             category=self.category,
         )
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up the Hello World extension.
 
         Deregisters the example from the examples browser.

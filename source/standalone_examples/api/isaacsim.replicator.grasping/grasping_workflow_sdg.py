@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Demonstrate grasp pose generation and evaluation using the grasping manager."""
+
 from isaacsim import SimulationApp
 
 simulation_app = SimulationApp(launch_config={"headless": False})
@@ -22,7 +24,7 @@ import os
 
 import omni.kit.app
 import omni.usd
-from isaacsim.core.utils.extensions import get_extension_path_from_name
+from isaacsim.core.experimental.utils.app import get_extension_path as get_extension_path_from_name
 from isaacsim.storage.native import get_assets_root_path
 
 # Make sure the grasping extension is loaded and enabled
@@ -41,6 +43,7 @@ def run_example(
     gripper_path=None,
     object_prim_path=None,
 ):
+    """Run grasp pose generation and physics-based evaluation workflow."""
     assets_root_path = get_assets_root_path()
     print(f"Assets root path: {assets_root_path}")
     stage_url = assets_root_path + stage_path
@@ -141,5 +144,48 @@ output_dir = os.path.join(os.getcwd(), "xarm_antipodal")
 
 run_example(stage_path=stage_path, config_path=config_path, output_dir=output_dir)
 
+# <start-grasping-workflow-sdg-test>
+import argparse
+import sys
+
+from isaacsim.core.utils.extensions import enable_extension
+
+enable_extension("isaacsim.test.utils")
+from isaacsim.test.utils.file_validation import validate_folder_contents
+
+test_parser = argparse.ArgumentParser()
+test_parser.add_argument(
+    "--test",
+    action="store_true",
+    help="Validate captured output files against expected counts and exit.",
+)
+test_args, _ = test_parser.parse_known_args()
+
+if test_args.test:
+    # Pose generation requires the optional rtree dependency; skip validation if it is missing
+    # to match the behavior of the in-extension test (test_grasping_workflow.py).
+    try:
+        import rtree  # noqa: F401
+
+        rtree_available = True
+    except Exception as e:
+        print(f"[SDG][Test] Skipping validation - 'rtree' dependency not available: {e}")
+        rtree_available = False
+
+    if rtree_available:
+        # The xarm_antipodal_soup_can.yaml sampler config produces 4 evaluated grasp poses,
+        # each written as capture_<i>.yaml (matches the in-extension test's expected count).
+        expected_yaml_count = 4
+        ok = validate_folder_contents(
+            path=output_dir,
+            recursive=True,
+            expected_counts={"yaml": expected_yaml_count},
+            fail_on_empty_files=True,
+        )
+        if not ok:
+            print(f"[SDG][Test][FAIL] Output validation failed for {output_dir}")
+            sys.exit(1)
+        print(f"[SDG][Test][PASS] Output validation succeeded for {output_dir}")
+# <end-grasping-workflow-sdg-test>
 
 simulation_app.close()

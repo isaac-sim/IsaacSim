@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Manages grasp pose generation, simulation, and evaluation for robotic grasping workflows."""
-
 
 import os
 from dataclasses import asdict, dataclass, field
@@ -62,8 +61,8 @@ class GraspPhase:
     simulation_step_dt: float = DEFAULT_SIMULATION_STEP_DT  # Simulation step dt for the phase
     """Simulation step dt for the phase."""
 
-    def add_joint(self, joint_path: str, target_position: float = 0):
-        """Adds a joint with its target position to this grasp phase.
+    def add_joint(self, joint_path: str, target_position: float = 0) -> None:
+        """Add a joint with its target position to this grasp phase.
 
         Args:
             joint_path: Path to the joint to add.
@@ -71,8 +70,8 @@ class GraspPhase:
         """
         self.joint_drive_targets[joint_path] = target_position
 
-    def remove_joint(self, joint_path: str):
-        """Removes a joint from this grasp phase if it exists.
+    def remove_joint(self, joint_path: str) -> None:
+        """Remove a joint from this grasp phase if it exists.
 
         Args:
             joint_path: Path to the joint to remove.
@@ -81,7 +80,7 @@ class GraspPhase:
             del self.joint_drive_targets[joint_path]
 
     def has_joint(self, joint_path: str) -> bool:
-        """Checks if a joint exists in this grasp phase.
+        """Check if a joint exists in this grasp phase.
 
         Args:
             joint_path: Path to the joint to check.
@@ -92,7 +91,7 @@ class GraspPhase:
         return joint_path in self.joint_drive_targets
 
     def get_joint_target(self, joint_path: str) -> float:
-        """Gets the target position for a joint in this grasp phase.
+        """Get the target position for a joint in this grasp phase.
 
         Args:
             joint_path: Path to the joint.
@@ -124,7 +123,7 @@ class GraspingManager:
     pregrasp positions, simulation parameters, and grasp evaluation results throughout the workflow.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         # List of the grasp poses to be tested
         self.grasp_locations: list[Gf.Vec3d] = []
         self.grasp_orientations: list[Gf.Quatd] = []
@@ -162,7 +161,7 @@ class GraspingManager:
         self._workflow_printed_messages: set = set()
         self._first_write_failure_logged_this_workflow: bool = False
 
-    def clear(self):
+    def clear(self) -> None:
         """Clear all phases, poses, and reset any physics scene references."""
         self.grasp_phases = []
         self.grasp_locations = []
@@ -177,8 +176,8 @@ class GraspingManager:
         self._workflow_printed_messages.clear()
         self._first_write_failure_logged_this_workflow = False
 
-    def _clear_all_simulation_aspects(self):
-        """Resets all simulation aspects, including direct physics, temporary scenes, and timeline."""
+    def _clear_all_simulation_aspects(self) -> None:
+        """Reset all simulation aspects, including direct physics, temporary scenes, and timeline."""
         stage = omni.usd.get_context().get_stage()
 
         # Clear direct physics simulation and temporary scene
@@ -192,8 +191,8 @@ class GraspingManager:
         # Clear timeline-based simulation
         grasping_utils.stop_timeline()
 
-    def clear_simulation(self, simulate_using_timeline: bool):
-        """Resets the physics simulation state, either for direct physics stepping or timeline-based simulation.
+    def clear_simulation(self, simulate_using_timeline: bool) -> None:
+        """Reset the physics simulation state, either for direct physics stepping or timeline-based simulation.
 
         If `simulate_using_timeline` is False, this also handles the cleanup of any temporary
         physics scene created by the grasping manager.
@@ -212,17 +211,17 @@ class GraspingManager:
                     stage.RemovePrim(scene_path)
             self._temp_grasping_physics_scene = None
 
-    def clear_gripper(self):
+    def clear_gripper(self) -> None:
         """Clear the gripper prim reference."""
         self._gripper_prim = None
         self.joint_pregrasp_states.clear()
 
-    def clear_object(self):
+    def clear_object(self) -> None:
         """Clear the object prim reference."""
         self._object_prim_path = None
 
     # --- Results ---
-    def set_results_output_dir(self, dir_path: str | None):
+    def set_results_output_dir(self, dir_path: str | None) -> None:
         """Set the output directory for grasp results.
 
         Args:
@@ -248,7 +247,7 @@ class GraspingManager:
         """
         return self._results_output_dir
 
-    def set_overwrite_results_output(self, overwrite: bool):
+    def set_overwrite_results_output(self, overwrite: bool) -> None:
         """Set whether to overwrite or find the next available index for result files.
 
         Args:
@@ -291,7 +290,7 @@ class GraspingManager:
         return False
 
     @property
-    def gripper_path(self):
+    def gripper_path(self) -> str:
         """Path string of the currently set gripper prim.
 
         Returns:
@@ -300,7 +299,7 @@ class GraspingManager:
         return str(self._gripper_prim.GetPath()) if self._gripper_prim else ""
 
     @property
-    def gripper_prim(self):
+    def gripper_prim(self) -> Usd.Prim | None:
         """Gripper prim reference.
 
         Returns:
@@ -308,24 +307,24 @@ class GraspingManager:
         """
         return self._gripper_prim
 
-    def set_object_prim_path(self, path: str):
-        """Sets the object prim path for grasping operations.
+    def set_object_prim_path(self, path: str) -> None:
+        """Set the object prim path for grasping operations.
 
         Args:
             path: Path to the object prim.
         """
         self._object_prim_path = path
 
-    def get_object_prim_path(self):
-        """Gets the current object prim path.
+    def get_object_prim_path(self) -> str | None:
+        """Get the current object prim path.
 
         Returns:
             The object prim path if set.
         """
         return self._object_prim_path
 
-    def get_object_prim(self):
-        """Gets the object prim for grasping operations.
+    def get_object_prim(self) -> Usd.Prim | None:
+        """Get the object prim for grasping operations.
 
         Returns:
             The object prim if the path is valid and the prim exists.
@@ -437,8 +436,8 @@ class GraspingManager:
         file_path: str,
         components: list[str] | None = None,
         overwrite: bool = False,
-    ):
-        """Saves the current GraspingManager state to a YAML configuration file.
+    ) -> None:
+        """Save the current GraspingManager state to a YAML configuration file.
 
         Args:
             file_path: The path to save the configuration file.
@@ -494,7 +493,7 @@ class GraspingManager:
         grasping_utils.write_yaml_config(file_path, config, overwrite=overwrite)
 
     def load_config(self, file_path: str, components: list[str] | None = None) -> dict[str, str]:
-        """Loads GraspingManager state from a YAML configuration file.
+        """Load GraspingManager state from a YAML configuration file.
 
         Args:
             file_path: The path to the configuration file.
@@ -511,7 +510,7 @@ class GraspingManager:
         all_short_names = {"gripper", "phases", "object", "pregrasp", "poses", "sampler"}
         requested_short_names = set(components) if components is not None else all_short_names
 
-        load_status = {key: "Not requested" for key in all_short_names}
+        load_status = dict.fromkeys(all_short_names, "Not requested")
         for key in requested_short_names:
             load_status[key] = "Requested, pending"
 
@@ -562,7 +561,7 @@ class GraspingManager:
                                 carb.log_warn("Invalid phase format in config, skipping phase.")
                                 continue
                             valid_phase = True
-                            for joint_path_val in phase_config.get("joint_drive_targets", {}).keys():
+                            for joint_path_val in phase_config.get("joint_drive_targets", {}):
                                 stage = omni.usd.get_context().get_stage()
                                 joint_prim = stage.GetPrimAtPath(joint_path_val) if stage else None
                                 if (
@@ -578,7 +577,7 @@ class GraspingManager:
                                 validated_phases.append(phase_config)
 
                         if invalid_joint_paths:
-                            msg = f"Config references invalid/missing/non-joint/mismatched joint paths under gripper '{current_gripper_path}': {', '.join(sorted(list(invalid_joint_paths)))}."
+                            msg = f"Config references invalid/missing/non-joint/mismatched joint paths under gripper '{current_gripper_path}': {', '.join(sorted(invalid_joint_paths))}."
                             carb.log_warn(msg)
                             if validated_phases:
                                 self.grasp_phases = []
@@ -785,13 +784,13 @@ class GraspingManager:
         final_status = {key: status for key, status in load_status.items() if key in requested_short_names}
         return final_status
 
-    def request_workflow_stop(self):
+    def request_workflow_stop(self) -> None:
         """Request the current grasp evaluation workflow to stop gracefully."""
         self._workflow_stop_requested = True
         # Use _log_once for consistency, ensuring it prints if not already part of a workflow log
         self._log_once("Workflow stop requested by user.", "print")
 
-    def _log_once(self, message: str, level: str = "info"):
+    def _log_once(self, message: str, level: str = "info") -> None:
         """Logs a message once per workflow run based on the message string.
 
         Args:
@@ -802,12 +801,12 @@ class GraspingManager:
             if level == "info":
                 carb.log_info(message)
             elif level == "warn":
-                carb.log_warn(message)
+                carb.log_info(message)
             elif level == "print":
                 print(message)
             else:
                 carb.log_warn(f"_log_once called with unknown level '{level}': {message}")
-                print(message)  # Default to print for unknown level
+                print(message)  # Default to log_info for unknown level
             self._workflow_printed_messages.add(message)
 
     # --- Simulation ---
@@ -1131,8 +1130,8 @@ class GraspingManager:
         isolate_simulation: bool = False,
         simulate_using_timeline: bool = False,
         progress_callback: callable = None,
-    ):
-        """Evaluates a list of grasp poses by simulating the grasp phases for each.
+    ) -> None:
+        """Evaluate a list of grasp poses by simulating the grasp phases for each.
 
         Args:
             grasp_poses: A list of tuples, where each tuple contains (location, orientation) for a grasp pose.
@@ -1151,7 +1150,6 @@ class GraspingManager:
         # Run the workflow for each grasp pose
         for idx, (world_location, world_orientation) in enumerate(grasp_poses):
             if self._workflow_stop_requested:
-                # This print is event-driven and specific to the loop break, so direct print is fine.
                 print("Workflow stopped by request during evaluation loop.")
                 break
             print(f"  Executing grasp {idx + 1}/{len(grasp_poses)}")
@@ -1174,7 +1172,6 @@ class GraspingManager:
         if self._workflow_stop_requested:
             print("Grasping workflow execution stopped by request.")
         else:
-            # This is an end-of-workflow summary, direct print is fine.
             print("Grasping workflow execution finished.")
         # Reset flag in case it was set during the final phase of a stopped workflow
         self._workflow_stop_requested = False
@@ -1188,7 +1185,7 @@ class GraspingManager:
         physics_scene_path: str | None = None,
         isolate_simulation: bool = False,
         simulate_using_timeline: bool = False,
-    ):
+    ) -> None:
         """Evaluate a single grasp pose.
 
         Args:
@@ -1221,7 +1218,7 @@ class GraspingManager:
         physics_scene_path: str | None = None,
         isolate_simulation: bool = False,
         simulate_using_timeline: bool = False,
-    ):
+    ) -> None:
         """Evaluate a single grasp pose by index.
 
         Args:
@@ -1255,7 +1252,7 @@ class GraspingManager:
         )
 
     # --- Results ---
-    def write_grasp_results(self, location: Gf.Vec3d, orientation: Gf.Quatd):
+    def write_grasp_results(self, location: Gf.Vec3d, orientation: Gf.Quatd) -> None:
         """Write the grasp results to the results output path.
 
         Args:
@@ -1317,7 +1314,7 @@ class GraspingManager:
             carb.log_warn(f"Failed to write grasp results to {full_output_path}: {e}")
 
     # --- Utilities ---
-    def set_gripper_pose(self, location: Gf.Vec3d, orientation: Gf.Quatd):
+    def set_gripper_pose(self, location: Gf.Vec3d, orientation: Gf.Quatd) -> None:
         """Set the internal gripper prim's pose to the given location and orientation.
 
         Args:
@@ -1329,7 +1326,7 @@ class GraspingManager:
             return
         transform_utils.set_transform_attributes(self._gripper_prim, location=location, orientation=orientation)
 
-    def move_gripper_to_grasp_pose(self, index: int, in_world_frame: bool = True):
+    def move_gripper_to_grasp_pose(self, index: int, in_world_frame: bool = True) -> None:
         """Set the gripper pose to the grasp pose at the given index.
 
         Args:
@@ -1345,7 +1342,7 @@ class GraspingManager:
                 f"Could not retrieve grasp pose at index {index} {'(world)' if in_world_frame else '(local)'}."
             )
 
-    def store_initial_gripper_pose(self, location: Gf.Vec3d = None, orientation: Gf.Quatd = None):
+    def store_initial_gripper_pose(self, location: Gf.Vec3d = None, orientation: Gf.Quatd = None) -> None:
         """Store the initial/default gripper pose. If not provided, use the current gripper prim pose if available.
 
         Args:
@@ -1407,7 +1404,6 @@ class GraspingManager:
         Returns:
             True if grasp generation was successful, False otherwise.
         """
-
         object_prim = self.get_object_prim()
         if not object_prim:
             carb.log_warn(
@@ -1456,8 +1452,8 @@ class GraspingManager:
             carb.log_warn(warn_msg)
             return False
 
-    def clear_grasp_poses(self):
-        """Clears the stored grasp locations and orientations."""
+    def clear_grasp_poses(self) -> None:
+        """Clear the stored grasp locations and orientations."""
         self.grasp_locations = []
         self.grasp_orientations = []
 
@@ -1500,7 +1496,7 @@ class GraspingManager:
             return list(zip(self.grasp_locations, self.grasp_orientations))
 
     def get_grasp_pose_at_index(self, index: int, in_world_frame: bool = False) -> tuple[Gf.Vec3d, Gf.Quatd] | None:
-        """Retrieves a single grasp pose by its index, optionally transforming it to world frame.
+        """Retrieve a single grasp pose by its index, optionally transforming it to world frame.
 
         Args:
             index: The index of the grasp pose to retrieve.
@@ -1544,8 +1540,8 @@ class GraspingManager:
                 )
                 return None
 
-    def update_joint_pregrasp_states_from_current(self, joint_info_list: list[dict] | None = None):
-        """Updates the internal joint_pregrasp_states by querying the current state of joints.
+    def update_joint_pregrasp_states_from_current(self, joint_info_list: list[dict] | None = None) -> None:
+        """Update the internal joint_pregrasp_states by querying the current state of joints.
 
         Uses the currently set gripper path to find joints and populates the
         `joint_pregrasp_states` dictionary with their current positions.

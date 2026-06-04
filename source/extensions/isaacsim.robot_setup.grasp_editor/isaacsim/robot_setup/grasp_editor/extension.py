@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,6 @@
 
 """Extension for creating a UI-based grasp editor interface in Isaac Sim."""
 
-
 import asyncio
 import gc
 
@@ -29,9 +28,8 @@ import omni.usd
 from isaacsim.gui.components.element_wrappers import ScrollingWindow
 from isaacsim.gui.components.menu import MenuItemDescription
 from omni.kit.menu.utils import add_menu_items, remove_menu_items
-from omni.usd import StageEventType
 
-from .global_variables import EXTENSION_DESCRIPTION, EXTENSION_TITLE
+from .global_variables import EXTENSION_TITLE
 from .ui_builder import UIBuilder
 
 """
@@ -78,7 +76,6 @@ class Extension(omni.ext.IExt):
         Args:
             ext_id: Extension identifier string.
         """
-
         self.ext_id = ext_id
         self._usd_context = omni.usd.get_context()
 
@@ -125,7 +122,7 @@ class Extension(omni.ext.IExt):
         self.ui_builder.cleanup()
         gc.collect()
 
-    def _on_window(self, visible):
+    def _on_window(self, visible: bool) -> None:
         """Handle window visibility changes and manage event subscriptions.
 
         Args:
@@ -206,7 +203,7 @@ class Extension(omni.ext.IExt):
         self._window.visible = not self._window.visible
         self.ui_builder.on_menu_callback()
 
-    def _on_timeline_play(self, event):
+    def _on_timeline_play(self, event: object) -> None:
         """Handle timeline play events and subscribe to physics step updates.
 
         Args:
@@ -218,7 +215,7 @@ class Extension(omni.ext.IExt):
             )
         self.ui_builder.on_timeline_event(event)
 
-    def _on_timeline_stop(self, event):
+    def _on_timeline_stop(self, event: object) -> None:
         """Handle timeline stop events and cleanup physics subscriptions.
 
         Args:
@@ -227,7 +224,7 @@ class Extension(omni.ext.IExt):
         self._physics_subscription = None
         self.ui_builder.on_timeline_event(event)
 
-    def _on_physics_step(self, step, context):
+    def _on_physics_step(self, step: float, context: object) -> None:
         """Handle physics simulation step events.
 
         Args:
@@ -236,7 +233,7 @@ class Extension(omni.ext.IExt):
         """
         self.ui_builder.on_physics_step(step)
 
-    def _on_stage_opened(self, event):
+    def _on_stage_opened(self, event: object) -> None:
         """Handle stage opened events and cleanup previous state.
 
         Args:
@@ -246,7 +243,7 @@ class Extension(omni.ext.IExt):
         self._physics_subscription = None
         self.ui_builder.cleanup()
 
-    def _on_stage_closed(self, event):
+    def _on_stage_closed(self, event: object) -> None:
         """Handle stage closed events and cleanup resources.
 
         Args:
@@ -256,7 +253,7 @@ class Extension(omni.ext.IExt):
         self._physics_subscription = None
         self.ui_builder.cleanup()
 
-    def _on_assets_loaded(self, event):
+    def _on_assets_loaded(self, event: object) -> None:
         """Handles the stage assets loaded event.
 
         Called when all assets in the stage have finished loading.
@@ -266,7 +263,7 @@ class Extension(omni.ext.IExt):
         """
         self.ui_builder.on_assets_loaded()
 
-    def _on_simulation_stop_play(self, event):
+    def _on_simulation_stop_play(self, event: object) -> None:
         """Handles the simulation stop play event.
 
         Called when the simulation transitions from play to stop state.

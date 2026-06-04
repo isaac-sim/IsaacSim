@@ -13,49 +13,90 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
+"""User interface builder for the CumotionWorldInterface example.
 
-import omni.kit.app
+Strictly a view: builds widgets, forwards button clicks and combo
+selections to the :class:`CumotionWorldInterfaceExample` scenario, and
+resets widget state on USD stage changes.  All scene-loading and
+world-binding state live on the scenario.
+"""
+
+import asyncio
+from typing import Any
+
 import omni.timeline
 import omni.ui as ui
-from isaacsim.core.experimental.utils import stage as stage_utils
-from isaacsim.core.rendering_manager import RenderingManager, ViewportManager
-from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.gui.components.element_wrappers import Button, CollapsableFrame, StateButton
 from isaacsim.gui.components.style import get_style
-from pxr import UsdPhysics
+from omni.kit.async_engine import run_coroutine
 
 from .scenario import CumotionWorldInterfaceExample
 
+_UPDATE_STYLE_ITEMS = ["synchronize", "synchronize_transforms", "synchronize_properties"]
+_DEFAULT_UPDATE_STYLE_INDEX = 1  # synchronize_transforms - matches scenario default
+
 
 class UIBuilder:
-    def __init__(self):
-        self.frames = []
-        self.wrapped_ui_elements = []
+    """Builds and drives the CumotionWorldInterface example UI.
+
+    Owns only widgets and the asyncio task for scene loading.  The
+    :class:`CumotionWorldInterfaceExample` scenario owns all scene/world
+    state.
+
+    The UI has two sections:
+      - **World Controls** - Load the scene and reset the scenario.
+      - **Run Scenario** - Update style combo + start/stop the sync loop.
+    """
+
+    def __init__(self) -> None:
+        self.frames: list[Any] = []
+        self.wrapped_ui_elements: list[Any] = []
         self._timeline = omni.timeline.get_timeline_interface()
-        self._on_init()
+        self._load_task: asyncio.Task | None = None
+        self._update_style_items = list(_UPDATE_STYLE_ITEMS)
+        self._scenario: CumotionWorldInterfaceExample | None = CumotionWorldInterfaceExample()
 
-    def on_menu_callback(self):
-        pass
+    # ------------------------------------------------------------- lifecycle
 
-    def on_timeline_event(self, event):
+    def cleanup(self) -> None:
+        """Tear down the UI on extension shutdown or window close.
+
+        Cancels any in-flight load task, cleans up wrapped widgets, and
+        drops scenario references so the closing UsdStage can be fully
+        released (avoids the ``Unexpected reference count of 2`` warning).
+        """
+        if self._load_task is not None and not self._load_task.done():
+            self._load_task.cancel()
+            self._load_task = None
+        for ui_elem in self.wrapped_ui_elements:
+            ui_elem.cleanup()
+        self.wrapped_ui_elements.clear()
+        if self._scenario is not None:
+            self._scenario.cleanup()
+
+    def on_stage_changed(self, event: Any) -> None:
+        """Reset widget state in response to a USD stage event.
+
+        Skipped while a load is in flight (the load itself triggers stage
+        events; resetting state mid-load would clobber it).
+        """
+        if self._load_task is not None and not self._load_task.done():
+            return
+        if self._scenario is not None:
+            self._scenario.cleanup()
+        self._scenario = CumotionWorldInterfaceExample()
+        self._reset_widgets()
+
+    def on_timeline_event(self, event: Any) -> None:
+        """Reset the Run/Stop button on timeline state changes."""
         self._scenario_state_btn.reset()
         self._scenario_state_btn.enabled = False
 
-    def on_physics_step(self, step: float):
-        pass
+    # -------------------------------------------------------------- build UI
 
-    def on_stage_event(self, event):
-        self._reset_extension()
-
-    def cleanup(self):
-        for ui_elem in self.wrapped_ui_elements:
-            ui_elem.cleanup()
-
-    def build_ui(self):
-        world_controls_frame = CollapsableFrame("World Controls", collapsed=False)
-
-        with world_controls_frame:
+    def build_ui(self) -> None:
+        """Construct the widget tree."""
+        with CollapsableFrame("World Controls", collapsed=False):
             with ui.VStack(style=get_style(), spacing=5, height=0):
                 self._load_btn = Button(
                     "Load Button",
@@ -66,47 +107,26 @@ class UIBuilder:
                 self.wrapped_ui_elements.append(self._load_btn)
 
                 self._reset_btn = Button(
-                    "Reset Button", "RESET", tooltip="Reset the scenario", on_click_fn=self._on_reset_btn
+                    "Reset Button",
+                    "RESET",
+                    tooltip="Reset the scenario",
+                    on_click_fn=self._on_reset_btn,
                 )
                 self._reset_btn.enabled = False
                 self.wrapped_ui_elements.append(self._reset_btn)
 
-                # TODO: Uncomment when motion generation collision API is merged
-                # # Tracked collision API dropdown
-                # with ui.HStack(style=get_style(), spacing=5):
-                #     ui.Label("Collision API:", width=120, alignment=ui.Alignment.LEFT_CENTER)
-                #     collision_api_items = ["physics", "motion_generation"]
-                #     # Default to index 0 (physics) to match scenario default
-                #     self._collision_api_combo = ui.ComboBox(
-                #         0, *collision_api_items,
-                #         name="CollisionAPIComboBox",
-                #         width=ui.Fraction(1),
-                #         alignment=ui.Alignment.LEFT_CENTER
-                #     )
-                #     self._collision_api_combo.model.add_item_changed_fn(self._on_collision_api_changed)
-                #     self._collision_api_combo.enabled = False
-                #     # Store items for callback
-                #     self._collision_api_items = collision_api_items
-
-        run_scenario_frame = CollapsableFrame("Run Scenario")
-
-        with run_scenario_frame:
+        with CollapsableFrame("Run Scenario"):
             with ui.VStack(style=get_style(), spacing=5, height=0):
-                # Update style dropdown
                 with ui.HStack(style=get_style(), spacing=5):
                     ui.Label("Update Style:", width=120, alignment=ui.Alignment.LEFT_CENTER)
-                    update_style_items = ["synchronize", "synchronize_transforms", "synchronize_properties"]
-                    # Default to index 1 (synchronize_transforms) to match scenario default
                     self._update_style_combo = ui.ComboBox(
-                        1,
-                        *update_style_items,
+                        _DEFAULT_UPDATE_STYLE_INDEX,
+                        *self._update_style_items,
                         name="UpdateStyleComboBox",
                         width=ui.Fraction(1),
                         alignment=ui.Alignment.LEFT_CENTER,
                     )
                     self._update_style_combo.model.add_item_changed_fn(self._on_update_style_changed)
-                    # Store items for callback
-                    self._update_style_items = update_style_items
 
                 self._scenario_state_btn = StateButton(
                     "Run Scenario",
@@ -119,126 +139,56 @@ class UIBuilder:
                 self._scenario_state_btn.enabled = False
                 self.wrapped_ui_elements.append(self._scenario_state_btn)
 
-    def _on_init(self):
+    # ------------------------------------------------------------ handlers
+
+    def _on_load_btn(self) -> None:
+        """Handle LOAD click - cancel any prior load, drop the old scenario, kick off a new one."""
+        if self._load_task is not None and not self._load_task.done():
+            self._load_task.cancel()
+        if self._scenario is not None:
+            self._scenario.cleanup()
         self._scenario = CumotionWorldInterfaceExample()
-        # Initialize update style items list (will be set in build_ui, but initialize here for safety)
-        self._update_style_items = ["synchronize", "synchronize_transforms", "synchronize_properties"]
-        # TODO: Uncomment when motion generation collision API is merged
-        # # Initialize collision API items list
-        # self._collision_api_items = ["physics", "motion_generation"]
+        self._reset_widgets()
+        self._load_task = run_coroutine(self._load_scene_async())
 
-    def _on_load_btn(self):
-        """Handle Load button click - loads scene and initializes scenario."""
-        asyncio.ensure_future(self._load_scene_async())
-
-    async def _load_scene_async(self):
-        """Async function to load the scene without using World."""
-        # Create new stage
-        await stage_utils.create_new_stage_async(template="default stage")
-
-        # Set up stage properties
-        stage_utils.set_stage_up_axis("Z")
-        stage_utils.set_stage_units(meters_per_unit=1.0)
-
-        # Setup scene (load assets)
-        self._setup_scene()
-
-        # Set camera view
-        ViewportManager.set_camera_view(camera="/OmniverseKit_Persp", eye=[2, 1.5, 2], target=[0, 0, 0])
-
-        # Create physics scene if it doesn't exist
-        stage = stage_utils.get_current_stage()
-        physics_scene_path = "/World/PhysicsScene"
-        if not stage.GetPrimAtPath(physics_scene_path).IsValid():
-            UsdPhysics.Scene.Define(stage, physics_scene_path)
-        await omni.kit.app.get_app().next_update_async()
-
-        # Set physics and rendering timesteps
-        SimulationManager.set_physics_dt(dt=1.0 / 60.0)
-        RenderingManager.set_dt(dt=1.0 / 60.0)
-        await omni.kit.app.get_app().next_update_async()
-
-        # Initialize physics if needed
-        if SimulationManager.get_physics_sim_view() is None:
-            SimulationManager.initialize_physics()
-
-        # Play timeline to initialize physics tensors
-        self._timeline.play()
-        # Wait for multiple updates to ensure physics runs and tensors are initialized
-        for _ in range(5):
-            await omni.kit.app.get_app().next_update_async()
-        self._timeline.stop()
-        await omni.kit.app.get_app().next_update_async()
-
-        # Setup scenario (post-load callback)
-        self._setup_scenario()
-
-    def _setup_scene(self):
-        """Load assets onto the stage."""
-        # Load assets - prims are automatically added to the stage
-        self._scenario.load_example_assets()
-
-    def _setup_scenario(self):
-        """Initialize the scenario after assets are loaded."""
-        self._scenario.setup()
+    async def _load_scene_async(self) -> None:
+        """Load the scene then enable run/reset controls."""
+        await self._scenario.load()
         self._scenario_state_btn.reset()
         self._scenario_state_btn.enabled = True
         self._reset_btn.enabled = True
 
-    def _on_reset_btn(self):
-        """Handle Reset button click - resets the scenario."""
-        asyncio.ensure_future(self._reset_scene_async())
-
-    async def _reset_scene_async(self):
-        """Async function to reset the scene without using World."""
-        # Stop timeline
+    def _on_reset_btn(self) -> None:
+        """Handle RESET click - stop the timeline and rebuild the world binding."""
         self._timeline.stop()
-        await omni.kit.app.get_app().next_update_async()
-
-        # Reset scenario
         self._scenario.reset()
-        await omni.kit.app.get_app().next_update_async()
-
-        # UI management
         self._scenario_state_btn.reset()
         self._scenario_state_btn.enabled = True
-        # TODO: Uncomment when motion generation collision API is merged
-        # # Enable collision API dropdown after reset
-        # self._collision_api_combo.enabled = True
 
-    def _on_update_style_changed(self, model, val):
-        """Callback when update style dropdown selection changes."""
+    def _on_update_style_changed(self, model: Any, _val: Any) -> None:
+        """Push the new combo selection into the scenario."""
         selected_index = model.get_item_value_model().as_int
-        selected_style = self._update_style_items[selected_index]
-        self._scenario.set_update_style(selected_style)
+        self._scenario.set_update_style(self._update_style_items[selected_index])
 
-    # TODO: Uncomment when motion generation collision API is merged
-    # def _on_collision_api_changed(self, model, val):
-    #     """Callback when collision API dropdown selection changes."""
-    #     selected_index = model.get_item_value_model().as_int
-    #     selected_api = self._collision_api_items[selected_index]
-    #     self._scenario.set_tracked_collision_api(selected_api)
-
-    def _update_scenario(self, step: float, *args, **kwargs):
-        # Check if physics tensors are valid before updating
-        if hasattr(self._scenario, "_articulation") and self._scenario._articulation is not None:
-            if not self._scenario._articulation.is_physics_tensor_entity_valid():
-                return
-        self._scenario.update(step)
-
-    def _on_run_scenario_a_text(self):
+    def _on_run_scenario_a_text(self) -> None:
+        """Play the timeline when the Run Scenario StateButton is clicked with a_text "RUN"."""
         self._timeline.play()
 
-    def _on_run_scenario_b_text(self):
+    def _on_run_scenario_b_text(self) -> None:
+        """Pause the timeline when the Run Scenario StateButton is clicked with b_text "STOP"."""
         self._timeline.pause()
 
-    def _reset_extension(self):
-        self._on_init()
-        self._reset_ui()
+    # ------------------------------------------------------------ per-tick
 
-    def _reset_ui(self):
+    def _update_scenario(self, step: float, *args: Any, **kwargs: Any) -> None:
+        """Per-physics-step callback wired into the StateButton."""
+        if self._scenario is not None:
+            self._scenario.step(step)
+
+    # ------------------------------------------------------------- internals
+
+    def _reset_widgets(self) -> None:
+        """Disable run/reset controls."""
         self._scenario_state_btn.reset()
         self._scenario_state_btn.enabled = False
         self._reset_btn.enabled = False
-        # TODO: Uncomment when motion generation collision API is merged
-        # self._collision_api_combo.enabled = False

@@ -12,12 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Joint state sensor for reading all DOF positions, velocities, and efforts.
 
-This module provides the JointStateSensor class for reading full joint state
-from an articulated robot in a single call. All physics computation is
-delegated to the C++ IJointStateSensor plugin via JointStateSensorBackend.
+Reads full joint state from an articulated robot in a single call via the
+C++ ``IJointStateSensor`` Carbonite interface. The sensor inherits the C++
+interface lifecycle from :class:`_PhysicsSensorRuntimeBase`.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -25,9 +27,21 @@ from typing import Any
 import carb
 import carb.eventdispatcher
 import numpy as np
-import omni.timeline
 import omni.usd
-from isaacsim.sensors.experimental.physics.impl.joint_state_sensor_backend import JointStateSensorBackend
+from isaacsim.core.simulation_manager import SimulationManager
+
+from ._sensor_base import _PhysicsSensorRuntimeBase
+
+_INVALID_JOINT_STATE_READING = None
+
+
+def _get_invalid_reading() -> object:
+    global _INVALID_JOINT_STATE_READING
+    if _INVALID_JOINT_STATE_READING is None:
+        from .. import _physics_sensors
+
+        _INVALID_JOINT_STATE_READING = _physics_sensors.JointStateSensorReading()
+    return _INVALID_JOINT_STATE_READING
 
 
 class JointStateSensorReading:
@@ -65,14 +79,15 @@ class JointStateSensorReading:
         self.stage_meters_per_unit: float = stage_meters_per_unit
 
 
-class JointStateSensor:
+class JointStateSensor(_PhysicsSensorRuntimeBase):
     """Sensor for reading all DOF joint states from an articulation.
 
     Reads positions, velocities, and efforts for every DOF in the articulation
-    via the C++ IJointStateSensor plugin. Analogous to a ROS2 JointState message.
+    via the C++ ``IJointStateSensor`` Carbonite interface. Analogous to a ROS2
+    JointState message.
 
     Args:
-        prim_path: USD path to the articulation root prim.
+        path: USD path to the articulation root prim.
         enabled: Whether the sensor is initially enabled.
 
     Example:
@@ -90,64 +105,38 @@ class JointStateSensor:
                     print(f"{name}: {pos:.4f} rad")
     """
 
-    def __init__(self, prim_path: str, enabled: bool = True) -> None:
+    def __init__(self, path: str, enabled: bool = True) -> None:
+        super().__init__(path)
         self.enabled = enabled
-        self.prim_path = prim_path
 
-        self._backend = JointStateSensorBackend(prim_path)
-        self._callback_ids: list[Any] = []
-
-        self._initialize_callbacks()
-
-    def _initialize_callbacks(self) -> None:
-        """Register timeline event callbacks for lifecycle management."""
         self._stage_open_sub = carb.eventdispatcher.get_eventdispatcher().observe_event(
             event_name=omni.usd.get_context().stage_event_name(omni.usd.StageEventType.OPENED),
             on_event=self._stage_open_callback_fn,
             observer_name="isaacsim.sensors.experimental.physics.JointStateSensor._stage_open_callback",
         )
 
-        self._timeline_stop_sub = carb.eventdispatcher.get_eventdispatcher().observe_event(
-            event_name=omni.timeline.GLOBAL_EVENT_STOP,
-            on_event=self._timeline_stop_callback_fn,
-            observer_name="isaacsim.sensors.experimental.physics.JointStateSensor._timeline_stop_callback",
-        )
+    def _acquire_interface(self) -> object | None:
+        from .extension import get_joint_state_sensor_interface
+
+        return get_joint_state_sensor_interface()
+
+    def _get_invalid_reading(self) -> object:
+        return _get_invalid_reading()
 
     def _stage_open_callback_fn(self, event: Any = None) -> None:
-        """Handle stage open by releasing all subscriptions.
-
-        Args:
-            event: Stage opened event payload.
-        """
+        """Handle stage open by releasing subscriptions."""
         self._stage_open_sub = None
-        self._timeline_stop_sub = None
-
-    def _timeline_stop_callback_fn(self, event: Any) -> None:
-        """Handle timeline stop by resetting backend state.
-
-        Args:
-            event: Timeline stop event payload.
-        """
-        self._backend.on_timeline_stop()
 
     def get_sensor_reading(self) -> JointStateSensorReading:
         """Get the current joint state reading for all DOFs.
 
         Returns:
             Reading with DOF names, positions, velocities, efforts, and validity.
-
-        Example:
-
-        .. code-block:: python
-
-            >>> reading = sensor.get_sensor_reading()  # doctest: +NO_CHECK
-            >>> reading.is_valid  # doctest: +NO_CHECK
-            False
         """
         if not self.enabled:
             return JointStateSensorReading()
 
-        cpp_reading = self._backend.get_sensor_reading()
+        cpp_reading = self._get_reading()
         if not cpp_reading.is_valid:
             return JointStateSensorReading()
 
@@ -162,3 +151,31 @@ class JointStateSensor:
             dof_types=np.asarray(cpp_reading.dof_types, dtype=np.uint8),
             stage_meters_per_unit=cpp_reading.stage_meters_per_unit,
         )
+
+    def get_data(self) -> dict:
+        """Get the current joint state as a structured frame.
+
+        Returns:
+            Frame data containing:
+                - ``"dof_names"``: List of DOF names in articulation order.
+                - ``"positions"``: Per-DOF positions (rad or m).
+                - ``"velocities"``: Per-DOF velocities (rad/s or m/s).
+                - ``"efforts"``: Per-DOF efforts (Nm or N).
+                - ``"dof_types"``: Per-DOF type (0 = revolute, 1 = prismatic).
+                - ``"stage_meters_per_unit"``: Stage meters per USD unit.
+                - ``"is_valid"``: Whether the reading contains valid data.
+                - ``"time"``: Simulation time of the reading.
+                - ``"physics_step"``: Physics step number.
+        """
+        reading = self.get_sensor_reading()
+        return {
+            "dof_names": list(reading.dof_names),
+            "positions": reading.positions,
+            "velocities": reading.velocities,
+            "efforts": reading.efforts,
+            "dof_types": reading.dof_types,
+            "stage_meters_per_unit": float(reading.stage_meters_per_unit),
+            "is_valid": bool(reading.is_valid),
+            "time": float(reading.time),
+            "physics_step": int(SimulationManager.get_num_physics_steps()),
+        }

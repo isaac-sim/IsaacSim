@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.gui.sensors.icon extension renders sensor icons in the viewport and stage hierarchy for visual identification of camera, lidar, IMU, and other sensor prims in Isaac Sim.
@@ -10,7 +6,7 @@ The isaacsim.gui.sensors.icon extension renders sensor icons in the viewport and
 
 ### Sensor Icon System
 
-The extension automatically detects various sensor types in the USD stage and displays interactive icons at their world positions. Supported sensor types include Lidar, OmniLidar, IsaacContactSensor, IsaacLightBeamSensor, IsaacImuSensor, and Generic sensors.
+The extension automatically detects various sensor types in the USD stage and displays interactive icons at their world positions. Supported sensor types include OmniLidar, IsaacContactSensor, IsaacImuSensor, and IsaacRaycastSensor, as well as deprecated types (Lidar, IsaacLightBeamSensor, Generic) for backward compatibility.
 
 Icons are positioned based on the sensor prim's world transform and update dynamically when the stage changes or when sensors are moved. Each icon can have custom click callbacks for interactive behavior.
 
@@ -20,9 +16,9 @@ The extension integrates with both the 3D viewport and stage widget to provide c
 
 ## Key Components
 
-### [IconModel](isaacsim.gui.sensors.icon/isaacsim.gui.sensors.icon.IconModel)
+### {class}`IconModel <isaacsim.gui.sensors.icon.IconModel>`
 
-The [IconModel](isaacsim.gui.sensors.icon/isaacsim.gui.sensors.icon.IconModel) class serves as a manipulator model that manages all sensor icons within the viewport scene. It automatically scans the USD stage for recognized sensor prims and creates corresponding icon items.
+The {class}`IconModel <isaacsim.gui.sensors.icon.IconModel>` class serves as a manipulator model that manages all sensor icons within the viewport scene. It automatically scans the USD stage for recognized sensor prims and creates corresponding icon items.
 
 The model maintains connections to both USD and USDRT stages for efficient querying and real-time updates. It responds to stage events such as opening, closing, and frame updates to keep icons synchronized with the current scene state.
 
@@ -32,9 +28,9 @@ model.add_sensor_icon("/World/Camera", "path/to/camera_icon.png")
 model.set_icon_click_fn("/World/Camera", callback_function)
 ```
 
-### [IconScene](isaacsim.gui.sensors.icon/isaacsim.gui.sensors.icon.IconScene)
+### {class}`IconScene <isaacsim.gui.sensors.icon.IconScene>`
 
-[IconScene](isaacsim.gui.sensors.icon/isaacsim.gui.sensors.icon.IconScene) provides the viewport window and manipulator framework for displaying sensor icons. It manages the visual presentation layer and handles icon scaling and visibility states.
+{class}`IconScene <isaacsim.gui.sensors.icon.IconScene>` provides the viewport window and manipulator framework for displaying sensor icons. It manages the visual presentation layer and handles icon scaling and visibility states.
 
 ```python
 scene = IconScene(title="Sensor Icons", icon_scale=1.5)
@@ -43,7 +39,7 @@ scene.visible = True  # Show/hide all sensor icons
 
 ### Singleton Management
 
-The extension uses a singleton pattern accessed through [get_instance](isaacsim.gui.sensors.icon/isaacsim.gui.sensors.icon.get_instance) to ensure consistent sensor icon management across the application. This provides a central point for adding, removing, and configuring sensor icons.
+The extension uses a singleton pattern accessed through {func}`get_instance <isaacsim.gui.sensors.icon.get_instance>` to ensure consistent sensor icon management across the application. This provides a central point for adding, removing, and configuring sensor icons.
 
 ## Functionality
 

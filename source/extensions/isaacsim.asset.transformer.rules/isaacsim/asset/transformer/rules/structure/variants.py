@@ -77,6 +77,7 @@ class VariantRoutingRule(RuleInterface):
         .. code-block:: python
 
             params = rule.get_configuration_parameters()
+
         """
         return [
             RuleConfigurationParam(
@@ -117,6 +118,7 @@ class VariantRoutingRule(RuleInterface):
 
         Returns:
             Tuple of (prepended_payloads, prepended_references).
+
         """
         prepended_payloads: list[Sdf.Payload] = []
         prepended_references: list[Sdf.Reference] = []
@@ -146,6 +148,7 @@ class VariantRoutingRule(RuleInterface):
 
         Returns:
             Resolved absolute path or empty string if not resolvable.
+
         """
         fallback_dirs = [
             os.path.dirname(self.source_stage.GetRootLayer().realPath),
@@ -171,6 +174,7 @@ class VariantRoutingRule(RuleInterface):
 
         Returns:
             Dict mapping normalized absolute paths to variant names.
+
         """
         asset_to_variant: dict[str, str] = {}
 
@@ -211,6 +215,7 @@ class VariantRoutingRule(RuleInterface):
 
         Returns:
             Dict mapping original absolute paths to collected absolute paths.
+
         """
         collected: dict[str, str] = {}
         source_norm = norm_path(source_layer_path)
@@ -233,6 +238,7 @@ class VariantRoutingRule(RuleInterface):
 
             Returns:
                 True if the path should be skipped.
+
             """
             return normed == source_norm or normed in variant_file_map or normed in collected
 
@@ -242,6 +248,7 @@ class VariantRoutingRule(RuleInterface):
             Args:
                 path_obj: Dependency path object from USD dependency results.
                 is_layer: True when the path represents a USD layer.
+
             """
             abs_path = get_path_string(path_obj)
             if not abs_path or not os.path.isfile(abs_path):
@@ -296,6 +303,7 @@ class VariantRoutingRule(RuleInterface):
             dependencies_dir: Directory to collect dependencies into.
             variant_file_map: Map of variant file paths (to exclude).
             all_collected_deps: Shared dict to update with collected dependencies.
+
         """
         prim_spec = variant_spec.primSpec
         if not prim_spec:
@@ -307,6 +315,7 @@ class VariantRoutingRule(RuleInterface):
 
             Args:
                 spec: Prim spec to traverse.
+
             """
             # Collect from references
             if spec.hasReferences:
@@ -348,6 +357,7 @@ class VariantRoutingRule(RuleInterface):
             dependencies_dir: Directory to collect dependencies into.
             variant_file_map: Map of variant file paths (to exclude).
             all_collected_deps: Shared dict to update with collected dependencies.
+
         """
         # Resolve to absolute path
         if os.path.isabs(asset_path):
@@ -417,6 +427,7 @@ class VariantRoutingRule(RuleInterface):
 
         Returns:
             The created destination layer, or None on failure.
+
         """
         self.log_operation(f"Copying layer with remapping: {source_layer_path} -> {dest_layer_path}")
         self.log_operation(f"  variant_file_map has {len(variant_file_map)} entries")
@@ -480,6 +491,7 @@ class VariantRoutingRule(RuleInterface):
             source_layer_dir: Directory of the original source layer (for path resolution).
             variant_file_map: Map from original variant paths to new variant paths.
             collected_deps: Map from original dependency paths to collected paths.
+
         """
         prim_spec = variant_spec.primSpec
         if not prim_spec:
@@ -560,6 +572,7 @@ class VariantRoutingRule(RuleInterface):
             dest_layer_dir: Directory of the destination layer.
             variant_file_map: Map from original variant paths to new variant paths.
             collected_deps: Map from original dependency paths to collected paths.
+
         """
         dest_prim_spec = dest_layer.GetPrimAtPath(dest_path)
         if not dest_prim_spec:
@@ -645,6 +658,7 @@ class VariantRoutingRule(RuleInterface):
 
         Returns:
             Path to the variant layer file.
+
         """
         sanitized_name = sanitize_prim_name(variant_name)
         if case_insensitive:
@@ -664,6 +678,7 @@ class VariantRoutingRule(RuleInterface):
 
         Returns:
             Tuple of (layer, dest_prim_path) or None if creation failed.
+
         """
         os.makedirs(os.path.dirname(variant_file_path), exist_ok=True)
         variant_layer = Sdf.Layer.CreateNew(variant_file_path)
@@ -696,6 +711,7 @@ class VariantRoutingRule(RuleInterface):
 
         Returns:
             Path to the created variant layer file, or None if creation failed.
+
         """
         variant_file_path = self._get_variant_file_path(variant_name, variant_set_output_dir, case_insensitive)
         self.log_operation(f"Creating empty variant file for excluded variant '{variant_name}' -> {variant_file_path}")
@@ -752,6 +768,7 @@ class VariantRoutingRule(RuleInterface):
 
         Returns:
             Path to the created variant layer file, or None if processing failed.
+
         """
         # Check if this variant is excluded
         variant_name_for_check = variant_name.lower() if case_insensitive else variant_name
@@ -891,6 +908,7 @@ class VariantRoutingRule(RuleInterface):
             dependencies_dir: Directory containing collected dependencies.
             variant_file_map: Map of variant file paths.
             all_collected_deps: Map from original absolute paths to new absolute paths.
+
         """
         if not os.path.isdir(dependencies_dir):
             return
@@ -974,6 +992,7 @@ class VariantRoutingRule(RuleInterface):
         .. code-block:: python
 
             rule.process_rule()
+
         """
         params = self.args.get("params", {}) or {}
         variant_sets_filter: list[str] = params.get("variant_sets") or []

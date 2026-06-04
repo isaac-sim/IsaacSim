@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -1091,7 +1091,7 @@ protected:
      * @param[out] array JSON array to store the extracted values
      */
     template <typename ArrayType, typename RosType>
-    void getArray(const rosidl_typesupport_introspection_c__MessageMember* member, uint8_t* data, nlohmann::json& array);
+    void _getArray(const rosidl_typesupport_introspection_c__MessageMember* member, uint8_t* data, nlohmann::json& array);
 
     /**
      * @brief Gets array values from ROS message and converts them to OmniGraph types
@@ -1108,10 +1108,10 @@ protected:
      * @param[in] asOgnType Whether to convert to OmniGraph type
      */
     template <typename ArrayType, typename RosType, typename OgnType>
-    void getArray(const rosidl_typesupport_introspection_c__MessageMember* member,
-                  uint8_t* data,
-                  std::shared_ptr<void>& valuePtr,
-                  bool asOgnType);
+    void _getArray(const rosidl_typesupport_introspection_c__MessageMember* member,
+                   uint8_t* data,
+                   std::shared_ptr<void>& valuePtr,
+                   bool asOgnType);
 
     /**
      * @brief Gets array values from ROS message into a vector
@@ -1126,9 +1126,9 @@ protected:
      * @param[out] array Vector to store the extracted values
      */
     template <typename ArrayType, typename RosType>
-    void getArray(const rosidl_typesupport_introspection_c__MessageMember* member,
-                  uint8_t* data,
-                  std::vector<RosType>& array);
+    void _getArray(const rosidl_typesupport_introspection_c__MessageMember* member,
+                   uint8_t* data,
+                   std::vector<RosType>& array);
 
     /**
      * @brief Sets array values in ROS message from JSON data
@@ -1144,9 +1144,9 @@ protected:
      * @param[in] value JSON value containing the array data
      */
     template <typename ArrayType, auto ArrayInit, typename RosType>
-    void setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
-                  uint8_t* data,
-                  const nlohmann::json& value);
+    void _setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
+                   uint8_t* data,
+                   const nlohmann::json& value);
 
     /**
      * @brief Sets array values in ROS message from OmniGraph data
@@ -1164,10 +1164,10 @@ protected:
      * @param[in] fromOgnType Whether the source is in OmniGraph format
      */
     template <typename ArrayType, auto ArrayInit, typename RosType, typename OgnType>
-    void setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
-                  uint8_t* data,
-                  const std::shared_ptr<void>& valuePtr,
-                  bool fromOgnType);
+    void _setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
+                   uint8_t* data,
+                   const std::shared_ptr<void>& valuePtr,
+                   bool fromOgnType);
 
     /**
      * @brief Sets array values in ROS message from vector data
@@ -1183,9 +1183,9 @@ protected:
      * @param[in] array Vector containing the source data
      */
     template <typename ArrayType, auto ArrayInit, typename RosType>
-    void setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
-                  uint8_t* data,
-                  const std::vector<RosType>& array);
+    void _setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
+                   uint8_t* data,
+                   const std::vector<RosType>& array);
 
     /**
      * @brief Gets a single value from ROS message and converts to OmniGraph type
@@ -1201,7 +1201,7 @@ protected:
      * @param[in] asOgnType Whether to convert to OmniGraph type
      */
     template <typename RosType, typename OgnType>
-    void getSingleValue(uint8_t* data, std::shared_ptr<void>& valuePtr, bool asOgnType);
+    void _getSingleValue(uint8_t* data, std::shared_ptr<void>& valuePtr, bool asOgnType);
 
     /**
      * @brief Sets a single value in ROS message from OmniGraph data
@@ -1217,7 +1217,7 @@ protected:
      * @param[in] fromOgnType Whether the source is in OmniGraph format
      */
     template <typename RosType, typename OgnType>
-    void setSingleValue(uint8_t* data, const std::shared_ptr<void>& valuePtr, bool fromOgnType);
+    void _setSingleValue(uint8_t* data, const std::shared_ptr<void>& valuePtr, bool fromOgnType);
 
     /**
      * @brief Gets array of embedded messages as JSON

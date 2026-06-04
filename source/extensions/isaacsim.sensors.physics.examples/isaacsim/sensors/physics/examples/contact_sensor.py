@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,16 +21,16 @@ from typing import Any
 
 import carb
 import carb.eventdispatcher
+import numpy as np
 import omni
-import omni.kit.commands
 import omni.physics.core
 import omni.ui as ui
 import omni.usd
 from isaacsim.examples.browser import get_instance as get_browser_instance
 from isaacsim.gui.components.ui_utils import LABEL_WIDTH, get_style, setup_ui_headers
-from isaacsim.sensors.experimental.physics import ContactSensorBackend
+from isaacsim.sensors.experimental.physics import Contact, ContactSensor
 from isaacsim.storage.native import get_assets_root_path
-from pxr import Gf, UsdGeom
+from pxr import UsdGeom
 
 EXTENSION_NAME = "Contact Sensor Example"
 
@@ -38,7 +38,7 @@ EXTENSION_NAME = "Contact Sensor Example"
 class Extension(omni.ext.IExt):
     """Extension that hosts the contact sensor example UI."""
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize the extension and register the example.
 
         Args:
@@ -58,7 +58,7 @@ class Extension(omni.ext.IExt):
             category="Sensors",
         )
 
-    def build_window(self):
+    def build_window(self) -> None:
         """Build the example window entrypoint.
 
         Example:
@@ -67,7 +67,7 @@ class Extension(omni.ext.IExt):
                 extension.build_window()
         """
 
-    def _on_stage_closed(self, event: Any):
+    def _on_stage_closed(self, event: Any) -> None:
         """Handle stage-closed events.
 
         Args:
@@ -75,7 +75,7 @@ class Extension(omni.ext.IExt):
         """
         self.on_closed()
 
-    def build_ui(self):
+    def build_ui(self) -> None:
         """Build the UI controls for the contact sensor example.
 
         Example:
@@ -95,24 +95,24 @@ class Extension(omni.ext.IExt):
             setup_ui_headers(self._ext_id, __file__, title, doc_link, overview, info_collapsed=False)
             ui.Button("Load Scene", clicked_fn=lambda: self._load_scene())
 
-    def _load_scene(self):
+    def _load_scene(self) -> None:
         """Load the contact sensor example scene and initialize UI state."""
         if self._window:
             # clear existing window
             self.on_closed()
 
-        self._contact_backends: dict[str, ContactSensorBackend] = {}
+        self._contact_sensors: dict[str, ContactSensor] = {}
 
         self._timeline = omni.timeline.get_timeline_interface()
         self.sub = omni.physics.core.get_physics_simulation_interface().subscribe_physics_on_step_events(
             pre_step=False, order=0, on_update=self._on_update
         )
 
-        self.leg_paths = ["/Ant/Arm_{:02d}/Lower_Arm".format(i + 1) for i in range(4)]
+        self.leg_paths = [f"/Ant/Arm_{i + 1:02d}/Lower_Arm" for i in range(4)]
 
-        self.shoulder_joints = ["/Ant/Arm_{:02d}/Upper_Arm/shoulder_joint".format(i + 1) for i in range(4)]
+        self.shoulder_joints = [f"/Ant/Arm_{i + 1:02d}/Upper_Arm/shoulder_joint" for i in range(4)]
 
-        self.lower_joints = ["{}/lower_arm_joint".format(i) for i in self.leg_paths]
+        self.lower_joints = [f"{i}/lower_arm_joint" for i in self.leg_paths]
         self._sensor_handles = [0 for i in range(4)]
         self.sliders = None
 
@@ -133,7 +133,7 @@ class Extension(omni.ext.IExt):
             with ui.VStack(style=get_style(), spacing=5):
                 for i in range(4):
                     with ui.HStack():
-                        ui.Label("Arm {}".format(i + 1), width=LABEL_WIDTH, tooltip="Force in Newtons")
+                        ui.Label(f"Arm {i + 1}", width=LABEL_WIDTH, tooltip="Force in Newtons")
                         # ui.Spacer(height=0, width=10)
                         style["secondary_color"] = self.colors[i]
                         self.sliders.append(ui.FloatDrag(min=0.0, max=15.0, step=0.001, style=style))
@@ -142,12 +142,12 @@ class Extension(omni.ext.IExt):
 
         asyncio.ensure_future(self.create_scenario())
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up resources when the extension is unloaded."""
         self.on_closed()
         get_browser_instance().deregister_example(name="Contact Sensor", category="Sensors")
 
-    def _on_visibility_changed(self, visible: bool):
+    def _on_visibility_changed(self, visible: bool) -> None:
         """Handle window visibility changes.
 
         Args:
@@ -156,7 +156,7 @@ class Extension(omni.ext.IExt):
         if not visible:
             self.on_closed()
 
-    def on_closed(self):
+    def on_closed(self) -> None:
         """Tear down the example window and subscriptions.
 
         Example:
@@ -171,7 +171,7 @@ class Extension(omni.ext.IExt):
             self._window.destroy()
             self._window = None
 
-    def _on_update(self, dt: float, context: Any):
+    def _on_update(self, dt: float, context: Any) -> None:
         """Update UI values from the contact sensor readings.
 
         Args:
@@ -181,9 +181,9 @@ class Extension(omni.ext.IExt):
         if self._timeline.is_playing() and self.sliders:
             for i in range(4):
                 path = self.leg_paths[i] + "/sensor"
-                if path not in self._contact_backends:
-                    self._contact_backends[path] = ContactSensorBackend(path)
-                reading = self._contact_backends[path].get_sensor_reading()
+                if path not in self._contact_sensors:
+                    self._contact_sensors[path] = ContactSensor(path)
+                reading = self._contact_sensors[path].get_sensor_reading()
                 if reading.is_valid:
                     self.sliders[i].model.set_value(
                         float(reading.value) * self.meters_per_unit
@@ -195,13 +195,16 @@ class Extension(omni.ext.IExt):
             #     c = contacts_raw[0]
             #     # print(c)
 
-    async def create_scenario(self):
+    async def create_scenario(self) -> None:
         """Create the contact sensor example scene and sensor prims.
 
         Example:
             .. code-block:: python
 
                 await extension.create_scenario()
+
+        Returns:
+            None. Exits early if the assets root path cannot be found.
         """
         self._assets_root_path = get_assets_root_path()
         if self._assets_root_path is None:
@@ -216,20 +219,18 @@ class Extension(omni.ext.IExt):
 
         self.meters_per_unit = UsdGeom.GetStageMetersPerUnit(omni.usd.get_context().get_stage())
 
-        self.sensor_offsets = [Gf.Vec3d(40, 0, 0), Gf.Vec3d(40, 0, 0), Gf.Vec3d(40, 0, 0), Gf.Vec3d(40, 0, 0)]
+        self.sensor_offsets = [np.array([[40.0, 0.0, 0.0]]) for _ in range(4)]
         self.color = [(1, 0, 0, 1), (0, 1, 0, 1), (0, 0, 1, 1), (1, 1, 0, 1)]
         self.sensorGeoms: list[Any] = []
 
         for i in range(4):
-            result, sensor = omni.kit.commands.execute(
-                "IsaacSensorExperimentalCreateContactSensor",
-                path="/sensor",
-                parent=self.leg_paths[i],
+            Contact.create(
+                f"{self.leg_paths[i]}/sensor",
                 min_threshold=0,
                 max_threshold=10000000,
                 color=self.color[i],
                 radius=0.12,
-                translation=self.sensor_offsets[i],
+                translations=self.sensor_offsets[i],
             )
 
         self._usd_context = omni.usd.get_context()

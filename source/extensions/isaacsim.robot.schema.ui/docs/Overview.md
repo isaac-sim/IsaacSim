@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The Isaac Sim Schema UI extension provides a specialized interface for visualizing and interacting with robot joint hierarchies in Isaac Sim. It creates a hierarchical tree view of robot joints as parent-child relationships and displays 3D connection lines between joints in the viewport, making it easier to understand complex robot structures.

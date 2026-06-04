@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The Isaac Sim UI Example extension demonstrates Isaac Sim's robotics-centric UI components and patterns for extension development. This extension provides comprehensive examples of UI elements commonly used in robotics applications, serving as a reference implementation for developers creating their own Isaac Sim extensions with graphical user interfaces.

@@ -1,5 +1,5 @@
 {
-    "OgnOnRLFrame": {
+    "isaacsim.replicator.domain_randomization.OgnOnRLFrame": {
         "description": [
             "Triggered every frame in an RL setting"
         ],

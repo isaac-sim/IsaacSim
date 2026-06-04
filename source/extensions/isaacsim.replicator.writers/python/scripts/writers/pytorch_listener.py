@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,25 +15,25 @@
 
 """Provides a PyTorch-compatible listener for tracking and retrieving data from Replicator writers."""
 
-
-from typing import Optional
-
-from isaacsim.core.deprecation_manager import import_module
-
-torch = import_module("torch")
+from __future__ import annotations
 
 
 class PytorchListener:
-    """An Observer/Listener that keeps track of updated data sent by the writer. Is passed in the
+    """An Observer/Listener that keeps track of updated data sent by the writer. Is passed in the.
+
     itialization of a PytorchWriter at which point it is pinged by the writer after any data is
     passed to the writer.
+
+    .. deprecated:: 1.5.0
+
+        This class is deprecated and will be removed in a future version. No replacement is provided.
     """
 
     def __init__(self):
         self.data = {}
 
     def write_data(self, data: dict):
-        """Updates the existing data in the listener with the new data provided.
+        """Update the existing data in the listener with the new data provided.
 
         Args:
             data: New data retrieved from writer.
@@ -41,8 +41,8 @@ class PytorchListener:
 
         self.data.update(data)
 
-    def get_rgb_data(self) -> Optional[torch.Tensor]:
-        """Returns RGB data as a batched tensor from the current data stored.
+    def get_rgb_data(self) -> "torch.Tensor | None":
+        """Return RGB data as a batched tensor from the current data stored.
 
         Returns:
             Images in batched pytorch tensor form.

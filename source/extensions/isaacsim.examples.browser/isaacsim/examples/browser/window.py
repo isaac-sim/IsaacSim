@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,13 +15,10 @@
 
 """Module providing a specialized browser window for displaying Isaac Sim robotics examples with custom widget components."""
 
-
 import os
-from typing import Optional
 
 import carb.settings
 import omni.ui as ui
-from omni.kit.browser.core import TreeCategoryDelegate
 from omni.kit.browser.folder.core import TreeFolderBrowserWidgetEx
 
 from .delegate import AssetDetailDelegate
@@ -38,7 +35,7 @@ class BrowserWidget(TreeFolderBrowserWidgetEx):
     visible across different thumbnail sizes to maintain usability in the examples browser interface.
     """
 
-    def _on_thumbnail_size_changed(self, thumbnail_size: int):
+    def _on_thumbnail_size_changed(self, thumbnail_size: int) -> None:
         """Handles changes to the thumbnail size in the browser widget.
 
         Updates the delegate to keep labels visible and refreshes the item display.
@@ -52,7 +49,7 @@ class BrowserWidget(TreeFolderBrowserWidgetEx):
 
 
 class ExampleBrowserWindow(ui.Window):
-    """Represent a window to show Assets
+    """Represent a window to show Assets.
 
     Args:
         model: The browser model containing the data to display.
@@ -62,7 +59,7 @@ class ExampleBrowserWindow(ui.Window):
     WINDOW_TITLE = "Robotics Examples"
     """Window title displayed for the robotics examples browser."""
 
-    def __init__(self, model: ExampleBrowserModel, visible=True):
+    def __init__(self, model: ExampleBrowserModel, visible: bool = True) -> None:
         super().__init__(self.WINDOW_TITLE, visible=visible)
 
         self.frame.set_build_fn(self._build_ui)
@@ -74,7 +71,7 @@ class ExampleBrowserWindow(ui.Window):
         # Dock it to the same space where Stage is docked.
         self.deferred_dock_in("Content")
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
         """Builds the user interface for the example browser window.
 
         Creates the main UI layout with a BrowserWidget that displays robotics examples using thumbnail view and
@@ -95,3 +92,6 @@ class ExampleBrowserWindow(ui.Window):
                     style=THUMBNAIL_STYLE,
                     property_delegates=[EmptyPropertyDelegate(), PropAssetPropertyDelegate(), MultiPropertyDelegate()],
                 )
+                # Hand the widget back to the model so folder tiles in the detail view can drive
+                # tree navigation when double-clicked.
+                self._browser_model.set_widget(self._widget)

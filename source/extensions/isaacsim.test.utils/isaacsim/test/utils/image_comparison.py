@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Image comparison utilities for testing and validation."""
-
 
 import os
 import re
@@ -145,7 +144,7 @@ def _compute_difference_metrics_impl(
     }
 
 
-def print_difference_statistics(metrics: dict[str, object]):
+def print_difference_statistics(metrics: dict[str, object]) -> None:
     """Pretty-print image difference metrics.
 
     Prints a stable summary of the metrics computed by ``compute_difference_metrics``.
@@ -403,7 +402,7 @@ def compare_images_in_directories(
     print_all_stats: bool = False,
     print_per_file_results: bool = True,
 ) -> dict[str, object]:
-    """Compare matching image files in two directories against tolerance-based criteria.
+    r"""Compare matching image files in two directories against tolerance-based criteria.
 
     This function finds all image files matching the specified pattern in both directories,
     compares them pairwise, and returns comprehensive results for all comparisons.
@@ -451,7 +450,7 @@ def compare_images_in_directories(
         >>> result = compare_images_in_directories(
         ...     golden_dir="/path/to/golden",
         ...     test_dir="/path/to/test",
-        ...     path_pattern=r"^rgb.*\\.png$",
+        ...     path_pattern=r"^rgb.*\.png$",
         ...     mean_tolerance=10.0,
         ... )
         ...
@@ -527,6 +526,8 @@ def compare_images_in_directories(
         tolerance_str = ", ".join(tolerance_info) if tolerance_info else "default allclose"
         pattern_desc = f"pattern '{path_pattern}'" if path_pattern is not None else "all files"
         print(f"Comparing images matching {pattern_desc} with {tolerance_str}")
+        print(f"  Golden dir: {golden_dir}")
+        print(f"  Test dir:   {test_dir}")
 
     for file_name in common_files:
         golden_file_path = os.path.join(golden_dir, file_name)
@@ -560,6 +561,8 @@ def compare_images_in_directories(
             if print_per_file_results:
                 metrics = result["metrics"]
                 print(f"\t'{file_name}': FAILED")
+                print(f"\t  Golden: {golden_file_path}")
+                print(f"\t  Test:   {test_file_path}")
                 if mean_tolerance is not None:
                     print(f"\t  Expected mean_diff <= {mean_tolerance}, got {metrics['mean_abs']:.3f}")
                 if max_tolerance is not None:

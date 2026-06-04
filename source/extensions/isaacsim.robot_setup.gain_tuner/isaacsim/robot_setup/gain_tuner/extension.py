@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,15 +15,14 @@
 
 """Extension for the isaacsim.robot_setup.gain_tuner that provides a UI-based gain tuner tool for robot setup."""
 
-
 import asyncio
 import gc
 
 import carb
 import carb.eventdispatcher
 import omni
+import omni.kit.actions.core
 import omni.kit.app
-import omni.kit.commands
 import omni.physics.core
 import omni.timeline
 import omni.ui as ui
@@ -31,9 +30,11 @@ import omni.usd
 from isaacsim.gui.components.element_wrappers import ScrollingWindow
 from isaacsim.gui.components.menu import MenuItemDescription
 from omni.kit.menu.utils import add_menu_items, remove_menu_items
-from omni.usd import StageEventType
 
-from .global_variables import EXTENSION_DESCRIPTION, EXTENSION_TITLE
+from .gains_tuner import GainsTestMode, SinusoidalTest, StepFunctionTest
+from .global_variables import EXTENSION_TITLE
+from .snap_to_limits import SnapToLimitsTest
+from .stress_test import StressTest
 from .ui.ui_builder import UIBuilder
 
 """
@@ -59,7 +60,7 @@ class Extension(omni.ext.IExt):
     """Extension class for the isaacsim.robot_setup.gain_tuner extension.
 
     Provides a UI-based extension that adds a gain tuner tool to the Omniverse Kit SDK interface. The extension
-    creates a scrolling window accessible through the Tools > Robotics menu, enabling users to interact with
+    creates a scrolling window under Tools > Robotics > Asset Editors, enabling users to interact with
     robot gain tuning functionality.
 
     The extension handles standard lifecycle operations including window management, event subscriptions for
@@ -71,13 +72,12 @@ class Extension(omni.ext.IExt):
     timeline playback and stage events for proper initialization and cleanup when stages are opened or closed.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize extension and UI elements.
 
         Args:
             ext_id: The extension identifier.
         """
-
         self.ext_id = ext_id
         self._ext_name = omni.ext.get_extension_name(ext_id)
         self._usd_context = omni.usd.get_context()
@@ -100,15 +100,21 @@ class Extension(omni.ext.IExt):
                 name=EXTENSION_TITLE, onclick_action=(self._ext_name, f"CreateUIExtension:{EXTENSION_TITLE}")
             )
         ]
-
-        self._menu_items = [MenuItemDescription(name="Robotics", sub_menu=self._menu_items)]
+        asset_editors = [MenuItemDescription(name="Asset Editors", sub_menu=self._menu_items)]
+        self._menu_items = [MenuItemDescription(name="Robotics", sub_menu=asset_editors)]
         add_menu_items(self._menu_items, "Tools")
 
         # Filled in with User Functions
         self.ui_builder = UIBuilder()
 
+        # Register built-in tests
+        tuner = self.ui_builder._gains_tuner
+        tuner.register_test(GainsTestMode.SINUSOIDAL, SinusoidalTest())
+        tuner.register_test(GainsTestMode.STEP, StepFunctionTest())
+        tuner.register_test(GainsTestMode.SNAP_TO_LIMITS, SnapToLimitsTest())
+        tuner.register_test(GainsTestMode.STRESS_TEST, StressTest())
+
         # Events
-        self._usd_context = omni.usd.get_context()
         self._physics_simulation_interface = omni.physics.core.get_physics_simulation_interface()
         self._physics_subscription = None
         self._event_dispatcher = carb.eventdispatcher.get_eventdispatcher()
@@ -117,9 +123,8 @@ class Extension(omni.ext.IExt):
         self._stage_event_sub = None
         self._timeline = omni.timeline.get_timeline_interface()
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up extension resources and remove UI elements."""
-        self._models = {}
         remove_menu_items(self._menu_items, "Tools")
 
         action_registry = omni.kit.actions.core.get_action_registry()
@@ -130,13 +135,13 @@ class Extension(omni.ext.IExt):
         self.ui_builder.cleanup()
         gc.collect()
 
-    def _on_window(self, visible):
+    def _on_window(self, visible: bool) -> None:
         """Handle window visibility changes and manage event subscriptions.
 
         Args:
             visible: Whether the window is visible.
         """
-        if self._window.visible:
+        if visible:
             # Subscribe to Stage and Timeline Events
             self._usd_context = omni.usd.get_context()
             self._stage_event_sub_opened = carb.eventdispatcher.get_eventdispatcher().observe_event(
@@ -170,20 +175,25 @@ class Extension(omni.ext.IExt):
             self._usd_context = None
             self._stage_event_sub_opened = None
             self._stage_event_sub_closed = None
+            self._stage_event_sub_assets_loaded = None
             self._timeline_event_sub_play = None
             self._timeline_event_sub_stop = None
+            self._physics_subscription = None
+            self._render_subscription = None
             self.ui_builder.cleanup()
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
         """Build the extension UI and dock the window in the viewport."""
         with self._window.frame:
             with ui.VStack(spacing=5, height=0):
                 self._build_extension_ui()
 
-        async def dock_window():
+        async def dock_window() -> None:
             await omni.kit.app.get_app().next_update_async()
 
-            def dock(space, name, location, pos=0.5):
+            def dock(
+                space: ui.Window | None, name: str, location: ui.DockPosition, pos: float = 0.5
+            ) -> ui.Window | None:
                 window = omni.ui.Workspace.get_window(name)
                 if window and space:
                     window.dock_in(space, location, pos)
@@ -199,9 +209,12 @@ class Extension(omni.ext.IExt):
     # Functions below this point call user functions
     #################################################################
 
-    def _menu_callback(self):
-        """Handle menu item selection and toggle window visibility."""
-        self._window.visible = not self._window.visible
+    def _menu_callback(self) -> None:
+        """Handle menu or action: show the window and focus it (same intent as re-opening from the menu)."""
+        self._window.visible = True
+        focus_fn = getattr(self._window, "focus", None)
+        if callable(focus_fn):
+            focus_fn()
 
         self.ui_builder.on_menu_callback()
 
@@ -217,7 +230,7 @@ class Extension(omni.ext.IExt):
                 observer_name="isaacsim.robot_setup.gain_tuner.Extension._on_render_step",
             )
 
-    def _on_timeline_play(self, event):
+    def _on_timeline_play(self, event: object) -> None:
         """Handle timeline play event and set up physics and render subscriptions.
 
         Args:
@@ -235,7 +248,7 @@ class Extension(omni.ext.IExt):
             )
         self.ui_builder.on_timeline_event(event)
 
-    def _on_timeline_stop(self, event):
+    def _on_timeline_stop(self, event: object) -> None:
         """Handle timeline stop event and clean up physics subscriptions.
 
         Args:
@@ -244,7 +257,7 @@ class Extension(omni.ext.IExt):
         self._physics_subscription = None
         self.ui_builder.on_timeline_event(event)
 
-    def _on_physics_step(self, step, context):
+    def _on_physics_step(self, step: float, context: object) -> None:
         """Handle physics step events during simulation.
 
         Args:
@@ -253,7 +266,7 @@ class Extension(omni.ext.IExt):
         """
         self.ui_builder.on_physics_step(step)
 
-    def _on_stage_opened(self, event):
+    def _on_stage_opened(self, event: object) -> None:
         """Handle stage opened event and reset UI builder state.
 
         Args:
@@ -265,7 +278,7 @@ class Extension(omni.ext.IExt):
         self.ui_builder.reset()
         self.ui_builder.on_stage_event(event)
 
-    def _on_assets_loaded(self, event):
+    def _on_assets_loaded(self, event: object) -> None:
         """Handle assets loaded event and notify UI builder.
 
         Args:
@@ -273,7 +286,7 @@ class Extension(omni.ext.IExt):
         """
         self.ui_builder.on_stage_event(event)
 
-    def _on_stage_closed(self, event):
+    def _on_stage_closed(self, event: object) -> None:
         """Handles stage closure events and performs cleanup operations.
 
         Cleans up physics and render subscriptions, resets the UI builder state, and forwards the
@@ -288,7 +301,7 @@ class Extension(omni.ext.IExt):
         self.ui_builder.reset()
         self.ui_builder.on_stage_event(event)
 
-    def _build_extension_ui(self):
+    def _build_extension_ui(self) -> None:
         """Builds the extension's user interface by calling the UI builder's build_ui method."""
         # Call user function for building UI
         self.ui_builder.build_ui()

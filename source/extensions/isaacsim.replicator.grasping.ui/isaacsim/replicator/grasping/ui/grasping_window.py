@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Provides a UI window for interactive robotic grasp generation and evaluation in Isaac Sim."""
-
 
 import asyncio
 
@@ -59,7 +58,7 @@ class GraspingWindow(ui.Window):
         title: Window title displayed in the UI.
     """
 
-    def __init__(self, title: str):
+    def __init__(self, title: str) -> None:
         super().__init__(title, dockPreference=ui.DockPreference.MAIN)
         self.deferred_dock_in("Property", ui.DockPolicy.DO_NOTHING)
 
@@ -121,7 +120,7 @@ class GraspingWindow(ui.Window):
             "poses": "Grasp Poses",
         }
         # Holds the boolean state (checked/unchecked) for each config field key
-        self._config_fields = {key: True for key in self._config_fields_labels.keys()}
+        self._config_fields = dict.fromkeys(self._config_fields_labels, True)
 
         # Overwrite config file if it exists
         self._overwrite_config = False
@@ -141,7 +140,7 @@ class GraspingWindow(ui.Window):
         self._build_window_ui()
         asyncio.ensure_future(self._build_window_ui_async())
 
-    def destroy(self):
+    def destroy(self) -> None:
         """Clean up all resources and destroy the grasping window.
 
         Clears all internal state, unsubscribes from stage events, and destroys all UI components.
@@ -159,12 +158,12 @@ class GraspingWindow(ui.Window):
         self._ui_initialized = False
         super().destroy()
 
-    def _clear(self):
+    def _clear(self) -> None:
         """Clear the grasping manager state."""
         if self._grasping_manager:
             self._grasping_manager.clear()
 
-    def _reset(self):
+    def _reset(self) -> None:
         """Reset the window to its initial state.
 
         Clears all data, resets UI state variables, creates default grasp phases, and rebuilds the UI.
@@ -180,7 +179,7 @@ class GraspingWindow(ui.Window):
         self._create_default_grasp_phases()
         asyncio.ensure_future(self._build_window_ui_async())
 
-    def _visibility_changed_fn(self, visible):
+    def _visibility_changed_fn(self, visible: bool) -> None:
         """Handle window visibility changes.
 
         Args:
@@ -189,7 +188,7 @@ class GraspingWindow(ui.Window):
         if self._visibility_changed_listener:
             self._visibility_changed_listener(visible)
 
-    def set_visibility_changed_listener(self, listener):
+    def set_visibility_changed_listener(self, listener: callable) -> None:
         """Set a callback function to be notified of window visibility changes.
 
         Args:
@@ -197,7 +196,7 @@ class GraspingWindow(ui.Window):
         """
         self._visibility_changed_listener = listener
 
-    def _on_stage_attach(self, stage_id, meters_per_unit):
+    def _on_stage_attach(self, stage_id: int, meters_per_unit: float) -> None:
         """Handle stage attachment events by rebuilding the UI.
 
         Args:
@@ -206,17 +205,20 @@ class GraspingWindow(ui.Window):
         """
         asyncio.ensure_future(self._build_window_ui_async())
 
-    def _on_stage_detach(self):
+    def _on_stage_detach(self) -> None:
         """Handle stage detachment events by resetting the window state."""
         self._reset()
 
     # ==============================================================================
     # Main UI Building Methods
     # ==============================================================================
-    def _build_window_ui(self):
+    def _build_window_ui(self) -> None:
         """Build the main window UI structure with container frames.
 
         Creates the scrolling frame and container stacks for different UI sections.
+
+        Returns:
+            None.
         """
         if self._ui_initialized:
             return
@@ -231,7 +233,7 @@ class GraspingWindow(ui.Window):
                     self._config_frame_container = ui.VStack()
         self._ui_initialized = True
 
-    async def _build_window_ui_async(self):
+    async def _build_window_ui_async(self) -> None:
         """Build all UI frames asynchronously.
 
         Rebuild all major UI sections including simulation, gripper, object, workflow, and config frames.
@@ -244,15 +246,15 @@ class GraspingWindow(ui.Window):
             self._rebuild_config_frame_async(),
         )
 
-    async def _rebuild_simulation_frame_async(self):
+    async def _rebuild_simulation_frame_async(self) -> None:
         """Rebuild the simulation frame UI section."""
         if self._simulation_frame_container:
             self._simulation_frame_container.clear()
             with self._simulation_frame_container:
                 self._build_simulation_frame()
 
-    async def _rebuild_gripper_frame_async(self):
-        """Rebuilds the gripper configuration frame asynchronously.
+    async def _rebuild_gripper_frame_async(self) -> None:
+        """Rebuild the gripper configuration frame asynchronously.
 
         Clears and rebuilds the gripper frame container with updated gripper settings, joint controls, and grasp phase configurations.
         """
@@ -261,8 +263,8 @@ class GraspingWindow(ui.Window):
             with self._gripper_frame_container:
                 self._build_gripper_frame()
 
-    async def _rebuild_object_frame_async(self):
-        """Rebuilds the object configuration frame asynchronously.
+    async def _rebuild_object_frame_async(self) -> None:
+        """Rebuild the object configuration frame asynchronously.
 
         Clears and rebuilds the object frame container with updated object settings, grasp sampler parameters, and pose visualization controls.
         """
@@ -271,8 +273,8 @@ class GraspingWindow(ui.Window):
             with self._object_frame_container:
                 self._build_object_frame()
 
-    async def _rebuild_workflow_frame_async(self):
-        """Rebuilds the workflow evaluation frame asynchronously.
+    async def _rebuild_workflow_frame_async(self) -> None:
+        """Rebuild the workflow evaluation frame asynchronously.
 
         Clears and rebuilds the workflow frame container with updated grasp evaluation controls and status information.
         """
@@ -281,8 +283,8 @@ class GraspingWindow(ui.Window):
             with self._workflow_frame_container:
                 self._build_workflow_frame()
 
-    async def _rebuild_config_frame_async(self):
-        """Rebuilds the configuration management frame asynchronously.
+    async def _rebuild_config_frame_async(self) -> None:
+        """Rebuild the configuration management frame asynchronously.
 
         Clears and rebuilds the config frame container with updated save/load controls and configuration field selections.
         """
@@ -291,8 +293,8 @@ class GraspingWindow(ui.Window):
             with self._config_frame_container:
                 self._build_config_frame()
 
-    def _rebuild_ui_if_joints_changed(self):
-        """Rebuilds UI frames if the gripper joints configuration has changed.
+    def _rebuild_ui_if_joints_changed(self) -> None:
+        """Rebuild UI frames if the gripper joints configuration has changed.
 
         Clears existing joint data, reloads joints from the gripper, synchronizes phase joint configurations with UI selections, and triggers asynchronous rebuilds of the gripper and workflow frames if joints were present before or after the reload.
         """
@@ -311,8 +313,8 @@ class GraspingWindow(ui.Window):
     # ==============================================================================
     # Gripper UI Building and Logic
     # ==============================================================================
-    def _build_gripper_frame(self):
-        """Builds the gripper configuration frame UI.
+    def _build_gripper_frame(self) -> None:
+        """Build the gripper configuration frame UI.
 
         Creates UI controls for gripper path selection, joint filtering and configuration, and grasp phase management within a collapsible frame.
         """
@@ -337,8 +339,8 @@ class GraspingWindow(ui.Window):
                 self._build_joints_frame()
                 self._build_grasp_phases_frame()
 
-    def _build_joints_frame(self):
-        """Builds the joints configuration frame UI.
+    def _build_joints_frame(self) -> None:
+        """Build the joints configuration frame UI.
 
         Creates UI controls for filtering joint visibility, configuring individual joint settings including inclusion in grasp phases, and setting pregrasp positions.
         """
@@ -373,8 +375,12 @@ class GraspingWindow(ui.Window):
                     joint_filter_collection.model.set_value(self._joint_filter_mode_int)
 
                     # Define callback function (takes the collection's model as argument)
-                    def on_joint_filter_mode_changed(model):  # model is the RadioCollection's model
-                        """Callback when the joint filter radio button selection changes."""
+                    def on_joint_filter_mode_changed(model: object) -> None:  # model is the RadioCollection's model
+                        """Callback when the joint filter radio button selection changes.
+
+                        Args:
+                            model: The RadioCollection model with the new selection value.
+                        """
                         new_mode_int = model.as_int  # Get value from the collection's model
                         carb.log_info(
                             f"Joint filter mode changed. New item value: {new_mode_int}, current internal mode: {self._joint_filter_mode_int}"
@@ -384,7 +390,7 @@ class GraspingWindow(ui.Window):
                             self._joint_filter_mode_int = new_mode_int
                             self._rebuild_ui_if_joints_changed()
                         else:
-                            print(
+                            carb.log_info(
                                 f"Joint filter mode re-confirmed to: {new_mode_int}. No change in value, UI rebuild not re-triggered from here."
                             )
 
@@ -408,9 +414,12 @@ class GraspingWindow(ui.Window):
                                     ui.Spacer(width=15)
                                     ui.Label(
                                         "Include/Exclude",
+                                        width=200,
                                         tooltip="Include/exclude the joint in the grasp phases (non-drive or mimic joints cannot be included)",
                                     )
-                                    include_joint = ui.CheckBox(enabled=joint_data["is_valid_grasp_joint"])
+                                    include_joint = ui.CheckBox(
+                                        width=10, height=0, enabled=joint_data["is_valid_grasp_joint"]
+                                    )
                                     include_joint.model.set_value(joint_data["include"])
                                     include_joint.model.add_value_changed_fn(
                                         lambda model, jd=joint_data: self._on_include_joint_in_grasp_changed(model, jd)
@@ -441,8 +450,8 @@ class GraspingWindow(ui.Window):
                                         )
                                     )
 
-    def _build_grasp_phases_frame(self):
-        """Builds the grasp phases configuration frame UI.
+    def _build_grasp_phases_frame(self) -> None:
+        """Build the grasp phases configuration frame UI.
 
         Creates UI controls for managing grasp phases including phase-specific settings, adding new phases, and simulation controls for individual or all phases.
         """
@@ -471,13 +480,16 @@ class GraspingWindow(ui.Window):
                     )
                     ui.Button("Reset Simulation", clicked_fn=self._on_reset_simulation)
 
-    def _build_phase_frame(self, phase_name):
-        """Builds the UI frame for a specific grasp phase.
+    def _build_phase_frame(self, phase_name: str) -> None:
+        """Build the UI frame for a specific grasp phase.
 
         Creates UI controls for phase management operations, simulation parameters, and joint target positions for the specified phase.
 
         Args:
             phase_name: Name of the grasp phase to build the frame for.
+
+        Returns:
+            None.
         """
         frame_name = f"Phase_{phase_name}"
         frame_collapsed = self._collapsed_states.get(frame_name, True)
@@ -543,8 +555,8 @@ class GraspingWindow(ui.Window):
                     )
                 self._build_joints_target_positions_frame(phase_name)
 
-    def _build_joints_target_positions_frame(self, phase_name):
-        """Builds the joint target positions frame UI for a specific grasp phase.
+    def _build_joints_target_positions_frame(self, phase_name: str) -> None:
+        """Build the joint target positions frame UI for a specific grasp phase.
 
         Creates UI controls for setting target joint positions within the specified grasp phase, ensuring all included joints are represented and displaying joint-specific input fields.
 
@@ -586,21 +598,23 @@ class GraspingWindow(ui.Window):
                             value_field = ui.FloatField()
                             value_field.model.set_value(target_position)
 
-                            def on_position_changed(model, p=phase, j_path=absolute_path):
+                            def on_position_changed(
+                                model: object, p: object = phase, j_path: str = absolute_path
+                            ) -> None:
                                 # Update the target position in the specific phase object
                                 if p:  # Check if phase object is still valid
                                     p.add_joint(j_path, model.as_float)
 
                             value_field.model.add_value_changed_fn(on_position_changed)
 
-    def _create_default_grasp_phases(self):
-        """Creates default 'Open' and 'Close' grasp phases if no phases exist in the grasping manager."""
+    def _create_default_grasp_phases(self) -> None:
+        """Create default 'Open' and 'Close' grasp phases if no phases exist in the grasping manager."""
         if not self._grasping_manager.grasp_phases:
             self._grasping_manager.create_and_add_grasp_phase(name="Open")
             self._grasping_manager.create_and_add_grasp_phase(name="Close")
 
     def _load_gripper_joints(self) -> bool:
-        """Loads joint information from the current gripper and populates the UI joint data.
+        """Load joint information from the current gripper and populates the UI joint data.
 
         Retrieves core joint information from the grasping manager's gripper prim and builds
         the internal `_joint_ui_data` structure with visibility and inclusion settings based on
@@ -669,12 +683,12 @@ class GraspingWindow(ui.Window):
 
         return True
 
-    def _clear_gripper_joints(self):
-        """Clears all joint data from the UI, resetting the internal joint data list to empty."""
+    def _clear_gripper_joints(self) -> None:
+        """Clear all joint data from the UI, resetting the internal joint data list to empty."""
         self._joint_ui_data = []
 
-    def _sync_phase_joints_with_ui_selection(self):
-        """Synchronizes the joints within each grasp phase based on the current UI selection.
+    def _sync_phase_joints_with_ui_selection(self) -> None:
+        """Synchronize the joints within each grasp phase based on the current UI selection.
 
         Ensures that each GraspPhase in the GraspingManager targets exactly the set
         of joints that are currently marked as 'includable' and 'include=True' in the
@@ -686,6 +700,9 @@ class GraspingWindow(ui.Window):
 
         This is typically called after the gripper changes, UI visibility flags change,
         or a configuration is loaded, to ensure phase definitions match the UI state.
+
+        Returns:
+            None.
         """
         if not self._joint_ui_data:
             return
@@ -709,8 +726,8 @@ class GraspingWindow(ui.Window):
                     if absolute_path not in includable_joints:
                         phase.remove_joint(absolute_path)
 
-    def _update_ui_joint_selection_from_loaded_phases(self):
-        """Updates the UI's joint 'include' checkboxes based on loaded grasp phases.
+    def _update_ui_joint_selection_from_loaded_phases(self) -> None:
+        """Update the UI's joint 'include' checkboxes based on loaded grasp phases.
 
         This function is primarily intended to be called after loading a configuration file.
         It examines the `joint_drive_targets` of the *first* grasp phase loaded from the
@@ -740,8 +757,8 @@ class GraspingWindow(ui.Window):
     # ==============================================================================
     # Object UI Building and Logic
     # ==============================================================================
-    def _build_object_frame(self):
-        """Builds the UI frame for object configuration and management.
+    def _build_object_frame(self) -> None:
+        """Build the UI frame for object configuration and management.
 
         Creates the object frame containing object path input, grasp pose sampler settings,
         grasp poses management, and trimesh visualization controls.
@@ -770,8 +787,8 @@ class GraspingWindow(ui.Window):
                 self._build_grasp_poses_frame()
                 self._build_trimesh_debug_draw_frame()
 
-    def _build_grasp_poses_frame(self):
-        """Builds the UI frame for managing and visualizing grasp poses."""
+    def _build_grasp_poses_frame(self) -> None:
+        """Build the UI frame for managing and visualizing grasp poses."""
         frame_name = "Grasp Poses"
         frame_collapsed = self._collapsed_states.get(frame_name, True)
         grasp_poses_frame = ui.CollapsableFrame(frame_name, height=0, collapsed=frame_collapsed)
@@ -817,8 +834,8 @@ class GraspingWindow(ui.Window):
                 # Nested visualization frame
                 self._build_grasp_pose_visualization_frame()
 
-    def _build_grasp_sampler_frame(self):
-        """Builds the UI frame for grasp pose sampler configuration.
+    def _build_grasp_sampler_frame(self) -> None:
+        """Build the UI frame for grasp pose sampler configuration.
 
         Creates controls for sampler parameters including sampler type, number of orientations,
         gripper standoff distance, maximum aperture, axis configurations, lateral sigma,
@@ -926,16 +943,16 @@ class GraspingWindow(ui.Window):
                 # Verbose checkbox
                 with ui.HStack(spacing=5):
                     ui.Spacer(width=10)
-                    ui.Label("Verbose Logging:", tooltip="Enable detailed logging during grasp generation.")
-                    verbose_check = ui.CheckBox()
+                    ui.Label("Verbose Logging:", width=200, tooltip="Enable detailed logging during grasp generation.")
+                    verbose_check = ui.CheckBox(width=10, height=0)
                     verbose_check.model.set_value(self._grasping_manager.sampler_config.get("verbose", False))
                     verbose_check.model.add_value_changed_fn(self._on_sampler_verbose_changed)
 
     # ==============================================================================
     # Visualization UI Building and Logic
     # ==============================================================================
-    def _build_grasp_pose_visualization_frame(self):
-        """Builds the UI frame for grasp pose visualization controls.
+    def _build_grasp_pose_visualization_frame(self) -> None:
+        """Build the UI frame for grasp pose visualization controls.
 
         Creates controls for visualizing grasp poses in world or local frame, drawing and clearing
         pose visualizations, and gripper visualization with pose navigation controls.
@@ -950,8 +967,10 @@ class GraspingWindow(ui.Window):
             with ui.VStack(spacing=5):
                 with ui.HStack(spacing=5):
                     ui.Spacer(width=10)
-                    ui.Label("World Frame:")
-                    vis_checkbox = ui.CheckBox(tooltip="Visualize grasp poses in world or local frame")
+                    ui.Label("World Frame:", width=200)
+                    vis_checkbox = ui.CheckBox(
+                        width=10, height=0, tooltip="Visualize grasp poses in world or local frame"
+                    )
                     vis_checkbox.model.set_value(self._draw_poses_in_world_frame)
                     vis_checkbox.model.add_value_changed_fn(self._on_visualize_frame_checkbox_changed)
                 with ui.HStack(spacing=5):
@@ -981,8 +1000,8 @@ class GraspingWindow(ui.Window):
                     ui.Button("Next", enabled=enabled, clicked_fn=self._on_next_grasp_pose)
                     ui.Button("Reset", clicked_fn=self._on_reset_grasp_pose)
 
-    def _build_trimesh_debug_draw_frame(self):
-        """Builds the UI frame for trimesh debug drawing controls.
+    def _build_trimesh_debug_draw_frame(self) -> None:
+        """Build the UI frame for trimesh debug drawing controls.
 
         Creates controls for drawing and clearing trimesh visualizations of the object,
         with options to display in world or local coordinate frame.
@@ -997,11 +1016,11 @@ class GraspingWindow(ui.Window):
             with ui.VStack(spacing=5):
                 with ui.HStack(spacing=5):
                     ui.Spacer(width=10)
-                    ui.Label("World Frame", tooltip="Draw trimesh in world or local frame")
-                    world_frame_checkbox = ui.CheckBox()
+                    ui.Label("World Frame", width=200, tooltip="Draw trimesh in world or local frame")
+                    world_frame_checkbox = ui.CheckBox(width=10, height=0)
                     world_frame_checkbox.model.set_value(self._draw_trimesh_world_frame)
 
-                    def on_world_frame_checkbox_changed(model):
+                    def on_world_frame_checkbox_changed(model: object) -> None:
                         self._draw_trimesh_world_frame = model.get_value_as_bool()
 
                     world_frame_checkbox.model.add_value_changed_fn(on_world_frame_checkbox_changed)
@@ -1013,8 +1032,8 @@ class GraspingWindow(ui.Window):
     # ==============================================================================
     # Simulation UI Building and Logic
     # ==============================================================================
-    def _build_simulation_frame(self):
-        """Builds the main Simulation settings frame."""
+    def _build_simulation_frame(self) -> None:
+        """Build the main Simulation settings frame."""
         frame_name = "Simulation"
         frame_collapsed = self._collapsed_states.get(frame_name, True)
         simulation_frame = ui.CollapsableFrame(frame_name, height=0, style=get_style(), collapsed=frame_collapsed)
@@ -1027,10 +1046,11 @@ class GraspingWindow(ui.Window):
                     ui.Spacer(width=10)
                     ui.Label(
                         "Render / Update Kit",
+                        width=200,
                         tooltip="If checked, render/update kit after each simulation step."
                         "If unchecked, the simulation will run in the background, rendering/updating after each simulation phase",
                     )
-                    render_simulation = ui.CheckBox()
+                    render_simulation = ui.CheckBox(width=10, height=0)
                     render_simulation.model.set_value(self._render_simulation)
                     render_simulation.model.add_value_changed_fn(self._on_render_simulation_changed)
 
@@ -1039,6 +1059,7 @@ class GraspingWindow(ui.Window):
 
                     ui.Label(
                         "Simulate Using Timeline:",
+                        width=200,
                         tooltip=(
                             "Check to simulate by advancing the timeline instead of direct physics scene simulation steps.\\n\\n"
                             "If checked:\\n"
@@ -1051,7 +1072,7 @@ class GraspingWindow(ui.Window):
                             "- The 'Isolate Simulation' setting is ignored."
                         ),
                     )
-                    timeline_checkbox = ui.CheckBox()
+                    timeline_checkbox = ui.CheckBox(width=10, height=0)
                     timeline_checkbox.model.set_value(self._simulate_using_timeline)
                     timeline_checkbox.model.add_value_changed_fn(self._on_simulate_using_timeline_changed)
 
@@ -1083,8 +1104,8 @@ class GraspingWindow(ui.Window):
     # ==============================================================================
     # Workflow UI Building and Logic
     # ==============================================================================
-    def _build_workflow_frame(self):
-        """Builds the workflow control frame for grasp evaluation."""
+    def _build_workflow_frame(self) -> None:
+        """Build the workflow control frame for grasp evaluation."""
         frame_name = "Workflow"
         frame_collapsed = self._collapsed_states.get(frame_name, True)
         workflow_frame = ui.CollapsableFrame(frame_name, height=0, style=get_style(), collapsed=frame_collapsed)
@@ -1111,10 +1132,11 @@ class GraspingWindow(ui.Window):
                     ui.Spacer(width=15)
                     ui.Label(
                         "Overwrite Results",
+                        width=200,
                         tooltip="If checked, existing result files (capture_N.yaml) in the output path will be overwritten during the workflow."
                         " If unchecked, the workflow will start numbering from the next available index.",
                     )
-                    overwrite_results_checkbox = ui.CheckBox()
+                    overwrite_results_checkbox = ui.CheckBox(width=10, height=0)
                     overwrite_results_checkbox.model.set_value(self._overwrite_results)
                     overwrite_results_checkbox.model.add_value_changed_fn(self._on_overwrite_results_changed)
 
@@ -1144,8 +1166,8 @@ class GraspingWindow(ui.Window):
     # ==============================================================================
     # Configuration UI Building and Logic
     # ==============================================================================
-    def _build_config_frame(self):
-        """Builds the configuration save/load frame."""
+    def _build_config_frame(self) -> None:
+        """Build the configuration save/load frame."""
         frame_name = "Config"
         frame_collapsed = self._collapsed_states.get(frame_name, True)
         config_frame = ui.CollapsableFrame(frame_name, style=get_style(), height=0, collapsed=frame_collapsed)
@@ -1165,9 +1187,10 @@ class GraspingWindow(ui.Window):
                     ui.Spacer(width=15)
                     ui.Label(
                         "Overwrite Existing File",
+                        width=200,
                         tooltip="If checked, saving will overwrite the file if it already exists at the specified path.",
                     )
-                    overwrite_checkbox = ui.CheckBox()
+                    overwrite_checkbox = ui.CheckBox(width=10, height=0)
                     overwrite_checkbox.model.set_value(self._overwrite_config)
                     overwrite_checkbox.model.add_value_changed_fn(self._on_overwrite_config_changed)
 
@@ -1176,8 +1199,8 @@ class GraspingWindow(ui.Window):
                     ui.Button("Load", clicked_fn=self._on_load_config)
                     ui.Button("Save", clicked_fn=self._on_save_config)
 
-    def _build_config_checkboxes(self):
-        """Builds the configuration components selection checkboxes."""
+    def _build_config_checkboxes(self) -> None:
+        """Build the configuration components selection checkboxes."""
         frame_name = "Config Includes"
         frame_collapsed = self._collapsed_states.get(frame_name, True)
         fields_frame = ui.CollapsableFrame(frame_name, height=0, collapsed=frame_collapsed)
@@ -1188,8 +1211,8 @@ class GraspingWindow(ui.Window):
                 for field_key, label in self._config_fields_labels.items():
                     with ui.HStack(spacing=5):
                         ui.Spacer(width=10)
-                        ui.Label(label)
-                        checkbox = ui.CheckBox()
+                        ui.Label(label, width=200)
+                        checkbox = ui.CheckBox(width=10, height=0)
                         # Use the field_key (e.g., "gripper") to get the current state
                         checkbox.model.set_value(self._config_fields[field_key])
                         checkbox.model.add_value_changed_fn(
@@ -1202,8 +1225,8 @@ class GraspingWindow(ui.Window):
     # ==============================================================================
 
     # --- Gripper Event Handlers ---
-    def _on_gripper_base_path_changed(self, model):
-        """Handles changes to the gripper base path.
+    def _on_gripper_base_path_changed(self, model: object) -> None:
+        """Handle changes to the gripper base path.
 
         Args:
             model: The UI model containing the gripper path value.
@@ -1217,8 +1240,8 @@ class GraspingWindow(ui.Window):
                 asyncio.gather(self._rebuild_gripper_frame_async(), self._rebuild_workflow_frame_async())
             )
 
-    def _on_include_joint_in_grasp_changed(self, model, joint_data):
-        """Handles changes to joint inclusion state in grasp phases.
+    def _on_include_joint_in_grasp_changed(self, model: object, joint_data: dict) -> None:
+        """Handle changes to joint inclusion state in grasp phases.
 
         Args:
             model: The UI model containing the inclusion state.
@@ -1241,8 +1264,8 @@ class GraspingWindow(ui.Window):
 
             asyncio.ensure_future(self._rebuild_gripper_frame_async())
 
-    def _on_set_joint_pregrasp_state(self, model, joint_path):
-        """Handles changes to joint pregrasp position values.
+    def _on_set_joint_pregrasp_state(self, model: object, joint_path: str) -> None:
+        """Handle changes to joint pregrasp position values.
 
         Args:
             model: The UI model containing the position value.
@@ -1252,7 +1275,7 @@ class GraspingWindow(ui.Window):
         self._grasping_manager.joint_pregrasp_states[joint_path] = position_value
         grasping_utils.apply_joint_pregrasp_state(joint_path, position_value)
 
-    def _on_move_grasp_phase_up(self, phase_name):
+    def _on_move_grasp_phase_up(self, phase_name: str) -> None:
         """Move a grasp phase up in the sequence (earlier execution).
 
         Args:
@@ -1261,7 +1284,7 @@ class GraspingWindow(ui.Window):
         if grasping_ui_utils.move_grasp_phase_up(self._grasping_manager, phase_name):
             asyncio.ensure_future(self._rebuild_gripper_frame_async())
 
-    def _on_move_grasp_phase_down(self, phase_name):
+    def _on_move_grasp_phase_down(self, phase_name: str) -> None:
         """Move a grasp phase down in the sequence (later execution).
 
         Args:
@@ -1270,8 +1293,8 @@ class GraspingWindow(ui.Window):
         if grasping_ui_utils.move_grasp_phase_down(self._grasping_manager, phase_name):
             asyncio.ensure_future(self._rebuild_gripper_frame_async())
 
-    def _on_delete_grasp_phase(self, phase_name):
-        """Deletes a grasp phase from the sequence.
+    def _on_delete_grasp_phase(self, phase_name: str) -> None:
+        """Delete a grasp phase from the sequence.
 
         Args:
             phase_name: Name of the phase to delete.
@@ -1281,8 +1304,8 @@ class GraspingWindow(ui.Window):
         else:
             carb.log_warn(f"Grasp phase '{phase_name}' not found.")
 
-    def _on_new_phase_name_changed(self, model):
-        """Handles changes to the new grasp phase name field.
+    def _on_new_phase_name_changed(self, model: object) -> None:
+        """Handle changes to the new grasp phase name field.
 
         Updates the internal phase name string when the user types in the new phase name input field.
 
@@ -1291,12 +1314,15 @@ class GraspingWindow(ui.Window):
         """
         self._new_grasp_phase_name = model.as_string
 
-    def _on_add_new_grasp_phase(self):
-        """Handles adding a new grasp phase to the grasping manager.
+    def _on_add_new_grasp_phase(self) -> None:
+        """Handle adding a new grasp phase to the grasping manager.
 
         Creates a new grasp phase with the name specified in the phase name field and adds it to the manager.
         Validates that the name is not empty and does not already exist (case-insensitive).
         Rebuilds the gripper UI frame after successful addition.
+
+        Returns:
+            None.
         """
         if not self._new_grasp_phase_name:
             carb.log_warn("Please enter a valid grasp phase name.")
@@ -1312,8 +1338,8 @@ class GraspingWindow(ui.Window):
         asyncio.ensure_future(self._rebuild_gripper_frame_async())
 
     # --- Object Event Handlers ---
-    def _on_object_path_changed(self, model):
-        """Handles changes to the object path field.
+    def _on_object_path_changed(self, model: object) -> None:
+        """Handle changes to the object path field.
 
         Updates the grasping manager with the new object prim path and rebuilds the object and workflow UI frames.
 
@@ -1323,8 +1349,8 @@ class GraspingWindow(ui.Window):
         self._grasping_manager.set_object_prim_path(model.as_string)
         asyncio.ensure_future(asyncio.gather(self._rebuild_object_frame_async(), self._rebuild_workflow_frame_async()))
 
-    def _on_num_candidates_changed(self, model):
-        """Handles changes to the number of grasp candidates field.
+    def _on_num_candidates_changed(self, model: object) -> None:
+        """Handle changes to the number of grasp candidates field.
 
         Updates the sampler configuration with the new target number of grasp candidates to sample.
 
@@ -1333,8 +1359,8 @@ class GraspingWindow(ui.Window):
         """
         self._grasping_manager.sampler_config["num_candidates"] = model.as_int
 
-    def _on_num_orientations_changed(self, model):
-        """Handles changes to the number of orientations field.
+    def _on_num_orientations_changed(self, model: object) -> None:
+        """Handle changes to the number of orientations field.
 
         Updates the sampler configuration with the new number of orientations to sample per valid grasp axis.
 
@@ -1343,8 +1369,8 @@ class GraspingWindow(ui.Window):
         """
         self._grasping_manager.sampler_config["num_orientations"] = model.as_int
 
-    def _on_gripper_standoff_fingertips_changed(self, model):
-        """Handles changes to the gripper standoff fingertips field.
+    def _on_gripper_standoff_fingertips_changed(self, model: object) -> None:
+        """Handle changes to the gripper standoff fingertips field.
 
         Updates the sampler configuration with the new distance from fingertip contact points to the gripper's
         wrist along the approach direction.
@@ -1354,8 +1380,8 @@ class GraspingWindow(ui.Window):
         """
         self._grasping_manager.sampler_config["gripper_standoff_fingertips"] = model.as_float
 
-    def _on_lateral_sigma_changed(self, model):
-        """Handles changes to the lateral sigma field.
+    def _on_lateral_sigma_changed(self, model: object) -> None:
+        """Handle changes to the lateral sigma field.
 
         Updates the sampler configuration with the new standard deviation for random perturbation of grasp
         center point along the grasp axis.
@@ -1365,8 +1391,8 @@ class GraspingWindow(ui.Window):
         """
         self._grasping_manager.sampler_config["lateral_sigma"] = model.as_float
 
-    def _on_gripper_maximum_aperture_changed(self, model):
-        """Handles changes to the gripper maximum aperture field.
+    def _on_gripper_maximum_aperture_changed(self, model: object) -> None:
+        """Handle changes to the gripper maximum aperture field.
 
         Updates the sampler configuration with the new maximum width between gripper fingers.
         Antipodal points with distance greater than this value are rejected during sampling.
@@ -1376,8 +1402,8 @@ class GraspingWindow(ui.Window):
         """
         self._grasping_manager.sampler_config["gripper_maximum_aperture"] = model.as_float
 
-    def _on_random_seed_changed(self, model):
-        """Handles changes to the random seed field.
+    def _on_random_seed_changed(self, model: object) -> None:
+        """Handle changes to the random seed field.
 
         Updates the sampler configuration with the new random seed for grasp pose generation.
 
@@ -1386,8 +1412,8 @@ class GraspingWindow(ui.Window):
         """
         self._grasping_manager.sampler_config["random_seed"] = model.as_int
 
-    def _on_approach_direction_changed(self, model):
-        """Handles changes to the gripper approach direction field.
+    def _on_approach_direction_changed(self, model: object) -> None:
+        """Handle changes to the gripper approach direction field.
 
         Parses the vector string and updates the sampler configuration with the new direction along which
         the gripper approaches the object for grasping.
@@ -1399,8 +1425,8 @@ class GraspingWindow(ui.Window):
         if vector:
             self._grasping_manager.sampler_config["gripper_approach_direction"] = vector
 
-    def _on_grasp_align_axis_changed(self, model):
-        """Handles changes to the grasp align axis input field.
+    def _on_grasp_align_axis_changed(self, model: object) -> None:
+        """Handle changes to the grasp align axis input field.
 
         Args:
             model: The UI model containing the new grasp align axis vector string.
@@ -1409,8 +1435,8 @@ class GraspingWindow(ui.Window):
         if vector:
             self._grasping_manager.sampler_config["grasp_align_axis"] = vector
 
-    def _on_orientation_axis_changed(self, model):
-        """Handles changes to the orientation sample axis input field.
+    def _on_orientation_axis_changed(self, model: object) -> None:
+        """Handle changes to the orientation sample axis input field.
 
         Args:
             model: The UI model containing the new orientation sample axis vector string.
@@ -1419,16 +1445,16 @@ class GraspingWindow(ui.Window):
         if vector:
             self._grasping_manager.sampler_config["orientation_sample_axis"] = vector
 
-    def _on_sampler_verbose_changed(self, model):
-        """Handles changes to the sampler verbose logging checkbox.
+    def _on_sampler_verbose_changed(self, model: object) -> None:
+        """Handle changes to the sampler verbose logging checkbox.
 
         Args:
             model: The UI model containing the new verbose logging state.
         """
         self._grasping_manager.sampler_config["verbose"] = model.get_value_as_bool()
 
-    def _on_generate_grasp_poses(self):
-        """Handles the generate grasp poses button click to create new grasp pose candidates."""
+    def _on_generate_grasp_poses(self) -> None:
+        """Handle the generate grasp poses button click to create new grasp pose candidates."""
         grasping_ui_utils.clear_debug_draw()
 
         config = self._grasping_manager.sampler_config.copy()
@@ -1438,7 +1464,7 @@ class GraspingWindow(ui.Window):
         self._grasping_manager.generate_grasp_poses(config)
         asyncio.ensure_future(asyncio.gather(self._rebuild_object_frame_async(), self._rebuild_workflow_frame_async()))
 
-    def _on_clear_grasp_poses(self):
+    def _on_clear_grasp_poses(self) -> None:
         """Clear the generated grasp poses from the manager."""
         if self._grasping_manager:
             self._grasping_manager.clear_grasp_poses()
@@ -1449,7 +1475,7 @@ class GraspingWindow(ui.Window):
 
     # --- Visualization Event Handlers ---
     def _on_visualize_grasp_poses(self) -> bool:
-        """Handles the visualize grasp poses button click to draw pose axes in the viewport.
+        """Handle the visualize grasp poses button click to draw pose axes in the viewport.
 
         Returns:
             True if poses were successfully visualized, False if no poses are available.
@@ -1466,20 +1492,20 @@ class GraspingWindow(ui.Window):
         grasping_ui_utils.draw_grasp_samples_as_axes(poses, clear_existing=False)
         return True
 
-    def _on_clear_visualized_grasp_poses(self):
-        """Handles the clear visualized grasp poses button click to remove debug drawings from the viewport."""
+    def _on_clear_visualized_grasp_poses(self) -> None:
+        """Handle the clear visualized grasp poses button click to remove debug drawings from the viewport."""
         grasping_ui_utils.clear_debug_draw()
 
-    def _on_visualize_frame_checkbox_changed(self, model):
-        """Handles changes to the world frame visualization checkbox.
+    def _on_visualize_frame_checkbox_changed(self, model: object) -> None:
+        """Handle changes to the world frame visualization checkbox.
 
         Args:
             model: The UI model containing the new world frame visualization state.
         """
         self._draw_poses_in_world_frame = model.get_value_as_bool()
 
-    def _on_draw_trimesh(self):
-        """Handles the draw trimesh button click to visualize the object's mesh in the viewport."""
+    def _on_draw_trimesh(self) -> None:
+        """Handle the draw trimesh button click to visualize the object's mesh in the viewport."""
         object_prim = self._grasping_manager.get_object_prim()
         if object_prim:
             grasping_ui_utils.draw_trimesh(
@@ -1488,15 +1514,18 @@ class GraspingWindow(ui.Window):
         else:
             carb.log_warn(f"Cannot draw trimesh: Object prim is not set.")
 
-    def _on_clear_trimesh(self):
-        """Handles the clear trimesh button click to remove trimesh debug drawings from the viewport."""
+    def _on_clear_trimesh(self) -> None:
+        """Handle the clear trimesh button click to remove trimesh debug drawings from the viewport."""
         grasping_ui_utils.clear_debug_draw()
 
-    def _on_prev_grasp_pose(self):
-        """Handles navigation to the previous grasp pose in the sequence.
+    def _on_prev_grasp_pose(self) -> None:
+        """Handle navigation to the previous grasp pose in the sequence.
 
         Moves the gripper to the previous grasp pose in the loaded sequence and updates the UI
         to reflect the new pose index.
+
+        Returns:
+            None.
         """
         gripper_path = self._grasping_manager.gripper_path
         initial_pose_set = self._grasping_manager.get_initial_gripper_pose() is not None
@@ -1510,11 +1539,14 @@ class GraspingWindow(ui.Window):
         self._grasping_manager.move_gripper_to_grasp_pose(self._current_grasp_pose_idx, in_world_frame=True)
         asyncio.ensure_future(self._rebuild_object_frame_async())
 
-    def _on_next_grasp_pose(self):
-        """Handles navigation to the next grasp pose in the sequence.
+    def _on_next_grasp_pose(self) -> None:
+        """Handle navigation to the next grasp pose in the sequence.
 
         Moves the gripper to the next grasp pose in the loaded sequence and updates the UI
         to reflect the new pose index.
+
+        Returns:
+            None.
         """
         gripper_path = self._grasping_manager.gripper_path
         initial_pose_set = self._grasping_manager.get_initial_gripper_pose() is not None
@@ -1531,8 +1563,8 @@ class GraspingWindow(ui.Window):
         self._grasping_manager.move_gripper_to_grasp_pose(self._current_grasp_pose_idx, in_world_frame=True)
         asyncio.ensure_future(self._rebuild_object_frame_async())
 
-    def _on_reset_grasp_pose(self):
-        """Handles resetting the gripper to its initial pose.
+    def _on_reset_grasp_pose(self) -> None:
+        """Handle resetting the gripper to its initial pose.
 
         Resets the current grasp pose index to 0 and moves the gripper back to its stored
         initial position and orientation.
@@ -1548,8 +1580,8 @@ class GraspingWindow(ui.Window):
         asyncio.ensure_future(self._rebuild_object_frame_async())
 
     # --- Simulation Event Handlers ---
-    def _on_simulation_steps_changed(self, model, phase_name):
-        """Handles changes to the simulation steps setting for a grasp phase.
+    def _on_simulation_steps_changed(self, model: object, phase_name: str) -> None:
+        """Handle changes to the simulation steps setting for a grasp phase.
 
         Args:
             model: UI model containing the new simulation steps value.
@@ -1559,8 +1591,8 @@ class GraspingWindow(ui.Window):
         if phase_data:
             phase_data.simulation_steps = model.as_int
 
-    def _on_simulation_step_dt_changed(self, model, phase_name):
-        """Handles changes to the simulation step delta time setting for a grasp phase.
+    def _on_simulation_step_dt_changed(self, model: object, phase_name: str) -> None:
+        """Handle changes to the simulation step delta time setting for a grasp phase.
 
         Args:
             model: UI model containing the new simulation step delta time value.
@@ -1570,8 +1602,8 @@ class GraspingWindow(ui.Window):
         if phase_data:
             phase_data.simulation_step_dt = model.as_float
 
-    def _on_physics_scene_path_changed(self, model):
-        """Handles changes to the isolated physics scene path setting.
+    def _on_physics_scene_path_changed(self, model: object) -> None:
+        """Handle changes to the isolated physics scene path setting.
 
         Updates the physics scene path and simulation isolation state, then clears
         any existing simulation state.
@@ -1583,8 +1615,8 @@ class GraspingWindow(ui.Window):
         self._isolate_grasp_simulation = bool(self._physics_scene_path.strip())
         self._grasping_manager.clear_simulation(simulate_using_timeline=False)
 
-    def _on_render_simulation_changed(self, model):
-        """Handles changes to the render simulation checkbox setting.
+    def _on_render_simulation_changed(self, model: object) -> None:
+        """Handle changes to the render simulation checkbox setting.
 
         Updates whether the simulation should render and update Kit after each simulation step.
 
@@ -1593,8 +1625,8 @@ class GraspingWindow(ui.Window):
         """
         self._render_simulation = model.get_value_as_bool()
 
-    def _on_simulate_using_timeline_changed(self, model):
-        """Handles changes to the simulate using timeline checkbox setting.
+    def _on_simulate_using_timeline_changed(self, model: object) -> None:
+        """Handle changes to the simulate using timeline checkbox setting.
 
         Updates whether simulation should use timeline advancement instead of direct
         physics scene simulation steps.
@@ -1604,7 +1636,7 @@ class GraspingWindow(ui.Window):
         """
         self._simulate_using_timeline = model.get_value_as_bool()
 
-    async def _on_simulate_single_grasp_phase_async(self, phase_identifier):
+    async def _on_simulate_single_grasp_phase_async(self, phase_identifier: object) -> None:
         """Simulate a single grasp phase with the given phase identifier (index or name).
 
         Args:
@@ -1622,15 +1654,15 @@ class GraspingWindow(ui.Window):
 
         asyncio.ensure_future(self._rebuild_gripper_frame_async())
 
-    def _on_reset_simulation(self):
-        """Handles resetting the simulation state.
+    def _on_reset_simulation(self) -> None:
+        """Handle resetting the simulation state.
 
         Clears any existing simulation state and resets the physics scene.
         """
         self._grasping_manager.clear_simulation(simulate_using_timeline=self._simulate_using_timeline)
 
-    async def _on_simulate_all_grasp_phases_async(self):
-        """Handles the event when the user clicks to simulate all grasp phases.
+    async def _on_simulate_all_grasp_phases_async(self) -> None:
+        """Handle the event when the user clicks to simulate all grasp phases.
 
         Executes all configured grasp phases sequentially using the grasping manager.
         This is an asynchronous operation that allows the user to see the complete grasping workflow
@@ -1647,8 +1679,8 @@ class GraspingWindow(ui.Window):
         asyncio.ensure_future(self._rebuild_gripper_frame_async())
 
     # --- Workflow Event Handlers ---
-    def _on_num_grasps_to_evaluate_changed(self, model):
-        """Handles changes to the number of grasp poses to evaluate in the workflow.
+    def _on_num_grasps_to_evaluate_changed(self, model: object) -> None:
+        """Handle changes to the number of grasp poses to evaluate in the workflow.
 
         Updates the internal count that determines how many grasp poses will be processed
         during the evaluation workflow.
@@ -1658,12 +1690,15 @@ class GraspingWindow(ui.Window):
         """
         self._num_grasps_to_evaluate = model.as_int
 
-    async def _on_evaluate_grasp_poses_async(self):
-        """Handles the start of the grasp pose evaluation workflow.
+    async def _on_evaluate_grasp_poses_async(self) -> None:
+        """Handle the start of the grasp pose evaluation workflow.
 
         Initiates the asynchronous workflow to evaluate grasp poses by moving the gripper
         to each pose and simulating the grasping sequence. Updates the UI to reflect
         the workflow progress and handles completion or error states.
+
+        Returns:
+            None.
         """
         if self._is_workflow_running:
             carb.log_warn("Workflow is already running.")
@@ -1715,7 +1750,7 @@ class GraspingWindow(ui.Window):
                 return
             scene_path_to_use = self._physics_scene_path
 
-        async def progress_update_callback(evaluated_count: int):
+        async def progress_update_callback(evaluated_count: int) -> None:
             self._current_evaluated_grasp_idx = evaluated_count
             # Update current grasp pose index for visualization to follow along, if desired
             if evaluated_count > 0:
@@ -1755,8 +1790,8 @@ class GraspingWindow(ui.Window):
             await self._rebuild_workflow_frame_async()
 
     # --- Config Event Handlers ---
-    def _on_config_path_changed(self, model):
-        """Handles changes to the configuration file path.
+    def _on_config_path_changed(self, model: object) -> None:
+        """Handle changes to the configuration file path.
 
         Updates the internal path used for saving and loading grasping configurations.
 
@@ -1765,8 +1800,8 @@ class GraspingWindow(ui.Window):
         """
         self._config_path = model.get_value_as_string()
 
-    def _on_results_output_dir_changed(self, model):
-        """Handles changes to the results output directory path.
+    def _on_results_output_dir_changed(self, model: object) -> None:
+        """Handle changes to the results output directory path.
 
         Updates the directory where grasp evaluation results will be saved during
         the workflow execution.
@@ -1776,8 +1811,8 @@ class GraspingWindow(ui.Window):
         """
         self._grasping_manager.set_results_output_dir(model.get_value_as_string())
 
-    def _on_overwrite_config_changed(self, model):
-        """Handles changes to the overwrite configuration setting.
+    def _on_overwrite_config_changed(self, model: object) -> None:
+        """Handle changes to the overwrite configuration setting.
 
         Updates whether existing configuration files should be overwritten when saving.
 
@@ -1786,8 +1821,8 @@ class GraspingWindow(ui.Window):
         """
         self._overwrite_config = model.get_value_as_bool()
 
-    def _on_config_field_changed(self, field, model):
-        """Handles changes to individual configuration field inclusion settings.
+    def _on_config_field_changed(self, field: str, model: object) -> None:
+        """Handle changes to individual configuration field inclusion settings.
 
         Updates which configuration components (gripper, poses, phases, etc.) should be
         included when saving or loading configuration files.
@@ -1798,8 +1833,8 @@ class GraspingWindow(ui.Window):
         """
         self._config_fields[field] = model.get_value_as_bool()
 
-    def _on_overwrite_results_changed(self, model):
-        """Handles changes to the overwrite results setting.
+    def _on_overwrite_results_changed(self, model: object) -> None:
+        """Handle changes to the overwrite results setting.
 
         Updates whether existing result files should be overwritten during the
         grasp evaluation workflow.
@@ -1809,23 +1844,30 @@ class GraspingWindow(ui.Window):
         """
         self._overwrite_results = model.get_value_as_bool()
 
-    async def _on_stop_workflow_clicked_async(self):
-        """Handles the stop workflow button click event.
+    async def _on_stop_workflow_clicked_async(self) -> None:
+        """Handle the stop workflow button click event.
 
         Requests the grasping manager to stop the currently running evaluation workflow.
         The workflow loop will handle final cleanup and UI updates.
+
+        Returns:
+            None.
         """
         if not self._is_workflow_running:
             carb.log_warn("Workflow is not running.")
             return
+
         self._grasping_manager.request_workflow_stop()
         # The main workflow loop in _on_evaluate_grasp_poses_async will handle UI updates and state resetting in its finally block.
 
-    def _on_save_config(self):
-        """Handles saving the current grasping configuration to file.
+    def _on_save_config(self) -> None:
+        """Handle saving the current grasping configuration to file.
 
         Saves the selected configuration components (gripper, poses, phases, etc.)
         to the specified file path using the grasping manager.
+
+        Returns:
+            None.
         """
         file_path = self._config_path
         if not file_path:
@@ -1841,11 +1883,14 @@ class GraspingWindow(ui.Window):
             file_path=file_path, components=components_to_save, overwrite=self._overwrite_config
         )
 
-    def _on_load_config(self):
+    def _on_load_config(self) -> None:
         """Load configuration from the specified file path.
 
         Attempts to load the selected configuration components from the file path specified in the UI.
         Applies loaded pregrasp joint states if the pregrasp component was successfully loaded.
+
+        Returns:
+            None.
         """
         file_path = self._config_path
         if not file_path:
@@ -1892,7 +1937,7 @@ class GraspingWindow(ui.Window):
                 )
 
     # --- General UI Event Handlers ---
-    def _on_set_field_from_selection(self, model):
+    def _on_set_field_from_selection(self, model: object) -> None:
         """Set the given field to the path of the selected prim in the stage.
 
         Args:
@@ -1902,7 +1947,7 @@ class GraspingWindow(ui.Window):
         if path:
             model.set_value(path)
 
-    def _on_collapsed_changed(self, key: str, collapsed: bool):
+    def _on_collapsed_changed(self, key: str, collapsed: bool) -> None:
         """Keep track in a dict of the collapsed state of the frames.
 
         Args:

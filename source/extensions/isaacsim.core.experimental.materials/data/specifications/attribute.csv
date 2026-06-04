@@ -1,0 +1,7 @@
+Name,Index,Description
+"none",0,"Unspecified attribute."
+"emissive",1,"Energy emitting surface."
+"retroreflective",2,"Retro-reflective surface."
+"single_sided",4,"Single-sided surface (non-thin geometry)."
+"visually_transparent",8,"Material is visually transparent."
+"<reserved>",16,"Unused, reserved for future."

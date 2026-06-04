@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
+"""Test frame delay between object motion and rendered image.
+
 To generate several frames, create and run a bash script with the following content:
 
 for i in $(seq 64 512); do
@@ -22,11 +23,17 @@ for i in $(seq 64 512); do
 done
 """
 
-
 USE_REPLICATOR_WRITER = True
 CAMERA_PATH = "/camera"
 CAMERA_POS = [0, 0, 25]
 COLLECTION_STEPS = 10
+
+# Maximum allowed gap between the action-graph reference time
+# (SimulationManager.get_simulation_time()) and the image's reference time
+# (getSimulationTimeAtTime(rpFabricTime)). 1 us is just above the rational-time
+# rounding floor for 1/60 s; anything larger indicates a real frame lag between
+# image capture and the sim step the rest of the world thinks is "now".
+TIMESTAMP_TOLERANCE_S = 1e-6
 
 # parse any command-line arguments specific to the standalone application
 import argparse
@@ -37,15 +44,47 @@ from isaacsim import SimulationApp
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--resolution", type=str, default="256x256", help="Resolution (WxH)")
+parser.add_argument(
+    "--multitick",
+    choices=["on", "off", "auto"],
+    default="auto",
+    help=(
+        "Override multitick renderer settings before launching Kit. "
+        "'on' forces supportMultiTickRate and perSensorTickTlas, 'off' disables them, 'auto' leaves "
+        "whatever the experience .kit file or other CLI overrides specified."
+    ),
+)
+parser.add_argument(
+    "--zero-delay",
+    choices=["on", "off"],
+    default="on",
+    help=(
+        "Pick the experience .kit file used to launch Kit. 'on' (default) uses "
+        "isaacsim.exp.base.zero_delay.kit, which adds app.hydraEngine.waitIdle=true "
+        "and a late checkForHydraRenderComplete order on top of the base experience. "
+        "'off' falls back to SimulationApp's default base experience, leaving render-"
+        "completion timing unconstrained."
+    ),
+)
 # Parse only known arguments, so that any (eg) Kit settings are passed through to the core Kit app
 args, _ = parser.parse_known_args()
 
 RESOLUTION = tuple([int(item) for item in args.resolution.split("x")])
 PIXELS_PER_METER = 0.09765625 * RESOLUTION[0]
 
-simulation_app = SimulationApp(
-    {"headless": True}, experience=f'{os.environ["EXP_PATH"]}/isaacsim.exp.base.zero_delay.kit'
-)
+# Forward --multitick to the Kit-side carb settings via Kit's standard
+# "--/path=value" CLI override mechanism. SimulationApp/Kit picks these up from
+# sys.argv on launch, before the renderer initialises.
+if args.multitick != "auto":
+    multitick_enabled = "true" if args.multitick == "on" else "false"
+    sys.argv.append(f"--/rtx/hydra/supportMultiTickRate={multitick_enabled}")
+    sys.argv.append(f"--/rtx/rendering/perSensorTickTlas={multitick_enabled}")
+
+simulation_app_kwargs = {}
+if args.zero_delay == "on":
+    simulation_app_kwargs["experience"] = f'{os.environ["EXP_PATH"]}/isaacsim.exp.base.zero_delay.kit'
+
+simulation_app = SimulationApp({"headless": True}, **simulation_app_kwargs)
 
 import pprint
 
@@ -60,6 +99,7 @@ from isaacsim.core.experimental.objects import Cube, GroundPlane
 from isaacsim.core.experimental.prims import RigidPrim
 from isaacsim.core.experimental.utils.semantics import add_labels
 from isaacsim.core.rendering_manager import ViewportManager
+from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.sensors.camera import Camera
 from omni.replicator.core import AnnotatorRegistry, Writer
 from pxr import UsdGeom, UsdPhysics
@@ -68,6 +108,8 @@ from pxr import UsdGeom, UsdPhysics
 
 
 class CustomWriter(Writer):
+    """Custom replicator writer that captures RGB, segmentation, and bounding box data."""
+
     def __init__(self):
         self.annotators = []
         self.annotators.append(AnnotatorRegistry.get_annotator("rgb"))
@@ -75,12 +117,13 @@ class CustomWriter(Writer):
         self.annotators.append(AnnotatorRegistry.get_annotator("bounding_box_2d_tight"))
 
     def write(self, data):
+        """Cache annotator data without writing to disk."""
         # The base Writer class caches 'data' automatically, accessible via self.get_data()
         pass
 
 
 def get_data(sensor: Camera | Writer) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Get RGB, semantic segmentation and BBox from Camera or Writer (according to `USE_REPLICATOR_WRITER`)"""
+    """Get RGB, semantic segmentation and BBox from Camera or Writer (according to `USE_REPLICATOR_WRITER`)."""
     if USE_REPLICATOR_WRITER:
         rgb = sensor.get_data()["rgb"]
         semantic_segmentation = sensor.get_data()["semantic_segmentation"]["data"]
@@ -155,6 +198,7 @@ def validate_bbox(detected_bbox: dict, expected_bbox: dict, tolerance_pixels: fl
 
 
 def draw_data(frame, position, bbox, label):
+    """Draw position and bounding box annotations onto an image frame."""
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     frame = cv2.rectangle(
         img=frame,
@@ -212,6 +256,7 @@ def draw_data(frame, position, bbox, label):
 
 
 def generate_result(data: list[dict], banner: list[str] = []):
+    """Generate a composite result image from collected frame data."""
     rgb_frames = []
     semantic_segmentation_frames = []
     for item in data:
@@ -273,7 +318,7 @@ else:
         prim_path=CAMERA_PATH,
         position=np.array(CAMERA_POS),
         resolution=RESOLUTION,
-        orientation=transform_utils.euler_angles_to_quaternion(np.array([[0, 90, 90]]), degrees=True).numpy().flatten(),
+        orientation=transform_utils.euler_angles_to_quaternion(np.array([[90, 90, 0]]), degrees=True).numpy().flatten(),
     )
 
 app_utils.play()
@@ -283,10 +328,100 @@ if USE_REPLICATOR_WRITER:
     writer = rep.WriterRegistry.get("CustomWriter")
     writer.initialize()
     writer.attach([render_product])
+    render_product_path = render_product.path
 else:
     camera.initialize()
     camera.add_bounding_box_2d_tight_to_frame()
     camera.add_semantic_segmentation_to_frame()
+    render_product_path = camera._render_product_path
+
+# Attach a ReferenceTime annotator so we can read the rational time the renderer
+# stamped on each frame. Combined with SimulationManager.get_simulation_time_at_time(),
+# this lets us recover the simulation time the image was captured at and compare
+# it against the live action-graph sim time at the same step.
+reference_time_annotator = AnnotatorRegistry.get_annotator("ReferenceTime")
+reference_time_annotator.attach([render_product_path])
+sim_manager_iface = SimulationManager._simulation_manager_interface
+
+
+def rational_to_tuple(value) -> tuple[int, int]:
+    """Return (numerator, denominator) for a RationalTime-like object."""
+    return int(value.numerator), int(value.denominator)
+
+
+def rational_to_float(value: tuple[int, int]) -> float:
+    numerator, denominator = value
+    return numerator / denominator
+
+
+def rational_before(lhs: tuple[int, int], rhs: tuple[int, int], tolerance_s: float = 0.0) -> bool:
+    """Return whether lhs is earlier than rhs by more than tolerance_s."""
+    return rational_to_float(lhs) < rational_to_float(rhs) - tolerance_s
+
+
+def format_rational(value: tuple[int, int]) -> str:
+    numerator, denominator = value
+    return f"({numerator}, {denominator})"
+
+
+def close_and_exit(exit_code: int) -> None:
+    """Close SimulationApp and preserve the validation status."""
+    simulation_app.close(exit_code=exit_code)
+    sys.exit(exit_code)
+
+
+def get_lookup_status(reference_time: tuple[int, int]) -> tuple[bool, str]:
+    """Return whether reference_time is covered by TimeSampleStorage and a diagnostic string."""
+    sample_count = sim_manager_iface.get_sample_count()
+    if sample_count == 0:
+        return False, "TimeSampleStorage has no samples"
+
+    sample_range = sim_manager_iface.get_sample_range()
+    if sample_range is None:
+        return False, f"TimeSampleStorage has {sample_count} samples but no sample range"
+
+    earliest, latest = sample_range
+    earliest_time = rational_to_tuple(earliest)
+    latest_time = rational_to_tuple(latest)
+    if rational_before(reference_time, earliest_time, TIMESTAMP_TOLERANCE_S) or rational_before(
+        latest_time, reference_time, TIMESTAMP_TOLERANCE_S
+    ):
+        return (
+            False,
+            f"rpFabricTime={format_rational(reference_time)} is outside TimeSampleStorage range "
+            f"{format_rational(earliest_time)}..{format_rational(latest_time)} "
+            f"({rational_to_float(earliest_time):.6f}s..{rational_to_float(latest_time):.6f}s)",
+        )
+
+    return (
+        True,
+        f"rpFabricTime={format_rational(reference_time)} is covered by TimeSampleStorage range "
+        f"{format_rational(earliest_time)}..{format_rational(latest_time)}",
+    )
+
+
+def get_frame_timestamp() -> tuple[float, float, tuple[int, int], bool, str]:
+    """Return (sim_time_now, sim_time_at_frame, reference_time, lookup_valid, lookup_status).
+
+    - sim_time_now: live simulation time, as the action graph would publish for TF/state.
+    - sim_time_at_frame: simulation time recovered from the renderer's rational time
+      via TimeSampleStorage. With multitick on this is the rational time itself.
+      With multitick off this is the result of an exact-match / interpolation lookup
+      against per-frame samples authored by simulation_manager.
+    - reference_time: the renderer's rational time for this frame (i.e. what
+      rpFabricTime carries to the post-render synthdata graph).
+    - lookup_valid/status: whether TimeSampleStorage contains samples covering
+      reference_time. This catches false passes from get_simulation_time_at_time()
+      falling back to current sim time when no lookup sample exists.
+    """
+    fabric_time_data = reference_time_annotator.get_data()
+    numerator = int(fabric_time_data["referenceTimeNumerator"])
+    denominator = int(fabric_time_data["referenceTimeDenominator"])
+    reference_time = (numerator, denominator)
+    sim_time_now = SimulationManager.get_simulation_time()
+    lookup_valid, lookup_status = get_lookup_status(reference_time)
+    sim_time_at_frame = sim_manager_iface.get_simulation_time_at_time(reference_time)
+    return sim_time_now, sim_time_at_frame, reference_time, lookup_valid, lookup_status
 
 
 # Do some warmup steps
@@ -295,12 +430,58 @@ for _ in range(5):
 
 data = []
 validation_errors = []
+timestamp_errors = []
+
+
+def record_timestamps(label: str) -> tuple[float, float, tuple[int, int], bool, str]:
+    """Capture sim/frame timestamps for the most recent render and validate alignment.
+
+    Logs the result, appends a timestamp error entry if the gap exceeds
+    TIMESTAMP_TOLERANCE_S, and returns the raw values so callers can store them
+    on the per-frame data dict.
+    """
+    sim_time_now, sim_time_at_frame, (num, denom), lookup_valid, lookup_status = get_frame_timestamp()
+    delta_s = sim_time_now - sim_time_at_frame
+    delta_ms = delta_s * 1000.0
+    print(
+        f"  [time] {label:>10}: sim_now={sim_time_now:.6f}s, "
+        f"sim_at_frame={sim_time_at_frame:.6f}s, "
+        f"delta={delta_ms:+.3f} ms, rpFabricTime=({num}, {denom}), lookup={'OK' if lookup_valid else 'MISS'}"
+    )
+    if not lookup_valid:
+        msg = f"Frame '{label}': {lookup_status}"
+        timestamp_errors.append(msg)
+        print(f"[error] {msg}")
+    if abs(delta_s) > TIMESTAMP_TOLERANCE_S:
+        n_frames = abs(delta_s) / (1.0 / 60.0) if delta_s else 0.0
+        relation = "behind" if delta_s > 0 else "ahead of"
+        msg = (
+            f"Frame '{label}': image rpFabricTime resolves to {abs(delta_ms):.3f} ms "
+            f"({n_frames:.2f} render frames) {relation} live sim time "
+            f"(tolerance: {TIMESTAMP_TOLERANCE_S * 1000:.3f} ms)"
+        )
+        timestamp_errors.append(msg)
+        print(f"[error] {msg}")
+    return sim_time_now, sim_time_at_frame, (num, denom), lookup_valid, lookup_status
+
 
 # Get data and object info before running the collection steps
 position = rigid_cube.get_world_poses()[0].numpy().flatten()
 rgb, semantic_segmentation, bbox = get_data(camera or writer)
+sim_time_now, sim_time_at_frame, ref_time, lookup_valid, lookup_status = record_timestamps("before")
 data.append(
-    {"position": position, "rgb": rgb, "semantic_segmentation": semantic_segmentation, "bbox": bbox, "label": "before"}
+    {
+        "position": position,
+        "rgb": rgb,
+        "semantic_segmentation": semantic_segmentation,
+        "bbox": bbox,
+        "label": "before",
+        "sim_time_now": sim_time_now,
+        "sim_time_at_frame": sim_time_at_frame,
+        "reference_time": ref_time,
+        "lookup_valid": lookup_valid,
+        "lookup_status": lookup_status,
+    }
 )
 
 # Validate initial frame
@@ -324,6 +505,7 @@ for i in range(COLLECTION_STEPS):
     # Get data and object info
     position = rigid_cube.get_world_poses()[0].numpy().flatten()
     rgb, semantic_segmentation, bbox = get_data(camera or writer)
+    sim_time_now, sim_time_at_frame, ref_time, lookup_valid, lookup_status = record_timestamps(f"step {i + 1}")
     data.append(
         {
             "position": position,
@@ -331,6 +513,11 @@ for i in range(COLLECTION_STEPS):
             "semantic_segmentation": semantic_segmentation,
             "bbox": bbox,
             "label": f"step {i + 1}",
+            "sim_time_now": sim_time_now,
+            "sim_time_at_frame": sim_time_at_frame,
+            "reference_time": ref_time,
+            "lookup_valid": lookup_valid,
+            "lookup_status": lookup_status,
         }
     )
 
@@ -345,9 +532,12 @@ for i in range(COLLECTION_STEPS):
 # Export result
 banner = [
     f"source: {'rep.Writer' if USE_REPLICATOR_WRITER else 'Camera'}",
+    f"zero_delay: {args.zero_delay}",
     f"checkForHydraRenderComplete: {carb.settings.get_settings().get('/app/updateOrder/checkForHydraRenderComplete')}",
     f"app.hydraEngine.waitIdle: {carb.settings.get_settings().get('/app/hydraEngine/waitIdle')}",
     f"rtx.post.aa.op: {carb.settings.get_settings().get('/rtx/post/aa/op')}",
+    f"supportMultiTickRate: {carb.settings.get_settings().get('/rtx/hydra/supportMultiTickRate')}",
+    f"perSensorTickTlas: {carb.settings.get_settings().get('/rtx/rendering/perSensorTickTlas')}",
 ]
 print("")
 pprint.pprint(banner)
@@ -358,19 +548,42 @@ cv2.imwrite(f"result-{args.resolution}.png", generate_result(data, banner))
 print("\n" + "=" * 80)
 print("VALIDATION SUMMARY")
 print("=" * 80)
-if validation_errors:
-    print(f"[fatal] {len(validation_errors)} frame(s) had bounding box errors exceeding tolerance")
-    print("\nErrors:")
-    for error in validation_errors:
-        print(f"  - {error}")
-    print("\nThis indicates frame delay between object motion and rendered image.")
+
+print("\nTimestamp deltas (action-graph sim time minus image rpFabricTime sim time):")
+print(f"  {'frame':>10}  {'sim_now (s)':>12}  {'sim_at_frame (s)':>16}  {'delta (ms)':>12}")
+max_abs_delta_ms = 0.0
+for item in data:
+    delta_ms = (item["sim_time_now"] - item["sim_time_at_frame"]) * 1000.0
+    max_abs_delta_ms = max(max_abs_delta_ms, abs(delta_ms))
+    print(
+        f"  {item['label']:>10}  {item['sim_time_now']:12.6f}  " f"{item['sim_time_at_frame']:16.6f}  {delta_ms:+12.3f}"
+    )
+print(f"  max |delta| = {max_abs_delta_ms:.3f} ms (tolerance: {TIMESTAMP_TOLERANCE_S * 1000:.3f} ms)")
+
+failed = bool(validation_errors) or bool(timestamp_errors)
+if failed:
+    if validation_errors:
+        print(f"\n[fatal] {len(validation_errors)} frame(s) had bounding box errors exceeding tolerance")
+        print("\nBBox errors:")
+        for error in validation_errors:
+            print(f"  - {error}")
+        print("\nThis indicates frame delay between object motion and rendered image.")
+    if timestamp_errors:
+        print(f"\n[fatal] {len(timestamp_errors)} frame(s) had timestamp errors exceeding tolerance")
+        print("\nTimestamp errors:")
+        for error in timestamp_errors:
+            print(f"  - {error}")
+        print(
+            "\nThis indicates the renderer's rpFabricTime does not resolve to the live sim time, "
+            "so any consumer that stamps images via getSimulationTimeAtTime "
+            "(e.g. ROS2CameraHelper, IsaacReadSimulationTimeAnnotator) will lag the action graph."
+        )
     print("=" * 80)
-    simulation_app.close()
-    sys.exit(1)
+    close_and_exit(1)
 else:
-    print(f"SUCCESS: All {len(data)} frames passed validation")
+    print(f"\nSUCCESS: All {len(data)} frames passed validation")
     print("Bounding boxes matched expected positions within 2.0 pixel tolerance")
+    print(f"Timestamp gaps stayed within {TIMESTAMP_TOLERANCE_S * 1000:.3f} ms")
     print("No frame delay detected between object motion and rendered image")
     print("=" * 80)
-    simulation_app.close()
-    sys.exit(0)
+    close_and_exit(0)

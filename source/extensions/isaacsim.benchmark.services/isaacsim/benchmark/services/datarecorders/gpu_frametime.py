@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Recorder for GPU frametime statistics from Hydra engine."""
 
 from typing import Any
@@ -36,7 +37,7 @@ class GPUFrametimeRecorder(MeasurementDataRecorder):
         enable_multi_gpu: Enable per-GPU sampling when multiple GPUs are present.
     """
 
-    def __init__(self, context: InputContext | None = None, enable_multi_gpu: bool = False):
+    def __init__(self, context: InputContext | None = None, enable_multi_gpu: bool = False) -> None:
         self.context = context
         self.enable_multi_gpu = enable_multi_gpu
         self._samples: list[float] = []
@@ -53,7 +54,7 @@ class GPUFrametimeRecorder(MeasurementDataRecorder):
         except Exception as e:
             logger.warning(f"GPUFrametimeRecorder: Failed to initialize HydraEngineStats: {e}")
 
-    def start_collecting(self):
+    def start_collecting(self) -> None:
         """Start collecting GPU frametime data.
 
         Example:
@@ -77,7 +78,7 @@ class GPUFrametimeRecorder(MeasurementDataRecorder):
         )
         logger.info("GPUFrametimeRecorder: Started collecting")
 
-    def stop_collecting(self):
+    def stop_collecting(self) -> None:
         """Stop collecting GPU frametime data.
 
         Example:
@@ -128,7 +129,7 @@ class GPUFrametimeRecorder(MeasurementDataRecorder):
         """
         return self._samples
 
-    def _on_app_update(self, _event: Any):
+    def _on_app_update(self, _event: Any) -> None:
         """Sample GPU frametime on each app update.
 
         Args:
@@ -136,7 +137,7 @@ class GPUFrametimeRecorder(MeasurementDataRecorder):
         """
         self.sample_gpu_time()
 
-    def sample_gpu_time(self):
+    def sample_gpu_time(self) -> None:
         """Sample GPU frametime for the current frame.
 
         Example:
@@ -206,7 +207,7 @@ class GPUFrametimeRecorder(MeasurementDataRecorder):
             logger.warning("GPUFrametimeRecorder: No samples collected")
             return MeasurementData()
 
-        stats = Stats.from_samples(self._samples)
+        stats = Stats.from_samples(self._samples, trim_outliers=False)
         measurements_out = [
             measurements.SingleMeasurement(name="Mean GPU Frametime", value=stats.mean, unit="ms"),
             measurements.SingleMeasurement(name="Stdev GPU Frametime", value=stats.stdev, unit="ms"),
@@ -218,7 +219,7 @@ class GPUFrametimeRecorder(MeasurementDataRecorder):
         if self.enable_multi_gpu and len(self._per_gpu_samples) > 1:
             for gpu_idx, gpu_samples in enumerate(self._per_gpu_samples):
                 if gpu_samples:
-                    gpu_stats = Stats.from_samples(gpu_samples)
+                    gpu_stats = Stats.from_samples(gpu_samples, trim_outliers=False)
                     measurements_out.extend(
                         [
                             measurements.SingleMeasurement(

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Module providing specialized writers for Isaac Sim Replicator synthetic data generation workflows."""
+"""Replicator writers for Isaac Sim SDG workflows."""
 
+from __future__ import annotations
 
 from .writers.data_visualization_writer import DataVisualizationWriter
 from .writers.dope_writer import DOPEWriter

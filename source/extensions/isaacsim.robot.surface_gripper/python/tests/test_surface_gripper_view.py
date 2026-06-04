@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,18 +18,16 @@
 
 """Tests for surface gripper functionality and the GripperView interface in Isaac Sim."""
 
-
 import time
 
 import numpy as np
-import omni.kit.commands
 
 # NOTE:
 #   omni.kit.test - std python's unittest module with additional wrapping to add suport for async/await tests
 #   For most things refer to unittest docs: https://docs.python.org/3/library/unittest.html
 import omni.kit.test
-from isaacsim.robot.surface_gripper import GripperView
-from isaacsim.robot.surface_gripper._surface_gripper import GripperStatus
+from isaacsim.robot.surface_gripper import GripperView, create_surface_gripper
+from isaacsim.robot.surface_gripper.bindings._surface_gripper import GripperStatus
 from omni.physx.scripts.physicsUtils import add_ground_plane
 from pxr import Gf, Sdf, UsdGeom, UsdLux, UsdPhysics
 from usd.schema.isaac import robot_schema
@@ -131,10 +129,7 @@ class TestSurfaceGripperView(omni.kit.test.AsyncTestCase):
             box1_props = [box1_path, 1.0, [0.1, 0.1, 0.1], [0, 0, 0.15], [0, 0, 0, 1], [255, 80, 80]]
             spacing = 0.1 / (num_joints + 1)
             start_y = -0.05 + spacing
-            surface_gripper = omni.kit.commands.execute(
-                "CreateSurfaceGripper",
-                prim_path=env_path,
-            )
+            create_surface_gripper(self.stage, env_path)
             gripper_path = env_path + "/SurfaceGripper"
             gripper_prim = self.stage.GetPrimAtPath(gripper_path)
             gripper_prim.GetAttribute(robot_schema.Attributes.COAXIAL_FORCE_LIMIT.name).Set(500000)

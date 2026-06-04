@@ -70,12 +70,11 @@ struct JointStateSensorData
 
 } // namespace
 
-// PIMPL: shared stage/reader, subscriptions, and the map of sensor id -> JointStateSensorData.
+// PIMPL: shared stage/reader, subscriptions, and the map of prim path -> JointStateSensorData.
 struct JointStateSensorImpl::ImplData
 {
     long stageId = 0;
     std::string engineType = "physx";
-    int64_t nextSensorId = 0;
     float lastDt = 0.0f;
     int stepCount = 0;
     uint64_t readerGeneration = 0;
@@ -88,7 +87,7 @@ struct JointStateSensorImpl::ImplData
     carb::events::ISubscriptionPtr physicsEventSub;
 
     pxr::UsdStageRefPtr usdStage;
-    std::unordered_map<int64_t, JointStateSensorData> sensors;
+    std::unordered_map<std::string, JointStateSensorData> sensors;
 };
 
 JointStateSensorImpl::JointStateSensorImpl() : m_impl(std::make_unique<ImplData>())
@@ -145,7 +144,9 @@ void JointStateSensorImpl::_initializeFromContext()
     {
         const char* engineSetting = settings->getStringBuffer("/exts/isaacsim.core.simulation_manager/default_engine");
         if (engineSetting && engineSetting[0] != '\0')
+        {
             m_impl->engineType = engineSetting;
+        }
     }
 
     _initializeStage(stageId);
@@ -153,7 +154,7 @@ void JointStateSensorImpl::_initializeFromContext()
 
 void JointStateSensorImpl::_initializeStage(const long stageId)
 {
-    if (m_impl->stageId == stageId && m_impl->usdStage)
+    if (m_impl->stageId == stageId && m_impl->usdStage && m_impl->readerManager && m_impl->reader)
     {
         return;
     }
@@ -189,45 +190,54 @@ void JointStateSensorImpl::_initializeStage(const long stageId)
     _subscribeToPhysicsStepEvents();
 }
 
-int64_t JointStateSensorImpl::createSensor(const char* articulationRootPath)
+bool JointStateSensorImpl::createSensor(const char* articulationRootPath)
 {
     if (!articulationRootPath || articulationRootPath[0] == '\0')
     {
-        return -1;
+        return false;
     }
     if (!m_impl->usdStage || !m_impl->reader)
     {
-        return -1;
+        return false;
     }
 
-    // Return existing sensor if already created for this path.
-    for (const auto& [id, s] : m_impl->sensors)
-    {
-        if (s.articulationRootPath == articulationRootPath)
-        {
-            return id;
-        }
-    }
-
+    std::string key(articulationRootPath);
     const pxr::SdfPath sdfPath(articulationRootPath);
     const pxr::UsdPrim rootPrim = m_impl->usdStage->GetPrimAtPath(sdfPath);
-    if (!rootPrim.IsValid())
+
+    auto existing = m_impl->sensors.find(key);
+    if (existing != m_impl->sensors.end())
     {
-        return -1;
+        // Reuse the cached entry only when the articulation root prim is still
+        // valid; otherwise tear down and rebuild so a delete/recreate at the
+        // same path picks up the new DOF metadata.
+        if (rootPrim.IsValid())
+        {
+            return true;
+        }
+        if (m_impl->reader && !existing->second.viewId.empty())
+        {
+            m_impl->reader->removeView(existing->second.viewId.c_str());
+        }
+        m_impl->sensors.erase(existing);
     }
 
-    const int64_t sensorId = m_impl->nextSensorId++;
-    JointStateSensorData& sensor = m_impl->sensors[sensorId];
+    if (!rootPrim.IsValid())
+    {
+        return false;
+    }
+
+    JointStateSensorData& sensor = m_impl->sensors[key];
     sensor.articulationRootPath = articulationRootPath;
-    sensor.viewId = "joint_state_art_" + std::to_string(sensorId);
+    sensor.viewId = "joint_state_art_" + key;
 
     const char* pathStr = articulationRootPath;
     sensor.articulationView =
         m_impl->reader->createArticulationView(sensor.viewId.c_str(), &pathStr, 1, m_impl->engineType.c_str());
     if (!sensor.articulationView)
     {
-        m_impl->sensors.erase(sensorId);
-        return -1;
+        m_impl->sensors.erase(key);
+        return false;
     }
 
     int nameCount = 0;
@@ -239,34 +249,40 @@ int64_t JointStateSensorImpl::createSensor(const char* articulationRootPath)
     {
         CARB_LOG_WARN("JointStateSensor: no DOFs found under articulation root '%s'", articulationRootPath);
         m_impl->reader->removeView(sensor.viewId.c_str());
-        m_impl->sensors.erase(sensorId);
-        return -1;
+        m_impl->sensors.erase(key);
+        return false;
     }
 
     const int dofCount = nameCount;
     sensor.dofNames.clear();
     sensor.dofNames.reserve(dofCount);
     for (int i = 0; i < dofCount; ++i)
+    {
         sensor.dofNames.push_back(names[i] ? names[i] : std::string());
+    }
     sensor.dofTypes.assign(types, types + (typeCount >= dofCount ? dofCount : typeCount));
     if (static_cast<int>(sensor.dofTypes.size()) < dofCount)
+    {
         sensor.dofTypes.resize(dofCount, 0);
+    }
 
     sensor.dofNamePtrs.resize(dofCount);
     for (int i = 0; i < dofCount; i++)
+    {
         sensor.dofNamePtrs[i] = sensor.dofNames[i].c_str();
+    }
 
     sensor.positions.resize(dofCount, 0.0f);
     sensor.velocities.resize(dofCount, 0.0f);
     sensor.efforts.resize(dofCount, 0.0f);
 
     m_impl->readerGeneration = m_impl->reader->getGeneration();
-    return sensorId;
+    return true;
 }
 
-void JointStateSensorImpl::removeSensor(const int64_t sensorId)
+void JointStateSensorImpl::removeSensor(const char* articulationRootPath)
 {
-    const auto it = m_impl->sensors.find(sensorId);
+    const auto it = m_impl->sensors.find(std::string(articulationRootPath));
     if (it == m_impl->sensors.end())
     {
         return;
@@ -278,9 +294,10 @@ void JointStateSensorImpl::removeSensor(const int64_t sensorId)
     m_impl->sensors.erase(it);
 }
 
-JointStateSensorReading JointStateSensorImpl::getSensorReading(const int64_t sensorId)
+JointStateSensorReading JointStateSensorImpl::getSensorReading(const char* articulationRootPath)
 {
-    const auto it = m_impl->sensors.find(sensorId);
+    std::string key(articulationRootPath);
+    const auto it = m_impl->sensors.find(key);
     if (it == m_impl->sensors.end())
     {
         return JointStateSensorReading();
@@ -293,12 +310,11 @@ JointStateSensorReading JointStateSensorImpl::getSensorReading(const int64_t sen
 
     JointStateSensorData& sensor = it->second;
 
-    // On-the-fly processing if reading isn't valid yet but physics has stepped.
     if (sensor.enabled && !sensor.latestReading.isValid && sensor.articulationView && m_impl->simManager &&
         m_impl->usdStage && m_impl->lastDt > 0.0f)
     {
         double simTime = m_impl->simManager->getSimulationTime();
-        _processSensor(*m_impl, sensorId, simTime);
+        _processSensor(*m_impl, key, simTime);
     }
 
     if (!sensor.enabled || !sensor.latestReading.isValid)
@@ -447,9 +463,9 @@ void JointStateSensorImpl::_stepSensors(const float dt)
     }
 }
 
-void JointStateSensorImpl::_processSensor(ImplData& impl, const int64_t sensorId, const double simTime)
+void JointStateSensorImpl::_processSensor(ImplData& impl, const std::string& articulationRootPath, const double simTime)
 {
-    const auto it = impl.sensors.find(sensorId);
+    const auto it = impl.sensors.find(articulationRootPath);
     if (it == impl.sensors.end())
     {
         return;

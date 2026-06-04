@@ -13,12 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""CumotionWorldInterface example for obstacle discovery and world synchronization."""
+
 from typing import Literal
 
+import omni.kit.app
 from isaacsim.core.experimental.objects import Cone, Cube, Cylinder, Mesh
 from isaacsim.core.experimental.prims import GeomPrim, RigidPrim
 from isaacsim.core.experimental.utils import prim as prim_utils
 from isaacsim.core.experimental.utils import stage as stage_utils
+from isaacsim.core.rendering_manager import ViewportManager
+from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.robot_motion.cumotion import CumotionWorldInterface
 from isaacsim.robot_motion.experimental.motion_generation import (
     ObstacleConfiguration,
@@ -27,86 +32,88 @@ from isaacsim.robot_motion.experimental.motion_generation import (
     TrackableApi,
     WorldBinding,
 )
+from pxr import UsdPhysics
+
+_UpdateStyle = Literal["synchronize_transforms", "synchronize_properties", "synchronize"]
+_TrackedCollisionApi = Literal["physics", "motion_generation"]
+
+_OBSTACLE_PRIM_PATH = "/World/obstacle"
+_PHYSICS_SCENE_PATH = "/World/PhysicsScene"
 
 
 class CumotionWorldInterfaceExample:
-    """Example demonstrating CumotionWorldInterface.
+    """CumotionWorldInterface demo.
 
-    This example shows how to:
-    - Set up a CumotionWorldInterface with WorldBinding
-    - Discover obstacles using SceneQuery
-    - Configure obstacle representations
-    - Synchronize world state
+    Demonstrates how to:
+      - Set up a CumotionWorldInterface with WorldBinding
+      - Discover obstacles using SceneQuery
+      - Configure obstacle representations
+      - Synchronize world state with a chosen update style
     """
 
-    def __init__(self):
-        self._world_binding = None
-        self._update_style: Literal["synchronize_transforms", "synchronize_properties", "synchronize"] = (
-            "synchronize_transforms"  # default to transforms only
-        )
-        self._tracked_collision_api: Literal["physics", "motion_generation"] = "physics"  # default to physics
+    def __init__(self) -> None:
+        self._world_binding: WorldBinding | None = None
+        self._update_style: _UpdateStyle = "synchronize_transforms"
+        self._tracked_collision_api: _TrackedCollisionApi = "physics"
 
-    def set_update_style(self, style: Literal["synchronize_transforms", "synchronize_properties", "synchronize"]):
-        """Set the update style for world binding synchronization."""
-        if style not in ["synchronize_transforms", "synchronize_properties", "synchronize"]:
+    # --------------------------------------------------------------- config
+
+    def set_update_style(self, style: _UpdateStyle) -> None:
+        """Set the world-binding update style used by :meth:`update`.
+
+        Args:
+            style: One of ``synchronize_transforms``, ``synchronize_properties``, ``synchronize``.
+        """
+        if style not in ("synchronize_transforms", "synchronize_properties", "synchronize"):
             raise ValueError(
-                f"Invalid update style: {style}. Must be one of: synchronize_transforms, synchronize_properties, synchronize"
+                f"Invalid update style: {style}. "
+                "Must be one of: synchronize_transforms, synchronize_properties, synchronize"
             )
         self._update_style = style
 
-    def set_tracked_collision_api(self, api: Literal["physics", "motion_generation"]):
-        """Set the tracked collision API."""
-        if api not in ["physics", "motion_generation"]:
+    def set_tracked_collision_api(self, api: _TrackedCollisionApi) -> None:
+        """Set which collision API is used to discover obstacles.
+
+        Args:
+            api: Either ``physics`` or ``motion_generation``.
+        """
+        if api not in ("physics", "motion_generation"):
             raise ValueError(f"Invalid collision API: {api}. Must be one of: physics, motion_generation")
         self._tracked_collision_api = api
 
-    def load_example_assets(self):
-        """Load robot assets to the stage."""
-        obstacle_path = "/World/obstacle"
+    # ---------------------------------------------------------------- loading
 
-        # Create cube geometry
-        cube = Cube(obstacle_path, sizes=0.1, positions=[0.4, 0.0, 0.65])
+    async def load(self) -> None:
+        """Create a fresh stage, place an obstacle, allocate physics, and prime the world binding."""
+        await stage_utils.create_new_stage_async(template="default stage")
+        stage_utils.set_stage_up_axis("Z")
+        stage_utils.set_stage_units(meters_per_unit=1.0)
 
-        # Apply collision APIs
-        GeomPrim(obstacle_path, apply_collision_apis=True)
-        RigidPrim(obstacle_path, masses=[1.0])
-        return cube
+        # Obstacle cube with both collision and dynamics APIs.
+        Cube(_OBSTACLE_PRIM_PATH, sizes=0.1, positions=[0.4, 0.0, 0.65])
+        GeomPrim(_OBSTACLE_PRIM_PATH, apply_collision_apis=True)
+        RigidPrim(_OBSTACLE_PRIM_PATH, masses=[1.0])
 
-    def _cleanup_debug_prims(self):
-        """Delete all prims under 'CumotionDebug' to clean up old debug visualization."""
-        # Find all prims that have "CumotionDebug" in their path
-        debug_prim_paths = prim_utils.find_matching_prim_paths(".*CumotionDebug.*", traverse=True)
+        ViewportManager.set_camera_view(camera="/OmniverseKit_Persp", eye=[2, 1.5, 2], target=[0, 0, 0])
 
-        if not debug_prim_paths:
-            return
+        # Ensure a physics scene exists; allocate physics tensors without stepping.
+        stage = stage_utils.get_current_stage()
+        if not stage.GetPrimAtPath(_PHYSICS_SCENE_PATH).IsValid():
+            UsdPhysics.Scene.Define(stage, _PHYSICS_SCENE_PATH)
+        await omni.kit.app.get_app().next_update_async()
+        if SimulationManager.get_physics_sim_view() is None:
+            SimulationManager.initialize_physics()
 
-        # Filter to only root-level prims (ones whose parent is not in the list)
-        # Deleting a parent automatically deletes all its children
-        debug_prim_paths_set = set(debug_prim_paths)
-        root_prim_paths = [path for path in debug_prim_paths if path.rsplit("/", 1)[0] not in debug_prim_paths_set]
+        self.setup()
 
-        # Delete only the root prims
-        for prim_path in root_prim_paths:
-            try:
-                stage_utils.delete_prim(prim_path)
-            except ValueError:
-                # Prim may have already been deleted or doesn't exist, skip
-                pass
-
-    def setup(self):
-        """Set up the world interface."""
-        # Clean up old world binding and debug prims before setting up
-        # Set old world binding to None to allow garbage collection
+    def setup(self) -> None:
+        """Discover obstacles and build the cuMotion world binding."""
+        # Drop any prior world binding so its GPU resources can be reclaimed.
         if self._world_binding is not None:
-            # Clean up debug prims from the old world binding
             self._cleanup_debug_prims()
-            # Set to None to allow garbage collection of GPU resources
             self._world_binding = None
-
-        # Clean up any remaining debug prims
         self._cleanup_debug_prims()
 
-        # Find all objects close to the origin:
         scene_query = SceneQuery()
         objects = scene_query.get_prims_in_aabb(
             search_box_origin=[0.0, 0.0, 0.0],
@@ -114,32 +121,41 @@ class CumotionWorldInterfaceExample:
             search_box_maximum=[100.0, 100.0, 100.0],
             tracked_api=TrackableApi.PHYSICS_COLLISION,
         )
-        print("Objects: ", objects)
 
-        # HERE: try changing the representation to TRIANGULATED_MESH,
-        # or, try changing the safety tolerance to 0.05, 0.1, 0.2, etc.
+        # NOTE: try changing the representation to TRIANGULATED_MESH or the safety
+        # tolerance to 0.05 / 0.1 / 0.2 to see how cuMotion treats obstacles.
         obstacle_strategy = ObstacleStrategy()
         obstacle_strategy.set_default_safety_tolerance(0.06)
         obstacle_strategy.set_default_configuration(Mesh, ObstacleConfiguration("obb", 0.01))
         obstacle_strategy.set_default_configuration(Cone, ObstacleConfiguration("obb", 0.01))
         obstacle_strategy.set_default_configuration(Cylinder, ObstacleConfiguration("obb", 0.01))
 
-        # Create a world binding, debug visualizations enabled:
         self._world_binding = WorldBinding(
             world_interface=CumotionWorldInterface(visualize_debug_prims=True),
             obstacle_strategy=obstacle_strategy,
             tracked_prims=objects,
             tracked_collision_api=TrackableApi.PHYSICS_COLLISION,
         )
-
-        # initialize the objects into the cumotion world:
         self._world_binding.initialize()
 
-    def reset(self):
+    def reset(self) -> None:
+        """Rebuild the world binding."""
         self.setup()
 
-    def update(self, dt: float):
-        """Use different styles of updating the world binding"""
+    # --------------------------------------------------------------- per-tick
+
+    def step(self, dt: float) -> None:
+        """Per-physics-step update.  No-op when no world binding has been built yet."""
+        if self._world_binding is None:
+            return
+        self.update(dt)
+
+    def update(self, dt: float) -> None:
+        """Run one synchronization pass using the currently selected update style.
+
+        Args:
+            dt: Physics time step in seconds.
+        """
         if self._world_binding is None:
             return
 
@@ -151,3 +167,30 @@ class CumotionWorldInterfaceExample:
             self._world_binding.synchronize()
         else:
             raise ValueError(f"Invalid update style: {self._update_style}")
+
+    # --------------------------------------------------------------- teardown
+
+    def cleanup(self) -> None:
+        """Drop the world binding so the closing UsdStage can be fully released."""
+        if self._world_binding is not None:
+            self._cleanup_debug_prims()
+            self._world_binding = None
+
+    def _cleanup_debug_prims(self) -> None:
+        """Delete all prims under 'CumotionDebug' to clean up old debug visualization."""
+        try:
+            stage_utils.get_current_stage()
+        except ValueError:
+            # There is no stage.
+            return
+        debug_prim_paths = prim_utils.find_matching_prim_paths(".*CumotionDebug.*", traverse=True)
+        if not debug_prim_paths:
+            return
+        # Filter to root-level prims (deleting a parent removes its children).
+        debug_prim_paths_set = set(debug_prim_paths)
+        root_prim_paths = [p for p in debug_prim_paths if p.rsplit("/", 1)[0] not in debug_prim_paths_set]
+        for prim_path in root_prim_paths:
+            try:
+                stage_utils.delete_prim(prim_path)
+            except ValueError:
+                pass

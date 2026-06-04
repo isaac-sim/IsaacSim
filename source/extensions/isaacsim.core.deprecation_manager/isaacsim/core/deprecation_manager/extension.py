@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +13,50 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Extension for managing deprecated settings and OmniGraph nodes in Isaac Sim."""
+
+from __future__ import annotations
+
+from typing import Any
+
 import carb
 import omni.ext
 import omni.usd
 
 
 class Extension(omni.ext.IExt):
-    def on_startup(self, ext_id):
+    """Extension for managing deprecated settings and OmniGraph nodes in Isaac Sim.
+
+    This extension automatically handles the migration of deprecated configuration settings and OmniGraph node types
+    to their updated equivalents. It monitors for deprecated settings during startup and updates OmniGraph nodes
+    when a stage is opened.
+
+    The extension performs two main functions:
+
+    1. **Settings Migration**: On startup, it checks for deprecated settings entries and automatically migrates
+       them to their new counterparts. Deprecation warnings are logged to inform users of the changes.
+
+    2. **OmniGraph Node Updates**: When a USD stage is opened, it traverses all prims to identify deprecated
+       OmniGraph node types and updates them to their current equivalents. The extension provides detailed
+       logging and notifications about the changes, including information about referenced assets that may
+       need manual handling.
+
+    The extension uses configuration entries from the extension settings to determine which deprecated items
+    to migrate. For OmniGraph nodes, it also attempts to reload all graphs after making changes to ensure
+    proper functionality.
+
+    Deprecation warnings and notifications help users understand what changes have been made and provide
+    guidance on preserving changes in referenced USD assets.
+    """
+
+    def on_startup(self, ext_id: str) -> None:
+        """Initialize the deprecation manager extension.
+
+        Loads deprecation settings, updates deprecated settings, and subscribes to stage events for OmniGraph node updates.
+
+        Args:
+            ext_id: The extension identifier.
+        """
         # get extension settings
         settings = carb.settings.get_settings()
         self._settings_entries = settings.get("/exts/isaacsim.core.deprecation_manager/settings")
@@ -37,13 +74,20 @@ class Extension(omni.ext.IExt):
                 observer_name="isaacsim.core.deprecation_manager._stage_event_subscription",
             )
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
+        """Cleans up the extension resources.
+
+        Removes stage event subscriptions and releases associated resources.
+        """
         # delete stage event subscription
         self._stage_event_subscription = None
 
-    def _update_deprecated_settings(self):
+    def _update_deprecated_settings(self) -> None:
+        """Update deprecated settings with their new equivalents.
+
+        Iterates through configured deprecated settings, transfers values to new settings, and logs deprecation warnings.
+        """
         settings = carb.settings.get_settings()
-        # iterate through entries
         for entry in self._settings_entries:
             deprecated_setting = entry.get("deprecated", "")
             new_setting = entry.get("new", "")
@@ -57,7 +101,14 @@ class Extension(omni.ext.IExt):
                 # show deprecation message
                 carb.log_warn(deprecation_message)
 
-    def _on_stage_event(self, event):
+    def _on_stage_event(self, event: Any) -> None:
+        """Handle stage opening events to update deprecated OmniGraph nodes.
+
+        Traverses the stage to find deprecated OmniGraph node types, updates them to new types, tracks referenced assets, and displays deprecation warnings with notifications.
+
+        Args:
+            event: The stage event that triggered this handler.
+        """
         usd_reference_paths = set()
         deprecation_changes = []
         for prim in omni.usd.get_context().get_stage().Traverse():
@@ -96,9 +147,9 @@ class Extension(omni.ext.IExt):
                                 break
         if not deprecation_changes:
             return
-        usd_reference_paths = sorted(list(usd_reference_paths), key=lambda item: (item[0], item[1]), reverse=True)
+        usd_reference_paths = sorted(usd_reference_paths, key=lambda item: (item[0], item[1]), reverse=True)
         usd_reference_paths = list(dict.fromkeys([item[2] for item in usd_reference_paths]))
-        deprecation_changes = sorted(list(set(deprecation_changes)), key=lambda item: item[2])
+        deprecation_changes = sorted(set(deprecation_changes), key=lambda item: item[2])
         # show deprecation message
         save_message = "" if usd_reference_paths else "Save it to preserve the changes."
         carb.log_warn(f"The stage contains the following deprecated nodes that have been updated. {save_message}")

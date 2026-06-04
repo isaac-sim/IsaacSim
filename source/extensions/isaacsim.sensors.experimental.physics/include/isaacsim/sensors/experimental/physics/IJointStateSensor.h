@@ -73,7 +73,7 @@ struct JointStateSensorReading
  */
 struct IJointStateSensor
 {
-    CARB_PLUGIN_INTERFACE("isaacsim::sensors::experimental::physics::IJointStateSensor", 1, 0);
+    CARB_PLUGIN_INTERFACE("isaacsim::sensors::experimental::physics::IJointStateSensor", 2, 0);
 
     /**
      * @brief Shut down the manager, destroying all sensors and freeing resources.
@@ -82,26 +82,28 @@ struct IJointStateSensor
 
     /**
      * @brief Create a joint state sensor for the given articulation root prim.
+     * @details If a sensor already exists for this prim path the call succeeds
+     * without creating a duplicate.
      * @param articulationRootPath USD path to the articulation root prim.
-     * @return Unique sensor ID (>= 0), or -1 on failure.
+     * @return true on success (sensor created or already exists), false on failure.
      */
-    virtual int64_t createSensor(const char* articulationRootPath) = 0;
+    virtual bool createSensor(const char* articulationRootPath) = 0;
 
     /**
      * @brief Remove a sensor and free its resources.
-     * @param sensorId ID returned by createSensor().
+     * @param articulationRootPath USD path used when the sensor was created.
      */
-    virtual void removeSensor(int64_t sensorId) = 0;
+    virtual void removeSensor(const char* articulationRootPath) = 0;
 
     /**
      * @brief Get the complete joint state reading for a sensor.
      * @details On a valid reading, all array pointers in the returned struct point into
      * sensor-internal storage and remain valid until the next physics step or sensor destruction.
-     * @param sensorId ID returned by createSensor().
+     * @param articulationRootPath USD path used when the sensor was created.
      * @return Complete reading with dofCount, dofNames, positions, velocities, and efforts.
      *         isValid is false before the first physics step or if the sensor is disabled.
      */
-    virtual JointStateSensorReading getSensorReading(int64_t sensorId) = 0;
+    virtual JointStateSensorReading getSensorReading(const char* articulationRootPath) = 0;
 };
 
 } // namespace isaacsim::sensors::experimental::physics

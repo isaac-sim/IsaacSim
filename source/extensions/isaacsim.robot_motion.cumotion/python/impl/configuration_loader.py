@@ -13,11 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Provides functionality for loading and configuring cuMotion robots from URDF and XRDF files."""
+
 import pathlib
 from dataclasses import dataclass
 
 import cumotion
 import isaacsim.core.experimental.utils.app as app_utils
+
+from .urdf_normalize import normalize_urdf_for_urdfdom
 
 
 @dataclass
@@ -28,7 +32,7 @@ class CumotionRobot:
     to be used with cuMotion, including the robot description, kinematics solver,
     and controlled joint names.
 
-    Attributes:
+    Args:
         directory: Path to the robot configuration directory containing URDF/XRDF files.
         robot_description: cuMotion robot description loaded from URDF/XRDF files.
         kinematics: cuMotion kinematics solver for the robot.
@@ -61,6 +65,7 @@ def load_cumotion_robot(
         Robot object containing all necessary data for cuMotion.
 
     Raises:
+        FileNotFoundError: If the URDF/XRDF files cannot be found.
         Exception: If the URDF/XRDF files cannot be loaded or parsed.
 
     Example:
@@ -73,7 +78,6 @@ def load_cumotion_robot(
                 xrdf_filename="robot.xrdf"
             )
     """
-
     if isinstance(directory, str):
         directory = pathlib.Path(directory)
 
@@ -92,8 +96,16 @@ def load_cumotion_robot(
     if not full_urdf_path.exists():
         raise FileNotFoundError(f"{full_urdf_path} is not a valid file path.")
 
+    # urdfdom (the parser statically linked into libcumotion.so) rejects valid
+    # URDFs that omit attributes it considers mandatory - most commonly
+    # ``effort`` / ``velocity`` on ``<limit>`` elements emitted by the Isaac
+    # Sim USD->URDF exporter. Normalize the text in-memory and hand it to the
+    # ``load_robot_from_memory`` binding so disk content is never mutated.
+    xrdf_text = full_xrdf_path.read_text(encoding="utf-8")
+    urdf_text = normalize_urdf_for_urdfdom(full_urdf_path.read_text(encoding="utf-8"))
+
     # if doesn't succeed, will throw. That is the desired behaviour.
-    robot_description: cumotion.RobotDescription = cumotion.load_robot_from_file(full_xrdf_path, full_urdf_path)
+    robot_description: cumotion.RobotDescription = cumotion.load_robot_from_memory(xrdf_text, urdf_text)
     kinematics: cumotion.Kinematics = robot_description.kinematics()
 
     return CumotionRobot(
@@ -120,7 +132,7 @@ def load_cumotion_supported_robot(robot_name: str) -> CumotionRobot:
         Robot object for the specified robot.
 
     Raises:
-        Exception: If the robot cannot be found or loaded.
+        FileNotFoundError: If the robot cannot be found or loaded.
 
     Example:
 

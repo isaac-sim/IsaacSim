@@ -11,14 +11,14 @@
 # SWIPAT Dependencies List:
 # -------------------------
 # Package              | Version                  | License     | Source
-# newton[sim]          | 1.0.0                   | Apache-2.0  | PyPI
+# newton[sim]          | 1.2.0                    | Apache-2.0  | PyPI
 # newton-actuators     | 0.1.0                    | Apache-2.0  | PyPI
-# newton-usd-schemas   | 0.1.0                    | Apache-2.0  | PyPI
-# mujoco-usd-converter | 0.1.0                    | Apache-2.0  | PyPI
-# mujoco               | 3.5.0                    | Apache-2.0  | PyPI
-# mujoco-warp          | 3.5.0.2                  | Apache-2.0  | PyPI
-# cbor2                | 5.8.0                    | MIT         | PyPI
-# imgui-bundle         | 1.92.4                   | MIT         | PyPI
+# newton-usd-schemas   | 0.2.0                    | Apache-2.0  | PyPI
+# mujoco-usd-converter | 0.2.0                    | Apache-2.0  | PyPI
+# mujoco               | 3.8.0                    | Apache-2.0  | PyPI
+# mujoco-warp          | 3.8.0.3                  | Apache-2.0  | PyPI
+# cbor2                | 5.9.0                    | MIT         | PyPI
+# imgui-bundle         | 1.92.601                 | MIT         | PyPI
 # PyOpenGL-accelerate  | 3.1.10                   | BSD         | PyPI
 # glfw                 | (transitive from mujoco) | MIT         | PyPI
 # absl-py              | (transitive from mjwarp) | Apache-2.0  | PyPI
@@ -26,35 +26,38 @@
 # numpy-stl            | (transitive from mjc-usd)| BSD-3       | PyPI
 # python-utils         | (transitive from stl)    | BSD-3       | PyPI
 # tinyobjloader        | 2.0.0rc13 (mjc-usd)      | MIT         | PyPI
+# coacd                | 1.0.7                    | MIT         | PyPI
 
 [[dependency]]
 python = "../_build/target-deps/python"
 packages = [
     # MuJoCo physics engine
-    "mujoco==3.5.0",
-    "mujoco-warp==3.5.0.2",
-    # Newton physics library (pinned to commit, uses mujoco>=3.5.0)
-    "newton[sim]==1.0.0",
+    "mujoco==3.8.0",
+    "mujoco-warp==3.8.0.3",
+    # Newton physics library (uses mujoco~=3.8.0, warp-lang>=1.13.0)
+    "newton[sim]==1.2.0",
     # Newton actuators library (core dependency)
     "newton-actuators==0.1.0",
     # Newton USD schemas for physics attributes
-    "newton-usd-schemas==0.1.0",
+    "newton-usd-schemas==0.2.0",
     # Newton Physics MJCF to USD converter
-    "mujoco-usd-converter==0.1.0",  
+    "mujoco-usd-converter==0.2.0",
     # Newton sim dependencies (explicit for SWIPAT)
-    "cbor2==5.8.0",
+    "cbor2==5.9.0",
     # Visualization dependencies
-    "imgui-bundle==1.92.4",
+    "imgui-bundle==1.92.601",
     "PyOpenGL-accelerate==3.1.10",
     # Transitive dependencies from mujoco (explicit for SWIPAT)
     "glfw==2.10.0",
     # Transitive dependencies from mujoco-warp (explicit for SWIPAT)
-    "absl-py==2.3.1",
+    "absl-py==2.4.0",
     "etils[epath]==1.13.0",
     # Transitive dependencies from mujoco-usd-converter (explicit for SWIPAT)
     "numpy-stl",
     "python-utils",
     "tinyobjloader==2.0.0rc13",
+    # Convex decomposition (used by ModelBuilder.approximate_meshes)
+    "coacd==1.0.7",
 ]
 target = "../_build/target-deps/isaac_newton_prebundle"
 platforms = ["*-x86_64", "*-aarch64"]
@@ -63,4 +66,3 @@ install_dependencies = false
 append_to_install_folder = true
 gather_licenses_path = "../_build/PACKAGE-LICENSES/PIP-prebundled-LICENSES.txt"
 extra_args = ["--extra-index-url", "https://pypi.nvidia.com"]
-

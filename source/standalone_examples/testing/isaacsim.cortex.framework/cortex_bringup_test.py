@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test cortex framework bringup with a follow-state decider network."""
 
 from isaacsim import SimulationApp
 
@@ -28,30 +30,37 @@ from isaacsim.cortex.framework.robot import add_franka_to_stage
 
 
 class FollowState(DfState):
-    """The context object is available as self.context. We have access to everything in the context
+    """Command the robot end-effector to follow a visual sphere.
+
+    The context object is available as self.context. We have access to everything in the context
     object, which in this case is everything in the robot object (the command API and the follow
     sphere).
     """
 
     @property
     def robot(self):
+        """Return the robot from the context."""
         return self.context.robot
 
     @property
     def follow_sphere(self):
+        """Return the follow sphere attached to the robot."""
         return self.context.robot.follow_sphere
 
     def enter(self):
+        """Close the gripper and place the follow sphere at the end-effector."""
         self.robot.gripper.close()
         self.follow_sphere.set_world_pose(*self.robot.arm.get_fk_pq().as_tuple())
 
     def step(self):
+        """Send the end-effector toward the follow sphere position."""
         target_position, _ = self.follow_sphere.get_world_pose()
         self.robot.arm.send_end_effector(target_position=target_position)
         return self  # Always transition back to this state.
 
 
 def main():
+    """Run the cortex bringup test with a follow-state decider network."""
     world = CortexWorld()
     robot = world.add_robot(add_franka_to_stage(name="franka", prim_path="/World/Franka"))
 

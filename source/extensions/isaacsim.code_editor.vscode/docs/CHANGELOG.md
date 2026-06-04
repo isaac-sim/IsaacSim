@@ -1,4 +1,24 @@
 # Changelog
+
+## [1.2.3] - 2026-05-14
+### Fixed
+- Show a Kit warning notification when VS Code cannot be launched because `code` is not available on the system
+
+## [1.2.2] - 2026-04-23
+### Fixed
+- Eliminated shell injection risk by resolving `code` via `shutil.which()` and removing `shell=True`
+
+## [1.2.1] - 2026-03-25
+### Changed
+- Replace deprecated onclick_fn with onclick_action for menu registration
+
+## [1.2.0] - 2026-03-09
+### Changed
+- Extract TCP socket server and Python executor into isaacsim.code_editor.python_server
+- Extension now depends on isaacsim.code_editor.python_server for code execution
+- Retain only VS Code launcher and menu integration
+- Settings moved to isaacsim.code_editor.python_server extension
+
 ## [1.1.2] - 2026-03-09
 ### Fixed
 - Hardened subprocess call to avoid shell=True with string concatenation
@@ -6,7 +26,6 @@
 ## [1.1.1] - 2026-03-02
 ### Changed
 - Add Overview.md, add python_api.md, add SETTINGS.md and update docstrings
-
 
 ## [1.1.0] - 2025-06-10
 ### Changed

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +29,7 @@ from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.replicator.experimental.domain_randomization.scripts import context
 from omni.replicator.core import distribution
 from omni.replicator.core.utils import ReplicatorItem, ReplicatorWrapper, utils
-from pxr import Gf, UsdPhysics
+from pxr import Gf
 
 from .attributes import TENDON_ATTRIBUTES
 from .context import trigger_randomization
@@ -47,6 +47,304 @@ _current_tendon_properties = dict()
 _simulation_context_reset_values = dict()
 _rigid_prim_views_reset_values = dict()
 _articulation_views_reset_values = dict()
+
+
+def cleanup():
+    """Reset all module-level state.
+
+    Called on stage close/reload to prevent stale views from accumulating across sessions.
+    """
+    global _simulation_context, _physics_sim_view
+    _simulation_context = None
+    _physics_sim_view = None
+    _rigid_prim_views.clear()
+    _articulation_views.clear()
+    _simulation_context_initial_values.clear()
+    _rigid_prim_views_initial_values.clear()
+    _articulation_views_initial_values.clear()
+    _current_tendon_properties.clear()
+    _simulation_context_reset_values.clear()
+    _rigid_prim_views_reset_values.clear()
+    _articulation_views_reset_values.clear()
+
+
+def _ensure_numpy(val):
+    """Convert a tensor (numpy, torch, or warp) to a numpy array."""
+    if isinstance(val, np.ndarray):
+        return val
+    if hasattr(val, "detach"):
+        return val.detach().cpu().numpy()
+    if hasattr(val, "numpy"):
+        return np.asarray(val.numpy())
+    return np.asarray(val)
+
+
+def _to_backend_tensor(val, backend_utils, device):
+    """Convert *val* to the tensor type expected by the legacy backend (torch or numpy)."""
+    if val is None:
+        return None
+    arr = _ensure_numpy(val)
+    return backend_utils.create_tensor_from_list(arr.tolist(), dtype="float32", device=device)
+
+
+def _to_backend_indices(indices, count, backend_utils, device):
+    """Return *indices* as a tensor compatible with the legacy backend's ``resolve_indices``."""
+    if indices is None:
+        return None
+    arr = np.asarray(indices).flatten().astype(np.int64)
+    return backend_utils.create_tensor_from_list(arr.tolist(), dtype="int64", device=device)
+
+
+class _FrontendBridge:
+    """Wrap a physx tensor view so that warp / numpy arguments are automatically.
+
+    converted to the type expected by its frontend (torch or numpy)."""
+
+    def __init__(self, physics_view):
+        self._pv = physics_view
+        self._use_torch = (
+            hasattr(physics_view, "_frontend") and type(physics_view._frontend).__name__ == "FrontendTorch"
+        )
+
+    @staticmethod
+    def _to_numpy(v):
+        import warp as _wp
+
+        if isinstance(v, _wp.array):
+            v = v.numpy()
+        if isinstance(v, np.ndarray):
+            return np.ascontiguousarray(v)
+        return v
+
+    @staticmethod
+    def _to_torch(v):
+        try:
+            import torch as _torch
+        except ImportError:
+            return v
+        if isinstance(v, _torch.Tensor):
+            return v
+        import warp as _wp
+
+        if isinstance(v, _wp.array):
+            v = v.numpy()
+        if isinstance(v, np.ndarray):
+            return _torch.from_numpy(np.ascontiguousarray(v))
+        return v
+
+    def __getattr__(self, name):
+        attr = getattr(self._pv, name)
+        if not callable(attr):
+            return attr
+
+        cvt = self._to_torch if self._use_torch else self._to_numpy
+
+        def wrapper(*args, **kwargs):
+            return attr(*(cvt(a) for a in args), **{k: cvt(v) for k, v in kwargs.items()})
+
+        return wrapper
+
+
+class _LegacyRigidPrimAdapter:
+    """Wrap a legacy ``isaacsim.core.prims.RigidPrim`` to expose the experimental API.
+
+    expected by the OGN nodes (attribute names and method signatures)."""
+
+    def __init__(self, legacy_view):
+        self._legacy = legacy_view
+        self._physics_rigid_body_view = _FrontendBridge(legacy_view._physics_view)
+        self._backend_utils = legacy_view._backend_utils
+        self._device = legacy_view._device
+
+    def __len__(self):
+        return self._legacy.count
+
+    # -- high-level methods called by OgnWritePhysicsRigidPrimView --------
+
+    def set_velocities(self, linear_velocities=None, angular_velocities=None, *, indices=None):
+        idx = _to_backend_indices(indices, self._legacy.count, self._backend_utils, self._device)
+        current = _ensure_numpy(self._legacy.get_velocities(indices=idx))
+        if linear_velocities is not None:
+            current[:, :3] = _ensure_numpy(linear_velocities)
+        if angular_velocities is not None:
+            current[:, 3:] = _ensure_numpy(angular_velocities)
+        vel = _to_backend_tensor(current, self._backend_utils, self._device)
+        self._legacy.set_velocities(vel, indices=idx)
+
+    def set_world_poses(self, positions=None, orientations=None, *, indices=None):
+        idx = _to_backend_indices(indices, self._legacy.count, self._backend_utils, self._device)
+        pos = _to_backend_tensor(positions, self._backend_utils, self._device) if positions is not None else None
+        ori = _to_backend_tensor(orientations, self._backend_utils, self._device) if orientations is not None else None
+        self._legacy.set_world_poses(positions=pos, orientations=ori, indices=idx)
+
+    def apply_forces(self, forces=None, *, indices=None):
+        idx = _to_backend_indices(indices, self._legacy.count, self._backend_utils, self._device)
+        f = _to_backend_tensor(forces, self._backend_utils, self._device) if forces is not None else None
+        self._legacy.apply_forces(forces=f, indices=idx)
+
+
+class _LegacyArticulationAdapter:
+    """Wrap a legacy ``isaacsim.core.prims.Articulation`` to expose the experimental API.
+
+    expected by the OGN nodes."""
+
+    def __init__(self, legacy_view):
+        self._legacy = legacy_view
+        self._physics_articulation_view = _FrontendBridge(legacy_view._physics_view)
+        self._backend_utils = legacy_view._backend_utils
+        self._device = legacy_view._device
+
+    def __len__(self):
+        return self._legacy.count
+
+    # -- high-level methods called by OgnWritePhysicsArticulationView -----
+
+    def set_velocities(self, linear_velocities=None, angular_velocities=None, *, indices=None):
+        idx = _to_backend_indices(indices, self._legacy.count, self._backend_utils, self._device)
+        current = _ensure_numpy(self._legacy.get_velocities(indices=idx))
+        if linear_velocities is not None:
+            current[:, :3] = _ensure_numpy(linear_velocities)
+        if angular_velocities is not None:
+            current[:, 3:] = _ensure_numpy(angular_velocities)
+        vel = _to_backend_tensor(current, self._backend_utils, self._device)
+        self._legacy.set_velocities(vel, indices=idx)
+
+    def set_world_poses(self, positions=None, orientations=None, *, indices=None):
+        idx = _to_backend_indices(indices, self._legacy.count, self._backend_utils, self._device)
+        pos = _to_backend_tensor(positions, self._backend_utils, self._device) if positions is not None else None
+        ori = _to_backend_tensor(orientations, self._backend_utils, self._device) if orientations is not None else None
+        self._legacy.set_world_poses(positions=pos, orientations=ori, indices=idx)
+
+    def set_dof_positions(self, positions, *, indices=None, dof_indices=None):
+        idx = _to_backend_indices(indices, self._legacy.count, self._backend_utils, self._device)
+        pos = _to_backend_tensor(positions, self._backend_utils, self._device)
+        self._legacy.set_joint_positions(pos, indices=idx, joint_indices=dof_indices)
+
+    def set_dof_velocities(self, velocities, *, indices=None, dof_indices=None):
+        idx = _to_backend_indices(indices, self._legacy.count, self._backend_utils, self._device)
+        vel = _to_backend_tensor(velocities, self._backend_utils, self._device)
+        self._legacy.set_joint_velocities(vel, indices=idx, joint_indices=dof_indices)
+
+    def set_dof_efforts(self, efforts, *, indices=None, dof_indices=None):
+        idx = _to_backend_indices(indices, self._legacy.count, self._backend_utils, self._device)
+        eff = _to_backend_tensor(efforts, self._backend_utils, self._device)
+        self._legacy.set_joint_efforts(eff, indices=idx, joint_indices=dof_indices)
+
+    def set_dof_max_efforts(self, max_efforts, *, indices=None, dof_indices=None):
+        idx = _to_backend_indices(indices, self._legacy.count, self._backend_utils, self._device)
+        me = _to_backend_tensor(max_efforts, self._backend_utils, self._device)
+        self._legacy.set_max_efforts(me, indices=idx, joint_indices=dof_indices)
+
+
+def _bridge_deprecated_views(view_name, view_type):
+    """Check the deprecated extension's registry and cross-register into the experimental one."""
+    try:
+        from isaacsim.replicator.domain_randomization import physics_view as dep
+    except ImportError:
+        return None
+
+    if view_type == "rigid":
+        legacy = dep._rigid_prim_views.get(view_name)
+        if legacy is None:
+            return None
+        adapted = _LegacyRigidPrimAdapter(legacy)
+        _rigid_prim_views[view_name] = adapted
+        if view_name in dep._rigid_prim_views_initial_values:
+            _rigid_prim_views_initial_values[view_name] = {
+                k: _ensure_numpy(v) for k, v in dep._rigid_prim_views_initial_values[view_name].items()
+            }
+        if view_name in dep._rigid_prim_views_reset_values:
+            _rigid_prim_views_reset_values[view_name] = {
+                k: _ensure_numpy(v).copy() for k, v in dep._rigid_prim_views_reset_values[view_name].items()
+            }
+        return adapted
+
+    if view_type == "articulation":
+        legacy = dep._articulation_views.get(view_name)
+        if legacy is None:
+            return None
+        adapted = _LegacyArticulationAdapter(legacy)
+        _articulation_views[view_name] = adapted
+        if view_name in dep._articulation_views_initial_values:
+            _articulation_views_initial_values[view_name] = {
+                k: _ensure_numpy(v) for k, v in dep._articulation_views_initial_values[view_name].items()
+            }
+        if view_name in dep._articulation_views_reset_values:
+            _articulation_views_reset_values[view_name] = {
+                k: _ensure_numpy(v).copy() for k, v in dep._articulation_views_reset_values[view_name].items()
+            }
+        return adapted
+
+    return None
+
+
+def resolve_rigid_prim_view(view_name):
+    """Look up a rigid prim view by name, falling back to the deprecated registry."""
+    cached = _rigid_prim_views.get(view_name)
+    if isinstance(cached, _LegacyRigidPrimAdapter):
+        try:
+            from isaacsim.replicator.domain_randomization import physics_view as dep
+
+            dep_view = dep._rigid_prim_views.get(view_name)
+            if dep_view is not None and dep_view is not cached._legacy:
+                return _bridge_deprecated_views(view_name, "rigid")
+        except ImportError:
+            pass
+    if cached is not None:
+        return cached
+    return _bridge_deprecated_views(view_name, "rigid")
+
+
+def resolve_articulation_view(view_name):
+    """Look up an articulation view by name, falling back to the deprecated registry."""
+    cached = _articulation_views.get(view_name)
+    if isinstance(cached, _LegacyArticulationAdapter):
+        try:
+            from isaacsim.replicator.domain_randomization import physics_view as dep
+
+            dep_view = dep._articulation_views.get(view_name)
+            if dep_view is not None and dep_view is not cached._legacy:
+                return _bridge_deprecated_views(view_name, "articulation")
+        except ImportError:
+            pass
+    if cached is not None:
+        return cached
+    return _bridge_deprecated_views(view_name, "articulation")
+
+
+def resolve_physics_sim_view():
+    """Get the physics simulation view, bridging from the deprecated module if needed."""
+    if _physics_sim_view is not None:
+        return _physics_sim_view
+    return _bridge_deprecated_simulation_context()
+
+
+def _bridge_deprecated_simulation_context():
+    """Bridge the deprecated simulation context into the experimental module."""
+    global _physics_sim_view
+
+    try:
+        from isaacsim.replicator.domain_randomization import physics_view as dep
+    except ImportError:
+        return None
+
+    if dep._simulation_context is None:
+        return None
+
+    sim_view = SimulationManager.get_physics_sim_view()
+    if sim_view is None:
+        return None
+
+    _physics_sim_view = sim_view
+
+    for key, val in dep._simulation_context_initial_values.items():
+        if key not in _simulation_context_initial_values:
+            _simulation_context_initial_values[key] = _ensure_numpy(val)
+    for key, val in dep._simulation_context_reset_values.items():
+        if key not in _simulation_context_reset_values:
+            _simulation_context_reset_values[key] = _ensure_numpy(val).copy()
+
+    return _physics_sim_view
 
 
 def register_simulation_context(simulation_context: Optional[Type[SimulationManager]] = None):
@@ -164,7 +462,7 @@ def register_articulation_view(articulation_view: Articulation, name: str):
     initial_values["joint_positions"] = np.asarray(articulation_view.get_dof_positions())
     initial_values["joint_velocities"] = np.asarray(articulation_view.get_dof_velocities())
 
-    dof_limits = np.asarray(articulation_view.get_dof_limits())
+    dof_limits = np.asarray(physics_view.get_dof_limits())
     initial_values["lower_dof_limits"] = dof_limits[..., 0]
     initial_values["upper_dof_limits"] = dof_limits[..., 1]
 
@@ -252,7 +550,7 @@ def _write_physics_view_node(view, attribute, values, operation, node_type, num_
             values.node.get_attribute("inputs:lower").connect(node.get_attribute("inputs:dist_param_1"), True)
             values.node.get_attribute("inputs:upper").connect(node.get_attribute("inputs:dist_param_2"), True)
 
-    counter = ReplicatorItem(utils.create_node, "isaacsim.replicator.experimental.domain_randomization.OgnCountIndices")
+    counter = ReplicatorItem(utils.create_node, "isaacsim.replicator.domain_randomization.OgnCountIndices")
 
     upstream_node = ReplicatorItem._get_context()
     upstream_node.get_attribute("outputs:indices").connect(counter.node.get_attribute("inputs:indices"), True)
@@ -300,16 +598,16 @@ def randomize_rigid_prim_view(
         rest_offset: Randomizes the rest offset.
     """
     upstream_node_name = ReplicatorItem._get_context().get_node_type().get_node_type()
-    if upstream_node_name != "isaacsim.replicator.experimental.domain_randomization.OgnIntervalFiltering":
+    if upstream_node_name != "isaacsim.replicator.domain_randomization.OgnIntervalFiltering":
         raise ValueError(
             "randomize_rigid_prim_view() must be called within the "
             "isaacsim.replicator.experimental.domain_randomization.gate.on_interval "
             "or isaacsim.replicator.experimental.domain_randomization.gate.on_env_reset context managers."
         )
 
-    node_type = "isaacsim.replicator.experimental.domain_randomization.OgnWritePhysicsRigidPrimView"
+    node_type = "isaacsim.replicator.domain_randomization.OgnWritePhysicsRigidPrimView"
 
-    if _rigid_prim_views.get(view_name) is None:
+    if resolve_rigid_prim_view(view_name) is None:
         raise ValueError(f"Expected a registered rigid prim view, but instead received {view_name}")
 
     if position is not None:
@@ -404,16 +702,16 @@ def randomize_articulation_view(
         tendon_offsets: Randomizes fixed tendon offsets.
     """
     upstream_node_name = ReplicatorItem._get_context().get_node_type().get_node_type()
-    if upstream_node_name != "isaacsim.replicator.experimental.domain_randomization.OgnIntervalFiltering":
+    if upstream_node_name != "isaacsim.replicator.domain_randomization.OgnIntervalFiltering":
         raise ValueError(
             "randomize_articulation_view() must be called within the "
             "isaacsim.replicator.experimental.domain_randomization.gate.on_interval "
             "or isaacsim.replicator.experimental.domain_randomization.gate.on_env_reset context managers."
         )
 
-    node_type = "isaacsim.replicator.experimental.domain_randomization.OgnWritePhysicsArticulationView"
+    node_type = "isaacsim.replicator.domain_randomization.OgnWritePhysicsArticulationView"
 
-    if _articulation_views.get(view_name) is None:
+    if resolve_articulation_view(view_name) is None:
         raise ValueError(f"Expected a registered articulation view, but instead received {view_name}")
 
     tendon_nodes = list()
@@ -508,14 +806,14 @@ def randomize_simulation_context(operation: str = "direct", gravity: ReplicatorI
         gravity: Randomizes the gravity vector.
     """
     upstream_node_name = ReplicatorItem._get_context().get_node_type().get_node_type()
-    if upstream_node_name != "isaacsim.replicator.experimental.domain_randomization.OgnIntervalFiltering":
+    if upstream_node_name != "isaacsim.replicator.domain_randomization.OgnIntervalFiltering":
         raise ValueError(
             "randomize_simulation_context() must be called within the "
             "isaacsim.replicator.experimental.domain_randomization.gate.on_interval "
             "or isaacsim.replicator.experimental.domain_randomization.gate.on_env_reset context managers."
         )
 
-    node_type = "isaacsim.replicator.experimental.domain_randomization.OgnWritePhysicsSimulationContext"
+    node_type = "isaacsim.replicator.domain_randomization.OgnWritePhysicsSimulationContext"
 
     global _simulation_context
     if _simulation_context is None:

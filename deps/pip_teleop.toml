@@ -1,0 +1,19 @@
+# Pip prebundle for isaacsim.replicator.teleop
+#
+# NOTE: isaacteleop only publishes pip wheels for Linux x86_64.
+
+# Linux x86_64
+[[dependency]]
+python = "../_build/target-deps/python"
+packages = [
+    # -- Direct dependencies ------------------------------------------------
+    "isaacteleop~=1.0.0",                  # SWIPAT filed under: N/A (NVIDIA-authored) # Used by: isaacsim.replicator.teleop
+    # -- QP solver backend for pink -----------------------------------------
+    "daqp==0.8.5",                         # SWIPAT filed under: https://nvbugs/6047066 # Used by: isaacsim.replicator.teleop
+]
+target = "../_build/target-deps/pip_teleop_prebundle"
+platforms = ["linux-x86_64"]
+download_only = false
+install_dependencies = false
+append_to_install_folder = true
+gather_licenses_path = "../_build/PACKAGE-LICENSES/PIP-prebundled-LICENSES.txt"

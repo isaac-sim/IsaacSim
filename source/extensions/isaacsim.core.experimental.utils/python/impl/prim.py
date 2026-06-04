@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Functions for working with USD/USDRT prims.
-"""
+"""Functions for working with USD/USDRT prims."""
 
 from __future__ import annotations
 
 import re
-from typing import Any, Callable, Literal
+from collections.abc import Callable
+from typing import Any, Literal
 
 import usdrt
 from pxr import Sdf, Usd, UsdPhysics
@@ -58,15 +57,13 @@ def set_prim_variants(prim: str | Usd.Prim, *, variants: list[tuple[str, str]]) 
     prim = stage_utils.get_current_stage(backend="usd").GetPrimAtPath(prim) if isinstance(prim, str) else prim
     available_variant_sets = prim.GetVariantSets().GetNames()
     for variant_set, variant_selection in variants:
-        if not variant_set in available_variant_sets:
+        if variant_set not in available_variant_sets:
             raise ValueError(f"Invalid variant set: '{variant_set}'. Available sets: {available_variant_sets}")
         available_variant_selections = prim.GetVariantSet(variant_set).GetVariantNames()
-        if variant_selection and not variant_selection in available_variant_selections:
+        if variant_selection and variant_selection not in available_variant_selections:
             raise ValueError(
-                (
-                    f"Invalid variant selection (variant set: '{variant_set}'): '{variant_selection}'. "
-                    f"Available selections (variant set: '{variant_set}'): {available_variant_selections}"
-                )
+                f"Invalid variant selection (variant set: '{variant_set}'): '{variant_selection}'. "
+                f"Available selections (variant set: '{variant_set}'): {available_variant_selections}"
             )
         prim.GetVariantSet(variant_set).SetVariantSelection(variant_selection)
 
@@ -487,7 +484,7 @@ def has_api(
         raise ValueError(f"Invalid test operation: '{test}'")
 
 
-def ensure_api(prim: str | Usd.Prim, api: type, *args, **kwargs) -> type["UsdAPISchemaBase"]:
+def ensure_api(prim: str | Usd.Prim, api: type, *args: Any, **kwargs: Any) -> Any:
     """Ensure that a prim has the specified API schema applied.
 
     Backends: :guilabel:`usd`.
@@ -553,10 +550,8 @@ def create_prim_attribute(
         attribute = prim.GetAttribute(name)
         if foundation_utils.value_type_name_to_str(attribute.GetTypeName()) != type_name:
             raise ValueError(
-                (
-                    f"Attribute '{name}' already exists with type '{attribute.GetTypeName()}', "
-                    f"but attempting to create it with type '{type_name}'"
-                )
+                f"Attribute '{name}' already exists with type '{attribute.GetTypeName()}', "
+                f"but attempting to create it with type '{type_name}'"
             )
     # create attribute
     else:

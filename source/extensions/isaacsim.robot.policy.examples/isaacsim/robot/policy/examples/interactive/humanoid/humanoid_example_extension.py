@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Extension that provides a Unitree H1 humanoid robot policy example."""
-
 
 import os
 
@@ -52,8 +51,9 @@ class HumanoidExampleExtension(omni.ext.IExt):
         self.example_name = "Humanoid"
         self.category = "Policy"
 
-        overview = "This Example shows a Unitree H1 running a flat terrain policy trained in Isaac Lab"
-        overview += "\n\tKeyboard Input:"
+        overview = "This Example shows a Unitree H1 running a flat terrain policy trained in Isaac Lab. "
+        overview += "Use the Physics Engine menu in the viewport to switch between PhysX and Newton before loading. "
+        overview += "\n\n\tKeyboard Input:"
         overview += "\n\t\tup arrow / numpad 8: Move Forward"
         overview += "\n\t\tleft arrow / numpad 4: Spin Counterclockwise"
         overview += "\n\t\tright arrow / numpad 6: Spin Clockwise"

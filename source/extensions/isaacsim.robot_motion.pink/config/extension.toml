@@ -1,0 +1,52 @@
+[package]
+version = "0.1.2"
+category = "simulation"
+title = "pink"
+description = "Access to PINK (Python Inverse Kinematics) solvers under the isaacsim motion generation API."
+keywords = ["motion", "generation", "pink", "inverse", "kinematics", "ik", "pinocchio"]
+changelog = "docs/CHANGELOG.md"
+readme = "docs/Overview.md"
+preview_image = "data/preview.png"
+icon = "data/icon.png"
+writeTarget.kit = true
+writeTarget.platform = true # pip prebundle makes this extension os specific
+writeTarget.python = true
+
+[dependencies]
+"isaacsim.core.experimental.utils" = {}
+"isaacsim.robot_motion.experimental.motion_generation" = {}
+"omni.kit.pip_archive" = {}
+
+[[python.module]]
+path = "pip_prebundle"
+
+[[python.module]]
+name = "isaacsim.robot_motion.pink"
+
+[[python.module]]
+name = "isaacsim.robot_motion.pink.tests"
+
+[[test]]
+name = "startup"
+enabled = true
+
+"filter:platform"."windows-x86_64".pythonTests.exclude = [
+    "*",
+]
+
+[[test]]
+enabled = true
+dependencies = ["isaacsim.test.utils"]
+
+stdoutFailPatterns.exclude = [
+    '*The NumPy module was reloaded*',
+    '*SparseConversionWarning*',
+    '*SyntheticData extension needs at least a stageFrameHistoryCount*',
+]
+
+"filter:platform"."windows-x86_64".pythonTests.exclude = [
+    "*",
+]
+
+[documentation]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

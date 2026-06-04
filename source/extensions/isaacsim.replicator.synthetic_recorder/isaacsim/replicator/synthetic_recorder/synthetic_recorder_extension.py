@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,7 @@
 
 """Extension for recording synthetic data in Isaac Sim through the Replicator framework."""
 
-
-import asyncio
-
 import omni.ext
-import omni.ui as ui
 from omni.kit.menu.utils import MenuHelperExtensionFull
 
 from .synthetic_recorder_window import SyntheticRecorderWindow
@@ -39,7 +35,7 @@ class SyntheticRecorderExtension(omni.ext.IExt, MenuHelperExtensionFull):
     MENU_GROUP = "Tools/Replicator"
     """The menu group path where the extension appears in the application menu."""
 
-    def on_startup(self, ext_id):
+    def on_startup(self, ext_id: str) -> None:
         """Called when the Synthetic Data Recorder extension is starting up.
 
         Adds the Synthetic Data Recorder window to the Tools/Replicator menu group.
@@ -55,7 +51,7 @@ class SyntheticRecorderExtension(omni.ext.IExt, MenuHelperExtensionFull):
             SyntheticRecorderExtension.MENU_GROUP,
         )
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Called when the Synthetic Data Recorder extension is shutting down.
 
         Removes the menu items created during startup.

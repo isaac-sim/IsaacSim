@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Context menu implementation for the asset browser interface."""
-
 
 import os
 from urllib.parse import unquote
@@ -42,14 +41,14 @@ def get_content_folder() -> str | None:
         omniverse_config_path = os.path.join(global_config_path, "omniverse.toml").replace("\\", "/")
         contents = toml.load(omniverse_config_path)
         return contents.get("paths").get("content_root")
-    except:
+    except Exception:
         return None
 
 
 class ContextMenu(ui.Menu):
     """Context menu for asset browser."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("Asset browser context menu", style=CONTEXT_MENU_STYLE)
         self.url = None
         self._settings = carb.settings.get_settings()
@@ -101,7 +100,7 @@ class ContextMenu(ui.Menu):
             except ImportError:
                 carb.log_warn("Plese enable omni.kit.clipboard first to copy URL link.")
 
-    def _collect(self):
+    def _collect(self) -> None:
         """Collects the current URL using the omni.kit.tool.collect extension.
 
         Opens the collect tool with the current URL and sets the target folder to the content folder
@@ -136,7 +135,7 @@ class ContextMenu(ui.Menu):
         except AttributeError:
             carb.log_warn("Require omni.kit.tool.collect v2.0.5 or later!")
 
-    def __add_at_current_selection(self):
+    def __add_at_current_selection(self) -> None:
         """Adds the current URL file to the stage at the current selection.
 
         Uses the omni.kit.menu.stage extension to add the file without replacing existing content.
@@ -149,7 +148,7 @@ class ContextMenu(ui.Menu):
         except Exception:
             pass
 
-    def __replace_current_selection(self):
+    def __replace_current_selection(self) -> None:
         """Replaces the current selection in the stage with the current URL file.
 
         Uses the omni.kit.menu.stage extension to replace existing content with the file.
@@ -162,7 +161,7 @@ class ContextMenu(ui.Menu):
         except Exception:
             pass
 
-    def __copy_url_link(self):
+    def __copy_url_link(self) -> None:
         """Copies the current URL to the system clipboard.
 
         Uses the omni.kit.clipboard extension to copy the URL for sharing or pasting.

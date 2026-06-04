@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Create menu helpers for Isaac Sim assets and tools."""
+
 import asyncio
 from collections.abc import Sequence
 from functools import partial
@@ -22,7 +24,7 @@ import carb
 import omni.ext
 import omni.kit.actions.core
 import omni.kit.menu.utils
-from isaacsim.core.utils.viewports import set_camera_view
+from isaacsim.core.rendering_manager import ViewportManager
 from isaacsim.gui.components.menu import create_submenu, open_content_browser_to_path
 from isaacsim.storage.native.nucleus import get_assets_root_path
 from omni.kit.menu.utils import MenuItemDescription, MenuLayout, add_menu_items, remove_menu_items
@@ -36,7 +38,7 @@ def create_asset(
     stage_path: str,
     camera_position: Sequence[float] | None = None,
     camera_target: Sequence[float] | None = None,
-):
+) -> None:
     """Create a reference to an Isaac Sim asset in the stage.
 
     Args:
@@ -66,13 +68,13 @@ def create_asset(
     carb.log_info(f"Added reference to {stage_path} at {path_to}")
 
     if camera_position is not None and camera_target is not None:
-        set_camera_view(camera_position, camera_target)
+        ViewportManager.set_camera_view("/OmniverseKit_Persp", eye=camera_position, target=camera_target)
 
 
 # -----------------------------------------------------------------------------
 # Global create_apriltag function
 # -----------------------------------------------------------------------------
-def create_apriltag(usd_path: str, shader_name: str, stage_path: str, tag_path: str):
+def create_apriltag(usd_path: str, shader_name: str, stage_path: str, tag_path: str) -> None:
     """Create an AprilTag material with a selected tag texture.
 
     Args:
@@ -101,7 +103,7 @@ def create_apriltag(usd_path: str, shader_name: str, stage_path: str, tag_path: 
     stage = omni.usd.get_context().get_stage()
     stage_path = omni.usd.get_stage_next_free_path(stage, stage_path, False)
 
-    async def create_tag():
+    async def create_tag() -> None:
         omni.kit.commands.execute(
             "CreateMdlMaterialPrim",
             mtl_url=assets_root_path + usd_path,
@@ -126,7 +128,7 @@ class CreateMenuExtension:
         ext_id: Extension identifier provided by the extension manager.
     """
 
-    def __init__(self, ext_id: str):
+    def __init__(self, ext_id: str) -> None:
         self._ext_id = ext_id
         self._ext_name = omni.ext.get_extension_name(ext_id)
         self._menu_categories = []
@@ -389,7 +391,7 @@ class CreateMenuExtension:
             "CREATE",
         )
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Remove menu layouts and deregister actions.
 
         Example:

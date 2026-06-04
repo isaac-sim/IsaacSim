@@ -1,16 +1,12 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 isaacsim.replicator.grasping provides a comprehensive workflow for generating synthetic grasping datasets using Isaac Sim's Replicator framework. This extension focuses specifically on robotic manipulation scenarios, offering automated generation of diverse grasping data for training and validation of robotic manipulation models.
 
 ## Key Components
 
-### [GraspingManager](isaacsim.replicator.grasping/isaacsim.replicator.grasping.GraspingManager)
+### {class}`GraspingManager <isaacsim.replicator.grasping.GraspingManager>`
 
-The [GraspingManager](isaacsim.replicator.grasping/isaacsim.replicator.grasping.GraspingManager) serves as the central coordinator for all aspects of grasp evaluation workflows. It manages the complete pipeline from grasp pose generation through physics simulation to results output.
+The {class}`GraspingManager <isaacsim.replicator.grasping.GraspingManager>` serves as the central coordinator for all aspects of grasp evaluation workflows. It manages the complete pipeline from grasp pose generation through physics simulation to results output.
 
 **Core workflow capabilities include:**
 - Grasp pose generation using configurable samplers with antipodal grasp sampling
@@ -23,9 +19,9 @@ The manager operates on USD prims for both grippers and objects, automatically h
 
 **Simulation modes:** The manager supports both direct physics stepping and timeline-based simulation, with optional scene isolation to create controlled testing environments separate from the main scene.
 
-### [GraspPhase](isaacsim.replicator.grasping/isaacsim.replicator.grasping.GraspPhase)
+### {class}`GraspPhase <isaacsim.replicator.grasping.GraspPhase>`
 
-[GraspPhase](isaacsim.replicator.grasping/isaacsim.replicator.grasping.GraspPhase) represents individual phases within a grasping sequence, each containing specific joint targets and simulation parameters. Each phase defines:
+{class}`GraspPhase <isaacsim.replicator.grasping.GraspPhase>` represents individual phases within a grasping sequence, each containing specific joint targets and simulation parameters. Each phase defines:
 - Joint drive targets with specific position values
 - Number of simulation steps for the phase duration
 - Simulation step timing parameters

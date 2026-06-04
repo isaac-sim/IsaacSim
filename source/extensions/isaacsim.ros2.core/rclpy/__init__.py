@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,7 +27,10 @@ from isaacsim.ros2.core.impl.ros2_common import (
 
 
 class Extension(omni.ext.IExt):
+    """Extension to load and configure rclpy for ROS 2."""
+
     def on_startup(self, ext_id):
+        """Initialize the extension."""
         ros_distro = os.environ.get("ROS_DISTRO")
         if ros_distro is not None and os.path.join(f"{ros_distro}", "rclpy") in os.path.join(os.path.dirname(__file__)):
             omni.kit.app.get_app().print_and_log("Attempting to load system rclpy")
@@ -66,6 +69,7 @@ class Extension(omni.ext.IExt):
             return
 
     def on_shutdown(self):
+        """Clean up resources when the extension shuts down."""
         rclpy_path = os.path.join(os.path.dirname(__file__))
         if rclpy_path in sys.path:
             sys.path.remove(rclpy_path)

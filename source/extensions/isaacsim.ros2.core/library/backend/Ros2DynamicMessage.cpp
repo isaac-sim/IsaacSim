@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +12,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 
 #include "Ros2Impl.h"
 
@@ -517,7 +516,7 @@ void Ros2DynamicMessageImpl::setArrayEmbeddedMessage(const rosidl_typesupport_in
     // fixed size array
     else
     {
-        for (size_t i = 0; i < member->array_size_; ++i)
+        for (size_t i = 0; i < member->array_size_ && i < array.size(); ++i)
         {
             setMessageValues(embeddedMembers, &data[i * embeddedMembers->size_of_], array.at(i));
         }
@@ -525,10 +524,10 @@ void Ros2DynamicMessageImpl::setArrayEmbeddedMessage(const rosidl_typesupport_in
 }
 
 template <typename ArrayType, typename RosType, typename OgnType>
-void Ros2DynamicMessageImpl::getArray(const rosidl_typesupport_introspection_c__MessageMember* member,
-                                      uint8_t* data,
-                                      std::shared_ptr<void>& arrayPtr,
-                                      bool asOgnType)
+void Ros2DynamicMessageImpl::_getArray(const rosidl_typesupport_introspection_c__MessageMember* member,
+                                       uint8_t* data,
+                                       std::shared_ptr<void>& arrayPtr,
+                                       bool asOgnType)
 {
     // OGN data type array
     if (asOgnType)
@@ -583,9 +582,9 @@ void Ros2DynamicMessageImpl::getArray(const rosidl_typesupport_introspection_c__
 }
 
 template <typename ArrayType, typename RosType>
-void Ros2DynamicMessageImpl::getArray(const rosidl_typesupport_introspection_c__MessageMember* member,
-                                      uint8_t* data,
-                                      nlohmann::json& array)
+void Ros2DynamicMessageImpl::_getArray(const rosidl_typesupport_introspection_c__MessageMember* member,
+                                       uint8_t* data,
+                                       nlohmann::json& array)
 {
     // non-fixed size array
     if (member->is_upper_bound_ || !member->array_size_)
@@ -607,9 +606,9 @@ void Ros2DynamicMessageImpl::getArray(const rosidl_typesupport_introspection_c__
 }
 
 template <typename ArrayType, typename RosType>
-void Ros2DynamicMessageImpl::getArray(const rosidl_typesupport_introspection_c__MessageMember* member,
-                                      uint8_t* data,
-                                      std::vector<RosType>& array)
+void Ros2DynamicMessageImpl::_getArray(const rosidl_typesupport_introspection_c__MessageMember* member,
+                                       uint8_t* data,
+                                       std::vector<RosType>& array)
 {
     // non-fixed size array
     if (member->is_upper_bound_ || !member->array_size_)
@@ -632,9 +631,9 @@ void Ros2DynamicMessageImpl::getArray(const rosidl_typesupport_introspection_c__
 }
 
 template <typename ArrayType, auto ArrayInit, typename RosType>
-void Ros2DynamicMessageImpl::setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
-                                      uint8_t* data,
-                                      const nlohmann::json& value)
+void Ros2DynamicMessageImpl::_setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
+                                       uint8_t* data,
+                                       const nlohmann::json& value)
 {
     // non-fixed size array
     if (member->is_upper_bound_ || !member->array_size_)
@@ -651,16 +650,17 @@ void Ros2DynamicMessageImpl::setArray(const rosidl_typesupport_introspection_c__
     {
         for (size_t i = 0; i < member->array_size_; ++i)
         {
-            *reinterpret_cast<RosType*>(&data[i * sizeof(RosType)]) = value.at(i).get<RosType>();
+            *reinterpret_cast<RosType*>(&data[i * sizeof(RosType)]) =
+                i < value.size() ? value.at(i).get<RosType>() : RosType{};
         }
     }
 }
 
 template <typename ArrayType, auto ArrayInit, typename RosType, typename OgnType>
-void Ros2DynamicMessageImpl::setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
-                                      uint8_t* data,
-                                      const std::shared_ptr<void>& valuePtr,
-                                      bool fromOgnType)
+void Ros2DynamicMessageImpl::_setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
+                                       uint8_t* data,
+                                       const std::shared_ptr<void>& valuePtr,
+                                       bool fromOgnType)
 {
     // OGN data type array
     if (fromOgnType)
@@ -681,7 +681,8 @@ void Ros2DynamicMessageImpl::setArray(const rosidl_typesupport_introspection_c__
         {
             for (size_t i = 0; i < member->array_size_; ++i)
             {
-                *reinterpret_cast<RosType*>(&data[i * sizeof(RosType)]) = static_cast<RosType>(ognArray->at(i));
+                *reinterpret_cast<RosType*>(&data[i * sizeof(RosType)]) =
+                    static_cast<RosType>(i < ognArray->size() ? ognArray->at(i) : OgnType{});
             }
         }
         return;
@@ -703,15 +704,15 @@ void Ros2DynamicMessageImpl::setArray(const rosidl_typesupport_introspection_c__
     {
         for (size_t i = 0; i < member->array_size_; ++i)
         {
-            *reinterpret_cast<RosType*>(&data[i * sizeof(RosType)]) = rosArray->at(i);
+            *reinterpret_cast<RosType*>(&data[i * sizeof(RosType)]) = i < rosArray->size() ? rosArray->at(i) : RosType{};
         }
     }
 }
 
 template <typename ArrayType, auto ArrayInit, typename RosType>
-void Ros2DynamicMessageImpl::setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
-                                      uint8_t* data,
-                                      const std::vector<RosType>& array)
+void Ros2DynamicMessageImpl::_setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
+                                       uint8_t* data,
+                                       const std::vector<RosType>& array)
 {
     // non-fixed size array
     if (member->is_upper_bound_ || !member->array_size_)
@@ -728,13 +729,13 @@ void Ros2DynamicMessageImpl::setArray(const rosidl_typesupport_introspection_c__
     {
         for (size_t i = 0; i < member->array_size_; ++i)
         {
-            *reinterpret_cast<RosType*>(&data[i * sizeof(RosType)]) = array.at(i);
+            *reinterpret_cast<RosType*>(&data[i * sizeof(RosType)]) = i < array.size() ? array.at(i) : RosType{};
         }
     }
 }
 
 template <typename RosType, typename OgnType>
-void Ros2DynamicMessageImpl::getSingleValue(uint8_t* data, std::shared_ptr<void>& valuePtr, bool asOgnType)
+void Ros2DynamicMessageImpl::_getSingleValue(uint8_t* data, std::shared_ptr<void>& valuePtr, bool asOgnType)
 {
     auto value = reinterpret_cast<const RosType*>(data);
     if (asOgnType)
@@ -748,7 +749,7 @@ void Ros2DynamicMessageImpl::getSingleValue(uint8_t* data, std::shared_ptr<void>
 }
 
 template <typename RosType, typename OgnType>
-void Ros2DynamicMessageImpl::setSingleValue(uint8_t* data, const std::shared_ptr<void>& valuePtr, bool fromOgnType)
+void Ros2DynamicMessageImpl::_setSingleValue(uint8_t* data, const std::shared_ptr<void>& valuePtr, bool fromOgnType)
 {
     if (fromOgnType)
     {
@@ -775,7 +776,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__float__Sequence, float>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__float__Sequence, float>(member, data, container[member->name_]);
             }
             else
             {
@@ -788,7 +789,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__double__Sequence, double>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__double__Sequence, double>(member, data, container[member->name_]);
             }
             else
             {
@@ -801,7 +802,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__long_double__Sequence, long double>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__long_double__Sequence, long double>(member, data, container[member->name_]);
             }
             else
             {
@@ -814,7 +815,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__char__Sequence, uint8_t>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__char__Sequence, uint8_t>(member, data, container[member->name_]);
             }
             else
             {
@@ -827,7 +828,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__wchar__Sequence, uint16_t>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__wchar__Sequence, uint16_t>(member, data, container[member->name_]);
             }
             else
             {
@@ -840,7 +841,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__boolean__Sequence, bool>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__boolean__Sequence, bool>(member, data, container[member->name_]);
             }
             else
             {
@@ -853,7 +854,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__octet__Sequence, uint8_t>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__octet__Sequence, uint8_t>(member, data, container[member->name_]);
             }
             else
             {
@@ -866,7 +867,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__uint8__Sequence, uint8_t>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__uint8__Sequence, uint8_t>(member, data, container[member->name_]);
             }
             else
             {
@@ -879,7 +880,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__int8__Sequence, int8_t>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__int8__Sequence, int8_t>(member, data, container[member->name_]);
             }
             else
             {
@@ -892,7 +893,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__uint16__Sequence, uint16_t>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__uint16__Sequence, uint16_t>(member, data, container[member->name_]);
             }
             else
             {
@@ -905,7 +906,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__int16__Sequence, int16_t>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__int16__Sequence, int16_t>(member, data, container[member->name_]);
             }
             else
             {
@@ -918,7 +919,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__uint32__Sequence, uint32_t>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__uint32__Sequence, uint32_t>(member, data, container[member->name_]);
             }
             else
             {
@@ -931,7 +932,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__int32__Sequence, int32_t>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__int32__Sequence, int32_t>(member, data, container[member->name_]);
             }
             else
             {
@@ -944,7 +945,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__uint64__Sequence, uint64_t>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__uint64__Sequence, uint64_t>(member, data, container[member->name_]);
             }
             else
             {
@@ -957,7 +958,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             if (member->is_array_)
             {
                 container[member->name_] = nlohmann::json::array();
-                getArray<rosidl_runtime_c__int64__Sequence, int64_t>(member, data, container[member->name_]);
+                _getArray<rosidl_runtime_c__int64__Sequence, int64_t>(member, data, container[member->name_]);
             }
             else
             {
@@ -971,7 +972,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members, uint8_t* mess
             {
                 container[member->name_] = nlohmann::json::array();
                 std::vector<rosidl_runtime_c__String> array;
-                getArray<rosidl_runtime_c__String__Sequence, rosidl_runtime_c__String>(member, data, array);
+                _getArray<rosidl_runtime_c__String__Sequence, rosidl_runtime_c__String>(member, data, array);
                 for (auto const& item : array)
                 {
                     container[member->name_].push_back(std::string(item.data));
@@ -1035,11 +1036,11 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__float__Sequence, float, float>(member, data, valuePtr, false);
+                _getArray<rosidl_runtime_c__float__Sequence, float, float>(member, data, valuePtr, false);
             }
             else
             {
-                getSingleValue<float, float>(data, valuePtr, false);
+                _getSingleValue<float, float>(data, valuePtr, false);
             }
             break;
         }
@@ -1047,11 +1048,11 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__double__Sequence, double, double>(member, data, valuePtr, false);
+                _getArray<rosidl_runtime_c__double__Sequence, double, double>(member, data, valuePtr, false);
             }
             else
             {
-                getSingleValue<double, double>(data, valuePtr, false);
+                _getSingleValue<double, double>(data, valuePtr, false);
             }
             break;
         }
@@ -1059,11 +1060,12 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__long_double__Sequence, long double, double>(member, data, valuePtr, asOgnType);
+                _getArray<rosidl_runtime_c__long_double__Sequence, long double, double>(
+                    member, data, valuePtr, asOgnType);
             }
             else
             {
-                getSingleValue<long double, double>(data, valuePtr, asOgnType);
+                _getSingleValue<long double, double>(data, valuePtr, asOgnType);
             }
             break;
         }
@@ -1071,11 +1073,11 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__char__Sequence, uint8_t, uint8_t>(member, data, valuePtr, false);
+                _getArray<rosidl_runtime_c__char__Sequence, uint8_t, uint8_t>(member, data, valuePtr, false);
             }
             else
             {
-                getSingleValue<uint8_t, uint8_t>(data, valuePtr, false);
+                _getSingleValue<uint8_t, uint8_t>(data, valuePtr, false);
             }
             break;
         }
@@ -1083,11 +1085,11 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__wchar__Sequence, uint16_t, uint32_t>(member, data, valuePtr, asOgnType);
+                _getArray<rosidl_runtime_c__wchar__Sequence, uint16_t, uint32_t>(member, data, valuePtr, asOgnType);
             }
             else
             {
-                getSingleValue<uint16_t, uint32_t>(data, valuePtr, asOgnType);
+                _getSingleValue<uint16_t, uint32_t>(data, valuePtr, asOgnType);
             }
             break;
         }
@@ -1095,11 +1097,11 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__boolean__Sequence, bool, bool>(member, data, valuePtr, false);
+                _getArray<rosidl_runtime_c__boolean__Sequence, bool, bool>(member, data, valuePtr, false);
             }
             else
             {
-                getSingleValue<bool, bool>(data, valuePtr, false);
+                _getSingleValue<bool, bool>(data, valuePtr, false);
             }
             break;
         }
@@ -1107,11 +1109,11 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__octet__Sequence, uint8_t, uint8_t>(member, data, valuePtr, false);
+                _getArray<rosidl_runtime_c__octet__Sequence, uint8_t, uint8_t>(member, data, valuePtr, false);
             }
             else
             {
-                getSingleValue<uint8_t, uint8_t>(data, valuePtr, false);
+                _getSingleValue<uint8_t, uint8_t>(data, valuePtr, false);
             }
             break;
         }
@@ -1119,11 +1121,11 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__uint8__Sequence, uint8_t, uint32_t>(member, data, valuePtr, asOgnType);
+                _getArray<rosidl_runtime_c__uint8__Sequence, uint8_t, uint32_t>(member, data, valuePtr, asOgnType);
             }
             else
             {
-                getSingleValue<uint8_t, uint32_t>(data, valuePtr, asOgnType);
+                _getSingleValue<uint8_t, uint32_t>(data, valuePtr, asOgnType);
             }
             break;
         }
@@ -1131,11 +1133,11 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__int8__Sequence, int8_t, int32_t>(member, data, valuePtr, asOgnType);
+                _getArray<rosidl_runtime_c__int8__Sequence, int8_t, int32_t>(member, data, valuePtr, asOgnType);
             }
             else
             {
-                getSingleValue<int8_t, int32_t>(data, valuePtr, asOgnType);
+                _getSingleValue<int8_t, int32_t>(data, valuePtr, asOgnType);
             }
             break;
         }
@@ -1143,11 +1145,11 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__uint16__Sequence, uint16_t, uint32_t>(member, data, valuePtr, asOgnType);
+                _getArray<rosidl_runtime_c__uint16__Sequence, uint16_t, uint32_t>(member, data, valuePtr, asOgnType);
             }
             else
             {
-                getSingleValue<uint16_t, uint32_t>(data, valuePtr, asOgnType);
+                _getSingleValue<uint16_t, uint32_t>(data, valuePtr, asOgnType);
             }
             break;
         }
@@ -1155,11 +1157,11 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__int16__Sequence, int16_t, int32_t>(member, data, valuePtr, asOgnType);
+                _getArray<rosidl_runtime_c__int16__Sequence, int16_t, int32_t>(member, data, valuePtr, asOgnType);
             }
             else
             {
-                getSingleValue<int16_t, int32_t>(data, valuePtr, asOgnType);
+                _getSingleValue<int16_t, int32_t>(data, valuePtr, asOgnType);
             }
             break;
         }
@@ -1167,11 +1169,11 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__uint32__Sequence, uint32_t, uint32_t>(member, data, valuePtr, false);
+                _getArray<rosidl_runtime_c__uint32__Sequence, uint32_t, uint32_t>(member, data, valuePtr, false);
             }
             else
             {
-                getSingleValue<uint32_t, uint32_t>(data, valuePtr, false);
+                _getSingleValue<uint32_t, uint32_t>(data, valuePtr, false);
             }
             break;
         }
@@ -1179,11 +1181,11 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__int32__Sequence, int32_t, int32_t>(member, data, valuePtr, false);
+                _getArray<rosidl_runtime_c__int32__Sequence, int32_t, int32_t>(member, data, valuePtr, false);
             }
             else
             {
-                getSingleValue<int32_t, int32_t>(data, valuePtr, false);
+                _getSingleValue<int32_t, int32_t>(data, valuePtr, false);
             }
             break;
         }
@@ -1191,11 +1193,11 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__uint64__Sequence, uint64_t, uint64_t>(member, data, valuePtr, false);
+                _getArray<rosidl_runtime_c__uint64__Sequence, uint64_t, uint64_t>(member, data, valuePtr, false);
             }
             else
             {
-                getSingleValue<uint64_t, uint64_t>(data, valuePtr, false);
+                _getSingleValue<uint64_t, uint64_t>(data, valuePtr, false);
             }
             break;
         }
@@ -1203,11 +1205,11 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                getArray<rosidl_runtime_c__int64__Sequence, int64_t, int64_t>(member, data, valuePtr, false);
+                _getArray<rosidl_runtime_c__int64__Sequence, int64_t, int64_t>(member, data, valuePtr, false);
             }
             else
             {
-                getSingleValue<int64_t, int64_t>(data, valuePtr, false);
+                _getSingleValue<int64_t, int64_t>(data, valuePtr, false);
             }
             break;
         }
@@ -1216,7 +1218,7 @@ void Ros2DynamicMessageImpl::getMessageValues(const void* members,
             if (member->is_array_)
             {
                 std::vector<rosidl_runtime_c__String> rosArray;
-                getArray<rosidl_runtime_c__String__Sequence, rosidl_runtime_c__String>(member, data, rosArray);
+                _getArray<rosidl_runtime_c__String__Sequence, rosidl_runtime_c__String>(member, data, rosArray);
                 auto array = std::static_pointer_cast<std::vector<std::string>>(valuePtr);
                 array->clear();
                 array->reserve(rosArray.size());
@@ -1291,7 +1293,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__float__Sequence, rosidl_runtime_c__float__Sequence__init, float>(
+                _setArray<rosidl_runtime_c__float__Sequence, rosidl_runtime_c__float__Sequence__init, float>(
                     member, data, value);
             }
             else
@@ -1304,7 +1306,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__double__Sequence, rosidl_runtime_c__double__Sequence__init, double>(
+                _setArray<rosidl_runtime_c__double__Sequence, rosidl_runtime_c__double__Sequence__init, double>(
                     member, data, value);
             }
             else
@@ -1317,7 +1319,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__long_double__Sequence, rosidl_runtime_c__long_double__Sequence__init, long double>(
+                _setArray<rosidl_runtime_c__long_double__Sequence, rosidl_runtime_c__long_double__Sequence__init, long double>(
                     member, data, value);
             }
             else
@@ -1330,7 +1332,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__char__Sequence, rosidl_runtime_c__char__Sequence__init, uint8_t>(
+                _setArray<rosidl_runtime_c__char__Sequence, rosidl_runtime_c__char__Sequence__init, uint8_t>(
                     member, data, value);
             }
             else
@@ -1343,7 +1345,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__wchar__Sequence, rosidl_runtime_c__wchar__Sequence__init, uint16_t>(
+                _setArray<rosidl_runtime_c__wchar__Sequence, rosidl_runtime_c__wchar__Sequence__init, uint16_t>(
                     member, data, value);
             }
             else
@@ -1356,7 +1358,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__boolean__Sequence, rosidl_runtime_c__bool__Sequence__init, bool>(
+                _setArray<rosidl_runtime_c__boolean__Sequence, rosidl_runtime_c__bool__Sequence__init, bool>(
                     member, data, value);
             }
             else
@@ -1369,7 +1371,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__octet__Sequence, rosidl_runtime_c__octet__Sequence__init, uint8_t>(
+                _setArray<rosidl_runtime_c__octet__Sequence, rosidl_runtime_c__octet__Sequence__init, uint8_t>(
                     member, data, value);
             }
             else
@@ -1382,7 +1384,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__uint8__Sequence, rosidl_runtime_c__uint8__Sequence__init, uint8_t>(
+                _setArray<rosidl_runtime_c__uint8__Sequence, rosidl_runtime_c__uint8__Sequence__init, uint8_t>(
                     member, data, value);
             }
             else
@@ -1395,7 +1397,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__int8__Sequence, rosidl_runtime_c__int8__Sequence__init, int8_t>(
+                _setArray<rosidl_runtime_c__int8__Sequence, rosidl_runtime_c__int8__Sequence__init, int8_t>(
                     member, data, value);
             }
             else
@@ -1408,7 +1410,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__uint16__Sequence, rosidl_runtime_c__uint16__Sequence__init, uint16_t>(
+                _setArray<rosidl_runtime_c__uint16__Sequence, rosidl_runtime_c__uint16__Sequence__init, uint16_t>(
                     member, data, value);
             }
             else
@@ -1421,7 +1423,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__int16__Sequence, rosidl_runtime_c__int16__Sequence__init, int16_t>(
+                _setArray<rosidl_runtime_c__int16__Sequence, rosidl_runtime_c__int16__Sequence__init, int16_t>(
                     member, data, value);
             }
             else
@@ -1434,7 +1436,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__uint32__Sequence, rosidl_runtime_c__uint32__Sequence__init, uint32_t>(
+                _setArray<rosidl_runtime_c__uint32__Sequence, rosidl_runtime_c__uint32__Sequence__init, uint32_t>(
                     member, data, value);
             }
             else
@@ -1447,7 +1449,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__int32__Sequence, rosidl_runtime_c__int32__Sequence__init, int32_t>(
+                _setArray<rosidl_runtime_c__int32__Sequence, rosidl_runtime_c__int32__Sequence__init, int32_t>(
                     member, data, value);
             }
             else
@@ -1460,7 +1462,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__uint64__Sequence, rosidl_runtime_c__uint64__Sequence__init, uint64_t>(
+                _setArray<rosidl_runtime_c__uint64__Sequence, rosidl_runtime_c__uint64__Sequence__init, uint64_t>(
                     member, data, value);
             }
             else
@@ -1473,7 +1475,7 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__int64__Sequence, rosidl_runtime_c__int64__Sequence__init, int64_t>(
+                _setArray<rosidl_runtime_c__int64__Sequence, rosidl_runtime_c__int64__Sequence__init, int64_t>(
                     member, data, value);
             }
             else
@@ -1492,8 +1494,8 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members, uint8_t* mess
                 {
                     rosidl_runtime_c__String__assign(&rosArray.at(j), array.at(j).c_str());
                 }
-                setArray<rosidl_runtime_c__String__Sequence, rosidl_runtime_c__String__Sequence__init,
-                         rosidl_runtime_c__String>(member, data, rosArray);
+                _setArray<rosidl_runtime_c__String__Sequence, rosidl_runtime_c__String__Sequence__init,
+                          rosidl_runtime_c__String>(member, data, rosArray);
             }
             else
             {
@@ -1542,12 +1544,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__float__Sequence, rosidl_runtime_c__float__Sequence__init, float, float>(
+                _setArray<rosidl_runtime_c__float__Sequence, rosidl_runtime_c__float__Sequence__init, float, float>(
                     member, data, valuePtr, false);
             }
             else
             {
-                setSingleValue<float, float>(data, valuePtr, false);
+                _setSingleValue<float, float>(data, valuePtr, false);
             }
             break;
         }
@@ -1555,12 +1557,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__double__Sequence, rosidl_runtime_c__double__Sequence__init, double, double>(
+                _setArray<rosidl_runtime_c__double__Sequence, rosidl_runtime_c__double__Sequence__init, double, double>(
                     member, data, valuePtr, false);
             }
             else
             {
-                setSingleValue<double, double>(data, valuePtr, false);
+                _setSingleValue<double, double>(data, valuePtr, false);
             }
             break;
         }
@@ -1568,12 +1570,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__long_double__Sequence, rosidl_runtime_c__long_double__Sequence__init,
-                         long double, double>(member, data, valuePtr, fromOgnType);
+                _setArray<rosidl_runtime_c__long_double__Sequence, rosidl_runtime_c__long_double__Sequence__init,
+                          long double, double>(member, data, valuePtr, fromOgnType);
             }
             else
             {
-                setSingleValue<long double, double>(data, valuePtr, fromOgnType);
+                _setSingleValue<long double, double>(data, valuePtr, fromOgnType);
             }
             break;
         }
@@ -1581,12 +1583,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__char__Sequence, rosidl_runtime_c__char__Sequence__init, uint8_t, uint8_t>(
+                _setArray<rosidl_runtime_c__char__Sequence, rosidl_runtime_c__char__Sequence__init, uint8_t, uint8_t>(
                     member, data, valuePtr, false);
             }
             else
             {
-                setSingleValue<uint8_t, uint8_t>(data, valuePtr, false);
+                _setSingleValue<uint8_t, uint8_t>(data, valuePtr, false);
             }
             break;
         }
@@ -1594,12 +1596,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__wchar__Sequence, rosidl_runtime_c__wchar__Sequence__init, uint16_t, uint32_t>(
+                _setArray<rosidl_runtime_c__wchar__Sequence, rosidl_runtime_c__wchar__Sequence__init, uint16_t, uint32_t>(
                     member, data, valuePtr, fromOgnType);
             }
             else
             {
-                setSingleValue<uint16_t, uint32_t>(data, valuePtr, fromOgnType);
+                _setSingleValue<uint16_t, uint32_t>(data, valuePtr, fromOgnType);
             }
             break;
         }
@@ -1607,12 +1609,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__boolean__Sequence, rosidl_runtime_c__bool__Sequence__init, bool, bool>(
+                _setArray<rosidl_runtime_c__boolean__Sequence, rosidl_runtime_c__bool__Sequence__init, bool, bool>(
                     member, data, valuePtr, false);
             }
             else
             {
-                setSingleValue<bool, bool>(data, valuePtr, false);
+                _setSingleValue<bool, bool>(data, valuePtr, false);
             }
             break;
         }
@@ -1620,12 +1622,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__octet__Sequence, rosidl_runtime_c__octet__Sequence__init, uint8_t, uint8_t>(
+                _setArray<rosidl_runtime_c__octet__Sequence, rosidl_runtime_c__octet__Sequence__init, uint8_t, uint8_t>(
                     member, data, valuePtr, false);
             }
             else
             {
-                setSingleValue<uint8_t, uint8_t>(data, valuePtr, false);
+                _setSingleValue<uint8_t, uint8_t>(data, valuePtr, false);
             }
             break;
         }
@@ -1633,12 +1635,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__uint8__Sequence, rosidl_runtime_c__uint8__Sequence__init, uint8_t, uint32_t>(
+                _setArray<rosidl_runtime_c__uint8__Sequence, rosidl_runtime_c__uint8__Sequence__init, uint8_t, uint32_t>(
                     member, data, valuePtr, fromOgnType);
             }
             else
             {
-                setSingleValue<uint8_t, uint32_t>(data, valuePtr, fromOgnType);
+                _setSingleValue<uint8_t, uint32_t>(data, valuePtr, fromOgnType);
             }
             break;
         }
@@ -1646,12 +1648,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__int8__Sequence, rosidl_runtime_c__int8__Sequence__init, int8_t, int32_t>(
+                _setArray<rosidl_runtime_c__int8__Sequence, rosidl_runtime_c__int8__Sequence__init, int8_t, int32_t>(
                     member, data, valuePtr, fromOgnType);
             }
             else
             {
-                setSingleValue<int8_t, int32_t>(data, valuePtr, fromOgnType);
+                _setSingleValue<int8_t, int32_t>(data, valuePtr, fromOgnType);
             }
             break;
         }
@@ -1659,12 +1661,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__uint16__Sequence, rosidl_runtime_c__uint16__Sequence__init, uint16_t, uint32_t>(
+                _setArray<rosidl_runtime_c__uint16__Sequence, rosidl_runtime_c__uint16__Sequence__init, uint16_t, uint32_t>(
                     member, data, valuePtr, fromOgnType);
             }
             else
             {
-                setSingleValue<uint16_t, uint32_t>(data, valuePtr, fromOgnType);
+                _setSingleValue<uint16_t, uint32_t>(data, valuePtr, fromOgnType);
             }
             break;
         }
@@ -1672,12 +1674,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__int16__Sequence, rosidl_runtime_c__int16__Sequence__init, int16_t, int32_t>(
+                _setArray<rosidl_runtime_c__int16__Sequence, rosidl_runtime_c__int16__Sequence__init, int16_t, int32_t>(
                     member, data, valuePtr, fromOgnType);
             }
             else
             {
-                setSingleValue<int16_t, int32_t>(data, valuePtr, fromOgnType);
+                _setSingleValue<int16_t, int32_t>(data, valuePtr, fromOgnType);
             }
             break;
         }
@@ -1685,12 +1687,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__uint32__Sequence, rosidl_runtime_c__uint32__Sequence__init, uint32_t, uint32_t>(
+                _setArray<rosidl_runtime_c__uint32__Sequence, rosidl_runtime_c__uint32__Sequence__init, uint32_t, uint32_t>(
                     member, data, valuePtr, false);
             }
             else
             {
-                setSingleValue<uint32_t, uint32_t>(data, valuePtr, false);
+                _setSingleValue<uint32_t, uint32_t>(data, valuePtr, false);
             }
             break;
         }
@@ -1698,12 +1700,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__int32__Sequence, rosidl_runtime_c__int32__Sequence__init, int32_t, int32_t>(
+                _setArray<rosidl_runtime_c__int32__Sequence, rosidl_runtime_c__int32__Sequence__init, int32_t, int32_t>(
                     member, data, valuePtr, false);
             }
             else
             {
-                setSingleValue<int32_t, int32_t>(data, valuePtr, false);
+                _setSingleValue<int32_t, int32_t>(data, valuePtr, false);
             }
             break;
         }
@@ -1711,12 +1713,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__uint64__Sequence, rosidl_runtime_c__uint64__Sequence__init, uint64_t, uint64_t>(
+                _setArray<rosidl_runtime_c__uint64__Sequence, rosidl_runtime_c__uint64__Sequence__init, uint64_t, uint64_t>(
                     member, data, valuePtr, false);
             }
             else
             {
-                setSingleValue<uint64_t, uint64_t>(data, valuePtr, false);
+                _setSingleValue<uint64_t, uint64_t>(data, valuePtr, false);
             }
             break;
         }
@@ -1724,12 +1726,12 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
         {
             if (member->is_array_)
             {
-                setArray<rosidl_runtime_c__int64__Sequence, rosidl_runtime_c__int64__Sequence__init, int64_t, int64_t>(
+                _setArray<rosidl_runtime_c__int64__Sequence, rosidl_runtime_c__int64__Sequence__init, int64_t, int64_t>(
                     member, data, valuePtr, false);
             }
             else
             {
-                setSingleValue<int64_t, int64_t>(data, valuePtr, false);
+                _setSingleValue<int64_t, int64_t>(data, valuePtr, false);
             }
             break;
         }
@@ -1743,8 +1745,8 @@ void Ros2DynamicMessageImpl::setMessageValues(const void* members,
                 {
                     rosidl_runtime_c__String__assign(&rosArray.at(j), array->at(j).c_str());
                 }
-                setArray<rosidl_runtime_c__String__Sequence, rosidl_runtime_c__String__Sequence__init,
-                         rosidl_runtime_c__String>(member, data, rosArray);
+                _setArray<rosidl_runtime_c__String__Sequence, rosidl_runtime_c__String__Sequence__init,
+                          rosidl_runtime_c__String>(member, data, rosArray);
             }
             else
             {

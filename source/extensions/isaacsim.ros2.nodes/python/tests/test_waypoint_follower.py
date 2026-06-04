@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for ROS 2 waypoint follower OmniGraph node."""
+
 import asyncio
 
 import omni.appwindow
@@ -22,12 +24,10 @@ import omni.kit.commands
 import omni.kit.test
 import omni.kit.viewport.utility
 import omni.usd
-from isaacsim.core.utils.physics import simulate_async
-from isaacsim.core.utils.prims import delete_prim, get_prim_at_path
-from isaacsim.core.utils.stage import create_new_stage_async, get_next_free_path
+from isaacsim.core.experimental.utils import prim as prim_utils
+from isaacsim.core.experimental.utils import stage as stage_utils
+from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 from pxr import Gf, UsdGeom
-
-from .common import ROS2TestCase
 
 WAYPOINT_SCRIPT = """
 import rclpy
@@ -476,8 +476,10 @@ def compute(db: og.Database):
 
 
 class TestRos2Nav2WaypointFollower(ROS2TestCase):
+    """Test suite for ros2 nav2 waypoint follower."""
 
     async def setUp(self):
+        """Set up test fixtures."""
         await super().setUp()
 
         self._og_path = "/Graph/ROS_Nav2_Waypoint_Follower"
@@ -492,9 +494,10 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
         ]
         self._number_of_waypoints = len(self._waypoints)
 
-        await create_new_stage_async()
+        await stage_utils.create_new_stage_async()
 
     async def tearDown(self):
+        """Tear down test fixtures."""
         await super().tearDown()
 
     # ----------------------------------------------------------------------
@@ -503,7 +506,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
         keys = og.Controller.Keys
 
         if self._enable_multi_robot:
-            self._og_path = get_next_free_path(self._og_path, "")
+            self._og_path = stage_utils.generate_next_free_path(self._og_path, prepend_default_prim=False)
         try:
             og.Controller.edit(
                 {"graph_path": self._og_path, "evaluator_name": "execution"},
@@ -614,6 +617,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
         Note:
             Quaternions are automatically normalized to ensure magnitude = 1.
             This allows passing any non-zero quaternion which will be normalized before setting.
+
         """
         try:
             stage = omni.usd.get_context().get_stage()
@@ -652,18 +656,20 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
         return True
 
     async def test_duplicate_graph(self):
+        """Test duplicate graph."""
         # Test to verify duplicate graphs present in the stage
         self.assertTrue(self._create_ros_action_graph(), "ActionGraph is not created.")
 
         self.assertFalse(self._create_ros_action_graph(), "Duplicate ActionGraph is generated")
 
-        delete_prim(self._og_path)
+        stage_utils.delete_prim(self._og_path)
         self.assertTrue(self._create_ros_action_graph(), "ActionGraph is not created after deleting old graph.")
 
         self._enable_multi_robot = True
         self.assertTrue(self._create_ros_action_graph(), "ActionGraph is not created for multi robot case.")
 
     async def test_waypoint_limit(self):
+        """Test waypoint limit."""
         # Test to verify waypoint limit should be between 2 to 50 inclusive
         self._enable_patrolling = True
         self._enable_multi_robot = False
@@ -684,20 +690,16 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
         self.assertTrue(self._check_params(), "Waypoint limit is incorrect.")
 
     async def test_waypoint_generation(self):
+        """Test waypoint generation."""
         # Test to verify waypoint is generated or not
         _dummy_waypoint = [1.0, 2.0, 0.0, 1.0, 0.0, 0.0, 0.0]
         _prim_path = f"{self._goal_parent_prim}/waypoint_0"
         self.assertTrue(self._create_waypoints(_dummy_waypoint, _prim_path), "Waypoint is not created!")
 
-        xform_prim = get_prim_at_path(_prim_path)
+        xform_prim = prim_utils.get_prim_at_path(_prim_path)
         self.assertIsNotNone(xform_prim)
 
         self.assertFalse(self._create_waypoints(_dummy_waypoint, _prim_path), "Waypoint with same name is created!")
-
-    def spin_thread(self):
-        import rclpy
-
-        rclpy.spin_once(self.__node, timeout_sec=10)
 
     def _get_normalized_quaternion_components(self, qw, qx, qy, qz):
         """Get normalized quaternion components using Gf.Quatf for test comparison.
@@ -710,6 +712,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
 
         Returns:
             Tuple of (qx_norm, qy_norm, qz_norm, qw_norm) in ActionGraph output order [x, y, z, w].
+
         """
         normalized_quat = Gf.Quatf(qw, qx, qy, qz).GetNormalized()
         imaginary = normalized_quat.GetImaginary()
@@ -725,6 +728,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
 
         Returns:
             True if results match within tolerance, False otherwise.
+
         """
         import ast
 
@@ -751,9 +755,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
             return False
 
     async def test_waypoint_mode_action_graph(self):
-        import threading
-
-        import rclpy
+        """Test waypoint mode action graph."""
         from std_msgs.msg import String
 
         # Test to verify waypoint mode action graph
@@ -773,6 +775,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
 
         # Create a node named 'waypoint_subscriber'
         self.__node = self.create_node("waypoint_subscriber")
+        self.start_async_spinning(self.__node)
 
         print(f"Expected Result: {self.__expected_result}")
 
@@ -788,23 +791,20 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
         # Create a subscription to the 'topic' topic, listening for String messages
         self.create_subscription(self.__node, String, "topic", listener_callback, 10)
 
-        # Start the spin function in a separate thread
-        thread = threading.Thread(target=self.spin_thread, daemon=True)
-        thread.start()
-
         self._timeline.play()
-        await simulate_async(0.5)
+        await self.simulate_until_condition(lambda: False, max_frames=30)
         og.Controller.set(og.Controller.attribute(f"{self._og_path}/OnImpulseEvent.state:enableImpulse"), True)
+        # The ScriptNode publisher uses a wall-clock loop with time.sleep().
+        # Keep this as a wall-clock wait so the async ROS executor can process the published messages.
         await asyncio.sleep(2.0)
 
+        self.stop_async_spinning(self.__node)
         self.__node.destroy_node()
 
         self.assertTrue(self.__result, "Waypoint Mode Graph is not generated properly.")
 
     async def test_patrolling_mode_action_graph(self):
-        import threading
-
-        import rclpy
+        """Test patrolling mode action graph."""
         from std_msgs.msg import String
 
         # Test to verify patrolling mode action graph
@@ -827,6 +827,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
 
         # Create a node named 'patrolling_subscriber'
         self.__node = self.create_node("patrolling_subscriber")
+        self.start_async_spinning(self.__node)
 
         print(f"Expected Result: {self.__expected_result}")
 
@@ -843,15 +844,14 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
         # Create a subscription to the 'topic' topic, listening for String messages
         self.create_subscription(self.__node, String, "topic", listener_callback, 10)
 
-        # Start the spin function in a separate thread
-        thread = threading.Thread(target=self.spin_thread, daemon=True)
-        thread.start()
-
         self._timeline.play()
-        await simulate_async(0.5)
+        await self.simulate_until_condition(lambda: False, max_frames=30)
         og.Controller.set(og.Controller.attribute(f"{self._og_path}/OnImpulseEvent.state:enableImpulse"), True)
+        # The ScriptNode publisher uses a wall-clock loop with time.sleep().
+        # Keep this as a wall-clock wait so the async ROS executor can process the published messages.
         await asyncio.sleep(2.0)
 
+        self.stop_async_spinning(self.__node)
         self.__node.destroy_node()
 
         self.assertTrue(self.__result, "Patrolling Mode Graph is not generated properly.")

@@ -1,14 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """UI tests for importing URDF from a ROS 2 node."""
 
 import os
 import shutil
+import tempfile
 import threading
 
 import omni.kit.ui_test as ui_test
 import omni.usd
 from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
-from isaacsim.test.utils import find_enabled_widget_with_retry, find_widget_with_retry, menu_click_with_retry
+from isaacsim.test.utils import find_widget_with_retry, menu_click_with_retry, wait_for_widget_enabled
 from pxr import Sdf
 
 
@@ -30,6 +46,10 @@ class TestRos2UrdfNodeImporter(ROS2TestCase):
                 "test_basic.urdf",
             )
         )
+        self._tmpdir = tempfile.mkdtemp(prefix="ros2_urdf_test_")
+        self._prev_tempdir = tempfile.tempdir
+        tempfile.tempdir = self._tmpdir
+        self._success = False
         stage_utils.create_new_stage()
         await omni.kit.app.get_app().next_update_async()
 
@@ -56,6 +76,9 @@ class TestRos2UrdfNodeImporter(ROS2TestCase):
                 rclpy.shutdown(context=self._server_context)
             except Exception:
                 pass
+        tempfile.tempdir = self._prev_tempdir
+        if self._success:
+            shutil.rmtree(self._tmpdir, ignore_errors=True)
         await super().tearDown()
 
     async def test_import_basic_urdf_from_ros2_node(self) -> None:
@@ -91,7 +114,7 @@ class TestRos2UrdfNodeImporter(ROS2TestCase):
 
         await omni.kit.app.get_app().next_update_async()
 
-        await menu_click_with_retry("File/Import from ROS2 URDF Node")
+        await menu_click_with_retry("File/Import from ROS2 URDF Node", window_name="Import from ROS2 URDF Node")
         await omni.kit.app.get_app().next_update_async()
 
         string_field = await find_widget_with_retry(
@@ -107,8 +130,13 @@ class TestRos2UrdfNodeImporter(ROS2TestCase):
         await find_button.click()
         await ui_test.human_delay()
 
-        import_button = await find_enabled_widget_with_retry(
-            "Import from ROS2 URDF Node//Frame/**/Button[*].identifier=='ros2_urdf_import'"
+        import_button = await find_widget_with_retry(
+            "Import from ROS2 URDF Node//Frame/**/Button[*].identifier=='ros2_urdf_import'",
+            max_frames=300,
+        )
+        self.assertTrue(
+            await wait_for_widget_enabled(import_button, max_frames=300),
+            "Import button was found but did not become enabled after fetching the ROS 2 robot_description.",
         )
 
         await import_button.click()
@@ -134,3 +162,4 @@ class TestRos2UrdfNodeImporter(ROS2TestCase):
             Sdf.Path.emptyPath,
             f"Default prim path is empty after importing URDF from '{self._node_name}'.",
         )
+        self._success = True

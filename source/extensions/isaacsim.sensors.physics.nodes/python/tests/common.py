@@ -1,16 +1,28 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from dataclasses import dataclass, field
 from typing import List, Tuple
 
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
+import numpy as np
 import omni.kit.app
 import omni.timeline
 from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.storage.native import get_assets_root_path_async
-from pxr import Gf
 
 EARTH_GRAVITY = 9.81
 MOON_GRAVITY = 1.62
@@ -46,11 +58,13 @@ class AntConfig:
 
     leg_paths: List[str] = field(default_factory=lambda: ["/Ant/Arm_{:02d}/Lower_Arm".format(i + 1) for i in range(4)])
     sphere_path: str = "/Ant/Sphere"
-    sensor_offsets: List[Gf.Vec3d] = field(default_factory=lambda: [Gf.Vec3d(40, 0, 0) for _ in range(4)])
+    sensor_offsets: List[np.ndarray] = field(default_factory=lambda: [np.array([[40.0, 0.0, 0.0]]) for _ in range(4)])
     # IMU sensor offsets (at origin for each sensor location)
-    imu_sensor_offsets: List[Gf.Vec3d] = field(default_factory=lambda: [Gf.Vec3d(0, 0, 0) for _ in range(5)])
-    # IMU sensor orientations (identity quaternions)
-    sensor_quatd: List[Gf.Quatd] = field(default_factory=lambda: [Gf.Quatd(1, 0, 0, 0) for _ in range(5)])
+    imu_sensor_offsets: List[np.ndarray] = field(
+        default_factory=lambda: [np.array([[0.0, 0.0, 0.0]]) for _ in range(5)]
+    )
+    # IMU sensor orientations (identity quaternions, wxyz)
+    sensor_quatd: List[np.ndarray] = field(default_factory=lambda: [np.array([[1.0, 0.0, 0.0, 0.0]]) for _ in range(5)])
     colors: List[Tuple[float, float, float, float]] = field(
         default_factory=lambda: [(1, 0, 0, 1), (0, 1, 0, 1), (0, 0, 1, 1), (1, 1, 0, 1)]
     )

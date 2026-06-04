@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Tests for the exposed variables property widget UI."""
 
 import omni.kit.app
 import omni.kit.commands
@@ -29,13 +31,16 @@ BEHAVIOR_SCRIPT_PATH = "/isaacsim/replicator/behavior/behaviors/example_behavior
 
 
 class TestExposedVariablesWidgetUI(omni.kit.test.AsyncTestCase):
-    async def setup(self):
-        pass
+    """Test the exposed variables property widget UI registration and building."""
 
-    async def tearDown(self):
-        pass
+    async def setup(self) -> None:
+        """Set up test fixtures."""
 
-    async def test_widget_registered(self):
+    async def tearDown(self) -> None:
+        """Tear down test fixtures."""
+
+    async def test_widget_registered(self) -> None:
+        """Verify the exposed variables widget is registered in the property window."""
         await omni.usd.get_context().new_stage_async()
 
         # Get the widget from the property window
@@ -57,7 +62,8 @@ class TestExposedVariablesWidgetUI(omni.kit.test.AsyncTestCase):
             f"Namespace {EXPOSED_ATTR_NS} not found in filter list: {widget_filter}",
         )
 
-    async def test_widget_built(self):
+    async def test_widget_built(self) -> None:
+        """Verify the widget is built for prims with behavior scripts and not for those without."""
         await omni.usd.get_context().new_stage_async()
         stage = omni.usd.get_context().get_stage()
         prim_path = "/World/MyPrim"

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,8 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Unit tests for isaacsim.physics.newton.tensors articulation view."""
 
+import isaacsim.core.experimental.utils.stage as stage_utils
 import isaacsim.physics.newton
 import isaacsim.physics.newton.tensors
 import numpy as np
@@ -23,7 +25,6 @@ import omni.timeline
 import omni.usd
 import warp as wp
 from isaacsim.core.simulation_manager import SimulationManager
-from isaacsim.core.utils.stage import add_reference_to_stage, create_new_stage_async
 from isaacsim.storage.native import get_assets_root_path_async
 
 
@@ -45,11 +46,11 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
         if self._assets_root_path is None:
             self.skipTest("Could not find Isaac Sim assets folder")
 
-        await create_new_stage_async()
+        await stage_utils.create_new_stage_async()
         self.stage = omni.usd.get_context().get_stage()
 
         self.humanoid_asset = self._assets_root_path + "/Isaac/Robots/IsaacSim/Humanoid/humanoid.usd"
-        add_reference_to_stage(usd_path=self.humanoid_asset, prim_path="/nv_humanoid")
+        stage_utils.add_reference_to_stage(usd_path=self.humanoid_asset, path="/nv_humanoid")
         await wait_for_stage_loading()
 
         success = SimulationManager.switch_physics_engine("newton")
@@ -900,3 +901,32 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
 
         result = articulations.check()
         self.assertTrue(result, "check() should return True for valid articulation view")
+
+    async def test_effort_causes_velocity_change(self):
+        """Test that set_dof_actuation_forces produces joint motion."""
+        articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
+        indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
+
+        zero_stiffness = np.zeros((articulations.count, articulations.max_dofs), dtype=np.float32)
+        zero_damping = np.zeros((articulations.count, articulations.max_dofs), dtype=np.float32)
+        articulations.set_dof_stiffnesses(
+            wp.from_numpy(zero_stiffness, dtype=wp.float32, device=self.wp_device), indices
+        )
+        articulations.set_dof_dampings(wp.from_numpy(zero_damping, dtype=wp.float32, device=self.wp_device), indices)
+
+        zero_vel = np.zeros((articulations.count, articulations.max_dofs), dtype=np.float32)
+        articulations.set_dof_velocities(wp.from_numpy(zero_vel, dtype=wp.float32, device=self.wp_device), indices)
+
+        vel_before = articulations.get_dof_velocities().numpy().copy()
+
+        torques = np.zeros((articulations.count, articulations.max_dofs), dtype=np.float32)
+        torques[:, 0] = 50.0
+        torques_wp = wp.from_numpy(torques, dtype=wp.float32, device=self.wp_device)
+
+        for _ in range(5):
+            articulations.set_dof_actuation_forces(torques_wp, indices)
+            await omni.kit.app.get_app().next_update_async()
+
+        vel_after = articulations.get_dof_velocities().numpy()
+        delta = np.abs(vel_after[0, 0] - vel_before[0, 0])
+        self.assertGreater(delta, 0.01, "DOF 0 velocity should change after applying effort")

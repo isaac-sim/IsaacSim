@@ -1,6 +1,6 @@
 {
     "isaacsim.ros2.bridge.ROS2RtxLidarHelper" : {
-        "version" : 2,
+        "version" : 3,
         "icon" : "icons/isaac-sim.svg",
         "description" : "Handles automation of Lidar Sensor pipeline",
         "language" : "Python",
@@ -72,9 +72,10 @@
             },
             "fullScan": {
                 "type": "bool",
-                "description": "If True publish a full scan when enough data has accumulated instead of partial scans each frame. Supports point cloud type only",
+                "description": "RTX Lidar now always produces full scans via accumulateOutputs; this setting is ignored.",
                 "uiName": "Publish Full Scan",
-                "default": false
+                "default": true,
+                "deprecated": "fullScan is deprecated. RTX Lidar now always produces full scans via accumulateOutputs. This setting is ignored."
             },
             "showDebugView": {
                 "type": "bool",
@@ -90,7 +91,8 @@
             "frameSkipCount": {
                 "type": "uint",
                 "description": "Specifies the number of simulation frames to skip between each message publish. (e.g. Set to 0 to publish each frame. Set 1 to publish every other frame)",
-                "default": 0
+                "default": 0,
+                "deprecated": "Frame skipping is deprecated. Control publish rate by setting omni:sensor:tickRate on the sensor prim instead."
             },
             "selectedMetadata": {
                 "type": "token[]",

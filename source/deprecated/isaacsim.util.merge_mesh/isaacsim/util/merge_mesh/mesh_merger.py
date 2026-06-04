@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import List
+
+"""Mesh merger utility for combining USD mesh geometry and materials."""
 
 import carb
 import omni
@@ -24,14 +25,13 @@ class MeshMerger(object):
 
     This class handles the merging of mesh geometry, materials, geometry subsets,
     and texture coordinates from multiple source meshes into a single output mesh.
+
+    Args:
+        stage: The USD stage containing the meshes to merge.
+
     """
 
-    def __init__(self, stage):
-        """Initialize the MeshMerger.
-
-        Args:
-            stage: The USD stage containing the meshes to merge.
-        """
+    def __init__(self, stage: object) -> None:
         self._clear_parent_xform = False
         self._combine_materials = False
         self._deactivate_source = False
@@ -49,84 +49,88 @@ class MeshMerger(object):
         self.on_materials_changed_fn = None
 
     @property
-    def total_meshes(self):
+    def total_meshes(self) -> int:
         """Get the total number of meshes to be merged."""
         return self._total_meshes
 
     @property
-    def total_subsets(self):
+    def total_subsets(self) -> int:
         """Get the total number of geometry subsets across all meshes."""
         return self._total_subsets
 
     @property
-    def total_materials(self):
+    def total_materials(self) -> int:
         """Get the total number of unique materials across all meshes."""
         return self._total_materials
 
     @property
-    def meshes_to_merge(self):
+    def meshes_to_merge(self) -> list:
         """Get the list of mesh prims to be merged."""
         return self._meshes_to_merge
 
     @property
-    def clear_parent_xform(self):
+    def clear_parent_xform(self) -> bool:
         """Get whether to clear the parent transform when merging."""
         return self._clear_parent_xform
 
     @clear_parent_xform.setter
-    def clear_parent_xform(self, value):
+    def clear_parent_xform(self, value: bool) -> None:
         """Set whether to clear the parent transform when merging.
 
         Args:
             value: If True, the merged mesh origin is at world origin.
                 Otherwise, it keeps the origin at the parent's origin.
+
         """
         self._clear_parent_xform = value
 
     @property
-    def deactivate_source(self):
+    def deactivate_source(self) -> bool:
         """Get whether to deactivate source prims after merging."""
         return self._deactivate_source
 
     @deactivate_source.setter
-    def deactivate_source(self, value):
+    def deactivate_source(self, value: bool) -> None:
         """Set whether to deactivate source prims after merging.
 
         Args:
             value: If True, deactivates all source meshes after merge.
+
         """
         self._deactivate_source = value
 
     @property
-    def selected_objects(self):
+    def selected_objects(self) -> list:
         """Get the list of selected prim paths."""
         return self._selected_objects
 
     @property
-    def combine_materials(self):
+    def combine_materials(self) -> bool:
         """Get whether to combine materials into a single destination."""
         return self._combine_materials
 
     @combine_materials.setter
-    def combine_materials(self, value):
+    def combine_materials(self, value: bool) -> None:
         """Set whether to combine materials into a single destination.
 
         Args:
             value: If True, materials are combined into the materials destination path.
+
         """
         self._combine_materials = value
 
     @property
-    def materials_destination(self):
+    def materials_destination(self) -> str:
         """Get the destination path for combined materials."""
         return self._materials_destination
 
     @materials_destination.setter
-    def materials_destination(self, value):
+    def materials_destination(self, value: str) -> None:
         """Set the destination path for combined materials.
 
         Args:
             value: The prim path where combined materials will be stored.
+
         """
         changed = value != self._materials_destination
         self._materials_destination = value
@@ -134,22 +138,23 @@ class MeshMerger(object):
             self.on_materials_changed_fn(value)
 
     @property
-    def output_mesh(self):
+    def output_mesh(self) -> str:
         """Get the output path for the merged mesh."""
         return self._output_mesh
 
     @output_mesh.setter
-    def output_mesh(self, value):
+    def output_mesh(self, value: str) -> None:
         """Set the output path for the merged mesh.
 
         The path is automatically adjusted to avoid conflicts with existing prims.
 
         Args:
             value: The desired prim path for the merged mesh.
+
         """
         self._output_mesh = omni.usd.get_stage_next_free_path(self._stage, value, False)
 
-    def fix_material_sources(self, mat):
+    def fix_material_sources(self, mat: object) -> None:
         """Fix material output connections after copying a material to a new location.
 
         When a material is copied, its shader connections need to be updated to point
@@ -157,6 +162,7 @@ class MeshMerger(object):
 
         Args:
             mat: The UsdShade.Material to fix connections for.
+
         """
         shader_path = mat.GetPrim().GetChildren()[0].GetPath()
 
@@ -177,7 +183,7 @@ class MeshMerger(object):
             for path in connected_sources:
                 output.ConnectToSource(path)
 
-    def update_selection(self, selection, stage=None):
+    def update_selection(self, selection: list, stage: object = None) -> None:
         """Update the selection of prims to merge and compute mesh statistics.
 
         Traverses the selected prims and their children to find all visible meshes,
@@ -186,6 +192,7 @@ class MeshMerger(object):
         Args:
             selection: List of prim paths to process for merging.
             stage: Optional USD stage to use. If None, uses the current stage.
+
         """
         self._selected_objects = selection
         if stage:
@@ -199,9 +206,7 @@ class MeshMerger(object):
         for prim in self.selected_objects:
             curr_prim = self._stage.GetPrimAtPath(prim)
             materials = {}
-            primrange = [child_prim for child_prim in Usd.PrimRange(curr_prim, Usd.TraverseInstanceProxies())] + [
-                curr_prim
-            ]
+            primrange = list(Usd.PrimRange(curr_prim, Usd.TraverseInstanceProxies())) + [curr_prim]
             for child_prim in primrange:
                 imageable = UsdGeom.Imageable(child_prim)
                 if imageable:
@@ -248,7 +253,7 @@ class MeshMerger(object):
             self._total_subsets = total_subsets
             self._total_materials = len(materials)
 
-    def merge_meshes(self):
+    def merge_meshes(self) -> None:
         """Execute the mesh merge operation.
 
         Combines all meshes in the selection into a single merged mesh. This includes
@@ -434,7 +439,7 @@ class MeshMerger(object):
                 prim = self._stage.GetPrimAtPath(source)
                 prim.SetActive(False)
 
-    def reactivate_sources(self):
+    def reactivate_sources(self) -> None:
         """Reactivate source prims that were deactivated during merge.
 
         This is used by the undo operation to restore the original state.
@@ -444,7 +449,7 @@ class MeshMerger(object):
                 prim = self._stage.GetPrimAtPath(source)
                 prim.SetActive(True)
 
-    def remove_created_materials(self):
+    def remove_created_materials(self) -> None:
         """Remove materials that were created during the merge operation.
 
         This is used by the undo operation to clean up copied materials.

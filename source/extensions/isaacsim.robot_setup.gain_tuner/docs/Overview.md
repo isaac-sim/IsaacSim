@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.robot_setup.gain_tuner extension provides a UI-based tool for tuning PD (Proportional-Derivative) gains on robot articulations. This extension creates an interactive interface accessible through the Tools > Robotics menu, allowing users to adjust stiffness and damping parameters for robot joints and validate their settings through testing functionality.
@@ -15,9 +11,9 @@ align: center
 
 ## Key Components
 
-### [UIBuilder](isaacsim.robot_setup.gain_tuner/isaacsim.robot_setup.gain_tuner.UIBuilder)
+### {class}`UIBuilder <isaacsim.robot_setup.gain_tuner.UIBuilder>`
 
-The [UIBuilder](isaacsim.robot_setup.gain_tuner/isaacsim.robot_setup.gain_tuner.UIBuilder) class manages the complete user interface and serves as the primary component for robot joint gain tuning operations. It provides three main functional areas organized as collapsible frames:
+The {class}`UIBuilder <isaacsim.robot_setup.gain_tuner.UIBuilder>` class manages the complete user interface and serves as the primary component for robot joint gain tuning operations. It provides three main functional areas organized as collapsible frames:
 
 **Tune Gains Frame**: Interactive table interface for adjusting robot joint parameters, supporting both stiffness/damping mode and natural frequency mode for gain configuration.
 
@@ -31,7 +27,7 @@ The interface includes robot selection dropdown functionality that automatically
 
 ### Real-time Synchronization
 
-The [UIBuilder](isaacsim.robot_setup.gain_tuner/isaacsim.robot_setup.gain_tuner.UIBuilder) integrates with multiple event systems to maintain synchronization between the simulation state and the interface:
+The {class}`UIBuilder <isaacsim.robot_setup.gain_tuner.UIBuilder>` integrates with multiple event systems to maintain synchronization between the simulation state and the interface:
 
 - Timeline events handle play/pause/stop states to control when gain testing is active
 - Physics step callbacks execute during simulation playback to collect test data

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +12,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from .commands import *
-from .extension import *
-from .robot_definition_reader import *
-from .robot_description import *
+
+"""Utilities for importing URDF robot descriptions from ROS 2 nodes into Isaac Sim."""
+
+from . import commands as _commands  # noqa: F401 (module loaded for side effects)
+from .extension import Extension  # noqa: F401 (loaded for Kit extension discovery)
+from .robot_definition_reader import (
+    RobotDefinitionReader,
+    package_path_to_system_path,
+    replace_package_urls_with_paths,
+)
+
+__all__ = [
+    "RobotDefinitionReader",
+    "package_path_to_system_path",
+    "replace_package_urls_with_paths",
+]

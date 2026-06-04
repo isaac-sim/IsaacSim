@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Benchmark UR10 robot articulation simulation performance."""
+
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -89,7 +92,7 @@ robot_path = "/ur10"
 
 
 def get_clipped_joint_ranges(articulation_view):
-
+    """Compute joint ranges clipped to a 2-pi window for the given articulation."""
     lower_limit, upper_limit = articulation_view.get_dof_limits()
     # convert to numpy
     lower_limit = torch.from_numpy(lower_limit.numpy())
@@ -108,6 +111,7 @@ def get_clipped_joint_ranges(articulation_view):
 
 
 def get_joint_commands(articulation_view, v_max, T, joint_indices):
+    """Generate sinusoidal position and velocity command functions for the joints."""
     lower_joint_limits, upper_joint_limits = get_clipped_joint_ranges(articulation_view)
 
     # Convert joint_indices to numpy if it's a torch tensor
@@ -125,6 +129,7 @@ def get_joint_commands(articulation_view, v_max, T, joint_indices):
 
 
 def on_physics_step(articulation_view, position_commands, velocity_commands, step, context):
+    """Apply joint position and velocity commands on each physics step."""
     if position_commands is None:
         return
     timestep[0] += step
@@ -204,7 +209,7 @@ omni.kit.app.get_app().update()
 
 benchmark.store_measurements()
 # perform benchmark
-benchmark.set_phase("benchmark")
+benchmark.set_phase("benchmark", warmup_frames=15)
 
 for _ in range(0, n_frames):
     omni.kit.app.get_app().update()

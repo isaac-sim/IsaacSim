@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,7 @@
 #include <isaacsim/sensors/experimental/physics/IContactSensor.h>
 
 #include <memory>
+#include <string>
 
 namespace isaacsim
 {
@@ -28,6 +29,9 @@ namespace experimental
 namespace physics
 {
 
+/**
+ * @brief Implementation of the IContactSensor interface for physics-based contact sensing.
+ */
 class ContactSensorImpl : public IContactSensor
 {
 public:
@@ -35,10 +39,10 @@ public:
     ~ContactSensorImpl();
 
     void shutdown() override;
-    int64_t createSensor(const char* primPath) override;
-    void removeSensor(int64_t sensorId) override;
-    ContactSensorReading getSensorReading(int64_t sensorId) override;
-    void getRawContacts(int64_t sensorId, const ContactRawData** outData, int32_t* outCount) override;
+    bool createSensor(const char* primPath) override;
+    void removeSensor(const char* primPath) override;
+    ContactSensorReading getSensorReading(const char* primPath) override;
+    void getRawContacts(const char* primPath, const ContactRawData** outData, int32_t* outCount) override;
 
 private:
     struct ImplData;
@@ -48,12 +52,13 @@ private:
     void _initializeStage(long stageId);
     void _discoverSensorsFromStage();
     void _clearSensors();
+    void _recreateSensorViews();
     void _subscribeToPhysicsEvents();
     void _subscribeToPhysicsStepEvents();
     void _unsubscribeFromPhysicsStepEvents();
     void _pullContactData(float dt);
     void _stepSensors(float dt);
-    void _processSensor(ImplData& impl, int64_t sensorId, float dt, double simTime);
+    void _processSensor(ImplData& impl, const std::string& primPath, float dt, double simTime);
 };
 
 } // namespace physics

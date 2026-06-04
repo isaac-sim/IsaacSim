@@ -1,0 +1,35 @@
+[core]
+# Load as early as possible
+order = -1000
+reloadable = false
+
+[package]
+version = "3.3.0"
+category = "Internal"
+title = "Isaac Sim ML Pip Archive"
+description = "Pip packages needed by isaac sim extensions"
+keywords = ["isaac", "pip"]
+changelog = "docs/CHANGELOG.md"
+readme = "docs/Overview.md"
+preview_image = "data/preview.png"
+icon = "data/icon.png"
+writeTarget.kit = true
+writeTarget.platform = true # pip prebundle makes this extension os specific
+writeTarget.python = true
+
+[deprecation]
+warning = "Extension deprecated since Isaac Sim 6.0.0. No replacement is provided."
+
+[dependencies]
+"omni.isaac.core_archive" = {} # pull in the main isaac sim pip archive
+"omni.kit.pip_archive" = {} # import the base kit python archive
+
+[[python.module]]
+path = "pip_prebundle"
+
+# That is empty module, added here only to make tests discoverable in test run
+[[python.module]]
+name = "omni.isaac.ml_archive"
+
+[documentation]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

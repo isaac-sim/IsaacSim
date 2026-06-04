@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,27 @@
 
 """Provides an interactive editor for creating and modifying Lula Robot Description files and cuMotion XRDF files."""
 
+from . import articulation_discovery
+from .collision_sphere_editor import CollisionSphereEditor
+from .editor_state import EditorState
+from .lula_io import is_yaml_file, on_filter_item
+from .ui import UIBuilder
+from .xrdf_io import is_xrdf_file, on_filter_xrdf_item
 
-from .extension import *
+# The Extension class pulls in omni.ext (and a chain of Kit-only modules) at
+# import time. Gate it behind ImportError so this package can still be imported
+# from a standalone Python environment without Kit. Not exposed in __all__ for
+# the same reason (see .cursor/rules/pip_packaging.mdc).
+try:
+    from .extension import Extension  # noqa: F401
+except ImportError:
+    pass
 
 __all__ = [
     "CollisionSphereEditor",
+    "EditorState",
+    "UIBuilder",
+    "articulation_discovery",
     "is_yaml_file",
     "is_xrdf_file",
     "on_filter_xrdf_item",

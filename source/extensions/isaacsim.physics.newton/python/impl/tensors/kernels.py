@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,25 +12,31 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Warp kernels for Newton tensor operations.
 
 These kernels handle efficient get/set operations for articulation properties
 using Warp's GPU acceleration.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 import newton
+import numpy as np
 import warp as wp
+
+vec10 = wp.types.vector(length=10, dtype=float)
 
 
 @wp.kernel(enable_backward=False)
 def get_body_pose(
-    body_q: wp.array(dtype=wp.transform),
-    index: wp.array(dtype=int),
+    body_q: wp.array(dtype=wp.transform),  # type: ignore[valid-type]
+    index: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    tensor: wp.array2d(dtype=float),
-):
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Get body poses as position and quaternion.
 
     Output shape is (count, 7): [x, y, z, qx, qy, qz, qw].
@@ -54,11 +60,11 @@ def get_body_pose(
 
 @wp.kernel(enable_backward=False)
 def get_body_velocity(
-    body_qd: wp.array(dtype=wp.spatial_vector),
-    index: wp.array(dtype=int),
+    body_qd: wp.array(dtype=wp.spatial_vector),  # type: ignore[valid-type]
+    index: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    tensor: wp.array2d(dtype=float),
-):
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Get body velocities as angular and linear components.
 
     Output shape is (count, 6): [wx, wy, wz, vx, vy, vz].
@@ -78,21 +84,21 @@ def get_body_velocity(
     angular_vel = wp.spatial_top(spatial_vel)  # gets angular component (w)
     linear_vel = wp.spatial_bottom(spatial_vel)  # gets linear component (v)
     # Return in [angular, linear] format
-    tensor[tid, 0] = angular_vel[0]  # angular x
-    tensor[tid, 1] = angular_vel[1]  # angular y
-    tensor[tid, 2] = angular_vel[2]  # angular z
-    tensor[tid, 3] = linear_vel[0]  # linear x
-    tensor[tid, 4] = linear_vel[1]  # linear y
-    tensor[tid, 5] = linear_vel[2]  # linear z
+    tensor[tid, 0] = angular_vel[0]  # type: ignore[index]
+    tensor[tid, 1] = angular_vel[1]  # type: ignore[index]
+    tensor[tid, 2] = angular_vel[2]  # type: ignore[index]
+    tensor[tid, 3] = linear_vel[0]  # type: ignore[index]
+    tensor[tid, 4] = linear_vel[1]  # type: ignore[index]
+    tensor[tid, 5] = linear_vel[2]  # type: ignore[index]
 
 
 @wp.kernel(enable_backward=False)
 def get_body_mass(
-    body_mass: wp.array(dtype=wp.float32),
-    index: wp.array(dtype=int),
+    body_mass: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+    index: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    tensor: wp.array2d(dtype=float),
-):
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Get body masses.
 
     Output shape is (count, 1).
@@ -109,11 +115,11 @@ def get_body_mass(
 
 @wp.kernel(enable_backward=False)
 def get_body_inv_mass(
-    body_inv_mass: wp.array(dtype=wp.float32),
-    index: wp.array(dtype=int),
+    body_inv_mass: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+    index: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    tensor: wp.array2d(dtype=float),
-):
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Get body inverse masses.
 
     Output shape is (count, 1).
@@ -130,11 +136,11 @@ def get_body_inv_mass(
 
 @wp.kernel(enable_backward=False)
 def get_body_com(
-    body_com: wp.array(dtype=wp.vec3),
-    index: wp.array(dtype=int),
+    body_com: wp.array(dtype=wp.vec3),  # type: ignore[valid-type]
+    index: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    tensor: wp.array2d(dtype=float),
-):
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Get COM position and orientation for rigid bodies.
 
     Returns shape (count, 7): [com_x, com_y, com_z, qx, qy, qz, qw]
@@ -160,11 +166,11 @@ def get_body_com(
 
 @wp.kernel(enable_backward=False)
 def get_body_com_position_only(
-    body_com: wp.array(dtype=wp.vec3),
-    index: wp.array(dtype=int),
+    body_com: wp.array(dtype=wp.vec3),  # type: ignore[valid-type]
+    index: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    tensor: wp.array2d(dtype=float),
-):
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Get only COM position, leaving orientation untouched in output tensor.
 
     Updates only first 3 elements of tensor: [com_x, com_y, com_z]
@@ -186,13 +192,13 @@ def get_body_com_position_only(
 
 @wp.kernel(enable_backward=False)
 def cache_body_com(
-    tensor: wp.array2d(dtype=float),
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    body_idx: wp.array(dtype=int),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    body_idx: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    com_cache: wp.array2d(dtype=float),
-):
+    com_cache: wp.array2d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Cache full COM data (position + orientation) for later retrieval.
 
     Since Newton only stores position, we cache the full 7-element COM
@@ -225,11 +231,11 @@ wp.overload(cache_body_com, {"tensor_idx": wp.array(dtype=wp.int64)})
 
 @wp.kernel(enable_backward=False)
 def get_body_inertia(
-    body_inertia: wp.array(dtype=wp.mat33),
-    index: wp.array(dtype=int),
+    body_inertia: wp.array(dtype=wp.mat33),  # type: ignore[valid-type]
+    index: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    tensor: wp.array2d(dtype=float),
-):
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Get inertia tensor as flattened 3x3 matrix.
 
     Returns shape (count, 9) in row-major order.
@@ -256,11 +262,11 @@ def get_body_inertia(
 
 @wp.kernel(enable_backward=False)
 def get_body_inv_inertia(
-    body_inv_inertia: wp.array(dtype=wp.mat33),
-    index: wp.array(dtype=int),
+    body_inv_inertia: wp.array(dtype=wp.mat33),  # type: ignore[valid-type]
+    index: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    tensor: wp.array2d(dtype=float),
-):
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Get inverse inertia tensor as flattened 3x3 matrix.
 
     Returns shape (count, 9) in row-major order.
@@ -287,11 +293,11 @@ def get_body_inv_inertia(
 
 @wp.kernel(enable_backward=False)
 def get_link_inv_mass(
-    body_mass: wp.array(dtype=wp.float32),
-    index: wp.array2d(dtype=int),
+    body_mass: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+    index: wp.array2d(dtype=int),  # type: ignore[valid-type]
     # outputs
-    tensor: wp.array2d(dtype=float),
-):
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Get link inverse masses for articulations.
 
     Output shape is (count, max_links). Computes 1/mass for each link.
@@ -301,7 +307,7 @@ def get_link_inv_mass(
         index: Link indices (count, max_links).
         tensor: Output tensor (count, max_links).
     """
-    ti, tj = wp.tid()
+    ti, tj = wp.tid()  # type: ignore[misc]
     wid = index[ti, tj]
     if wid >= 0:
         mass = body_mass[wid]
@@ -316,11 +322,11 @@ def get_link_inv_mass(
 
 @wp.kernel(enable_backward=False)
 def get_link_mass(
-    body_mass: wp.array(dtype=wp.float32),
-    index: wp.array2d(dtype=int),
+    body_mass: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+    index: wp.array2d(dtype=int),  # type: ignore[valid-type]
     # outputs
-    tensor: wp.array2d(dtype=float),
-):
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Get link masses for articulations.
 
     Output shape is (count, max_links).
@@ -330,7 +336,7 @@ def get_link_mass(
         index: Link indices (count, max_links).
         tensor: Output tensor (count, max_links).
     """
-    ti, tj = wp.tid()
+    ti, tj = wp.tid()  # type: ignore[misc]
     wid = index[ti, tj]
     if wid >= 0:
         tensor[ti, tj] = body_mass[wid]
@@ -338,13 +344,13 @@ def get_link_mass(
 
 @wp.kernel(enable_backward=False)
 def set_body_mass(
-    tensor: wp.array2d(dtype=float),
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    body_idx: wp.array(dtype=int),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    body_idx: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    body_mass: wp.array(dtype=wp.float32),
-):
+    body_mass: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+) -> None:
     """Set body masses from input tensor.
 
     Input shape is (count, 1).
@@ -377,12 +383,12 @@ wp.overload(set_body_mass, {"tensor_idx": wp.array(dtype=wp.int64)})
 @wp.kernel(enable_backward=False)
 def update_body_inv_mass(
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    body_idx: wp.array(dtype=int),
-    body_mass: wp.array(dtype=wp.float32),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    body_idx: wp.array(dtype=int),  # type: ignore[valid-type]
+    body_mass: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
     # outputs
-    body_inv_mass: wp.array(dtype=wp.float32),
-):
+    body_inv_mass: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+) -> None:
     """Update inverse mass from mass for rigid bodies.
 
     Args:
@@ -414,13 +420,13 @@ wp.overload(update_body_inv_mass, {"tensor_idx": wp.array(dtype=wp.int64)})
 
 @wp.kernel(enable_backward=False)
 def set_body_com(
-    tensor: wp.array2d(dtype=float),
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    body_idx: wp.array(dtype=int),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    body_idx: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    body_com: wp.array(dtype=wp.vec3),
-):
+    body_com: wp.array(dtype=wp.vec3),  # type: ignore[valid-type]
+) -> None:
     """Set COM position for rigid bodies.
 
     Input shape (count, 7): [com_x, com_y, com_z, qx, qy, qz, qw]
@@ -452,13 +458,13 @@ wp.overload(set_body_com, {"tensor_idx": wp.array(dtype=wp.int64)})
 
 @wp.kernel(enable_backward=False)
 def set_body_inertia(
-    tensor: wp.array2d(dtype=float),
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    body_idx: wp.array(dtype=int),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    body_idx: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    body_inertia: wp.array(dtype=wp.mat33),
-):
+    body_inertia: wp.array(dtype=wp.mat33),  # type: ignore[valid-type]
+) -> None:
     """Set inertia tensor from flattened 3x3 matrix.
 
     Input shape (count, 9) in row-major order.
@@ -500,12 +506,12 @@ wp.overload(set_body_inertia, {"tensor_idx": wp.array(dtype=wp.int64)})
 @wp.kernel(enable_backward=False)
 def update_body_inv_inertia(
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    body_idx: wp.array(dtype=int),
-    body_inertia: wp.array(dtype=wp.mat33),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    body_idx: wp.array(dtype=int),  # type: ignore[valid-type]
+    body_inertia: wp.array(dtype=wp.mat33),  # type: ignore[valid-type]
     # outputs
-    body_inv_inertia: wp.array(dtype=wp.mat33),
-):
+    body_inv_inertia: wp.array(dtype=wp.mat33),  # type: ignore[valid-type]
+) -> None:
     """Update inverse inertia from inertia tensor for rigid bodies.
 
     Args:
@@ -538,11 +544,11 @@ wp.overload(update_body_inv_inertia, {"tensor_idx": wp.array(dtype=wp.int64)})
 
 @wp.kernel(enable_backward=False)
 def get_link_inertia(
-    body_inertia: wp.array(dtype=wp.mat33),
-    index: wp.array2d(dtype=int),
+    body_inertia: wp.array(dtype=wp.mat33),  # type: ignore[valid-type]
+    index: wp.array2d(dtype=int),  # type: ignore[valid-type]
     # outputs
-    tensor: wp.array3d(dtype=float),
-):
+    tensor: wp.array3d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Get link inertia tensors for articulations.
 
     Output shape is (count, max_links, 9) in row-major order.
@@ -552,7 +558,7 @@ def get_link_inertia(
         index: Link indices (count, max_links).
         tensor: Output tensor (count, max_links, 9).
     """
-    ti, tj, tk = wp.tid()
+    ti, tj, tk = wp.tid()  # type: ignore[misc]
     wid = index[ti, tj]
     if wid >= 0:
         i = tk // 3
@@ -562,11 +568,11 @@ def get_link_inertia(
 
 @wp.kernel(enable_backward=False)
 def get_link_inv_inertia(
-    body_inv_inertia: wp.array(dtype=wp.mat33),
-    index: wp.array2d(dtype=int),
+    body_inv_inertia: wp.array(dtype=wp.mat33),  # type: ignore[valid-type]
+    index: wp.array2d(dtype=int),  # type: ignore[valid-type]
     # outputs
-    tensor: wp.array3d(dtype=float),
-):
+    tensor: wp.array3d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Get link inverse inertia tensors for articulations.
 
     Output shape is (count, max_links, 9) in row-major order.
@@ -576,7 +582,7 @@ def get_link_inv_inertia(
         index: Link indices (count, max_links).
         tensor: Output tensor (count, max_links, 9).
     """
-    ti, tj, tk = wp.tid()
+    ti, tj, tk = wp.tid()  # type: ignore[misc]
     wid = index[ti, tj]
     if wid >= 0:
         i = tk // 3
@@ -586,11 +592,11 @@ def get_link_inv_inertia(
 
 @wp.kernel(enable_backward=False)
 def get_link_com(
-    body_com: wp.array(dtype=wp.vec3),
-    index: wp.array2d(dtype=int),
+    body_com: wp.array(dtype=wp.vec3),  # type: ignore[valid-type]
+    index: wp.array2d(dtype=int),  # type: ignore[valid-type]
     # outputs
-    tensor: wp.array3d(dtype=float),
-):
+    tensor: wp.array3d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Get link COM positions and orientations.
 
     Output tensor has shape (count, max_links, 7) where each entry is:
@@ -604,7 +610,7 @@ def get_link_com(
         index: Link indices (count, max_links).
         tensor: Output tensor (count, max_links, 7).
     """
-    ti, tj, tk = wp.tid()
+    ti, tj, tk = wp.tid()  # type: ignore[misc]
     wid = index[ti, tj]
     if wid >= 0:
         com = body_com[wid]
@@ -622,11 +628,11 @@ def get_link_com(
 
 @wp.kernel(enable_backward=False)
 def get_link_com_position_only(
-    body_com: wp.array(dtype=wp.vec3),
-    index: wp.array2d(dtype=int),
+    body_com: wp.array(dtype=wp.vec3),  # type: ignore[valid-type]
+    index: wp.array2d(dtype=int),  # type: ignore[valid-type]
     # outputs
-    tensor: wp.array3d(dtype=float),
-):
+    tensor: wp.array3d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Get only link COM positions, leaving orientation untouched in output tensor.
 
     Updates only first 3 elements of tensor: [com_x, com_y, com_z]
@@ -637,7 +643,7 @@ def get_link_com_position_only(
         index: Link indices (count, max_links).
         tensor: Output tensor (count, max_links, 7).
     """
-    ti, tj, tk = wp.tid()
+    ti, tj, tk = wp.tid()  # type: ignore[misc]
     wid = index[ti, tj]
     if wid >= 0 and tk < 3:
         com = body_com[wid]
@@ -652,13 +658,13 @@ def get_link_com_position_only(
 
 @wp.kernel(enable_backward=False)
 def cache_link_com(
-    tensor: wp.array3d(dtype=float),
+    tensor: wp.array3d(dtype=float),  # type: ignore[valid-type]
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    link_indices: wp.array2d(dtype=int),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    link_indices: wp.array2d(dtype=int),  # type: ignore[valid-type]
     # outputs
-    com_cache: wp.array3d(dtype=float),
-):
+    com_cache: wp.array3d(dtype=float),  # type: ignore[valid-type]
+) -> None:
     """Cache full link COM data (position + orientation) for later retrieval.
 
     Since Newton only stores position, we cache the full 7-element COM
@@ -671,7 +677,7 @@ def cache_link_com(
         link_indices: Link body indices.
         com_cache: Output COM cache.
     """
-    ti, tj, tk = wp.tid()
+    ti, tj, tk = wp.tid()  # type: ignore[misc]
     arti_id = tensor_idx[ti]
     wid = link_indices[arti_id, tj]
     if tenor_idx_mask:
@@ -690,13 +696,13 @@ wp.overload(cache_link_com, {"tensor_idx": wp.array(dtype=wp.int64)})
 
 @wp.kernel(enable_backward=False)
 def set_link_com(
-    tensor: wp.array3d(dtype=float),
+    tensor: wp.array3d(dtype=float),  # type: ignore[valid-type]
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    link_indices: wp.array2d(dtype=int),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    link_indices: wp.array2d(dtype=int),  # type: ignore[valid-type]
     # outputs
-    body_com: wp.array(dtype=wp.vec3),
-):
+    body_com: wp.array(dtype=wp.vec3),  # type: ignore[valid-type]
+) -> None:
     """Set link COM positions from input tensor.
 
     Input tensor has shape (count, max_links, 7) where each entry is:
@@ -712,7 +718,7 @@ def set_link_com(
         link_indices: Link body indices.
         body_com: Output body COM positions.
     """
-    ti, tj, tk = wp.tid()
+    ti, tj, tk = wp.tid()  # type: ignore[misc]
     arti_id = tensor_idx[ti]
     wid = link_indices[arti_id, tj]
     if tenor_idx_mask:
@@ -733,12 +739,12 @@ wp.overload(set_link_com, {"tensor_idx": wp.array(dtype=wp.int64)})
 
 @wp.kernel(enable_backward=False)
 def get_dof_attributes(
-    joint_attr: wp.array(dtype=wp.float32),
-    index: wp.array(dtype=int),
+    joint_attr: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+    index: wp.array(dtype=int),  # type: ignore[valid-type]
     max_dofs: int,
     # outputs
     tensor: Any,
-):
+) -> None:
     """Get DOF attributes for articulations.
 
     Output shape is (count, max_dofs).
@@ -749,7 +755,7 @@ def get_dof_attributes(
         max_dofs: Maximum DOFs per articulation.
         tensor: Output tensor (count, max_dofs).
     """
-    ti, tj = wp.tid()
+    ti, tj = wp.tid()  # type: ignore[misc]
     dof_id = ti * max_dofs + tj
     wid = index[dof_id]
     tensor[ti, tj] = joint_attr[wid]
@@ -757,13 +763,13 @@ def get_dof_attributes(
 
 @wp.kernel(enable_backward=False)
 def get_dof_limits(
-    lower_limits: wp.array(dtype=wp.float32),
-    upper_limits: wp.array(dtype=wp.float32),
-    index: wp.array(dtype=int),
+    lower_limits: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+    upper_limits: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+    index: wp.array(dtype=int),  # type: ignore[valid-type]
     max_dofs: int,
     # outputs
     tensor: Any,
-):
+) -> None:
     """Get DOF limits for articulations.
 
     Output shape is (count, max_dofs, 2) with [lower, upper] limits.
@@ -775,7 +781,7 @@ def get_dof_limits(
         max_dofs: Maximum DOFs per articulation.
         tensor: Output tensor (count, max_dofs, 2).
     """
-    ti, tj = wp.tid()
+    ti, tj = wp.tid()  # type: ignore[misc]
     dof_id = ti * max_dofs + tj
     wid = index[dof_id]
     tensor[ti, tj, 0] = lower_limits[wid]
@@ -784,15 +790,15 @@ def get_dof_limits(
 
 @wp.kernel(enable_backward=False)
 def set_dof_limits(
-    tensor: wp.array3d(dtype=float),
+    tensor: wp.array3d(dtype=float),  # type: ignore[valid-type]
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    index: wp.array(dtype=int),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    index: wp.array(dtype=int),  # type: ignore[valid-type]
     max_dofs: int,
     # outputs
-    lower_limits: wp.array(dtype=wp.float32),
-    upper_limits: wp.array(dtype=wp.float32),
-):
+    lower_limits: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+    upper_limits: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+) -> None:
     """Set DOF limits for articulations.
 
     Input shape is (count, max_dofs, 2) with [lower, upper] limits.
@@ -806,7 +812,7 @@ def set_dof_limits(
         lower_limits: Output lower limits.
         upper_limits: Output upper limits.
     """
-    ti, tj = wp.tid()
+    ti, tj = wp.tid()  # type: ignore[misc]
     arti_id = tensor_idx[ti]
     dof_id = wp.int32(arti_id) * max_dofs + tj
     wid = index[dof_id]
@@ -828,13 +834,13 @@ wp.overload(set_dof_limits, {"tensor_idx": wp.array(dtype=wp.int64)})
 
 @wp.kernel(enable_backward=False)
 def set_body_pose(
-    tensor: wp.array2d(dtype=float),
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    body_idx: wp.array(dtype=int),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    body_idx: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    body_q: wp.array(dtype=wp.transform),
-):
+    body_q: wp.array(dtype=wp.transform),  # type: ignore[valid-type]
+) -> None:
     """Set body poses from input tensor.
 
     Input shape is (count, 7): [x, y, z, qx, qy, qz, qw].
@@ -856,7 +862,7 @@ def set_body_pose(
         apply_data = True
 
     if apply_data:
-        body_q[wid] = wp.transformation(
+        body_q[wid] = wp.transformation(  # type: ignore[call-overload]
             wp.vec3(tensor[arti_id][0], tensor[arti_id][1], tensor[arti_id][2]),
             wp.quat(tensor[arti_id][3], tensor[arti_id][4], tensor[arti_id][5], tensor[arti_id][6]),
         )
@@ -869,15 +875,15 @@ wp.overload(set_body_pose, {"tensor_idx": wp.array(dtype=wp.int64)})
 
 @wp.kernel(enable_backward=False)
 def update_free_joint_coords_from_body_q(
-    body_q: wp.array(dtype=wp.transform),
+    body_q: wp.array(dtype=wp.transform),  # type: ignore[valid-type]
     tensor_idx: Any,
-    body_idx: wp.array(dtype=int),
-    joint_child: wp.array(dtype=int),
-    joint_type: wp.array(dtype=int),
-    joint_q_start: wp.array(dtype=int),
+    body_idx: wp.array(dtype=int),  # type: ignore[valid-type]
+    joint_child: wp.array(dtype=int),  # type: ignore[valid-type]
+    joint_type: wp.array(dtype=int),  # type: ignore[valid-type]
+    joint_q_start: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    joint_q: wp.array(dtype=wp.float32),
-):
+    joint_q: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+) -> None:
     """Update FREE joint coordinates from body transforms.
 
     For free rigid bodies (bodies with FREE joints), the joint_q must match body_q
@@ -906,13 +912,13 @@ def update_free_joint_coords_from_body_q(
             # FREE joint has 7 coordinates: [tx, ty, tz, qx, qy, qz, qw]
             # Use joint_q_start to get the correct offset in joint_q array
             base_idx = joint_q_start[joint_id]
-            joint_q[base_idx + 0] = p[0]
-            joint_q[base_idx + 1] = p[1]
-            joint_q[base_idx + 2] = p[2]
-            joint_q[base_idx + 3] = q[0]
-            joint_q[base_idx + 4] = q[1]
-            joint_q[base_idx + 5] = q[2]
-            joint_q[base_idx + 6] = q[3]
+            joint_q[base_idx + 0] = p[0]  # type: ignore[index]
+            joint_q[base_idx + 1] = p[1]  # type: ignore[index]
+            joint_q[base_idx + 2] = p[2]  # type: ignore[index]
+            joint_q[base_idx + 3] = q[0]  # type: ignore[index]
+            joint_q[base_idx + 4] = q[1]  # type: ignore[index]
+            joint_q[base_idx + 5] = q[2]  # type: ignore[index]
+            joint_q[base_idx + 6] = q[3]  # type: ignore[index]
             break
 
 
@@ -923,13 +929,13 @@ wp.overload(update_free_joint_coords_from_body_q, {"tensor_idx": wp.array(dtype=
 
 @wp.kernel(enable_backward=False)
 def set_body_velocity(
-    tensor: wp.array2d(dtype=float),
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    body_idx: wp.array(dtype=int),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    body_idx: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    body_qd: wp.array(dtype=wp.spatial_vector),
-):
+    body_qd: wp.array(dtype=wp.spatial_vector),  # type: ignore[valid-type]
+) -> None:
     """Set body velocities from input tensor.
 
     Input shape is (count, 6): [wx, wy, wz, vx, vy, vz].
@@ -953,7 +959,7 @@ def set_body_velocity(
     if apply_data:
         # spatial_vector is [angular, linear]
         # Input tensor format: [angular_x, angular_y, angular_z, linear_x, linear_y, linear_z]
-        body_qd[wid] = wp.spatial_vector(
+        body_qd[wid] = wp.spatial_vector(  # type: ignore[call-overload]
             wp.vec3(tensor[arti_id][0], tensor[arti_id][1], tensor[arti_id][2]),  # angular
             wp.vec3(tensor[arti_id][3], tensor[arti_id][4], tensor[arti_id][5]),  # linear
         )
@@ -966,13 +972,13 @@ wp.overload(set_body_velocity, {"tensor_idx": wp.array(dtype=wp.int64)})
 
 @wp.kernel(enable_backward=False)
 def set_link_mass(
-    tensor: wp.array2d(dtype=float),
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    link_indices: wp.array2d(dtype=int),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    link_indices: wp.array2d(dtype=int),  # type: ignore[valid-type]
     # outputs
-    body_mass: wp.array(dtype=wp.float32),
-):
+    body_mass: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+) -> None:
     """Set link masses for articulations.
 
     Input shape is (count, max_links).
@@ -984,7 +990,7 @@ def set_link_mass(
         link_indices: Link body indices.
         body_mass: Output body masses.
     """
-    ti, tj = wp.tid()
+    ti, tj = wp.tid()  # type: ignore[misc]
     arti_id = tensor_idx[ti]
     wid = link_indices[arti_id, tj]
     if tenor_idx_mask:
@@ -1004,12 +1010,12 @@ wp.overload(set_link_mass, {"tensor_idx": wp.array(dtype=wp.int64)})
 @wp.kernel(enable_backward=False)
 def update_inv_mass(
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    link_indices: wp.array2d(dtype=int),
-    body_mass: wp.array(dtype=wp.float32),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    link_indices: wp.array2d(dtype=int),  # type: ignore[valid-type]
+    body_mass: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
     # outputs
-    body_inv_mass: wp.array(dtype=wp.float32),
-):
+    body_inv_mass: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+) -> None:
     """Update inverse mass from mass for articulation links.
 
     Args:
@@ -1019,7 +1025,7 @@ def update_inv_mass(
         body_mass: Body masses.
         body_inv_mass: Output inverse masses.
     """
-    ti, tj = wp.tid()
+    ti, tj = wp.tid()  # type: ignore[misc]
     arti_id = tensor_idx[ti]
     wid = link_indices[arti_id, tj]
     if tenor_idx_mask:
@@ -1041,13 +1047,13 @@ wp.overload(update_inv_mass, {"tensor_idx": wp.array(dtype=wp.int64)})
 
 @wp.kernel(enable_backward=False)
 def set_link_inertia(
-    tensor: wp.array3d(dtype=float),
+    tensor: wp.array3d(dtype=float),  # type: ignore[valid-type]
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    link_indices: wp.array2d(dtype=int),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    link_indices: wp.array2d(dtype=int),  # type: ignore[valid-type]
     # outputs
-    body_inertia: wp.array(dtype=wp.mat33),
-):
+    body_inertia: wp.array(dtype=wp.mat33),  # type: ignore[valid-type]
+) -> None:
     """Set link inertia tensors for articulations.
 
     Input shape is (count, max_links, 9) in row-major order.
@@ -1059,7 +1065,7 @@ def set_link_inertia(
         link_indices: Link body indices.
         body_inertia: Output body inertias.
     """
-    ti, tj, tk = wp.tid()
+    ti, tj, tk = wp.tid()  # type: ignore[misc]
     arti_id = tensor_idx[ti]
     wid = link_indices[arti_id, tj]
     if tenor_idx_mask:
@@ -1081,12 +1087,12 @@ wp.overload(set_link_inertia, {"tensor_idx": wp.array(dtype=wp.int64)})
 @wp.kernel(enable_backward=False)
 def update_inv_inertia(
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    link_indices: wp.array2d(dtype=int),
-    body_inertia: wp.array(dtype=wp.mat33),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    link_indices: wp.array2d(dtype=int),  # type: ignore[valid-type]
+    body_inertia: wp.array(dtype=wp.mat33),  # type: ignore[valid-type]
     # outputs
-    body_inv_inertia: wp.array(dtype=wp.mat33),
-):
+    body_inv_inertia: wp.array(dtype=wp.mat33),  # type: ignore[valid-type]
+) -> None:
     """Update inverse inertia from inertia tensor.
 
     Args:
@@ -1096,7 +1102,7 @@ def update_inv_inertia(
         body_inertia: Body inertia matrices.
         body_inv_inertia: Output inverse inertia matrices.
     """
-    ti, tj = wp.tid()
+    ti, tj = wp.tid()  # type: ignore[misc]
     arti_id = tensor_idx[ti]
     wid = link_indices[arti_id, tj]
     if tenor_idx_mask:
@@ -1122,17 +1128,17 @@ wp.overload(update_inv_inertia, {"tensor_idx": wp.array(dtype=wp.int64)})
 
 @wp.kernel(enable_backward=False)
 def update_joint_coords_from_root(
-    body_q: wp.array(dtype=wp.transform),
-    arti_indices: wp.array(dtype=wp.int32),
-    arti_mask: wp.array(dtype=int),
-    root_body_indices: wp.array(dtype=int),
-    articulation_start: wp.array(dtype=int),
-    joint_q_start: wp.array(dtype=int),
-    joint_type: wp.array(dtype=int),
+    body_q: wp.array(dtype=wp.transform),  # type: ignore[valid-type]
+    arti_indices: wp.array(dtype=wp.int32),  # type: ignore[valid-type]
+    arti_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    root_body_indices: wp.array(dtype=int),  # type: ignore[valid-type]
+    articulation_start: wp.array(dtype=int),  # type: ignore[valid-type]
+    joint_q_start: wp.array(dtype=int),  # type: ignore[valid-type]
+    joint_type: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    joint_q: wp.array(dtype=wp.float32),
-    joint_X_p: wp.array(dtype=wp.transform),
-):
+    joint_q: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+    joint_X_p: wp.array(dtype=wp.transform),  # type: ignore[valid-type]
+) -> None:
     """Update joint coordinates from root body transforms.
 
     For floating-base articulations: copies root transform into joint_q[0:7]
@@ -1169,13 +1175,13 @@ def update_joint_coords_from_root(
         # Store as [tx, ty, tz, qx, qy, qz, qw]
         p = wp.transform_get_translation(root_transform)
         q = wp.transform_get_rotation(root_transform)
-        joint_q[q_start + 0] = p[0]
-        joint_q[q_start + 1] = p[1]
-        joint_q[q_start + 2] = p[2]
-        joint_q[q_start + 3] = q[0]
-        joint_q[q_start + 4] = q[1]
-        joint_q[q_start + 5] = q[2]
-        joint_q[q_start + 6] = q[3]
+        joint_q[q_start + 0] = p[0]  # type: ignore[index]
+        joint_q[q_start + 1] = p[1]  # type: ignore[index]
+        joint_q[q_start + 2] = p[2]  # type: ignore[index]
+        joint_q[q_start + 3] = q[0]  # type: ignore[index]
+        joint_q[q_start + 4] = q[1]  # type: ignore[index]
+        joint_q[q_start + 5] = q[2]  # type: ignore[index]
+        joint_q[q_start + 6] = q[3]  # type: ignore[index]
     else:
         # Fixed base: update joint_X_p for the root joint
         joint_X_p[arti_start] = root_transform
@@ -1183,14 +1189,14 @@ def update_joint_coords_from_root(
 
 @wp.kernel(enable_backward=False)
 def set_dof_attributes(
-    tensor: wp.array2d(dtype=float),
+    tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    index: wp.array(dtype=int),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    index: wp.array(dtype=int),  # type: ignore[valid-type]
     max_dofs: int,
     # outputs
-    joint_attr: wp.array(dtype=wp.float32),
-):
+    joint_attr: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+) -> None:
     """Set DOF attributes for articulations.
 
     Input shape is (count, max_dofs).
@@ -1203,7 +1209,7 @@ def set_dof_attributes(
         max_dofs: Maximum DOFs per articulation.
         joint_attr: Output joint attributes.
     """
-    ti, tj = wp.tid()
+    ti, tj = wp.tid()  # type: ignore[misc]
     arti_id = tensor_idx[ti]
     dof_id = wp.int32(arti_id) * max_dofs + tj
     wid = index[dof_id]
@@ -1227,23 +1233,23 @@ wp.overload(set_dof_attributes, {"tensor_idx": wp.array(dtype=wp.int64)})
 
 @wp.kernel(enable_backward=False)
 def assign_articulation_root_states(
-    body_q: wp.array(dtype=wp.transform),
-    body_qd: wp.array(dtype=wp.spatial_vector),
-    tensor_idx: wp.array(dtype=wp.int64),
-    tenor_idx_mask: wp.array(dtype=int),
-    articulation_indices: wp.array(dtype=int),
-    body_index: wp.array(dtype=int),
+    body_q: wp.array(dtype=wp.transform),  # type: ignore[valid-type]
+    body_qd: wp.array(dtype=wp.spatial_vector),  # type: ignore[valid-type]
+    tensor_idx: wp.array(dtype=wp.int64),  # type: ignore[valid-type]
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    articulation_indices: wp.array(dtype=int),  # type: ignore[valid-type]
+    body_index: wp.array(dtype=int),  # type: ignore[valid-type]
     update_fixed_base_articulations: bool,
     relative_transforms: bool,
-    joint_type: wp.array(dtype=int),
-    articulation_start: wp.array(dtype=int),
-    joint_q_start: wp.array(dtype=int),
-    joint_qd_start: wp.array(dtype=int),
+    joint_type: wp.array(dtype=int),  # type: ignore[valid-type]
+    articulation_start: wp.array(dtype=int),  # type: ignore[valid-type]
+    joint_q_start: wp.array(dtype=int),  # type: ignore[valid-type]
+    joint_qd_start: wp.array(dtype=int),  # type: ignore[valid-type]
     # outputs
-    joint_q: wp.array(dtype=float),
-    joint_qd: wp.array(dtype=float),
-    joint_X_p: wp.array(dtype=wp.transform),
-):
+    joint_q: wp.array(dtype=float),  # type: ignore[valid-type]
+    joint_qd: wp.array(dtype=float),  # type: ignore[valid-type]
+    joint_X_p: wp.array(dtype=wp.transform),  # type: ignore[valid-type]
+) -> None:
     """Assign articulation root states from body transforms and velocities.
 
     Updates joint coordinates for floating-base or fixed-base articulations.
@@ -1306,21 +1312,21 @@ def assign_articulation_root_states(
 
 @wp.kernel(enable_backward=False)
 def apply_body_forces_at_position(
-    force_tensor: wp.array2d(dtype=float),
-    torque_tensor: wp.array2d(dtype=float),
-    position_tensor: wp.array2d(dtype=float),
+    force_tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
+    torque_tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
+    position_tensor: wp.array2d(dtype=float),  # type: ignore[valid-type]
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    body_idx: wp.array(dtype=int),
-    body_q: wp.array(dtype=wp.transform),
-    body_com: wp.array(dtype=wp.vec3),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    body_idx: wp.array(dtype=int),  # type: ignore[valid-type]
+    body_q: wp.array(dtype=wp.transform),  # type: ignore[valid-type]
+    body_com: wp.array(dtype=wp.vec3),  # type: ignore[valid-type]
     is_global: bool,
     has_force: bool,
     has_torque: bool,
     has_position: bool,
     # outputs
-    body_f: wp.array(dtype=wp.spatial_vector),
-):
+    body_f: wp.array(dtype=wp.spatial_vector),  # type: ignore[valid-type]
+) -> None:
     """Apply forces and torques to rigid bodies at specified positions.
 
     Args:
@@ -1355,7 +1361,7 @@ def apply_body_forces_at_position(
     com_offset = body_com[wid]
 
     # Compute world-space COM position
-    com_world = translation + wp.quat_rotate(rotation, com_offset)
+    com_world = translation + wp.quat_rotate(rotation, com_offset)  # type: ignore[operator]
 
     # Initialize force and torque in world frame
     force_world = wp.vec3(0.0, 0.0, 0.0)
@@ -1372,7 +1378,7 @@ def apply_body_forces_at_position(
         if is_global:
             force_world = force_local
         else:
-            force_world = wp.quat_rotate(rotation, force_local)
+            force_world = wp.quat_rotate(rotation, force_local)  # type: ignore[assignment]
 
         # If position is specified, compute additional torque from force application point
         if has_position:
@@ -1385,7 +1391,7 @@ def apply_body_forces_at_position(
             if is_global:
                 position_world = position_local
             else:
-                position_world = translation + wp.quat_rotate(rotation, position_local)
+                position_world = translation + wp.quat_rotate(rotation, position_local)  # type: ignore[operator]
 
             # Compute torque from force application: τ = (r - r_com) × F
             r_offset = position_world - com_world
@@ -1407,7 +1413,7 @@ def apply_body_forces_at_position(
 
     # Apply to body forces (set directly, don't add - forces are cleared each step)
     # spatial_vector is [linear (force), angular (torque)] - note the order!
-    body_f[wid] = wp.spatial_vector(force_world, torque_world)
+    body_f[wid] = wp.spatial_vector(force_world, torque_world)  # type: ignore[call-overload]
 
 
 # Overload to support both int32 and int64
@@ -1417,21 +1423,21 @@ wp.overload(apply_body_forces_at_position, {"tensor_idx": wp.array(dtype=wp.int6
 
 @wp.kernel(enable_backward=False)
 def apply_link_forces_at_position(
-    force_tensor: wp.array3d(dtype=float),
-    torque_tensor: wp.array3d(dtype=float),
-    position_tensor: wp.array3d(dtype=float),
+    force_tensor: wp.array3d(dtype=float),  # type: ignore[valid-type]
+    torque_tensor: wp.array3d(dtype=float),  # type: ignore[valid-type]
+    position_tensor: wp.array3d(dtype=float),  # type: ignore[valid-type]
     tensor_idx: Any,
-    tenor_idx_mask: wp.array(dtype=int),
-    link_indices: wp.array2d(dtype=int),
-    body_q: wp.array(dtype=wp.transform),
-    body_com: wp.array(dtype=wp.vec3),
+    tenor_idx_mask: wp.array(dtype=int),  # type: ignore[valid-type]
+    link_indices: wp.array2d(dtype=int),  # type: ignore[valid-type]
+    body_q: wp.array(dtype=wp.transform),  # type: ignore[valid-type]
+    body_com: wp.array(dtype=wp.vec3),  # type: ignore[valid-type]
     is_global: bool,
     has_force: bool,
     has_torque: bool,
     has_position: bool,
     # outputs
-    body_f: wp.array(dtype=wp.spatial_vector),
-):
+    body_f: wp.array(dtype=wp.spatial_vector),  # type: ignore[valid-type]
+) -> None:
     """Apply forces and torques to articulation links at specified positions.
 
     Args:
@@ -1449,7 +1455,7 @@ def apply_link_forces_at_position(
         has_position: Whether position tensor is provided.
         body_f: Output body forces (spatial vectors).
     """
-    ti, tj = wp.tid()
+    ti, tj = wp.tid()  # type: ignore[misc]
 
     # Check mask if provided
     if tenor_idx_mask:
@@ -1469,7 +1475,7 @@ def apply_link_forces_at_position(
     com_offset = body_com[wid]
 
     # Compute world-space COM position
-    com_world = translation + wp.quat_rotate(rotation, com_offset)
+    com_world = translation + wp.quat_rotate(rotation, com_offset)  # type: ignore[operator]
 
     # Initialize force and torque in world frame
     force_world = wp.vec3(0.0, 0.0, 0.0)
@@ -1486,7 +1492,7 @@ def apply_link_forces_at_position(
         if is_global:
             force_world = force_local
         else:
-            force_world = wp.quat_rotate(rotation, force_local)
+            force_world = wp.quat_rotate(rotation, force_local)  # type: ignore[assignment]
 
         # If position is specified, compute additional torque from force application point
         if has_position:
@@ -1499,7 +1505,7 @@ def apply_link_forces_at_position(
             if is_global:
                 position_world = position_local
             else:
-                position_world = translation + wp.quat_rotate(rotation, position_local)
+                position_world = translation + wp.quat_rotate(rotation, position_local)  # type: ignore[operator]
 
             # Compute torque from force application: τ = (r - r_com) × F
             r_offset = position_world - com_world
@@ -1521,9 +1527,145 @@ def apply_link_forces_at_position(
 
     # Apply to body forces (set directly, don't add - forces are cleared each step)
     # spatial_vector is [linear (force), angular (torque)] - note the order!
-    body_f[wid] = wp.spatial_vector(force_world, torque_world)
+    body_f[wid] = wp.spatial_vector(force_world, torque_world)  # type: ignore[call-overload]
 
 
 # Overload to support both int32 and int64
 wp.overload(apply_link_forces_at_position, {"tensor_idx": wp.array(dtype=wp.int32)})
 wp.overload(apply_link_forces_at_position, {"tensor_idx": wp.array(dtype=wp.int64)})
+
+
+@wp.kernel(enable_backward=False)
+def sync_ctrl_direct_targets(
+    dof_to_act: wp.array(dtype=wp.int32),  # type: ignore[valid-type]
+    joint_target_pos: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+    dofs_per_world: wp.int32,
+    ctrls_per_world: wp.int32,
+    # output
+    mujoco_ctrl: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+) -> None:
+    """Sync joint_target_pos to control.mujoco.ctrl for CTRL_DIRECT joint actuators.
+
+    Args:
+        dof_to_act: Template DOF -> mujoco:actuator index mapping (-1 = no mapping).
+        joint_target_pos: Per-DOF position targets (flat, all worlds).
+        dofs_per_world: Number of DOFs per world.
+        ctrls_per_world: Number of ctrl entries per world.
+        mujoco_ctrl: Output control.mujoco.ctrl array (flat, all worlds).
+    """
+    world, dof = wp.tid()  # type: ignore[misc]
+    act_idx = dof_to_act[dof]
+    if act_idx < 0:
+        return
+    src = world * dofs_per_world + dof
+    dst = world * ctrls_per_world + act_idx
+    mujoco_ctrl[dst] = joint_target_pos[src]
+
+
+@wp.kernel(enable_backward=False)
+def sync_ctrl_direct_gains(
+    dof_to_act: wp.array(dtype=wp.int32),  # type: ignore[valid-type]
+    joint_target_ke: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+    joint_target_kd: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
+    # output
+    actuator_gainprm: wp.array(dtype=vec10),  # type: ignore[valid-type]
+    actuator_biasprm: wp.array(dtype=vec10),  # type: ignore[valid-type]
+) -> None:
+    """Sync joint_target_ke/kd to actuator gainprm/biasprm for CTRL_DIRECT joint actuators.
+
+    Reads from template DOF (world 0). Only updates when kp > 0 or kd > 0.
+
+    Args:
+        dof_to_act: Template DOF -> mujoco:actuator index mapping (-1 = no mapping).
+        joint_target_ke: Per-DOF position gains (flat, all worlds). Reads world 0.
+        joint_target_kd: Per-DOF damping gains (flat, all worlds). Reads world 0.
+        actuator_gainprm: Model mujoco actuator gain params (template-level).
+        actuator_biasprm: Model mujoco actuator bias params (template-level).
+    """
+    dof = wp.tid()
+    act_idx = dof_to_act[dof]
+    if act_idx < 0:
+        return
+    kp = joint_target_ke[dof]
+    kd = joint_target_kd[dof]
+    if kp > 0.0 or kd > 0.0:
+        actuator_gainprm[act_idx][0] = kp
+        actuator_biasprm[act_idx][1] = -kp
+        actuator_biasprm[act_idx][2] = -kd
+
+
+def build_ctrl_direct_dof_mapping(model: newton.Model) -> wp.array | None:
+    """Build a DOF-to-CTRL_DIRECT-actuator mapping from model custom attributes.
+
+    For each template DOF that has a CTRL_DIRECT joint actuator, stores the
+    mujoco:actuator index. Returns None if no CTRL_DIRECT joint actuators exist.
+
+    Args:
+        model: Newton model with mujoco custom attributes.
+
+    Returns:
+        wp.array of shape (dofs_per_world,) with dtype int32, or None.
+    """
+    mujoco_attrs = getattr(model, "mujoco", None)
+    if mujoco_attrs is None:
+        return None
+
+    actuator_count = model.custom_frequency_counts.get("mujoco:actuator", 0)
+    if actuator_count == 0:
+        return None
+
+    has_trnid = hasattr(mujoco_attrs, "actuator_trnid")
+    has_ctrl_source = hasattr(mujoco_attrs, "ctrl_source")
+    has_trntype = hasattr(mujoco_attrs, "actuator_trntype")
+
+    if not has_trnid:
+        return None
+
+    trnid = mujoco_attrs.actuator_trnid.numpy()
+    ctrl_source = mujoco_attrs.ctrl_source.numpy() if has_ctrl_source else None
+    trntype = mujoco_attrs.actuator_trntype.numpy() if has_trntype else None
+
+    # Build label-based lookup for deferred target resolution (trnid=-1).
+    # The model builder may defer resolution, storing -1 in trnid and setting
+    # actuator_target_label instead. The solver resolves these at init time
+    # via joint_dof_label; we replicate that logic here.
+    target_labels = getattr(mujoco_attrs, "actuator_target_label", None)
+    joint_dof_labels = getattr(mujoco_attrs, "joint_dof_label", None)
+    dof_label_to_idx: dict[str, int] = {}
+    if isinstance(joint_dof_labels, list):
+        for i, label in enumerate(joint_dof_labels):
+            if label:
+                dof_label_to_idx[label] = i
+
+    nworlds = model.world_count if hasattr(model, "world_count") else 1
+    dofs_per_world = model.joint_dof_count // nworlds if nworlds > 0 else model.joint_dof_count
+
+    if dofs_per_world == 0:
+        return None
+
+    dof_to_act = np.full(dofs_per_world, -1, dtype=np.int32)
+    found_any = False
+
+    for act_idx in range(actuator_count):
+        is_ctrl_direct = ctrl_source is None or int(ctrl_source[act_idx]) == 1
+        is_joint = trntype is None or int(trntype[act_idx]) == 0
+        if not (is_ctrl_direct and is_joint):
+            continue
+
+        dof_idx = int(trnid[act_idx, 0]) if trnid.ndim > 1 else int(trnid[act_idx])
+
+        # Deferred resolution: trnid=-1 means the model builder didn't resolve
+        # the target. Use actuator_target_label + joint_dof_label to resolve.
+        if dof_idx < 0 and isinstance(target_labels, list) and act_idx < len(target_labels):
+            label = target_labels[act_idx]
+            if label in dof_label_to_idx:
+                dof_idx = dof_label_to_idx[label]
+
+        if 0 <= dof_idx < dofs_per_world:
+            dof_to_act[dof_idx] = act_idx
+            found_any = True
+
+    if not found_any:
+        return None
+
+    return wp.array(dof_to_act, dtype=wp.int32, device=model.device)

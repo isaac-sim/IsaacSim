@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -87,6 +87,14 @@ public:
      */
     virtual void reset() override
     {
+        // Clear any pending async send request before the listener is destroyed.
+        // The request may hold the last reference to the ucxx::Endpoint; destroying
+        // it after the UCXListener is gone would trigger a close callback on a
+        // dangling pointer, crashing in onEndpointClosed().
+        m_sendRequest.reset();
+        m_tensorSendRequest.reset();
+        m_messageBuffer.clear();
+
         if (m_streamNotCreated == false)
         {
             isaacsim::core::includes::ScopedDevice scopedDev(m_streamDevice);
@@ -305,6 +313,7 @@ protected:
     bool m_streamNotCreated = true; //!< Flag indicating if stream needs creation
     std::vector<uint8_t> m_messageBuffer; //!< Persistent buffer to keep message alive during async send
     std::shared_ptr<ucxx::Request> m_sendRequest; //!< Request handle to track async send completion
+    std::shared_ptr<ucxx::Request> m_tensorSendRequest; //!< Request handle for GPU tensor send (GPU-direct path)
 };
 
 // NOTE: To use this base class:

@@ -84,7 +84,8 @@
             "frameSkipCount": {
                 "type": "uint",
                 "description": "Specifies the number of simulation frames to skip between each message publish. (e.g. Set to 0 to publish each frame. Set 1 to publish every other frame)",
-                "default": 0
+                "default": 0,
+                "deprecated": "Frame skipping is deprecated. Control publish rate by setting omni:sensor:tickRate on the sensor prim instead."
             }
         }
     }

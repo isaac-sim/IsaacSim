@@ -1,9 +1,10 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
+#
 # http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
@@ -19,16 +20,148 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Sequence
 
-import usd.schema.newton
-from isaacsim.asset.transformer import AssetTransformerManager, RuleProfile
-from pxr import Gf, PhysxSchema, Sdf, Usd, UsdGeom, UsdPhysics
+from pxr import Sdf, Usd, UsdGeom, UsdPhysics
+
+from .physx_types import PhysxAttr, PhysxMimicAttr, PhysxMimicRel, PhysxSchema
+
+__all__ = [
+    "PhysxAttr",
+    "PhysxMimicAttr",
+    "PhysxMimicRel",
+    "PhysxSchema",
+    "USD_GEOMETRY_TYPES",
+    "MESH_APPROXIMATION_MAP",
+    "PHYSICS_AXIS_MAP",
+    "ROBOT_TYPE_TOKENS",
+    "collision_from_visuals",
+    "enable_self_collision",
+    "run_asset_transformer_profile",
+    "delete_scope",
+    "add_joint_schemas",
+    "add_rigid_body_schemas",
+    "remove_custom_scopes",
+    "resolve_unique_path",
+    "parse_robot_name",
+    "create_robot_schema",
+]
 
 _logger = logging.getLogger(__name__)
 
 # USD Geometry types that should be considered as collision shapes.
 USD_GEOMETRY_TYPES = {"Mesh", "Cube", "Sphere", "Capsule", "Cylinder", "Cone"}
+
+
+def resolve_unique_path(path: str, *, is_file: bool | None = None) -> str:
+    """Return *path* or a numerically suffixed variant that does not collide on disk.
+
+    A path is considered colliding if it is an existing file or a non-empty
+    directory.  For files the counter is inserted before the extension
+    (``robot_1.usda``); for directories it is appended (``usdex_robot_1``).
+
+    Args:
+        path: File or directory path to resolve.
+        is_file: Explicit file/directory hint.  When ``None`` the type is
+            inferred from the filesystem or from a conventional extension
+            to avoid mangling directories with dots in their name.
+
+    Returns:
+        A path that does not cause a conflict on disk.
+
+    Raises:
+        RuntimeError: If no unique path could be resolved after 1000 attempts.
+    """
+
+    def _collides(candidate: str) -> bool:
+        if not os.path.exists(candidate):
+            return False
+        if os.path.isdir(candidate):
+            try:
+                return any(os.scandir(candidate))
+            except OSError:
+                return True
+        return True
+
+    if not _collides(path):
+        return path
+
+    if is_file is None:
+        if os.path.isdir(path):
+            is_file = False
+        elif os.path.isfile(path):
+            is_file = True
+        else:
+            _, ext_guess = os.path.splitext(path)
+            ext_body = ext_guess.lstrip(".")
+            is_file = bool(ext_guess) and 1 <= len(ext_body) <= 5 and ext_body.isalnum()
+
+    base, ext = os.path.splitext(path) if is_file else (path, "")
+
+    for counter in range(1, 1001):
+        candidate = f"{base}_{counter}{ext}"
+        if not _collides(candidate):
+            return candidate
+    raise RuntimeError(f"Could not find a unique path after 1000 attempts for: {path}")
+
+
+def parse_robot_name(path: str, *, expected_extension: str) -> str:
+    """Derive a robot name from a URDF/MJCF file path and validate its extension.
+
+    The robot name is the file's basename with its trailing extension
+    removed.  Hidden-file style names (e.g. ``.franka.urdf``) are handled
+    by stripping leading dots so the result is non-empty.  When the stem
+    still contains ``.`` characters (e.g. ``franka.v2.urdf``) a warning
+    is emitted because the stem is used verbatim as a USD prim / file
+    name and dots there can cause downstream issues.
+
+    Args:
+        path: Path to the URDF or MJCF source file.
+        expected_extension: Required extension including the leading dot
+            (e.g. ``".urdf"`` or ``".xml"``).  Matched case-insensitively.
+
+    Returns:
+        The derived robot name (never empty).
+
+    Raises:
+        ValueError: If the file does not end with ``expected_extension``.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> from isaacsim.asset.importer.utils import parse_robot_name
+        >>> parse_robot_name("/tmp/franka.urdf", expected_extension=".urdf")
+        'franka'
+        >>> parse_robot_name("/tmp/.franka.urdf", expected_extension=".urdf")
+        'franka'
+    """
+    if not expected_extension.startswith("."):
+        raise ValueError(f"expected_extension must start with '.', got: {expected_extension!r}")
+
+    basename = os.path.basename(path)
+    stem, ext = os.path.splitext(basename)
+
+    if ext.lower() != expected_extension.lower():
+        raise ValueError(
+            f"Expected file with extension '{expected_extension}', got '{ext or '<no extension>'}' for path: {path}"
+        )
+
+    # Strip leading dots so hidden-file names (e.g. ".franka.urdf") still yield a usable robot name.
+    # The result is always non-empty here: ``os.path.splitext`` only returns a non-empty ``ext`` when
+    # the basename has at least one non-dot character before the trailing extension.
+    stem = stem.lstrip(".")
+
+    if "." in stem:
+        _logger.warning(
+            "Robot name '%s' derived from '%s' contains '.' characters; "
+            "USD prim and file names with dots may cause downstream issues. "
+            "Consider renaming the source file.",
+            stem,
+            path,
+        )
+
+    return stem
+
 
 # Mapping from UI-friendly labels to mesh collision approximation tokens.
 MESH_APPROXIMATION_MAP = {
@@ -127,7 +260,7 @@ def enable_self_collision(usd_stage: Usd.Stage, enabled: bool = True) -> int:
     """Enable self-collisions on articulation roots.
 
     Args:
-        usd_stage: USD stage for authoring PhysX articulation attributes.
+        usd_stage: USD stage for authoring articulation attributes.
         enabled: Whether to enable self collisions on articulation roots.
 
     Returns:
@@ -147,12 +280,6 @@ def enable_self_collision(usd_stage: Usd.Stage, enabled: bool = True) -> int:
         if not default_prim:
             return 0
         default_prim.ApplyAPI("PhysicsArticulationRootAPI")
-        PhysxSchema.PhysxArticulationAPI.Apply(default_prim)
-        physx_api = PhysxSchema.PhysxArticulationAPI(default_prim)
-        attr = physx_api.GetEnabledSelfCollisionsAttr()
-        if not attr:
-            attr = physx_api.CreateEnabledSelfCollisionsAttr()
-        attr.Set(enabled)
 
         default_prim.ApplyAPI("NewtonArticulationRootAPI")
         attr = default_prim.GetAttribute("newton:selfCollisionEnabled")
@@ -168,17 +295,8 @@ def enable_self_collision(usd_stage: Usd.Stage, enabled: bool = True) -> int:
         if not articulation_root.HasAPI("PhysicsArticulationRootAPI"):
             articulation_root.ApplyAPI("PhysicsArticulationRootAPI")
 
-        if not articulation_root.HasAPI(PhysxSchema.PhysxArticulationAPI):
-            PhysxSchema.PhysxArticulationAPI.Apply(articulation_root)
-
         if not articulation_root.HasAPI("NewtonArticulationRootAPI"):
             articulation_root.ApplyAPI("NewtonArticulationRootAPI")
-
-        physx_api = PhysxSchema.PhysxArticulationAPI(articulation_root)
-        attr = physx_api.GetEnabledSelfCollisionsAttr()
-        if not attr:
-            attr = physx_api.CreateEnabledSelfCollisionsAttr()
-        attr.Set(enabled)
 
         attr = articulation_root.GetAttribute("newton:selfCollisionEnabled")
         if not attr:
@@ -215,12 +333,19 @@ def run_asset_transformer_profile(
         ...     profile_json_path="/tmp/profile.json",
         ... )  # doctest: +SKIP
     """
+    from isaacsim.asset.transformer import AssetTransformerManager, RuleProfile
+    from isaacsim.asset.transformer.rules import register_all_rules
+
+    # In Kit, rules are registered by the extension on_startup. Standalone
+    # callers need this explicit call (idempotent — safe to call twice).
+    register_all_rules()
+
     with open(profile_json_path, encoding="utf-8") as handle:
         profile = RuleProfile.from_json(handle.read())
 
     manager = AssetTransformerManager()
     report = manager.run(
-        input_stage_path=input_stage_path,
+        input_stage=input_stage_path,
         profile=profile,
         package_root=output_package_root,
     )
@@ -274,19 +399,21 @@ def add_joint_schemas(stage: Usd.Stage) -> None:
         if not (prim.IsA(UsdPhysics.RevoluteJoint) or prim.IsA(UsdPhysics.PrismaticJoint)):
             continue
 
-        if not prim.HasAPI(PhysxSchema.PhysxJointAPI):
-            PhysxSchema.PhysxJointAPI.Apply(prim)
+        if not prim.HasAPI(PhysxSchema.JOINT_API):
+            prim.ApplyAPI(PhysxSchema.JOINT_API)
         instance_name = "angular" if prim.IsA(UsdPhysics.RevoluteJoint) else "linear"
 
         if not prim.HasAPI(UsdPhysics.DriveAPI, instance_name):
             UsdPhysics.DriveAPI.Apply(prim, instance_name)
 
-        if not prim.HasAPI(PhysxSchema.JointStateAPI, instance_name):
-            PhysxSchema.JointStateAPI.Apply(prim, instance_name)
+        if not prim.HasAPI(PhysxSchema.JOINT_STATE_API, instance_name):
+            prim.ApplyAPI(PhysxSchema.JOINT_STATE_API, instance_name)
 
 
 def add_rigid_body_schemas(stage: Usd.Stage) -> None:
-    """Apply rigid body-related physics schemas to all rigid body prims.
+    """Apply :class:`UsdPhysics.MassAPI` to every rigid body that lacks it.
+
+    This function is deprecated, and will be removed in a future version. Use `asset_utils.apply_link_density()` instead.
 
     Args:
         stage: USD stage to update with rigid body schemas.
@@ -316,61 +443,106 @@ def remove_custom_scopes(stage: Usd.Stage) -> None:
     return
 
 
-def create_physx_mimic_joint(prim: Usd.Prim) -> None:
-    """Create a mimic joint for a joint.
+ROBOT_TYPE_TOKENS = [
+    "Default",
+    "End Effector",
+    "Manipulator",
+    "Humanoid",
+    "Wheeled",
+    "Holonomic",
+    "Quadruped",
+    "Mobile Manipulators",
+    "Aerial",
+]
+
+
+def create_robot_schema(
+    stage: Usd.Stage,
+    robot_type: str = "Default",
+    *,
+    prim_path: str | None = None,
+    add_sites: bool = True,
+    sites_last: bool = False,
+) -> tuple[Usd.Prim | None, Usd.Prim | None]:
+    """Apply the Isaac robot schema to a prim and populate link/joint relationships.
+
+    If the target prim already has the ``IsaacRobotAPI`` applied, the schema is
+    recalculated (preserving existing ordering).  Otherwise a fresh
+    ``RobotAPI`` is applied and populated from the articulation hierarchy.
+
+    No-op with a warning if ``usd.schema.isaac.robot_schema`` is unavailable.
 
     Args:
-        prim: prim to create the mimic joint for.
+        stage: The USD stage containing the robot.
+        robot_type: Robot category token.  Must be one of
+            :data:`ROBOT_TYPE_TOKENS` (e.g. ``"Manipulator"``, ``"Humanoid"``).
+        prim_path: Prim path to apply the schema to.  Defaults to the stage
+            default prim when ``None``.
+        add_sites: Detect child Xforms with no children under each link and
+            apply ``IsaacSiteAPI`` to them.
+        sites_last: When ``True`` all sites are appended at the end of the
+            links list; when ``False`` each site follows its parent link.
+
+    Returns:
+        A ``(root_link, root_joint)`` tuple of the detected articulation root
+        link and root joint.  Either may be ``None``; both are ``None`` when
+        the robot schema module is unavailable.
+
+    Raises:
+        ValueError: If *robot_type* is not in :data:`ROBOT_TYPE_TOKENS` or
+            the resolved prim is invalid.
     """
-    if prim.HasAPI("NewtonMimicAPI"):
-        # Get the mimic relation as a Usd.Rel
-        mimic_rel = prim.GetRelationship("newton:mimicJoint")
-        if mimic_rel is None or not mimic_rel.IsValid():
-            _logger.warning(f"newton:mimicJoint not found or invalid for prim {prim.GetPath()}")
-            return
+    if robot_type not in ROBOT_TYPE_TOKENS:
+        raise ValueError(f"Invalid robot_type '{robot_type}'. Must be one of: {ROBOT_TYPE_TOKENS}")
 
-        target = mimic_rel.GetTargets()[0]
-        if not target:
-            _logger.warning(f"newton:mimicJoint relationship has no target for prim {prim.GetPath()}")
-            return
+    try:
+        import usd.schema.isaac.robot_schema as rs
+        from usd.schema.isaac.robot_schema import utils as robot_schema_utils
+    except ImportError:
+        _logger.warning(
+            "usd.schema.isaac.robot_schema is not available; skipping IsaacRobotAPI. "
+            "Enable the 'isaacsim.robot.schema' extension to populate robot schema attributes."
+        )
+        return None, None
 
-        # Read newton:mimicCoef1 and newton:mimicCoef0
-        mimic_coef1_attr = prim.GetAttribute("newton:mimicCoef1")
-        mimic_coef0_attr = prim.GetAttribute("newton:mimicCoef0")
-        mimic_coef1 = mimic_coef1_attr.Get() if mimic_coef1_attr and mimic_coef1_attr.IsValid() else None
-        mimic_coef0 = mimic_coef0_attr.Get() if mimic_coef0_attr and mimic_coef0_attr.IsValid() else None
+    if prim_path:
+        robot_prim = stage.GetPrimAtPath(prim_path)
+    else:
+        robot_prim = stage.GetDefaultPrim()
 
-        target_prim = prim.GetStage().GetPrimAtPath(target)
-        if not target_prim:
-            _logger.warning(f"target prim not found for prim {prim.GetPath()}")
-            return
-        if not target_prim.HasAttribute("physics:axis"):
-            _logger.warning(f"target prim does not have physics:axis attribute for prim {prim.GetPath()}")
-            return
-        target_axis = target_prim.GetAttribute("physics:axis").Get().upper()
+    if not robot_prim or not robot_prim.IsValid():
+        raise ValueError(f"Invalid prim at path '{prim_path or '<default prim>'}'")
 
-        axis = prim.GetAttribute("physics:axis").Get().upper() if prim.HasAttribute("physics:axis") else None
-        if axis is None:
-            _logger.warning(f"prim does not have physics:axis attribute for prim {prim.GetPath()}")
-            return
+    has_existing_schema = robot_prim.HasAPI(rs.Classes.ROBOT_API.value)
 
-        target_joint = UsdPhysics.Joint(target_prim)
-        # Check if the target joint is flipped, and if so, invert the gearing (mimic_coef1)
-        local_rot1 = target_joint.GetLocalRot1Attr().Get()
-        if local_rot1.GetReal() == -1 or any(v == -1 for v in local_rot1.GetImaginary()):
-            mimic_coef1 = -mimic_coef1
-            _logger.info(f"Inverted gearing for prim {prim.GetPath()} because target joint is flipped")
+    if has_existing_schema:
+        _logger.info("RobotAPI already applied — recalculating schema while preserving order")
+        robot_schema_utils.UpdateDeprecatedSchemas(robot_prim)
+        root_link, root_joint = robot_schema_utils.RecalculateRobotSchema(
+            stage,
+            robot_prim,
+            robot_prim,
+            detect_sites=add_sites,
+            sites_last=sites_last,
+        )
+    else:
+        rs.ApplyRobotAPI(robot_prim)
+        _logger.info("Applied RobotAPI to prim %s", robot_prim.GetPath())
+        root_link, root_joint = robot_schema_utils.PopulateRobotSchemaFromArticulation(
+            stage,
+            robot_prim,
+            robot_prim,
+            detect_sites=add_sites,
+            sites_last=sites_last,
+        )
 
-        # Create the PhysX mimic joint attribute on the current prim
-        physx_mimic_api = PhysxSchema.PhysxMimicJointAPI.Apply(prim, PHYSICS_AXIS_MAP[axis])
-        mimic_rel_physx = physx_mimic_api.CreateReferenceJointRel()
-        mimic_rel_physx.SetTargets([target])
-        if mimic_coef1 is not None:
-            physx_mimic_api.CreateGearingAttr().Set(mimic_coef1)
-        else:
-            _logger.warning(f"newton:mimicCoef1 not found or invalid for prim {prim.GetPath()}")
-        if mimic_coef0 is not None:
-            physx_mimic_api.CreateOffsetAttr().Set(mimic_coef0)
-        else:
-            _logger.warning(f"newton:mimicCoef0 not found or invalid for prim {prim.GetPath()}")
-        physx_mimic_api.CreateReferenceJointAxisAttr().Set(PHYSICS_AXIS_MAP[target_axis])
+    robot_type_attr = robot_prim.GetAttribute("isaac:robotType")
+    if robot_type_attr and robot_type_attr.IsValid():
+        robot_type_attr.Set(robot_type)
+    else:
+        robot_type_attr = robot_prim.CreateAttribute("isaac:robotType", Sdf.ValueTypeNames.Token)
+        robot_type_attr.Set(robot_type)
+
+    _logger.info("Set isaac:robotType = '%s' on %s", robot_type, robot_prim.GetPath())
+
+    return root_link, root_joint

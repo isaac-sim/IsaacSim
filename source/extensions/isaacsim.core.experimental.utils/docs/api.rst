@@ -1,13 +1,10 @@
-API
-===
+Python API
+==========
 
 .. warning::
 
     **The API featured in this extension is experimental and subject to change without deprecation cycles.**
     Although we will try to maintain backward compatibility in the event of a change, it may not always be possible.
-
-Python API
-----------
 
 .. Summary
 

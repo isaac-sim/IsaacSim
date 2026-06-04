@@ -15,7 +15,6 @@
 
 """Provides obstacle representation strategies and configurations for robot motion planning."""
 
-
 from enum import StrEnum, auto
 from typing import Type
 

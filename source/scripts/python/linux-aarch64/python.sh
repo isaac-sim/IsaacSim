@@ -1,5 +1,5 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,7 +49,6 @@ done
 
 if ! [[ -z "${CONDA_PREFIX}" ]]; then
   echo "Warning: running in conda env, please deactivate before executing this script"
-  echo "If conda is desired please source setup_conda_env.sh in your python 3.11 conda env and run python normally"
 fi
 
 # Check if we are running in a docker container

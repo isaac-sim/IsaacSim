@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test suite for Isaac Sim storage native extension functionality."""
+
 import asyncio
-import json
 
 import carb
 import omni.kit.commands
@@ -25,8 +26,74 @@ from isaacsim.storage.native import (
     find_filtered_files_async,
     get_assets_root_path,
     get_assets_root_path_async,
+    is_local_path,
+    path_join,
     resolve_asset_path,
 )
+from isaacsim.storage.native.impl.file_utils import _URL_SCHEMES
+
+
+class TestPathJoin(omni.kit.test.AsyncTestCase):
+    """Tests for path_join covering all URL schemes and local paths."""
+
+    def _base(self, scheme):
+        return f"{scheme}server/folder"
+
+    def test_basic_join_all_schemes(self):
+        """Forward-slash join for every URL scheme — no backslashes on Windows."""
+        for scheme in _URL_SCHEMES:
+            base = self._base(scheme)
+            result = path_join(base, "file.usd")
+            self.assertEqual(result, f"{base}/file.usd", f"Failed for scheme: {scheme}")
+
+    def test_trailing_slash_stripped(self):
+        """Trailing slash on base is stripped before joining."""
+        for scheme in _URL_SCHEMES:
+            base = self._base(scheme) + "/"
+            result = path_join(base, "file.usd")
+            self.assertNotIn("//file.usd", result, f"Double slash for scheme: {scheme}")
+            self.assertTrue(result.endswith("/file.usd"), f"Failed for scheme: {scheme}")
+
+    def test_dot_slash_prefix_stripped(self):
+        """Leading ./ on name is stripped."""
+        for scheme in _URL_SCHEMES:
+            base = self._base(scheme)
+            result = path_join(base, "./sub/file.usd")
+            self.assertEqual(result, f"{base}/sub/file.usd", f"Failed for scheme: {scheme}")
+
+    def test_parent_traversal(self):
+        """../ traversal uses forward-slash split, not os.path.dirname."""
+        for scheme in _URL_SCHEMES:
+            base = f"{scheme}server/a/b"
+            result = path_join(base, "../file.usd")
+            self.assertEqual(result, f"{scheme}server/a/file.usd", f"Failed for scheme: {scheme}")
+            self.assertNotIn("\\", result, f"Backslash found for scheme: {scheme}")
+
+    def test_local_path_uses_os_join(self):
+        """Local paths fall through to os.path.join."""
+        import os
+
+        result = path_join("/local/path", "file.usd")
+        self.assertEqual(result, os.path.join("/local/path", "file.usd"))
+
+
+class TestIsLocalPath(omni.kit.test.AsyncTestCase):
+    """Tests for is_local_path covering all URL schemes and local paths."""
+
+    def test_url_schemes_are_not_local(self):
+        """Every URL scheme must return False."""
+        for scheme in _URL_SCHEMES:
+            path = f"{scheme}server/path/file.usd"
+            self.assertFalse(is_local_path(path), f"Expected False for scheme: {scheme}")
+
+    def test_local_paths_are_local(self):
+        """Absolute and relative local paths return True."""
+        for path in ("/home/user/file.usd", "relative/file.usd", "/mnt/data/file.usd"):
+            self.assertTrue(is_local_path(path), f"Expected True for: {path}")
+
+    def test_empty_path_is_local(self):
+        """Empty string is treated as local."""
+        self.assertTrue(is_local_path(""))
 
 
 class TestStorageNative(omni.kit.test.AsyncTestCase):
@@ -39,12 +106,10 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
     async def setUp(self):
         """Set up test fixtures before each test method."""
         await omni.kit.app.get_app().next_update_async()
-        pass
 
     async def tearDown(self):
         """Clean up after each test method."""
         await omni.kit.app.get_app().next_update_async()
-        pass
 
     async def test_get_assets_root_path(self):
         """Test asset root path retrieval with various settings configurations.

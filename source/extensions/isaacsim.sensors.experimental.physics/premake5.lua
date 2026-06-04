@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,9 +34,9 @@ includedirs {
     "plugins/isaacsim.sensors.experimental.physics",
     "%{root}/source/extensions/isaacsim.core.experimental.prims/include",
     "%{root}/source/extensions/isaacsim.core.includes/include",
+    "%{root}/source/extensions/isaacsim.robot.schema/include",
     "%{root}/source/extensions/isaacsim.core.simulation_manager/include",
     target_deps .. "/omni_physics/%{config}/include",
-    "%{root}/_build/target-deps/omni-isaacsim-schema/%{platform}/%{config}/include",
     target_deps .. "/usd/%{cfg.buildcfg}/include",
     target_deps .. "/usd_ext_physics/%{cfg.buildcfg}/include",
     extsbuild_dir .. "/usdrt.scenegraph/include",
@@ -53,11 +53,10 @@ filter {}
 libdirs {
     target_deps .. "/usd/%{cfg.buildcfg}/lib",
     target_deps .. "/usd_ext_physics/%{cfg.buildcfg}/lib",
-    "%{root}/_build/target-deps/omni-isaacsim-schema/%{platform}/%{config}/lib",
     extsbuild_dir .. "/omni.usd.core/bin",
 }
 
-links { "isaacSensorSchema", "omni.usd", "physxSchema" }
+links { "omni.usd", "physxSchema" }
 
 extra_usd_libs = { "usdGeom", "usdPhysics", "usdUtils", "ts" }
 add_usd(extra_usd_libs)
@@ -75,7 +74,7 @@ project_ext_bindings {
     project_name = "isaacsim.sensors.experimental.physics.python",
     module = "_physics_sensors",
     src = "bindings/isaacsim.sensors.experimental.physics",
-    target_subdir = python_target_path,
+    target_subdir = python_target_path .. "/bindings",
 }
 dependson { "isaacsim.sensors.experimental.physics.plugin" }
 

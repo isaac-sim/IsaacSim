@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import annotations
+"""Demonstrate differential IK control of a Franka Panda robot using JAX.
 
-"""
 This example demonstrates how to control the Franka Panda's arm DOFs (via differential Inverse Kinematics (IK))
 to follow a randomly positioned sphere in 3D space using JAX.
 
@@ -30,10 +29,13 @@ The source code is organized into 4 main sections:
 4. Example logic.
 """
 
-# 1. --------------------------------------------------------------------
+from __future__ import annotations
 
 # Parse any command-line arguments specific to the standalone application (only known arguments).
 import argparse
+
+# 1. --------------------------------------------------------------------
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--device", type=str, choices=["cpu", "cuda"], default="cpu", help="Simulation device")
@@ -99,12 +101,14 @@ not supported for this example.
 
 @jax.jit
 def sample_random_position(*, center: jax.Array, scale: float, key: jax.random.PRNGKey) -> jax.Array:
+    """Sample a random position within a scaled range around a center point."""
     sample = 2.0 * (jax.random.uniform(key, shape=center.shape) - 0.5)  # [-1, 1)
     return center + scale * sample
 
 
 @jax.jit
 def quat_mul(a: jax.Array, b: jax.Array) -> jax.Array:
+    """Multiply two batched quaternions."""
     w1, x1, y1, z1 = a[:, 0], a[:, 1], a[:, 2], a[:, 3]
     w2, x2, y2, z2 = b[:, 0], b[:, 1], b[:, 2], b[:, 3]
     ww = (z1 + x1) * (x2 + y2)
@@ -121,6 +125,7 @@ def quat_mul(a: jax.Array, b: jax.Array) -> jax.Array:
 
 @jax.jit
 def quat_conjugate(q: jax.Array) -> jax.Array:
+    """Compute the conjugate of batched quaternions."""
     return jnp.concatenate([q[:, :1], -q[:, 1:]], axis=-1)
 
 
@@ -128,6 +133,7 @@ def quat_conjugate(q: jax.Array) -> jax.Array:
 def compute_error(
     current_position: jax.Array, current_orientation: jax.Array, goal_position: jax.Array, goal_orientation: jax.Array
 ) -> jax.Array:
+    """Compute the position and orientation error between current and goal poses."""
     q = quat_mul(goal_orientation, quat_conjugate(current_orientation))
     return jnp.expand_dims(
         jnp.concatenate([goal_position - current_position, q[:, 1:] * jnp.sign(q[:, [0]])], axis=-1), axis=2
@@ -138,6 +144,7 @@ def compute_error(
 def singular_value_decomposition_method(
     jacobian: jax.Array, error: jax.Array, scale: float, min_singular_value: float
 ) -> jax.Array:
+    """Compute delta DOF positions using adaptive SVD-based pseudoinverse."""
     U, S, Vh = jnp.linalg.svd(jacobian)
     inv_s = jnp.where(S > min_singular_value, 1.0 / S, jnp.zeros_like(S))
     pseudoinverse = jnp.swapaxes(Vh, 1, 2)[:, :, :6] @ jnp.diagflat(inv_s) @ jnp.swapaxes(U, 1, 2)
@@ -146,18 +153,21 @@ def singular_value_decomposition_method(
 
 @jax.jit
 def pseudoinverse_method(jacobian: jax.Array, error: jax.Array, scale: float) -> jax.Array:
+    """Compute delta DOF positions using Moore-Penrose pseudoinverse."""
     pseudoinverse = jnp.linalg.pinv(jacobian)
     return (scale * pseudoinverse @ error).squeeze(-1)
 
 
 @jax.jit
 def transpose_method(jacobian: jax.Array, error: jax.Array, scale: float) -> jax.Array:
+    """Compute delta DOF positions using Jacobian transpose."""
     transpose = jnp.swapaxes(jacobian, 1, 2)
     return (scale * transpose @ error).squeeze(-1)
 
 
 @jax.jit
 def damped_least_squares_method(jacobian: jax.Array, error: jax.Array, scale: float, damping: float) -> jax.Array:
+    """Compute delta DOF positions using damped least-squares."""
     transpose = jnp.swapaxes(jacobian, 1, 2)
     lmbda = jnp.eye(jacobian.shape[1]) * (damping**2)
     return (scale * transpose @ jnp.linalg.inv(jacobian @ transpose + lmbda) @ error).squeeze(-1)
@@ -172,6 +182,7 @@ def differential_inverse_kinematics(
     method: str = "damped-least-squares",
     method_cfg: dict[str, float] = {"scale": 1.0, "damping": 0.05, "min_singular_value": 1e-5},
 ) -> jax.Array:
+    """Compute delta DOF positions via differential inverse kinematics."""
     scale = method_cfg.get("scale", 1.0)
     # Compute velocity error
     goal_orientation = current_orientation if goal_orientation is None else goal_orientation

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,7 +36,7 @@ namespace isaacsim::ucx::nodes
 struct JointCommandData
 {
     double timestamp; //!< Timestamp value in seconds
-    uint32_t numJoints; //!< Number of joints
+    int64_t numJoints; //!< Number of joints
     std::vector<double> positionCommand; //!< Joint position commands
     std::vector<double> velocityCommand; //!< Joint velocity commands
     std::vector<double> effortCommand; //!< Joint effort commands
@@ -56,8 +56,8 @@ template <typename DatabaseT>
 class UCXSubscribeJointCommandNodeBase : public UcxNode
 {
 public:
-    using NodeObj = omni::graph::core::NodeObj;
-    using GraphInstanceID = omni::graph::core::GraphInstanceID;
+    using NodeObj = omni::graph::core::NodeObj; ///< Alias for the OmniGraph node object type.
+    using GraphInstanceID = omni::graph::core::GraphInstanceID; ///< Alias for the OmniGraph instance ID type.
 
     /**
      * @brief Initialize the node instance.

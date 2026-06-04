@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The Isaac Sim Physics API Editor provides a UI tool for applying and removing physics APIs on USD prims. This extension focuses on collision shape configuration and physics component management, offering support for triangle mesh, convex hull, and convex decomposition collision types.

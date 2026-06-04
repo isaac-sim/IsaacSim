@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,13 @@
 
 """Extension for integrating Jupyter Notebook functionality into Isaac Sim."""
 
+from __future__ import annotations
 
 import asyncio
 import glob
 import json
 import os
+import secrets
 import socket
 import subprocess
 import sys
@@ -65,7 +67,7 @@ class Extension(omni.ext.IExt):
     extensions, ensuring seamless integration between Jupyter notebooks and the simulation environment.
     """
 
-    def on_startup(self, ext_id):
+    def on_startup(self, ext_id: str) -> None:
         """Initializes the Jupyter extension and starts all necessary components.
 
         Sets up socket server for code execution, configures Jedi autocompletion, launches Jupyter notebook process,
@@ -145,13 +147,14 @@ class Extension(omni.ext.IExt):
             order=0,
         )
 
-        # ui components
+        ext_name = omni.ext.get_extension_name(ext_id)
         self._ui_builder = ui_builder.UIBuilder(
-            "Window", "Jupyter Notebook", self._notebook_ip, self._notebook_port, self._get_display_url
+            ext_name, "Window", "Jupyter Notebook", self._notebook_ip, self._notebook_port, self._get_display_url
         )
         self._ui_builder.startup()
 
         # create socket (code execution)
+        self._token = ""
         self._server = None
         _get_event_loop().create_task(self._create_socket())
 
@@ -191,7 +194,7 @@ class Extension(omni.ext.IExt):
         # run jupyter in a separate process
         self._launch_jupyter_process()
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Shuts down the Jupyter extension and cleans up all resources.
 
         Closes socket server, terminates Jupyter notebook process, and shuts down UI components.
@@ -224,7 +227,7 @@ class Extension(omni.ext.IExt):
             self._process.wait()
             self._process = None
 
-    def _on_shutdown_event(self, event):
+    def _on_shutdown_event(self, event: carb.eventdispatcher.Event) -> None:
         """Handles shutdown event from the application.
 
         Args:
@@ -232,20 +235,43 @@ class Extension(omni.ext.IExt):
         """
         self.on_shutdown()
 
-    async def _create_socket(self):
-        """Create a socket server to listen for incoming connections"""
+    async def _create_socket(self) -> None:
+        """Create a socket server to listen for incoming connections."""
 
         class ServerProtocol(asyncio.Protocol):
-            def __init__(self, parent) -> None:
+            def __init__(self, parent: Extension) -> None:
                 super().__init__()
                 self._parent = parent
 
-            def connection_made(self, transport) -> None:
+            def connection_made(self, transport: asyncio.BaseTransport) -> None:
                 carb.log_info(f"Connection from {transport.get_extra_info('peername')}")
                 self.transport = transport
 
-            def data_received(self, data) -> None:
-                source = data.decode()
+            def data_received(self, data: bytes) -> None:
+                data = data.decode()
+                token = data[: len(self._parent._token)]
+                source = data[len(self._parent._token) :]
+                if not secrets.compare_digest(token, self._parent._token):
+                    reply = json.dumps(
+                        {
+                            # cell output
+                            "status": "error",
+                            "output": "",
+                            "ename": "AuthenticationError",
+                            "evalue": "Invalid or missing authentication token",
+                            "traceback": [],
+                            # completion
+                            "matches": [],
+                            "delta": 0,
+                            # introspection
+                            "found": False,
+                            "data": {},
+                        },
+                        separators=(",", ":"),
+                    )
+                    self.transport.write(reply.encode())
+                    self.transport.close()
+                    return
                 # completion
                 if source[:3] == "%!c":
                     source = source[3:]
@@ -281,8 +307,8 @@ class Extension(omni.ext.IExt):
             carb.log_error(str(e))
             self._server = None
 
-    async def _process_code(self, source: str, transport: asyncio.Transport):
-        """Execute the source code in the Kit Python scope and send the result back to the client
+    async def _process_code(self, source: str, transport: asyncio.Transport) -> None:
+        """Execute the source code in the Kit Python scope and send the result back to the client.
 
         Args:
             source: Python source code to execute.
@@ -304,8 +330,8 @@ class Extension(omni.ext.IExt):
         # close the connection
         transport.close()
 
-    async def _complete_code_async(self, source: str, transport: asyncio.Transport):
-        """Complete objects under the cursor and send the result back to the client
+    async def _complete_code_async(self, source: str, transport: asyncio.Transport) -> None:
+        """Complete objects under the cursor and send the result back to the client.
 
         Args:
             source: Python source code for completion.
@@ -323,8 +349,8 @@ class Extension(omni.ext.IExt):
         # close the connection
         transport.close()
 
-    async def _introspect_code_async(self, source: str, line: int, column: int, transport: asyncio.Transport):
-        """Introspect code under the cursor and send the result back to the client
+    async def _introspect_code_async(self, source: str, line: int, column: int, transport: asyncio.Transport) -> None:
+        """Introspect code under the cursor and send the result back to the client.
 
         Args:
             source: Python source code for introspection.
@@ -348,11 +374,19 @@ class Extension(omni.ext.IExt):
 
     # Jupyter Notebook methods
 
-    def _launch_jupyter_process(self):
-        """Launch the Jupyter notebook in a separate process"""
+    def _launch_jupyter_process(self) -> None:
+        """Launch the Jupyter notebook in a separate process."""
+        launchers_dir = os.path.join(self._extension_path, "data", "launchers")
+
+        # generate token
+        self._token = secrets.token_hex(16)
+        token_txt = os.path.join(launchers_dir, "token.txt")
+        with open(token_txt, "w") as f:
+            f.write(self._token)
+
         # get packages path
         paths = [p for p in sys.path if "pip3-envs" in p]
-        packages_txt = os.path.join(self._extension_path, "data", "launchers", "packages.txt")
+        packages_txt = os.path.join(launchers_dir, "packages.txt")
         with open(packages_txt, "w") as f:
             f.write("\n".join(paths))
 
@@ -363,7 +397,7 @@ class Extension(omni.ext.IExt):
 
         cmd = [
             executable_path,
-            os.path.join(self._extension_path, "data", "launchers", "jupyter_launcher.py"),
+            os.path.join(launchers_dir, "jupyter_launcher.py"),
             self._notebook_ip,
             str(self._notebook_port),
             self._notebook_token,
@@ -374,13 +408,13 @@ class Extension(omni.ext.IExt):
         carb.log_info("Starting Jupyter server in separate process")
         carb.log_info("  |-- command: " + " ".join(cmd))
         try:
-            self._process = subprocess.Popen(cmd, cwd=os.path.join(self._extension_path, "data", "launchers"))
+            self._process = subprocess.Popen(cmd, cwd=launchers_dir)
         except Exception as e:
-            carb.log_error("Error starting Jupyter server: {}".format(e))
+            carb.log_error(f"Error starting Jupyter server: {e}")
             self._process = None
 
     def _get_display_url(self) -> str:
-        """Get the Jupyter notebook app.display_url
+        """Get the Jupyter notebook app.display_url.
 
         Returns:
             The display URL for the Jupyter notebook or empty string if not available.
@@ -389,7 +423,7 @@ class Extension(omni.ext.IExt):
         if self._process is not None:
             notebook_txt = os.path.join(self._extension_path, "data", "launchers", "notebook.txt")
             if os.path.exists(notebook_txt):
-                with open(notebook_txt, "r") as f:
+                with open(notebook_txt) as f:
                     urls = f.readlines()
                     display_url = "\n".join([url.strip() for url in urls])
         return display_url

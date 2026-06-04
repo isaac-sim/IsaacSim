@@ -1,5 +1,3 @@
-"""Property widget for the IsaacMotionPlanningAPI schema."""
-
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -14,6 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Property widget for the IsaacMotionPlanningAPI schema."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -74,7 +75,7 @@ class MotionPlanningAPIWidget(_RobotSchemaWidgetBase):
     _MENU_PREFIX = "Isaac/Motion Planning"
     """Menu prefix used for organizing Motion Planning related menu items."""
 
-    def __init__(self, title: str, collapsed: bool = False):
+    def __init__(self, title: str, collapsed: bool = False) -> None:
         super().__init__(
             title,
             collapsed,
@@ -87,7 +88,7 @@ class MotionPlanningAPIWidget(_RobotSchemaWidgetBase):
             exclusive_classes=(_MOTION_PLANNING_SCHEMA_CLASS,),
         )
 
-    def _prim_has_schema(self, prim) -> bool:
+    def _prim_has_schema(self, prim: object) -> bool:
         """Checks if the prim has the IsaacMotionPlanningAPI schema applied.
 
         Args:
@@ -100,7 +101,7 @@ class MotionPlanningAPIWidget(_RobotSchemaWidgetBase):
             return False
         return MOTION_PLANNING_API_NAME in prim.GetAppliedSchemas()
 
-    def _get_prim(self, prim_path) -> Usd.Prim | None:
+    def _get_prim(self, prim_path: object) -> Usd.Prim | None:
         """Retrieves a prim at the given path if it has the IsaacMotionPlanningAPI schema applied.
 
         Args:
@@ -117,7 +118,7 @@ class MotionPlanningAPIWidget(_RobotSchemaWidgetBase):
                     return prim
         return None
 
-    def _has_exclusive_schema(self, prim) -> bool:
+    def _has_exclusive_schema(self, prim: object) -> bool:
         """Checks if the prim has the exclusive IsaacMotionPlanningAPI schema.
 
         Args:

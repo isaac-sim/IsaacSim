@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from isaacsim.core.utils.stage import traverse_stage
+"""Test menu functionality."""
+
+from isaacsim.core.experimental.utils.stage import get_current_stage
 from isaacsim.test.utils import MenuUITestCase, get_all_menu_paths
 from omni.kit.mainwindow import get_main_window
 from omni.kit.ui_test import get_context_menu
@@ -24,15 +26,19 @@ SENSOR_ROOT_PATH = "Create/Sensors/RTX Lidar"
 class TestMenuAssets(MenuUITestCase):
     """Test class for verifying RTX Lidar sensor menu functionality."""
 
-    async def _test_menu_option(self, test_path):
-        """Test a specific menu option."""
+    async def _test_menu_option(self, test_path: str) -> None:
+        """Test a specific menu option.
+
+        Args:
+            test_path: The menu path to test.
+        """
         await self.menu_click_with_retry(test_path)
         await self.run_timeline_frames(5)
 
         num_prims = 0
         sensor_passed = False
 
-        for prim in traverse_stage():
+        for prim in get_current_stage().Traverse():
             num_prims += 1
             if prim.IsA("OmniLidar"):
                 sensor_passed = True

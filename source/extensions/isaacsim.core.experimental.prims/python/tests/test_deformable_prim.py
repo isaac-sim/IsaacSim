@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test for deformable prim."""
 
 import re
 import sys
@@ -134,6 +136,7 @@ def _define_mesh(stage, path):
 
 
 async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"], **kwargs) -> None:
+    """Populate stage."""
     deformable_case = kwargs.get("deformable_case")
     assert operation == "wrap", "Other operations except 'wrap' are not supported"
     assert deformable_case in [
@@ -185,8 +188,10 @@ async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"
 
 
 class TestDeformablePrim(omni.kit.test.AsyncTestCase):
+    """Test deformable prim."""
+
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
         # auto-volume platform dependent checking
         if sys.platform == "win32":
@@ -199,12 +204,13 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
             self._nepb_nms = (5280, -1, 5280)
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
     def check_backend(self, backend, prim):
+        """Check backend."""
         if backend == "tensor":
             self.assertTrue(prim.is_physics_tensor_entity_valid(), f"Tensor API should be enabled ({backend})")
         elif backend in ["usd", "usdrt", "fabric"]:
@@ -227,6 +233,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         max_num_prims=1,
     )
     async def test_surface_runtime_instance_creation(self, prim, num_prims, device, backend):
+        """Test surface runtime instance creation."""
         DeformablePrim("/World/A_0")
 
     @parametrize(
@@ -239,6 +246,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "surface"},
     )
     async def test_surface_len(self, prim, num_prims, device, backend):
+        """Test surface len."""
         self.assertEqual(len(prim), num_prims, f"Invalid DeformablePrim ({num_prims} prims) len")
 
     @parametrize(
@@ -251,6 +259,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "surface"},
     )
     async def test_surface_properties_and_getters(self, prim, num_prims, device, backend):
+        """Test surface properties and getters."""
         # check backend
         self.check_backend(backend, prim)
         # test cases (properties)
@@ -275,6 +284,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "surface"},
     )
     async def test_surface_element_indices(self, prim, num_prims, device, backend):
+        """Test surface element indices."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -295,6 +305,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "surface"},
     )
     async def test_surface_nodal_positions(self, prim, num_prims, device, backend):
+        """Test surface nodal positions."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -318,6 +329,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "surface"},
     )
     async def test_surface_nodal_velocities(self, prim, num_prims, device, backend):
+        """Test surface nodal velocities."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -340,6 +352,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "surface"},
     )
     async def test_surface_nodal_kinematic_position_targets(self, prim, num_prims, device, backend):
+        """Test surface nodal kinematic position targets."""
         # check backend
         self.check_backend(backend, prim)
         # test cases (surface does not support nodal kinematic targets)
@@ -355,6 +368,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "surface"},
     )
     async def test_surface_physics_materials(self, prim, num_prims, device, backend):
+        """Test surface physics materials."""
         from isaacsim.core.experimental.materials import SurfaceDeformableMaterial
 
         choices = [
@@ -413,6 +427,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         max_num_prims=1,
     )
     async def test_auto_surface_runtime_instance_creation(self, prim, num_prims, device, backend):
+        """Test auto surface runtime instance creation."""
         DeformablePrim("/World/A_0")
 
     @parametrize(
@@ -425,6 +440,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-surface"},
     )
     async def test_auto_surface_len(self, prim, num_prims, device, backend):
+        """Test auto surface len."""
         self.assertEqual(len(prim), num_prims, f"Invalid DeformablePrim ({num_prims} prims) len")
 
     @parametrize(
@@ -437,6 +453,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-surface"},
     )
     async def test_auto_surface_properties_and_getters(self, prim, num_prims, device, backend):
+        """Test auto surface properties and getters."""
         # check backend
         self.check_backend(backend, prim)
         # test cases (properties)
@@ -465,6 +482,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-surface"},
     )
     async def test_auto_surface_element_indices(self, prim, num_prims, device, backend):
+        """Test auto surface element indices."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -485,6 +503,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-surface"},
     )
     async def test_auto_surface_nodal_positions(self, prim, num_prims, device, backend):
+        """Test auto surface nodal positions."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -508,6 +527,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-surface"},
     )
     async def test_auto_surface_nodal_velocities(self, prim, num_prims, device, backend):
+        """Test auto surface nodal velocities."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -530,6 +550,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-surface"},
     )
     async def test_auto_surface_nodal_kinematic_position_targets(self, prim, num_prims, device, backend):
+        """Test auto surface nodal kinematic position targets."""
         # check backend
         self.check_backend(backend, prim)
         # test cases (surface does not support nodal kinematic targets)
@@ -545,6 +566,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-surface"},
     )
     async def test_auto_surface_physics_materials(self, prim, num_prims, device, backend):
+        """Test auto surface physics materials."""
         from isaacsim.core.experimental.materials import SurfaceDeformableMaterial
 
         choices = [
@@ -603,6 +625,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         max_num_prims=1,
     )
     async def test_volume_runtime_instance_creation(self, prim, num_prims, device, backend):
+        """Test volume runtime instance creation."""
         DeformablePrim("/World/A_0")
 
     @parametrize(
@@ -615,6 +638,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "volume"},
     )
     async def test_volume_len(self, prim, num_prims, device, backend):
+        """Test volume len."""
         self.assertEqual(len(prim), num_prims, f"Invalid DeformablePrim ({num_prims} prims) len")
 
     @parametrize(
@@ -627,6 +651,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "volume"},
     )
     async def test_volume_properties_and_getters(self, prim, num_prims, device, backend):
+        """Test volume properties and getters."""
         # check backend
         self.check_backend(backend, prim)
         # test cases (properties)
@@ -651,6 +676,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "volume"},
     )
     async def test_volume_element_indices(self, prim, num_prims, device, backend):
+        """Test volume element indices."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -671,6 +697,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "volume"},
     )
     async def test_volume_nodal_positions(self, prim, num_prims, device, backend):
+        """Test volume nodal positions."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -694,6 +721,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "volume"},
     )
     async def test_volume_nodal_velocities(self, prim, num_prims, device, backend):
+        """Test volume nodal velocities."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -716,6 +744,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "volume"},
     )
     async def test_volume_nodal_kinematic_position_targets(self, prim, num_prims, device, backend):
+        """Test volume nodal kinematic position targets."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -742,6 +771,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "volume"},
     )
     async def test_volume_physics_materials(self, prim, num_prims, device, backend):
+        """Test volume physics materials."""
         from isaacsim.core.experimental.materials import VolumeDeformableMaterial
 
         choices = [
@@ -795,6 +825,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "volume"},
     )
     async def test_volume_element_rotations(self, prim, num_prims, device, backend):
+        """Test volume element rotations."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -817,6 +848,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "volume"},
     )
     async def test_volume_element_gradients(self, prim, num_prims, device, backend):
+        """Test volume element gradients."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -840,6 +872,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "volume"},
     )
     async def test_volume_element_stresses(self, prim, num_prims, device, backend):
+        """Test volume element stresses."""
         from isaacsim.core.experimental.materials import VolumeDeformableMaterial
 
         choices = [
@@ -876,6 +909,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         max_num_prims=1,
     )
     async def test_auto_volume_runtime_instance_creation(self, prim, num_prims, device, backend):
+        """Test auto volume runtime instance creation."""
         DeformablePrim("/World/A_0")
 
     @parametrize(
@@ -888,6 +922,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-volume"},
     )
     async def test_auto_volume_len(self, prim, num_prims, device, backend):
+        """Test auto volume len."""
         self.assertEqual(len(prim), num_prims, f"Invalid DeformablePrim ({num_prims} prims) len")
 
     @parametrize(
@@ -900,6 +935,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-volume"},
     )
     async def test_auto_volume_properties_and_getters(self, prim, num_prims, device, backend):
+        """Test auto volume properties and getters."""
         # check backend
         self.check_backend(backend, prim)
         # test cases (properties)
@@ -928,6 +964,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-volume"},
     )
     async def test_auto_volume_element_indices(self, prim, num_prims, device, backend):
+        """Test auto volume element indices."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -950,6 +987,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-volume"},
     )
     async def test_auto_volume_nodal_positions(self, prim, num_prims, device, backend):
+        """Test auto volume nodal positions."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -975,6 +1013,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-volume"},
     )
     async def test_auto_volume_nodal_velocities(self, prim, num_prims, device, backend):
+        """Test auto volume nodal velocities."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -997,6 +1036,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-volume"},
     )
     async def test_auto_volume_nodal_kinematic_position_targets(self, prim, num_prims, device, backend):
+        """Test auto volume nodal kinematic position targets."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -1023,6 +1063,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-volume"},
     )
     async def test_auto_volume_physics_materials(self, prim, num_prims, device, backend):
+        """Test auto volume physics materials."""
         from isaacsim.core.experimental.materials import VolumeDeformableMaterial
 
         choices = [
@@ -1076,6 +1117,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-volume", "mesh_simplification": False},
     )
     async def test_auto_volume_element_rotations(self, prim, num_prims, device, backend):
+        """Test auto volume element rotations."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -1097,6 +1139,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-volume", "mesh_simplification": False},
     )
     async def test_auto_volume_element_gradients(self, prim, num_prims, device, backend):
+        """Test auto volume element gradients."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -1118,6 +1161,7 @@ class TestDeformablePrim(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"deformable_case": "auto-volume", "mesh_simplification": False},
     )
     async def test_auto_volume_element_stresses(self, prim, num_prims, device, backend):
+        """Test auto volume element stresses."""
         from isaacsim.core.experimental.materials import VolumeDeformableMaterial
 
         choices = [

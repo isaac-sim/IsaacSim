@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,137 +12,86 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""IMU sensor wrapper providing high-level sensor access.
 
-This module provides the IMUSensor class which wraps the ImuSensorBackend
-with a convenient object-oriented interface including frame-based data access.
-"""
+"""IMU sensor runtime providing frame-based data access via the C++ interface."""
+
 from __future__ import annotations
 
-from typing import Any
-
-import carb
 import numpy as np
-import omni.isaac.IsaacSensorSchema as IsaacSensorSchema
-import omni.kit.commands
-from isaacsim.core.experimental.prims import XformPrim
-from isaacsim.core.experimental.utils import prim as prim_utils
 from isaacsim.core.simulation_manager import SimulationManager
-from isaacsim.sensors.experimental.physics.impl.imu_sensor_backend import ImuSensorBackend
+
+from ._sensor_base import _PhysicsSensorRuntime
+from .imu import IMU
+
+_INVALID_IMU_READING = None
 
 
-class IMUSensor(XformPrim):
-    """High-level IMU sensor wrapper with frame-based data access.
+def _get_invalid_imu_reading() -> object:
+    global _INVALID_IMU_READING
+    if _INVALID_IMU_READING is None:
+        from .. import _physics_sensors
 
-    Provides a convenient interface for IMU sensing including automatic
-    sensor creation if the prim doesn't exist, configurable filter widths,
-    and structured frame data output.
+        _INVALID_IMU_READING = _physics_sensors.ImuSensorReading()
+    return _INVALID_IMU_READING
+
+
+class IMUSensor(_PhysicsSensorRuntime):
+    """Runtime wrapper for an Isaac IMU sensor with frame-based data access.
+
+    Wraps an :class:`IMU` authoring object and owns the C++ ``IImuSensor``
+    Carbonite interface. Exposes :meth:`get_data` for a structured per-step
+    dictionary and :meth:`get_sensor_reading` for the raw C++ struct.
 
     Args:
-        prim_path: USD path where the sensor should be located.
-        name: Human-readable name for the sensor.
-        translation: Local translation offset from parent. Cannot be used with position.
-        position: World position. Cannot be used with translation.
-        orientation: Sensor orientation as [w, x, y, z] quaternion.
-        linear_acceleration_filter_size: Rolling average window for acceleration.
-        angular_velocity_filter_size: Rolling average window for angular velocity.
-        orientation_filter_size: Rolling average window for orientation.
-
-    Raises:
-        ValueError: If both position and translation are specified.
-        RuntimeError: If sensor creation fails.
+        path: Either a string USD path to an existing IsaacImuSensor prim, or a
+            pre-built :class:`IMU` authoring object. To create a new prim, use
+            :meth:`IMU.create`.
 
     Example:
 
-        .. code-block:: python
+    .. code-block:: python
 
-            from isaacsim.sensors.experimental.physics import IMUSensor
+        from isaacsim.sensors.experimental.physics import IMU, IMUSensor
 
-            # Create sensor on existing prim
-            sensor = IMUSensor("/World/Robot/body/imu")
+        # Wrap an existing IsaacImuSensor prim
+        sensor = IMUSensor("/World/Robot/body/imu")
 
-            # Or create new sensor with custom parameters
-            sensor = IMUSensor(
+        # Create a new sensor with custom parameters
+        sensor = IMUSensor(
+            IMU.create(
                 "/World/Robot/body/imu",
-                linear_acceleration_filter_size=5
+                linear_acceleration_filter_size=5,
             )
+        )
 
-            # Get current IMU data
-            frame = sensor.get_current_frame()
-            print(f"Linear acceleration: {frame['linear_acceleration']}")
-            print(f"Angular velocity: {frame['angular_velocity']}")
-            print(f"Orientation: {frame['orientation']}")
+        frame = sensor.get_data()
+        print(f"Linear acceleration: {frame['linear_acceleration']}")
     """
 
-    def __init__(
-        self,
-        prim_path: str,
-        name: str | None = "imu_sensor",
-        translation: np.ndarray | None = None,
-        position: np.ndarray | None = None,
-        orientation: np.ndarray | None = None,
-        linear_acceleration_filter_size: int | None = 1,
-        angular_velocity_filter_size: int | None = 1,
-        orientation_filter_size: int | None = 1,
-    ):
-        if position is not None and translation is not None:
-            raise ValueError("Sensor position and translation can't be both specified")
+    _AUTHORING_CLASS = IMU
+    _AUTHORING_ATTR = "_imu"
 
-        # Extract parent path
-        self._body_prim_path = "/".join(prim_path.split("/")[:-1])
-        self._sensor_name = prim_path.split("/")[-1]
-        # Ensure filter sizes are at least 1
-        if linear_acceleration_filter_size is None:
-            linear_acceleration_filter_size = 1
-        if angular_velocity_filter_size is None:
-            angular_velocity_filter_size = 1
-        if orientation_filter_size is None:
-            orientation_filter_size = 1
-        linear_acceleration_filter_size = max(linear_acceleration_filter_size, 1)
-        angular_velocity_filter_size = max(angular_velocity_filter_size, 1)
-        orientation_filter_size = max(orientation_filter_size, 1)
+    @property
+    def imu(self) -> IMU:
+        """Authoring object encapsulated by this sensor.
 
-        prim = prim_utils.get_prim_at_path(prim_path)
-        if prim.IsValid():
-            # Use existing sensor prim
-            self._isaac_sensor_prim = IsaacSensorSchema.IsaacImuSensor(prim)
-            super().__init__(
-                prim_path,
-                positions=position,
-                translations=translation,
-                orientations=orientation,
-                reset_xform_op_properties=True,
-            )
-        else:
-            # Create new sensor prim
-            carb.log_warn(f"Creating a new IMU prim at path {prim_path}")
-            success, self._isaac_sensor_prim = omni.kit.commands.execute(
-                "IsaacSensorExperimentalCreateImuSensor",
-                path="/" + self._sensor_name,
-                parent=self._body_prim_path,
-                linear_acceleration_filter_size=linear_acceleration_filter_size,
-                angular_velocity_filter_size=angular_velocity_filter_size,
-                orientation_filter_size=orientation_filter_size,
-            )
-            if not success:
-                raise RuntimeError("Failed to create IMU sensor prim")
-            super().__init__(
-                prim_path,
-                positions=position,
-                translations=translation,
-                orientations=orientation,
-                reset_xform_op_properties=True,
-            )
+        Returns:
+            The :class:`IMU` instance wrapping the underlying USD prim.
+        """
+        return self._imu
 
-        self._prim = self.prims[0]
-        self._backend: ImuSensorBackend = ImuSensorBackend(prim_path)
+    def _acquire_interface(self) -> object | None:
+        from .extension import get_imu_sensor_interface
 
-        self._current_time = 0.0
+        return get_imu_sensor_interface()
 
-        # Initialize frame data structure with default values
+    def _get_invalid_reading(self) -> object:
+        return _get_invalid_imu_reading()
+
+    def _init_frame(self) -> dict[str, object]:
         orientation_array = np.zeros((4,), dtype=np.float32)
         orientation_array[0] = 1.0  # Identity quaternion [w, x, y, z]
-        self._current_frame: dict[str, object] = {
+        return {
             "time": 0.0,
             "physics_step": 0.0,
             "linear_acceleration": np.zeros((3,), dtype=np.float32),
@@ -150,48 +99,37 @@ class IMUSensor(XformPrim):
             "orientation": orientation_array,
         }
 
-    @property
-    def prim_path(self) -> str:
-        """Get the USD path of this sensor.
-
-        Returns:
-            USD path string.
-        """
-        return self.paths[0]
-
-    def initialize(self, physics_sim_view: Any = None):
-        """Initialize the sensor for simulation.
-
-        This method is provided for API compatibility and currently performs
-        no action as initialization happens automatically.
+    def get_sensor_reading(self, read_gravity: bool = True) -> object:
+        """Get the current IMU sensor reading as the raw C++ struct.
 
         Args:
-            physics_sim_view: Unused. Provided for API compatibility.
-        """
+            read_gravity: Whether to include gravity in the reading.
 
-    def get_current_frame(self, read_gravity: bool = True) -> dict:
+        Returns:
+            The C++ ``ImuSensorReading`` struct directly. Access fields via
+            ``reading.linear_acceleration_x`` / ``_y`` / ``_z``,
+            ``reading.angular_velocity_x`` / ``_y`` / ``_z``, and
+            ``reading.orientation_w`` / ``_x`` / ``_y`` / ``_z`` (no aggregate
+            ``orientation`` accessor — read the four scalar fields). For a
+            ``[w, x, y, z]`` numpy array, use :meth:`get_data` instead.
+        """
+        return self._get_reading(read_gravity)
+
+    def get_data(self, read_gravity: bool = True) -> dict:
         """Get the current IMU sensor data as a structured frame.
 
         Args:
-            read_gravity: If True, include gravity in acceleration readings.
+            read_gravity: If ``True``, include gravity in acceleration readings.
 
         Returns:
             Frame data containing:
-            - "linear_acceleration": Linear acceleration [x, y, z].
-            - "angular_velocity": Angular velocity [x, y, z].
-            - "orientation": Orientation as [w, x, y, z] quaternion.
-            - "time": Simulation time of reading.
-            - "physics_step": Physics step number.
-
-        Example:
-
-        .. code-block:: python
-
-            >>> frame = sensor.get_current_frame()  # doctest: +NO_CHECK
-            >>> frame["orientation"]  # doctest: +NO_CHECK
-            array([1., 0., 0., 0.], dtype=float32)
+                - ``"linear_acceleration"``: Linear acceleration ``[x, y, z]``.
+                - ``"angular_velocity"``: Angular velocity ``[x, y, z]``.
+                - ``"orientation"``: Orientation as ``[w, x, y, z]`` quaternion.
+                - ``"time"``: Simulation time of reading.
+                - ``"physics_step"``: Physics step number.
         """
-        reading = self._backend.get_sensor_reading(read_gravity=read_gravity)
+        reading = self.get_sensor_reading(read_gravity=read_gravity)
 
         if reading.is_valid:
             linear_acceleration = self._current_frame["linear_acceleration"]

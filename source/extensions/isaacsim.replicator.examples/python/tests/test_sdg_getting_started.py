@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+import tempfile
 
 import carb.settings
 import omni.kit
@@ -42,12 +44,14 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
             )
 
     async def test_sdg_getting_started_01(self):
-        import asyncio
         import os
 
         import carb.settings
         import omni.replicator.core as rep
         import omni.usd
+
+        out_dir = tempfile.mkdtemp(prefix="test_sdg_basic_writer_")
+        print(f"Output directory: {out_dir}")
 
         async def run_example_async():
             # Create a new stage and disable capture on play
@@ -69,9 +73,7 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
 
             # Write data using the basic writer with the rgb and bounding box annotators
             backend = rep.backends.get("DiskBackend")
-            out_dir = os.path.join(os.getcwd(), "_out_basic_writer")
             backend.initialize(output_dir=out_dir)
-            print(f"Output directory: {out_dir}")
             writer = rep.writers.get("BasicWriter")
             writer.initialize(backend=backend, rgb=True, bounding_box_2d_tight=True)
             writer.attach(rp)
@@ -91,20 +93,21 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
         await run_example_async()
 
         # Validate the output directory contents
-        out_dir = os.path.join(os.getcwd(), "_out_basic_writer")
         folder_contents_success = validate_folder_contents(
             path=out_dir, expected_counts={"png": 3, "json": 6, "npy": 3}
         )
         self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {out_dir}")
 
     async def test_sdg_getting_started_02(self):
-        import asyncio
         import os
 
         import carb.settings
         import omni.replicator.core as rep
         import omni.usd
         from omni.replicator.core import Writer
+
+        out_dir = tempfile.mkdtemp(prefix="test_sdg_pose_writer_")
+        print(f"Output directory: {out_dir}")
 
         # Create a custom writer to access annotator data
         class MyWriter(Writer):
@@ -166,8 +169,6 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
 
             # Use the pose writer to write the data to disk
             pose_writer = rep.WriterRegistry.get("PoseWriter")
-            out_dir = os.path.join(os.getcwd(), "_out_pose_writer")
-            print(f"Output directory: {out_dir}")
             pose_writer.initialize(output_dir=out_dir, write_debug_images=True)
             pose_writer.attach([rp_top, rp_persp])
 
@@ -196,18 +197,19 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
         await run_example_async()
 
         # Validate the output directory contents
-        out_dir = os.path.join(os.getcwd(), "_out_pose_writer")
         folder_contents_success = validate_folder_contents(path=out_dir, expected_counts={"png": 12, "json": 6})
         self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {out_dir}")
 
     async def test_sdg_getting_started_03(self):
-        import asyncio
         import os
         import random
 
         import carb.settings
         import omni.replicator.core as rep
         import omni.usd
+
+        out_dir = tempfile.mkdtemp(prefix="test_sdg_basic_writer_rand_")
+        print(f"Output directory: {out_dir}")
 
         # Randomize the location of a prim without the graph-based randomizer
         def randomize_location(prim):
@@ -239,9 +241,7 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
 
             # Write data using the basic writer with the rgb and bounding box annotators
             backend = rep.backends.get("DiskBackend")
-            out_dir = os.path.join(os.getcwd(), "_out_basic_writer_rand")
             backend.initialize(output_dir=out_dir)
-            print(f"Output directory: {out_dir}")
             writer = rep.writers.get("BasicWriter")
             writer.initialize(
                 backend=backend, rgb=True, semantic_segmentation=True, colorize_semantic_segmentation=True
@@ -271,12 +271,10 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
         await run_example_async()
 
         # Validate the output directory contents
-        out_dir = os.path.join(os.getcwd(), "_out_basic_writer_rand")
         folder_contents_success = validate_folder_contents(path=out_dir, expected_counts={"png": 6, "json": 3})
         self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {out_dir}")
 
     async def test_sdg_getting_started_04(self):
-        import asyncio
         import os
 
         import carb.settings
@@ -286,6 +284,9 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
         import omni.usd
         from isaacsim.core.experimental.prims import RigidPrim
         from pxr import UsdGeom
+
+        out_dir = tempfile.mkdtemp(prefix="test_sdg_basic_writer_sim_")
+        print(f"Output directory: {out_dir}")
 
         async def run_example_async():
             # Create a new stage and disable capture on play
@@ -317,9 +318,7 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
 
             # Write data using the basic writer with the rgb and bounding box annotators
             backend = rep.backends.get("DiskBackend")
-            out_dir = os.path.join(os.getcwd(), "_out_basic_writer_sim")
             backend.initialize(output_dir=out_dir)
-            print(f"Output directory: {out_dir}")
             writer = rep.writers.get("BasicWriter")
             writer.initialize(
                 backend=backend, rgb=True, semantic_segmentation=True, colorize_semantic_segmentation=True
@@ -384,12 +383,10 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
         await run_example_async()
 
         # Validate the output directory contents
-        out_dir = os.path.join(os.getcwd(), "_out_basic_writer_sim")
         folder_contents_success = validate_folder_contents(path=out_dir, expected_counts={"png": 12, "json": 6})
         self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {out_dir}")
 
     async def test_sdg_getting_started_05(self):
-        import asyncio
         import os
         import time
 
@@ -399,6 +396,8 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
 
         NUM_CUBES = 100
         NUM_CAPTURES = 10
+        test_root = tempfile.mkdtemp(prefix="test_sdg_fabric_")
+        print(f"Test output root: {test_root}")
 
         async def run_example_async(wait_for_render, write_to_fabric):
             print(f"\n[SDG] Running with wait_for_render={wait_for_render}, write_to_fabric={write_to_fabric}")
@@ -428,7 +427,8 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
 
             # Write data using BasicWriter with rgb annotator
             backend = rep.backends.get("DiskBackend")
-            out_dir = os.path.join(os.getcwd(), f"_out_fabric_{write_to_fabric}_wait_{wait_for_render}")
+            out_dir = os.path.join(test_root, f"fabric_{write_to_fabric}_wait_{wait_for_render}")
+            os.makedirs(out_dir)
             backend.initialize(output_dir=out_dir)
             print(f"[SDG] Output directory: {out_dir}")
             writer = rep.writers.get("BasicWriter")
@@ -487,9 +487,9 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
 
         # Test the examples
         await run_examples_async()
-        out_dir_1 = os.path.join(os.getcwd(), "_out_fabric_False_wait_True")
-        out_dir_2 = os.path.join(os.getcwd(), "_out_fabric_False_wait_False")
-        out_dir_3 = os.path.join(os.getcwd(), "_out_fabric_True_wait_False")
+        out_dir_1 = os.path.join(test_root, "fabric_False_wait_True")
+        out_dir_2 = os.path.join(test_root, "fabric_False_wait_False")
+        out_dir_3 = os.path.join(test_root, "fabric_True_wait_False")
 
         # Validate the output directory contents
         for out_dir in [out_dir_1, out_dir_2, out_dir_3]:

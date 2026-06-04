@@ -1,8 +1,5 @@
-API
-===
-
 Python API
-----------
+==========
 
 .. Summary
 
@@ -11,13 +8,13 @@ Python API
 .. autosummary::
     :nosignatures:
 
-    ~_loop.RunLoopRunner
+    ~bindings._loop.RunLoopRunner
 
 |
 
 .. API
 
-.. automodule:: omni.kit.loop._loop
+.. automodule:: omni.kit.loop.bindings._loop
     :members:
     :undoc-members:
     :show-inheritance:

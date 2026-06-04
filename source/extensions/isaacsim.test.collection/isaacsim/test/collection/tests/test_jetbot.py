@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +15,6 @@
 
 """Tests for the NVIDIA JetBot robot simulation including loading, movement, acceleration, braking, spinning, and circular motion behaviors."""
 
-
-import math
-import time
-
 import carb
 import carb.tokens
 import isaacsim.core.experimental.utils.app as app_utils
@@ -32,9 +28,10 @@ import omni.graph.core as og
 import omni.kit.test
 import omni.timeline
 from isaacsim.core.experimental.prims import Articulation
+from isaacsim.core.experimental.utils.stage import open_stage_async
 from isaacsim.storage.native import get_assets_root_path_async
 
-from .robot_helpers import init_robot_sim, open_stage_async, setup_robot_og
+from .robot_helpers import init_robot_sim, setup_robot_og
 
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
@@ -42,7 +39,7 @@ class TestJetBot(omni.kit.test.AsyncTestCase):
     """Tests for the NVIDIA JetBot robot simulation."""
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment with JetBot robot."""
         self._timeline = omni.timeline.get_timeline_interface()
 
@@ -53,7 +50,7 @@ class TestJetBot(omni.kit.test.AsyncTestCase):
 
         # add in jetbot (from nucleus)
         self.usd_path = self._assets_root_path + "/Isaac/Robots/NVIDIA/Jetbot/jetbot.usd"
-        (result, error) = await open_stage_async(self.usd_path)
+        result, error = await open_stage_async(self.usd_path)
         # Make sure the stage loaded
         self.assertTrue(result)
 
@@ -69,8 +66,6 @@ class TestJetBot(omni.kit.test.AsyncTestCase):
             self.graph_path, "left_wheel_joint", "right_wheel_joint", "/jetbot", 0.0335, 0.118
         )
 
-        pass
-
     # After running each test
     async def tearDown(self):
         """Clean up test environment and stop timeline."""
@@ -80,12 +75,9 @@ class TestJetBot(omni.kit.test.AsyncTestCase):
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-        pass
-
     # Actual test, notice it is "async" function, so "await" can be used if needed
     async def test_loading(self):
         """Test that the JetBot robot loads and can move forward."""
-
         stage_utils.delete_prim("/ActionGraph")
         # Start Simulation and wait
         self._timeline.play()
@@ -111,13 +103,10 @@ class TestJetBot(omni.kit.test.AsyncTestCase):
         print("Diff is ", delta)
         self.assertTrue(delta > 0.02)
 
-        pass
-
     # general, slowly building up speed testcase
     # note, jetbot cannot exceed 0.42 m/s
     async def test_accel(self):
         """Test acceleration behavior with gradually increasing velocities."""
-
         odom_velocity = og.Controller.attribute("outputs:linearVelocity", self.odom_node)
         odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)
 
@@ -144,12 +133,9 @@ class TestJetBot(omni.kit.test.AsyncTestCase):
 
         self._timeline.stop()
 
-        pass
-
     # braking from different init speeds
     async def test_brake(self):
         """Test braking behavior from various initial velocities."""
-
         odom_velocity = og.Controller.attribute("outputs:linearVelocity", self.odom_node)
         odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)
 
@@ -183,7 +169,6 @@ class TestJetBot(omni.kit.test.AsyncTestCase):
 
             self._timeline.stop()
             await omni.kit.app.get_app().next_update_async()
-        pass
 
     async def test_spin(self):
         """Test spinning behavior at different angular velocities."""
@@ -209,8 +194,6 @@ class TestJetBot(omni.kit.test.AsyncTestCase):
             self.assertAlmostEqual(curr_ang_vel, angular_velocity, delta=2e-1)
 
         self._timeline.stop()
-
-        pass
 
     # go in circle
     async def test_circle(self):
@@ -238,5 +221,3 @@ class TestJetBot(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(og.DataView.get(odom_ang_vel)[2], angular_velocity, delta=5e-2)
 
         await omni.kit.app.get_app().next_update_async()
-
-        pass

@@ -1,10 +1,10 @@
 [package]
-version = "1.12.0"
+version = "1.15.4"
 category = "Simulation"
 title = "Isaac Sim Core Simulation Manager"
 description = "The Core Simulation Manager extension provides a set of APIs to control and query the simulation's state and the different callbacks available."
 changelog = "docs/CHANGELOG.md"
-readme = "docs/README.md"
+readme = "docs/Overview.md"
 preview_image = "data/preview.png"
 icon = "data/icon.png"
 writeTarget.kit = true
@@ -87,8 +87,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 
@@ -103,6 +105,7 @@ enabled = true
 dependencies = [
     "isaacsim.core.utils",
     "isaacsim.physics.newton",
+    "isaacsim.physics.newton.tensors",
     "isaacsim.test.docstring",
     "isaacsim.test.utils", # Used to suppress NumPy coverage errors
     "omni.hydra.scene_delegate", # required for fabric time to update,
@@ -151,8 +154,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
     ### Extension specific args
     "--/exts/isaacsim.core.simulation_manager/default_engine=newton",
@@ -168,3 +173,6 @@ pythonTests.include = [
 stdoutFailPatterns.exclude = [
     "*[Error] [isaacsim.core.simulation_manager.impl.simulation_manager] Engine 'invalid_engine' not found. Available: PhysX*",
 ]
+
+[documentation]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

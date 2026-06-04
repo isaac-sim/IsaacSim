@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Preferences page for screenshot capture settings."""
+
 import os
 
 import carb.settings
@@ -25,7 +27,7 @@ __all__ = ["ScreenshotPreferences"]
 class ScreenshotPreferences(PreferenceBuilder):
     """Preferences page for configuring screenshot capture."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("Capture Screenshot")
 
         self._settings = carb.settings.get_settings()
@@ -58,7 +60,7 @@ class ScreenshotPreferences(PreferenceBuilder):
                 carb.log_error(f"Failed to create directory {template_path}")
         os.umask(original_umask)
 
-    def build(self):
+    def build(self) -> None:
         """Build the screenshot preferences UI.
 
         Example:
@@ -88,7 +90,7 @@ class ScreenshotPreferences(PreferenceBuilder):
                     # Show Ansel super resolution configuration, only when Ansel enabled
                     self._create_ansel_super_resolution_settings()
 
-    def _add_ansel_settings(self):  # pragma: no cover
+    def _add_ansel_settings(self) -> None:  # pragma: no cover
         """Add Ansel quality settings when Ansel is enabled."""
         # check if Ansel enabled. If not, do not show Ansel settings
         if not self._is_ansel_enabled():
@@ -98,7 +100,7 @@ class ScreenshotPreferences(PreferenceBuilder):
             "Quality", PERSISTENT_SETTINGS_PREFIX + "/exts/omni.ansel/quality", ["Low", "Medium", "High"]
         )
 
-    def _create_ansel_super_resolution_settings(self):  # pragma: no cover
+    def _create_ansel_super_resolution_settings(self) -> None:  # pragma: no cover
         """Add Ansel super resolution settings when available."""
         # check if Ansel enabled. If not, do not show Ansel settings
         if not self._is_ansel_enabled():
@@ -123,7 +125,7 @@ class ScreenshotPreferences(PreferenceBuilder):
         """
         return self._settings.get("/exts/omni.ansel/enable")
 
-    def _on_browse_button_fn(self, owner: ui.Widget):
+    def _on_browse_button_fn(self, owner: ui.Widget) -> None:
         """Handle Browse button clicks for selecting a directory.
 
         Args:
@@ -137,7 +139,7 @@ class ScreenshotPreferences(PreferenceBuilder):
             show_only_folders=True,
         )
 
-    def _on_dir_pick(self, real_path: str):
+    def _on_dir_pick(self, real_path: str) -> None:
         """Handle directory selection from the file importer.
 
         Args:

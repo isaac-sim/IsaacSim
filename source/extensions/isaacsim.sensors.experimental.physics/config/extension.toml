@@ -1,8 +1,8 @@
 [package]
-version = "2.2.0"
+version = "3.0.1"
 category = "Simulation"
 title = "Isaac Sim Physics Sensor Simulation"
-description = "Isaac Sim Physics Sensor Simulation extension provides APIs for physics-based sensors, including Contact Sensor, Effort Sensor, & IMU Sensor."
+description = "Isaac Sim Physics Sensor Simulation extension provides APIs for physics-based sensors, including Contact Sensor, Effort Sensor, IMU Sensor, Joint State Sensor, & Raycast Sensor."
 keywords = ["isaac", "physics", "robotics"]
 changelog = "docs/CHANGELOG.md"
 readme = "docs/Overview.md"
@@ -34,9 +34,6 @@ path = "bin/*.plugin"
 
 [[test]]
 name = "startup"
-dependencies = [
-    "omni.isaac.ml_archive",
-]
 args = [
     "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
 ]
@@ -47,14 +44,17 @@ dependencies = [
     "isaacsim.core.experimental.objects",
     "isaacsim.storage.native",
     "isaacsim.test.utils",
-    "omni.isaac.ml_archive"
 ]
 stdoutFailPatterns.exclude = [
-    '*[Error] [isaacsim.sensors.experimental.physics.impl.commands] Valid parent prim must be selected before creating contact sensor prim.*',
     '*[Error] [isaacsim.sensors.physics.plugin] Imu Sensor does not exist*',
     '*[Error] [isaacsim.sensors.physics.plugin] Contact Sensor does not exist*',
     '*parent prim is missing contact report API*',
     '*The NumPy module was reloaded*',
+    '*[Error] [isaacsim.sensors.experimental.physics.plugin] IsaacRaycastSensor*numRays*Sensor disabled*',
+    '*[Error] [isaacsim.sensors.experimental.physics.plugin] IsaacRaycastSensor*rayOrigins length*numRays*Sensor disabled*',
+    '*[Error] [isaacsim.sensors.experimental.physics.plugin] IsaacRaycastSensor*rayDirections length*numRays*Sensor disabled*',
+    '*[Error] [isaacsim.sensors.experimental.physics.plugin] IsaacRaycastSensor*rayTimeOffsets length*numRays*Sensor disabled*',
+    '*[Error] [isaacsim.sensors.experimental.physics.plugin] IsaacRaycastSensor*minRange*maxRange*Sensor disabled*',
 ]
 args = [
     "--enable",
@@ -97,8 +97,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 cppTests.libraries = [
@@ -112,14 +114,17 @@ timeout = 900
 dependencies = [
     "isaacsim.core.experimental.objects",
     "isaacsim.test.utils",
-    "omni.isaac.ml_archive"
 ]
 stdoutFailPatterns.exclude = [
-    '*[Error] [isaacsim.sensors.experimental.physics.impl.commands] Valid parent prim must be selected before creating contact sensor prim.*',
     '*[Error] [isaacsim.sensors.physics.plugin] Imu Sensor does not exist*',
     '*[Error] [isaacsim.sensors.physics.plugin] Contact Sensor does not exist*',
     '*parent prim is missing contact report API*',
     '*The NumPy module was reloaded*',
+    '*[Error] [isaacsim.sensors.experimental.physics.plugin] IsaacRaycastSensor*numRays*Sensor disabled*',
+    '*[Error] [isaacsim.sensors.experimental.physics.plugin] IsaacRaycastSensor*rayOrigins length*numRays*Sensor disabled*',
+    '*[Error] [isaacsim.sensors.experimental.physics.plugin] IsaacRaycastSensor*rayDirections length*numRays*Sensor disabled*',
+    '*[Error] [isaacsim.sensors.experimental.physics.plugin] IsaacRaycastSensor*rayTimeOffsets length*numRays*Sensor disabled*',
+    '*[Error] [isaacsim.sensors.experimental.physics.plugin] IsaacRaycastSensor*minRange*maxRange*Sensor disabled*',
 ]
 
 args = [
@@ -163,7 +168,12 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
+
+[documentation]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

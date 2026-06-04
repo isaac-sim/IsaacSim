@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test simulation time stepping with various physics and rendering rates."""
 
 import math
 import sys
@@ -49,6 +51,8 @@ simulation_context.initialize_physics()
 
 
 class TimeStepTester(unittest.TestCase):
+    """Track and verify physics and rendering step counts and dt values."""
+
     def __init__(self):
         self.physics_steps = 0
         self.render_steps = 0
@@ -56,28 +60,33 @@ class TimeStepTester(unittest.TestCase):
         self.render_dt = 1.0 / 60.0
 
     def step_callback(self, step_size):
+        """Record a physics step with the given step size."""
         print("simulate with step: ", step_size)
         self.physics_steps = self.physics_steps + 1
         self.physics_dt = step_size
 
     def render_callback(self, event):
+        """Record a render step with the dt from the event payload."""
         print("update app with step: ", event.payload["dt"])
         self.render_steps = self.render_steps + 1
         self.render_dt = event.payload["dt"]
 
     def check_steps(self, physics_steps, render_steps):
+        """Assert that recorded step counts match expected values."""
         if physics_steps != self.physics_steps:
             self.assertAlmostEqual(physics_steps, self.physics_steps)
         if render_steps != self.render_steps:
             self.assertAlmostEqual(render_steps, self.render_steps)
 
     def check_dt(self, physics_dt, render_dt):
+        """Assert that recorded dt values match expected values."""
         if physics_dt != self.physics_dt:
             self.assertAlmostEqual(physics_dt, self.physics_dt)
         if render_dt != self.render_dt:
             self.assertAlmostEqual(render_dt, self.render_dt)
 
     def reset_values(self):
+        """Reset all tracked step counts and dt values to defaults."""
         self.physics_steps = 0
         self.render_steps = 0
         self.physics_dt = 1.0 / 60.0

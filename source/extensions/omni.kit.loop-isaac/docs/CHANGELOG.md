@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0] - 2026-04-09
+### Removed
+- Removed `set_next_simulation_time` API and `SWHExternalSimulationTime` event parameter. Multi-tick simulation time is now communicated via the `/ExternalSimulationTime` Fabric prim instead.
+
+## [1.5.1] - 2026-03-26
+### Changed
+- Moved Python binding module to `bindings/` subdirectory
+
 ## [1.5.0] - 2026-03-04
 ### Changed
 - Added python_api.md

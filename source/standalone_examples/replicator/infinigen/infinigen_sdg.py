@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Generate synthetic datasets using infinigen (https://infinigen.org/) generated environments."""
-
 
 import argparse
 import json
@@ -173,6 +172,7 @@ from isaacsim.core.utils.viewports import set_camera_view
 
 # Run the SDG pipeline on the scenarios
 def run_sdg(config):
+    """Run the synthetic data generation pipeline on the configured scenarios."""
     # Load the config parameters
     env_config = config.get("environments", {})
     env_urls = infinigen_utils.get_usd_paths(

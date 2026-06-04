@@ -1,0 +1,55 @@
+---
+description: Prefer isaacsim.core.experimental APIs over direct USD (pxr) when creating or manipulating prims, physics, or xforms
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Prefer isaacsim.core.experimental for USD Operations
+
+When writing Python code that deals with USD attributes, prims, physics, or xforms, use APIs from `isaacsim.core.experimental.*` when an equivalent exists instead of re-implementing with direct USD (pxr) calls.
+
+## Principle
+
+Prefer `isaacsim.core.experimental.*` over direct pxr USD for creating or manipulating prims, geometry, physics, transforms, and stage operations.
+Apply this rule when the code is USD-related; do not force these APIs in non-USD Python code.
+
+## Prerequisite
+
+If you adopt `isaacsim.core.experimental.*`, `isaacsim.core.simulation_manager`, or `isaacsim.core.rendering_manager`
+imports in an extension, ensure the corresponding dependencies are declared in that extension's `config/extension.toml`.
+
+## Preferred namespaces
+
+- **Objects** (`isaacsim.core.experimental.objects`): `Cube`, `GroundPlane`, and other shapes/lights for creating geometry with size and position in one go.
+- **Prims** (`isaacsim.core.experimental.prims`): `RigidPrim`, `GeomPrim`, `XformPrim` for physics, collision, and transforms instead of `UsdPhysics.RigidBodyAPI`, `UsdGeom.Xformable` plus translate/scale ops, etc.
+- **Utils** (`isaacsim.core.experimental.utils`): `stage` (e.g. `create_new_stage_async`, `get_current_stage`, `define_prim`, `delete_prim`), `prim`, `transform`, `xform` instead of raw `stage.DefinePrim` and manual xform ops where wrappers exist.
+
+## Avoid / use instead
+
+**Rigid body cube with position:**
+
+- **Avoid**: `UsdGeom.Cube.Define(stage, path)` + `CreateSizeAttr()` + `UsdPhysics.RigidBodyAPI.Apply(prim)` + `UsdGeom.Xformable(prim).AddTranslateOp().Set(...)`
+- **Use**: `Cube(paths=path, sizes=..., positions=...)` then `GeomPrim(paths=path, apply_collision_apis=True)` and `RigidPrim(paths=path, masses=[...])`. Use `XformPrim(paths=path, ...)` for transform-only manipulation if needed.
+
+**Defining prims by type:**
+
+- **Avoid**: Manual `stage.DefinePrim(path, "Xform")` or defining prims by type when a higher-level object exists.
+- **Use**: `stage_utils.define_prim(path, type_name=...)` or the appropriate object/prim class from experimental.
+
+**Physics and render timing / gravity:**
+
+- **Avoid**: Setting physics dt or gravity by directly editing `UsdPhysics.Scene` attributes in Python when manager wrappers are available.
+- **Use**:
+  - `SimulationManager.setup_simulation(dt=...)` for common simulation setup.
+  - `PhysicsScene("/World/physicsScene").set_dt(...)` and `PhysicsScene("/World/physicsScene").set_gravity(...)` for
+    physics-scene settings.
+  - `RenderingManager.set_dt(...)` for rendering timestep / cadence.
+- **Note**: Prefer scene wrappers such as `PhysicsScene` over deprecated `SimulationManager.set_physics_dt(...)` /
+  `SimulationManager.get_physics_dt(...)` when writing new code.
+
+## Exception
+
+When there is no higher-level API for an operation, direct USD (pxr) is acceptable. This includes schema-specific
+attributes or behaviors not currently exposed by `isaacsim.core.experimental.*`, `isaacsim.core.simulation_manager`,
+or `isaacsim.core.rendering_manager`. Prefer adding a short comment that no wrapper API exists so future refactors are
+easier.

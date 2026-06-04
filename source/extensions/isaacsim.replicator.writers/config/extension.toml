@@ -1,5 +1,5 @@
 [package]
-version = "1.4.0"
+version = "1.5.3"
 category = "SyntheticData"
 title = "Isaac Sim Replicator Writers"
 description = "The extension provides various custom Replicator based writers for Synthetic Data Generation (SDG) workflows. The writers are registered with Replicator at extension startup."
@@ -13,7 +13,7 @@ writeTarget.kit = true
 writeTarget.platform = true # Build separate extensions for Windows and Linux so appropriate libraries are bundled
 
 [dependencies]
-"isaacsim.core.api" = {}
+"isaacsim.core.experimental.utils" = {}
 "omni.graph" = {}
 "omni.graph.core" = {}
 "omni.replicator.core" = {}
@@ -28,9 +28,6 @@ exclude = ["Ogn*Database.py"]
 
 [[test]]
 name = "startup"
-dependencies = [
-    "omni.isaac.ml_archive",
-]
 args = [
     "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
 ]
@@ -38,7 +35,7 @@ args = [
 [[test]]
 dependencies = [
     "isaacsim.test.utils",
-    "omni.isaac.ml_archive"
+    "omni.kit.viewport.window",
 ]
 
 "filter:platform"."windows-x86_64".pythonTests.exclude = [
@@ -87,8 +84,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 
@@ -96,7 +95,7 @@ args = [
 name = "test_multiple_cameras_writer"
 dependencies = [
     "isaacsim.test.utils",
-    "omni.isaac.ml_archive"
+    "omni.kit.viewport.window",
 ]
 
 "filter:platform"."windows-x86_64".pythonTests.include = [
@@ -149,8 +148,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 
@@ -158,7 +159,7 @@ args = [
 name = "test_single_camera_writer"
 dependencies = [
     "isaacsim.test.utils",
-    "omni.isaac.ml_archive"
+    "omni.kit.viewport.window",
 ]
 
 "filter:platform"."windows-x86_64".pythonTests.include = [
@@ -211,8 +212,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 

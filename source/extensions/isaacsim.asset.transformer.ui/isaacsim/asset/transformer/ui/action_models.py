@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -78,12 +78,20 @@ class RuleTypeItem(ui.AbstractItem):
 
     @property
     def rule_type(self) -> str:
-        """Fully-qualified class name of the rule."""
+        """Fully-qualified class name of the rule.
+
+        Returns:
+            The rule type class name.
+        """
         return self._rule_type
 
     @property
     def rule_name(self) -> str:
-        """Short display name derived from the class name."""
+        """Short display name derived from the class name.
+
+        Returns:
+            The rule name.
+        """
         return self._rule_name
 
     @rule_name.setter
@@ -92,7 +100,11 @@ class RuleTypeItem(ui.AbstractItem):
 
     @property
     def package(self) -> str:
-        """Extension/package name that provides this rule."""
+        """Extension/package name that provides this rule.
+
+        Returns:
+            The package name.
+        """
         return self._package
 
     def get_value(self, column_id: int) -> str:
@@ -134,7 +146,11 @@ class RuleTypeListModel(ui.AbstractItemModel):
 
     @property
     def selection(self) -> RuleTypeItem | None:
-        """Currently selected rule-type item, or None."""
+        """Currently selected rule-type item, or None.
+
+        Returns:
+            The selected rule-type item, or None if no selection.
+        """
         return self._selection
 
     @selection.setter
@@ -246,6 +262,7 @@ class RuleTypeItemDelegate(ui.AbstractItemDelegate):
     """Delegate that renders rule-type rows with *Rule Name* and *Package* columns."""
 
     _HEADERS = ["Rule Name", "Package"]
+    """Column header labels for the rule type dropdown TreeView."""
 
     def build_branch(
         self,
@@ -264,7 +281,6 @@ class RuleTypeItemDelegate(ui.AbstractItemDelegate):
             level: Nesting depth.
             expanded: Whether the item is expanded.
         """
-        pass
 
     def build_header(self, column_id: int = 0) -> None:
         """Build the column header label.
@@ -312,10 +328,15 @@ class RuleTypeSearchWidget:
 
     # Style constants matching Kit's NvidiaDark ComboBox theme.
     _BG = 0xFF23211F
+    """Background color value for the dropdown widget styling."""
     _TEXT = 0xFFD5D5D5
+    """Text color value for the dropdown widget styling."""
     _ARROW = 0xFF9E9E9E
+    """Arrow color value for the dropdown widget styling."""
     _BORDER_RADIUS = 5
+    """Border radius value for the dropdown widget styling."""
     _FONT_SIZE = 14.0
+    """Font size value for the dropdown widget styling."""
 
     def __init__(
         self,
@@ -373,7 +394,11 @@ class RuleTypeSearchWidget:
 
     @property
     def selected_rule_type(self) -> str:
-        """FQCN of the currently selected rule type, or empty string."""
+        """FQCN of the currently selected rule type, or empty string.
+
+        Returns:
+            FQCN of the currently selected rule type, or empty string if no rule is selected.
+        """
         sel = self._list_model.selection
         return sel.rule_type if sel else ""
 
@@ -600,21 +625,37 @@ class ActionProtocol(Protocol):
 
     This allows both ``PLACEHOLDER_BaseActionItem`` and real
     ``AssetTransformerAction`` subclasses to be used interchangeably in the UI.
+
+    Args:
+        *args: Additional positional arguments.
+        **kwargs: Additional keyword arguments.
     """
 
     @property
     def name(self) -> str:
-        """Human-readable name of this action."""
+        """Human-readable name of this action.
+
+        Returns:
+            The action's display name.
+        """
         ...
 
     @property
     def model(self) -> ui.AbstractValueModel:
-        """Boolean value model tracking the enabled state."""
+        """Boolean value model tracking the enabled state.
+
+        Returns:
+            The boolean value model for the enabled state.
+        """
         ...
 
     @property
     def enabled(self) -> bool:
-        """Whether this action is enabled."""
+        """Whether this action is enabled.
+
+        Returns:
+            True if the action is enabled.
+        """
         ...
 
     @enabled.setter
@@ -656,6 +697,7 @@ class PLACEHOLDER_BaseActionItem:  # noqa: N801
 
     # Type identifier for serialization - real actions should override this
     ACTION_TYPE = "PLACEHOLDER_BaseActionItem"
+    """Type identifier for serialization - real actions should override this."""
 
     def __init__(
         self,
@@ -663,7 +705,7 @@ class PLACEHOLDER_BaseActionItem:  # noqa: N801
         enabled: bool = True,
         example_option: str = "",
         feature_enabled: bool = False,
-    ):
+    ) -> None:
         self.__name = name
         self.__model = ui.SimpleBoolModel()
         self.__model.set_value(enabled)
@@ -715,17 +757,29 @@ class PLACEHOLDER_BaseActionItem:  # noqa: N801
 
     @property
     def name(self) -> str:
-        """Human-readable name of this action."""
+        """Human-readable name of this action.
+
+        Returns:
+            The action name.
+        """
         return self.__name
 
     @property
     def model(self) -> ui.AbstractValueModel:
-        """Boolean value model tracking the enabled state."""
+        """Boolean value model tracking the enabled state.
+
+        Returns:
+            The boolean value model for the enabled state.
+        """
         return self.__model
 
     @property
     def enabled(self) -> bool:
-        """Whether this action is enabled."""
+        """Whether this action is enabled.
+
+        Returns:
+            True if the action is enabled.
+        """
         return self.__model.get_value_as_bool()
 
     @enabled.setter
@@ -785,6 +839,7 @@ class RuleActionItem:
     """
 
     ACTION_TYPE = "RuleActionItem"
+    """Type identifier for serialization."""
 
     def __init__(self, spec: RuleSpec, registry: RuleRegistry | None = None) -> None:
         self._spec = spec
@@ -930,7 +985,9 @@ class RuleActionItem:
     # -- list / dict parameter editors --------------------------------------
 
     _EDITOR_ICON = 15
+    """Icon size in pixels for add/remove buttons in parameter editors."""
     _EDITOR_BTN_STYLE: dict = {"padding": 2, "margin": 0}
+    """Style dictionary for icon buttons with minimal padding and margin."""
 
     @staticmethod
     def _icon_btn(url: str, tooltip: str, clicked_fn: Callable) -> None:
@@ -1028,7 +1085,7 @@ class RuleActionItem:
             mdl = ui.SimpleStringModel()
             mdl.set_value(key)
 
-            def _on_rename(m, old=key):
+            def _on_rename(m: ui.SimpleStringModel, old: str = key) -> None:
                 new = m.get_value_as_string()
                 if new == old or new in data:
                     return
@@ -1085,6 +1142,7 @@ class RuleActionItem:
         int: (ui.SimpleIntModel, lambda v: int(v or 0), "get_value_as_int", ui.IntField, {}),
         float: (ui.SimpleFloatModel, lambda v: float(v or 0), "get_value_as_float", ui.FloatField, {}),
     }
+    """Mapping of Python types to their corresponding UI model class, converter function, getter method name, widget class, and widget kwargs for creating scalar parameter editors."""
 
     def _build_scalar_field(self, name: str, param_type: type, value: object) -> None:
         """Create a model + widget for a scalar parameter, wired to ``_apply_param_value``.
@@ -1136,12 +1194,20 @@ class RuleActionItem:
 
     @property
     def name_model(self) -> ui.AbstractValueModel:
-        """Editable model for the rule name (used by the header row)."""
+        """Editable model for the rule name (used by the header row).
+
+        Returns:
+            The name model for the rule.
+        """
         return self._name_model
 
     @property
     def is_rule_type_missing(self) -> bool:
-        """True when the configured rule type is not found in the registry."""
+        """True when the configured rule type is not found in the registry.
+
+        Returns:
+            Whether the rule type is missing from the registry.
+        """
         return bool(self._spec.type) and self._registry.get(self._spec.type) is None
 
     def build_ui(self) -> None:
@@ -1210,17 +1276,29 @@ class RuleActionItem:
 
     @property
     def name(self) -> str:
-        """Human-readable name of this rule action."""
+        """Human-readable name of this rule action.
+
+        Returns:
+            The action name.
+        """
         return self._spec.name
 
     @property
     def model(self) -> ui.AbstractValueModel:
-        """Boolean value model tracking the enabled state."""
+        """Boolean value model tracking the enabled state.
+
+        Returns:
+            The value model for the enabled state.
+        """
         return self._enabled_model
 
     @property
     def enabled(self) -> bool:
-        """Whether this action is enabled."""
+        """Whether this action is enabled.
+
+        Returns:
+            True if the action is enabled.
+        """
         return self._enabled_model.get_value_as_bool()
 
     @enabled.setter
@@ -1281,7 +1359,11 @@ class ActionItemValueModel(ui.AbstractValueModel):
 
     @property
     def as_string(self) -> str:
-        """String representation of the wrapped action (its name)."""
+        """String representation of the wrapped action (its name).
+
+        Returns:
+            The action name.
+        """
         return self.__action.name
 
     @as_string.setter

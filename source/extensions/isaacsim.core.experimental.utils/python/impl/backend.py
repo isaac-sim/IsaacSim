@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,15 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Functions for selecting and managing the supported simulation backends.
-"""
+"""Functions for selecting and managing the supported simulation backends."""
 
 from __future__ import annotations
 
 import contextlib
 import threading
-from typing import Generator, Literal
+from collections.abc import Generator
+from enum import Enum
+from typing import Literal
 
 import carb
 
@@ -29,9 +29,75 @@ _context = threading.local()  # thread-local storage to handle nested contexts a
 _fsd_enabled = carb.settings.get_settings().get_as_bool("/app/useFabricSceneDelegate")
 
 
+class SimStateMode(str, Enum):
+    """Mode for SimState backend integration with articulation data."""
+
+    DISABLED = "disabled"
+    """SimState is not used; existing backend selection applies (default)."""
+
+    EXCLUSIVE = "exclusive"
+    """SimState replaces the normal backend; data only goes to SimStateStorage."""
+
+    MIRROR = "mirror"
+    """SimState runs in parallel; data goes to both SimStateStorage AND the normal backend."""
+
+
+def get_simstate_mode() -> SimStateMode:
+    """Get the current SimState mode from context manager or application settings.
+
+    The mode is determined using the following priority:
+
+    1. **Context manager override**: If ``use_backend("simstate")`` is active,
+       EXCLUSIVE mode is used regardless of the application setting.
+       This allows programmatic control for specific code blocks.
+
+    2. **Application setting**: Otherwise, the ``/isaacsim/articulation/simStateMode``
+       setting is used. Valid values are ``"disabled"``, ``"exclusive"``, and ``"mirror"``.
+
+    3. **Default**: If the setting is not configured or invalid, DISABLED is used,
+       which preserves the original tensor/usd backend behavior.
+
+    Returns:
+        The current SimState mode.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> import isaacsim.core.experimental.utils.backend as backend_utils
+        >>>
+        >>> # Check the current mode (from setting)
+        >>> mode = backend_utils.get_simstate_mode()
+        >>> if mode == backend_utils.SimStateMode.MIRROR:
+        ...     print("SimState is running in mirror mode")
+        >>>
+        >>> # Override with context manager for a specific block
+        >>> with backend_utils.use_backend("simstate"):
+        ...     # Forces EXCLUSIVE mode, regardless of the setting
+        ...     pass
+    """
+    # Priority 1: Check if "simstate" backend is explicitly set via context manager.
+    # This allows code to programmatically override the application setting for
+    # specific operations. The context manager always triggers EXCLUSIVE mode
+    # (not MIRROR) because wrapping code implies redirecting those operations.
+    if getattr(_context, "backend", None) == "simstate":
+        return SimStateMode.EXCLUSIVE
+
+    # Priority 2: Use the application setting to determine the mode.
+    # This allows app-wide configuration via .kit files:
+    #   [settings.isaacsim.articulation]
+    #   simStateMode = "mirror"  # or "exclusive" or "disabled"
+    mode_str = carb.settings.get_settings().get("/isaacsim/articulation/simStateMode") or "disabled"
+    try:
+        return SimStateMode(mode_str.lower())
+    except ValueError:
+        carb.log_warn(f"Invalid simStateMode '{mode_str}', falling back to 'disabled'")
+        return SimStateMode.DISABLED
+
+
 @contextlib.contextmanager
 def use_backend(
-    backend: Literal["usd", "usdrt", "fabric", "tensor"],
+    backend: Literal["usd", "usdrt", "fabric", "tensor", "simstate"],
     *,
     raise_on_unsupported: bool = False,
     raise_on_fallback: bool = False,

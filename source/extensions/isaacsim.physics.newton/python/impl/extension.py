@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Newton physics simulation extension for Isaac Sim."""
 
 from __future__ import annotations
@@ -107,7 +108,7 @@ def get_available_physics_engines(verbose: bool = False) -> list[tuple[str, bool
 class NewtonSimExtension(omni.ext.IExt):
     """Newton physics simulation extension for Isaac Sim."""
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize the extension when it is loaded.
 
         Args:
@@ -155,7 +156,7 @@ class NewtonSimExtension(omni.ext.IExt):
                 f"[isaacsim.physics.newton] Failed to register Newton (solver: {cfg.solver_cfg.solver_type})"
             )
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up resources when the extension is unloaded."""
         global _newton_stage
 

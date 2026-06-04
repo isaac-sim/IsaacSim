@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +15,7 @@
 
 """Interactive multi-robot demonstration extension showcasing simultaneous operation of different robot types."""
 
-
 from isaacsim.examples.interactive.robo_party.robo_party import RoboParty
 from isaacsim.examples.interactive.robo_party.robo_party_extension import RoboPartyExtension
 
-__all__ = ["RoboParty"]
+__all__ = ["RoboParty", "RoboPartyExtension"]

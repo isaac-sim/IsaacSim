@@ -35,13 +35,26 @@ def _normalise_layer(layer: Sdf.Layer) -> str:
     The ``doc`` field accumulates "Generated from Composed Stage of root
     layer ..." entries that embed absolute paths, so it legitimately
     differs between consecutive runs.  Everything else must match.
+
+    Args:
+        layer: The USD layer to normalize.
+
+    Returns:
+        The normalized USDA text.
     """
     layer.documentation = ""
     return layer.ExportToString()
 
 
 def _collect_layers(root_dir: str) -> dict[str, str]:
-    """Return ``{relative_path: normalised_usda}`` for every USD file under *root_dir*."""
+    """Return ``{relative_path: normalised_usda}`` for every USD file under *root_dir*.
+
+    Args:
+        root_dir: The root directory to search for USD files.
+
+    Returns:
+        A mapping from relative file path to normalised USDA text.
+    """
     result: dict[str, str] = {}
     for dirpath, _, filenames in os.walk(root_dir):
         for fn in sorted(filenames):
@@ -55,7 +68,17 @@ def _collect_layers(root_dir: str) -> dict[str, str]:
 
 
 def _diff_detail(rel: str, a: str, b: str, context: int = 2) -> str:
-    """Return a human-readable description of the first difference between *a* and *b*."""
+    """Return a human-readable description of the first difference between *a* and *b*.
+
+    Args:
+        rel: Relative path for the file being compared.
+        a: The first text to compare.
+        b: The second text to compare.
+        context: Number of context lines around the difference.
+
+    Returns:
+        A human-readable description of the first difference.
+    """
     lines_a = a.splitlines()
     lines_b = b.splitlines()
     line_no = 0
@@ -87,23 +110,28 @@ def _diff_detail(rel: str, a: str, b: str, context: int = 2) -> str:
 class TestProfileIdempotency(omni.kit.test.AsyncTestCase):
     """Run the full Isaac Sim profile twice and assert stable output."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Initialise temp-directory tracking and success flag."""
         self._dirs: list[str] = []
         self._success = False
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Remove temp directories on success; keep them on failure for inspection."""
         if self._success:
             for d in self._dirs:
                 shutil.rmtree(d, ignore_errors=True)
 
     def _tmpdir(self) -> str:
+        """Create a unique temp directory and track it for cleanup on success.
+
+        Returns:
+            Absolute path to the new directory.
+        """
         d = tempfile.mkdtemp(prefix="asset_transformer_rules_test_profile_idempotency_")
         self._dirs.append(d)
         return d
 
-    async def test_double_transform_produces_identical_output(self):
+    async def test_double_transform_produces_identical_output(self) -> None:
         """Transform ur10e_shoulder twice; the second output must match the first."""
         errors: list[str] = []
 
@@ -113,7 +141,7 @@ class TestProfileIdempotency(omni.kit.test.AsyncTestCase):
         # -- Run 1: original asset -------------------------------------------
         out1 = self._tmpdir()
         report1 = AssetTransformerManager().run(
-            input_stage_path=_UR10E_SHOULDER_USD,
+            input_stage=_UR10E_SHOULDER_USD,
             profile=profile,
             package_root=out1,
         )
@@ -132,7 +160,7 @@ class TestProfileIdempotency(omni.kit.test.AsyncTestCase):
         # -- Run 2: re-transform run-1 output --------------------------------
         out2 = self._tmpdir()
         report2 = AssetTransformerManager().run(
-            input_stage_path=run1_output,
+            input_stage=run1_output,
             profile=profile,
             package_root=out2,
         )

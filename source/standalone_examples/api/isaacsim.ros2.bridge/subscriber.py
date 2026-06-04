@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,17 +13,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Demonstrate ROS 2 subscriber controlling a cube in simulation."""
+
+import argparse
+
 from isaacsim import SimulationApp
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--test", default=False, action="store_true", help="Run in test mode")
+args, _ = parser.parse_known_args()
 
 simulation_app = SimulationApp({"renderer": "RealTimePathTracing", "headless": False})
 
+import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
 import omni
-from isaacsim.core.api import World
-from isaacsim.core.api.objects import VisualCuboid
-from isaacsim.core.utils.extensions import enable_extension
+from isaacsim.core.experimental.objects import Cube, DistantLight, GroundPlane
+from isaacsim.core.simulation_manager import SimulationManager
 
 # enable ROS2 bridge extension
-enable_extension("isaacsim.ros2.bridge")
+app_utils.enable_extension("isaacsim.ros2.bridge")
 
 simulation_app.update()
 
@@ -36,46 +45,62 @@ from std_msgs.msg import Empty
 
 
 class Subscriber(Node):
+    """ROS 2 subscriber node that moves a cube on message receipt."""
+
     def __init__(self):
         super().__init__("tutorial_subscriber")
 
         # setting up the world with a cube
-        self.timeline = omni.timeline.get_timeline_interface()
-        self.ros_world = World(stage_units_in_meters=1.0)
-        self.ros_world.scene.add_default_ground_plane()
+        stage_utils.set_stage_units(meters_per_unit=1.0)
+        GroundPlane("/World/GroundPlane")
+        DistantLight("/World/DistantLight").set_intensities(intensities=[3000])
+
         # add a cube in the world
-        cube_path = "/cube"
-        self.ros_world.scene.add(
-            VisualCuboid(prim_path=cube_path, name="cube_1", position=np.array([0, 0, 10]), size=0.2)
+        self.cube = Cube(
+            paths="/cube",
+            positions=np.array([[0, 0, 0.10]]),
+            sizes=0.2,
+            colors="red",
         )
-        self._cube_position = np.array([0, 0, 0])
+        self._cube_position = np.array([[0, 0, 0.10]])
 
         # setup the ROS2 subscriber here
         self.ros_sub = self.create_subscription(Empty, "move_cube", self.move_cube_callback, 10)
-        self.ros_world.reset()
+
+        SimulationManager.setup_simulation(dt=1.0 / 60.0, device="cpu")
 
     def move_cube_callback(self, data):
+        """Set a new random cube position on message receipt."""
         # callback function to set the cube position to a new one upon receiving a (empty) ROS2 message
-        if self.ros_world.is_playing():
-            self._cube_position = np.array([np.random.rand() * 0.40, np.random.rand() * 0.40, 0.10])
+        if app_utils.is_playing():
+            self._cube_position = np.array([[np.random.rand() * 0.40, np.random.rand() * 0.40, 0.10]])
 
     def run_simulation(self):
-        self.timeline.play()
+        """Run the simulation loop with ROS 2 message handling."""
+        app_utils.play()
+        simulation_app.update()
         reset_needed = False
+        frame_count = 0
         while simulation_app.is_running():
-            self.ros_world.step(render=True)
+            simulation_app.update()
             rclpy.spin_once(self, timeout_sec=0.0)
-            if self.ros_world.is_stopped() and not reset_needed:
+            if not app_utils.is_playing() and not reset_needed:
                 reset_needed = True
-            if self.ros_world.is_playing():
+            if app_utils.is_playing():
                 if reset_needed:
-                    self.ros_world.reset()
+                    app_utils.stop()
+                    app_utils.update_app(steps=5)
+                    app_utils.play()
+                    app_utils.update_app(steps=5)
                     reset_needed = False
                 # the actual setting the cube pose is done here
-                self.ros_world.scene.get_object("cube_1").set_world_pose(self._cube_position)
+                self.cube.set_world_poses(positions=self._cube_position)
+            frame_count += 1
+            if args.test and frame_count >= 10:
+                break
 
         # Cleanup
-        self.timeline.stop()
+        app_utils.stop()
         self.destroy_node()
         simulation_app.close()
 

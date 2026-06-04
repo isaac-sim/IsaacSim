@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Benchmark humanoid robot simulation performance."""
 
 import argparse
 
@@ -138,7 +140,7 @@ timeline = omni.timeline.get_timeline_interface()
 timeline.play()
 omni.kit.app.get_app().update()
 
-benchmark.set_phase("benchmark")
+benchmark.set_phase("benchmark", warmup_frames=15)
 robots.set_dof_position_targets(positions=target_positions_limit0_rad, dof_indices=dof_index)
 # Move elbow joint between limits  - switch every 100 frames
 for i in range(0, n_frames):

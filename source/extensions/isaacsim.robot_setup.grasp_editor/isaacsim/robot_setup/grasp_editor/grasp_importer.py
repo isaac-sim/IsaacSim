@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,12 +15,11 @@
 
 """Utilities for importing and managing grasp specifications from isaac_grasp YAML files."""
 
-
 from typing import List, Tuple
 
 import carb
+import isaacsim.core.experimental.utils.transform as transform_utils
 import numpy as np
-from isaacsim.core.utils.numpy.rotations import quats_to_rot_matrices, rot_matrices_to_quats
 
 from .data_writer import DataWriter
 
@@ -69,11 +68,12 @@ class GraspSpec:
         """
         if name not in self._imported_data["grasps"]:
             carb.log_error(f"Invalid grasp name {name} was given.  Nothing will be returned.")
-            return
+            return None
         return self._imported_data["grasps"][name]
 
     def get_grasp_dicts(self) -> dict:
-        """Get a dictionary of dictionaries that specify each grasp in the imported file. The
+        """Get a dictionary of dictionaries that specify each grasp in the imported file. The.
+
         `get_grasp_dict_by_name()` function describes the content of each inner dictionary, and the
         `get_grasp_names()` function provides the keys to this dictionary.
 
@@ -85,7 +85,8 @@ class GraspSpec:
     def compute_gripper_pose_from_rigid_body_pose(
         self, grasp_name: str, rb_trans: np.array, rb_quat: np.array
     ) -> Tuple[np.array, np.array]:
-        """Given a position of the rigid body in the world or robot frame, compute the position of
+        """Given a position of the rigid body in the world or robot frame, compute the position of.
+
         the gripper in that same frame to replicate the grasp associated `grasp_name`.
 
         Args:
@@ -105,18 +106,21 @@ class GraspSpec:
         grasp = self.get_grasp_dict_by_name(grasp_name)
 
         art_quat_rel_rb = np.array([grasp["orientation"]["w"], *grasp["orientation"]["xyz"]])
-        art_rot_rel_rb, rb_rot = quats_to_rot_matrices(np.vstack([art_quat_rel_rb, rb_quat]))
+        art_rot_rel_rb, rb_rot = transform_utils.quaternion_to_rotation_matrix(
+            np.vstack([art_quat_rel_rb, rb_quat])
+        ).numpy()
         art_trans_rel_rb = np.array(grasp["position"])
 
         art_trans = rb_rot @ art_trans_rel_rb + rb_trans
         art_rot = rb_rot @ art_rot_rel_rb
 
-        return art_trans, rot_matrices_to_quats(art_rot)
+        return art_trans, transform_utils.rotation_matrix_to_quaternion(art_rot).numpy()
 
     def compute_rigid_body_pose_from_gripper_pose(
         self, grasp_name: str, gripper_trans: np.array, gripper_quat: np.array
     ) -> Tuple[np.array, np.array]:
-        """Given a position of the gripper in the world or robot frame, compute the position of
+        """Given a position of the gripper in the world or robot frame, compute the position of.
+
         the rigid body in that same frame to replicate the grasp associated `grasp_name`.
 
         Args:
@@ -136,18 +140,21 @@ class GraspSpec:
         grasp = self.get_grasp_dict_by_name(grasp_name)
 
         art_quat_rel_rb = np.array([grasp["orientation"]["w"], *grasp["orientation"]["xyz"]])
-        art_rot_rel_rb, art_rot = quats_to_rot_matrices(np.vstack([art_quat_rel_rb, gripper_quat]))
+        art_rot_rel_rb, art_rot = transform_utils.quaternion_to_rotation_matrix(
+            np.vstack([art_quat_rel_rb, gripper_quat])
+        ).numpy()
         art_trans_rel_rb = np.array(grasp["position"])
 
         rb_rot = art_rot @ art_rot_rel_rb.T
-        rb_quat = rot_matrices_to_quats(rb_rot)
+        rb_quat = transform_utils.rotation_matrix_to_quaternion(rb_rot).numpy()
         rb_trans_rel_art = gripper_trans - rb_rot @ art_trans_rel_rb
 
         return rb_trans_rel_art, rb_quat
 
 
 def import_grasps_from_file(file_path: str) -> GraspSpec:
-    """Parse an `isaac_grasp` YAML file for use in Isaac Sim. The resulting `GraspSpec` class will
+    """Parse an `isaac_grasp` YAML file for use in Isaac Sim. The resulting `GraspSpec` class will.
+
     allow you to look up the data for each grasp by its name.
 
     Args:

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// clang-format off
-#include <pch/UsdPCH.h>
-// clang-format on
 
 #include <isaacsim/core/includes/BaseResetNode.h>
 #include <isaacsim/ros2/core/IRos2Core.h>
@@ -65,9 +62,9 @@ public:
                 domainIdStr = getenv("ROS_DOMAIN_ID");
 #endif
 
-                if (domainIdStr != NULL)
+                if (domainIdStr != nullptr)
                 {
-                    state.m_domainId = strtoul(domainIdStr, NULL, 0);
+                    state.m_domainId = strtoul(domainIdStr, nullptr, 0);
 
                     if (state.m_domainId == (std::numeric_limits<uint32_t>::max)())
                     {
@@ -104,7 +101,7 @@ public:
         state.m_ros2Bridge->removeHandle(state.m_contextHandleAddr);
     }
 
-    virtual void reset()
+    void reset() override
     {
         // We cannot actually destroy the context here because downstream nodes would fail.
         // Instead perform cleanup on next frame

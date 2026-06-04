@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import annotations
+"""Demonstrate differential IK control of a Franka Panda robot using PyTorch.
 
-"""
 This example demonstrates how to control the Franka Panda's arm DOFs (via differential Inverse Kinematics (IK))
 to follow a randomly positioned sphere in 3D space using PyTorch.
 
@@ -30,10 +29,13 @@ The source code is organized into 4 main sections:
 4. Example logic.
 """
 
-# 1. --------------------------------------------------------------------
+from __future__ import annotations
 
 # Parse any command-line arguments specific to the standalone application (only known arguments).
 import argparse
+
+# 1. --------------------------------------------------------------------
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--device", type=str, choices=["cpu", "cuda"], default="cpu", help="Simulation device")
@@ -92,6 +94,7 @@ See https://pytorch.org/get-started/locally.
 
 
 def quat_mul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """Multiply two batched quaternions."""
     w1, x1, y1, z1 = a[:, 0], a[:, 1], a[:, 2], a[:, 3]
     w2, x2, y2, z2 = b[:, 0], b[:, 1], b[:, 2], b[:, 3]
     ww = (z1 + x1) * (x2 + y2)
@@ -107,6 +110,7 @@ def quat_mul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 
 def quat_conjugate(q: torch.Tensor) -> torch.Tensor:
+    """Compute the conjugate of batched quaternions."""
     return torch.cat((q[:, :1], -q[:, 1:]), dim=-1)
 
 
@@ -119,6 +123,7 @@ def differential_inverse_kinematics(
     method: str = "damped-least-squares",
     method_cfg: dict[str, float] = {"scale": 1.0, "damping": 0.05, "min_singular_value": 1e-5},
 ) -> torch.Tensor:
+    """Compute delta DOF positions via differential inverse kinematics."""
     scale = method_cfg.get("scale", 1.0)
     # Compute velocity error
     goal_orientation = current_orientation if goal_orientation is None else goal_orientation

@@ -31,11 +31,6 @@
                 "uiName": "Timestamp",
                 "default": 0.0
             },
-            "renderProductPath": {
-                "type": "token",
-                "description": "Path to the render product to read RGB data from. If empty, uses data/width/height inputs instead.",
-                "default": ""
-            },
             "data":{
                 "type": "uchar[]",
                 "description": "Buffer array data",
@@ -45,13 +40,13 @@
             },
             "width": {
                 "type": "uint",
-                "description": "Image width in pixels (used only if renderProductPath is empty)",
+                "description": "Image width in pixels",
                 "default" : 0,
                 "optional": true
             },
             "height": {
                 "type": "uint",
-                "description": "Image height in pixels (used only if renderProductPath is empty)",
+                "description": "Image height in pixels",
                 "default" : 0,
                 "optional": true
             },
@@ -88,6 +83,11 @@
                 "type": "uint64",
                 "description": "Format",
                 "default": 0
+            },
+            "sendCudaBuffer": {
+                "type": "bool",
+                "description": "When true, passes the raw CUDA buffer pointer to UCX and sends a two-message protocol (metadata FlatBuffer + raw GPU tensor). UCX selects the transport — GPU-direct RDMA, NVLink, or TCP with host staging. Receiver must set tensor_buffer_size. When false, copies frame data into the FlatBuffer on the CPU.",
+                "default": true
             }
         }
     }

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""High level class for creating and managing USD Dome Light prims for Image Based Lighting from external environments."""
 
 from __future__ import annotations
 
@@ -120,7 +122,7 @@ class DomeLight(Light):
         )
         # initialize instance from arguments
         if radii is not None:
-            self.set_radii(radii)
+            self.set_guide_radii(radii)
         if texture_files is not None:
             self.set_texture_files(texture_files)
         if texture_formats is not None:

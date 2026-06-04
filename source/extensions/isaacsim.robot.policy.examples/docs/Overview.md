@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.robot.policy.examples extension provides interactive demonstrations of reinforcement learning policy deployment for robotic systems in Isaac Sim. This extension showcases trained policies running on different robot types including manipulator arms, humanoid robots, and quadruped robots, with real-time keyboard control interfaces and GPU-accelerated physics simulation.
@@ -12,11 +8,23 @@ The isaacsim.robot.policy.examples extension provides interactive demonstrations
 
 The extension provides three main robot demonstration categories through specialized example classes:
 
-**[FrankaExample](isaacsim.robot.policy.examples.interactive.franka/isaacsim.robot.policy.examples.interactive.franka.FrankaExample)** demonstrates a Franka Emika Panda robot performing an autonomous drawer opening task. The robot uses a learned policy to interact with a cabinet, attempting to open and hold a drawer in position. The simulation runs at 200 Hz physics with 60 Hz rendering and automatically resets every 10 seconds for continuous demonstration.
+**{class}`FrankaExample <isaacsim.robot.policy.examples.interactive.franka.FrankaExample>`** demonstrates a Franka Emika Panda robot performing an autonomous drawer opening task. The robot uses a learned policy to interact with a cabinet, attempting to open and hold a drawer in position. The simulation runs at 200 Hz physics with 60 Hz rendering and automatically resets every 10 seconds for continuous demonstration.
 
-**[HumanoidExample](isaacsim.robot.policy.examples.interactive.humanoid/isaacsim.robot.policy.examples.interactive.humanoid.HumanoidExample)** showcases a Unitree H1 humanoid robot executing flat terrain locomotion policies. The simulation operates with GPU-accelerated physics at 200 Hz and 25 Hz rendering, providing keyboard controls for forward movement and rotational commands. Users can control the robot using arrow keys or numpad inputs for directional movement.
+**{class}`HumanoidExample <isaacsim.robot.policy.examples.interactive.humanoid.HumanoidExample>`** showcases a Unitree H1 humanoid robot executing flat terrain locomotion policies. The simulation operates with GPU-accelerated physics at 200 Hz and 25 Hz rendering, providing keyboard controls for forward movement and rotational commands. Users can control the robot using arrow keys or numpad inputs for directional movement.
 
-**[QuadrupedExample](isaacsim.robot.policy.examples.interactive.quadruped/isaacsim.robot.policy.examples.interactive.quadruped.QuadrupedExample)** features a Boston Dynamics Spot robot running flat terrain locomotion policies trained in Isaac Lab. The example provides comprehensive keyboard control including forward/backward movement, lateral motion, and yaw rotation commands, running at 500 Hz physics with 50 Hz rendering for smooth real-time interaction.
+**{class}`QuadrupedExample <isaacsim.robot.policy.examples.interactive.quadruped.QuadrupedExample>`** features a Boston Dynamics Spot robot running flat terrain locomotion policies trained in Isaac Lab. The example provides comprehensive keyboard control including forward/backward movement, lateral motion, and yaw rotation commands, running at 500 Hz physics with 50 Hz rendering for smooth real-time interaction.
+
+**{class}`Go2Example <isaacsim.robot.policy.examples.interactive.go2.Go2Example>`** demonstrates a Unitree Go2 quadruped robot executing flat terrain locomotion using a learned policy. The example provides keyboard-based velocity commands for controlling the robot's walking gait and direction.
+
+### Robot Policy Controllers
+
+In addition to the interactive examples, the extension provides standalone policy controller classes that can be used programmatically:
+
+- **`AnymalFlatTerrainPolicy`** — ANYmal quadruped locomotion using an LSTM-based SEA (Series Elastic Actuator) network for flat terrain walking
+- **`Go2FlatTerrainPolicy`** — Unitree Go2 quadruped locomotion policy for stable walking on flat terrain
+- **`SpotFlatTerrainPolicy`** — Boston Dynamics Spot locomotion policy
+- **`H1FlatTerrainPolicy`** — Unitree H1 humanoid locomotion policy
+- **`FrankaOpenDrawerPolicy`** — Franka Panda drawer opening manipulation policy
 
 ### Policy Controller Framework
 

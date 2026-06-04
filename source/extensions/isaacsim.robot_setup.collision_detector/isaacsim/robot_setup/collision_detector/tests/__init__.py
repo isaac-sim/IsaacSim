@@ -14,4 +14,6 @@
 # limitations under the License.
 
 
+"""Tests for the collision detector functionality."""
+
 scan_for_test_modules = True

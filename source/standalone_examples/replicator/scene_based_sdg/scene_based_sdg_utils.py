@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Provide utility functions for scene-based synthetic data generation."""
+
 import math
 import os
 
@@ -20,11 +22,17 @@ import carb
 import numpy as np
 import omni.replicator.core as rep
 import omni.usd
-from isaacsim.core.experimental.prims import GeomPrim, RigidPrim
+from isaacsim.core.experimental.prims import GeomPrim, RigidPrim, XformPrim
+from isaacsim.core.experimental.utils.bounds import (
+    compute_combined_aabb,
+    compute_obb,
+    create_bbox_cache,
+    get_obb_corners,
+)
+from isaacsim.core.experimental.utils.semantics import add_labels
+from isaacsim.core.experimental.utils.stage import add_reference_to_stage, define_prim
+from isaacsim.core.experimental.utils.transform import euler_angles_to_quaternion, quaternion_to_euler_angles
 from isaacsim.core.simulation_manager import SimulationManager
-from isaacsim.core.utils import prims
-from isaacsim.core.utils.bounds import compute_combined_aabb, compute_obb, create_bbox_cache, get_obb_corners
-from isaacsim.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
 from pxr import Gf, Usd, UsdGeom
 
 
@@ -97,35 +105,39 @@ def simulate_falling_objects(
     if rng is None:
         rng = np.random.default_rng()
 
-    # Spawn pallet at random position relative to forklift
     forklift_transform = omni.usd.get_world_transform_matrix(forklift_prim)
     sim_pallet_offset = Gf.Matrix4d().SetTranslate(Gf.Vec3d(rng.uniform(-1, 1), rng.uniform(-4, -3.6), 0))
     sim_pallet_position = (sim_pallet_offset * forklift_transform).ExtractTranslation()
-    sim_pallet_rotation = euler_angles_to_quat([0, 0, rng.uniform(0, math.pi)])
+    sim_pallet_rotation = euler_angles_to_quaternion([0, 0, rng.uniform(0, math.pi)]).numpy()
 
-    sim_pallet = prims.create_prim(
-        prim_path="/World/SimulatedPallet",
-        position=sim_pallet_position,
-        orientation=sim_pallet_rotation,
-        usd_path=assets_root_path + config["pallet"]["url"],
-        semantic_label=config["pallet"]["class"],
+    sim_pallet_path = "/World/SimulatedPallet"
+    sim_pallet = define_prim(sim_pallet_path)
+    add_reference_to_stage(assets_root_path + config["pallet"]["url"], sim_pallet_path)
+    add_labels(sim_pallet, labels=[config["pallet"]["class"]], taxonomy="class")
+    XformPrim(
+        sim_pallet_path,
+        positions=tuple(sim_pallet_position),
+        orientations=sim_pallet_rotation,
+        reset_xform_op_properties=True,
     )
     sim_pallet_geom = GeomPrim(f"{str(sim_pallet.GetPrimPath())}/.*", apply_collision_apis=True)
     sim_pallet_geom.set_collision_approximations("boundingCube")
 
-    # Spawn boxes stacked above pallet
     bbox_cache = create_bbox_cache()
     current_height = bbox_cache.ComputeLocalBound(sim_pallet).GetRange().GetSize()[2] * 1.1
 
     sim_box_rigid_prims = []
     for box_index in range(num_boxes):
         box_xy_offset = Gf.Vec3d(rng.uniform(-0.2, 0.2), rng.uniform(-0.2, 0.2), current_height)
-        sim_box = prims.create_prim(
-            prim_path=f"/World/SimulatedCardbox_{box_index}",
-            position=sim_pallet_position + box_xy_offset,
-            orientation=sim_pallet_rotation,
-            usd_path=assets_root_path + config["cardbox"]["url"],
-            semantic_label=config["cardbox"]["class"],
+        sim_box_path = f"/World/SimulatedCardbox_{box_index}"
+        sim_box = define_prim(sim_box_path)
+        add_reference_to_stage(assets_root_path + config["cardbox"]["url"], sim_box_path)
+        add_labels(sim_box, labels=[config["cardbox"]["class"]], taxonomy="class")
+        XformPrim(
+            sim_box_path,
+            positions=tuple(sim_pallet_position + box_xy_offset),
+            orientations=sim_pallet_rotation,
+            reset_xform_op_properties=True,
         )
         current_height += bbox_cache.ComputeLocalBound(sim_box).GetRange().GetSize()[2] * 1.1
 
@@ -133,11 +145,9 @@ def simulate_falling_objects(
         sim_box_geom.set_collision_approximations("convexHull")
         sim_box_rigid_prims.append(RigidPrim(str(sim_box.GetPrimPath())))
 
-    # Run physics simulation
     SimulationManager.set_physics_dt(1.0 / 90.0)
     SimulationManager.initialize_physics()
 
-    # Simulate until boxes settle or max steps reached
     velocity_threshold = 0.01
     for step in range(max_sim_steps):
         SimulationManager.step()
@@ -188,7 +198,7 @@ def create_scatter_plane_for_prim(
 
     prim_quat = prim_tf.ExtractRotation().GetQuaternion()
     prim_quat_xyzw = (prim_quat.GetReal(), *prim_quat.GetImaginary())
-    prim_rotation_deg = quat_to_euler_angles(np.array(prim_quat_xyzw), degrees=True)
+    prim_rotation_deg = quaternion_to_euler_angles(np.array(prim_quat_xyzw), degrees=True).numpy()
 
     prim_pos = prim_tf.ExtractTranslation()
     scatter_plane_scale = (prim_size[0] * scale_factor, prim_size[1] * scale_factor, 1)
@@ -208,11 +218,11 @@ def create_scatter_plane_for_prim(
 def setup_cone_placement_corners(
     forklift_prim: Usd.Prim, bb_cache=None, scale_factor: float = 1.3
 ) -> tuple[list[list[float]], tuple[float, float, float]]:
-    """Calculate forklift OBB corners for cone placement, returns (corner_positions, rotation_degrees)."""
+    """Calculate forklift OBB corners for cone placement."""
     if bb_cache is None:
         bb_cache = create_bbox_cache()
 
-    forklift_obb_center, forklift_obb_axes, forklift_obb_extent = compute_obb(bb_cache, forklift_prim.GetPrimPath())
+    forklift_obb_center, forklift_obb_axes, forklift_obb_extent = compute_obb(forklift_prim, bbox_cache=bb_cache)
     enlarged_extent = (
         forklift_obb_extent[0] * scale_factor,
         forklift_obb_extent[1] * scale_factor,
@@ -229,15 +239,15 @@ def setup_cone_placement_corners(
 
     forklift_obb_quat = Gf.Matrix3d(forklift_obb_axes).ExtractRotation().GetQuaternion()
     forklift_obb_quat_xyzw = (forklift_obb_quat.GetReal(), *forklift_obb_quat.GetImaginary())
-    forklift_rotation_deg = quat_to_euler_angles(np.array(forklift_obb_quat_xyzw), degrees=True)
+    forklift_rotation_deg = quaternion_to_euler_angles(np.array(forklift_obb_quat_xyzw), degrees=True).numpy()
 
     return cone_placement_corners, forklift_rotation_deg
 
 
 def register_lights_graph_randomizer(forklift_prim: Usd.Prim, pallet_prim: Usd.Prim, event_name: str) -> None:
-    """Register graph randomizer to create sphere lights with varying color, intensity, and position."""
+    """Register graph randomizer for sphere lights."""
     bb_cache = create_bbox_cache()
-    combined_bounds = compute_combined_aabb(bb_cache, [forklift_prim.GetPrimPath(), pallet_prim.GetPrimPath()])
+    combined_bounds = compute_combined_aabb([forklift_prim, pallet_prim], bbox_cache=bb_cache)
     light_pos_min = (combined_bounds[0], combined_bounds[1], 6)
     light_pos_max = (combined_bounds[3], combined_bounds[4], 7)
 
@@ -255,7 +265,7 @@ def register_lights_graph_randomizer(forklift_prim: Usd.Prim, pallet_prim: Usd.P
 def register_cardboxes_materials_graph_randomizer(
     cardboxes: list[Usd.Prim], cardbox_material_urls: list[str], event_name: str
 ) -> None:
-    """Register graph randomizer to apply random materials to cardbox meshes."""
+    """Register graph randomizer for cardbox materials."""
     cardbox_mesh_paths = []
     for cardbox in cardboxes:
         meshes = [child for child in cardbox.GetChildren() if child.IsA(UsdGeom.Mesh)]

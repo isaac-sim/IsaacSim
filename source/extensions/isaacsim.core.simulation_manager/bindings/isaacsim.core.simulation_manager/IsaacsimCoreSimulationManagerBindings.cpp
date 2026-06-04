@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,8 +17,7 @@
 #include <pch/UsdPCH.h>
 // clang-format on
 
-#include <carb/BindingsPythonUtils.h>
-
+#include <isaacsim/core/includes/BindingsPythonUtils.h>
 #include <isaacsim/core/simulation_manager/ISimulationManager.h>
 #include <isaacsim/core/simulation_manager/PhysicsScene.h>
 #include <pybind11/functional.h>

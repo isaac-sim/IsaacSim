@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Module providing cuMotion trajectory implementation for continuous-time robot motion in Isaac Sim."""
+
 from __future__ import annotations
 
 import cumotion
@@ -31,8 +33,12 @@ class CumotionTrajectory(mg.Trajectory):
 
     Args:
         trajectory: cuMotion trajectory object.
+        robot_joint_space: List of robot joint names in the joint space.
         cumotion_robot: Robot configuration containing joint names and descriptions.
         device: Warp device for computation. Defaults to None.
+
+    Raises:
+        ValueError: If cuMotion active joints are not a subset of the robot_joint_space.
 
     Example:
 
@@ -40,6 +46,7 @@ class CumotionTrajectory(mg.Trajectory):
 
             trajectory = CumotionTrajectory(
                 trajectory=cumotion_traj,
+                robot_joint_space=joint_names,
                 cumotion_robot=robot_config
             )
             state = trajectory.get_target_state(time=1.0)
@@ -51,7 +58,7 @@ class CumotionTrajectory(mg.Trajectory):
         robot_joint_space: list[str],
         cumotion_robot: CumotionRobot,
         device: wp.Device | None = None,
-    ):
+    ) -> None:
         if not set(cumotion_robot.controlled_joint_names).issubset(set(robot_joint_space)):
             raise ValueError("Cumotion active joints are not a subset of the robot_joint_space.")
 

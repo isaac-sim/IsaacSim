@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 import asyncio
 
 import isaacsim.core.experimental.utils.prim as prim_utils
@@ -58,7 +59,7 @@ class TestJointStateSensorOgn(omni.kit.test.AsyncTestCase):
 
         keys = og.Controller.Keys
         try:
-            (_, new_nodes, _, _) = og.Controller.edit(
+            _, new_nodes, _, _ = og.Controller.edit(
                 {"graph_path": self.graph_path, "evaluator_name": "execution"},
                 {
                     keys.CREATE_NODES: [

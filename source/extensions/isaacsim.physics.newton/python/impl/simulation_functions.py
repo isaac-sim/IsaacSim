@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Newton simulation functions conforming to omni.physics.core.SimulationFns interface."""
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import carb
-from pxr import Plug, Tf, Usd
+from pxr import Plug, Usd
 
 if TYPE_CHECKING:
     from .newton_stage import NewtonStage
@@ -37,10 +38,12 @@ class NewtonSimulationFunctions:
         newton_stage: NewtonStage instance that manages the Newton simulation.
     """
 
-    def __init__(self, newton_stage: NewtonStage):
+    def __init__(self, newton_stage: NewtonStage) -> None:
         self.newton_stage = newton_stage
-        self.contact_callbacks = []
-        self.step_callbacks = []  # List of tuples: (pre_step: bool, order: int, callback)
+        self.contact_callbacks: dict[int, Callable] = {}
+        self._next_contact_cb_id = 0
+        self.step_callbacks: dict[int, tuple[bool, int, Callable]] = {}
+        self._next_step_cb_id = 0
         self.change_tracking_paused = False
         self.simulation_id = 0  # Will be set after registration with physics interface
 
@@ -57,14 +60,14 @@ class NewtonSimulationFunctions:
             True if stage was successfully initialized.
         """
         try:
-            self.newton_stage.stage_id = stage_id
+            self.newton_stage.stage_id = stage_id  # type: ignore[assignment]
             self.newton_stage.on_attach(stage_id, meters_per_unit=1.0)
             return True
         except Exception as e:
             carb.log_error(f"[Newton] Failed to initialize stage: {e}")
             return False
 
-    def close(self):
+    def close(self) -> None:
         """Close the simulation, removing all objects from the simulation."""
         try:
             self.newton_stage.on_detach()
@@ -82,7 +85,7 @@ class NewtonSimulationFunctions:
             self.newton_stage.stage_id if hasattr(self.newton_stage, "stage_id") and self.newton_stage.stage_id else 0
         )
 
-    def simulate(self, elapsed_time: float, current_time: float):
+    def simulate(self, elapsed_time: float, current_time: float) -> None:
         """Execute physics simulation.
 
         The simulation will simulate the exact elapsedTime passed. No substepping will happen.
@@ -102,10 +105,9 @@ class NewtonSimulationFunctions:
             context.scene_path = self.get_attached_stage()
             context.simulation_id = self.simulation_id
 
-            # Sort callbacks by order (lower order = higher priority, called first)
             sorted_callbacks = sorted(
-                [item for item in self.step_callbacks if item is not None],
-                key=lambda x: x[1],  # Sort by order (index 1)
+                self.step_callbacks.values(),
+                key=lambda x: x[1],
             )
 
             # Call pre-step callbacks (sorted by order)
@@ -129,7 +131,7 @@ class NewtonSimulationFunctions:
         except Exception as e:
             carb.log_error(f"[Newton] Simulation step error: {e}")
 
-    def start_simulation(self):
+    def start_simulation(self) -> None:
         """Start simulation.
 
         This method is called at the beginning of simulation to allow the physics engine
@@ -139,7 +141,7 @@ class NewtonSimulationFunctions:
         # PhysX uses this to store initial transformations for reset
         # Newton doesn't need to do anything here - initialization happens lazily in step_sim
 
-    def fetch_results(self):
+    def fetch_results(self) -> None:
         """Fetch simulation results.
 
         Writing out simulation results based on physics settings.
@@ -153,13 +155,11 @@ class NewtonSimulationFunctions:
             contacts = ContactDataVector()
             friction = FrictionAnchorsDataVector()
 
-            # Call all registered contact callbacks
-            for callback in self.contact_callbacks:
-                if callback is not None:
-                    try:
-                        callback(headers, contacts, friction)
-                    except Exception as e:
-                        carb.log_error(f"[Newton] Contact callback error: {e}")
+            for callback in self.contact_callbacks.values():
+                try:
+                    callback(headers, contacts, friction)
+                except Exception as e:
+                    carb.log_error(f"[Newton] Contact callback error: {e}")
         except Exception as e:
             carb.log_error(f"[Newton] Fetch results error: {e}")
 
@@ -171,7 +171,7 @@ class NewtonSimulationFunctions:
         """
         return self.newton_stage.initialized
 
-    def flush_changes(self):
+    def flush_changes(self) -> None:
         """Flush changes to force physics to process buffered changes.
 
         Changes to physics get buffered. In some cases flushing changes is required
@@ -182,7 +182,7 @@ class NewtonSimulationFunctions:
         if not self.newton_stage.initialized:
             carb.log_warn("[Newton] flush_changes called but Newton not initialized yet")
 
-    def pause_change_tracking(self, pause: bool):
+    def pause_change_tracking(self, pause: bool) -> None:
         """Pause change tracking for physics listener.
 
         Args:
@@ -209,20 +209,19 @@ class NewtonSimulationFunctions:
         Returns:
             Subscription Id for release.
         """
-        self.contact_callbacks.append(on_event)
-        return len(self.contact_callbacks)
+        self._next_contact_cb_id += 1
+        self.contact_callbacks[self._next_contact_cb_id] = on_event
+        return self._next_contact_cb_id
 
-    def unsubscribe_physics_contact_report_events(self, subscription_id: int):
+    def unsubscribe_physics_contact_report_events(self, subscription_id: int) -> None:
         """Unsubscribe from physics contact report events.
 
         Args:
             subscription_id: Subscription ID returned from subscribe.
         """
-        if subscription_id > 0 and subscription_id <= len(self.contact_callbacks):
-            # Use None instead of removing to preserve indices
-            self.contact_callbacks[subscription_id - 1] = None
+        self.contact_callbacks.pop(subscription_id, None)
 
-    def get_simulation_time_steps_per_second(self, stage_id: int, scene_path: int) -> float:
+    def get_simulation_time_steps_per_second(self, stage_id: int, scene_path: int) -> int:
         """Get physics simulation time steps per second.
 
         Args:
@@ -234,8 +233,10 @@ class NewtonSimulationFunctions:
             Current time steps per second.
         """
         if hasattr(self.newton_stage, "physics_frequency"):
-            return self.newton_stage.physics_frequency
-        return self.newton_stage.cfg.physics_frequency if hasattr(self.newton_stage.cfg, "physics_frequency") else 60.0
+            return int(self.newton_stage.physics_frequency)  # type: ignore[has-type]
+        return (
+            int(self.newton_stage.cfg.physics_frequency) if hasattr(self.newton_stage.cfg, "physics_frequency") else 60
+        )
 
     def get_simulation_timestamp(self) -> int:
         """Get physics simulation timestamp.
@@ -273,18 +274,17 @@ class NewtonSimulationFunctions:
         Returns:
             Subscription Id for release, returns kInvalidSubscriptionId if failed.
         """
-        self.step_callbacks.append((pre_step, order, on_update))
-        return len(self.step_callbacks)
+        self._next_step_cb_id += 1
+        self.step_callbacks[self._next_step_cb_id] = (pre_step, order, on_update)
+        return self._next_step_cb_id
 
-    def unsubscribe_physics_on_step_events(self, subscription_id: int):
+    def unsubscribe_physics_on_step_events(self, subscription_id: int) -> None:
         """Unsubscribe from physics step events.
 
         Args:
             subscription_id: Subscription ID returned from subscribe.
         """
-        if subscription_id > 0 and subscription_id <= len(self.step_callbacks):
-            # Use None instead of removing to preserve indices
-            self.step_callbacks[subscription_id - 1] = None
+        self.step_callbacks.pop(subscription_id, None)
 
     def is_capable_of_simulating(self, schema_names: list[str]) -> tuple[bool, list[bool]]:
         """Check if simulation is capable of simulating given schema types.
@@ -296,7 +296,6 @@ class NewtonSimulationFunctions:
             A tuple of (success, capabilities) where success is True if the operation was successful
                    and capabilities is a list of booleans indicating support for each schema.
         """
-
         capabilities = []
         for schema_name in schema_names:
             is_capable = False

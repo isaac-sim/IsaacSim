@@ -1,9 +1,10 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
+#
 # http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
@@ -18,16 +19,15 @@ from __future__ import annotations
 
 import logging
 
-import usd.schema.newton
-from pxr import PhysxSchema, Sdf, Usd, UsdGeom, UsdPhysics
+from pxr import Sdf, Usd, UsdGeom, UsdPhysics
 
-from .importer_utils import create_physx_mimic_joint
+from .physx_types import PhysxAttr, PhysxSchema
 
 _logger = logging.getLogger(__name__)
 
 
 def convert_joints_attributes(stage: Usd.Stage) -> None:
-    """Convert all joints attributes to MJCF attributes.
+    """Convert all joint attributes to MJCF attributes.
 
     Args:
         stage: USD stage to update with MJCF attributes.
@@ -43,14 +43,13 @@ def convert_joints_attributes(stage: Usd.Stage) -> None:
             convert_urdf_to_physx(prim)
             create_mjc_actuator_from_physics(prim, stage, scope_path)
             convert_physx_to_mjc(prim)
-            create_physx_mimic_joint(prim)
 
 
 def convert_urdf_to_physx(joint: Usd.Prim) -> None:
-    """Convert a URDF attributes to PhysX attributes.
+    """Convert URDF attributes to PhysX attributes.
 
     Args:
-        joint: joint prim.
+        joint: Joint prim.
 
     Raises:
         ValueError: If the input joint prim is invalid.
@@ -89,17 +88,17 @@ def convert_urdf_to_physx(joint: Usd.Prim) -> None:
     )
 
     if joint_max_velocity:
-        if joint.HasAPI(PhysxSchema.PhysxJointAPI):
-            physx_joint_api = PhysxSchema.PhysxJointAPI(joint)
-        else:
-            physx_joint_api = PhysxSchema.PhysxJointAPI.Apply(joint)
+        if not joint.HasAPI(PhysxSchema.JOINT_API):
+            joint.ApplyAPI(PhysxSchema.JOINT_API)
         if joint_max_velocity < 0:
             _logger.warning(
                 f"Invalid joint max velocity {joint_max_velocity} for joint {joint.GetPath()}, will be set to 0 (unrestricted velocity)"
             )
             joint_max_velocity = 0
         joint_max_velocity_deg = joint_max_velocity * 180 / 3.1415926
-        physx_joint_api.CreateMaxJointVelocityAttr().Set(joint_max_velocity_deg)
+        joint.CreateAttribute(PhysxAttr.JOINT_MAX_VELOCITY.name, PhysxAttr.JOINT_MAX_VELOCITY.type).Set(
+            joint_max_velocity_deg
+        )
 
     damping = (
         joint.GetAttribute("urdf:dynamics:damping").Get()
@@ -117,11 +116,9 @@ def convert_urdf_to_physx(joint: Usd.Prim) -> None:
     )
 
     if friction:
-        if joint.HasAPI(PhysxSchema.PhysxJointAPI):
-            physx_joint_api = PhysxSchema.PhysxJointAPI(joint)
-        else:
-            physx_joint_api = PhysxSchema.PhysxJointAPI.Apply(joint)
-        physx_joint_api.CreateJointFrictionAttr().Set(friction)
+        if not joint.HasAPI(PhysxSchema.JOINT_API):
+            joint.ApplyAPI(PhysxSchema.JOINT_API)
+        joint.CreateAttribute(PhysxAttr.JOINT_FRICTION.name, PhysxAttr.JOINT_FRICTION.type).Set(friction)
 
     target_position = (
         joint.GetAttribute("urdf:calibration:reference_position").Get()
@@ -132,11 +129,9 @@ def convert_urdf_to_physx(joint: Usd.Prim) -> None:
     if target_position:
         drive_api.CreateTargetPositionAttr().Set(target_position)
 
-    return
-
 
 def create_mjc_actuator_from_physics(joint: Usd.Prim, stage: Usd.Stage, path: str) -> Usd.Prim | None:
-    """Create a MJCF actuator for a joint.
+    """Create an MJCF actuator for a joint.
 
     Args:
         joint: URDF joint prim.
@@ -213,7 +208,7 @@ def create_mjc_actuator_from_physics(joint: Usd.Prim, stage: Usd.Stage, path: st
 
 
 def convert_physx_to_mjc(joint: Usd.Prim) -> None:
-    """Convert a PhysX joint to a MJCF joint.
+    """Convert a PhysX joint to an MJCF joint.
 
     Args:
         joint: PhysX joint prim.
@@ -240,15 +235,13 @@ def convert_physx_to_mjc(joint: Usd.Prim) -> None:
         if target_position:
             joint.CreateAttribute("mjc:ref", Sdf.ValueTypeNames.Float).Set(target_position)
 
-    if joint.HasAPI(PhysxSchema.PhysxJointAPI):
-        physx_joint_api = PhysxSchema.PhysxJointAPI(joint)
-        joint_friction = (
-            physx_joint_api.GetJointFrictionAttr().Get() if physx_joint_api.GetJointFrictionAttr().IsValid() else None
-        )
+    if joint.HasAPI(PhysxSchema.JOINT_API):
+        friction_attr = joint.GetAttribute(PhysxAttr.JOINT_FRICTION.name)
+        joint_friction = friction_attr.Get() if friction_attr and friction_attr.IsValid() else None
         if joint_friction:
             joint.CreateAttribute("mjc:frictionloss", Sdf.ValueTypeNames.Float).Set(joint_friction)
 
-        armature = physx_joint_api.GetArmatureAttr().Get() if physx_joint_api.GetArmatureAttr().IsValid() else None
+        armature_attr = joint.GetAttribute(PhysxAttr.JOINT_ARMATURE.name)
+        armature = armature_attr.Get() if armature_attr and armature_attr.IsValid() else None
         if armature:
             joint.CreateAttribute("mjc:armature", Sdf.ValueTypeNames.Float).Set(armature)
-    return

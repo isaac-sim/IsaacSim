@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 This extension provides high-performance communication capabilities using UCX (Unified Communication X) for distributed simulation scenarios with low-latency data transfer. UCX is a communication middleware that delivers optimized networking performance for high-performance computing environments, enabling efficient data exchange between distributed Isaac Sim instances.

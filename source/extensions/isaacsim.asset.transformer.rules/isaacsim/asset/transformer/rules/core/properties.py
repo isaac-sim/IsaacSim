@@ -49,6 +49,7 @@ def copy_property_to_layer(
     .. code-block:: python
 
         success = copy_property_to_layer(prim, "physics:mass", layer)
+
     """
     prim_path = src_prim.GetPath()
     prop_path = prim_path.AppendProperty(prop_name)
@@ -96,6 +97,7 @@ def remove_property_from_source_layers(
     .. code-block:: python
 
         removed_count, layers = remove_property_from_source_layers(prim, "physics:mass", layer)
+
     """
     prim_path = prim.GetPath()
     prop_path = prim_path.AppendProperty(prop_name)
@@ -137,6 +139,7 @@ class PropertyRoutingRule(RuleInterface):
         .. code-block:: python
 
             params = rule.get_configuration_parameters()
+
         """
         return [
             RuleConfigurationParam(
@@ -173,6 +176,7 @@ class PropertyRoutingRule(RuleInterface):
         .. code-block:: python
 
             rule.process_rule()
+
         """
         params = self.args.get("params", {}) or {}
         property_patterns = params.get("properties") or []

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,4 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from .impl import BaseResetNode, BaseWriterNode, Extension, WriterRequest
+
+from .impl import BaseResetNode, BaseWriterNode, Extension, WriterRequest  # noqa: F401
+from .scripts.utils import register_annotator_from_node_with_telemetry, register_node_writer_with_telemetry
+
+__all__ = [
+    "BaseResetNode",
+    "BaseWriterNode",
+    "WriterRequest",
+    "register_annotator_from_node_with_telemetry",
+    "register_node_writer_with_telemetry",
+]

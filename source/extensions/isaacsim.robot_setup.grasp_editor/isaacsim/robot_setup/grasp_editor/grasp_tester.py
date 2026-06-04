@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,13 +15,11 @@
 
 """Testing framework for evaluating robotic grasp stability and effectiveness through automated simulation."""
 
-
 from typing import List
 
+import isaacsim.core.experimental.utils.transform as transform_utils
+import isaacsim.core.experimental.utils.xform as xform_utils
 import numpy as np
-from isaacsim.core.api.articulations import ArticulationSubset
-from isaacsim.core.utils.numpy.rotations import quats_to_rot_matrices, rot_matrices_to_quats
-from isaacsim.core.utils.xforms import get_world_pose
 
 # Size of rolling window over joint positions to detect steady state position convergence.
 WINDOW_SIZE = 10
@@ -152,12 +150,28 @@ class GraspTester:
         self._test_timestep = 0
 
     def initialize_test_grasp_script(self, articulation, rigid_body, grasp_test_settings):
+        """Initialize the grasp test script generator.
+
+        Args:
+            articulation: The gripper articulation to test.
+            rigid_body: The rigid body to grasp.
+            grasp_test_settings: Configuration settings for the grasp test.
+        """
         self._test_grasp_generator = self._test_grasp_script(articulation, rigid_body, grasp_test_settings)
         self._test_timestep = 0
 
     def close_gripper_trajectory(self, t, open_positions, close_positions, close_velocities):
-        # Return position command to close the gripper as a function of t.  The trajectory moves
-        # from open_positions to close_positions at a constant velocity of close_velocities.
+        """Compute gripper position command along a closing trajectory at constant velocity.
+
+        Args:
+            t: Current time in the trajectory.
+            open_positions: Joint positions when the gripper is fully open.
+            close_positions: Joint positions when the gripper is fully closed.
+            close_velocities: Closing velocities for each joint.
+
+        Returns:
+            Joint position command for the current time step.
+        """
         max_close_distance = np.abs(open_positions - close_positions)
         desired_close_distance = np.abs(t * close_velocities)
         signed_close_distance_clipped = np.clip(desired_close_distance, a_min=None, a_max=max_close_distance) * np.sign(
@@ -167,6 +181,14 @@ class GraspTester:
         return open_positions + signed_close_distance_clipped
 
     def update_grasp_test(self, step: float):
+        """Advance the grasp test by one step and return the result.
+
+        Args:
+            step: Time step size to advance.
+
+        Returns:
+            Test result from the current step, or the final return value when complete.
+        """
         try:
             result = next(self._test_grasp_generator)
             self._test_timestep += step
@@ -176,18 +198,32 @@ class GraspTester:
             return e.value
 
     def compute_relative_pose(self, rigid_body_frame: str, articulation_frame: str):
-        # Compute the pose of the articulation frame relative to the rigid body frame
-        rb_trans, rb_quat = get_world_pose(rigid_body_frame)
-        gripper_trans, gripper_quat = get_world_pose(articulation_frame)
+        """Compute the pose of the articulation frame relative to the rigid body frame.
 
-        gripper_rot_mat, rb_rot_mat = quats_to_rot_matrices(np.vstack([gripper_quat, rb_quat]))
+        Args:
+            rigid_body_frame: Prim path of the rigid body reference frame.
+            articulation_frame: Prim path of the articulation reference frame.
+
+        Returns:
+            Tuple of relative translation and quaternion orientation.
+        """
+        rb_trans, rb_quat = xform_utils.get_world_pose(rigid_body_frame, device="cpu")
+        rb_trans, rb_quat = rb_trans.numpy(), rb_quat.numpy()
+        gripper_trans, gripper_quat = xform_utils.get_world_pose(articulation_frame, device="cpu")
+        gripper_trans, gripper_quat = gripper_trans.numpy(), gripper_quat.numpy()
+
+        gripper_rot_mat, rb_rot_mat = transform_utils.quaternion_to_rotation_matrix(
+            np.vstack([gripper_quat, rb_quat])
+        ).numpy()
 
         rel_trans = rb_rot_mat.T @ (gripper_trans - rb_trans)
         rel_rot = rb_rot_mat.T @ gripper_rot_mat
 
-        return rel_trans, rot_matrices_to_quats(rel_rot)
+        return rel_trans, transform_utils.rotation_matrix_to_quaternion(rel_rot).numpy()
 
-    def _apply_external_force(self, rigid_body, force_magnitude, active_subset, closed_positions, apply_torque=False):
+    def _apply_external_force(
+        self, rigid_body, force_magnitude, articulation, dof_indices, closed_positions, apply_torque=False
+    ):
         s = "torque" if apply_torque else "force"
         succ = True
         for idx in range(3):
@@ -202,7 +238,9 @@ class GraspTester:
 
                 force_duration = self._test_timestep + 0.33
 
-                position_window = np.tile(active_subset.get_joint_positions()[np.newaxis, :], (WINDOW_SIZE, 1))
+                position_window = np.tile(
+                    articulation.get_dof_positions(dof_indices=dof_indices).numpy()[0][np.newaxis, :], (WINDOW_SIZE, 1)
+                )
 
                 while (
                     self._test_timestep < force_duration
@@ -214,13 +252,18 @@ class GraspTester:
                     yield (f"Applying {s} of {f} about Rigid Body reference frame.")
 
                     position_window[:-1] = position_window[1:]
-                    position_window[-1] = active_subset.get_joint_positions()
+                    position_window[-1] = articulation.get_dof_positions(dof_indices=dof_indices).numpy()[0]
 
-                if np.linalg.norm(closed_positions - active_subset.get_joint_positions()) < STABILITY_TEST_THRESHOLD:
+                if (
+                    np.linalg.norm(
+                        closed_positions - articulation.get_dof_positions(dof_indices=dof_indices).numpy()[0]
+                    )
+                    < STABILITY_TEST_THRESHOLD
+                ):
                     yield (
                         "The initial grasp succeeded, but it was not able to withstand "
-                        + f"rigid body {s} of  {f} applied for 1/3 second about the reference frame.  "
-                        + "Exporting the grasp will export the state of the initial successdul grasp."
+                        + f"rigid body {s} of {f} applied for 1/3 second about the reference frame.  "
+                        + "Exporting the grasp will export the state of the initial successful grasp."
                     )
                     succ = False
                     break
@@ -229,10 +272,10 @@ class GraspTester:
                 break
 
         rigid_body.apply_forces_and_torques_at_pos(np.zeros((1, 3)), np.zeros((1, 3)))
-        rigid_body.set_velocities(np.zeros((1, 6)))
+        rigid_body.set_velocities(np.zeros(3), np.zeros(3))
         yield ()
 
-        rigid_body.set_velocities(np.zeros((1, 6)))
+        rigid_body.set_velocities(np.zeros(3), np.zeros(3))
 
         yield ()
         return succ
@@ -240,8 +283,8 @@ class GraspTester:
     def _test_grasp_script(self, articulation, rigid_body, test_settings):
         x = test_settings
 
-        active_subset = ArticulationSubset(articulation, x.active_joints)
-        active_subset.set_joint_positions(x.active_joint_open_positions)
+        dof_indices = articulation.get_dof_indices(x.active_joints)
+        articulation.set_dof_positions(x.active_joint_open_positions, dof_indices=dof_indices)
 
         close_command = lambda t: self.close_gripper_trajectory(
             t, x.active_joint_open_positions, x.active_joint_closed_positions, x.active_joint_close_velocities
@@ -256,7 +299,9 @@ class GraspTester:
 
         # A window of the last WINDOW_SIZE joint states.  Closing the gripper should not stop until
         # the STD of position_window is near-zero.
-        position_window = np.tile(active_subset.get_joint_positions()[np.newaxis, :], (WINDOW_SIZE, 1))
+        position_window = np.tile(
+            articulation.get_dof_positions(dof_indices=dof_indices).numpy()[0][np.newaxis, :], (WINDOW_SIZE, 1)
+        )
 
         status_msg = "Closing Gripper..."
 
@@ -264,13 +309,14 @@ class GraspTester:
             self._test_timestep < close_duration
             or np.linalg.norm(position_window.std(axis=0)) > STABILITY_TEST_THRESHOLD
         ):
-            active_subset.apply_action(close_command(self._test_timestep), x.active_joint_close_velocities)
+            articulation.set_dof_position_targets(close_command(self._test_timestep), dof_indices=dof_indices)
+            articulation.set_dof_velocity_targets(x.active_joint_close_velocities, dof_indices=dof_indices)
             yield (status_msg)
 
             position_window[:-1] = position_window[1:]
-            position_window[-1] = active_subset.get_joint_positions()
+            position_window[-1] = articulation.get_dof_positions(dof_indices=dof_indices).numpy()[0]
 
-        stable_positions = active_subset.get_joint_positions()
+        stable_positions = articulation.get_dof_positions(dof_indices=dof_indices).numpy()[0]
 
         rel_trans, rel_quat = self.compute_relative_pose(x.rigid_body_pose_frame, x.articulation_pose_frame)
 
@@ -294,13 +340,14 @@ class GraspTester:
         # the force/torque threshold of losing a grasp, but it has not been verified that the user max effort
         # parameter is always reached.
         if x.external_force_magnitude > 0 or x.external_torque_magnitude > 0:
-            active_subset.apply_action(
-                close_command(self._test_timestep), np.sign(x.active_joint_close_velocities) * 1e15
+            articulation.set_dof_position_targets(close_command(self._test_timestep), dof_indices=dof_indices)
+            articulation.set_dof_velocity_targets(
+                np.sign(x.active_joint_close_velocities) * 1e15, dof_indices=dof_indices
             )
 
         if x.external_force_magnitude > 0:
             succ = yield from self._apply_external_force(
-                rigid_body, x.external_force_magnitude, active_subset, x.active_joint_closed_positions
+                rigid_body, x.external_force_magnitude, articulation, dof_indices, x.active_joint_closed_positions
             )
             if not succ:
                 return GraspTestResults(x, rel_trans, rel_quat, stable_positions, 0.5, False)
@@ -309,7 +356,8 @@ class GraspTester:
             succ = yield from self._apply_external_force(
                 rigid_body,
                 x.external_torque_magnitude,
-                active_subset,
+                articulation,
+                dof_indices,
                 x.active_joint_closed_positions,
                 apply_torque=True,
             )

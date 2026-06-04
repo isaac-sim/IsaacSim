@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Viewport scene utilities for joint connection visualization."""
 
 from typing import Any
@@ -36,7 +37,7 @@ class ConnectionScene:  # pragma: no cover
         **kwargs: Additional keyword arguments passed to the parent class.
     """
 
-    def __init__(self, icon_scale: float = 1.0, **kwargs: Any):
+    def __init__(self, icon_scale: float = 1.0, **kwargs: Any) -> None:
         self._manipulator: ConnectionManipulator | None = ConnectionManipulator(
             model=ConnectionInstance.get_instance().get_model(),
             aspect_ratio_policy=sc.AspectRatioPolicy.PRESERVE_ASPECT_HORIZONTAL,
@@ -54,7 +55,7 @@ class ConnectionScene:  # pragma: no cover
             self._on_timeline_event, name="timeline_subscription"
         )
 
-    def _on_timeline_event(self, event: carb.events.IEvent):
+    def _on_timeline_event(self, event: carb.events.IEvent) -> None:
         """Handle timeline events to control visibility during playback.
 
         Hides joint connections during simulation playback and restores
@@ -72,7 +73,7 @@ class ConnectionScene:  # pragma: no cover
             if model:
                 model.force_rebuild()
 
-    def _on_settings_changed(self, *args: Any):
+    def _on_settings_changed(self, *args: Any) -> None:
         """Handle changes to the joint visualization setting.
 
         Args:
@@ -80,7 +81,7 @@ class ConnectionScene:  # pragma: no cover
         """
         self.visible = carb.settings.get_settings().get("/persistent/physics/visualizationDisplayJoints")
 
-    def set_joint_connections(self, joint_connections: list[Any]):
+    def set_joint_connections(self, joint_connections: list[Any]) -> None:
         """Set the joint connections to visualize.
 
         Args:
@@ -117,7 +118,7 @@ class ConnectionScene:  # pragma: no cover
         return self._manipulator.visible
 
     @visible.setter
-    def visible(self, value: bool):
+    def visible(self, value: bool) -> None:
         """Set the visibility state of the connection manipulator.
 
         Args:
@@ -136,7 +137,7 @@ class ConnectionScene:  # pragma: no cover
             return
         self._manipulator.visible = bool(value)
 
-    def destroy(self):
+    def destroy(self) -> None:
         """Clean up resources before destruction.
 
         Unsubscribes from timeline and settings, clears connections and releases references.
@@ -156,7 +157,7 @@ class ConnectionScene:  # pragma: no cover
         self.clear()
         self._manipulator = None
 
-    def clear(self):
+    def clear(self) -> None:
         """Clear all connection visualizations.
 
         Returns:
@@ -172,7 +173,7 @@ class ConnectionScene:  # pragma: no cover
             return
         self._manipulator.clear()
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Destructor ensuring cleanup."""
         self.destroy()
         self._manipulator = None
@@ -193,7 +194,7 @@ class ConnectionInstance:
     _instance = None
     """The singleton instance of the connection manager."""
 
-    def __init__(self, test: bool = False):
+    def __init__(self, test: bool = False) -> None:
         self.model: ConnectionModel | None = ConnectionModel()
 
     @staticmethod
@@ -213,7 +214,7 @@ class ConnectionInstance:
             ConnectionInstance._instance = ConnectionInstance()
         return ConnectionInstance._instance
 
-    def destroy(self):
+    def destroy(self) -> None:
         """Destroy the singleton instance and release resources.
 
         Revokes the connection model's USD listener so no stage callbacks persist.
@@ -237,7 +238,7 @@ class ConnectionInstance:
         """
         return self.model
 
-    def set_joint_connections(self, joint_connections: list[Any]):
+    def set_joint_connections(self, joint_connections: list[Any]) -> None:
         """Set joint connections on the model.
 
         Args:

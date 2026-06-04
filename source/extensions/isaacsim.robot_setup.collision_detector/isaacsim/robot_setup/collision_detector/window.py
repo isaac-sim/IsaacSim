@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Window shell for the Robot Self-Collision Detector."""
 
 __all__ = ["RobotSelfCollisionWindow"]
@@ -31,7 +32,7 @@ class RobotSelfCollisionWindow(ui.Window):
     """
 
     WINDOW_NAME = "Robot Self-Collision Detector"
-    #: Display title for the dockable window.
+    """WINDOW_NAME (str): Display title for the dockable window."""
 
     def __init__(self, usd_context_name: str = "") -> None:
         self._visibility_changed_listener: Callable | None = None

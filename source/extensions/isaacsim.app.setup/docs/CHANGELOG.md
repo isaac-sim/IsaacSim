@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.12.0] - 2026-04-13
+### Removed
+- Removed `isaacsim.core.telemetry` dependency and direct telemetry calls from app startup
+
+## [1.11.1] - 2026-04-01
+### Removed
+- Remove the `omni.isaac.ml_archive` dependency
+
+## [1.11.0] - 2026-03-23
+### Added
+- Emit telemetry event for app startup duration via isaacsim.core.telemetry
+
+### Changed
+- Updated return types
+
 ## [1.10.0] - 2026-03-04
 ### Changed
 - Add Overview.md, python_api.md, SETTINGS.md and update docstrings

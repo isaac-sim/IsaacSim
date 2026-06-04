@@ -1,0 +1,295 @@
+---
+description: Validation and formatting rules for extension.toml files
+globs:
+  - "**/config/extension.toml"
+alwaysApply: false
+---
+# Extension Configuration File (extension.toml) Rules
+
+This document outlines the rules and best practices for writing and maintaining `extension.toml` files in the Isaac Sim repository.
+
+## File Location
+
+- Every extension must have an `extension.toml` file located in the `config` directory of the extension.
+- Example path: `source/extensions/<extension-name>/config/extension.toml`
+
+## Section Ordering
+
+Sections in `extension.toml` files should appear in the following order to maintain consistency across the codebase:
+
+1. `[core]` - Core extension properties
+2. `[package]` - Package metadata
+3. `[deprecation]` - Deprecation information (if applicable)
+4. `[dependencies]` - Extension dependencies
+5. `[[python.module]]` - Python module definitions
+6. `[[native.library]]` - Native library paths (if needed)
+7. `[[python.pipapi]]` - Python package requirements for the extension (if needed)
+8. `[[native.plugin]]` - Native plugin definitions (if needed)
+9. `[settings]` - Extension-specific settings (if needed)
+10. `[[trigger]]` - Extension triggers/menu items (if needed)
+11. `[[fswatcher.patterns]]` - File system watcher patterns (if needed)
+12. `[[fswatcher.paths]]` - File system watcher path exclusions (if needed)
+13. `[[test]]` - Test configuration (if needed)
+14. `[documentation]` - Documentation pages (if needed)
+
+The required sections must be present and in the correct order. Optional sections should be included in the specified order when needed.
+
+## Spacing Requirements
+
+- Each section should be preceded by exactly one blank line (not more, not less).
+- No extra blank lines at the start of the file; at the end of the file, 0 or 1 empty line is acceptable (not more).
+- Section headers that immediately follow comments do not require a blank line between the comment and the header.
+- Multiple array sections of the same type (e.g., multiple `[[python.module]]` sections) should be separated by exactly one blank line.
+
+## Required Sections
+
+### 1. [core] Section
+
+```toml
+[core]
+reloadable = true  # Whether the extension can be reloaded at runtime
+order = 0          # Load order priority (lower values are loaded first)
+```
+
+### 2. [package] Section
+
+Fields in the `[package]` section must appear in this order (enforced by the validator):
+
+```toml
+[package]
+version = "x.y.z"                # Semantic version (required)
+category = "Category"            # Extension category (e.g., "Simulation", "Rendering")
+title = "Extension Title"        # Human-readable title
+description = "Description..."   # Clear description of what the extension does
+authors = ["author-email-placeholder"] # List of author emails
+repository = "https://..."       # Repository URL for the extension
+keywords = ["keyword1", "keyword2"] # Keywords for search/categorization
+changelog = "docs/CHANGELOG.md"  # Path to changelog file
+readme = "docs/Overview.md"      # Path to readme/overview file
+preview_image = "data/preview.png" # Path to preview image
+icon = "data/icon.png"           # Path to icon image
+writeTarget.kit = true           # Target platforms (optional)
+writeTarget.platform = true      # Platform-specific targets (optional)
+feature = true                   # Feature flag (optional)
+deprecation = true               # Deprecation flag (optional)
+```
+
+### 3. [deprecation] Section (if applicable)
+
+```toml
+[deprecation]
+warning = "Extension deprecated since Isaac Sim X.Y.Z. Replaced by isaacsim.replacement.extension."
+```
+
+### 4. [dependencies] Section
+
+```toml
+[dependencies]
+"dependency.alpha" = {}          # Required dependency
+"dependency.beta" = { optional = true } # Optional dependency
+"dependency.gamma" = {}          # Another required dependency
+```
+
+All dependencies should be sorted alphabetically by name to maintain consistency and make it easier to find specific dependencies.
+
+### 5. Python Module Section
+
+```toml
+[[python.module]]
+name = "module.name"             # Name of the Python module to expose
+```
+
+## Optional Sections
+
+### 6. [[native.library]] Section
+
+```toml
+[[native.library]]
+path = "lib/*.so"                # Path to native library files
+recursive = false                # Whether to search recursively
+```
+
+### 7. [[python.pipapi]] Section
+
+```toml
+[[python.pipapi]]
+requirements = [
+    "package-name==1.0.0"
+]
+```
+
+### 8. [[native.plugin]] Section
+
+```toml
+[[native.plugin]]
+path = "bin/*.plugin"            # Path to native plugin files
+recursive = false                # Whether to search recursively
+```
+
+### 9. [settings] Section
+
+```toml
+[settings]
+exts."extension.name".setting_name = value # Extension-specific settings
+```
+
+Each setting in the [settings] section MUST have a descriptive comment above it explaining its purpose and expected values. Platform-specific settings sections (e.g. `[settings."filter:platform=linux*"]`) are allowed and are treated as part of the settings group for section ordering.
+
+### 10. [[trigger]] Section
+
+```toml
+[[trigger]]
+menu.name = "Menu/Path"          # Menu path for the extension
+menu.window = "Window Title"     # Window title for the extension
+```
+
+### 11. [[fswatcher.patterns]] Section
+
+```toml
+[[fswatcher.patterns]]
+pattern = "*.ext"                # File pattern to watch
+```
+
+### 12. [[fswatcher.paths]] Section
+
+```toml
+[[fswatcher.paths]]
+path = "path/to/exclude"         # Path to exclude from watching
+```
+
+### 13. [[test]] Section
+
+Fields within each `[[test]]` block must appear in this order (enforced by the validator): `name`, `timeout`, `dependencies`, `args`, `stdoutFailPatterns.exclude`, `stdoutFailPatterns.include`.
+
+```toml
+[[test]]
+name = "optional_test_name"  # Optional: Name for the test case
+timeout = 300                    # Test timeout in seconds
+dependencies = [                 # Dependencies required for tests
+    "test.dependency.alpha",
+    "test.dependency.beta",
+    "test.dependency.gamma",
+]
+args = [                         # Command-line arguments for the test
+    "--argument1=value1",
+]
+stdoutFailPatterns.exclude = [   # Patterns to exclude from failure detection
+    "*pattern to ignore*",
+]
+stdoutFailPatterns.include = [   # Patterns to include in failure detection (optional)
+    "*pattern to match*",
+]
+```
+
+The dependencies listed in the `dependencies` array of each `[[test]]` section must be sorted alphabetically for consistency and easier maintenance.
+
+Test sections have specific ordering requirements:
+- The `name = "startup"` test section must appear first among all test sections.
+- There must be at most one unnamed test section per extension.toml file.
+- After "startup", other named test sections must appear in alphabetical order by their `name` field; the single unnamed section (if present) must come last.
+- Named test sections should have a `name` field that uniquely identifies the test.
+
+Example of proper test section ordering:
+```toml
+[[test]]
+name = "startup"  # "startup" test section must be first
+args = [
+    "--arg1=value1",
+]
+
+[[test]]
+name = "other_test"  # Other named sections in alphabetical order by name
+args = [
+    "--arg3=value3",
+]
+
+[[test]]  # Unnamed section last (at most one allowed)
+args = [
+    "--arg2=value2",
+]
+```
+
+### 14. [documentation] Section
+
+```toml
+[documentation]
+pages = [                        # Documentation pages
+    "docs/Overview.md",
+    "docs/CHANGELOG.md",
+]
+```
+
+## Best Practices
+
+1. **Section Ordering**:
+   - Always follow the prescribed section order for consistency
+   - Group related settings together within their respective sections
+   - Keep exactly one blank line between sections
+   - Avoid extra blank lines at the start of the file; at most one blank line at end of file
+
+2. **Alphabetical Ordering**:
+   - All dependencies in the [dependencies] section must be alphabetically sorted
+   - All dependencies in the dependencies list of the [[test]] section must be alphabetically sorted
+   - Alphabetical ordering makes it easier to find specific dependencies and avoids duplicate entries
+
+3. **Deprecation**:
+   - Use the [deprecation] section for extensions that are being phased out
+   - Always include a warning message with the deprecation version and replacement extension
+   - Deprecated extensions should maintain minimal dependencies
+
+4. **Version Numbers**:
+   - Follow semantic versioning (MAJOR.MINOR.PATCH)
+   - Ensure the version in `extension.toml` matches the latest version in the changelog
+
+5. **Authors**:
+   - Authors should be listed with their email addresses
+   - The CODEOWNERS file is automatically generated from extension.toml author lists
+
+6. **Documentation**:
+   - Always include an Overview.md and CHANGELOG.md
+   - Keep the changelog up to date with each version change
+
+7. **Dependencies**:
+   - Only list direct dependencies
+   - Mark dependencies as optional when appropriate
+   - Use empty object notation `{}` for required dependencies
+   - Keep dependencies alphabetically sorted for consistency
+
+8. **Testing**:
+   - Include appropriate test sections with necessary dependencies
+   - Specify any required arguments for testing
+   - List patterns to exclude from failure detection when needed
+   - Keep test dependencies alphabetically sorted
+
+9. **Metadata**:
+   - Provide clear, concise descriptions
+   - Include relevant keywords for search/categorization
+   - Use appropriate category labels
+
+10. **Visual Assets**:
+    - Include preview images and icons when possible
+    - Keep visual assets in the `data` directory
+
+11. **Settings**:
+    - Use namespaced settings with the extension name
+    - Document each setting with clear comments above it
+    - Ensure each setting has a descriptive comment explaining its purpose
+
+12. **Reloadability**:
+    - Set `reloadable = true` only if the extension can truly be reloaded at runtime
+
+13. **Load Order**:
+    - Use appropriate order values to ensure correct loading sequence
+    - Lower values are loaded first (0 is default priority, negative is higher, positive is lower priority) 
+
+## Validation
+
+The repository includes a validation tool at `tools/isaac/pre_merge/validate_extension_toml.py` that can be used to check for compliance with these rules and automatically fix common issues:
+
+- Run without arguments to validate all `extension.toml` files in the repository
+- Use `--fix-whitespace` to fix spacing between sections and file boundaries (allows 0 or 1 empty line at EOF)
+- Use `--fix-section-order` to fix the order of sections and of `[[test]]` blocks (startup first, then named alphabetically, then unnamed)
+- Use `--fix-package-order` to fix the order of fields in the `[package]` and `[[test]]` sections
+- Use `--fix-dependencies-order` to fix alphabetical ordering of dependencies
+- Use `--check-write-target` to add missing `writeTarget.kit = true` when needed
+- Use `--fix` to apply all available fixes

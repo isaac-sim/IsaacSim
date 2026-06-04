@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test multi-robot Carter camera navigation with ROS2 bridge."""
+
 import sys
 
 from isaacsim import SimulationApp
@@ -25,13 +28,13 @@ CONFIG = {"renderer": "RealTimePathTracing", "headless": False}
 # Example ROS2 bridge sample demonstrating the manual loading of Multiple Robot Navigation scenario
 simulation_app = SimulationApp(CONFIG)
 import carb
+import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
 import omni
-from isaacsim.core.api import SimulationContext
-from isaacsim.core.utils.extensions import enable_extension
 from isaacsim.storage.native import get_assets_root_path
 
 # enable ROS2 bridge extension
-enable_extension("isaacsim.ros2.bridge")
+app_utils.enable_extension("isaacsim.ros2.bridge")
 
 simulation_app.update()
 
@@ -51,19 +54,16 @@ simulation_app.update()
 simulation_app.update()
 
 print("Loading stage...")
-from isaacsim.core.utils.stage import is_stage_loading
-
-while is_stage_loading():
+while stage_utils.is_stage_loading():
     simulation_app.update()
 print("Loading Complete")
 
-simulation_context = SimulationContext(stage_units_in_meters=1.0)
+stage_utils.set_stage_units(meters_per_unit=1.0)
 
 frame = 0
 
 # need to initialize physics getting any articulation..etc
-simulation_context.initialize_physics()
-simulation_context.play()
+app_utils.play()
 
 simulation_app.update()
 
@@ -72,6 +72,6 @@ while simulation_app.is_running() and frame < 10:
     simulation_app.update()
     frame = frame + 1
 
-simulation_context.stop()
+app_utils.stop()
 simulation_app.update()
 simulation_app.close()

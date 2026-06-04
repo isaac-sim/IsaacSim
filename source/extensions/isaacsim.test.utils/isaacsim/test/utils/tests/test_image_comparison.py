@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
 
 """Tests for image comparison functionality in Isaac Sim testing utilities."""
 
+from __future__ import annotations
 
 import io
 import os
@@ -35,12 +36,12 @@ from PIL import Image
 class TestImageComparison(TimedAsyncTestCase):
     """Test suite for image comparison utilities."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures."""
         await super().setUp()
         self.test_dir = tempfile.mkdtemp()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test fixtures."""
         # Clean up temporary files
         import shutil
@@ -69,7 +70,7 @@ class TestImageComparison(TimedAsyncTestCase):
         abs_tol: float,
         perc: tuple[float, float],
         description: str,
-    ):
+    ) -> None:
         """Helper to test golden image pairs with given tolerances.
 
         Args:
@@ -110,7 +111,7 @@ class TestImageComparison(TimedAsyncTestCase):
             f"Captured stdout:\n{captured_stdout}",
         )
 
-    async def test_are_arrays_similar_identical(self):
+    async def test_are_arrays_similar_identical(self) -> None:
         """Test comparing identical arrays using default tolerances."""
         # Arrange identical arrays and expect equality under defaults.
         resolution = (100, 100, 3)
@@ -125,7 +126,7 @@ class TestImageComparison(TimedAsyncTestCase):
             is_similar, "Identical arrays should be similar with default tolerances (rtol=1e-05, atol=1e-08)"
         )
 
-    async def test_are_arrays_similar_different_resolutions(self):
+    async def test_are_arrays_similar_different_resolutions(self) -> None:
         """Test arrays with different resolutions should raise a shape mismatch error."""
         golden = np.zeros((100, 100, 3), dtype=np.uint8)
         test = np.zeros((120, 100, 3), dtype=np.uint8)
@@ -135,7 +136,7 @@ class TestImageComparison(TimedAsyncTestCase):
 
         self.assertIn("shape", str(context.exception).lower())
 
-    async def test_are_arrays_similar_with_small_differences(self):
+    async def test_are_arrays_similar_with_small_differences(self) -> None:
         """Test comparing arrays with small differences."""
         # Arrange nearly equal arrays; then relax tolerances to pass.
         resolution = (100, 100, 3)
@@ -171,7 +172,7 @@ class TestImageComparison(TimedAsyncTestCase):
             f"Arrays with difference of {diff_value} should pass with rtol={rtol}, atol={atol}, mean_tol={mean_tol}",
         )
 
-    async def test_are_arrays_similar_disable_allclose(self):
+    async def test_are_arrays_similar_disable_allclose(self) -> None:
         """Test disabling allclose and using only mean tolerance."""
         # Disable allclose to rely only on mean tolerance.
         resolution = (100, 100, 3)
@@ -204,7 +205,7 @@ class TestImageComparison(TimedAsyncTestCase):
             f"Arrays with mean difference of {diff_value} should pass when allclose disabled and mean_tolerance={mean_tol}",
         )
 
-    async def test_are_arrays_similar_multiple_criteria(self):
+    async def test_are_arrays_similar_multiple_criteria(self) -> None:
         """Test using multiple comparison criteria."""
         # Combine multiple criteria and exercise both pass and fail.
         resolution = (100, 100, 3)
@@ -253,7 +254,7 @@ class TestImageComparison(TimedAsyncTestCase):
             f"Arrays with diff={diff_value} should fail when RMSE tolerance tightened to {rmse_tol_fail} (actual RMSE={diff_value})",
         )
 
-    async def test_are_arrays_similar_shape_mismatch(self):
+    async def test_are_arrays_similar_shape_mismatch(self) -> None:
         """Test comparing arrays with different shapes."""
         golden = np.zeros((100, 100, 3), dtype=np.uint8)
         test = np.zeros((50, 50, 3), dtype=np.uint8)  # Different shape
@@ -268,7 +269,7 @@ class TestImageComparison(TimedAsyncTestCase):
             "Shape mismatch (100x100x3 vs 50x50x3) should raise ValueError mentioning 'shape'",
         )
 
-    async def test_are_arrays_similar_percentile_tolerance(self):
+    async def test_are_arrays_similar_percentile_tolerance(self) -> None:
         """Test percentile-based comparison."""
         # Introduce a small outlier region and test percentile thresholds.
         resolution = (100, 100)
@@ -313,7 +314,7 @@ class TestImageComparison(TimedAsyncTestCase):
             f"{percentile_high}th percentile={outlier_value} ({outlier_pixels}/{total_pixels} pixels={outlier_value}) should fail with tolerance={tolerance}",
         )
 
-    async def test_are_images_similar_identical_files(self):
+    async def test_are_images_similar_identical_files(self) -> None:
         """Test comparing identical image files."""
         # Create identical images and expect equality under defaults.
         resolution = (100, 100, 3)
@@ -337,7 +338,7 @@ class TestImageComparison(TimedAsyncTestCase):
             "Identical image files should be similar with default tolerances.\n" f"Captured stdout:\n{captured_stdout}",
         )
 
-    async def test_are_images_similar_different_files(self):
+    async def test_are_images_similar_different_files(self) -> None:
         """Test comparing different image files."""
         # Create dissimilar images; then relax tolerances to pass.
         resolution = (100, 100, 3)
@@ -385,7 +386,7 @@ class TestImageComparison(TimedAsyncTestCase):
             f"Captured stdout:\n{captured_stdout}",
         )
 
-    async def test_are_images_similar_missing_file(self):
+    async def test_are_images_similar_missing_file(self) -> None:
         """Test comparing when one image file doesn't exist."""
         # Only create the golden image; expect FileNotFoundError for test image.
         resolution = (100, 100, 3)
@@ -407,7 +408,7 @@ class TestImageComparison(TimedAsyncTestCase):
             "Missing test image file should raise FileNotFoundError with message about 'test image file not found'",
         )
 
-    async def test_are_images_similar_tiff_format(self):
+    async def test_are_images_similar_tiff_format(self) -> None:
         """Test comparing TIFF images with float32 data."""
         # Compare float32 TIFFs with small Gaussian noise under tight tolerances.
         resolution = (100, 100)
@@ -447,7 +448,7 @@ class TestImageComparison(TimedAsyncTestCase):
             f"Captured stdout:\n{captured_stdout}",
         )
 
-    async def test_compare_rotated_drill_pair(self):
+    async def test_compare_rotated_drill_pair(self) -> None:
         """Compare rotated drill RGB images using fixed thresholds and print stats."""
         await self._test_golden_pair(
             "similar_rgb_rotated_drill_1.png",
@@ -458,7 +459,7 @@ class TestImageComparison(TimedAsyncTestCase):
             description="Rotated drill pair",
         )
 
-    async def test_compare_shifted_warehouse_pair(self):
+    async def test_compare_shifted_warehouse_pair(self) -> None:
         """Compare shifted warehouse RGB images using fixed thresholds and print stats."""
         await self._test_golden_pair(
             "similar_rgb_shifted_warehouse_1.png",
@@ -469,7 +470,7 @@ class TestImageComparison(TimedAsyncTestCase):
             description="Shifted warehouse pair",
         )
 
-    async def test_compare_depth_8bit_pair(self):
+    async def test_compare_depth_8bit_pair(self) -> None:
         """Compare 8-bit depth visualization image pair using fixed thresholds and print stats."""
         await self._test_golden_pair(
             "similar_depth_8bit_1.png",
@@ -480,7 +481,7 @@ class TestImageComparison(TimedAsyncTestCase):
             description="Depth 8-bit pair",
         )
 
-    async def test_compare_different_extension_pair(self):
+    async def test_compare_different_extension_pair(self) -> None:
         """Compare RGB images with different file extensions (JPG vs PNG) and print stats."""
         await self._test_golden_pair(
             "different_extension_rgb_1.jpg",
@@ -491,7 +492,7 @@ class TestImageComparison(TimedAsyncTestCase):
             description="Different extension pair",
         )
 
-    async def test_different_resolution_image_pair_raises(self):
+    async def test_different_resolution_image_pair_raises(self) -> None:
         """Different resolution image pair should raise a shape mismatch error."""
         golden_dir = self.get_image_comparison_golden_dir()
         img1 = os.path.join(golden_dir, "different_resolution_rgb_1.png")
@@ -508,7 +509,7 @@ class TestImageComparison(TimedAsyncTestCase):
 
         self.assertIn("shape", str(context.exception).lower())
 
-    async def test_compare_forklift_rt16_vs_rt64(self):
+    async def test_compare_forklift_rt16_vs_rt64(self) -> None:
         """Compare forklift RGB images (rt16 vs rt64) using fixed thresholds and print stats."""
         await self._test_golden_pair(
             "similar_rgb_forklift_rt16.png",
@@ -519,7 +520,7 @@ class TestImageComparison(TimedAsyncTestCase):
             description="Forklift rt16 vs rt64",
         )
 
-    async def test_compare_semantic_segmentation_pair(self):
+    async def test_compare_semantic_segmentation_pair(self) -> None:
         """Compare semantic segmentation RGB images using fixed thresholds and print stats."""
         await self._test_golden_pair(
             "similar_rgb_semantic_segmentation_1.png",
@@ -530,7 +531,7 @@ class TestImageComparison(TimedAsyncTestCase):
             description="Semantic segmentation pair",
         )
 
-    async def test_compare_images_in_directories_identical_files(self):
+    async def test_compare_images_in_directories_identical_files(self) -> None:
         """Test comparing identical files in two directories."""
         golden_dir = os.path.join(self.test_dir, "golden")
         test_dir = os.path.join(self.test_dir, "test")
@@ -558,7 +559,7 @@ class TestImageComparison(TimedAsyncTestCase):
         self.assertEqual(len(result["golden_only_files"]), 0, "No golden-only files")
         self.assertEqual(len(result["test_only_files"]), 0, "No test-only files")
 
-    async def test_compare_images_in_directories_with_pattern(self):
+    async def test_compare_images_in_directories_with_pattern(self) -> None:
         """Test comparing files with regex pattern matching."""
         golden_dir = os.path.join(self.test_dir, "golden")
         test_dir = os.path.join(self.test_dir, "test")
@@ -589,7 +590,7 @@ class TestImageComparison(TimedAsyncTestCase):
         self.assertIn("rgb_001.png", result["file_results"])
         self.assertNotIn("depth_000.png", result["file_results"])
 
-    async def test_compare_images_in_directories_golden_has_extra_files(self):
+    async def test_compare_images_in_directories_golden_has_extra_files(self) -> None:
         """Test when golden directory has more files than test directory."""
         golden_dir = os.path.join(self.test_dir, "golden")
         test_dir = os.path.join(self.test_dir, "test")
@@ -620,7 +621,7 @@ class TestImageComparison(TimedAsyncTestCase):
         self.assertIn("image_002.png", result["golden_only_files"])
         self.assertIn("WARNING", captured_output)
 
-    async def test_compare_images_in_directories_test_has_extra_files(self):
+    async def test_compare_images_in_directories_test_has_extra_files(self) -> None:
         """Test when test directory has more files than golden directory."""
         golden_dir = os.path.join(self.test_dir, "golden")
         test_dir = os.path.join(self.test_dir, "test")
@@ -651,7 +652,7 @@ class TestImageComparison(TimedAsyncTestCase):
         self.assertIn("image_002.png", result["test_only_files"])
         self.assertIn("WARNING", captured_output)
 
-    async def test_compare_images_in_directories_no_common_files(self):
+    async def test_compare_images_in_directories_no_common_files(self) -> None:
         """Test when directories have no common files."""
         golden_dir = os.path.join(self.test_dir, "golden")
         test_dir = os.path.join(self.test_dir, "test")
@@ -678,7 +679,7 @@ class TestImageComparison(TimedAsyncTestCase):
         self.assertEqual(len(result["file_results"]), 0, "Should have no file results")
         self.assertIn("No common files", captured_output)
 
-    async def test_compare_images_in_directories_with_differences(self):
+    async def test_compare_images_in_directories_with_differences(self) -> None:
         """Test comparing files with differences using mean tolerance."""
         golden_dir = os.path.join(self.test_dir, "golden")
         test_dir = os.path.join(self.test_dir, "test")
@@ -726,7 +727,7 @@ class TestImageComparison(TimedAsyncTestCase):
         self.assertEqual(result["passed_count"], 0, "No files should pass")
         self.assertEqual(result["failed_count"], 2, "Both files should fail")
 
-    async def test_compare_images_in_directories_missing_directory(self):
+    async def test_compare_images_in_directories_missing_directory(self) -> None:
         """Test when one of the directories doesn't exist."""
         golden_dir = os.path.join(self.test_dir, "golden")
         test_dir = os.path.join(self.test_dir, "nonexistent")
@@ -738,7 +739,7 @@ class TestImageComparison(TimedAsyncTestCase):
 
         self.assertIn("test directory not found", str(context.exception).lower())
 
-    async def test_compare_images_in_directories_pattern_none_matches_all(self):
+    async def test_compare_images_in_directories_pattern_none_matches_all(self) -> None:
         """Test that pattern=None matches all files including different extensions."""
         golden_dir = os.path.join(self.test_dir, "golden")
         test_dir = os.path.join(self.test_dir, "test")
@@ -764,7 +765,7 @@ class TestImageComparison(TimedAsyncTestCase):
         self.assertIn("image_001.png", result["file_results"])
         self.assertIn("image_002.jpg", result["file_results"])
 
-    async def test_compare_images_in_directories_complex_pattern(self):
+    async def test_compare_images_in_directories_complex_pattern(self) -> None:
         """Test with complex regex pattern matching specific frame numbers."""
         golden_dir = os.path.join(self.test_dir, "golden")
         test_dir = os.path.join(self.test_dir, "test")
@@ -796,7 +797,7 @@ class TestImageComparison(TimedAsyncTestCase):
         self.assertIn("frame_000001.png", result["file_results"])
         self.assertNotIn("other_file.png", result["file_results"])
 
-    async def test_compare_images_in_directories_print_options(self):
+    async def test_compare_images_in_directories_print_options(self) -> None:
         """Test different printing options."""
         golden_dir = os.path.join(self.test_dir, "golden")
         test_dir = os.path.join(self.test_dir, "test")

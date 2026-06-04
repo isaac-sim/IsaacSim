@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for synthetic recorder timeline control behavior."""
 
 import os
 import shutil
@@ -27,27 +28,29 @@ from isaacsim.test.utils.file_validation import validate_folder_contents
 
 
 class TestRecorderData(omni.kit.test.AsyncTestCase):
-    """
-    Test that the recorder writes the correct number of frames
-    """
+    """Test that the recorder writes the correct number of frames."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Set up a new stage before each test."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Wait for assets to finish loading after each test."""
         await omni.kit.app.get_app().next_update_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    async def setup_stage_with_semantics(self):
+    async def setup_stage_with_semantics(self) -> None:
+        """Create a stage with semantically labeled primitives."""
         await omni.usd.get_context().new_stage_async()
         rep.functional.create.cube(semantics=[("class", "cube")])
         rep.functional.create.sphere(position=(1, 1, 0), semantics=[("class", "sphere")])
 
-    async def run_recorder_capture(self, num_frames, play_timeline, control_timeline):
+    async def run_recorder_capture(self, num_frames: int, play_timeline: bool, control_timeline: bool) -> None:
+        """Run a recording capture and validate timeline behavior and output frame count."""
         test_name = f"_out_num_frames_{num_frames}_play_timeline_{play_timeline}_control_timeline_{control_timeline}"
         print(f"Starting test: {test_name}")
 
@@ -140,18 +143,22 @@ class TestRecorderData(omni.kit.test.AsyncTestCase):
             f"Expected {num_frames} frames in {out_dir_path}, but found: {os.listdir(out_dir_path)}",
         )
 
-    async def test_recorder_data_play_timeline_false_control_timeline_false(self):
+    async def test_recorder_data_play_timeline_false_control_timeline_false(self) -> None:
+        """Test recording with timeline stopped and no timeline control."""
         await self.setup_stage_with_semantics()
         await self.run_recorder_capture(num_frames=5, play_timeline=False, control_timeline=False)
 
-    async def test_recorder_data_play_timeline_false_control_timeline_true(self):
+    async def test_recorder_data_play_timeline_false_control_timeline_true(self) -> None:
+        """Test recording with timeline stopped and timeline control enabled."""
         await self.setup_stage_with_semantics()
         await self.run_recorder_capture(num_frames=5, play_timeline=False, control_timeline=True)
 
-    async def test_recorder_data_play_timeline_true_control_timeline_false(self):
+    async def test_recorder_data_play_timeline_true_control_timeline_false(self) -> None:
+        """Test recording with timeline playing and no timeline control."""
         await self.setup_stage_with_semantics()
         await self.run_recorder_capture(num_frames=5, play_timeline=True, control_timeline=False)
 
-    async def test_recorder_data_play_timeline_true_control_timeline_true(self):
+    async def test_recorder_data_play_timeline_true_control_timeline_true(self) -> None:
+        """Test recording with timeline playing and timeline control enabled."""
         await self.setup_stage_with_semantics()
         await self.run_recorder_capture(num_frames=5, play_timeline=True, control_timeline=True)

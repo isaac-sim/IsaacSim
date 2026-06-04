@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
-
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Standalone script to validate async rendering with handshake mode.
+"""Standalone script to validate async rendering with handshake mode.
 
 This script runs a simple simulation with async rendering and handshake enabled,
 then validates that the FrametimeStats contain both App_Update and Render stats
@@ -43,6 +40,7 @@ from isaacsim import SimulationApp
 # Note: /renderer/asyncInit=false forces synchronous hydra engine initialization.
 # This ensures the RTX engine attaches during startup (critical for framework test mode).
 # This is separate from /app/asyncRendering which controls async render thread execution.
+# Explicitly disable multi-tick rendering while async is enabled.
 simulation_app = SimulationApp(
     {
         "headless": headless,
@@ -50,6 +48,8 @@ simulation_app = SimulationApp(
             "--/app/asyncRendering=true",
             "--/app/omni.usd/asyncHandshake=true",
             "--/renderer/asyncInit=false",
+            "--/rtx/hydra/supportMultiTickRate=false",
+            "--/rtx/rendering/perSensorTickTlas=false",
         ],
     }
 )

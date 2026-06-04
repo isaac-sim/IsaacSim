@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,8 +12,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 #include <carb/Interface.h>
 #include <carb/logging/Log.h>
+#include <carb/settings/ISettings.h>
 
 #include <isaacsim/core/simulation_manager/TimeSampleStorage.h>
 #include <omni/fabric/FabricTime.h>
@@ -49,16 +51,52 @@ omni::fabric::RationalTime TimeSampleStorage::getCurrentTime()
 {
     using namespace omni::fabric;
 
-    // Only use StageReaderWriter frame time - this provides the correct frame time
-    // that corresponds to when we are reading/writing time data
-
-    // Get frame time from StageReaderWriter if available
+    // Returns the rational time that storage entries should be keyed by. The chosen time-base
+    // must match what the rendering pipeline publishes as rpFabricTime so that subsequent
+    // getSimulationTimeAt() lookups against rpFabricTime resolve to the right sample.
     if (m_usdStageId.id != 0 && m_iStageReaderWriter)
     {
         StageReaderWriterId stageReaderWriterId = m_iStageReaderWriter->get(m_usdStageId);
         if (stageReaderWriterId.id != 0)
         {
-            FabricTime frameTime = m_iStageReaderWriter->getFrameTime(stageReaderWriterId);
+            FabricTime frameTime{};
+
+            // Time-base depends on whether multitick rendering is enabled.
+            //
+            // Multitick: simulation_manager writes the current sim time to the Fabric prim
+            // /ExternalSimulationTime in onPhysicsStep, and the renderer consumes that value
+            // to derive each frame's rational time (which then flows through to rpFabricTime
+            // in the post-render synthdata graph). Storing samples keyed at the same rational
+            // time means lookups by rpFabricTime hit an exact match.
+            //
+            // Non-multitick: the renderer ignores /ExternalSimulationTime and tags frames
+            // with its own free-running Hydra frame counter (m_frameNumber * simPeriod).
+            // To keep storage keys aligned with what rpFabricTime carries, we read the
+            // StageReaderWriter's frame time directly. Lookups for past frames then resolve
+            // via exact match / adjacent-sample interpolation in getSimulationTimeAt().
+            carb::settings::ISettings* iSettings = carb::getCachedInterface<carb::settings::ISettings>();
+            const bool multiTickRateEnabled = iSettings && iSettings->getAsBool("/rtx/hydra/supportMultiTickRate");
+            if (multiTickRateEnabled)
+            {
+                static const omni::fabric::Path externalTimePrim =
+                    omni::fabric::Path::createImmortal("/ExternalSimulationTime");
+                static const omni::fabric::Token timeAttrToken = omni::fabric::Token::createImmortal("omni:time");
+                omni::fabric::ConstSpanWithTypeC arraySpan =
+                    m_iStageReaderWriter->getAttributeRd(stageReaderWriterId, externalTimePrim, timeAttrToken);
+                const double* externalSimTimeAttr = arraySpan.getTypedPointer<const double>();
+                if (!externalSimTimeAttr)
+                {
+                    CARB_LOG_WARN(
+                        "getCurrentTime: /ExternalSimulationTime.omni:time not readable from Fabric; "
+                        "returning invalid time");
+                    return kInvalidRationalTime;
+                }
+                frameTime = omni::fabric::FabricTime(*externalSimTimeAttr);
+            }
+            else
+            {
+                frameTime = m_iStageReaderWriter->getFrameTime(stageReaderWriterId);
+            }
 
             // Check if we got a valid rational time
             if (frameTime.m_type == FabricTime::Type::Rational)
@@ -150,17 +188,28 @@ std::optional<double> TimeSampleStorage::getSimulationTimeAt(const omni::fabric:
         return std::nullopt;
     }
 
-    // Hold lock for entire operation to ensure thread safety
+    // Multitick path: simulation time was passed directly to the renderer via
+    // /ExternalSimulationTime, so the rational time we are being asked about *is* the
+    // simulation time at frame submission. Avoid the storage lookup and return it as-is.
+    carb::settings::ISettings* iSettings = carb::getCachedInterface<carb::settings::ISettings>();
+    const bool multiTickRateEnabled = iSettings && iSettings->getAsBool("/rtx/hydra/supportMultiTickRate");
+    if (multiTickRateEnabled)
+    {
+        return double(time);
+    }
+
+    // Non-multitick path: the rational time comes from the renderer's free-running
+    // Hydra frame counter, not from sim time. Resolve it against the per-frame samples
+    // authored in storeSample()/getCurrentTime() (which on this path read the renderer's
+    // own frame time via IStageReaderWriter::getFrameTime).
     std::shared_lock<std::shared_mutex> lock(m_mutex);
 
-    // First, try to find an exact match
     auto exactMatch = findExactMatch(time);
     if (exactMatch.has_value())
     {
         return exactMatch->simTime;
     }
 
-    // No exact match found, try interpolation
     auto adjacent = findAdjacentSamples(time);
     if (!adjacent.has_value())
     {

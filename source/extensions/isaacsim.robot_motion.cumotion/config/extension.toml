@@ -4,13 +4,13 @@
 #
 
 [package]
-version = "1.0.1"
+version = "1.3.0"
 category = "simulation"
 title = "cumotion"
 description = "Access to cuMotion planners under the isaacsim motion generation API."
 keywords = ["motion", "generation", "cumotion", "planning","rmpflow", "rmp", "trajectory"]
 changelog = "docs/CHANGELOG.md"
-readme = "docs/README.md"
+readme = "docs/Overview.md"
 preview_image = "data/preview.png"
 icon = "data/icon.png"
 writeTarget.kit = true
@@ -47,3 +47,6 @@ stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
     "*UserWarning: Trajectory optimizer failed with status: *",
 ]
+
+[documentation]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

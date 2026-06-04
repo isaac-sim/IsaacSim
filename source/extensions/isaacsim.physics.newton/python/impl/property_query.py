@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Newton property query interface compatible with PhysX property query API.
 
 This module provides a Newton-compatible implementation of the PhysX property query
@@ -24,7 +25,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import carb
-from pxr import Sdf, Usd, UsdPhysics
+from pxr import Sdf, Usd, UsdUtils
 
 if TYPE_CHECKING:
     from .tensors.articulation_view import NewtonArticulationView
@@ -41,7 +42,7 @@ class NewtonPropertyQueryArticulationLink:
         joint_dof: Number of DOFs for this joint.
     """
 
-    def __init__(self, rigid_body: int = 0, joint: int = 0, joint_dof: int = 0):
+    def __init__(self, rigid_body: int = 0, joint: int = 0, joint_dof: int = 0) -> None:
         self._rigid_body = rigid_body
         self._joint = joint
         self._joint_dof = joint_dof
@@ -118,7 +119,7 @@ class NewtonPropertyQueryArticulationResponse:
         stage_id: int = 0,
         path_id: int = 0,
         links: list[NewtonPropertyQueryArticulationLink] | None = None,
-    ):
+    ) -> None:
         self.result = result
         self.stage_id = stage_id
         self.path_id = path_id
@@ -139,7 +140,40 @@ class NewtonPropertyQueryInterface:
         """
         if cls._instance is None:
             cls._instance = super().__new__(cls)
+            cls._instance._articulation_cache = {}  # type: ignore[has-type]
+            cls._instance._stage_event_subscription = None  # type: ignore[has-type]
         return cls._instance
+
+    def _invalidate_cache_for_stage(self, stage_id: int) -> None:
+        """Drop cached articulation responses for ``stage_id``."""
+        self._articulation_cache = {key: value for key, value in self._articulation_cache.items() if key[0] != stage_id}  # type: ignore[has-type]
+
+    def _ensure_stage_event_subscription(self) -> None:
+        """Subscribe once to USD stage CLOSED events to drop stale cache entries."""
+        if self._stage_event_subscription is not None:  # type: ignore[has-type]
+            return
+        try:
+            import carb.eventdispatcher
+            import omni.usd
+        except ImportError:
+            return
+        usd_context = omni.usd.get_context()
+        if usd_context is None:
+            return
+
+        def _on_stage_closed(event: object) -> None:
+            current_stage = usd_context.get_stage()
+            if current_stage is None:
+                self._articulation_cache.clear()
+                return
+            current_stage_id = UsdUtils.StageCache.Get().GetId(current_stage).ToLongInt()
+            self._invalidate_cache_for_stage(current_stage_id)
+
+        self._stage_event_subscription = carb.eventdispatcher.get_eventdispatcher().observe_event(
+            event_name=usd_context.stage_event_name(omni.usd.StageEventType.CLOSED),
+            on_event=_on_stage_closed,
+            observer_name="NewtonPropertyQueryInterface stage cache invalidator",
+        )
 
     def query_prim(
         self,
@@ -176,7 +210,7 @@ class NewtonPropertyQueryInterface:
             return
 
         # Get the stage and prim path
-        from pxr import PhysicsSchemaTools, UsdUtils
+        from pxr import PhysicsSchemaTools
 
         stage = UsdUtils.StageCache.Get().Find(Usd.StageCache.Id.FromLongInt(stage_id))
         if not stage:
@@ -200,9 +234,26 @@ class NewtonPropertyQueryInterface:
 
         physics_sim_view = SimulationManager._physics_sim_view__warp
         if physics_sim_view is None or not physics_sim_view.is_valid:
-            # For USD backend, query directly from USD prims instead of physics simulation
+            # No live sim view: invoke Newton's parser to compute the canonical
+            # link/joint enumeration, so pre-physics metadata matches what the
+            # articulation view will report once physics is initialized.
+            self._ensure_stage_event_subscription()
+            cache_key = (stage_id, prim_path.pathString)
+            cached = self._articulation_cache.get(cache_key)
+            if cached is not None:
+                response = NewtonPropertyQueryArticulationResponse(
+                    result=0,
+                    stage_id=stage_id,
+                    path_id=prim_id,
+                    links=cached,
+                )
+                articulation_fn(response)
+                if finished_fn:
+                    finished_fn()
+                return
             try:
                 links = self._build_articulation_links_from_usd(stage, prim)
+                self._articulation_cache[cache_key] = links
                 response = NewtonPropertyQueryArticulationResponse(
                     result=0,  # VALID
                     stage_id=stage_id,
@@ -269,22 +320,21 @@ class NewtonPropertyQueryInterface:
         """
         from pxr import PhysicsSchemaTools
 
-        links = []
+        links = []  # type: ignore[var-annotated]
         # Get paths for the first articulation (homogeneous view, all have same structure)
         all_link_paths = articulation_view.link_paths
-        all_joint_paths = articulation_view.joint_paths
         all_dof_paths = articulation_view.dof_paths
 
         if not all_link_paths or len(all_link_paths) == 0:
             return links
 
         link_paths = all_link_paths[0]
-        joint_paths = all_joint_paths[0] if all_joint_paths else []
         dof_paths = all_dof_paths[0] if all_dof_paths else []
+        joint_paths = list(dict.fromkeys(p for p in dof_paths if p))
 
         # Create a mapping from joint paths to DOF count by counting DOFs
         # In Newton, each DOF path corresponds to exactly one joint
-        joint_dof_count_map = {}
+        joint_dof_count_map = {}  # type: ignore[var-annotated]
         for dof_path in dof_paths:
             # Count this DOF for its joint
             joint_dof_count_map[dof_path] = joint_dof_count_map.get(dof_path, 0) + 1
@@ -315,118 +365,96 @@ class NewtonPropertyQueryInterface:
     def _build_articulation_links_from_usd(
         self, stage: Usd.Stage, articulation_prim: Usd.Prim
     ) -> list[NewtonPropertyQueryArticulationLink]:
-        """Build articulation link list by querying USD directly.
+        """Build articulation link list by parsing USD with Newton's own importer.
 
-        This method is used when the physics simulation view is not available.
+        Used when the physics simulation view is not available. Runs
+        ``newton.ModelBuilder.add_usd`` confined to the articulation subtree so the
+        link/joint enumeration matches what ``NewtonArticulationView`` will produce
+        once physics is initialized (including the effect of
+        ``collapse_fixed_joints`` and the ``"dfs"`` joint ordering).
+
+        Visual shapes, sites, mesh approximation, and MuJoCo option parsing are
+        skipped to keep this query inexpensive.
 
         Args:
             stage: USD stage.
-            articulation_prim: USD prim for the articulation root.
+            articulation_prim: USD prim passed to ``query_prim``.
 
         Returns:
             List of articulation links in PhysX-compatible format.
         """
+        import newton
+        from newton.usd import SchemaResolverNewton, SchemaResolverPhysx  # type: ignore[attr-defined]
         from pxr import PhysicsSchemaTools
 
-        links = []
-        link_prim_to_joint_prim: dict[Sdf.Path, Usd.Prim | None] = {}
+        collapse_fixed_joints = self._get_collapse_fixed_joints_setting()
 
-        def _collect_prims(prim: Usd.Prim) -> None:
-            """Recursively collect links and their associated joints.
+        builder = newton.ModelBuilder()
+        builder.add_usd(
+            source=stage,
+            root_path=articulation_prim.GetPath().pathString,
+            collapse_fixed_joints=collapse_fixed_joints,
+            schema_resolvers=[SchemaResolverNewton(), SchemaResolverPhysx()],
+            only_load_enabled_rigid_bodies=True,
+            load_visual_shapes=False,
+            load_sites=False,
+            skip_mesh_approximation=True,
+            parse_mujoco_options=False,
+            verbose=False,
+        )
 
-            Args:
-                prim: USD prim to process.
-            """
-            for child in prim.GetChildren():
-                # Check if this is a rigid body (link)
-                if child.HasAPI(UsdPhysics.RigidBodyAPI):
-                    # Look for joints in the same prim's children or as siblings
-                    inbound_joint = None
+        # Mirror NewtonArticulationView's filtering rules so pre-physics metadata
+        # matches what the runtime view publishes:
+        #   * Skip the first joint of every articulation (the FREE joint of a
+        #     floating-base articulation or the implicit fixed-base root joint).
+        #   * Keep only joint types the runtime view enumerates as articulation
+        #     joints; everything else (FIXED, FREE, DISTANCE, CABLE, ...) is dropped.
+        # See ``_build_articulations_helper`` in ``isaacsim/physics/newton/impl/tensors/backend.py``.
+        articulation_root_joints: set[int] = set(builder.articulation_start)
+        included_joint_types = {
+            newton.JointType.PRISMATIC,
+            newton.JointType.REVOLUTE,
+            newton.JointType.BALL,
+            newton.JointType.D6,
+        }
 
-                    # Check children for joints (common pattern)
-                    for joint_child in child.GetChildren():
-                        if joint_child.IsA(UsdPhysics.Joint):
-                            # Verify this joint connects to this link
-                            joint_api = UsdPhysics.Joint(joint_child)
-                            body1_rel = joint_api.GetBody1Rel()
-                            targets = body1_rel.GetTargets()
-                            # If body1 points to this link, this is an inbound joint
-                            if targets and targets[0] == child.GetPath():
-                                inbound_joint = joint_child
-                                break
+        body_to_inbound_joint: dict[int, int] = {}
+        for joint_index, child_body in enumerate(builder.joint_child):
+            if child_body < 0:
+                continue
+            if joint_index in articulation_root_joints:
+                continue
+            if builder.joint_type[joint_index] not in included_joint_types:
+                continue
+            body_to_inbound_joint.setdefault(child_body, joint_index)
 
-                    link_prim_to_joint_prim[child.GetPath()] = inbound_joint
-
-                # Recurse into children
-                _collect_prims(child)
-
-        _collect_prims(articulation_prim)
-
-        # Second pass: build link entries in order
-        for link_path, joint_prim in link_prim_to_joint_prim.items():
+        links: list[NewtonPropertyQueryArticulationLink] = []
+        for body_index, body_label in enumerate(builder.body_label):
             link = NewtonPropertyQueryArticulationLink()
-            link._rigid_body = PhysicsSchemaTools.sdfPathToInt(Sdf.Path(link_path))
-
-            # Set joint information if present
-            if joint_prim:
-                joint_path = Sdf.Path(joint_prim.GetPath())
-                link._joint = PhysicsSchemaTools.sdfPathToInt(joint_path)
-
-                # Determine DOF count based on joint type
-                if joint_prim.IsA(UsdPhysics.RevoluteJoint) or joint_prim.IsA(UsdPhysics.PrismaticJoint):
-                    link._joint_dof = 1
-                elif joint_prim.IsA(UsdPhysics.SphericalJoint):
-                    link._joint_dof = 3
-                elif joint_prim.IsA(UsdPhysics.FixedJoint):
-                    link._joint_dof = 0
-                else:
-                    # Unknown joint type, assume 0 DOFs
-                    link._joint_dof = 0
-
+            link._rigid_body = PhysicsSchemaTools.sdfPathToInt(Sdf.Path(body_label))
+            joint_index = body_to_inbound_joint.get(body_index)  # type: ignore[assignment]
+            if joint_index is not None:
+                linear_axes, angular_axes = builder.joint_dof_dim[joint_index]
+                joint_label = builder.joint_label[joint_index]
+                link._joint = PhysicsSchemaTools.sdfPathToInt(Sdf.Path(joint_label))
+                link._joint_dof = linear_axes + angular_axes
             links.append(link)
-
         return links
 
-    def _count_joint_dofs(self, stage: Usd.Stage, joint_path: Sdf.Path, dof_map: dict) -> int:
-        """Count the number of DOFs for a joint.
-
-        Args:
-            stage: USD stage.
-            joint_path: Path to the joint prim.
-            dof_map: Mapping from joint paths to DOF counts from Newton.
-
-        Returns:
-            Number of DOFs for the joint.
-        """
-        # First check if Newton already counted DOFs for this joint
-        path_str = joint_path.pathString
-        if path_str in dof_map:
-            return dof_map[path_str]
-
-        prim = stage.GetPrimAtPath(joint_path)
-        if not prim.IsValid():
-            return 0
-
-        # Check joint type from USD schema
-        if prim.IsA(UsdPhysics.RevoluteJoint):
-            return 1
-        if prim.IsA(UsdPhysics.PrismaticJoint):
-            return 1
-        if prim.IsA(UsdPhysics.FixedJoint):
-            return 0
-        if prim.IsA(UsdPhysics.SphericalJoint):
-            return 3
-        if prim.IsA(UsdPhysics.Joint):
-            # Generic joint - check for drive attributes to determine DOFs
-            dof_count = 0
-            for attr in prim.GetAttributes():
-                attr_name = attr.GetName()
-                if attr_name.startswith("drive:"):
-                    dof_count = 1
-                    break
-            return dof_count if dof_count > 0 else 1
-
-        return 0
+    @staticmethod
+    def _get_collapse_fixed_joints_setting() -> bool:
+        """Return the ``collapse_fixed_joints`` flag from the active ``NewtonStage`` config."""
+        try:
+            from . import extension as newton_extension
+        except ImportError:
+            return False
+        active_stage = getattr(newton_extension, "_newton_stage", None)
+        if active_stage is None:
+            return False
+        cfg = getattr(active_stage, "cfg", None)
+        if cfg is None:
+            return False
+        return bool(getattr(cfg, "collapse_fixed_joints", False))
 
 
 def get_newton_property_query_interface() -> NewtonPropertyQueryInterface:

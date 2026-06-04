@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Global variables for the cuMotion Graph Planner example extension."""
+
 EXTENSION_TITLE = "cuMotion Graph Planner Example"
 
 EXTENSION_DESCRIPTION = "Demonstrates graph-based motion planning (RRT) using cuMotion integration."

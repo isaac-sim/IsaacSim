@@ -1,0 +1,132 @@
+[package]
+version = "1.0.1"
+category = "Simulation"
+title = "IPC OmniGraph Node Examples"
+description = "Example OmniGraph nodes (C++ and Python) for inter-process communication over TCP/IP, for use in tutorials."
+keywords = ["isaac", "omnigraph", "examples", "tcp", "tutorial"]
+changelog = "docs/CHANGELOG.md"
+readme = "docs/Overview.md"
+preview_image = "data/preview.png"
+icon = "data/icon.png"
+writeTarget.kit = true
+writeTarget.platform = true
+
+[dependencies]
+"isaacsim.core.nodes" = {}
+"omni.graph" = {}
+"omni.usd.libs" = {}
+
+[[python.module]]
+name = "isaacsim.examples.ipc"
+
+[[python.module]]
+name = "isaacsim.examples.ipc.bindings"
+public = false
+
+[[python.module]]
+name = "isaacsim.examples.ipc.tests"
+public = false
+
+[[native.plugin]]
+path = "bin/*.plugin"
+recursive = false
+
+[fswatcher.patterns]
+include = ["*.ogn", "*.py", "*.toml"]
+exclude = ["Ogn*Database.py"]
+
+[fswatcher.paths]
+exclude = ["*/bin", "*/__pycache__/*", "*/.git/*"]
+
+[[test]]
+name = "startup"
+args = [
+    "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
+]
+stdoutFailPatterns.exclude = [
+    '*The NumPy module was reloaded*',
+]
+
+[[test]]
+name = "doctest"
+enabled = true
+timeout = 300
+dependencies = [
+    "isaacsim.test.utils",
+]
+cppTests.libraries = ["bin/${lib_prefix}isaacsim.examples.ipc.tests${lib_ext}"]
+# C++ nodes register for execution graphs; generated push-graph USD OGN tests expect a Fabric
+# interface that only Python OGN types provide here — keep Py template tests, skip C++ ones.
+pythonTests.exclude = [
+    "isaacsim.examples.ipc.ogn.tests.TestOgnSimpleReceiveExternalStepCpp.*",
+    "isaacsim.examples.ipc.ogn.tests.TestOgnSimpleSendSimulationClockCpp.*",
+]
+stdoutFailPatterns.exclude = [
+    "*omni.replicator.nv*",
+]
+args = [
+    "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
+]
+
+[[test]]
+enabled = true
+timeout = 300
+dependencies = [
+    "isaacsim.test.utils",
+]
+pythonTests.include = ["isaacsim.examples.ipc.tests.*"]
+pythonTests.exclude = [
+    "*test_data_access*",
+    "isaacsim.examples.ipc.ogn.tests.*",
+]
+stdoutFailPatterns.exclude = [
+    "*omni.replicator.nv*",
+    "*Width 0 or height 0 is not valid*",
+]
+args = [
+    "--enable",
+    "omni.kit.loop-isaac",
+    "--reset-user",
+    "--vulkan",
+    "--/app/asyncRendering=0",
+    "--/app/asyncRenderingLowLatency=0",
+    "--/app/fastShutdown=1",
+    "--/app/file/ignoreUnsavedStage=1",
+    "--/app/hydraEngine/waitIdle=0",
+    "--/app/player/useFixedTimeStepping=false",
+    "--/app/renderer/skipWhileMinimized=0",
+    "--/app/renderer/sleepMsOnFocus=0",
+    "--/app/renderer/sleepMsOutOfFocus=0",
+    "--/app/runLoops/main/manualModeEnabled=true",
+    "--/app/runLoops/main/rateLimitEnabled=false",
+    "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
+    "--/app/settings/persistent=0",
+    "--/app/useFabricSceneDelegate=true",
+    "--/app/viewport/createCameraModelRep=0",
+    "--/crashreporter/skipOldDumpUpload=1",
+    "--/exts/omni.usd/locking/onClose=0",
+    "--/omni/kit/plugin/syncUsdLoads=1",
+    "--/omni/replicator/asyncRendering=0",
+    "--/omnihydra/parallelHydraSprimSync=1",
+    '--/persistent/app/stage/upAxis="Z"',
+    "--/persistent/app/viewport/defaults/tickRate=120",
+    "--/persistent/app/viewport/displayOptions=31951",
+    "--/persistent/omni/replicator/captureOnPlay=1",
+    "--/persistent/omnigraph/updateToUsd=0",
+    "--/persistent/physics/visualizationDisplayJoints=0",
+    "--/persistent/renderer/startupMessageDisplayed=1",
+    "--/persistent/simulation/defaultMetersPerUnit=1.0",
+    "--/persistent/simulation/minFrameRate=15",
+    "--/renderer/multiGpu/autoEnable=0",
+    "--/renderer/multiGpu/enabled=0",
+    "--/rtx-transient/dlssg/enabled=0",
+    "--/rtx-transient/resourcemanager/enableTextureStreaming=1",
+    "--/rtx/descriptorSets=360000",
+    "--/rtx/hydra/enableSemanticSchema=1",
+    "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
+    "--/rtx/materialDb/syncLoads=1",
+    "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
+    "--/rtx/reservedDescriptors=900000",
+]

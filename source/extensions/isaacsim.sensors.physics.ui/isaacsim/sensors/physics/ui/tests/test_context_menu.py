@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,7 +31,7 @@ PHYSICS_SENSORS = {
 class TestPhysicsContextMenu(MenuUITestCase):
     """Validate physics sensor entries in the viewport context menu."""
 
-    async def test_physics_sensors_context_menu_count(self):
+    async def test_physics_sensors_context_menu_count(self) -> None:
         """Test all the physics sensors are added to context menus correctly."""
         viewport_context_menu = await self.get_viewport_context_menu()
         self.assertIsNotNone(viewport_context_menu, "Failed to get viewport context menu")
@@ -43,7 +43,7 @@ class TestPhysicsContextMenu(MenuUITestCase):
         physics_sensor_menu_dict = viewport_context_menu["Create"]["Isaac"]["Sensors"]
         sensor_items = physics_sensor_menu_dict.get("_", [])
 
-        physics_sensor_count = sum(1 for name in PHYSICS_SENSORS.keys() if name in sensor_items)
+        physics_sensor_count = sum(1 for name in PHYSICS_SENSORS if name in sensor_items)
         expected_count = len(PHYSICS_SENSORS)
 
         self.assertEqual(
@@ -53,7 +53,7 @@ class TestPhysicsContextMenu(MenuUITestCase):
             f"Found items: {sensor_items}",
         )
 
-    async def test_contact_sensor_context_menu_rigid_parent_creates_sensor(self):
+    async def test_contact_sensor_context_menu_rigid_parent_creates_sensor(self) -> None:
         """Test context menu click for Contact Sensor with RigidPrim parent creates a functional sensor."""
         UsdGeom.Xform.Define(self._stage, "/World/RigidParent")
         await omni.kit.app.get_app().next_update_async()
@@ -77,7 +77,7 @@ class TestPhysicsContextMenu(MenuUITestCase):
             f"Contact sensor should be created with RigidPrim parent via context menu, but found {sensor_count}",
         )
 
-    async def test_imu_sensor_context_menu_rigid_parent_creates_sensor(self):
+    async def test_imu_sensor_context_menu_rigid_parent_creates_sensor(self) -> None:
         """Test context menu click for Imu Sensor with RigidPrim parent creates a functional sensor."""
         UsdGeom.Xform.Define(self._stage, "/World/RigidParent")
         await omni.kit.app.get_app().next_update_async()

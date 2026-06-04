@@ -1,5 +1,5 @@
 [package]
-version = "3.1.0"
+version = "3.1.4"
 category = "Simulation"
 title = "Isaac Sim Surface Gripper UI Components"
 description = "UI components for the Surface Gripper extension"
@@ -21,17 +21,11 @@ name = "isaacsim.robot.surface_gripper.ui"
 
 [[test]]
 name = "startup"
-dependencies = [
-    "omni.isaac.ml_archive",
-]
 stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
 ]
 
 [[test]]
-dependencies = [
-    "omni.isaac.ml_archive",
-]
 stdoutFailPatterns.exclude = [    
     '*The NumPy module was reloaded*',
 ]

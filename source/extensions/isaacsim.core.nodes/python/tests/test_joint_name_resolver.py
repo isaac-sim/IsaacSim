@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -104,7 +104,7 @@ class TestJointNameResolver(ogts.OmniGraphTestCase):
         if create_attributes:
             edit_args[og.Controller.Keys.CREATE_ATTRIBUTES] = create_attributes
 
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": self.GRAPH_PATH, "evaluator_name": "execution"},
             edit_args,
         )
@@ -139,7 +139,7 @@ class TestJointNameResolver(ogts.OmniGraphTestCase):
         if create_attributes:
             edit_args[og.Controller.Keys.CREATE_ATTRIBUTES] = create_attributes
 
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": self.GRAPH_PATH, "evaluator_name": "execution"},
             edit_args,
         )

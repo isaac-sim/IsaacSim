@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,23 +13,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import omni.kit.app
-import omni.usd
-from omni.ui.tests.test_base import OmniUiTest
+"""Tests for the grasping UI window."""
+
+import omni.ui as ui
+from isaacsim.replicator.grasping.ui.grasping_ui_extension import GraspingUIExtension
+from isaacsim.test.utils import MenuUITestCase
+
+WINDOW_TITLE = GraspingUIExtension.WINDOW_NAME
+MENU_PATH = f"{GraspingUIExtension.MENU_GROUP}/{GraspingUIExtension.WINDOW_NAME}"
 
 
-class TestGraspingUIWindow(OmniUiTest):
-    async def setUp(self):
-        await omni.kit.app.get_app().next_update_async()
-        await omni.usd.get_context().new_stage_async()
-        await omni.kit.app.get_app().next_update_async()
+class TestGraspingUIWindow(MenuUITestCase):
+    """Test the grasping UI window lifecycle."""
 
-    async def tearDown(self):
-        omni.usd.get_context().close_stage()
-        await omni.kit.app.get_app().next_update_async()
-        # In some cases the test will end before the asset is loaded, in this case wait for assets to load
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            await omni.kit.app.get_app().next_update_async()
+    async def test_window_ui(self) -> None:
+        """Verify the grasping UI window opens from the menu and renders without errors."""
+        window = None
+        try:
+            await self.menu_click_with_retry(MENU_PATH, window_name=WINDOW_TITLE)
+            await self.wait_n_frames(5)
 
-    async def test_window_ui(self):
-        await omni.kit.app.get_app().next_update_async()
+            window = ui.Workspace.get_window(WINDOW_TITLE)
+            self.assertIsNotNone(window, "Grasping window should exist after opening via the menu")
+
+            widget = await self.find_widget_with_retry(WINDOW_TITLE)
+            self.assertIsNotNone(widget, "Grasping window widget should be findable after opening")
+
+            await self.menu_click_with_retry(MENU_PATH)
+            window = None
+            await self.wait_n_frames(5)
+        finally:
+            if window is not None:
+                window.destroy()

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,9 @@
 
 """Interactive tutorial extension for getting started with robots in Isaac Sim, demonstrating manipulator and mobile robot operations."""
 
-
 import os
 
 import carb.eventdispatcher
-import numpy as np
 import omni.ext
 import omni.timeline
 import omni.ui as ui
@@ -43,7 +41,7 @@ class GettingStartedRobotExtension(omni.ext.IExt):
     a comprehensive interactive learning experience for robot fundamentals in Isaac Sim.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize the Getting Started Robot extension.
 
         Sets up the UI components, creates the sample instance, and registers the example
@@ -73,7 +71,7 @@ class GettingStartedRobotExtension(omni.ext.IExt):
             category=self.category,
         )
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up and shutdown the Getting Started Robot extension.
 
         Performs UI cleanup and deregisters the example from the examples browser.
@@ -99,12 +97,12 @@ class GettingStartedRobotUI(BaseSampleUITemplate):
         **kwargs: Additional keyword arguments passed to the parent class.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self._timeline = omni.timeline.get_timeline_interface()
         self._event_timer_callback = None
 
-    def build_ui(self):
+    def build_ui(self) -> None:
         """Overwriting the build_ui function to add timeline callbacks that only registers when the tutorial is clicked on and UI is built."""
         self.arm_handle = None
         self.car_handle = None
@@ -121,7 +119,7 @@ class GettingStartedRobotUI(BaseSampleUITemplate):
         )
         super().build_ui()
 
-    def build_extra_frames(self):
+    def build_extra_frames(self) -> None:
         """Builds the extra frames section containing the Getting Started with a Robot collapsible frame."""
         extra_stacks = self.get_extra_frames_handle()
         self.task_ui_elements = {}
@@ -138,7 +136,7 @@ class GettingStartedRobotUI(BaseSampleUITemplate):
             ):
                 self.build_getting_started_ui()
 
-    def build_getting_started_ui(self):
+    def build_getting_started_ui(self) -> None:
         """Builds the UI elements for the Getting Started with a Robot tutorial including buttons for adding and controlling arm and vehicle robots."""
         with ui.VStack(spacing=5):
 
@@ -192,9 +190,8 @@ class GettingStartedRobotUI(BaseSampleUITemplate):
             self.task_ui_elements["Print Joint State"] = btn_builder(**dict)
             self.task_ui_elements["Print Joint State"].enabled = False
 
-    def _add_arm(self):
+    def _add_arm(self) -> None:
         """Adds a Franka Panda manipulator to the scene at the specified position and creates an articulation handle for it."""
-
         import carb
         from isaacsim.core.experimental.prims import Articulation, XformPrim
         from isaacsim.core.experimental.utils import stage as stage_utils
@@ -227,10 +224,10 @@ class GettingStartedRobotUI(BaseSampleUITemplate):
             self.task_ui_elements["Move Arm"].text = "PRESS PLAY"
             self.task_ui_elements["Add Arm"].enabled = False
 
-    def _add_vehicle(self):
+    def _add_vehicle(self) -> None:
         """Adds a Nova Carter mobile robot to the scene and creates an articulation handle for it."""
         import carb
-        from isaacsim.core.experimental.prims import Articulation, XformPrim
+        from isaacsim.core.experimental.prims import Articulation
         from isaacsim.core.experimental.utils import stage as stage_utils
         from isaacsim.storage.native import get_assets_root_path
 
@@ -257,7 +254,7 @@ class GettingStartedRobotUI(BaseSampleUITemplate):
             self.task_ui_elements["Move Vehicle"].text = "PRESS PLAY"
             self.task_ui_elements["Add Vehicle"].enabled = False
 
-    def _move_arm(self):
+    def _move_arm(self) -> None:
         """Toggles the arm between a moved position and reset position by setting DOF positions."""
         if self.task_ui_elements["Move Arm"].text.upper() == "MOVE ARM":
             # move the arm
@@ -274,9 +271,8 @@ class GettingStartedRobotUI(BaseSampleUITemplate):
         else:
             pass
 
-    def _move_vehicle(self):
+    def _move_vehicle(self) -> None:
         """Toggles the vehicle between moving and stopped states by setting DOF velocities."""
-
         if self.task_ui_elements["Move Vehicle"].text.upper() == "MOVE VEHICLE":
             # move the vehicle
             self.car_handle.set_dof_velocities([[2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]])
@@ -292,7 +288,7 @@ class GettingStartedRobotUI(BaseSampleUITemplate):
         else:
             pass
 
-    def _print_state(self):
+    def _print_state(self) -> None:
         """Toggles the robot joint state printing functionality and updates the button text accordingly."""
         self.sample.print_state = not self.sample.print_state  # toggle print state
         if self.sample.print_state:
@@ -300,7 +296,7 @@ class GettingStartedRobotUI(BaseSampleUITemplate):
         else:
             self.task_ui_elements["Print Joint State"].text = "PRINT JOINT STATE"
 
-    def _timeline_stop_callback_fn(self, event):
+    def _timeline_stop_callback_fn(self, event: object) -> None:
         """Timeline stop event callback - reset buttons when pressed STOP.
 
         Args:
@@ -316,7 +312,7 @@ class GettingStartedRobotUI(BaseSampleUITemplate):
         self.task_ui_elements["Print Joint State"].enabled = False
         self.task_ui_elements["Print Joint State"].text = "PRESS PLAY"
 
-    def _timeline_play_callback_fn(self, event):
+    def _timeline_play_callback_fn(self, event: object) -> None:
         """Timeline play event callback - enable buttons when pressed PLAY.
 
         Args:
@@ -335,7 +331,7 @@ class GettingStartedRobotUI(BaseSampleUITemplate):
             else:
                 self.task_ui_elements["Print Joint State"].text = "PRINT JOINT STATE"
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up on shutdown."""
         self._event_timer_callback_play = None
         self._event_timer_callback_stop = None

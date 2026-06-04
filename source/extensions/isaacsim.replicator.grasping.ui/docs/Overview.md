@@ -1,16 +1,12 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.replicator.grasping.ui extension provides a comprehensive user interface for interactive robotic grasp generation and evaluation within Isaac Sim. This extension creates a dedicated window accessible through the Tools/Replicator menu that enables users to configure grasping scenarios, generate grasp poses, simulate grasp execution, and evaluate grasp success metrics.
 
 ## Key Components
 
-### [GraspingWindow](isaacsim.replicator.grasping.ui/isaacsim.replicator.grasping.ui.GraspingWindow)
+### {class}`GraspingWindow <isaacsim.replicator.grasping.ui.GraspingWindow>`
 
-The [GraspingWindow](isaacsim.replicator.grasping.ui/isaacsim.replicator.grasping.ui.GraspingWindow) class serves as the main interface for all grasping-related functionality. The window is organized into several collapsible sections that cover the complete grasping workflow:
+The {class}`GraspingWindow <isaacsim.replicator.grasping.ui.GraspingWindow>` class serves as the main interface for all grasping-related functionality. The window is organized into several collapsible sections that cover the complete grasping workflow:
 
 **Gripper Configuration** - Users can define gripper joint pregrasp states and configure grasp phases to specify how the gripper should move during grasp execution.
 

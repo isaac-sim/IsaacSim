@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -81,7 +81,7 @@ struct ContactRawData
  */
 struct IContactSensor
 {
-    CARB_PLUGIN_INTERFACE("isaacsim::sensors::experimental::physics::IContactSensor", 1, 1);
+    CARB_PLUGIN_INTERFACE("isaacsim::sensors::experimental::physics::IContactSensor", 2, 0);
 
     /**
      * @brief Shut down the manager, destroying all sensors and freeing resources.
@@ -91,6 +91,8 @@ struct IContactSensor
     /**
      * @brief Create a contact sensor for the given IsaacContactSensor prim.
      * @details Finds the parent rigid body by walking up the prim hierarchy.
+     * If a sensor already exists for this prim path the call succeeds without
+     * creating a duplicate.
      *
      * @note Side effect: This method modifies the USD stage by applying
      * PhysxSchemaPhysxContactReportAPI on the parent rigid body (with
@@ -98,30 +100,30 @@ struct IContactSensor
      * getFullContactReport() to return contact data for this body.
      *
      * @param primPath USD path to the IsaacContactSensor prim.
-     * @return Unique sensor ID (>= 0), or -1 on failure.
+     * @return true on success (sensor created or already exists), false on failure.
      */
-    virtual int64_t createSensor(const char* primPath) = 0;
+    virtual bool createSensor(const char* primPath) = 0;
 
     /**
      * @brief Remove a sensor and free its resources.
-     * @param sensorId ID returned by createSensor().
+     * @param primPath USD path used when the sensor was created.
      */
-    virtual void removeSensor(int64_t sensorId) = 0;
+    virtual void removeSensor(const char* primPath) = 0;
 
     /**
      * @brief Get the latest reading for a sensor.
-     * @param sensorId ID returned by createSensor().
+     * @param primPath USD path used when the sensor was created.
      * @return Sensor reading. isValid is false if sensor is disabled or not found.
      */
-    virtual ContactSensorReading getSensorReading(int64_t sensorId) = 0;
+    virtual ContactSensorReading getSensorReading(const char* primPath) = 0;
 
     /**
      * @brief Get raw contact data for a sensor's parent body.
-     * @param sensorId ID returned by createSensor().
+     * @param primPath USD path used when the sensor was created.
      * @param outData Pointer to receive the raw contact data array.
      * @param outCount Pointer to receive the number of raw contact entries.
      */
-    virtual void getRawContacts(int64_t sensorId, const ContactRawData** outData, int32_t* outCount) = 0;
+    virtual void getRawContacts(const char* primPath, const ContactRawData** outData, int32_t* outCount) = 0;
 };
 
 } // namespace physics

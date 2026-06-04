@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Verify torch is imported from the expected path and CUDA is available."""
+
+from isaacsim import SimulationApp
+
+# instantiate SimulationApp first as omni.isaac.ml_archive has been removed from PYTHONPATH
+simulation_app = SimulationApp({"headless": True})
+
 import torch
 
 print(torch.__path__[0])
@@ -22,6 +30,7 @@ assert torch.cuda.is_available()
 
 @torch.jit.script
 def add(a, b):
+    """Add two tensors element-wise using torch.jit.script."""
     return a + b
 
 
@@ -30,3 +39,5 @@ b = torch.ones((10, 2), device="cuda:0")
 c = add(a, b)
 d = a + b
 assert torch.allclose(c, d)
+
+simulation_app.close()

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,17 +15,6 @@
 
 """Provides specialized property widgets for Isaac Sim's USD-based robotics workflows including robot schema management, array attribute editing, and custom data handling."""
 
-
 from .widgets import *
 
-__all__ = [
-    "ArrayPropertiesWidget",
-    "CustomDataWidget",
-    "MotionPlanningAPIWidget",
-    "NameOverrideWidget",
-    "NamespaceWidget",
-    "JointAPIWidget",
-    "LinkAPIWidget",
-    "RobotAPIWidget",
-    "IsaacPropertyWidgets",
-]
+__all__ = []

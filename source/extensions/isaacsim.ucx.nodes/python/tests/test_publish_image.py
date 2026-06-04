@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test UCX image publishing node functionality."""
+
 import isaacsim.core.experimental.utils.app as app_utils
 import numpy as np
 import omni
@@ -23,23 +25,32 @@ from ucxx._lib.arr import Array
 
 
 class TestUCXPublishImage(UCXTestCase):
-    """Test UCX image publishing"""
+    """Test UCX image publishing."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Set up a new stage for image publishing tests."""
         await super().setUp()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def setup_ucx_client_with_listener(self):
-        """Setup UCX client"""
+    async def setup_ucx_client_with_listener(self) -> None:
+        """Setup UCX client."""
         for _ in range(5):
             await omni.kit.app.get_app().next_update_async()
         self.create_ucx_client(self.port)
         for _ in range(10):
             await omni.kit.app.get_app().next_update_async()
 
-    async def receive_image_message(self, tag=10, timeout_frames=1000):
-        """Receive and unpack an image message"""
+    async def receive_image_message(self, tag: int = 10, timeout_frames: int = 1000) -> tuple:
+        """Receive and unpack an image message.
+
+        Args:
+            tag: UCX tag to receive on.
+            timeout_frames: Maximum number of frames to wait.
+
+        Returns:
+            Tuple of unpacked image message data.
+        """
         # Allocate buffer for image (640x480 RGB = ~1MB to be safe)
         max_buffer_size = 1024 * 1024
         buffer = np.empty(max_buffer_size, dtype=np.uint8)
@@ -59,9 +70,8 @@ class TestUCXPublishImage(UCXTestCase):
 
         return unpack_image_message(buffer)
 
-    async def test_image_basic_data(self):
-        """Test basic image publishing with raw data input"""
-
+    async def test_image_basic_data(self) -> None:
+        """Test basic image publishing with raw data input."""
         # Create a simple test image (10x10 RGB)
         test_width = 10
         test_height = 10

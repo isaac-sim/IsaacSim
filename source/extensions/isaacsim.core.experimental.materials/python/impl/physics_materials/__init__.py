@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .physics_material import PhysicsMaterial
-from .rigid_body import RigidBodyMaterial
-from .surface_deformable import SurfaceDeformableMaterial
-from .volume_deformable import VolumeDeformableMaterial
+"""Physics materials implementations for rigid body, surface deformable, and volume deformable materials."""
+
+from .physics_material import PhysicsMaterial as PhysicsMaterial
+from .rigid_body import RigidBodyMaterial as RigidBodyMaterial
+from .surface_deformable import SurfaceDeformableMaterial as SurfaceDeformableMaterial
+from .volume_deformable import VolumeDeformableMaterial as VolumeDeformableMaterial

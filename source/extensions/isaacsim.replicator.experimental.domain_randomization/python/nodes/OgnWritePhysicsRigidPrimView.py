@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,8 @@
 
 import numpy as np
 import omni.graph.core as og
+import warp as wp
+from isaacsim.core.experimental.utils.ops import place
 from isaacsim.core.experimental.utils.transform import euler_angles_to_quaternion
 from isaacsim.replicator.experimental.domain_randomization import RIGID_PRIM_ATTRIBUTES
 from isaacsim.replicator.experimental.domain_randomization import physics_view as physics
@@ -106,7 +108,7 @@ class OgnWritePhysicsRigidPrimView:
         on_reset = db.inputs.on_reset
 
         try:
-            view = physics._rigid_prim_views.get(view_name)
+            view = physics.resolve_rigid_prim_view(view_name)
             if view is None:
                 raise ValueError(f"Expected a registered rigid_prim_view, but instead received {view_name}")
             if attribute_name not in RIGID_PRIM_ATTRIBUTES:
@@ -125,6 +127,8 @@ class OgnWritePhysicsRigidPrimView:
 
         if on_reset:
             modify_initial_values(view_name, operation, attribute_name, samples, indices)
+
+        wp_indices = place(indices, dtype=wp.int32, device="cpu")
 
         if attribute_name == "angular_velocity":
             angular_velocities = apply_randomization_operation(
@@ -146,7 +150,6 @@ class OgnWritePhysicsRigidPrimView:
             view.set_world_poses(positions=positions, indices=indices)
         elif attribute_name == "orientation":
             rpys = apply_randomization_operation(view_name, operation, attribute_name, samples, indices, on_reset)
-            # Convert euler angles to quaternions using experimental utils (returns wp.array, convert to numpy)
             orientations = euler_angles_to_quaternion(rpys, degrees=False, extrinsic=True).numpy()
             view.set_world_poses(orientations=orientations, indices=indices)
         elif attribute_name == "force":
@@ -155,14 +158,14 @@ class OgnWritePhysicsRigidPrimView:
             masses = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            physics_view.set_masses(masses, indices)
+            physics_view.set_masses(place(masses, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "inertia":
             diagonal_inertias = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
             inertia_matrices = np.zeros((len(indices), 9), dtype=np.float32)
             inertia_matrices[:, [0, 4, 8]] = diagonal_inertias
-            physics_view.set_inertias(inertia_matrices, indices)
+            physics_view.set_inertias(place(inertia_matrices, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "material_properties":
             material_properties = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
@@ -177,17 +180,17 @@ class OgnWritePhysicsRigidPrimView:
                     dist_param_2,
                     num_buckets,
                 )
-            physics_view.set_material_properties(material_properties, indices)
+            physics_view.set_material_properties(place(material_properties, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "contact_offset":
             contact_offsets = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            physics_view.set_contact_offsets(contact_offsets, indices)
+            physics_view.set_contact_offsets(place(contact_offsets, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "rest_offset":
             rest_offsets = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            physics_view.set_rest_offsets(rest_offsets, indices)
+            physics_view.set_rest_offsets(place(rest_offsets, dtype=wp.float32, device="cpu"), wp_indices)
 
         db.outputs.execOut = og.ExecutionAttributeState.ENABLED
         return True

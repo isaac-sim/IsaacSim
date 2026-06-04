@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test synchronization between TF and camera timestamps in ROS2 bridge."""
+
 import argparse
 import logging
 import os
@@ -35,22 +38,27 @@ simulation_app = SimulationApp(
 )
 
 # Import post-launch modules
+import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.graph.core as og
 import omni.usd
 import usdrt.Sdf
-from isaacsim.core.api import World
-from isaacsim.core.api.objects import DynamicCuboid
-from isaacsim.core.utils.extensions import enable_extension
-from isaacsim.core.utils.viewports import set_camera_view
+from isaacsim.core.experimental.objects import Cube, GroundPlane
+from isaacsim.core.experimental.prims import GeomPrim, RigidPrim
+from isaacsim.core.rendering_manager import RenderingManager, ViewportManager
+from isaacsim.core.simulation_manager import SimulationManager
 
-enable_extension("isaacsim.ros2.bridge")
+app_utils.enable_extension("isaacsim.ros2.bridge")
 simulation_app.update()
 
 import rclpy
+from rclpy.executors import SingleThreadedExecutor
 from sensor_msgs.msg import Image
 from tf2_msgs.msg import TFMessage
 
-rclpy.init()
+ros_context = rclpy.Context()
+rclpy.init(context=ros_context)
+ros_executor = SingleThreadedExecutor(context=ros_context)
 
 # ROS state
 tf_msg = None
@@ -64,6 +72,7 @@ img_queue = deque()
 
 
 def tf_callback(msg):
+    """Handle incoming TF messages and record their timestamps."""
     global tf_msg, tf_recv_time, tf_recv_count
     tf_msg = msg
     tf_recv_time = time.perf_counter()
@@ -79,6 +88,7 @@ def tf_callback(msg):
 
 
 def img_callback(msg):
+    """Handle incoming image messages and record their timestamps."""
     global img_msg, img_recv_time, img_recv_count
     img_msg = msg
     img_recv_time = time.perf_counter()
@@ -93,6 +103,7 @@ def img_callback(msg):
 
 
 def clear_message_state():
+    """Reset all message state and clear queues."""
     global tf_msg, img_msg, tf_recv_time, img_recv_time
     tf_msg = None
     img_msg = None
@@ -103,6 +114,7 @@ def clear_message_state():
 
 
 def collect_latest_pair(max_wait_steps=20):
+    """Collect the latest TF and image message pair by spinning the ROS node."""
     wait_count = 0
     spin_start = time.perf_counter()
 
@@ -110,7 +122,7 @@ def collect_latest_pair(max_wait_steps=20):
         if tf_queue and img_queue:
             break
 
-        rclpy.spin_once(node, timeout_sec=0.05)
+        rclpy.spin_once(node, executor=ros_executor, timeout_sec=0.05)
         wait_count += 1
 
     if tf_queue and img_queue:
@@ -139,15 +151,21 @@ def collect_latest_pair(max_wait_steps=20):
 
 
 # Create ROS2 node + subscribers
-node = rclpy.create_node("sync_test_node")
+node = rclpy.create_node("sync_test_node", context=ros_context)
 tf_sub = node.create_subscription(TFMessage, "/tf_test", tf_callback, 10)
 img_sub = node.create_subscription(Image, "rgb", img_callback, 10)
 
-# Create world and add cube
-world = World(physics_dt=1.0 / 60.0, rendering_dt=1.0 / 60.0)
+# Setup physics and rendering rates
+SimulationManager.set_physics_dt(1.0 / 60.0)
+RenderingManager.set_dt(1.0 / 60.0)
+
+# Create scene
+stage_utils.create_new_stage()
 CUBE_PRIM_PATH = "/Cube"
-cube = world.scene.add(DynamicCuboid(prim_path=CUBE_PRIM_PATH, scale=[0.5, 0.5, 0.5]))
-world.scene.add_default_ground_plane()
+Cube(paths=CUBE_PRIM_PATH, scales=[0.5, 0.5, 0.5])
+cube = RigidPrim(paths=CUBE_PRIM_PATH)
+GeomPrim(paths=CUBE_PRIM_PATH, apply_collision_apis=True)
+GroundPlane("/World/GroundPlane")
 
 # Add camera
 CAMERA_PRIM_PATH = "/Camera"
@@ -156,9 +174,10 @@ CAMERA_TARGET = [0, 0, 0.1]
 
 stage = omni.usd.get_context().get_stage()
 stage.DefinePrim(CAMERA_PRIM_PATH, "Camera")
-set_camera_view(eye=CAMERA_EYE, target=CAMERA_TARGET, camera_prim_path=CAMERA_PRIM_PATH)
+ViewportManager.set_camera_view(CAMERA_PRIM_PATH, eye=CAMERA_EYE, target=CAMERA_TARGET)
 
-world.reset()
+app_utils.play()
+simulation_app.update()
 
 # Create Action Graph
 og.Controller.edit(
@@ -167,12 +186,13 @@ og.Controller.edit(
         og.Controller.Keys.CREATE_NODES: [
             ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
             ("ReadSimTime", "isaacsim.core.nodes.IsaacReadSimulationTime"),
+            ("ComputeTF", "isaacsim.core.nodes.IsaacComputeTransformTree"),
             ("TfPublisher", "isaacsim.ros2.bridge.ROS2PublishTransformTree"),
             ("CameraPublisher", "isaacsim.ros2.bridge.ROS2CameraHelper"),
             ("CreateRenderProduct", "isaacsim.core.nodes.IsaacCreateRenderProduct"),
         ],
         og.Controller.Keys.SET_VALUES: [
-            ("TfPublisher.inputs:targetPrims", [usdrt.Sdf.Path(CUBE_PRIM_PATH)]),
+            ("ComputeTF.inputs:targetPrims", [usdrt.Sdf.Path(CUBE_PRIM_PATH)]),
             ("TfPublisher.inputs:topicName", "/tf_test"),
             ("CameraPublisher.inputs:type", "rgb"),
             ("CameraPublisher.inputs:topicName", "rgb"),
@@ -181,7 +201,12 @@ og.Controller.edit(
             ("CreateRenderProduct.inputs:height", 1080),
         ],
         og.Controller.Keys.CONNECT: [
-            ("OnPlaybackTick.outputs:tick", "TfPublisher.inputs:execIn"),
+            ("OnPlaybackTick.outputs:tick", "ComputeTF.inputs:execIn"),
+            ("ComputeTF.outputs:execOut", "TfPublisher.inputs:execIn"),
+            ("ComputeTF.outputs:parentFrames", "TfPublisher.inputs:parentFrames"),
+            ("ComputeTF.outputs:childFrames", "TfPublisher.inputs:childFrames"),
+            ("ComputeTF.outputs:translations", "TfPublisher.inputs:translations"),
+            ("ComputeTF.outputs:orientations", "TfPublisher.inputs:orientations"),
             ("OnPlaybackTick.outputs:tick", "CreateRenderProduct.inputs:execIn"),
             ("ReadSimTime.outputs:simulationTime", "TfPublisher.inputs:timeStamp"),
             ("CreateRenderProduct.outputs:execOut", "CameraPublisher.inputs:execIn"),
@@ -195,8 +220,8 @@ log.info("Action graph created, starting warmup...")
 
 # Warmup
 for i in range(20):
-    world.step(render=True)
-    rclpy.spin_once(node, timeout_sec=0.0)
+    simulation_app.update()
+    rclpy.spin_once(node, executor=ros_executor, timeout_sec=0.0)
     warmup_tf = tf_msg is not None
     warmup_img = img_msg is not None
     if i % 5 == 0 or warmup_tf or warmup_img:
@@ -209,27 +234,31 @@ log.info(f"Warmup complete. Total callbacks so far: tf={tf_recv_count}, img={img
 # frame. Without this, the first test step receives an image stamped from the previous
 # warmup frame while TF already carries the current frame's timestamp.
 clear_message_state()
-world.step(render=True)
+simulation_app.update()
 for _ in range(20):
-    rclpy.spin_once(node, timeout_sec=0.05)
+    rclpy.spin_once(node, executor=ros_executor, timeout_sec=0.05)
     if tf_queue and img_queue:
         break
 log.info(f"Pipeline flush: tf_queue={'OK' if tf_queue else 'NONE'}, " f"img_queue={'OK' if img_queue else 'NONE'}")
 clear_message_state()
 
-# Settle phase: require several consecutive zero-delta synced pairs before measuring.
+# Settle phase: require several consecutive synced pairs before measuring.
 # This removes startup transients from CI while keeping strict checks in measured steps.
+# A small tolerance absorbs rational-time rounding noise (1/60 s is not exact in
+# nanoseconds, so consecutive stamps can toggle between adjacent integers).
 SETTLE_REQUIRED_CONSECUTIVE = 5
 SETTLE_MAX_STEPS = 200
-settle_consecutive_zero = 0
+SYNC_TOLERANCE_NS = 1_000  # 1 us, above rational-time rounding floor
+settle_consecutive_synced = 0
 settled = False
 
 log.info(
     "Starting settle phase: require "
-    f"{SETTLE_REQUIRED_CONSECUTIVE} consecutive zero-delta pairs (max {SETTLE_MAX_STEPS} steps)"
+    f"{SETTLE_REQUIRED_CONSECUTIVE} consecutive synced pairs "
+    f"(max {SETTLE_MAX_STEPS} steps)"
 )
 for settle_step in range(SETTLE_MAX_STEPS):
-    world.step(render=True)
+    simulation_app.update()
     (
         tf_ns,
         img_ns,
@@ -244,7 +273,7 @@ for settle_step in range(SETTLE_MAX_STEPS):
     ) = collect_latest_pair(max_wait_steps=20)
 
     if tf_pair_msg is None or img_pair_msg is None:
-        settle_consecutive_zero = 0
+        settle_consecutive_synced = 0
         log.debug(
             f"  settle step {settle_step}: no pair, "
             f"spins={settle_wait_count}, spin_time={settle_spin_elapsed * 1000:.1f} ms, "
@@ -252,11 +281,12 @@ for settle_step in range(SETTLE_MAX_STEPS):
         )
         continue
 
-    settle_delta_ns = abs(tf_ns - img_ns)
-    if settle_delta_ns == 0:
-        settle_consecutive_zero += 1
+    raw_offset_ns = img_ns - tf_ns
+    settle_delta_ns = abs(raw_offset_ns)
+    if settle_delta_ns <= SYNC_TOLERANCE_NS:
+        settle_consecutive_synced += 1
     else:
-        settle_consecutive_zero = 0
+        settle_consecutive_synced = 0
 
     tf_settle_stamp = tf_pair_msg.transforms[0].header.stamp
     img_settle_stamp = img_pair_msg.header.stamp
@@ -264,13 +294,14 @@ for settle_step in range(SETTLE_MAX_STEPS):
         f"  settle step {settle_step}: "
         f"tf_stamp={tf_settle_stamp.sec}.{tf_settle_stamp.nanosec:09d}, "
         f"img_stamp={img_settle_stamp.sec}.{img_settle_stamp.nanosec:09d}, "
+        f"raw_offset={raw_offset_ns / 1e6:+.3f} ms, "
         f"delta={settle_delta_ns / 1e6:.3f} ms, "
-        f"consecutive_zero={settle_consecutive_zero}/{SETTLE_REQUIRED_CONSECUTIVE}, "
+        f"consecutive_synced={settle_consecutive_synced}/{SETTLE_REQUIRED_CONSECUTIVE}, "
         f"spins={settle_wait_count}, spin_time={settle_spin_elapsed * 1000:.1f} ms, "
         f"dropped_tf={settle_dropped_tf}, dropped_img={settle_dropped_img}"
     )
 
-    if settle_consecutive_zero >= SETTLE_REQUIRED_CONSECUTIVE:
+    if settle_consecutive_synced >= SETTLE_REQUIRED_CONSECUTIVE:
         settled = True
         settle_steps_used = settle_step + 1
         log.info(f"Settle phase complete at step {settle_step}")
@@ -280,8 +311,7 @@ settle_steps_used = SETTLE_MAX_STEPS if not settled else settle_steps_used
 
 if not settled:
     log.error(
-        "Settle phase failed: did not observe required consecutive zero-delta synced pairs "
-        f"within {SETTLE_MAX_STEPS} steps."
+        "Settle phase failed: did not observe required consecutive synced pairs " f"within {SETTLE_MAX_STEPS} steps."
     )
 
 clear_message_state()
@@ -293,8 +323,8 @@ missed_steps = []
 for step in range(args.test_steps):
     step_start = time.perf_counter()
     new_pos = np.random.uniform(-1, 1, 3)
-    cube.set_world_pose(position=new_pos)
-    world.step(render=True)
+    cube.set_world_poses(positions=[new_pos])
+    simulation_app.update()
     step_elapsed = time.perf_counter() - step_start
 
     (
@@ -313,16 +343,18 @@ for step in range(args.test_steps):
     if tf_pair_msg and img_pair_msg:
         tf_stamp = tf_pair_msg.transforms[0].header.stamp
         img_stamp = img_pair_msg.header.stamp
-        delta = abs(tf_ns - img_ns)
+        raw_offset_ns = img_ns - tf_ns
+        delta = abs(raw_offset_ns)
         deltas.append(delta)
 
-        # Determine which message has the later timestamp
+        # Determine which message has the later timestamp.
         behind = "TF" if tf_ns < img_ns else ("IMG" if img_ns < tf_ns else "EQUAL")
 
         log.info(
             f"Step {step:3d}: "
             f"tf_stamp={tf_stamp.sec}.{tf_stamp.nanosec:09d}  "
             f"img_stamp={img_stamp.sec}.{img_stamp.nanosec:09d}  "
+            f"raw_offset={raw_offset_ns / 1e6:+8.3f} ms  "
             f"delta={delta / 1e6:8.3f} ms  "
             f"behind={behind}  "
             f"spins={wait_count}  "
@@ -356,6 +388,7 @@ log.info(
     f"Settle steps used:            {settle_steps_used}/{SETTLE_MAX_STEPS} ({'converged' if settled else 'did NOT converge'})"
 )
 
+exit_code = 1
 if deltas:
     avg_delay = np.mean(deltas) / 1e6
     max_delay = np.max(deltas) / 1e6
@@ -363,13 +396,21 @@ if deltas:
     median_delay = np.median(deltas) / 1e6
     std_delay = np.std(deltas) / 1e6
 
-    # Classify the deltas
-    zero_count = sum(1 for d in deltas if d == 0)
+    # Threshold is set just above the rational-time rounding floor (1/60 s cannot
+    # be represented exactly in nanoseconds, so consecutive stamps can toggle
+    # between adjacent integers). Anything above this threshold indicates a
+    # genuine multi-frame ordering issue; the next-smallest real signal would be
+    # a full 1-frame slip (~16.667 ms).
+    THRESHOLD_MS = 0.001  # 1 us
+
+    # Classify deltas using the same rounding floor as the threshold so that
+    # 1 ns rational-time noise does not get mis-bucketed as "Other".
+    zero_count = sum(1 for d in deltas if d / 1e6 <= THRESHOLD_MS)
     one_frame_count = sum(1 for d in deltas if abs(d / 1e6 - 16.667) < 1.0)
     other_count = len(deltas) - zero_count - one_frame_count
 
-    THRESHOLD_MS = 0.0
     passed = settled and max_delay <= THRESHOLD_MS
+    exit_code = 0 if passed else 1
 
     print("\nTF / CAMERA TIMESTAMP SYNC TEST")
     print(f"Steps:              {len(deltas)}")
@@ -386,7 +427,7 @@ if deltas:
     if not passed:
         if not settled:
             log.error(
-                "FAIL: pre-test settle phase did not converge to consecutive zero-delta pairs. "
+                "FAIL: pre-test settle phase did not converge to consecutive synced pairs. "
                 "This indicates persistent startup/ordering instability before measurement."
             )
         else:
@@ -394,8 +435,8 @@ if deltas:
                 f"FAIL: max_delay={max_delay:.3f} ms >= {THRESHOLD_MS} ms threshold. "
                 f"At least one frame had TF and camera timestamps from different "
                 f"simulation frames. A delay of ~16.667 ms = exactly 1 frame at 60 FPS, "
-                f"suggesting a pipeline ordering issue where one publisher reads the "
-                f"sim time before the step and the other reads it after."
+                f"suggesting TF is stamped from action-graph simulation time while "
+                f"the camera image is stamped from the render product's reference time."
             )
 else:
     print("\n[error] No messages received.")
@@ -407,5 +448,7 @@ else:
 
 # Cleanup
 node.destroy_node()
-rclpy.shutdown()
-simulation_app.close()
+ros_executor.shutdown()
+rclpy.shutdown(context=ros_context)
+simulation_app.close(exit_code=exit_code)
+raise SystemExit(exit_code)

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Functions for performing transform operations.
-"""
+"""Functions for performing transform operations."""
 
 from __future__ import annotations
+
+from typing import Any
 
 import numpy as np
 import warp as wp
@@ -99,14 +99,16 @@ def euler_angles_to_rotation_matrix(
     dtype: type | None = None,
     device: str | wp.Device | None = None,
 ) -> wp.array:
-    """Convert Euler XYZ or ZYX angles to rotation matrix.
+    """Convert Euler angles to rotation matrix.
 
     Args:
         euler_angles: Euler angles or batch of Euler angles with shape (..., 3).
-        degrees: Whether passed angles are in degrees. Defaults to False.
+            Input order is always [X, Y, Z] = [roll, pitch, yaw] for both conventions.
+        degrees: Whether passed angles are in degrees.
         extrinsic: True if the euler angles follows the extrinsic angles
-            convention (equivalent to ZYX ordering but returned in the reverse) and False if it follows
-            the intrinsic angles conventions (equivalent to XYZ ordering). Defaults to True.
+            convention (rotation applied as Rz * Ry * Rx about fixed world axes) and False if it
+            follows the intrinsic angles conventions (rotation applied as Rx * Ry * Rz about
+            body-fixed axes).
         dtype: Data type of the output array. If ``None``, the data type of the input is used.
         device: Device to place the output array on. If ``None``, the default device is used,
             unless the input is a Warp array (in which case the input device is used).
@@ -181,11 +183,12 @@ def euler_angles_to_quaternion(
 
     Args:
         euler_angles: Euler angles or batch of Euler angles with shape (..., 3).
-        degrees: Whether input angles are in degrees. Defaults to False.
+            Input order is always [X, Y, Z] = [roll, pitch, yaw] for both conventions.
+        degrees: Whether input angles are in degrees.
         extrinsic: True if the euler angles follows the extrinsic angles
-            convention (equivalent to ZYX ordering but returned in the reverse). In this case the input
-            order is [Z, Y, X] = [yaw, pitch, roll]. If False, it follows the intrinsic angles convention
-            (equivalent to XYZ ordering) with input order [X, Y, Z] = [roll, pitch, yaw]. Defaults to True.
+            convention (rotation applied as Rz * Ry * Rx about fixed world axes) and False if it
+            follows the intrinsic angles conventions (rotation applied as Rx * Ry * Rz about
+            body-fixed axes).
         dtype: Data type of the output array. If ``None``, the data type of the input is used.
         device: Device to place the output array on. If ``None``, the default device is used,
             unless the input is a Warp array (in which case the input device is used).
@@ -446,10 +449,10 @@ def quaternion_to_euler_angles(
 
     Args:
         quaternion: Quaternion or batch of quaternions with shape (..., 4) in [w, x, y, z] format.
-        degrees: Whether to return angles in degrees. Defaults to False (radians).
+        degrees: Whether to return angles in degrees.
         extrinsic: True if the euler angles follows the extrinsic angles
             convention (equivalent to ZYX ordering but returned in the reverse) and False if it follows
-            the intrinsic angles conventions (equivalent to XYZ ordering). Defaults to True.
+            the intrinsic angles conventions (equivalent to XYZ ordering).
         dtype: Data type of the output array. If ``None``, the data type of the input is used.
         device: Device to place the output array on. If ``None``, the default device is used,
             unless the input is a Warp array (in which case the input device is used).
@@ -511,14 +514,187 @@ def quaternion_to_euler_angles(
         return output.reshape((*batch_shape, 3))
 
 
+def look_at_quaternion(
+    eye: list | np.ndarray | wp.array,
+    target: list | np.ndarray | wp.array,
+    up: list | np.ndarray | wp.array | None = None,
+    *,
+    dtype: type | None = None,
+    device: str | wp.Device | None = None,
+) -> wp.array:
+    """Compute the orientation quaternion for a look-at transform.
+
+    Compute the quaternion that orients a frame at ``eye`` so that its
+    negative-Z axis points toward ``target`` (OpenGL / USD camera convention).
+
+    When the forward direction is nearly parallel to the given up vector,
+    a perpendicular fallback is chosen automatically.
+
+    The function supports batched inputs. When batch dimensions are present
+    the shapes of ``eye`` and ``target`` must match. The ``up`` vector is
+    broadcast if necessary.
+
+    Args:
+        eye: Observer position or batch of positions with shape (..., 3).
+        target: Target position or batch of positions with shape (..., 3).
+        up: World up vector with shape (3,) or matching batch shape (..., 3).
+            Defaults to Z-up ``[0, 0, 1]``.
+        dtype: Data type of the output array. If ``None``, the data type of the
+            ``eye`` input is used.
+        device: Device to place the output array on. If ``None``, the default
+            device is used, unless the input is a Warp array (in which case the
+            input device is used).
+
+    Returns:
+        Quaternion (w, x, y, z) or batch of quaternions with shape (..., 4).
+
+    Example:
+
+    .. code-block:: python
+
+        >>> import isaacsim.core.experimental.utils.transform as transform_utils
+        >>> import numpy as np
+        >>>
+        >>> # Camera at (5,5,5) looking at origin
+        >>> quat = transform_utils.look_at_quaternion(
+        ...     eye=np.array([5.0, 5.0, 5.0]),
+        ...     target=np.array([0.0, 0.0, 0.0]),
+        ... )  # doctest: +NO_CHECK
+        >>> quat.numpy()  # doctest: +SKIP
+        array([0.33985114, 0.1759199 , 0.42470822, 0.82047325])
+    """
+    eye_arr = ops_utils.place(eye, dtype=dtype, device=device)
+    target_arr = ops_utils.place(target, dtype=dtype, device=eye_arr.device)
+
+    # Determine batch vs single
+    if eye_arr.ndim == 1:
+        eye_arr = eye_arr.reshape((1, 3))
+        target_arr = target_arr.reshape((1, 3))
+        squeeze_output = True
+    else:
+        squeeze_output = False
+
+    if eye_arr.shape != target_arr.shape:
+        raise ValueError(f"eye and target must have the same shape, got {eye_arr.shape} and {target_arr.shape}")
+    if eye_arr.shape[-1] != 3:
+        raise ValueError(f"Expected 3-element vectors, got shape {eye_arr.shape}")
+
+    batch_shape = eye_arr.shape[:-1]
+    batch_size = 1
+    for dim in batch_shape:
+        batch_size *= dim
+
+    # Handle up vector — broadcast single vector to batch size
+    if up is None:
+        up_np = np.tile(np.array([0.0, 0.0, 1.0], dtype=np.float32), (batch_size, 1))
+        up_arr = ops_utils.place(up_np, dtype=eye_arr.dtype, device=eye_arr.device)
+    else:
+        up_arr = ops_utils.place(up, dtype=eye_arr.dtype, device=eye_arr.device)
+        if up_arr.ndim == 1:
+            up_np = np.tile(np.array(up_arr.numpy()), (batch_size, 1))
+            up_arr = ops_utils.place(up_np, dtype=eye_arr.dtype, device=eye_arr.device)
+        up_arr = up_arr.reshape((batch_size, 3))
+
+    eye_flat = eye_arr.reshape((batch_size, 3))
+    target_flat = target_arr.reshape((batch_size, 3))
+    output = wp.empty(shape=(batch_size, 4), dtype=eye_arr.dtype, device=eye_arr.device)
+
+    wp.launch(
+        _wk_look_at_quaternion,
+        dim=batch_size,
+        inputs=[eye_flat, target_flat, up_arr, output],
+        device=eye_arr.device,
+    )
+
+    if squeeze_output:
+        return output.reshape((4,))
+    else:
+        return output.reshape((*batch_shape, 4))
+
+
+def look_at_matrix(
+    eye: "list | np.ndarray | Any",
+    target: "list | np.ndarray | Any",
+    up: "list | np.ndarray | Any | None" = None,
+    *,
+    epsilon: float = 1e-5,
+) -> Any:
+    """Compute the camera transform matrix (position + orientation) for a look-at.
+
+    Returns the ``Gf.Matrix4d`` that places a camera at *eye* oriented so its
+    negative-Z axis points toward *target* (USD / OpenGL camera convention).
+    This is the inverse of the standard view (LookAt) matrix and can be used
+    directly as a prim's local transform.
+
+    When the forward direction (*target* − *eye*) is nearly parallel to *up*,
+    a perpendicular fallback up vector is chosen automatically.
+
+    Args:
+        eye: Camera position with shape (3,). Accepts list, numpy array, or ``Gf.Vec3d``.
+        target: Target position with shape (3,). Accepts list, numpy array, or ``Gf.Vec3d``.
+        up: World up vector with shape (3,). Defaults to Z-up ``[0, 0, 1]``.
+            Accepts list, numpy array, or ``Gf.Vec3d``.
+        epsilon: Collinearity threshold. When the cross-product of the forward
+            direction and *up* has length below this value, a fallback up vector
+            is used.
+
+    Returns:
+        ``Gf.Matrix4d`` camera transform (position + orientation). This is **not**
+        the view matrix — it is the prim world/local transform.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> import isaacsim.core.experimental.utils.transform as transform_utils
+        >>> import numpy as np
+        >>>
+        >>> # Camera at (5, 5, 5) looking at the origin
+        >>> mat = transform_utils.look_at_matrix(
+        ...     eye=np.array([5.0, 5.0, 5.0]),
+        ...     target=np.array([0.0, 0.0, 0.0]),
+        ... )  # doctest: +NO_CHECK
+        >>> from pxr import Gf
+        >>> isinstance(mat, Gf.Matrix4d)
+        True
+    """
+    from pxr import Gf
+
+    def _to_vec3d(v: Any, fallback: list) -> Gf.Vec3d:
+        if v is None:
+            return Gf.Vec3d(*fallback)
+        if isinstance(v, Gf.Vec3d):
+            return v
+        arr = np.asarray(v, dtype=np.float64).flatten()
+        return Gf.Vec3d(float(arr[0]), float(arr[1]), float(arr[2]))
+
+    eye_gf = _to_vec3d(eye, [0.0, 0.0, 0.0])
+    target_gf = _to_vec3d(target, [0.0, 0.0, 0.0])
+    up_gf = _to_vec3d(up, [0.0, 0.0, 1.0])
+
+    # Collinearity check: if forward × up ≈ 0, try perpendicular fallbacks
+    forward = target_gf - eye_gf
+    if forward.GetCross(up_gf).GetLength() < epsilon:
+        up_gf = Gf.Vec3d(0.0, 1.0, 0.0)
+        if forward.GetCross(up_gf).GetLength() < epsilon:
+            up_gf = Gf.Vec3d(1.0, 0.0, 0.0)
+
+    return Gf.Matrix4d(1).SetLookAt(eye_gf, target_gf, up_gf).GetInverse()
+
+
 """
 Custom Warp kernels for transform operations.
 """
 
 
 @wp.kernel(enable_backward=False)
-def _wk_rotation_matrix_to_quaternion(rotation_matrix: wp.array(ndim=3), output: wp.array(ndim=2)):
-    """Convert rotation matrix to quaternion using Warp kernel."""
+def _wk_rotation_matrix_to_quaternion(rotation_matrix: wp.array(ndim=3), output: wp.array(ndim=2)) -> None:
+    """Convert rotation matrix to quaternion using Warp kernel.
+
+    Args:
+        rotation_matrix: Input rotation matrix array with shape (batch_size, 3, 3).
+        output: Output array for quaternions with shape (batch_size, 4) in [w, x, y, z] format.
+    """
     i = wp.tid()
 
     # Extract matrix elements
@@ -576,8 +752,17 @@ def _wk_euler_angles_to_rotation_matrix(
     output: wp.array(ndim=3),
     degrees: bool,
     extrinsic: bool,
-):
-    """Convert Euler angles to rotation matrix using Warp kernel."""
+) -> None:
+    """Convert Euler angles to rotation matrix using Warp kernel.
+
+    Input order is always [X, Y, Z] = [roll, pitch, yaw] for both conventions.
+
+    Args:
+        euler_angles: Euler angles or batch of Euler angles with shape (batch_size, 3).
+        output: Output array for rotation matrices with shape (batch_size, 3, 3).
+        degrees: Whether input angles are in degrees.
+        extrinsic: Whether to use extrinsic convention (Rz * Ry * Rx) or intrinsic convention (Rx * Ry * Rz).
+    """
     i = wp.tid()
 
     # Extract angles and ensure they are floating point for trigonometric functions
@@ -588,7 +773,6 @@ def _wk_euler_angles_to_rotation_matrix(
 
     # Create type-safe constants from the input array (NOT output array which may contain NaN)
     zero = angle1 - angle1  # Type-safe zero derived from input
-    one = zero + euler_angles.dtype(1.0)  # Type-safe one using input dtype
 
     # Convert to radians if needed
     if degrees:
@@ -600,17 +784,10 @@ def _wk_euler_angles_to_rotation_matrix(
         angle2 = angle2 * deg_to_rad
         angle3 = angle3 * deg_to_rad
 
-    # Assign to roll, pitch, yaw based on convention
-    if extrinsic:
-        # ZYX extrinsic convention: [Z, Y, X] = [yaw, pitch, roll]
-        roll = angle3  # X rotation (third)
-        pitch = angle2  # Y rotation (second)
-        yaw = angle1  # Z rotation (first)
-    else:
-        # XYZ intrinsic convention: [X, Y, Z] = [roll, pitch, yaw]
-        roll = angle1  # X rotation (first)
-        pitch = angle2  # Y rotation (second)
-        yaw = angle3  # Z rotation (third)
+    # Input is always [X, Y, Z] = [roll, pitch, yaw]
+    roll = angle1
+    pitch = angle2
+    yaw = angle3
 
     cr = wp.cos(roll)
     sr = wp.sin(roll)
@@ -645,8 +822,14 @@ def _wk_euler_angles_to_rotation_matrix(
 
 
 @wp.kernel(enable_backward=False)
-def _wk_quaternion_multiplication(a: wp.array(ndim=2), b: wp.array(ndim=2), output: wp.array(ndim=2)):
-    """Multiply two quaternions using Hamilton product."""
+def _wk_quaternion_multiplication(a: wp.array(ndim=2), b: wp.array(ndim=2), output: wp.array(ndim=2)) -> None:
+    """Multiply two quaternions using Hamilton product.
+
+    Args:
+        a: First quaternion array with shape (batch_size, 4) in [w, x, y, z] format.
+        b: Second quaternion array with shape (batch_size, 4) in [w, x, y, z] format.
+        output: Output array for quaternion multiplication result with shape (batch_size, 4).
+    """
     i = wp.tid()
 
     # Extract quaternion components [w, x, y, z]
@@ -676,8 +859,13 @@ def _wk_quaternion_multiplication(a: wp.array(ndim=2), b: wp.array(ndim=2), outp
 
 
 @wp.kernel(enable_backward=False)
-def _wk_quaternion_conjugate(q: wp.array(ndim=2), output: wp.array(ndim=2)):
-    """Compute quaternion conjugate by negating the vector part."""
+def _wk_quaternion_conjugate(q: wp.array(ndim=2), output: wp.array(ndim=2)) -> None:
+    """Compute quaternion conjugate by negating the vector part.
+
+    Args:
+        q: Input quaternion array with shape (batch_size, 4) in [w, x, y, z] format.
+        output: Output array for conjugate quaternions with shape (batch_size, 4).
+    """
     i = wp.tid()
 
     # Quaternion conjugate: [w, -x, -y, -z]
@@ -688,8 +876,13 @@ def _wk_quaternion_conjugate(q: wp.array(ndim=2), output: wp.array(ndim=2)):
 
 
 @wp.kernel(enable_backward=False)
-def _wk_quaternion_to_rotation_matrix(quaternion: wp.array(ndim=2), output: wp.array(ndim=3)):
-    """Convert quaternion to rotation matrix using standard formula."""
+def _wk_quaternion_to_rotation_matrix(quaternion: wp.array(ndim=2), output: wp.array(ndim=3)) -> None:
+    """Convert quaternion to rotation matrix using standard formula.
+
+    Args:
+        quaternion: Input quaternion array with shape (batch_size, 4) in [w, x, y, z] format.
+        output: Output array for rotation matrices with shape (batch_size, 3, 3).
+    """
     i = wp.tid()
 
     # Extract quaternion components [w, x, y, z]
@@ -730,11 +923,17 @@ def _wk_quaternion_to_euler_angles(
     output: wp.array(ndim=2),
     degrees: bool,
     extrinsic: bool,
-):
+) -> None:
     """Convert quaternion to Euler angles using Warp kernel.
 
     For extrinsic convention, output order is [X, Y, Z] = [roll, pitch, yaw].
     For intrinsic convention, output order is [X, Y, Z] = [roll, pitch, yaw].
+
+    Args:
+        quaternion: Input quaternion array with shape (batch_size, 4) in [w, x, y, z] format.
+        output: Output array for Euler angles with shape (batch_size, 3).
+        degrees: Whether to return angles in degrees.
+        extrinsic: Whether to use extrinsic convention (ZYX) or intrinsic convention (XYZ).
     """
     i = wp.tid()
 
@@ -833,3 +1032,168 @@ def _wk_quaternion_to_euler_angles(
     output[i, 0] = angle1
     output[i, 1] = angle2
     output[i, 2] = angle3
+
+
+@wp.kernel(enable_backward=False)
+def _wk_look_at_quaternion(
+    eye: wp.array(ndim=2),
+    target: wp.array(ndim=2),
+    up: wp.array(ndim=2),
+    output: wp.array(ndim=2),
+) -> None:
+    """Compute look-at orientation quaternion.
+
+    The resulting rotation orients the negative-Z axis toward the target
+    (OpenGL / USD camera convention).
+
+    Args:
+        eye: Observer positions with shape (batch_size, 3).
+        target: Target positions with shape (batch_size, 3).
+        up: World up vectors with shape (batch_size, 3).
+        output: Output quaternions (w, x, y, z) with shape (batch_size, 4).
+    """
+    i = wp.tid()
+
+    # Type-safe constants
+    zero = eye[i, 0] - eye[i, 0]
+    one = zero + output.dtype(1.0)
+    eps = zero + output.dtype(1e-8)
+    threshold = zero + output.dtype(0.99)
+    four = one + one + one + one
+    quarter = one / four
+
+    # Forward = normalize(target - eye), then negate (camera looks along -Z)
+    fx = target[i, 0] - eye[i, 0]
+    fy = target[i, 1] - eye[i, 1]
+    fz = target[i, 2] - eye[i, 2]
+    f_len = wp.sqrt(fx * fx + fy * fy + fz * fz) + eps
+    fx = fx / f_len
+    fy = fy / f_len
+    fz = fz / f_len
+
+    # Up vector
+    ux = up[i, 0]
+    uy = up[i, 1]
+    uz = up[i, 2]
+
+    # If forward is nearly parallel to up, pick a perpendicular fallback
+    dot_fu = wp.abs(fx * ux + fy * uy + fz * uz)
+    if dot_fu > threshold:
+        # Swap to Y-up fallback
+        ux = zero
+        uy = one
+        uz = zero
+
+    # right = normalize(cross(up, -forward))  = normalize(cross(up, -f))
+    # -forward for camera convention
+    neg_fx = -fx
+    neg_fy = -fy
+    neg_fz = -fz
+
+    rx = uy * neg_fz - uz * neg_fy
+    ry = uz * neg_fx - ux * neg_fz
+    rz = ux * neg_fy - uy * neg_fx
+    r_len = wp.sqrt(rx * rx + ry * ry + rz * rz) + eps
+    rx = rx / r_len
+    ry = ry / r_len
+    rz = rz / r_len
+
+    # recomputed up = cross(-forward, right)
+    rux = neg_fy * rz - neg_fz * ry
+    ruy = neg_fz * rx - neg_fx * rz
+    ruz = neg_fx * ry - neg_fy * rx
+    ru_len = wp.sqrt(rux * rux + ruy * ruy + ruz * ruz) + eps
+    rux = rux / ru_len
+    ruy = ruy / ru_len
+    ruz = ruz / ru_len
+
+    # Rotation matrix columns: [right, recomputed_up, -forward]
+    # m[row][col]
+    m00 = rx
+    m10 = ry
+    m20 = rz
+    m01 = rux
+    m11 = ruy
+    m21 = ruz
+    m02 = neg_fx
+    m12 = neg_fy
+    m22 = neg_fz
+
+    # Rotation matrix to quaternion (same algorithm as _wk_rotation_matrix_to_quaternion)
+    trace = m00 + m11 + m22
+    two = one + one
+
+    if trace > zero:
+        s = wp.sqrt(trace + one) * two
+        w = quarter * s
+        x = (m21 - m12) / s
+        y = (m02 - m20) / s
+        z = (m10 - m01) / s
+    elif m00 > m11 and m00 > m22:
+        s = wp.sqrt(one + m00 - m11 - m22) * two
+        w = (m21 - m12) / s
+        x = quarter * s
+        y = (m01 + m10) / s
+        z = (m02 + m20) / s
+    elif m11 > m22:
+        s = wp.sqrt(one + m11 - m00 - m22) * two
+        w = (m02 - m20) / s
+        x = (m01 + m10) / s
+        y = quarter * s
+        z = (m12 + m21) / s
+    else:
+        s = wp.sqrt(one + m22 - m00 - m11) * two
+        w = (m10 - m01) / s
+        x = (m02 + m20) / s
+        y = (m12 + m21) / s
+        z = quarter * s
+
+    output[i, 0] = w
+    output[i, 1] = x
+    output[i, 2] = y
+    output[i, 3] = z
+
+
+def compute_relative_transform(
+    source_to_world: list | np.ndarray | wp.array,
+    target_to_world: list | np.ndarray | wp.array,
+) -> np.ndarray:
+    """Compute the relative 4x4 transform from a source frame to a target frame given their world transforms.
+
+    Both inputs are expected in USD row-major convention (as returned by
+    ``UsdGeom.Xformable.ComputeLocalToWorldTransform``). The result is a column-major
+    4x4 matrix that transforms points from the source local frame into the target local frame.
+
+    Args:
+        source_to_world: Row-major 4x4 world transform of the source frame.
+        target_to_world: Row-major 4x4 world transform of the target frame.
+
+    Returns:
+        Column-major 4x4 relative transformation matrix.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> import isaacsim.core.experimental.utils.transform as transform_utils
+        >>> import numpy as np
+        >>>
+        >>> identity = np.eye(4)
+        >>> translated = np.eye(4)
+        >>> translated[3, :3] = [1.0, 2.0, 3.0]  # USD row-major: translation in last row
+        >>> result = transform_utils.compute_relative_transform(identity, translated)
+        >>> result[:3, 3]  # column-major: translation in last column
+        array([-1., -2., -3.])
+    """
+    if isinstance(source_to_world, wp.array):
+        source_to_world = source_to_world.numpy()
+    source_to_world = np.asarray(source_to_world, dtype=np.float64)
+
+    if isinstance(target_to_world, wp.array):
+        target_to_world = target_to_world.numpy()
+    target_to_world = np.asarray(target_to_world, dtype=np.float64)
+
+    source_col = np.transpose(source_to_world)
+    target_col = np.transpose(target_to_world)
+    world_to_target_col = np.linalg.inv(target_col)
+    return world_to_target_col @ source_col

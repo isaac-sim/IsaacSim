@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Demonstrate synthetic data generation using SimReady assets with randomized scenes."""
+
 from isaacsim import SimulationApp
 
 simulation_app = SimulationApp(launch_config={"headless": False})
@@ -26,9 +28,9 @@ import carb.settings
 import numpy as np
 import omni.kit.app
 import omni.replicator.core as rep
-import omni.timeline
 import omni.usd
-from isaacsim.core.utils.semantics import upgrade_prim_semantics_to_labels
+from isaacsim.core.experimental.utils.semantics import upgrade_prim_semantics_to_labels
+from isaacsim.core.simulation_manager import SimulationManager
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 
 parser = argparse.ArgumentParser()
@@ -180,14 +182,12 @@ def run_simready_randomization(
         item_prim.GetAttribute("xformOp:translate").Set(item_position)
         stack_height += item_extent[2]
 
-    # Run physics simulation for items to settle
+    # Run physics simulation for items to settle (SimulationManager handles warmup on init)
     num_sim_steps = 25
     print(f"[SDG]   Running physics simulation ({num_sim_steps} steps)...")
-    timeline = omni.timeline.get_timeline_interface()
-    timeline.play()
-    for _ in range(num_sim_steps):
-        simulation_app.update()
-    timeline.pause()
+    SimulationManager.invalidate_physics()
+    SimulationManager.initialize_physics()
+    SimulationManager.step(steps=num_sim_steps)
 
     print(f"[SDG]   Setting edit target to root layer...")
     stage.SetEditTarget(root_layer)
@@ -222,6 +222,7 @@ def run_simready_randomizations(num_scenarios: int) -> None:
 
     # Data capture will happen manually using step()
     rep.orchestrator.set_capture_on_play(False)
+    SimulationManager.set_physics_dt(1.0 / 60.0)
 
     # Set DLSS to Quality mode (2) for best SDG results , options: 0 (Performance), 1 (Balanced), 2 (Quality), 3 (Auto)
     carb.settings.get_settings().set("rtx/post/dlss/execMode", 2)
@@ -272,5 +273,36 @@ def run_simready_randomizations(num_scenarios: int) -> None:
 
 print(f"[SDG] Starting SDG pipeline with {num_scenarios} scenarios...")
 run_simready_randomizations(num_scenarios)
+
+# <start-simready-assets-sdg-test>
+import sys
+
+from isaacsim.core.utils.extensions import enable_extension
+
+enable_extension("isaacsim.test.utils")
+from isaacsim.test.utils.file_validation import validate_folder_contents
+
+test_parser = argparse.ArgumentParser()
+test_parser.add_argument(
+    "--test",
+    action="store_true",
+    help="Validate captured output files against expected counts and exit.",
+)
+test_args, _ = test_parser.parse_known_args()
+
+if test_args.test:
+    # BasicWriter rgb-only writes 1 png per scenario.
+    out_dir = os.path.join(os.getcwd(), "_out_simready_assets")
+    ok = validate_folder_contents(
+        path=out_dir,
+        recursive=True,
+        expected_counts={"png": num_scenarios},
+        fail_on_empty_files=True,
+    )
+    if not ok:
+        print(f"[SDG][Test][FAIL] Output validation failed for {out_dir}")
+        sys.exit(1)
+    print(f"[SDG][Test][PASS] Output validation succeeded for {out_dir}")
+# <end-simready-assets-sdg-test>
 
 simulation_app.close()

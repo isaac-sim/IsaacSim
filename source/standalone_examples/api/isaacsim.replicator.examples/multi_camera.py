@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Demonstrate multi-camera data capture with custom writers and annotators."""
 
 from isaacsim import SimulationApp
 
@@ -29,16 +31,17 @@ from omni.replicator.core.functional import write_image
 NUM_FRAMES = 5
 
 
-# Randomize cube color every frame using a graph-based replicator randomizer
 def cube_color_randomizer():
+    """Randomize cube color every frame using a graph-based replicator randomizer."""
     cube_prims = rep.get.prims(path_pattern="Cube")
     with cube_prims:
         rep.randomizer.color(colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1)))
     return cube_prims.node
 
 
-# Example of custom writer class to access the annotator data
 class MyWriter(Writer):
+    """Write RGB annotator data to disk from multiple render products."""
+
     def __init__(self, rgb: bool = True):
         # Organize data from render product perspective (legacy, annotator, renderProduct)
         self.data_structure = "renderProduct"
@@ -53,6 +56,7 @@ class MyWriter(Writer):
         self.backend = DiskBackend(output_dir=output_dir, overwrite=True)
 
     def write(self, data):
+        """Write RGB frames from each render product to disk."""
         if "renderProducts" in data:
             for rp_name, rp_data in data["renderProducts"].items():
                 if "rgb" in rp_data:
@@ -130,5 +134,45 @@ for annot in rgb_annotators:
     annot.detach()
 for rp in [rp_top, rp_side, rp_persp]:
     rp.destroy()
+
+# <start-multi-camera-test>
+import argparse
+import sys
+
+from isaacsim.core.utils.extensions import enable_extension
+
+enable_extension("isaacsim.test.utils")
+from isaacsim.test.utils.file_validation import validate_folder_contents
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--test",
+    action="store_true",
+    help="Validate captured output files against expected counts and exit.",
+)
+args, _ = parser.parse_known_args()
+
+if args.test:
+    # 3 render products x NUM_FRAMES captures each, both writer and annotator dirs.
+    expected_png_count = 3 * NUM_FRAMES
+    output_dir_writer = os.path.join(os.getcwd(), "_out_mc_writer")
+    if not validate_folder_contents(
+        path=output_dir_writer,
+        recursive=True,
+        expected_counts={"png": expected_png_count},
+        fail_on_empty_files=True,
+    ):
+        print(f"[SDG][Test][FAIL] Output validation failed for {output_dir_writer}")
+        sys.exit(1)
+    if not validate_folder_contents(
+        path=output_dir_annot,
+        recursive=True,
+        expected_counts={"png": expected_png_count},
+        fail_on_empty_files=True,
+    ):
+        print(f"[SDG][Test][FAIL] Output validation failed for {output_dir_annot}")
+        sys.exit(1)
+    print(f"[SDG][Test][PASS] Output validation succeeded for {output_dir_writer} and {output_dir_annot}")
+# <end-multi-camera-test>
 
 simulation_app.close()

@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The Wheeled Robots UI extension provides a user interface for creating and configuring differential drive controllers for wheeled robots in Isaac Sim. It adds a specialized window accessible through the menu system that allows users to generate OmniGraph controllers for differential drive systems.

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import annotations
+"""Demonstrate von Mises stress visualization of a volume deformable body.
 
-"""
 This example demonstrates how to visualize the von Mises stress of a volume deformable body during simulation.
 
 Note: The visualization of the simulation mesh requires Fabric Scene Delegate (FSD) to be disabled.
@@ -31,10 +30,13 @@ The source code is organized into 4 main sections:
 4. Example logic.
 """
 
-# 1. --------------------------------------------------------------------
+from __future__ import annotations
 
 # Parse any command-line arguments specific to the standalone application (only known arguments).
 import argparse
+
+# 1. --------------------------------------------------------------------
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -81,6 +83,7 @@ global_stress_range = [np.inf, 0.0]
 
 
 def set_vertex_display_colors(deformable_prim, *, stress_range: tuple[float, float] | None = None):
+    """Compute and visualize per-vertex von Mises stress as a color gradient."""
     geom_prim = UsdGeom.TetMesh(prim_utils.get_prim_at_path(deformable_prim.simulation_mesh_paths[0]))
     surface_indices = UsdGeom.TetMesh.ComputeSurfaceFaces(geom_prim)
     geom_prim.CreateSurfaceFaceVertexIndicesAttr().Set(surface_indices)

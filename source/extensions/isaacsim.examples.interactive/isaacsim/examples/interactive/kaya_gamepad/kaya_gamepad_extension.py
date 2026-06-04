@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Extension for controlling a NVIDIA Kaya robot using gamepad input in Isaac Sim interactive examples."""
-
 
 import os
 
@@ -35,7 +34,7 @@ class KayaGamepadExtension(omni.ext.IExt):
     the gamepad control implementation for their own robotic applications.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initializes the Kaya Gamepad extension and registers it with the examples browser.
 
         Sets up the UI template for the NVIDIA Kaya robot gamepad control example and makes it available
@@ -69,6 +68,6 @@ class KayaGamepadExtension(omni.ext.IExt):
             category=self.category,
         )
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Cleans up the extension by deregistering the Kaya Gamepad example from the examples browser."""
         get_browser_instance().deregister_example(name=self.example_name, category=self.category)

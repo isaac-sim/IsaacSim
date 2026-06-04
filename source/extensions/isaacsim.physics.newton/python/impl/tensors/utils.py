@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Utility functions for Newton tensor API."""
 
 from __future__ import annotations
@@ -57,7 +58,7 @@ def find_matching_paths(stage: Usd.Stage, pattern: str | list[str]) -> list[str]
     tokens = [f"^{tok.replace('*', '.*')}$" for tok in tokens]
 
     roots = [stage.GetPseudoRoot()]
-    matches = []
+    matches = []  # type: ignore[var-annotated]
 
     num_tokens = len(tokens)
     for i in range(num_tokens):
@@ -71,7 +72,7 @@ def find_matching_paths(stage: Usd.Stage, pattern: str | list[str]) -> list[str]
     return result
 
 
-def _find_matching_children(root: Usd.Prim, pattern: str, prims_ret: list[Usd.Prim]):
+def _find_matching_children(root: Usd.Prim, pattern: str, prims_ret: list[Usd.Prim]) -> None:
     """Find children of a prim matching a regex pattern.
 
     Args:

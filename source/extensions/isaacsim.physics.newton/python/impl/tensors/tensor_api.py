@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Newton Tensor API for Isaac Sim.
 
 This module provides tensor-based interfaces for Newton physics simulation,
@@ -56,7 +57,7 @@ def create_simulation_view(frontend_name: str, newton_stage: NewtonStage, stage_
     if frontend_id == "numpy" or frontend_id == "np":
         if device_ordinal == -1:
             try:
-                from omni.physics.tensors.impl.frontend_np import FrontendNumpy
+                from omni.physics.tensors.frontend_np import FrontendNumpy
 
                 frontend = FrontendNumpy()
                 return NewtonSimulationView(backend, frontend)
@@ -67,7 +68,7 @@ def create_simulation_view(frontend_name: str, newton_stage: NewtonStage, stage_
 
     elif frontend_id == "torch" or frontend_id == "pytorch":
         try:
-            from omni.physics.tensors.impl.frontend_torch import FrontendTorch
+            from omni.physics.tensors.frontend_torch import FrontendTorch
 
             frontend = FrontendTorch(device_ordinal)
             return NewtonSimulationView(backend, frontend)
@@ -76,7 +77,7 @@ def create_simulation_view(frontend_name: str, newton_stage: NewtonStage, stage_
 
     elif frontend_id == "warp" or frontend_id == "wp":
         try:
-            from omni.physics.tensors.impl.frontend_warp import FrontendWarp
+            from omni.physics.tensors.frontend_warp import FrontendWarp
 
             frontend = FrontendWarp(device_ordinal)
             return NewtonSimulationView(backend, frontend)
@@ -98,7 +99,7 @@ class NewtonSimulationView:
         frontend: Tensor framework frontend (NumPy, PyTorch, or Warp).
     """
 
-    def __init__(self, backend: NewtonSimView, frontend: "NumpyFrontend | TorchFrontend | WarpFrontend"):
+    def __init__(self, backend: NewtonSimView, frontend: "NumpyFrontend | TorchFrontend | WarpFrontend") -> None:
         self._backend = backend
         self._frontend = frontend
 
@@ -140,10 +141,10 @@ class NewtonSimulationView:
         if filter_patterns is None:
             filter_patterns = []
         return NewtonRigidContactView(
-            self._backend.create_rigid_contact_view(pattern, filter_patterns, max_contact_data_count), self._frontend
+            self._backend.create_rigid_contact_view(pattern, filter_patterns, max_contact_data_count), self._frontend  # type: ignore[arg-type]
         )
 
-    def invalidate(self):
+    def invalidate(self) -> None:
         """Invalidate the simulation view.
 
         Called when the simulation is stopped to clean up resources.

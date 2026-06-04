@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,18 +12,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Menu utility functions for creating Isaac Sim extension menu items."""
+
 import omni.ext
 from omni.kit.menu.utils import MenuItemDescription
 
 
-def make_menu_item_description(ext_id: str, name: str, onclick_fun, action_name: str = "") -> None:
-    """Easily replace the onclick_fn with onclick_action when creating a menu description
+def make_menu_item_description(ext_id: str, name: str, onclick_fun: object, action_name: str = "") -> None:
+    """Easily replace the onclick_fn with onclick_action when creating a menu description.
 
     Args:
-        ext_id (str): The extension you are adding the menu item to.
-        name (str): Name of the menu item displayed in UI.
-        onclick_fun (Function): The function to run when clicking the menu item.
-        action_name (str): name for the action, in case ext_id+name don't make a unique string
+        ext_id: The extension you are adding the menu item to.
+        name: Name of the menu item displayed in UI.
+        onclick_fun: The function to run when clicking the menu item.
+        action_name: name for the action, in case ext_id+name don't make a unique string
 
     Note:
         ext_id + name + action_name must concatenate to a unique identifier.

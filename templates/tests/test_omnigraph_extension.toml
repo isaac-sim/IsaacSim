@@ -1,0 +1,6 @@
+[isaacsim-omnigraph-extension]
+extension_name = "isaacsim.template_test.ogn_nodes"
+title = "Test OmniGraph Nodes"
+version = "0.1.0"
+description = "A test OmniGraph node extension."
+category = "Simulation"

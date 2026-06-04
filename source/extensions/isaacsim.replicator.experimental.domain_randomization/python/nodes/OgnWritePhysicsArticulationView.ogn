@@ -1,5 +1,5 @@
 {
-    "OgnWritePhysicsArticulationView": {
+    "isaacsim.replicator.domain_randomization.OgnWritePhysicsArticulationView": {
         "version": 1,
         "language": "python",
         "categories": {

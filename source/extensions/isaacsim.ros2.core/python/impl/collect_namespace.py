@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,30 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, Tuple
 
-import carb
-import cv2 as cv
-import numpy as np
-import omni
-import omni.syntheticdata
-from isaacsim.core.utils.render_product import get_camera_prim_path
-from pxr import Gf, Sdf, Usd
+"""Utility for collecting ROS 2 namespaces from USD prim hierarchies."""
+
+from isaacsim.core.rendering_manager import ViewportManager
 
 
 def collect_namespace(namespace_input: str, render_product_path: str) -> str:
-    """
-    If no input namespace is undefined, this method collects the namespace from a USD Prim by traversing its hierarchy upwards, and appends any 'isaac:namespace' attributes found.
+    """Collects the ROS 2 namespace from a USD Prim hierarchy by traversing upwards and appending any.
 
-    Parameters:
-    - namespace_input: A string representing an initial namespace. If this is non-empty, it will be returned as-is.
-    - render_product_path: A string representing the path of the render product, used to find the Camera prim associated with the render product.
+    'isaac:namespace' attributes found.
 
+    If an input namespace is provided, it will be returned as-is without traversing the hierarchy.
+    Otherwise, the function starts from the Camera prim associated with the render product and traverses
+    upwards through the hierarchy, collecting all 'isaac:namespace' attributes.
+
+    Args:
+        namespace_input: An initial namespace. If this is non-empty, it will be returned as-is.
+        render_product_path: The path of the render product, used to find the Camera prim associated with
+            the render product.
 
     Returns:
-    - A string representing the accumulated namespace.
+        The accumulated namespace string.
     """
-
     # If the namespace_input is not empty, return it immediately
     if namespace_input:
         return namespace_input
@@ -46,10 +45,7 @@ def collect_namespace(namespace_input: str, render_product_path: str) -> str:
 
     namespace_string = ""
 
-    start_prim_path = get_camera_prim_path(render_product_path)
-
-    stage = omni.usd.get_context().get_stage()
-    start_prim = stage.GetPrimAtPath(start_prim_path)
+    start_prim = ViewportManager.get_camera(render_product_path).GetPrim()
 
     current_prim = start_prim
 

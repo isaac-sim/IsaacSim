@@ -1,6 +1,6 @@
 {
     "isaacsim.ros2.bridge.ROS2CameraHelper": {
-        "version": 2,
+        "version": 3,
         "icon": "icons/isaac-sim.svg",
         "description": "This node handles automation of the camera sensor pipeline",
         "language": "Python",
@@ -102,7 +102,16 @@
             "frameSkipCount": {
                 "type": "uint",
                 "description": "Specifies the number of simulation frames to skip between each message publish. (e.g. Set to 0 to publish each frame. Set 1 to publish every other frame)",
-                "default": 0
+                "default": 0,
+                "deprecated": "Frame skipping is deprecated. Control publish rate by setting omni:sensor:tickRate on the sensor prim instead."
+            },
+            "srtxCompressionType": {
+                "type": "string",
+                "description": "SRTX compression type for the sensor data",
+                "default": "hevc",
+                "metadata": {
+                    "hidden": "true"
+                }
             }
         }
     }

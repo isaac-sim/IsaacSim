@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.4.4] - 2026-05-13
+### Changed
+- Clarified the `_cache_stage` docstring around what `export_as_stage` actually inlines.
+
+## [0.4.3] - 2026-04-23
+### Removed
+- Remove the `omni.isaac.ml_archive` test dependency
+
+## [0.4.2] - 2026-04-22
+### Fixed
+- Call `save_sensor_overrides` on recording start to persist camera calibration changes made in the UI
+- Use `export_as_stage` when caching the scene stage to prevent black images on replay
+
+## [0.4.1] - 2026-04-18
+### Changed
+- Added return type annotations
+
+## [0.4.0] - 2026-04-08
+### Changed
+- Migrate from deprecated `isaacsim.replicator.mobility_gen` to `isaacsim.replicator.experimental.mobility_gen`
+- Replace legacy world-based simulation control with `SimulationManager` and `SimulationEvent.PHYSICS_POST_STEP` callback
+- Replace `set_active_viewport_camera` with `ViewportManager.set_camera`
+- Replace `objects.GroundPlane` (core.api) with `GroundPlane` from `isaacsim.core.experimental.objects`
+- Use `save_stage` without deprecated `save_and_reload_in_place` argument
+
 ## [0.3.0] - 2026-03-04
 ### Changed
 - Added Overview.md, python_api.md and updated docstrings

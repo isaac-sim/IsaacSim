@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +13,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// clang-format off
-#include <pch/UsdPCH.h>
-// clang-format on
 
 #include "ContactSensorImpl.h"
 #include "EffortSensorImpl.h"
 #include "ImuSensorImpl.h"
 #include "JointStateSensorImpl.h"
+#include "RaycastSensorImpl.h"
 
 #include <carb/PluginUtils.h>
 
@@ -39,7 +37,8 @@ CARB_PLUGIN_IMPL(g_kPluginDesc,
                  isaacsim::sensors::experimental::physics::ImuSensorImpl,
                  isaacsim::sensors::experimental::physics::ContactSensorImpl,
                  isaacsim::sensors::experimental::physics::EffortSensorImpl,
-                 isaacsim::sensors::experimental::physics::JointStateSensorImpl)
+                 isaacsim::sensors::experimental::physics::JointStateSensorImpl,
+                 isaacsim::sensors::experimental::physics::RaycastSensorImpl)
 
 void fillInterface(isaacsim::sensors::experimental::physics::ImuSensorImpl& iface)
 {
@@ -57,6 +56,11 @@ void fillInterface(isaacsim::sensors::experimental::physics::EffortSensorImpl& i
 }
 
 void fillInterface(isaacsim::sensors::experimental::physics::JointStateSensorImpl& iface)
+{
+    (void)iface;
+}
+
+void fillInterface(isaacsim::sensors::experimental::physics::RaycastSensorImpl& iface)
 {
     (void)iface;
 }

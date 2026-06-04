@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Solver configuration classes for Newton physics engine."""
 
 from dataclasses import dataclass
@@ -134,7 +135,7 @@ class MuJoCoSolverConfig(NewtonSolverConfig):
     ls_parallel: bool = True
     """Whether to use parallel line search."""
 
-    use_mujoco_contacts: bool = True
+    use_mujoco_contacts: bool = False
     """Whether to use MuJoCo's contact computation."""
 
     tolerance: float = 1e-6

@@ -17,14 +17,14 @@
   - chassis_subpath: str
   - wheel_radius: float
   - wheel_base: float
-  - def __init__(self, prim_path: str, robot: _WheeledRobot, articulation_view: _ArticulationView, controller: DifferentialController, front_camera: Module | None = None)
+  - def __init__(self, prim_path: str, articulation: Articulation, controller: DifferentialController, front_camera: Module | None = None)
   - class def build(cls, prim_path: str) -> WheeledRobot
   - def write_action(self, step_size: float)
 
 - class PolicyMobilityGenRobot(MobilityGenRobot)
   - usd_url: str
   - articulation_path: str
-  - def __init__(self, prim_path: str, robot: _Robot, articulation_view: _ArticulationView, controller: Union[H1FlatTerrainPolicy, SpotFlatTerrainPolicy], front_camera: Module | None = None)
+  - def __init__(self, prim_path: str, articulation: Articulation, controller: Union[H1FlatTerrainPolicy, SpotFlatTerrainPolicy], front_camera: Module | None = None)
   - class def build_policy(cls, prim_path: str)
   - class def build(cls, prim_path: str)
   - def write_action(self, step_size: float)
@@ -175,7 +175,7 @@
 - class KeyboardTeleoperationScenario(MobilityGenScenario)
   - def __init__(self, robot: MobilityGenRobot, occupancy_map: OccupancyMap)
   - def reset(self)
-  - def step(self, step_size)
+  - def step(self, step_size: float)
 
 - class GamepadTeleoperationScenario(MobilityGenScenario)
   - def __init__(self, robot: MobilityGenRobot, occupancy_map: OccupancyMap)

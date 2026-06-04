@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,27 +13,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from re import I
 
-import carb
+"""Tests for ROS 2 pose tree publisher OmniGraph node."""
+
 import numpy as np
 import omni.graph.core as og
 import omni.kit.commands
 import omni.kit.test
 import omni.kit.usd
 import usdrt.Sdf
+from isaacsim.core.experimental.prims import XformPrim
+from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.core.nodes.scripts.utils import set_target_prims
-from isaacsim.core.prims import XFormPrim
-from isaacsim.core.utils.physics import simulate_async
-from isaacsim.core.utils.stage import add_reference_to_stage, open_stage_async
-from pxr import Sdf, UsdGeom
+from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
+from pxr import Sdf
 from usd.schema.isaac import robot_schema
 
-from .common import ROS2TestCase, add_cube, add_franka, get_qos_profile
+from .common import add_cube, add_franka, get_qos_profile
 
 
 class TestRos2PoseTree(ROS2TestCase):
+    """Test suite for ros2 pose tree."""
+
     async def setUp(self):
+        """Set up test fixtures."""
         await super().setUp()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
@@ -41,9 +44,11 @@ class TestRos2PoseTree(ROS2TestCase):
         pass
 
     async def tearDown(self):
+        """Tear down test fixtures."""
         await super().tearDown()
 
     async def test_pose_tree(self):
+        """Test pose tree."""
         import rclpy
         from tf2_msgs.msg import TFMessage
 
@@ -135,6 +140,7 @@ class TestRos2PoseTree(ROS2TestCase):
         pass
 
     async def test_duplicate_names_tree(self):
+        """Test duplicate names tree."""
         import rclpy
         from tf2_msgs.msg import TFMessage
 
@@ -232,18 +238,15 @@ class TestRos2PoseTree(ROS2TestCase):
         pass
 
     async def test_frame_name_override(self):
+        """Test frame name override."""
         import rclpy
         from tf2_msgs.msg import TFMessage
-
-        stage = omni.usd.get_context().get_stage()
-        dome_light = stage.DefinePrim("/World/DomeLight", "DomeLight")
-        dome_light.CreateAttribute("inputs:intensity", Sdf.ValueTypeNames.Float).Set(500.0)
 
         # Create two Franka robots at different paths
 
         asset_path = self._assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd"
-        add_reference_to_stage(usd_path=asset_path, prim_path="/World/panda1")
-        add_reference_to_stage(usd_path=asset_path, prim_path="/World/panda2")
+        stage_utils.add_reference_to_stage(usd_path=asset_path, path="/World/panda1")
+        stage_utils.add_reference_to_stage(usd_path=asset_path, path="/World/panda2")
 
         stage = omni.usd.get_context().get_stage()
 
@@ -255,8 +258,9 @@ class TestRos2PoseTree(ROS2TestCase):
         self.assertTrue(panda2.IsValid(), "Second robot not created successfully")
 
         # Set position of second robot
-        XFormPrim(
+        XformPrim(
             "/World/panda2",
+            reset_xform_op_properties=True,
             positions=np.array([[1.5, 0.0, 0.0]]),
         )
 
@@ -349,3 +353,66 @@ class TestRos2PoseTree(ROS2TestCase):
                         break
 
                 self.assertTrue(renamed_exists, f"Original frame {link} should have a renamed frames")
+
+    async def test_compute_transform_tree_pipeline(self):
+        """Test OgnIsaacComputeTransformTree -> OgnROS2PublishTransformTree external data path."""
+        import rclpy
+        from tf2_msgs.msg import TFMessage
+
+        await add_franka(self._assets_root_path)
+
+        self._tf_data = None
+
+        def tf_callback(data: TFMessage):
+            self._tf_data = data
+
+        node = self.create_node("tf_pipeline_tester")
+        tf_sub = self.create_subscription(node, TFMessage, "/tf_pipeline_test", tf_callback, get_qos_profile())
+
+        try:
+            og.Controller.edit(
+                {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
+                {
+                    og.Controller.Keys.CREATE_NODES: [
+                        ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
+                        ("ReadSimTime", "isaacsim.core.nodes.IsaacReadSimulationTime"),
+                        ("ComputeTF", "isaacsim.core.nodes.IsaacComputeTransformTree"),
+                        ("PublishTF", "isaacsim.ros2.bridge.ROS2PublishTransformTree"),
+                    ],
+                    og.Controller.Keys.SET_VALUES: [
+                        ("PublishTF.inputs:topicName", "/tf_pipeline_test"),
+                        ("ComputeTF.inputs:targetPrims", [usdrt.Sdf.Path("/panda")]),
+                    ],
+                    og.Controller.Keys.CONNECT: [
+                        ("OnPlaybackTick.outputs:tick", "ComputeTF.inputs:execIn"),
+                        ("ComputeTF.outputs:execOut", "PublishTF.inputs:execIn"),
+                        ("ComputeTF.outputs:parentFrames", "PublishTF.inputs:parentFrames"),
+                        ("ComputeTF.outputs:childFrames", "PublishTF.inputs:childFrames"),
+                        ("ComputeTF.outputs:translations", "PublishTF.inputs:translations"),
+                        ("ComputeTF.outputs:orientations", "PublishTF.inputs:orientations"),
+                        ("ReadSimTime.outputs:simulationTime", "PublishTF.inputs:timeStamp"),
+                    ],
+                },
+            )
+        except Exception as e:
+            print(e)
+
+        def spin():
+            rclpy.spin_once(node, timeout_sec=0.01)
+
+        self._timeline.play()
+        await omni.kit.app.get_app().next_update_async()
+        await self.simulate_until_condition(lambda: self._tf_data is not None, max_frames=60, per_frame_callback=spin)
+
+        self.assertIsNotNone(self._tf_data, "Expected TF data to be published via compute pipeline")
+        self.assertGreater(len(self._tf_data.transforms), 0, "Expected at least one transform")
+
+        # Without a parentPrim on ComputeTF, root link parent frame should be "world"
+        root_transforms = [t for t in self._tf_data.transforms if t.header.frame_id == "world"]
+        self.assertGreater(len(root_transforms), 0, "Expected at least one transform with 'world' as parent frame")
+
+        # Franka has 11 rigid body links detected via UsdPhysicsRigidBodyAPI traversal
+        self.assertEqual(len(self._tf_data.transforms), 11, "Expected 11 transforms for Franka articulation")
+
+        self._timeline.stop()
+        spin()

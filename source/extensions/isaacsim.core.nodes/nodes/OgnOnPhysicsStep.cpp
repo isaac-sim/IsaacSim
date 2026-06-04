@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +18,6 @@
 // clang-format on
 
 #include <carb/Defines.h>
-#include <carb/Types.h>
 #include <carb/eventdispatcher/IEventDispatcher.h>
 #include <carb/logging/Logger.h>
 
@@ -27,7 +26,8 @@
 #include <omni/timeline/TimelineTypes.h>
 #include <omni/usd/UsdContextIncludes.h>
 //
-#include <omni/physx/IPhysx.h>
+#include <omni/physics/simulation/IPhysics.h>
+#include <omni/physics/simulation/IPhysicsSimulation.h>
 #include <omni/usd/UsdContext.h>
 
 #include <OgnOnPhysicsStepDatabase.h>
@@ -43,11 +43,12 @@ namespace nodes
 
 
 omni::graph::core::INode* g_iNode;
-omni::physx::IPhysx* g_physXInterface;
+omni::physics::IPhysicsSimulation* g_physicsSimulationInterface;
+omni::physics::IPhysics* g_physicsInterface;
 struct PhysicsStepData
 {
     std::vector<NodeHandle> nodes;
-    omni::physx::SubscriptionId stepSubscription;
+    omni::physics::SubscriptionId stepSubscription = omni::physics::kInvalidSubscriptionId;
 };
 struct HandleIdPair
 {
@@ -56,7 +57,8 @@ struct HandleIdPair
 };
 namespace
 {
-std::map<GraphHandle, PhysicsStepData> g_graphsWithPhysxStepNode;
+std::map<GraphHandle, PhysicsStepData> g_graphsWithStepNode;
+omni::physics::SubscriptionId g_simulationRegistrySubscription = omni::physics::kInvalidSubscriptionId;
 }
 class OgnOnPhysicsStep
 {
@@ -80,18 +82,59 @@ public:
 
         state.m_startTime = std::chrono::high_resolution_clock::now();
     }
+    static void subscribeGraphToStepEvents(PhysicsStepData& data, HandleIdPair* graphHandlePairPtr)
+    {
+        if (data.stepSubscription != omni::physics::kInvalidSubscriptionId)
+        {
+            g_physicsSimulationInterface->unsubscribePhysicsOnStepEvents(data.stepSubscription);
+        }
+        data.stepSubscription = g_physicsSimulationInterface->subscribePhysicsOnStepEvents(
+            false, 0,
+            [graphHandlePairPtr](float dt, const omni::physics::PhysicsStepContext&)
+            { onPhysicsStep(dt, graphHandlePairPtr); });
+    }
+
+    static void onSimulationRegistryEvent(omni::physics::SimulationRegistryEventType::Enum eventType,
+                                          omni::physics::SimulationId,
+                                          const char*,
+                                          void*)
+    {
+        if (eventType != omni::physics::SimulationRegistryEventType::eSIMULATION_REGISTERED)
+        {
+            return;
+        }
+        for (auto& entry : g_graphsWithStepNode)
+        {
+            if (!entry.second.nodes.empty())
+            {
+                NodeObj node = g_iNode->getNodeFromHandle(entry.second.nodes[0]);
+                auto& state = OgnOnPhysicsStepDatabase::sSharedState<OgnOnPhysicsStep>(node);
+                subscribeGraphToStepEvents(entry.second, &state.m_graphHandlePair);
+            }
+        }
+    }
+
     static void initialize(const NodeObj& nodeObj, GraphInstanceID instanceId)
     {
-        // Acquire All interfaces
-        if (!g_physXInterface)
+        if (!g_physicsSimulationInterface)
         {
-            g_physXInterface = carb::getCachedInterface<omni::physx::IPhysx>();
+            g_physicsSimulationInterface = carb::getCachedInterface<omni::physics::IPhysicsSimulation>();
+        }
+        if (!g_physicsInterface)
+        {
+            g_physicsInterface = carb::getCachedInterface<omni::physics::IPhysics>();
         }
         if (!g_iNode)
         {
             g_iNode = carb::getCachedInterface<omni::graph::core::INode>();
         }
-        // Get information on the graph the node was inserted
+
+        if (g_simulationRegistrySubscription == omni::physics::kInvalidSubscriptionId && g_physicsInterface)
+        {
+            g_simulationRegistrySubscription =
+                g_physicsInterface->subscribeSimulationRegistryEvents(onSimulationRegistryEvent, nullptr);
+        }
+
         auto graphObj = g_iNode->getGraph(nodeObj);
         auto pipelineStage = graphObj.iGraph->getPipelineStage(graphObj);
         auto& state = OgnOnPhysicsStepDatabase::sPerInstanceState<OgnOnPhysicsStep>(nodeObj, instanceId);
@@ -108,21 +151,16 @@ public:
             CARB_LOG_ERROR(
                 "Physics OnSimulationStep node detected in a non on-demand Graph. Node will only trigger events if the parent Graph is set to compute on-demand. (%s))",
                 g_iNode->getPrimPath(nodeObj));
-            // graphObj.iGraph->changePipelineStage(graphObj, kGraphPipelineStage_OnDemand);
         }
         else
         {
-            // Check if another Step node was already inserted before subscribing
-
-            if (g_graphsWithPhysxStepNode.find(graphObj.graphHandle) == g_graphsWithPhysxStepNode.end())
+            if (g_graphsWithStepNode.find(graphObj.graphHandle) == g_graphsWithStepNode.end())
             {
-                g_graphsWithPhysxStepNode[graphObj.graphHandle] = PhysicsStepData();
+                g_graphsWithStepNode[graphObj.graphHandle] = PhysicsStepData();
                 state.m_graphHandlePair = HandleIdPair{ graphObj.graphHandle, instanceId };
-                g_graphsWithPhysxStepNode[graphObj.graphHandle].stepSubscription =
-                    g_physXInterface->subscribePhysicsOnStepEvents(
-                        false, 0, onPhysicsStep, reinterpret_cast<void*>(&state.m_graphHandlePair));
+                subscribeGraphToStepEvents(g_graphsWithStepNode[graphObj.graphHandle], &state.m_graphHandlePair);
             }
-            g_graphsWithPhysxStepNode[graphObj.graphHandle].nodes.push_back(nodeObj.nodeHandle);
+            g_graphsWithStepNode[graphObj.graphHandle].nodes.push_back(nodeObj.nodeHandle);
             state.m_initialized = true;
         }
     }
@@ -140,21 +178,23 @@ public:
             return;
         }
         auto graphObj = g_iNode->getGraph(nodeObj);
-        auto graphData = g_graphsWithPhysxStepNode.find(graphObj.graphHandle);
+        auto graphData = g_graphsWithStepNode.find(graphObj.graphHandle);
 
-        // Sanity check if graph still exists
-        if (graphData != g_graphsWithPhysxStepNode.end())
+        if (graphData != g_graphsWithStepNode.end())
         {
-            // Remove node from list of nodes on this graph
             graphData->second.nodes.erase(
                 std::remove(graphData->second.nodes.begin(), graphData->second.nodes.end(), nodeObj.nodeHandle),
                 graphData->second.nodes.end());
-            // If No more step nodes are present, remove graph from map
             if (graphData->second.nodes.empty())
             {
-                g_physXInterface->unsubscribePhysicsOnStepEvents(graphData->second.stepSubscription);
-                g_graphsWithPhysxStepNode.erase(graphData);
+                g_physicsSimulationInterface->unsubscribePhysicsOnStepEvents(graphData->second.stepSubscription);
+                g_graphsWithStepNode.erase(graphData);
             }
+        }
+        if (g_graphsWithStepNode.empty() && g_simulationRegistrySubscription != omni::physics::kInvalidSubscriptionId)
+        {
+            g_physicsInterface->unsubscribeSimulationRegistryEvents(g_simulationRegistrySubscription);
+            g_simulationRegistrySubscription = omni::physics::kInvalidSubscriptionId;
         }
         auto& state = OgnOnPhysicsStepDatabase::sSharedState<OgnOnPhysicsStep>(nodeObj);
         state.m_initialized = false;
@@ -168,15 +208,14 @@ public:
     }
 
 
-    static void onPhysicsStep(float timeElapsed, void* userData)
+    static void onPhysicsStep(float timeElapsed, HandleIdPair* idpair)
     {
-        CARB_PROFILE_ZONE(0, "[IsaacSim] OgnOnPysicsStep::onPhysicsStep");
-        HandleIdPair* idpair = reinterpret_cast<HandleIdPair*>(userData);
+        CARB_PROFILE_ZONE(0, "[IsaacSim] OgnOnPhysicsStep::onPhysicsStep");
         auto graphHandle = idpair->graphHandle;
         auto instanceId = idpair->instanceId;
-        auto graphData = g_graphsWithPhysxStepNode.find(graphHandle);
+        auto graphData = g_graphsWithStepNode.find(graphHandle);
         // Sanity check if graph exists
-        if (graphData != g_graphsWithPhysxStepNode.end())
+        if (graphData != g_graphsWithStepNode.end())
         {
             // Double sanity check if there are step nodes in this graph
             if (!graphData->second.nodes.empty())

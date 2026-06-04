@@ -1,0 +1,90 @@
+{
+    "isaacsim.ros2.bridge.ROS2RtxRadarHelper" : {
+        "version" : 1,
+        "icon" : "icons/isaac-sim.svg",
+        "description" : "Handles automation of RTX Radar sensor pipeline for ROS 2 point cloud publishing",
+        "language" : "Python",
+        "categoryDefinitions": "config/CategoryDefinition.json",
+        "categories": "isaacRos2",
+        "metadata" : {
+            "uiName" : "ROS2 RTX Radar Helper"
+        },
+        "inputs": {
+            "execIn" : {
+                "type" : "execution",
+                "description": "Triggering this causes the sensor pipeline to be generated"
+            },
+            "enabled": {
+                "type": "bool",
+                "description": "True to enable the radar helper, False to disable",
+                "default": true
+            },
+            "context" : {
+                "type" : "uint64",
+                "description": "ROS2 context handle, default of zero will use the global context",
+                "default" : 0
+            },
+            "nodeNamespace" : {
+                "type" : "string",
+                "description" : "Namespace of ROS2 Node, prepends and published/subscribed topic by the node namespace",
+                "default" : ""
+            },
+            "frameId": {
+                "type" : "string",
+                "description" : "FrameID for the ROS2 message, the nodeNamespace will not be prefixed to the frame id",
+                "default" : "sim_radar"
+            },
+            "topicName": {
+                "type" : "string",
+                "description" : "Topic name for sensor data",
+                "default" : "radar_point_cloud"
+            },
+            "qosProfile": {
+                "type": "string",
+                "description": "QoS profile config",
+                "default": ""
+            },
+            "queueSize" : {
+                "type" : "uint64",
+                "description" : "Number of message to queue up before throwing away, in case messages are collected faster than they can be sent. Only honored if 'history' QoS policy was set to 'keep last'. This setting can be overwritten by qosProfile input.",
+                "default" : 10
+            },
+            "renderProductPath" : {
+                "type" : "token",
+                "description" : "Name of the render product path to publish radar data"
+            },
+            "resetSimulationTimeOnStop": {
+                "type": "bool",
+                "description": "If True the simulation time will reset when stop is pressed, False means time increases monotonically. This setting is ignored if useSystemTime is enabled.",
+                "uiName": "Reset Simulation Time On Stop",
+                "default": true
+            },
+            "showDebugView": {
+                "type": "bool",
+                "description": "If True a debug view of the radar detections will appear in the scene.",
+                "uiName": "Show Debug View",
+                "default": false
+            },
+            "useSystemTime": {
+                "type": "bool",
+                "description": "If True, system timestamp will be included in messages. If False, simulation timestamp will be included in messages",
+                "default": false
+            },
+            "outputRadialVelocityMS": {
+                "type": "bool",
+                "description": "Include per-point radial velocity (m/s) in the published PointCloud2 message. Requires _replicator:rendervar:GenericModelOutput:channels = ['BASIC'] on the OmniRadar prim, which Radar(path, aux_output_level='BASIC') authors automatically.",
+                "default": false
+            },
+            "outputIntensity": {
+                "type": "bool",
+                "description": "Include per-point intensity in the published PointCloud2 message",
+                "default": false
+            },
+            "outputTimestamp": {
+                "type": "bool",
+                "description": "Include per-point timestamp in the published PointCloud2 message",
+                "default": false
+            }
+        }
+    }
+}

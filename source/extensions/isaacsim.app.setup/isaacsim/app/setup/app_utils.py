@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -50,7 +50,7 @@ def start_kit_app(
     app_id: str,
     console: bool = True,
     custom_args: list[str] | None = None,
-):
+) -> None:
     """Start another Kit application with inherited settings.
 
     Launches a new Kit application process, passing through extension folder
@@ -100,7 +100,7 @@ def start_kit_app(
         subprocess.Popen(run_args, close_fds=False)
 
 
-def create_desktop_icon(app: IApp, ext_manager: IExtensionManager, ext_id: str):
+def create_desktop_icon(app: IApp, ext_manager: IExtensionManager, ext_id: str) -> None:
     """Create a desktop application icon entry on Linux systems.
 
     Creates a .desktop file in the user's applications folder for easy

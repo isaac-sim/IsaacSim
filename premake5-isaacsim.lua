@@ -171,13 +171,13 @@ function add_cuda_dependencies()
     setRuntimeToBeKitCompatible()
 
     filter { "files:**.cu", "system:windows", "configurations:debug" }
-    make_nvcc_command(nvccPath, nvccHostCompilerVS, "/Od", "-g -G -allow-unsupported-compiler")
+    make_nvcc_command(nvccPath, nvccHostCompilerVS, "/Od", "-g -G -allow-unsupported-compiler -Wno-deprecated-gpu-targets")
     filter { "files:**.cu", "system:windows", "configurations:release" }
-    make_nvcc_command(nvccPath, nvccHostCompilerVS, "", "-allow-unsupported-compiler")
+    make_nvcc_command(nvccPath, nvccHostCompilerVS, "", "-allow-unsupported-compiler -Wno-deprecated-gpu-targets")
     filter { "files:**.cu", "system:linux", "configurations:debug" }
-    make_nvcc_command(nvccPath, nvccHostCompilerVS, "-fPIC -g", "-g -G -allow-unsupported-compiler")
+    make_nvcc_command(nvccPath, nvccHostCompilerVS, "-fPIC -g", "-g -G -allow-unsupported-compiler -Wno-deprecated-gpu-targets")
     filter { "files:**.cu", "system:linux", "configurations:release" }
-    make_nvcc_command(nvccPath, nvccHostCompilerVS, "-fPIC", "-allow-unsupported-compiler")
+    make_nvcc_command(nvccPath, nvccHostCompilerVS, "-fPIC", "-allow-unsupported-compiler -Wno-deprecated-gpu-targets")
     filter {}
 
     -- link against CUDA runtime static library.
@@ -270,11 +270,11 @@ function get_ros2_extra(os_target, rel_path)
         -- Convert forward slashes to backslashes for Windows
         local win_rel_path = rel_path:gsub("/", "\\")
         return string.format([[
-set ROS_DISTRO=humble
+set ROS_DISTRO=jazzy
 set RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 set ROS_DOMAIN_ID=93
 pushd %%~dp0%sexts
-set basedir=%%cd%%\isaacsim.ros2.core\humble\lib
+set basedir=%%cd%%\isaacsim.ros2.core\jazzy\lib
 popd
 set PATH=%%PATH%%;%%basedir%%
 ]], win_rel_path)
@@ -384,6 +384,8 @@ function create_python_sample_runner(name, sample_path, config, extra_args, pyth
     local os_target = os.target()
     local pythonpath_dirs = pythonpath_dirs or {}
     local env_vars = env_vars or {}
+    -- Names in subdirs (e.g. doc_snippets/tests-nativepython-...) need tee/attachment logic too
+    local is_nativepython = name:match("tests%-nativepython")
 
     -- Calculate relative path depth based on subdirectory nesting
     local depth = 1  -- Default depth (for tests directly in tests/)
@@ -391,8 +393,10 @@ function create_python_sample_runner(name, sample_path, config, extra_args, pyth
         depth = depth + 1
     end
     local rel_path = string.rep("../", depth)
+    -- Path from script dir to config (release/) so _testoutput is always <config>/_testoutput
+    local testoutput_prefix = rel_path
 
-    if string.find(name, "ros2") or string.find(name, "scene_loading") or string.find(name, "test_test_runner") then
+    if string.find(name, "ros2") or string.find(name, "scene_loading") or string.find(name, "test_test_runner") or string.find(name, "test_snippets_async") then
         extra = get_ros2_extra(os_target, rel_path)
     else
         extra = ""
@@ -425,17 +429,38 @@ function create_python_sample_runner(name, sample_path, config, extra_args, pyth
             end
         end
 
+        local python_invocation
+        if is_nativepython then
+            -- Pipe to tee so stdout/stderr go to both console and log file; preserve python exit code.
+            -- _testoutput is always under config (release/), so scripts in tests/ and tests/subdir/ write to the same place.
+            python_invocation = string.format(
+                'TEE_LOG="$SCRIPT_DIR/%s_testoutput/$(basename "$0" .sh).log"\nmkdir -p "$(dirname "$TEE_LOG")"\n"$SCRIPT_DIR/%spython.sh" $SAMPLE_DIR/%s %s $@ --no-window 2>&1 | tee "$TEE_LOG"\nexit ${PIPESTATUS[0]:-0}',
+                testoutput_prefix,
+                rel_path,
+                sample_path,
+                extra_args
+            )
+        else
+            python_invocation = string.format(
+                '"$SCRIPT_DIR/%spython.sh" $SAMPLE_DIR/%s %s $@ --no-window',
+                rel_path,
+                sample_path,
+                extra_args
+            )
+        end
+
         local f = io.open(sh_file_path, "w")
         print(sh_file_path)
         f:write(string.format(
             [[
 #!/bin/bash
 set -e
+set -o pipefail
 SCRIPT_DIR=$(dirname ${BASH_SOURCE})
 SAMPLE_DIR=$SCRIPT_DIR/%s
 %s%s%s
 "$SCRIPT_DIR/%spython.sh" -m pip install -r "$SCRIPT_DIR/%srequirements.txt"
-"$SCRIPT_DIR/%spython.sh" $SAMPLE_DIR/%s %s $@ --no-window
+%s
         ]],
             rel_path,
             extra,
@@ -443,9 +468,7 @@ SAMPLE_DIR=$SCRIPT_DIR/%s
             pythonpath_export,
             rel_path,
             rel_path,
-            rel_path,
-            sample_path,
-            extra_args
+            python_invocation
         ))
         f:close()
         os.chmod(sh_file_path, 755)
@@ -455,6 +478,7 @@ SAMPLE_DIR=$SCRIPT_DIR/%s
 
         -- Convert forward slashes to backslashes for Windows relative path
         local rel_path = string.rep("..\\", depth)
+        local testoutput_prefix_win = rel_path
 
         -- Build PYTHONPATH set statement if directories are specified
         local pythonpath_set = ""
@@ -481,6 +505,33 @@ SAMPLE_DIR=$SCRIPT_DIR/%s
             end
         end
 
+        local python_invocation_bat
+        if is_nativepython then
+            -- Use PowerShell Tee-Object to preserve console output while logging (like Linux tee).
+            -- _testoutput is always under config (release/), same as Linux.
+            -- Tee-Object writes UTF-16 on Windows; standalone_report.py converts .log files to UTF-8 before processing.
+            -- Use Continue (not Stop) so Python tracebacks on stderr do not trigger PowerShell exceptions and
+            -- the pipeline completes, allowing Tee-Object to write the full log including the traceback.
+            python_invocation_bat = string.format(
+                'if not exist "%%~dp0%s_testoutput" mkdir "%%~dp0%s_testoutput"\npowershell -Command "$ErrorActionPreference=\'Continue\'; & \'%%~dp0%spython.bat\' \'%%~dp0%s%s\' %s %%* 2>&1 | Tee-Object -FilePath \'%%~dp0%s_testoutput\\%%~n0.log\'; exit $LASTEXITCODE"',
+                testoutput_prefix_win,
+                testoutput_prefix_win,
+                rel_path,
+                rel_path,
+                sample_path,
+                extra_args,
+                testoutput_prefix_win
+            )
+        else
+            python_invocation_bat = string.format(
+                'call "%%~dp0%spython.bat" "%%~dp0%s%s" %s %%*',
+                rel_path,
+                rel_path,
+                sample_path,
+                extra_args
+            )
+        end
+
         local f = io.open(bat_file_path, "w")
         print(bat_file_path)
         f:write(string.format(
@@ -489,17 +540,14 @@ SAMPLE_DIR=$SCRIPT_DIR/%s
 setlocal
 %s%s%s
 call "%%~dp0%spython.bat" -m pip install -r "%%~dp0%srequirements.txt"
-call "%%~dp0%spython.bat" "%%~dp0%s%s" %s %%*
+%s
         ]],
             extra,
             env_set,
             pythonpath_set,
             rel_path,
             rel_path,
-            rel_path,
-            rel_path,
-            sample_path,
-            extra_args
+            python_invocation_bat
         ))
         f:close()
     end

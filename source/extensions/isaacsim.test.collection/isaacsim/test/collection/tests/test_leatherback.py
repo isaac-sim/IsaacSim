@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,24 +15,13 @@
 
 """Tests for the Leatherback Ackermann-steering robot with ROS2 integration."""
 
-
-from collections.abc import Callable
-
 import carb
-import carb.tokens
-import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
-
-# NOTE:
-#   omni.kit.test - std python's unittest module with additional wrapping to add suport for async/await tests
-#   For most things refer to unittest docs: https://docs.python.org/3/library/unittest.html
-import omni.kit.test
-import omni.timeline
+import omni.kit.app
+from isaacsim.core.experimental.utils.stage import open_stage_async
 from isaacsim.core.experimental.utils.xform import get_world_pose
-from isaacsim.storage.native import get_assets_root_path_async
-
-from .robot_helpers import open_stage_async
+from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 
 
 def get_qos_profile():
@@ -46,82 +35,40 @@ def get_qos_profile():
     return QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, history=QoSHistoryPolicy.KEEP_LAST, depth=1)
 
 
-async def simulate_async(duration_seconds: float, callback: Callable | None = None, physics_rate: int = 60):
-    """Simulate for a given duration by looping through app updates.
-
-    Args:
-        duration_seconds: Duration to simulate in seconds.
-        callback: Optional function to call each frame.
-        physics_rate: Physics update rate in Hz.
-    """
-    frames = int(duration_seconds * physics_rate)
-    for _ in range(frames):
-        if callback:
-            callback()
-        await omni.kit.app.get_app().next_update_async()
-
-
-# Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestLeatherback(omni.kit.test.AsyncTestCase):
+class TestLeatherback(ROS2TestCase):
     """Tests for the Leatherback Ackermann-steering robot with ROS2 integration."""
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment with Leatherback robot and ROS2."""
-        import rclpy
-
-        self._timeline = omni.timeline.get_timeline_interface()
-
-        ext_manager = omni.kit.app.get_app().get_extension_manager()
-
-        self._assets_root_path = await get_assets_root_path_async()
+        await super().setUp()
         if self._assets_root_path is None:
             carb.log_error("Could not find Isaac Sim assets folder")
             return
 
-        # add in carter (from nucleus)
         self.usd_path = self._assets_root_path + "/Isaac/Samples/ROS2/Robots/leatherback_ROS.usd"
-        (result, error) = await open_stage_async(self.usd_path)
+        result, error = await open_stage_async(self.usd_path)
 
         # Make sure the stage loaded
-        self.assertTrue(result)
+        self.assertTrue(result, error)
 
         # Set stage units
         stage_utils.set_stage_units(meters_per_unit=1.0)
-        await app_utils.update_app_async()
-
-        rclpy.init()
-
-        pass
-
-    # After running each test
-    async def tearDown(self):
-        """Clean up test environment, stop timeline, and shutdown ROS2."""
-        import rclpy
-
-        self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
-        # In some cases the test will end before the asset is loaded, in this case wait for assets to load
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            await omni.kit.app.get_app().next_update_async()
-
-        rclpy.shutdown()
-
-        pass
 
     async def test_drive_forward(self):
         """Test that Leatherback drives forward via ROS2 Ackermann commands."""
-        import rclpy
         from ackermann_msgs.msg import AckermannDriveStamped
 
         # Create a node to publish ackermann messages
-        node = rclpy.create_node("isaac_sim_test_leatherback")
+        node = self.create_node("isaac_sim_test_leatherback")
         ros_topic = "/ackermann_cmd"
-        test_pub = node.create_publisher(AckermannDriveStamped, ros_topic, 1)
+        test_pub = self.create_publisher(node, AckermannDriveStamped, ros_topic, 1)
 
         # Start Simulation and wait a second for it to settle
         self._timeline.play()
-        await simulate_async(1)
+        await self.wait_for_subscribers_on_topic(test_pub)
+        await self.simulate_until_condition(lambda: False, max_frames=60)
 
         # Drive the robot
         for i in range(60):
@@ -149,16 +96,13 @@ class TestLeatherback(omni.kit.test.AsyncTestCase):
         delta = np.linalg.norm(x - target)
         self.assertAlmostEqual(delta, 0, delta=0.01, msg=f"delta: {delta}, target: {target}, actual: {x}")
 
-        pass
-
     async def test_cameras(self):
         """Test that RGB and depth cameras publish valid data via ROS2."""
-
         import rclpy
         from sensor_msgs.msg import Image
 
-        # Create a node to publish ackermann messages
-        node = rclpy.create_node("isaac_sim_test_leatherback")
+        # Create a node to subscribe to camera messages.
+        node = self.create_node("isaac_sim_test_leatherback")
 
         self._rgb = None
         self._depth = None
@@ -172,20 +116,33 @@ class TestLeatherback(omni.kit.test.AsyncTestCase):
         ros_rgb_topic = "/rgb"
         ros_depth_topic = "/depth"
 
-        rgb_sub = node.create_subscription(Image, ros_rgb_topic, rgb_callback, get_qos_profile())
-        depth_sub = node.create_subscription(Image, ros_depth_topic, depth_callback, get_qos_profile())
+        self.create_subscription(node, Image, ros_rgb_topic, rgb_callback, get_qos_profile())
+        self.create_subscription(node, Image, ros_depth_topic, depth_callback, get_qos_profile())
 
         def spin():
             rclpy.spin_once(node, timeout_sec=0.1)
 
         # Start Simulation and wait
         self._timeline.play()
+        # Multitick rendering can delay ROS 2 camera publisher discovery and first-real-frame
+        # under warm-cache runs; extend wait + drain extra frames.
+        await self.wait_for_publishers_on_topic(node, ros_rgb_topic, timeout_sec=30.0, per_frame_callback=spin)
+        await self.wait_for_publishers_on_topic(node, ros_depth_topic, timeout_sec=30.0, per_frame_callback=spin)
 
-        await omni.kit.app.get_app().next_update_async()
-        await simulate_async(1.5, callback=spin)
-        for _ in range(10):
-            if self._rgb is None:
-                await simulate_async(1, callback=spin)
+        condition_met = await self.simulate_until_condition(
+            lambda: self._rgb is not None and self._depth is not None,
+            max_frames=600,
+            per_frame_callback=spin,
+        )
+        # Drain additional frames so the camera sensor has ticked past any sentinel/zero
+        # first-frame buffer republished by the writer under multitick.
+        if condition_met:
+            # Drain additional frames so the camera sensor has ticked past any sentinel/zero
+            # first-frame buffer republished by the writer under multitick.
+            await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=spin)
+        self.assertTrue(condition_met, "No RGB/depth data received from Leatherback cameras within timeout")
+        self.assertIsNotNone(self._rgb, "No RGB data received from Leatherback camera")
+        self.assertIsNotNone(self._depth, "No depth data received from Leatherback camera")
 
         depth_data = np.frombuffer(self._depth.data, dtype=np.float32)
         rgb_data = np.frombuffer(self._rgb.data, dtype=np.uint8)
@@ -210,6 +167,3 @@ class TestLeatherback(omni.kit.test.AsyncTestCase):
         # The last pixel is on the ground, it should be around 0.602
         self.assertTrue(np.isinf(depth_data[0]))
         self.assertTrue(np.abs(depth_data[-1] - 0.602) < 0.1)
-
-        node.destroy_node()
-        pass

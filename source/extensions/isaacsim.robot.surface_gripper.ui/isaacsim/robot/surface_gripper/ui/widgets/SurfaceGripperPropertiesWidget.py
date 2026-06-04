@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,43 +15,16 @@
 
 """Properties widget for Surface Gripper prims providing specialized controls and attribute display for gripper functionality in the USD property panel."""
 
-
 import asyncio
-from functools import partial
-from typing import List
+import typing
 
 import carb
-import isaacsim.robot.surface_gripper._surface_gripper as surface_gripper
 import omni
 import omni.ui as ui
-from isaacsim.gui.components.element_wrappers import (
-    Button,
-    CheckBox,
-    CollapsableFrame,
-    ColorPicker,
-    DropDown,
-    FloatField,
-    IntField,
-    StateButton,
-    StringField,
-    TextBlock,
-    XYPlot,
-)
-from isaacsim.gui.components.ui_utils import get_style
-from isaacsim.gui.components.widgets import SelectPrimWidget
-from omni.kit.property.usd.prim_selection_payload import PrimSelectionPayload
-from omni.kit.property.usd.usd_attribute_model import UsdAttributeModel
-from omni.kit.property.usd.usd_property_widget import UiDisplayGroup, UsdPropertiesWidget, UsdPropertyUiEntry
+from isaacsim.robot.surface_gripper import _surface_gripper as surface_gripper
+from omni.kit.property.usd.usd_property_widget import UiDisplayGroup, UsdPropertiesWidget
 from omni.kit.property.usd.usd_property_widget_builder import UsdPropertiesWidgetBuilder
-from omni.kit.property.usd.widgets import ICON_PATH
-from omni.kit.window.property.templates import (
-    HORIZONTAL_SPACING,
-    LABEL_HEIGHT,
-    LABEL_WIDTH,
-    SimplePropertyWidget,
-    build_frame_header,
-)
-from pxr import Gf, Sdf, Tf, Usd
+from pxr import Tf, Usd
 from usd.schema.isaac import robot_schema
 
 
@@ -78,9 +51,10 @@ class SurfaceGripperPropertiesWidget(UsdPropertiesWidget):
         **kwargs: Additional keyword arguments passed to the parent UsdPropertiesWidget.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self._old_payload = []
+        self._listener = None
         self.frames = []
         self.wrapped_ui_elements = []
         self.reset()
@@ -126,8 +100,8 @@ class SurfaceGripperPropertiesWidget(UsdPropertiesWidget):
             },
         }
 
-    def _request_refresh(self):
-        """Refreshes the entire property window"""
+    def _request_refresh(self) -> None:
+        """Refreshes the entire property window."""
         selection = omni.usd.get_context().get_selection()
         selected_paths = selection.get_selected_prim_paths()
         window = omni.kit.window.property.get_window()._window  # noqa: PLW0212 what does this mean?
@@ -137,14 +111,14 @@ class SurfaceGripperPropertiesWidget(UsdPropertiesWidget):
         selection.set_selected_prim_paths(selected_paths, True)
         window.frame.rebuild()
 
-    def _on_usd_changed(self, notice, stage):
+    def _on_usd_changed(self, notice: Usd.Notice.ObjectsChanged, stage: Usd.Stage) -> None:
         """Handles USD change notifications.
 
         Args:
             notice: The USD notice containing change information.
             stage: The USD stage that was modified.
         """
-        targets = notice.GetChangedInfoOnlyPaths()
+        notice.GetChangedInfoOnlyPaths()
         if self._old_payload != self.on_new_payload(
             self._payload
         ):  # if selection didn't change, check if attribute still exists, and force rebuild if so
@@ -153,7 +127,7 @@ class SurfaceGripperPropertiesWidget(UsdPropertiesWidget):
         else:
             super()._on_usd_changed(notice, stage)
 
-    def _get_prim(self, prim_path):
+    def _get_prim(self, prim_path: str) -> Usd.Prim | None:
         """Gets a Surface Gripper prim from the specified path.
 
         Args:
@@ -170,8 +144,8 @@ class SurfaceGripperPropertiesWidget(UsdPropertiesWidget):
                     return prim
         return None
 
-    def on_new_payload(self, payload):
-        """See PropertyWidget.on_new_payload
+    def on_new_payload(self, payload: list) -> "list | bool":
+        """See PropertyWidget.on_new_payload.
 
         Args:
             payload: The new payload containing prim selection data.
@@ -179,6 +153,9 @@ class SurfaceGripperPropertiesWidget(UsdPropertiesWidget):
         Returns:
             List of valid Surface Gripper prims if found, otherwise False.
         """
+        if self._listener:
+            self._listener.Revoke()
+            self._listener = None
 
         if not super().on_new_payload(payload):
             return False
@@ -191,7 +168,7 @@ class SurfaceGripperPropertiesWidget(UsdPropertiesWidget):
 
         return self._prims
 
-    def build_items(self):
+    def build_items(self) -> None:
         """Build the property widget items for the Surface Gripper."""
         # Reset the widget state
         self.reset()
@@ -205,7 +182,6 @@ class SurfaceGripperPropertiesWidget(UsdPropertiesWidget):
         if not stage:  # pragma: no cover
             return
 
-        # Register for USD change notifications
         self._listener = Tf.Notice.Register(Usd.Notice.ObjectsChanged, self._on_usd_changed, stage)
 
         # Get shared properties from selected prims
@@ -223,7 +199,7 @@ class SurfaceGripperPropertiesWidget(UsdPropertiesWidget):
         filtered_props = shared_props
         if self._filter.name:
 
-            def display_name(ui_prop):
+            def display_name(ui_prop: typing.Any) -> str:
                 return UsdPropertiesWidgetBuilder.get_display_name(ui_prop.prop_name, ui_prop.metadata)
 
             print([display_name(ui_prop) for ui_prop in shared_props])
@@ -244,7 +220,7 @@ class SurfaceGripperPropertiesWidget(UsdPropertiesWidget):
         ]
 
         # Sort the filtered properties according to the defined order
-        def get_sort_key(prop):
+        def get_sort_key(prop: typing.Any) -> int:
             try:
                 return property_order.index(prop.prop_name)
             except ValueError:
@@ -271,7 +247,7 @@ class SurfaceGripperPropertiesWidget(UsdPropertiesWidget):
             frame = ui.Frame(visible=False)
             asyncio.ensure_future(self._build_schema_group_frames(frame, stage, grouped_props, last_prim))
 
-    def _customize_props_layout(self, props):
+    def _customize_props_layout(self, props: list) -> list:
         """Customize the properties layout with specific display names and tooltips.
 
         Args:
@@ -289,7 +265,7 @@ class SurfaceGripperPropertiesWidget(UsdPropertiesWidget):
 
         return props
 
-    def close(self):
+    def close(self) -> None:
         """Closes the gripper for all selected prims."""
         gripper_interface = surface_gripper.acquire_surface_gripper_interface()
         for prim in self._prims:
@@ -297,60 +273,54 @@ class SurfaceGripperPropertiesWidget(UsdPropertiesWidget):
             gripper_path = prim.GetPath().pathString
 
             # Close the gripper
-            success = gripper_interface.close_gripper(gripper_path)
+            gripper_interface.close_gripper(gripper_path)
 
-    def open(self):
+    def open(self) -> None:
         """Opens the gripper for all selected prims."""
         gripper_interface = surface_gripper.acquire_surface_gripper_interface()
         for prim in self._prims:
             gripper_path = prim.GetPath().pathString
-            success = gripper_interface.open_gripper(gripper_path)
+            gripper_interface.open_gripper(gripper_path)
 
-    def _on_forward_axis_selection(self, item: str):
+    def _on_forward_axis_selection(self, item: str) -> None:
         """Handles forward axis selection changes.
 
         Args:
             item: The selected axis item.
         """
-        pass
 
-    def _on_coaxial_force_limit_changed(self, value: float):
+    def _on_coaxial_force_limit_changed(self, value: float) -> None:
         """Handles coaxial force limit value changes.
 
         Args:
             value: The new coaxial force limit value.
         """
         print("Coaxial Force Limit Changed was called!", value)
-        pass
 
-    def _on_grip_distance_changed(self, value: float):
+    def _on_grip_distance_changed(self, value: float) -> None:
         """Handles changes to the grip distance value.
 
         Args:
             value: The new grip distance value.
         """
-        pass
 
-    def _on_max_grip_distance_changed(self, value: float):
+    def _on_max_grip_distance_changed(self, value: float) -> None:
         """Handles changes to the maximum grip distance value.
 
         Args:
             value: The new maximum grip distance value.
         """
-        pass
 
-    def _on_retry_interval_changed(self, value: float):
+    def _on_retry_interval_changed(self, value: float) -> None:
         """Handles changes to the retry interval value.
 
         Args:
             value: The new retry interval value.
         """
-        pass
 
-    def _on_shear_force_limit_changed(self, value: float):
+    def _on_shear_force_limit_changed(self, value: float) -> None:
         """Handles changes to the shear force limit value.
 
         Args:
             value: The new shear force limit value.
         """
-        pass

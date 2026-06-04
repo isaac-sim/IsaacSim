@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 
 """MJCF importer UI extension entry point."""
 
@@ -57,6 +56,37 @@ def is_mjcf_file(path: str) -> bool:
     return ext == ".xml"
 
 
+def _normalize_path_key(path: str) -> str:
+    """Return a canonical ``_per_file_state`` key (case-insensitive on Windows)."""
+    return os.path.normcase(os.path.normpath(path))
+
+
+class _FileImportState:
+    """Per-file state created by each ``build_options`` call.
+
+    Holds an independent config, UI model dict, and OptionWidget so that
+    multiple selected files in the asset-importer dialog each get their
+    own settings panel.
+
+    Args:
+        config: MJCF importer configuration for this file.
+        models: UI value models keyed by option name.
+        option_builder: Widget that builds the settings panel.
+    """
+
+    __slots__ = ("config", "models", "option_builder")
+
+    def __init__(
+        self,
+        config: MJCFImporterConfig,
+        models: dict[str, ui.AbstractValueModel],
+        option_builder: OptionWidget,
+    ) -> None:
+        self.config = config
+        self.models = models
+        self.option_builder = option_builder
+
+
 class Extension(omni.ext.IExt):
     """UI Extension for the MJCF Importer.
 
@@ -79,31 +109,27 @@ class Extension(omni.ext.IExt):
             True
         """
         self._usd_context = omni.usd.get_context()
-        self._models: dict[str, ui.AbstractValueModel] = {}
-        self._config: MJCFImporterConfig = MJCFImporterConfig()
         self._extension_path = omni.kit.app.get_app().get_extension_manager().get_extension_path(ext_id)
-        self.reset_config()
-        self._option_builder = OptionWidget(self._models, self._config)
+
+        self._per_file_state: dict[str, _FileImportState] = {}
+        self._last_config: MJCFImporterConfig | None = None
+
         self._delegate = MjcfImporterDelegate(
             "MJCF Importer",
             ["(.*\\.xml$)|(.*\\.XML$)"],
             ["Mjcf Files (*.xml, *.XML)"],
         )
-        self._collision_type_items = [
-            "Convex Hull",
-            "Convex Decomposition",
-            "Bounding Sphere",
-            "Bounding Cube",
-        ]
         self._delegate.set_importer(self)
-        self._importer = MJCFImporter(self._config)
         ai.register_importer(self._delegate)
 
         global _extension_instance
         _extension_instance = self
 
-    def build_new_options(self) -> None:
-        """Build a fresh options UI for the importer.
+    def build_new_options(self, paths: list[str] | None = None) -> None:
+        """Build one independent ``OptionWidget`` per selected MJCF file.
+
+        Args:
+            paths: MJCF file paths selected in the file picker.
 
         Example:
 
@@ -112,13 +138,29 @@ class Extension(omni.ext.IExt):
             >>> from isaacsim.asset.importer.mjcf.ui.impl.extension import Extension
             >>> Extension().build_new_options()  # doctest: +SKIP
         """
-        self._option_builder.build_options()
+        mjcf_paths = [p for p in (paths or []) if is_mjcf_file(p)]
 
-    def _get_config(self) -> MJCFImporterConfig:
-        """Return the active importer configuration.
+        if not mjcf_paths:
+            config = MJCFImporterConfig()
+            self._init_config_defaults(config)
+            models: dict[str, ui.AbstractValueModel] = {}
+            option_builder = OptionWidget(models, config)
+            option_builder.build_options()
+            return
+
+        for path in mjcf_paths:
+            config = MJCFImporterConfig()
+            self._init_config_defaults(config)
+            models: dict[str, ui.AbstractValueModel] = {}
+            option_builder = OptionWidget(models, config)
+            option_builder.build_options()
+            self._per_file_state[_normalize_path_key(path)] = _FileImportState(config, models, option_builder)
+
+    def _get_config(self) -> MJCFImporterConfig | None:
+        """Return the most recently used importer configuration.
 
         Returns:
-            Current importer configuration.
+            Configuration instance from the last successful import, or None.
 
         Example:
 
@@ -130,8 +172,24 @@ class Extension(omni.ext.IExt):
         """
         return self._last_config
 
+    @staticmethod
+    def _init_config_defaults(config: MJCFImporterConfig) -> None:
+        """Set default values on a config instance.
+
+        Args:
+            config: Configuration instance to initialise.
+
+        """
+        config.usd_path = None
+        config.import_scene = True
+        config.merge_mesh = False
+        config.debug_mode = False
+        config.collision_from_visuals = False
+        config.collision_type = "Convex Hull"
+        config.allow_self_collision = False
+
     def reset_config(self) -> None:
-        """Reset importer configuration to default values.
+        """Clear all per-file import state.
 
         Example:
 
@@ -140,13 +198,7 @@ class Extension(omni.ext.IExt):
             >>> from isaacsim.asset.importer.mjcf.ui.impl.extension import Extension
             >>> Extension().reset_config()  # doctest: +SKIP
         """
-        self._config.usd_path = None
-        self._config.import_scene = True
-        self._config.merge_mesh = False
-        self._config.debug_mode = False
-        self._config.collision_from_visuals = False
-        self._config.collision_type = "default"
-        self._config.allow_self_collision = False
+        self._per_file_state.clear()
 
     def _start_import(self, path: str | None = None, **kargs: object) -> str | None:
         """Start the MJCF import process.
@@ -169,56 +221,43 @@ class Extension(omni.ext.IExt):
             carb.log_error("MJCF Importer: No path provided")
             return None
 
-        # Get user's export folder preference
-        export_folder = self._models["dst_path"].get_value_as_string() if self._models["dst_path"] else ""
+        state = self._per_file_state.pop(_normalize_path_key(path), None)
+        if state:
+            config = state.config
+            models = state.models
+        else:
+            config = MJCFImporterConfig()
+            self._init_config_defaults(config)
+            models = {}
 
-        carb.log_info(f"export_folder: {export_folder}")
+        export_folder = models["dst_path"].get_value_as_string() if models.get("dst_path") else ""
 
-        # Treat "default" string as empty
         if export_folder == "Same as Imported Model(Default)":
             export_folder = ""
 
-        # Determine USD output directory
         if export_folder:
-            # User specified a custom output folder
             if not os.path.isdir(export_folder):
                 export_folder = os.path.dirname(export_folder)
         else:
-            # Use the directory containing the MJCF file
             export_folder = os.path.dirname(path)
 
-        # Update configuration with paths and UI options, the other options are set in the OptionWidget class
-        self._config.mjcf_path = path
-        self._config.usd_path = export_folder
+        config.mjcf_path = path
+        config.usd_path = export_folder
 
-        # Print configuration for debugging
         stage_utils.create_new_stage()
 
-        # Perform the import
-        self._importer.config = self._config
-        output_path = self._importer.import_mjcf()
+        importer = MJCFImporter(config)
+        output_path = importer.import_mjcf()
         if not output_path:
             carb.log_error(f"Failed to import MJCF file at path: {path}")
             return None
         result, _ = stage_utils.open_stage(output_path)
 
-        self._last_config = copy.deepcopy(self._config)  # for testing only
-        self.reset_config()
+        self._last_config = copy.deepcopy(config)
         if not result:
             carb.log_error(f"Failed to open stage at path: {output_path}")
             return None
         return output_path
-
-    def _print_config(self) -> None:
-        """Log the current importer configuration."""
-        carb.log_info(f"config mjcf path: {self._config.mjcf_path}")
-        carb.log_info(f"config usd path: {self._config.usd_path}")
-        carb.log_info(f"config import scene: {self._config.import_scene}")
-        carb.log_info(f"config merge mesh: {self._config.merge_mesh}")
-        carb.log_info(f"config debug mode: {self._config.debug_mode}")
-        carb.log_info(f"config collision from visuals: {self._config.collision_from_visuals}")
-        carb.log_info(f"config collision type: {self._config.collision_type}")
-        carb.log_info(f"config allow self collision: {self._config.allow_self_collision}")
 
     def on_shutdown(self) -> None:
         """Clean up resources when the extension is shut down.
@@ -234,6 +273,7 @@ class Extension(omni.ext.IExt):
             self._delegate.destroy()
             ai.remove_importer(self._delegate)
 
+        self._per_file_state.clear()
         global _extension_instance
         _extension_instance = None
         gc.collect()
@@ -393,7 +433,7 @@ class MjcfImporterDelegate(ai.AbstractImporterDelegate):
             >>> delegate.build_options([])  # doctest: +SKIP
         """
         if self._importer is not None:
-            self._importer.build_new_options()
+            self._importer.build_new_options(paths)
         else:
             carb.log_warn("MJCF Importer: Importer not initialized, cannot build options")
 

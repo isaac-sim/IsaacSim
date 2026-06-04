@@ -1,0 +1,26 @@
+// FlatBuffers schema demonstrating native_type approach with Eigen integration.
+// Using Eigen::Vector3f directly as the native type.
+
+
+native_include "Eigen/Dense";
+
+native_include "messages/adapters/math_types_adapter.h";
+
+namespace isaac;
+
+// Vector3f using Eigen::Vector3f as native_type
+struct Vector3f (
+  native_type: "Eigen::Vector3f",
+  native_default: "Eigen::Vector3f::Zero()"
+) {
+  x: float;
+  y: float;
+  z: float;
+}
+
+// Row-major covariance matrix (6x6).
+// The order of the covariance matrix is:
+// [x, y, z, rotation_x, rotation_y, rotation_z]
+struct CovarianceMatrix36f {
+  data: [float:36];
+}

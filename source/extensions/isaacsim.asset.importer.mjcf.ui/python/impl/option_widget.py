@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,15 +12,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Option widget builders for the MJCF importer UI."""
 
 from collections.abc import Callable
 
 import omni.ui as ui
 from isaacsim.asset.importer.mjcf.impl import MJCFImporterConfig
+from isaacsim.gui.components.ui_utils import checkbox_builder, dropdown_builder, string_filed_builder
 
 from .style import get_option_style
-from .ui_utils import checkbox_builder, dropdown_builder, string_filed_builder
 
 
 def option_header(collapsed: bool, title: str) -> None:
@@ -119,7 +120,7 @@ class OptionWidget:
         return self._models
 
     @property
-    def config(self):
+    def config(self) -> MJCFImporterConfig:
         """Return the current configuration object.
 
         Returns:
@@ -233,21 +234,66 @@ class OptionWidget:
 
         option_frame("Colliders", build_colliders_content)
 
+    _BASE_TYPE_ITEMS = ["Source", "Fixed", "Mobile"]
+    _BASE_TYPE_TO_FIX_BASE = {"Source": None, "Fixed": True, "Mobile": False}
+
+    def _set_base_type(self, value: str) -> None:
+        """Map the Base Type dropdown selection onto ``config.fix_base``."""
+        self._config.fix_base = self._BASE_TYPE_TO_FIX_BASE[value]
+
     def _build_options_frame(self) -> None:
         """Build the Options frame.
 
         Creates UI elements for:
-        - Layer Structure checkbox (default: True)
+        - Robot Type dropdown
+        - Base Type dropdown (Source / Fixed / Mobile)
+        - Import Scene checkbox (default: True)
         - Merge Mesh checkbox (default: False)
         - Debug Mode checkbox (default: False)
-        - Open Gains Tuner checkbox (default: False)
         """
 
         def build_options_content() -> None:
             """Build general option content."""
+            from isaacsim.asset.importer.utils.impl.importer_utils import ROBOT_TYPE_TOKENS
+
+            def set_robot_type(value: str) -> None:
+                self._config.robot_type = value
+
             with ui.VStack(spacing=4):
 
-                # Import Scene checkbox
+                self._models["robot_type"] = dropdown_builder(
+                    "Robot Type",
+                    tooltip="Category of robot for the Isaac robot schema (e.g. Manipulator, Humanoid)",
+                    default_val=ROBOT_TYPE_TOKENS.index(self._config.robot_type),
+                    items=ROBOT_TYPE_TOKENS,
+                    on_clicked_fn=set_robot_type,
+                    identifier="mjcf_robot_type",
+                    show_flourish=False,
+                    label_width=90,
+                )
+
+                base_type_default = 0
+                if self._config.fix_base is True:
+                    base_type_default = 1
+                elif self._config.fix_base is False:
+                    base_type_default = 2
+
+                self._models["base_type"] = dropdown_builder(
+                    "Base Type",
+                    tooltip=(
+                        "How to anchor the robot's root link. "
+                        "Source leaves the source MJCF authoring untouched; "
+                        "Fixed adds a world-to-root fixed joint; "
+                        "Mobile removes any world-to-root fixed joint."
+                    ),
+                    default_val=base_type_default,
+                    items=self._BASE_TYPE_ITEMS,
+                    on_clicked_fn=self._set_base_type,
+                    identifier="mjcf_base_type",
+                    show_flourish=False,
+                    label_width=90,
+                )
+
                 def set_import_scene(value: bool) -> None:
                     self._config.import_scene = value
 
@@ -259,7 +305,6 @@ class OptionWidget:
                     identifier="mjcf_import_scene",
                 )
 
-                # Merge Mesh checkbox
                 def set_merge_mesh(value: bool) -> None:
                     self._config.merge_mesh = value
 
@@ -271,7 +316,6 @@ class OptionWidget:
                     identifier="mjcf_merge_mesh",
                 )
 
-                # Debug Mode checkbox
                 def set_debug_mode(value: bool) -> None:
                     self._config.debug_mode = value
 
@@ -282,14 +326,6 @@ class OptionWidget:
                     on_clicked_fn=set_debug_mode,
                     identifier="mjcf_debug_mode",
                 )
-
-                # Open Gains Tuner checkbox
-                # self._models["open_gains_tuner"] = checkbox_builder(
-                #     "Open Gains Tuner",
-                #     tooltip="If True, opens the gains tuner after import for PID tuning",
-                #     default_val=False,
-                #     on_clicked_fn=lambda m, config=self._config: config.set_open_gains_tuner(m),
-                # )
 
         option_frame("Options", build_options_content)
 

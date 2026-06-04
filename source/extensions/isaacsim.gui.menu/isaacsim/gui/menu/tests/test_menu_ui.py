@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,9 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """UI tests for menu behaviors and links."""
 
-import carb
 import omni.kit.test
 import omni.usd
 from omni.kit.ui_test.menu import *
@@ -25,7 +25,7 @@ from omni.ui.tests.test_base import OmniUiTest
 class TestMenuUI(OmniUiTest):
     """UI tests for menu link validation."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Create a new stage before each test."""
         self._timeline = omni.timeline.get_timeline_interface()
         omni.usd.get_context().new_stage()
@@ -34,7 +34,7 @@ class TestMenuUI(OmniUiTest):
 
     # After running each test
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Wait for asset loads before teardown."""
         await omni.kit.app.get_app().next_update_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
@@ -42,7 +42,7 @@ class TestMenuUI(OmniUiTest):
             await omni.kit.app.get_app().next_update_async()
         await super().tearDown()
 
-    async def test_physics_reference_link(self):
+    async def test_physics_reference_link(self) -> None:
         """Verify the physics reference link resolves to a live URL."""
         # Allow the UI to update so that the main menu is populated
         from urllib.error import URLError

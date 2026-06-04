@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Tests for occupancy map generation functionality."""
 
 import carb.tokens
 import numpy as np
@@ -31,8 +33,11 @@ from pxr import PhysxSchema, Sdf, UsdGeom, UsdPhysics
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
 class TestOccupancyMapGenerator(omni.kit.test.AsyncTestCase):
+    """Test suite for occupancy map generator."""
+
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Set up test fixtures before each test."""
         self._om = _omap.acquire_omap_interface()
         self._timeline = omni.timeline.get_timeline_interface()
 
@@ -44,18 +49,38 @@ class TestOccupancyMapGenerator(omni.kit.test.AsyncTestCase):
         pass
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Tear down test fixtures after each test."""
         await omni.kit.app.get_app().next_update_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
         pass
 
-    def compute_index(self, p, scale, size, min_b):
+    def compute_index(
+        self, p: tuple[float, float], scale: float, size: tuple[float, float], min_b: tuple[float, float]
+    ) -> int:
+        """Compute a buffer index from a point position.
+
+        Args:
+            p: Point ``(x, y)`` in the same units as ``min_b`` and ``size``.
+            scale: Cell size (world units per grid cell).
+            size: Occupancy grid dimensions ``(width, height)`` in cells.
+            min_b: Grid origin ``(min_x, min_y)`` in world units.
+
+        Returns:
+            Linear index into a row-major occupancy buffer.
+        """
         return int(p[1] / scale - min_b[1] / scale) * int(size[0] / scale) + int(p[0] / scale - min_b[0] / scale)
 
-    def add_cube(self, path, size, offset):
+    def add_cube(self, path: str, size: float, offset: tuple[float, float, float]) -> None:
+        """Add a cube prim to the stage.
 
+        Args:
+            path: USD path for the new cube prim.
+            size: Edge length of the cube.
+            offset: Translation applied to the cube geometry.
+        """
         cubeGeom = UsdGeom.Cube.Define(self._stage, path)
         cubePrim = self._stage.GetPrimAtPath(path)
 
@@ -66,7 +91,8 @@ class TestOccupancyMapGenerator(omni.kit.test.AsyncTestCase):
         return cubeGeom
 
     # test to make sure this runs
-    async def test_no_sim(self):
+    async def test_no_sim(self) -> None:
+        """Test occupancy map generation without running simulation."""
         await omni.usd.get_context().new_stage_async()
         context = omni.usd.get_context()
         self._stage = context.get_stage()
@@ -85,8 +111,9 @@ class TestOccupancyMapGenerator(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(buffer), 0)
 
     # Actual test, notice it is "async" function, so "await" can be used if needed
-    async def test_simple_room(self):
-        (result, _) = await open_stage_async(self._assets_root_path + "/Isaac/Environments/Simple_Room/simple_room.usd")
+    async def test_simple_room(self) -> None:
+        """Test occupancy map generation on a simple room environment."""
+        result, _ = await open_stage_async(self._assets_root_path + "/Isaac/Environments/Simple_Room/simple_room.usd")
         # Make sure the stage loaded
         self.assertTrue(result)
         stage = omni.usd.get_context().get_stage()
@@ -146,7 +173,8 @@ class TestOccupancyMapGenerator(omni.kit.test.AsyncTestCase):
 
         pass
 
-    async def test_synthetic(self):
+    async def test_synthetic(self) -> None:
+        """Test occupancy map generation with synthetic cubes."""
         await omni.usd.get_context().new_stage_async()
         context = omni.usd.get_context()
         self._stage = context.get_stage()

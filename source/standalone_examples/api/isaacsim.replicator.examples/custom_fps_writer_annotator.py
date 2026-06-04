@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Demonstrate custom FPS data capture using writers and annotators."""
 
 from isaacsim import SimulationApp
 
@@ -36,6 +38,7 @@ SENSOR_DT = 1.0 / SENSOR_FPS
 
 
 def run_custom_fps_example(duration_seconds):
+    """Run a simulation capturing data at a custom sensor framerate."""
     # Create a new stage
     omni.usd.get_context().new_stage()
 
@@ -45,7 +48,8 @@ def run_custom_fps_example(duration_seconds):
     # Set DLSS to Quality mode (2) for best SDG results , options: 0 (Performance), 1 (Balanced), 2 (Quality), 3 (Auto)
     carb.settings.get_settings().set("rtx/post/dlss/execMode", 2)
 
-    # Make sure fixed time stepping is set (the timeline will be advanced with the same delta time)
+    # Enable fixed time stepping: the timeline will advance by `1 / timeCodesPerSecond`
+    # per accepted tick, ignoring the run loop's measured wall-clock dt.
     carb.settings.get_settings().set("/app/player/useFixedTimeStepping", True)
 
     # Create scene with a semantically annotated cube with physics
@@ -135,5 +139,37 @@ def run_custom_fps_example(duration_seconds):
 # Run example with duration for all captures plus a buffer of 5 frames
 duration = (NUM_CAPTURES * SENSOR_DT) + (5.0 / STAGE_FPS)
 run_custom_fps_example(duration_seconds=duration)
+
+# <start-custom-fps-writer-annotator-test>
+import argparse
+import sys
+
+from isaacsim.core.utils.extensions import enable_extension
+
+enable_extension("isaacsim.test.utils")
+from isaacsim.test.utils.file_validation import validate_folder_contents
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--test",
+    action="store_true",
+    help="Validate captured output files against expected counts and exit.",
+)
+args, _ = parser.parse_known_args()
+
+if args.test:
+    # BasicWriter rgb-only writes 1 png per sensor capture.
+    out_dir = os.path.join(os.getcwd(), "_out_writer_fps_rgb")
+    ok = validate_folder_contents(
+        path=out_dir,
+        recursive=True,
+        expected_counts={"png": NUM_CAPTURES},
+        fail_on_empty_files=True,
+    )
+    if not ok:
+        print(f"[SDG][Test][FAIL] Output validation failed for {out_dir}")
+        sys.exit(1)
+    print(f"[SDG][Test][PASS] Output validation succeeded for {out_dir}")
+# <end-custom-fps-writer-annotator-test>
 
 simulation_app.close()

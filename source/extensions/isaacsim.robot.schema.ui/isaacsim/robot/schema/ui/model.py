@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Viewport model classes for joint connection visualization."""
 
 import asyncio
@@ -74,7 +75,7 @@ class ConnectionItem(sc.AbstractManipulatorItem):
         robot_root_path: Sdf.Path,
         joint_pos: Gf.Vec3d | None,
         parent_joint_pos: Gf.Vec3d | None,
-    ):
+    ) -> None:
         self._joint_position = joint_pos
         self._parent_joint_position = parent_joint_pos
         self._visible = True
@@ -143,7 +144,7 @@ class ConnectionItem(sc.AbstractManipulatorItem):
         return self._needs_position_refresh
 
     @needs_position_refresh.setter
-    def needs_position_refresh(self, value: bool):
+    def needs_position_refresh(self, value: bool) -> None:
         """Set the position refresh flag.
 
         Args:
@@ -240,7 +241,7 @@ class ConnectionItem(sc.AbstractManipulatorItem):
             self._refresh_positions()
         return self._joint_position
 
-    def _refresh_positions(self):
+    def _refresh_positions(self) -> None:
         """Recalculate joint positions from the USD stage."""
         self._joint_position = get_joint_position(self._robot_root_path, self._joint_prim_path)
         if self._parent_joint_path:
@@ -285,7 +286,7 @@ class ConnectionItem(sc.AbstractManipulatorItem):
         return result
 
     @overlay_prims.setter
-    def overlay_prims(self, value: Any):
+    def overlay_prims(self, value: Any) -> None:
         """Set the list of overlapping joints.
 
         Args:
@@ -323,7 +324,7 @@ class ConnectionItem(sc.AbstractManipulatorItem):
         return self._overlay_paths
 
     @overlay_paths.setter
-    def overlay_paths(self, value: list[Sdf.Path]):
+    def overlay_paths(self, value: list[Sdf.Path]) -> None:
         """Set the overlay paths directly.
 
         Args:
@@ -353,7 +354,7 @@ class ConnectionItem(sc.AbstractManipulatorItem):
         return self._overlay_names
 
     @overlay_names.setter
-    def overlay_names(self, value: list[str]):
+    def overlay_names(self, value: list[str]) -> None:
         """Set the overlay display names.
 
         Args:
@@ -460,7 +461,7 @@ class ConnectionModel(sc.AbstractManipulatorModel):
     OVERLAY_REFRESH_INTERVAL_MS = 100.0
     """Minimum time interval in milliseconds between overlay clustering operations."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._joint_connections: list[ConnectionItem] = []
         self._stage: Usd.Stage | None = None
@@ -500,7 +501,7 @@ class ConnectionModel(sc.AbstractManipulatorModel):
         if self._stage and self._joint_connections_map:
             self._usd_listener = Tf.Notice.Register(Usd.Notice.ObjectsChanged, self._on_usd_changed, self._stage)
 
-    def set_joint_connections(self, joint_connections: list[ConnectionItem]):
+    def set_joint_connections(self, joint_connections: list[ConnectionItem]) -> None:
         """Set the list of joint connections to visualize and trigger rebuild.
 
         Args:
@@ -531,7 +532,7 @@ class ConnectionModel(sc.AbstractManipulatorModel):
         self.rebuild_connections()
         self._refresh_stage()
 
-    def _build_connection_prefix_map(self):
+    def _build_connection_prefix_map(self) -> None:
         """Build a prefix map for fast USD change lookups.
 
         Registers joint paths and the joint's body0/body1 (link) paths so
@@ -556,7 +557,7 @@ class ConnectionModel(sc.AbstractManipulatorModel):
                         break
                     path = path.GetParentPath()
 
-    def _on_usd_changed(self, notice: Any, stage: Any):
+    def _on_usd_changed(self, notice: Any, stage: Any) -> None:
         """Handle USD stage change notifications.
 
         Determines which joints are affected by the change and queues
@@ -647,7 +648,7 @@ class ConnectionModel(sc.AbstractManipulatorModel):
 
     def rebuild_connections(
         self, connection: ConnectionItem | None = None, rebuild_type: RebuildType = RebuildType.FULL
-    ):
+    ) -> None:
         """Request a rebuild of connection visualizations.
 
         Args:
@@ -669,7 +670,7 @@ class ConnectionModel(sc.AbstractManipulatorModel):
                     connection.needs_position_refresh = True
             self._queue_rebuild(None, rebuild_type)
 
-    def force_rebuild(self):
+    def force_rebuild(self) -> None:
         """Mark all connections as needing position refresh and redraw immediately.
 
         Unlike :meth:`rebuild_connections`, this method bypasses the
@@ -687,7 +688,9 @@ class ConnectionModel(sc.AbstractManipulatorModel):
         self._force_redraw_requested = True
         self._item_changed(None)
 
-    def _queue_rebuild(self, connection: ConnectionItem | None = None, rebuild_type: RebuildType = RebuildType.FULL):
+    def _queue_rebuild(
+        self, connection: ConnectionItem | None = None, rebuild_type: RebuildType = RebuildType.FULL
+    ) -> None:
         """Queue a deferred rebuild operation.
 
         Batches multiple rebuild requests into a single deferred update
@@ -720,7 +723,7 @@ class ConnectionModel(sc.AbstractManipulatorModel):
         self._pending_rebuild = True
         asyncio.ensure_future(self._deferred_rebuild())
 
-    async def _deferred_rebuild(self):
+    async def _deferred_rebuild(self) -> None:
         """Execute the deferred rebuild after the next frame update.
 
         Waits for the next application update to avoid interrupting
@@ -770,7 +773,7 @@ class ConnectionModel(sc.AbstractManipulatorModel):
             return True
         return (now_ms - self._last_overlay_refresh_ms) >= self.OVERLAY_REFRESH_INTERVAL_MS
 
-    def _refresh_overlay_groups(self, screen_epsilon: float = 0.02, world_epsilon: float = 0.5):
+    def _refresh_overlay_groups(self, screen_epsilon: float = 0.02, world_epsilon: float = 0.5) -> None:
         """Cluster overlapping joints based on screen proximity.
 
         Groups joints that appear at the same screen position so they
@@ -831,7 +834,7 @@ class ConnectionModel(sc.AbstractManipulatorModel):
 
     def _cluster_and_assign_overlays(
         self, robot_groups: dict[Any, list[tuple[int, Any]]], screen_epsilon: float, world_epsilon: float
-    ):
+    ) -> None:
         """Apply union-find clustering and assign overlay groups.
 
         Args:
@@ -876,7 +879,7 @@ class ConnectionModel(sc.AbstractManipulatorModel):
                 parent[index] = find_root(parent[index])
             return parent[index]
 
-        def union_sets(index_a: int, index_b: int):
+        def union_sets(index_a: int, index_b: int) -> None:
             """Union two disjoint sets by index.
 
             Args:
@@ -907,7 +910,7 @@ class ConnectionModel(sc.AbstractManipulatorModel):
             clusters[find_root(i)].append(items[i][0])
         return clusters
 
-    def _assign_overlays_from_clusters(self, clusters: dict[int, list[int]]):
+    def _assign_overlays_from_clusters(self, clusters: dict[int, list[int]]) -> None:
         """Assign overlay paths and names from computed clusters.
 
         Args:

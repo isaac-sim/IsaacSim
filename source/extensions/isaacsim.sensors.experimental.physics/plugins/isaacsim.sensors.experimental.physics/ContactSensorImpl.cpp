@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,20 +21,17 @@
 
 #include <carb/events/EventsUtils.h>
 #include <carb/logging/Log.h>
-#include <carb/settings/ISettings.h>
 
-#include <isaacSensorSchema/isaacContactSensor.h>
-#include <isaacsim/core/includes/Pose.h>
+#include <isaacsim/core/experimental/prims/IPrimDataReader.h>
+#include <isaacsim/core/experimental/prims/IPrimDataReaderManager.h>
+#include <isaacsim/core/experimental/prims/SdfPathToken.h>
 #include <isaacsim/core/includes/UsdUtilities.h>
 #include <isaacsim/core/simulation_manager/ISimulationManager.h>
+#include <isaacsim/robot/schema/sensor_tokens.h>
 #include <omni/fabric/FabricUSD.h>
 #include <omni/physics/simulation/IPhysicsSimulation.h>
 #include <omni/physics/simulation/IPhysicsStageUpdate.h>
-#include <omni/physx/ContactEvent.h>
-#include <omni/physx/IPhysxSimulation.h>
 #include <omni/usd/UsdContext.h>
-#include <physxSchema/physxContactReportAPI.h>
-#include <physxSchema/physxRigidBodyAPI.h>
 #include <pxr/usd/usdPhysics/rigidBodyAPI.h>
 
 #if defined(_WIN32)
@@ -65,13 +62,18 @@ namespace physics
 namespace
 {
 
+using core::experimental::prims::IPrimDataReader;
+using core::experimental::prims::IPrimDataReaderManager;
+using core::experimental::prims::IXformDataView;
 using core::simulation_manager::ISimulationManager;
 
 static std::string findParentRigidBody(pxr::UsdStageRefPtr stage, const pxr::SdfPath& sensorPath)
 {
     pxr::UsdPrim prim = stage->GetPrimAtPath(sensorPath);
     if (!prim.IsValid())
+    {
         return {};
+    }
 
     prim = prim.GetParent();
     while (prim.IsValid() && prim.GetPath() != pxr::SdfPath::AbsoluteRootPath())
@@ -81,26 +83,26 @@ static std::string findParentRigidBody(pxr::UsdStageRefPtr stage, const pxr::Sdf
         bool hasRigidBodyAPI = prim.HasAPI<pxr::UsdPhysicsRigidBodyAPI>();
         bool attrValid = attr.IsValid();
         if (attrValid)
+        {
             attr.Get(&enabled);
+        }
 
         if (enabled)
+        {
             return prim.GetPath().GetString();
+        }
 
         if (hasRigidBodyAPI && !attrValid)
+        {
             return prim.GetPath().GetString();
+        }
 
         prim = prim.GetParent();
     }
     return {};
 }
 
-inline uint64_t sdfPathToToken(const pxr::SdfPath& path)
-{
-    static_assert(sizeof(pxr::SdfPath) == sizeof(uint64_t), "SdfPath size mismatch");
-    uint64_t ret;
-    std::memcpy(&ret, &path, sizeof(pxr::SdfPath));
-    return ret;
-}
+using isaacsim::core::experimental::prims::sdfPathToToken;
 
 class ContactDataStore
 {
@@ -136,14 +138,18 @@ public:
     {
         auto it = perBodyMap.find(token);
         if (it != perBodyMap.end() && !it->second.empty())
+        {
             return it->second;
+        }
 
         auto& vec = perBodyMap[token];
         vec.clear();
         for (const auto& e : rawContacts)
         {
             if (e.body0 == token || e.body1 == token)
+            {
                 vec.push_back(e);
+            }
         }
         return vec;
     }
@@ -154,6 +160,8 @@ class SensorData
 public:
     std::string sensorPrimPath;
     std::string parentRigidBodyPath;
+    std::string viewId;
+    IXformDataView* xformView = nullptr;
     uint64_t parentToken = 0;
 
     float radius = -1.0f;
@@ -167,13 +175,15 @@ public:
 
     void refreshConfig(pxr::UsdStageRefPtr stage)
     {
+        using namespace isaacsim::robot::schema::sensors;
+
         pxr::UsdPrim prim = stage->GetPrimAtPath(pxr::SdfPath(sensorPrimPath));
         if (!prim.IsValid())
+        {
             return;
+        }
 
-        pxr::IsaacSensorIsaacContactSensor typedPrim(prim);
-
-        pxr::UsdAttribute enabledAttr = typedPrim.GetEnabledAttr();
+        pxr::UsdAttribute enabledAttr = prim.GetAttribute(kEnabledAttr);
         if (enabledAttr.IsValid())
         {
             bool val = true;
@@ -186,13 +196,13 @@ public:
         }
 
         pxr::GfVec2f thresholdAttr(0.0f, 100000.0f);
-        isaacsim::core::includes::safeGetAttribute(typedPrim.GetThresholdAttr(), thresholdAttr);
+        isaacsim::core::includes::safeGetAttribute(prim.GetAttribute(kThresholdAttr), thresholdAttr);
         const float* t = thresholdAttr.GetArray();
         minThreshold = t[0];
         maxThreshold = t[1];
 
         float r = -1.0f;
-        isaacsim::core::includes::safeGetAttribute(typedPrim.GetRadiusAttr(), r);
+        isaacsim::core::includes::safeGetAttribute(prim.GetAttribute(kRadiusAttr), r);
         radius = r;
     }
 };
@@ -202,24 +212,28 @@ public:
 struct ContactSensorImpl::ImplData
 {
     long stageId = 0;
-    int64_t nextSensorId = 0;
     float lastDt = 0.0f;
     int stepCount = 0;
+    uint64_t readerGeneration = 0;
 
     ISimulationManager* simManager = nullptr;
+    IPrimDataReaderManager* readerManager = nullptr;
+    IPrimDataReader* reader = nullptr;
     omni::physics::IPhysicsSimulation* physicsSimulation = nullptr;
     omni::physics::SubscriptionId physicsStepSub = omni::physics::kInvalidSubscriptionId;
     carb::events::ISubscriptionPtr physicsEventSub;
 
     pxr::UsdStageRefPtr usdStage;
     usdrt::UsdStageRefPtr usdrtStage;
-    std::unordered_map<int64_t, SensorData> sensors;
+    std::unordered_map<std::string, SensorData> sensors;
     ContactDataStore contactStore;
 };
 
 ContactSensorImpl::ContactSensorImpl() : m_impl(std::make_unique<ImplData>())
 {
     m_impl->simManager = carb::getCachedInterface<ISimulationManager>();
+    m_impl->readerManager = carb::getCachedInterface<IPrimDataReaderManager>();
+    m_impl->reader = m_impl->readerManager ? m_impl->readerManager->getReader() : nullptr;
     _subscribeToPhysicsStepEvents();
     _subscribeToPhysicsEvents();
 }
@@ -234,6 +248,8 @@ void ContactSensorImpl::shutdown()
     _unsubscribeFromPhysicsStepEvents();
     m_impl->physicsEventSub.reset();
     _clearSensors();
+    m_impl->readerManager = nullptr;
+    m_impl->reader = nullptr;
     m_impl->simManager = nullptr;
     m_impl->physicsSimulation = nullptr;
     m_impl->usdStage = nullptr;
@@ -241,6 +257,7 @@ void ContactSensorImpl::shutdown()
     m_impl->stageId = 0;
     m_impl->stepCount = 0;
     m_impl->lastDt = 0.0f;
+    m_impl->readerGeneration = 0;
     m_impl->contactStore.clear();
 }
 
@@ -248,16 +265,22 @@ void ContactSensorImpl::_initializeFromContext()
 {
     auto* usdContext = omni::usd::UsdContext::getContext();
     if (!usdContext)
+    {
         return;
+    }
 
     pxr::UsdStageRefPtr stage = usdContext->getStage();
     if (!stage)
+    {
         return;
+    }
 
     pxr::UsdStageCache& cache = pxr::UsdUtilsStageCache::Get();
     const long stageId = cache.GetId(stage).ToLongInt();
     if (stageId == 0)
+    {
         return;
+    }
 
     _initializeStage(stageId);
     _discoverSensorsFromStage();
@@ -265,11 +288,15 @@ void ContactSensorImpl::_initializeFromContext()
 
 void ContactSensorImpl::_initializeStage(long stageId)
 {
-    if (m_impl->stageId == stageId && m_impl->usdStage)
+    if (m_impl->stageId == stageId && m_impl->usdStage && m_impl->readerManager && m_impl->reader)
+    {
         return;
+    }
 
     if (m_impl->stageId != 0 && m_impl->stageId != stageId)
+    {
         _clearSensors();
+    }
 
     m_impl->stageId = stageId;
     m_impl->stepCount = 0;
@@ -277,6 +304,16 @@ void ContactSensorImpl::_initializeStage(long stageId)
     m_impl->contactStore.clear();
 
     m_impl->simManager = carb::getCachedInterface<ISimulationManager>();
+    m_impl->readerManager = carb::getCachedInterface<IPrimDataReaderManager>();
+    if (m_impl->readerManager)
+    {
+        m_impl->readerManager->ensureInitialized(stageId, -1);
+        m_impl->reader = m_impl->readerManager->getReader();
+    }
+    else
+    {
+        m_impl->reader = nullptr;
+    }
 
     pxr::UsdStageCache& cache = pxr::UsdUtilsStageCache::Get();
     m_impl->usdStage = cache.Find(pxr::UsdStageCache::Id::FromLongInt(stageId));
@@ -294,101 +331,162 @@ void ContactSensorImpl::_initializeStage(long stageId)
     }
 }
 
-int64_t ContactSensorImpl::createSensor(const char* primPath)
+bool ContactSensorImpl::createSensor(const char* primPath)
 {
     if (!m_impl->usdStage)
-        return -1;
-
-    for (auto& [id, s] : m_impl->sensors)
     {
-        if (s.sensorPrimPath == primPath)
-            return id;
+        return false;
     }
 
+    std::string key(primPath);
     pxr::SdfPath sdfPath(primPath);
     pxr::UsdPrim prim = m_impl->usdStage->GetPrimAtPath(sdfPath);
+
+    auto existing = m_impl->sensors.find(key);
+    if (existing != m_impl->sensors.end())
+    {
+        // Tear down the cached entry when the prim has been deleted, when its
+        // type is no longer IsaacContactSensor, or when its parent rigid body
+        // has changed (delete/recreate at the same path can land under a
+        // different rigid body). Otherwise reuse the view and refresh config
+        // so attribute updates on a recreated prim are picked up.
+        if (prim.IsValid() && prim.GetTypeName() == "IsaacContactSensor")
+        {
+            std::string currentParent = findParentRigidBody(m_impl->usdStage, sdfPath);
+            if (currentParent == existing->second.parentRigidBodyPath)
+            {
+                existing->second.refreshConfig(m_impl->usdStage);
+                return true;
+            }
+        }
+        if (m_impl->reader && !existing->second.viewId.empty())
+        {
+            m_impl->reader->removeView(existing->second.viewId.c_str());
+        }
+        m_impl->sensors.erase(existing);
+    }
+
     if (!prim.IsValid())
-        return -1;
+    {
+        return false;
+    }
 
     if (prim.GetTypeName() != "IsaacContactSensor")
-        return -1;
+    {
+        return false;
+    }
 
     std::string parentPath = findParentRigidBody(m_impl->usdStage, sdfPath);
     if (parentPath.empty())
-        return -1;
-
-    // SIDE EFFECT: createSensor() modifies the USD stage on the parent rigid body.
-    //
-    // PhysX's getFullContactReport() only returns data for bodies that have
-    // PhysxContactReportAPI applied. Without it, numHeaders == 0 and no contacts
-    // are reported regardless of actual collisions. This mirrors the behavior of
-    // the legacy ContactSensor::setContactReportApi() in isaacsim.sensors.physics.
-    //
-    // Modifications made:
-    //   1. Applies PhysxSchemaPhysxContactReportAPI if not present
-    //   2. Creates ReportPairsRel if missing
-    //   3. Sets contact report ThresholdAttr to 0.0 (report all contacts)
-    //   4. Sets PhysxRigidBodyAPI sleepThreshold to 0.0 (prevent sleeping bodies
-    //      from being excluded from contact reports)
-    //
-    // These changes persist on the USD stage for the lifetime of the session.
-    pxr::SdfPath parentSdfPath(parentPath);
-    pxr::UsdPrim parentPrim = m_impl->usdStage->GetPrimAtPath(parentSdfPath);
-    if (parentPrim.IsValid())
     {
-        pxr::PhysxSchemaPhysxContactReportAPI contactReportAPI =
-            pxr::PhysxSchemaPhysxContactReportAPI::Get(m_impl->usdStage, parentSdfPath);
-        if (!contactReportAPI)
-            contactReportAPI = pxr::PhysxSchemaPhysxContactReportAPI::Apply(parentPrim);
-
-        if (contactReportAPI)
-        {
-            if (!contactReportAPI.GetReportPairsRel())
-                contactReportAPI.CreateReportPairsRel();
-            contactReportAPI.GetThresholdAttr().Set(0.0f);
-        }
-
-        pxr::PhysxSchemaPhysxRigidBodyAPI rigidBodyAPI =
-            pxr::PhysxSchemaPhysxRigidBodyAPI::Get(m_impl->usdStage, parentSdfPath);
-        if (rigidBodyAPI)
-            rigidBodyAPI.CreateSleepThresholdAttr(pxr::VtValue(0.0f));
+        return false;
     }
 
-    int64_t sensorId = m_impl->nextSensorId++;
-    SensorData& sensor = m_impl->sensors[sensorId];
+    // SIDE EFFECT: enableContactReporting() modifies the USD stage on the parent rigid body.
+    //
+    // PhysX's getFullContactReport() only returns data for bodies that have
+    // PhysxContactReportAPI applied. The reader applies this schema (along with
+    // threshold and sleep settings) so that contacts are actually reported.
+    // These changes persist on the USD stage for the lifetime of the session.
+    if (m_impl->reader)
+    {
+        if (!m_impl->reader->enableContactReporting(parentPath.c_str()))
+        {
+            CARB_LOG_WARN("ContactSensorImpl: failed to enable contact reporting for '%s'", parentPath.c_str());
+        }
+    }
+
+    SensorData& sensor = m_impl->sensors[key];
     sensor.sensorPrimPath = primPath;
     sensor.parentRigidBodyPath = parentPath;
     sensor.parentToken = sdfPathToToken(pxr::SdfPath(parentPath));
+    sensor.viewId = "contact_xform_" + key;
+
+    if (m_impl->reader)
+    {
+        const char* sensorPathPtr = primPath;
+        sensor.xformView = m_impl->reader->createXformView(sensor.viewId.c_str(), &sensorPathPtr, 1, "physx");
+        m_impl->readerGeneration = m_impl->reader->getGeneration();
+    }
+
     sensor.refreshConfig(m_impl->usdStage);
 
-    return sensorId;
+    return true;
 }
 
-void ContactSensorImpl::removeSensor(int64_t sensorId)
+void ContactSensorImpl::removeSensor(const char* primPath)
 {
-    m_impl->sensors.erase(sensorId);
-}
-
-ContactSensorReading ContactSensorImpl::getSensorReading(int64_t sensorId)
-{
-    auto it = m_impl->sensors.find(sensorId);
+    auto it = m_impl->sensors.find(std::string(primPath));
     if (it == m_impl->sensors.end())
+    {
+        return;
+    }
+    if (m_impl->reader && !it->second.viewId.empty())
+    {
+        m_impl->reader->removeView(it->second.viewId.c_str());
+    }
+    m_impl->sensors.erase(it);
+}
+
+ContactSensorReading ContactSensorImpl::getSensorReading(const char* primPath)
+{
+    auto it = m_impl->sensors.find(std::string(primPath));
+    if (it == m_impl->sensors.end())
+    {
         return ContactSensorReading();
+    }
+
+    // Tear down the cached sensor when the underlying USD prim has been removed
+    // since the last update. Without this we'd return the last cached reading
+    // for a deleted prim, mirroring the gates on IMU and Raycast.
+    if (m_impl->usdStage)
+    {
+        pxr::UsdPrim prim = m_impl->usdStage->GetPrimAtPath(pxr::SdfPath(primPath));
+        if (!prim.IsValid())
+        {
+            if (m_impl->reader && !it->second.viewId.empty())
+            {
+                m_impl->reader->removeView(it->second.viewId.c_str());
+            }
+            m_impl->sensors.erase(it);
+            return ContactSensorReading();
+        }
+    }
 
     return it->second.latestReading;
 }
 
-void ContactSensorImpl::getRawContacts(int64_t sensorId, const ContactRawData** outData, int32_t* outCount)
+void ContactSensorImpl::getRawContacts(const char* primPath, const ContactRawData** outData, int32_t* outCount)
 {
     if (!outData || !outCount)
+    {
         return;
+    }
 
     *outData = nullptr;
     *outCount = 0;
 
-    auto it = m_impl->sensors.find(sensorId);
+    auto it = m_impl->sensors.find(std::string(primPath));
     if (it == m_impl->sensors.end())
+    {
         return;
+    }
+
+    // Mirror the prim-deletion gate in getSensorReading so raw-data callers
+    // don't see contacts attributed to a deleted sensor.
+    if (m_impl->usdStage)
+    {
+        pxr::UsdPrim prim = m_impl->usdStage->GetPrimAtPath(pxr::SdfPath(primPath));
+        if (!prim.IsValid())
+        {
+            if (m_impl->reader && !it->second.viewId.empty())
+            {
+                m_impl->reader->removeView(it->second.viewId.c_str());
+            }
+            m_impl->sensors.erase(it);
+            return;
+        }
+    }
 
     const auto& contacts = it->second.latestRawContacts;
     if (!contacts.empty())
@@ -401,7 +499,9 @@ void ContactSensorImpl::getRawContacts(int64_t sensorId, const ContactRawData** 
 void ContactSensorImpl::_discoverSensorsFromStage()
 {
     if (!m_impl->usdStage)
+    {
         return;
+    }
 
     int found = 0;
     for (auto prim : m_impl->usdStage->Traverse())
@@ -416,18 +516,51 @@ void ContactSensorImpl::_discoverSensorsFromStage()
 
 void ContactSensorImpl::_clearSensors()
 {
+    for (auto& [id, sensor] : m_impl->sensors)
+    {
+        (void)id;
+        if (m_impl->reader && !sensor.viewId.empty())
+        {
+            m_impl->reader->removeView(sensor.viewId.c_str());
+        }
+    }
     m_impl->sensors.clear();
     m_impl->contactStore.clear();
+}
+
+void ContactSensorImpl::_recreateSensorViews()
+{
+    if (!m_impl->reader)
+    {
+        return;
+    }
+
+    for (auto& [id, sensor] : m_impl->sensors)
+    {
+        sensor.xformView = nullptr;
+        if (sensor.viewId.empty() || sensor.sensorPrimPath.empty())
+        {
+            continue;
+        }
+
+        const char* sensorPathPtr = sensor.sensorPrimPath.c_str();
+        sensor.xformView = m_impl->reader->createXformView(sensor.viewId.c_str(), &sensorPathPtr, 1, "physx");
+    }
+    m_impl->readerGeneration = m_impl->reader->getGeneration();
 }
 
 void ContactSensorImpl::_subscribeToPhysicsEvents()
 {
     if (m_impl->physicsEventSub)
+    {
         return;
+    }
 
     auto* physicsStageUpdate = carb::getCachedInterface<omni::physics::IPhysicsStageUpdate>();
     if (!physicsStageUpdate)
+    {
         return;
+    }
 
     m_impl->physicsEventSub = carb::events::createSubscriptionToPop(
         physicsStageUpdate->getSimulationEventStream().get(),
@@ -453,11 +586,15 @@ void ContactSensorImpl::_subscribeToPhysicsEvents()
 void ContactSensorImpl::_subscribeToPhysicsStepEvents()
 {
     if (m_impl->physicsStepSub != omni::physics::kInvalidSubscriptionId)
+    {
         return;
+    }
 
     m_impl->physicsSimulation = carb::getCachedInterface<omni::physics::IPhysicsSimulation>();
     if (!m_impl->physicsSimulation)
+    {
         return;
+    }
 
     m_impl->physicsStepSub = m_impl->physicsSimulation->subscribePhysicsOnStepEvents(
         false, 1,
@@ -477,60 +614,70 @@ void ContactSensorImpl::_pullContactData(float dt)
 {
     m_impl->contactStore.rawContacts.clear();
     for (auto& it : m_impl->contactStore.perBodyMap)
-        it.second.clear();
-
-    auto* physxSim = carb::getCachedInterface<omni::physx::IPhysxSimulation>();
-    if (!physxSim)
     {
-        CARB_LOG_WARN("ContactSensorImpl: IPhysxSimulation not available");
+        it.second.clear();
+    }
+
+    if (!m_impl->reader)
+    {
+        CARB_LOG_WARN("ContactSensorImpl: no IPrimDataReader available");
         return;
     }
 
-    const omni::physx::ContactEventHeader* headers = nullptr;
-    const omni::physx::ContactData* data = nullptr;
-    const omni::physx::FrictionAnchor* frictionData = nullptr;
-    uint32_t numContactData = 0;
-    uint32_t numFrictionData = 0;
-    uint32_t numHeaders = physxSim->getFullContactReport(&headers, &data, numContactData, &frictionData, numFrictionData);
-
-    float simTime = m_impl->simManager ? static_cast<float>(m_impl->simManager->getSimulationTime()) : 0.0f;
-
-    uint32_t dataIndex = 0;
-    for (uint32_t h = 0; h < numHeaders; h++)
+    std::vector<const char*> bodyPaths;
+    bodyPaths.reserve(m_impl->sensors.size());
+    for (const auto& [id, sensor] : m_impl->sensors)
     {
-        const auto& header = headers[h];
-        uint64_t body0 = header.actor0;
-        uint64_t body1 = header.actor1;
+        (void)id;
+        bodyPaths.push_back(sensor.parentRigidBodyPath.c_str());
+    }
 
-        if (header.type == omni::physx::ContactEventType::Enum::eCONTACT_FOUND ||
-            header.type == omni::physx::ContactEventType::Enum::eCONTACT_PERSIST)
+    if (bodyPaths.empty())
+        return;
+
+    isaacsim::core::experimental::prims::ContactReportData report;
+    if (!m_impl->reader->getContactReport(bodyPaths.data(), bodyPaths.size(), &report))
+        return;
+
+    using isaacsim::core::experimental::prims::kContactEventFound;
+    using isaacsim::core::experimental::prims::kContactEventLost;
+    using isaacsim::core::experimental::prims::kContactEventPersist;
+
+    float simTime = report.simTime;
+    // Use reader-reported dt when available; fall back to caller's physics step dt
+    float contactDt = report.dt > 0.0f ? report.dt : dt;
+
+    for (uint32_t ei = 0; ei < report.numEvents; ei++)
+    {
+        const auto& event = report.events[ei];
+
+        if (event.eventType == kContactEventFound || event.eventType == kContactEventPersist)
         {
-            m_impl->contactStore.removeContactPair(body0, body1);
+            m_impl->contactStore.removeContactPair(event.body0, event.body1);
 
-            for (uint32_t i = 0; i < header.numContactData; i++)
+            for (uint32_t ci = 0; ci < event.numContacts; ci++)
             {
-                const auto& contactData = data[dataIndex + i];
+                const auto& cp = event.contacts[ci];
                 ContactRawData entry;
-                entry.body0 = body0;
-                entry.body1 = body1;
-                entry.positionX = contactData.position.x;
-                entry.positionY = contactData.position.y;
-                entry.positionZ = contactData.position.z;
-                entry.normalX = contactData.normal.x;
-                entry.normalY = contactData.normal.y;
-                entry.normalZ = contactData.normal.z;
-                entry.impulseX = contactData.impulse.x;
-                entry.impulseY = contactData.impulse.y;
-                entry.impulseZ = contactData.impulse.z;
+                entry.body0 = event.body0;
+                entry.body1 = event.body1;
+                entry.positionX = cp.positionX;
+                entry.positionY = cp.positionY;
+                entry.positionZ = cp.positionZ;
+                entry.normalX = cp.normalX;
+                entry.normalY = cp.normalY;
+                entry.normalZ = cp.normalZ;
+                entry.impulseX = cp.impulseX;
+                entry.impulseY = cp.impulseY;
+                entry.impulseZ = cp.impulseZ;
                 entry.time = simTime;
-                entry.dt = dt;
+                entry.dt = contactDt;
                 m_impl->contactStore.rawContacts.push_back(entry);
             }
-            dataIndex += header.numContactData;
         }
-        else if (header.type == omni::physx::ContactEventType::Enum::eCONTACT_LOST)
+        else if (event.eventType == kContactEventLost)
         {
-            m_impl->contactStore.removeContactPair(body0, body1);
+            m_impl->contactStore.removeContactPair(event.body0, event.body1);
         }
     }
 }
@@ -541,12 +688,21 @@ void ContactSensorImpl::_stepSensors(float dt)
     m_impl->stepCount++;
 
     if (!m_impl->simManager || !m_impl->usdStage)
+    {
         return;
+    }
+
+    if (m_impl->reader && m_impl->reader->getGeneration() != m_impl->readerGeneration)
+    {
+        _recreateSensorViews();
+    }
 
     _pullContactData(dt);
 
     if (m_impl->sensors.empty())
+    {
         return;
+    }
 
     const double simTime = m_impl->simManager->getSimulationTime();
     for (auto& [id, sensor] : m_impl->sensors)
@@ -556,11 +712,13 @@ void ContactSensorImpl::_stepSensors(float dt)
     }
 }
 
-void ContactSensorImpl::_processSensor(ImplData& impl, int64_t sensorId, float dt, double simTime)
+void ContactSensorImpl::_processSensor(ImplData& impl, const std::string& primPath, float dt, double simTime)
 {
-    auto it = impl.sensors.find(sensorId);
+    auto it = impl.sensors.find(primPath);
     if (it == impl.sensors.end())
+    {
         return;
+    }
     SensorData& sensor = it->second;
 
     sensor.refreshConfig(impl.usdStage);
@@ -576,7 +734,9 @@ void ContactSensorImpl::_processSensor(ImplData& impl, int64_t sensorId, float d
     }
 
     if (!sensor.enabled)
+    {
         return;
+    }
 
     ContactSensorReading reading;
     reading.time = static_cast<float>(simTime);
@@ -593,9 +753,12 @@ void ContactSensorImpl::_processSensor(ImplData& impl, int64_t sensorId, float d
         return;
     }
 
-    usdrt::GfMatrix4d sensorXform = core::includes::pose::computeWorldXformNoCache(
-        impl.usdStage, impl.usdrtStage, pxr::SdfPath(sensor.sensorPrimPath));
-    usdrt::GfVec3d sensorPos = sensorXform.ExtractTranslation();
+    float sensorPos[3] = {};
+    float sensorOri[4] = {};
+    if (sensor.xformView)
+    {
+        sensor.xformView->getPrimWorldTransform(sensor.sensorPrimPath.c_str(), sensorPos, sensorOri);
+    }
 
     double totalImpulseX = 0.0, totalImpulseY = 0.0, totalImpulseZ = 0.0;
     float contactDt = dt;
@@ -609,7 +772,9 @@ void ContactSensorImpl::_processSensor(ImplData& impl, int64_t sensorId, float d
             double dz = sensorPos[2] - c.positionZ;
             double distance = std::sqrt(dx * dx + dy * dy + dz * dz);
             if (distance >= static_cast<double>(sensor.radius))
+            {
                 continue;
+            }
         }
 
         double impulseX = static_cast<double>(c.impulseX);
@@ -628,7 +793,9 @@ void ContactSensorImpl::_processSensor(ImplData& impl, int64_t sensorId, float d
         totalImpulseZ += impulseZ;
 
         if (c.dt > 0.0f)
+        {
             contactDt = c.dt;
+        }
     }
 
     double impulseMagnitude =
@@ -642,7 +809,9 @@ void ContactSensorImpl::_processSensor(ImplData& impl, int64_t sensorId, float d
     }
 
     if (contactDt <= 0.0f)
+    {
         contactDt = dt > 0.0f ? dt : 1.0f / 60.0f;
+    }
 
     float forceValue = static_cast<float>(impulseMagnitude / static_cast<double>(contactDt));
 

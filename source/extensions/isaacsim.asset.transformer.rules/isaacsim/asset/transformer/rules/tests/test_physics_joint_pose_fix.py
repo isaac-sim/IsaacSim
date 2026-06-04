@@ -63,6 +63,7 @@ def _build_test_stage(path: str) -> Usd.Stage:
 
     Returns:
         The created and saved USD stage.
+
     """
     stage = Usd.Stage.CreateNew(path)
     robot = UsdGeom.Xform.Define(stage, "/Robot")
@@ -118,6 +119,7 @@ def _build_mismatched_joint_stage(path: str) -> Usd.Stage:
 
     Returns:
         The created and saved USD stage.
+
     """
     stage = Usd.Stage.CreateNew(path)
     robot = UsdGeom.Xform.Define(stage, "/Robot")
@@ -165,6 +167,7 @@ def _assert_joint_world_matches_original(
         joint_path: USD path to the joint prim.
         tol_pos: Position tolerance.
         tol_orient: Orientation tolerance.
+
     """
     time = Usd.TimeCode.Default()
     orig_joint = original_stage.GetPrimAtPath(joint_path)
@@ -213,6 +216,7 @@ class TestPhysicsJointPoseFixRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             Configured ``PhysicsJointPoseFixRule`` instance.
+
         """
         return PhysicsJointPoseFixRule(
             source_stage=stage,

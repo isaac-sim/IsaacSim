@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,14 +12,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Viewport scene management for TF frame visualization in ROS 2."""
+
 import omni.ui as ui
-from omni.ui import color as cl
 from omni.ui import scene as sc
 
 from .view_manipulator import ViewManipulator
 
 
 class ViewportScene:
+    """Manage a viewport scene overlay for TF frame visualization."""
+
     def __init__(self, viewport_window: ui.Window, ext_id: str) -> None:
         self._scene_view = None
         self._viewport_window = viewport_window
@@ -37,10 +41,12 @@ class ViewportScene:
             # register the scene view to get projection and view updates
             self._viewport_window.viewport_api.add_scene_view(self._scene_view)
 
-    def __del__(self):
+    def __del__(self) -> None:
+        """Clean up the viewport scene."""
         self.destroy()
 
-    def destroy(self):
+    def destroy(self) -> None:
+        """Destroy the viewport scene and release resources."""
         if self._scene_view:
             # empty the scene view
             self._scene_view.scene.clear()

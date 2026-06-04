@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,15 +12,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Occupancy map UI extension for Isaac Sim."""
+
+from __future__ import annotations
+
 import asyncio
 import gc
 import os
-from typing import List, Optional, Tuple, Union
+from typing import Optional
 
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni
 import omni.ext
+import omni.kit.actions.core
 import omni.kit.app
 import omni.kit.usd.layers
 import omni.ui as ui
@@ -126,7 +132,7 @@ class Extension(omni.ext.IExt, MenuHelperExtensionFull):
 
     EXTENSION_NAME = "Occupancy Map"
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Called when the extension is enabled.
 
         Sets up menu items and layout templates for the occupancy map UI.
@@ -134,7 +140,8 @@ class Extension(omni.ext.IExt, MenuHelperExtensionFull):
         Args:
             ext_id: The unique identifier for this extension instance.
         """
-        # add to menu
+        self._ext_name = omni.ext.get_extension_name(ext_id)
+
         self.menu_startup(
             lambda: OccupancyMapWindow(),
             Extension.EXTENSION_NAME,
@@ -142,13 +149,21 @@ class Extension(omni.ext.IExt, MenuHelperExtensionFull):
             "Tools/Robotics",
         )
 
-        # add layout template to Layouts menu
+        action_registry = omni.kit.actions.core.get_action_registry()
+        action_registry.register_action(
+            self._ext_name,
+            "open_omap_layout",
+            lambda *_: self._open_layout_fn(ext_id),
+            display_name="Occupancy Map Generation",
+            description="Open the Occupancy Map Generation layout",
+        )
+
         self._menu_items = [
-            MenuItemDescription(name="Occupancy Map Generation", onclick_fn=lambda *_: self._open_layout_fn(ext_id))
+            MenuItemDescription(name="Occupancy Map Generation", onclick_action=(self._ext_name, "open_omap_layout"))
         ]
         add_menu_items(self._menu_items, "Layouts")
 
-    def _open_layout_fn(self, ext_id: str):
+    def _open_layout_fn(self, ext_id: str) -> asyncio.Task[None] | None:
         """Opens the occupancy map layout.
 
         Loads the predefined layout for occupancy map generation from the extension's
@@ -165,18 +180,18 @@ class Extension(omni.ext.IExt, MenuHelperExtensionFull):
         layout_file = f"{extension_path}/data/omap.json"
         if not os.path.exists(layout_file):
             carb.log_warn(f"Layout file {layout_file} does not exist")
-            return
+            return None
 
         return asyncio.ensure_future(_load_layout(layout_file))
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Called when the extension is disabled.
 
         Removes menu items and cleans up resources.
         """
-        # remove layout template from Layouts menu
-
         remove_menu_items(self._menu_items, "Layouts")
+        action_registry = omni.kit.actions.core.get_action_registry()
+        action_registry.deregister_action(self._ext_name, "open_omap_layout")
         self.menu_shutdown()
 
 
@@ -186,18 +201,16 @@ class OccupancyMapWindow(MenuHelperWindow):
     This window provides the user interface for configuring and generating occupancy maps.
     It includes controls for setting the map origin, bounds, cell size, and other parameters,
     as well as buttons for calculating and visualizing the occupancy map.
+
+    Sets up the window UI, initializes internal variables, and establishes connections
+    to the occupancy map interface and USD stage.
     """
 
-    def __init__(self):
-        """Initializes the occupancy map window.
-
-        Sets up the window UI, initializes internal variables, and establishes connections
-        to the occupancy map interface and USD stage.
-        """
+    def __init__(self) -> None:
         super().__init__(
             Extension.EXTENSION_NAME, width=WINDOW_DEFAULT_WIDTH, height=WINDOW_DEFAULT_HEIGHT, focused=True
         )
-        self.deferred_dock_in("Console")
+        self.deferred_dock_in("Property", ui.DockPolicy.CURRENT_WINDOW_IS_ACTIVE)
 
         # Initialize variables
         self._timeline = omni.timeline.get_timeline_interface()
@@ -211,12 +224,12 @@ class OccupancyMapWindow(MenuHelperWindow):
         self._map_scale_to_meters: Optional[float] = None
         self._models = {}
         self._stage_open_callback: Optional[object] = None
-        self._image: Optional[List[int]] = None
+        self._image: Optional[list[int]] = None
         self._im: Optional[object] = None
 
-        self.prev_origin: List[float] = [0.0, 0.0]
-        self.lower_bound: List[float] = list(DEFAULT_LOWER_BOUND)
-        self.upper_bound: List[float] = list(DEFAULT_UPPER_BOUND)
+        self.prev_origin: list[float] = [0.0, 0.0]
+        self.lower_bound: list[float] = list(DEFAULT_LOWER_BOUND)
+        self.upper_bound: list[float] = list(DEFAULT_UPPER_BOUND)
 
         self.wait_bound_update: bool = False
         self.bound_update_case: int = 0
@@ -227,7 +240,7 @@ class OccupancyMapWindow(MenuHelperWindow):
 
         self.build_ui()
 
-    def build_ui(self):
+    def build_ui(self) -> None:
         """Builds the window UI.
 
         Creates all UI elements including origin controls, bounds inputs, cell size settings,
@@ -287,7 +300,7 @@ class OccupancyMapWindow(MenuHelperWindow):
                 observer_name="isaacsim.asset.gen.omap.ui._stage_open_callback_fn",
             )
 
-    def _stage_open_callback_fn(self, event) -> None:
+    def _stage_open_callback_fn(self, event: object) -> None:
         """Callback when a new stage is opened.
 
         Updates the cell size to match the new stage's units.
@@ -315,7 +328,7 @@ class OccupancyMapWindow(MenuHelperWindow):
 
     def calculate_bounds(
         self, origin_calc: bool, stationary_bounds: bool
-    ) -> Union[List[float], Tuple[List[float], List[float]]]:
+    ) -> list[float] | tuple[list[float], list[float]]:
         """Calculates bounds based on selected prims.
 
         Computes either the origin point or the bounding box limits based on the selected
@@ -474,7 +487,6 @@ class OccupancyMapWindow(MenuHelperWindow):
         Each cube is scaled to match the cell size and colored cyan. This provides a
         3D visualization of the occupied space in the occupancy map.
         """
-
         instancePath = "/occupancyMap/occupiedInstances"
         cubePath = "/occupancyMap/occupiedCube"
         pos_list = self._om.get_occupied_positions()
@@ -519,7 +531,7 @@ class OccupancyMapWindow(MenuHelperWindow):
         self.on_update_location(0)
         self.on_update_cell_size(0)
 
-        async def generate_task():
+        async def generate_task() -> None:
             self._timeline.stop()
             await omni.kit.app.get_app().next_update_async()
             if not self._models["physx_geom"].get_value_as_bool():
@@ -686,17 +698,13 @@ class OccupancyMapWindow(MenuHelperWindow):
             self._models["config_data"].set_value(image_details_text)
 
     def _update_yaml(self) -> None:
-        """Rebuilds the YAML text using the current image filename field value.
-
-        Warns if the filename field is empty. Does not regenerate the image.
-        """
+        """Rebuilds the YAML text using the current image filename field value."""
         if self._map_bottom_left is None:
             carb.log_warn("No map data available. Please generate the image first.")
             return
 
         stem = self._models["image_name"].as_string.strip()
         if not stem:
-            carb.log_warn("Image filename is empty. Please enter a filename before updating the YAML.")
             return
 
         ros_yaml_file_text = "image: " + stem + ".png"
@@ -726,7 +734,7 @@ class OccupancyMapWindow(MenuHelperWindow):
         try:
             image_width = self._im.width
             image_height = self._im.height
-            file = file if file[-4:].lower() == ".png" else "{}.png".format(file)
+            file = file if file[-4:].lower() == ".png" else f"{file}.png"
             im = Image.frombytes("RGBA", (image_width, image_height), bytes(self._image))
             save_path = os.path.join(folder, file)
             carb.log_info(f"Saving occupancy map image to {save_path}")
@@ -744,11 +752,23 @@ class OccupancyMapWindow(MenuHelperWindow):
         Creates a file picker dialog that filters for PNG files and allows the user
         to select a save location for the generated occupancy map image.
         """
+        image_name_model = self._models.get("image_name")
+        if image_name_model is not None and not image_name_model.as_string.strip():
+            carb.log_warn("Image filename is empty. Please enter a filename before saving.")
+            return
+
         from omni.kit.widget.filebrowser import FileBrowserItem
         from omni.kit.window.filepicker import FilePickerDialog
 
         def _on_filter_png_files(item: FileBrowserItem) -> bool:
-            """Callback to filter the choices of file names in the open or save dialog"""
+            """Callback to filter the choices of file names in the open or save dialog.
+
+            Args:
+                item: The file browser item to check.
+
+            Returns:
+                True if the item should be shown, False otherwise.
+            """
             if not item or item.is_folder:
                 return True
             # Show only files with listed extensions
@@ -785,7 +805,7 @@ class OccupancyMapWindow(MenuHelperWindow):
 
         try:
             if os.path.splitext(file)[1].lower() not in (".yaml", ".yml"):
-                file = "{}.yaml".format(file)
+                file = f"{file}.yaml"
             save_path = os.path.join(folder, file)
             carb.log_info(f"Saving occupancy map YAML to {save_path}")
             with open(save_path, "w") as f:
@@ -799,6 +819,11 @@ class OccupancyMapWindow(MenuHelperWindow):
 
     def save_yaml_file(self) -> None:
         """Opens a file picker dialog for saving the occupancy map YAML parameters file."""
+        image_name_model = self._models.get("image_name")
+        if image_name_model is not None and not image_name_model.as_string.strip():
+            carb.log_warn("Image filename is empty. Please enter a filename before saving.")
+            return
+
         from omni.kit.widget.filebrowser import FileBrowserItem
         from omni.kit.window.filepicker import FilePickerDialog
 
@@ -816,6 +841,14 @@ class OccupancyMapWindow(MenuHelperWindow):
             item_filter_options=[".yaml Files (*.yaml, *.yml)"],
             item_filter_fn=_on_filter_yaml_files,
         )
+        stage = omni.usd.get_context().get_stage()
+        default_stem = stage.GetRootLayer().GetDisplayName().rsplit(".", 1)[0]
+        image_name_model = self._models.get("image_name")
+        if image_name_model is not None:
+            stem = image_name_model.as_string.strip() or default_stem
+        else:
+            stem = default_stem
+        self._yaml_filepicker.set_filename(stem)
 
     def rebuild_frame(self) -> None:
         """Rebuilds the image visualization frame.
@@ -850,7 +883,7 @@ class OccupancyMapWindow(MenuHelperWindow):
         default_image_stem = root.GetDisplayName().rsplit(".", 1)[0]
 
         self._rgb_byte_provider = omni.ui.ByteImageProvider()
-        self.visualize_window = omni.ui.Window("Visualization", width=500, height=600)
+        self.visualize_window = omni.ui.Window("Occupancy Map Visualization", width=500, height=600)
         with self.visualize_window.frame:
             with ui.VStack(spacing=5):
                 with ui.VStack(height=0, spacing=5):
@@ -875,10 +908,10 @@ class OccupancyMapWindow(MenuHelperWindow):
                     )
                     with ui.HStack(height=0, spacing=5):
                         ui.Label(
-                            "Image File Name",
+                            "Map Name",
                             width=120,
                             alignment=ui.Alignment.LEFT_CENTER,
-                            tooltip="Stem of the image filename written into the YAML 'image' field. Save your PNG with this same name.",
+                            tooltip="Stem used as the default filename when saving the PNG image or YAML file, and written into the YAML 'image' field.",
                         )
                         self._models["image_name"] = ui.StringField(
                             name="StringField",
@@ -887,8 +920,7 @@ class OccupancyMapWindow(MenuHelperWindow):
                             alignment=ui.Alignment.LEFT_CENTER,
                         ).model
                         self._models["image_name"].set_value(default_image_stem)
-                        ui.Label(".png", width=0, alignment=ui.Alignment.LEFT_CENTER)
-                        ui.Button("Update YAML", clicked_fn=self._update_yaml, height=0, width=110)
+                        self._models["image_name"].add_value_changed_fn(lambda _: self._update_yaml())
                     self._models["config_data"] = ui.StringField(height=100, multiline=True).model
                 self._image_frame = ui.Frame()
                 self._image_frame.set_build_fn(self.rebuild_frame)

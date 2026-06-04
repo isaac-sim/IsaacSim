@@ -1,10 +1,12 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
+#
 # http://www.apache.org/licenses/LICENSE-2.0
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -35,6 +37,7 @@ class _NoOpRule(RuleInterface):
 
         Returns:
             Empty list of configuration parameters.
+
         """
         return []
 
@@ -42,7 +45,7 @@ class _NoOpRule(RuleInterface):
 class TestRuleInterface(omni.kit.test.AsyncTestCase):
     """Async tests for the rule interface helpers."""
 
-    async def test_rule_interface_logging_and_affected_list(self):
+    async def test_rule_interface_logging_and_affected_list(self) -> None:
         """Verify log collection and affected stage de-duplication."""
         fake_stage_mod = types.SimpleNamespace()
         fake_usd_mod = types.SimpleNamespace(Stage=fake_stage_mod)

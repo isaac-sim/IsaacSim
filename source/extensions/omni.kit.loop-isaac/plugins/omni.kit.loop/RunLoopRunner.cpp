@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 #define CARB_EXPORTS
 
 #include <carb/ObjectUtils.h>
@@ -98,14 +99,14 @@ const double kDefaultFrequency = 60;
 class PrecisionSleep
 {
 public:
-    PrecisionSleep()
+    PrecisionSleep() // NOLINT(modernize-use-equals-default)
 #if CARB_PLATFORM_WINDOWS
         : m_timer(CreateWaitableTimer(NULL, FALSE, NULL))
 #endif
     {
     }
 
-    ~PrecisionSleep()
+    ~PrecisionSleep() // NOLINT(modernize-use-equals-default)
     {
 #if CARB_PLATFORM_WINDOWS
         CloseHandle(m_timer);
@@ -240,7 +241,9 @@ public:
     ~RunLoopThread()
     {
         if (m_thread.joinable())
+        {
             m_thread.join();
+        }
     }
 
     void setLoop(RunLoop* loop_, bool usingEventAdapter_, bool usingMessageBusEventAdapter_)
@@ -290,7 +293,9 @@ public:
     void run()
     {
         if (!mainThread && loop && !m_thread.joinable())
+        {
             m_thread = std::thread(&RunLoopThread::updateLoop, this);
+        }
     }
 
     void update()
@@ -319,17 +324,23 @@ public:
 
         updateSettings();
 
-        // We should only do this if we can guarantee we never fall below the rate limited FPS.
-        // DriveSim would want something like this, but they do their own RunLoopRunner. For now disable this
+        // NOTE: the active codepath above leaves `dt` as the wall-clock measured value
+        // (or `m_deltaTime` when manual mode is on). The rate-limit setting
+        // (/app/runLoops/main/rateLimitFrequency) only caps how often update() is
+        // called by sleeping at the end of the frame; it does NOT set dt.
+        //
+        // The alternative below would force dt to the rate-limit period, but it is
+        // only safe if the loop is guaranteed never to fall below the rate-limited
+        // FPS. DriveSim wants something like this but uses its own RunLoopRunner.
+        // Keep disabled here.
         // if (this->rateLimitEnabled)
         //{
-        //    // If rate limit is enabled, we set dt to rateLimitFrequency
-        //    dt = this->minLoopTime.count() * 0.000001;
-        //}
+        //     dt = this->minLoopTime.count() * 0.000001;
+        // }
 
         if (usingEventAdapter)
         {
-            static constexpr size_t kMaxParameters = 3; // 'dt', 'kSWHFrameNumber' +  'SWHExternalSimulationTime'
+            static constexpr size_t kMaxParameters = 2; // 'dt' + 'kSWHFrameNumber'
 
             static const RStringKey kDt("dt");
             carb::eventdispatcher::NamedVariant params[kMaxParameters] = { { kDt, carb::variant::Variant(dt) } };
@@ -341,19 +352,6 @@ public:
                 CARB_CHECK(numParams < kMaxParameters);
                 params[numParams++] = { kSWHFrameNumber, carb::variant::Variant(m_runloopIterationCount) };
 
-                // In multi-tick rendering mode, the app is expected to set an explicit simulation time
-                // which is picked up by both SWH and the renderer to schedule sensors to be renderered
-                auto settings = getCachedInterface<settings::ISettings>();
-                if (settings && settings->getAsBool("/rtx/hydra/supportMultiTickRate"))
-                {
-                    if (m_nextSimulationTime >= 0.0)
-                    {
-                        static const RStringKey kSWHExternalSimulationTimeParam("SWHExternalSimulationTime");
-                        params[numParams++] = { kSWHExternalSimulationTimeParam,
-                                                carb::variant::Variant(m_nextSimulationTime) };
-                    }
-                }
-
                 std::sort(params, params + numParams, carb::eventdispatcher::detail::NamedVariantLess{});
             }
 
@@ -362,7 +360,9 @@ public:
             // Dispatch the events. We don't do profile zones here because EventDispatcher already does named zones.
             ed->internalDispatch({ preUpdateName, numParams, params });
             if (updateEnabled)
+            {
                 ed->internalDispatch({ updateName, numParams, params });
+            }
             ed->internalDispatch({ postUpdateName, numParams, params });
         }
         else
@@ -465,7 +465,9 @@ public:
     {
         auto settings = getCachedInterface<settings::ISettings>();
         if (!settings)
+        {
             return;
+        }
 
         if (!m_minLoopTimeString.length())
         {
@@ -549,10 +551,6 @@ public:
     {
         return m_deltaTime;
     }
-    void setNextSimulationTime(double simulationTime)
-    {
-        m_nextSimulationTime = simulationTime;
-    }
 
 private:
     void _initialize()
@@ -618,9 +616,6 @@ private:
     int64_t m_runloopIterationCount;
 
     PrecisionSleep m_windowsSleep;
-
-    // < 0.0 means we won't use this value and fallback to the runloop frame frame based time
-    double m_nextSimulationTime = -1.0;
 };
 
 // Use a transparent compare struct so we can compare against char* without having to construct a std::string
@@ -647,7 +642,7 @@ class RunLoopRunnerImpl : public omni::kit::IRunLoopRunner
     CARB_IOBJECT_IMPL
 
 public:
-    virtual void startup() override
+    void startup() override
     {
         std::unique_lock lock(m_mutex);
 
@@ -670,12 +665,14 @@ public:
         }
 
         for (auto& kv : m_runLoops)
+        {
             kv.second.run();
+        }
 
         m_started = true;
     }
 
-    virtual void onAddRunLoop(const char* name, RunLoop* loop) override
+    void onAddRunLoop(const char* name, RunLoop* loop) override
     {
         std::unique_lock lock(m_mutex);
 
@@ -699,10 +696,12 @@ public:
         }
 
         if (m_started)
+        {
             t->run();
+        }
     }
 
-    virtual void onRemoveRunLoop(const char* name, RunLoop* loop, bool bBlock) override
+    void onRemoveRunLoop(const char* name, RunLoop* loop, bool bBlock) override
     {
         bool bRequestedQuit = false;
 
@@ -748,7 +747,7 @@ public:
         }
     }
 
-    virtual void update() override
+    void update() override
     {
         if (m_mainThread)
         {
@@ -756,7 +755,7 @@ public:
         }
     }
 
-    virtual void shutdown() override
+    void shutdown() override
     {
         decltype(m_runLoops) runLoops;
         {
@@ -778,7 +777,9 @@ public:
         for (auto& loop : m_runLoops)
         {
             if (!loop.second.mainThread)
+            {
                 loop.second.quit = true;
+            }
         }
 
         // Wait up to 100 ms for all threads to "exit". We cannot join these threads because the thread calling
@@ -801,7 +802,9 @@ public:
             }
 
             if (allDone)
+            {
                 break;
+            }
 
             lock.unlock();
             std::this_thread::yield();
@@ -822,7 +825,9 @@ private:
 
         auto it = m_runLoops.find(name);
         if (it == m_runLoops.end())
+        {
             it = m_runLoops.emplace(std::piecewise_construct, std::forward_as_tuple(name), std::forward_as_tuple(name)).first;
+        }
         return std::addressof(it->second);
     }
 
@@ -866,7 +871,7 @@ static void SetManualStepSize(const double dt, const std::string& name = "")
 }
 static void SetManualMode(const bool enabled, const std::string& name = "")
 {
-    if (m_runLoops.size() == 0)
+    if (m_runLoops.empty())
     {
         auto settings = getCachedInterface<settings::ISettings>();
         if (settings)
@@ -892,12 +897,6 @@ static bool GetManualMode(const std::string& name = "")
         name, [&manualMode](RunLoopThread& runloop) { manualMode = runloop.getManualMode(); }, true);
     return manualMode;
 }
-
-static void SetNextSimulationTime(const double simulationTime, const std::string& name)
-{
-    callForRunLoop(name, [simulationTime](RunLoopThread& runloop) { runloop.setNextSimulationTime(simulationTime); });
-}
-
 
 class IExtensionPluginImpl : public ext::IExt
 {
@@ -936,7 +935,6 @@ void fillInterface(omni::kit::IRunLoopRunnerImpl& iface)
     iface.setManualStepSize = SetManualStepSize;
     iface.getManualMode = GetManualMode;
     iface.getManualStepSize = GetManualStepSize;
-    iface.setNextSimulationTime = SetNextSimulationTime;
 }
 
 void fillInterface(omni::kit::IExtensionPluginImpl& iface)

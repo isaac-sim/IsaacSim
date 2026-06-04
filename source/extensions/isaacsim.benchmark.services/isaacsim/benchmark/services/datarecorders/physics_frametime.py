@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Recorder for PhysX simulation step frametime metrics."""
 
 from typing import Any
@@ -34,7 +35,7 @@ class PhysicsFrametimeRecorder(MeasurementDataRecorder):
         context: Input context for the recorder.
     """
 
-    def __init__(self, context: InputContext | None = None):
+    def __init__(self, context: InputContext | None = None) -> None:
         self.context = context
         self._samples: list[float] = []
         self._subscription = None
@@ -46,7 +47,7 @@ class PhysicsFrametimeRecorder(MeasurementDataRecorder):
         except Exception as e:
             logger.warning(f"PhysicsFrametimeRecorder: Failed to get physics interface: {e}")
 
-    def start_collecting(self):
+    def start_collecting(self) -> None:
         """Start collecting physics frametime data.
 
         Example:
@@ -66,7 +67,7 @@ class PhysicsFrametimeRecorder(MeasurementDataRecorder):
         else:
             logger.warning("PhysicsFrametimeRecorder: Physics interface not available")
 
-    def stop_collecting(self):
+    def stop_collecting(self) -> None:
         """Stop collecting physics frametime data.
 
         Example:
@@ -113,7 +114,7 @@ class PhysicsFrametimeRecorder(MeasurementDataRecorder):
         """
         return self._samples
 
-    def _on_physics_stats(self, profile_stats: Any):
+    def _on_physics_stats(self, profile_stats: Any) -> None:
         """Callback for physics profile stats.
 
         Args:
@@ -142,7 +143,7 @@ class PhysicsFrametimeRecorder(MeasurementDataRecorder):
             logger.info("PhysicsFrametimeRecorder: No samples collected (physics may not be running)")
             return MeasurementData()
 
-        stats = Stats.from_samples(self._samples)
+        stats = Stats.from_samples(self._samples, trim_outliers=False)
 
         return MeasurementData(
             measurements=[

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,28 +13,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test for physics scene."""
+
+import asyncio
 import dataclasses
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.test
-from isaacsim.core.simulation_manager import PhysicsScene, PhysxGpuCfg, PhysxScene
+import omni.timeline
+from isaacsim.core.simulation_manager import PhysicsScene, PhysxGpuCfg, PhysxScene, SimulationManager
 from isaacsim.core.simulation_manager.impl.mjc_scene import NewtonMjcScene
-from pxr import Gf
+from omni.kit.app import get_app
+from pxr import Gf, PhysxSchema
 
 
 class TestPhysicsScene(omni.kit.test.AsyncTestCase):
     """Test the base PhysicsScene class with NewtonSceneAPI attributes."""
 
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
         await stage_utils.create_new_stage_async()
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         super().tearDown()
 
     async def test_physics_scene_constructor(self):
+        """Test physics scene constructor."""
         # no PhysicsScene in stage (create new)
         self.assertListEqual(PhysicsScene.get_physics_scene_paths(), [])
         path = "/physicsScene_0"
@@ -44,20 +50,39 @@ class TestPhysicsScene(omni.kit.test.AsyncTestCase):
         self.assertEqual(physics_scene.prim.GetPath().pathString, path)
         self.assertTrue(physics_scene.prim.HasAPI("NewtonSceneAPI"))
 
-    async def test_dt(self):
-        # Test Newton dt on base PhysicsScene
+    async def test_physics_scene_constructor_applies_default_engine_api(self):
+        """Test base PhysicsScene is compatible with the default PhysX engine."""
         physics_scene = PhysicsScene("/World/physicsScene")
-        # default: 1000 steps/sec = 0.001 dt (from NewtonSceneAPI)
-        self.assertAlmostEqual(physics_scene.get_dt(), 0.001, places=5)
-        # set dt
-        for dt in [0.01, 0.005, 0.002]:
-            physics_scene.set_dt(dt)
-            self.assertAlmostEqual(physics_scene.get_dt(), dt, places=5)
+
+        self.assertTrue(physics_scene.prim.HasAPI("NewtonSceneAPI"))
+
+    async def test_dt(self):
+        """Test dt."""
+        physics_scene = PhysicsScene("/World/physicsScene")
+        if SimulationManager.get_active_physics_engine() == "physx":
+            self.assertAlmostEqual(physics_scene.get_dt(), 1.0 / 60.0, places=5)
+            newton_attr = physics_scene.prim.GetAttribute("newton:timeStepsPerSecond")
+            self.assertEqual(newton_attr.Get(), 1000)
+
+            for dt in [0.01, 0.005, 0.002]:
+                physics_scene.set_dt(dt)
+                self.assertAlmostEqual(physics_scene.get_dt(), dt, places=5)
+                physx_scene_api = PhysxSchema.PhysxSceneAPI(physics_scene.prim)
+                self.assertEqual(physx_scene_api.GetTimeStepsPerSecondAttr().Get(), int(1.0 / dt))
+                self.assertEqual(newton_attr.Get(), 1000)
+        else:
+            # default: 1000 steps/sec = 0.001 dt (from NewtonSceneAPI)
+            self.assertAlmostEqual(physics_scene.get_dt(), 0.001, places=5)
+            for dt in [0.01, 0.005, 0.002]:
+                physics_scene.set_dt(dt)
+                self.assertAlmostEqual(physics_scene.get_dt(), dt, places=5)
+
         # exceptions
         self.assertRaises(ValueError, physics_scene.set_dt, -1.0)
         self.assertRaises(ValueError, physics_scene.set_dt, 1.1)
 
     async def test_gravity_enabled(self):
+        """Test gravity enabled."""
         physics_scene = PhysicsScene("/World/physicsScene")
         # default: True
         self.assertTrue(physics_scene.get_enabled_gravity())
@@ -67,6 +92,7 @@ class TestPhysicsScene(omni.kit.test.AsyncTestCase):
             self.assertEqual(physics_scene.get_enabled_gravity(), enabled)
 
     async def test_max_solver_iterations(self):
+        """Test max solver iterations."""
         physics_scene = PhysicsScene("/World/physicsScene")
         # default: -1 (solver chooses)
         self.assertEqual(physics_scene.get_max_solver_iterations(), -1)
@@ -80,17 +106,38 @@ class TestPhysicsScene(omni.kit.test.AsyncTestCase):
         # exceptions
         self.assertRaises(ValueError, physics_scene.set_max_solver_iterations, -2)
 
+    async def test_engine_switch_cleans_up_scene_apis(self):
+        """Test that switching engines removes stale solver APIs and applies the new one."""
+        if SimulationManager.get_active_physics_engine() != "newton":
+            return
+
+        physics_scene = PhysicsScene("/World/physicsScene")
+        self.assertFalse(physics_scene.prim.HasAPI(PhysxSchema.PhysxSceneAPI))
+
+        try:
+            SimulationManager.switch_physics_engine("physx")
+            self.assertTrue(physics_scene.prim.HasAPI(PhysxSchema.PhysxSceneAPI))
+            self.assertFalse(physics_scene.prim.HasAPI("MjcSceneAPI"))
+
+            SimulationManager.switch_physics_engine("newton")
+            self.assertFalse(physics_scene.prim.HasAPI(PhysxSchema.PhysxSceneAPI))
+        finally:
+            if SimulationManager.get_active_physics_engine() != "newton":
+                SimulationManager.switch_physics_engine("newton")
+
 
 class TestPhysxScene(omni.kit.test.AsyncTestCase):
+    """Test physx scene."""
+
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
         # ---------------
         await stage_utils.create_new_stage_async()
         # ---------------
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         # ------------------
         # Do custom tearDown
         # ------------------
@@ -98,6 +145,7 @@ class TestPhysxScene(omni.kit.test.AsyncTestCase):
 
     # --------------------------------------------------------------------
     async def test_physx_scene_constructor(self):
+        """Test physx scene constructor."""
         # no PhysicsScene in stage (create new)
         self.assertListEqual(PhysicsScene.get_physics_scene_paths(), [])
         path = "/physicsScene_0"
@@ -119,6 +167,7 @@ class TestPhysxScene(omni.kit.test.AsyncTestCase):
             PhysxScene("/cube")
 
     async def test_get_physics_scene_paths(self):
+        """Test get physics scene paths."""
         stages = [None, stage_utils.get_current_stage()]
         # no PhysicsScene in stage
         for stage in stages:
@@ -137,6 +186,7 @@ class TestPhysxScene(omni.kit.test.AsyncTestCase):
             self.assertListEqual(paths, ["/World/physicsScene"] + [f"/World/physicsScene_{i}" for i in range(5)])
 
     async def test_steps_per_second_and_dt(self):
+        """Test steps per second and dt."""
         physx_scene = PhysxScene("/World/physicsScene")
         self.assertEqual(physx_scene.get_steps_per_second(), 60)
         self.assertAlmostEqual(physx_scene.get_dt(), 1.0 / 60.0)
@@ -163,6 +213,7 @@ class TestPhysxScene(omni.kit.test.AsyncTestCase):
         self.assertRaises(ValueError, physx_scene.set_dt, 1.1)
 
     async def test_solver_type(self):
+        """Test solver type."""
         physx_scene = PhysxScene("/World/physicsScene")
         self.assertEqual(physx_scene.get_solver_type(), "TGS")
         for solver_type in ["TGS", "PGS"]:
@@ -170,6 +221,7 @@ class TestPhysxScene(omni.kit.test.AsyncTestCase):
             self.assertEqual(physx_scene.get_solver_type(), solver_type)
 
     async def test_enabled_gpu_dynamics(self):
+        """Test enabled gpu dynamics."""
         physx_scene = PhysxScene("/World/physicsScene")
         self.assertTrue(physx_scene.get_enabled_gpu_dynamics())
         for enabled in [False, True]:
@@ -177,6 +229,7 @@ class TestPhysxScene(omni.kit.test.AsyncTestCase):
             self.assertEqual(physx_scene.get_enabled_gpu_dynamics(), enabled)
 
     async def test_enabled_ccd(self):
+        """Test enabled ccd."""
         physx_scene = PhysxScene("/World/physicsScene")
         self.assertFalse(physx_scene.get_enabled_ccd())
         for enabled in [True, False]:
@@ -184,6 +237,7 @@ class TestPhysxScene(omni.kit.test.AsyncTestCase):
             self.assertEqual(physx_scene.get_enabled_ccd(), enabled)
 
     async def test_broadphase_type(self):
+        """Test broadphase type."""
         physx_scene = PhysxScene("/World/physicsScene")
         self.assertEqual(physx_scene.get_broadphase_type(), "GPU")
         for broadphase_type in ["MBP", "GPU", "SAP"]:
@@ -191,6 +245,7 @@ class TestPhysxScene(omni.kit.test.AsyncTestCase):
             self.assertEqual(physx_scene.get_broadphase_type(), broadphase_type)
 
     async def test_enabled_stabilization(self):
+        """Test enabled stabilization."""
         physx_scene = PhysxScene("/World/physicsScene")
         self.assertFalse(physx_scene.get_enabled_stabilization())
         for enabled in [True, False]:
@@ -198,6 +253,7 @@ class TestPhysxScene(omni.kit.test.AsyncTestCase):
             self.assertEqual(physx_scene.get_enabled_stabilization(), enabled)
 
     async def test_gpu_configuration(self):
+        """Test gpu configuration."""
         physx_scene = PhysxScene("/World/physicsScene")
         config = [
             ("gpu_collision_stack_size", 67108864),
@@ -234,16 +290,19 @@ class TestPhysxScene(omni.kit.test.AsyncTestCase):
 
 
 class TestNewtonMjcScene(omni.kit.test.AsyncTestCase):
+    """Test newton mjc scene."""
+
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
         await stage_utils.create_new_stage_async()
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         super().tearDown()
 
     async def test_mjc_scene_constructor(self):
+        """Test mjc scene constructor."""
         path = "/physicsScene"
         mjc_scene = NewtonMjcScene(path)
         self.assertEqual(mjc_scene.path, path)
@@ -251,6 +310,7 @@ class TestNewtonMjcScene(omni.kit.test.AsyncTestCase):
         self.assertTrue(mjc_scene.prim.HasAPI("MjcSceneAPI"))
 
     async def test_dt(self):
+        """Test dt."""
         mjc_scene = NewtonMjcScene("/World/physicsScene")
         # default: 0.002
         self.assertAlmostEqual(mjc_scene.get_dt(), 0.002, places=5)
@@ -263,6 +323,7 @@ class TestNewtonMjcScene(omni.kit.test.AsyncTestCase):
         self.assertRaises(ValueError, mjc_scene.set_dt, -1.0)
 
     async def test_integrator(self):
+        """Test integrator."""
         mjc_scene = NewtonMjcScene("/World/physicsScene")
         # default: "euler"
         self.assertEqual(mjc_scene.get_integrator(), "euler")
@@ -272,6 +333,7 @@ class TestNewtonMjcScene(omni.kit.test.AsyncTestCase):
             self.assertEqual(mjc_scene.get_integrator(), integrator)
 
     async def test_solver(self):
+        """Test solver."""
         mjc_scene = NewtonMjcScene("/World/physicsScene")
         # default: "newton"
         self.assertEqual(mjc_scene.get_solver(), "newton")
@@ -281,6 +343,7 @@ class TestNewtonMjcScene(omni.kit.test.AsyncTestCase):
             self.assertEqual(mjc_scene.get_solver(), solver)
 
     async def test_iterations(self):
+        """Test iterations."""
         mjc_scene = NewtonMjcScene("/World/physicsScene")
         # default: 100
         self.assertEqual(mjc_scene.get_iterations(), 100)
@@ -290,6 +353,7 @@ class TestNewtonMjcScene(omni.kit.test.AsyncTestCase):
             self.assertEqual(mjc_scene.get_iterations(), iterations)
 
     async def test_tolerance(self):
+        """Test tolerance."""
         mjc_scene = NewtonMjcScene("/World/physicsScene")
         # default: 1e-08
         self.assertAlmostEqual(mjc_scene.get_tolerance(), 1e-08, places=10)
@@ -299,6 +363,7 @@ class TestNewtonMjcScene(omni.kit.test.AsyncTestCase):
             self.assertAlmostEqual(mjc_scene.get_tolerance(), tolerance, places=14)
 
     async def test_cone(self):
+        """Test cone."""
         mjc_scene = NewtonMjcScene("/World/physicsScene")
         # default: "pyramidal"
         self.assertEqual(mjc_scene.get_cone(), "pyramidal")
@@ -308,6 +373,7 @@ class TestNewtonMjcScene(omni.kit.test.AsyncTestCase):
             self.assertEqual(mjc_scene.get_cone(), cone)
 
     async def test_jacobian(self):
+        """Test jacobian."""
         mjc_scene = NewtonMjcScene("/World/physicsScene")
         # default: "auto"
         self.assertEqual(mjc_scene.get_jacobian(), "auto")
@@ -317,6 +383,7 @@ class TestNewtonMjcScene(omni.kit.test.AsyncTestCase):
             self.assertEqual(mjc_scene.get_jacobian(), jacobian)
 
     async def test_impratio(self):
+        """Test impratio."""
         mjc_scene = NewtonMjcScene("/World/physicsScene")
         # default: 1.0
         self.assertAlmostEqual(mjc_scene.get_impratio(), 1.0, places=5)
@@ -326,6 +393,7 @@ class TestNewtonMjcScene(omni.kit.test.AsyncTestCase):
             self.assertAlmostEqual(mjc_scene.get_impratio(), impratio, places=5)
 
     async def test_wind(self):
+        """Test wind."""
         mjc_scene = NewtonMjcScene("/World/physicsScene")
         # default: (0, 0, 0)
         wind = mjc_scene.get_wind()
@@ -347,6 +415,7 @@ class TestNewtonMjcScene(omni.kit.test.AsyncTestCase):
             self.assertAlmostEqual(wind[2], expected[2], places=5)
 
     async def test_density(self):
+        """Test density."""
         mjc_scene = NewtonMjcScene("/World/physicsScene")
         # default: 0.0
         self.assertAlmostEqual(mjc_scene.get_density(), 0.0, places=5)
@@ -356,6 +425,7 @@ class TestNewtonMjcScene(omni.kit.test.AsyncTestCase):
             self.assertAlmostEqual(mjc_scene.get_density(), density, places=5)
 
     async def test_viscosity(self):
+        """Test viscosity."""
         mjc_scene = NewtonMjcScene("/World/physicsScene")
         # default: 0.0
         self.assertAlmostEqual(mjc_scene.get_viscosity(), 0.0, places=5)
@@ -363,3 +433,21 @@ class TestNewtonMjcScene(omni.kit.test.AsyncTestCase):
         for viscosity in [0.001, 1.0, 0.0001]:
             mjc_scene.set_viscosity(viscosity)
             self.assertAlmostEqual(mjc_scene.get_viscosity(), viscosity, places=5)
+
+    async def test_physics_scene_set_dt_play_does_not_hang(self):
+        if SimulationManager.get_active_physics_engine() != "physx":
+            self.skipTest("Skipping test for non-physx engine")
+
+        self._timeline = omni.timeline.get_timeline_interface()
+
+        PhysicsScene("/physicsScene").set_dt(1.0 / 60.0)
+        await get_app().next_update_async()
+
+        self._timeline.play()
+
+        try:
+            await asyncio.wait_for(get_app().next_update_async(), timeout=10.0)
+        except asyncio.TimeoutError:
+            self.fail("Timed out after playing a stage configured with PhysicsScene.set_dt().")
+
+        self.assertTrue(self._timeline.is_playing())

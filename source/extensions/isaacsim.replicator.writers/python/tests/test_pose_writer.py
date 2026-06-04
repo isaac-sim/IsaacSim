@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
 
 import json
 import os
+import tempfile
 
 import numpy as np
 import omni.kit
@@ -205,7 +206,7 @@ class TestPoseWriter(omni.kit.test.AsyncTestCase):
         rp2 = rep.create.render_product(cam2, (width, height), name="rp2")
         render_products = [rp1, rp2]
 
-        out_dir = os.path.join(os.getcwd(), "_out_test_pose_writer_pinhole")
+        out_dir = tempfile.mkdtemp(prefix="test_pose_writer_pinhole_")
         print(f"Output directory: {out_dir}")
         backend = rep.backends.get("DiskBackend")
         backend.initialize(output_dir=out_dir)
@@ -256,7 +257,7 @@ class TestPoseWriter(omni.kit.test.AsyncTestCase):
         rp2 = rep.create.render_product(cam2, (width, height), name="rp2")
         render_products = [rp1, rp2]
 
-        out_dir = os.path.join(os.getcwd(), "_out_test_pose_writer_fisheyePolynomial")
+        out_dir = tempfile.mkdtemp(prefix="test_pose_writer_fisheyePolynomial_")
         print(f"Output directory: {out_dir}")
         backend = rep.backends.get("DiskBackend")
         backend.initialize(output_dir=out_dir)
@@ -306,7 +307,7 @@ class TestPoseWriter(omni.kit.test.AsyncTestCase):
         rp2 = rep.create.render_product(cam2, (width, height), name="rp2")
         render_products = [rp1, rp2]
 
-        out_dir = os.path.join(os.getcwd(), "_out_test_pose_writer_pinholeOpenCV")
+        out_dir = tempfile.mkdtemp(prefix="test_pose_writer_pinholeOpenCV_")
         print(f"Output directory: {out_dir}")
         backend = rep.backends.get("DiskBackend")
         backend.initialize(output_dir=out_dir)
@@ -350,7 +351,7 @@ class TestPoseWriter(omni.kit.test.AsyncTestCase):
         rp2 = rep.create.render_product(cam2, (width, height), name="rp2")
         render_products = [rp1, rp2]
 
-        out_dir = os.path.join(os.getcwd(), "_out_test_pose_writer_generalizedProjection")
+        out_dir = tempfile.mkdtemp(prefix="test_pose_writer_generalizedProjection_")
         print(f"Output directory: {out_dir}")
         backend = rep.backends.get("DiskBackend")
         backend.initialize(output_dir=out_dir)

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Provides common utilities for ROS 2 environment setup and configuration in Isaac Sim."""
 
 import os
 import platform
@@ -31,11 +33,11 @@ SUPPORTED_ROS_DISTROS = {
 }
 
 
-def get_ubuntu_version():
+def get_ubuntu_version() -> str | None:
     """Detect Ubuntu version and return the appropriate ROS distribution.
 
     Returns:
-        str: 'humble' for Ubuntu 22.x, 'jazzy' for Ubuntu 24.x, None for other versions.
+        'humble' for Ubuntu 22.x, 'jazzy' for Ubuntu 24.x, None for other versions.
     """
     # Check if we're on Linux using sys.platform
     if not sys.platform.startswith("linux"):
@@ -55,12 +57,12 @@ def get_ubuntu_version():
         return None
 
 
-def restore_ros2_python_paths():
+def restore_ros2_python_paths() -> None:
     """Restore system ROS 2 Python paths that Isaac Sim removed at startup.
 
-    Isaac Sim overrides PYTHONPATH with its own paths and saves the original
-    in OLD_PYTHONPATH. This function cross-references OLD_PYTHONPATH with
-    AMENT_PREFIX_PATH to find and re-add only the ROS 2 Python paths to sys.path.
+    Isaac Sim overrides PYTHONPATH with its own paths and saves the original in OLD_PYTHONPATH. This function
+    cross-references OLD_PYTHONPATH with AMENT_PREFIX_PATH to find and re-add only the ROS 2 Python paths to
+    sys.path.
     """
     ament_prefix = os.environ.get("AMENT_PREFIX_PATH")
     old_pythonpath = os.environ.get("OLD_PYTHONPATH")
@@ -75,7 +77,7 @@ def restore_ros2_python_paths():
                 break
 
 
-def setup_ros2_environment(extension_path, ros_distro):
+def setup_ros2_environment(extension_path: str, ros_distro: str) -> None:
     """Set up ROS 2 environment variables and paths if required.
 
     Args:
@@ -92,7 +94,7 @@ def setup_ros2_environment(extension_path, ros_distro):
     # For linux, manually setting up environment variables are not necessary as they are expected to be setup already in the terminal.
 
 
-def print_environment_setup_instructions(extension_path, ros_distro):
+def print_environment_setup_instructions(extension_path: str, ros_distro: str) -> None:
     """Print instructions for setting up ROS 2 environment variables.
 
     Args:

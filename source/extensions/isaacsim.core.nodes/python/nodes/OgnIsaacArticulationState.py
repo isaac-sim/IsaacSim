@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,9 +22,7 @@ from pxr import UsdPhysics
 
 
 class OgnIsaacArticulationStateInternalState(BaseResetNode):
-    """
-    Internal node state for queuing articulation state
-    """
+    """Internal node state for queuing articulation state."""
 
     def __init__(self):
         self.robot_prim = None
@@ -82,9 +80,7 @@ class OgnIsaacArticulationStateInternalState(BaseResetNode):
 
 
 class OgnIsaacArticulationState:
-    """
-    Node for queuing articulation state
-    """
+    """Node for queuing articulation state."""
 
     @staticmethod
     def internal_state():

@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.robot.schema extension provides comprehensive USD schemas for robot modeling and sensor simulation in Isaac Sim. This extension defines formal USD schemas for range sensors, Isaac-specific sensors, and robot structural components, enabling standardized representation of robotic systems in USD stages. The extension is loaded early in the Kit startup sequence to ensure all robot-related schemas are available to other extensions.
@@ -10,43 +6,36 @@ The isaacsim.robot.schema extension provides comprehensive USD schemas for robot
 
 ```{mermaid}
 graph TD
-    %% Inheritance relationships
-    Generic --> RangeSensor
-    Lidar --> RangeSensor
-    UltrasonicArray --> RangeSensor
+    %% Inheritance relationships (deprecated)
+    Generic["Generic (deprecated)"] --> RangeSensor["RangeSensor (deprecated)"]
+    Lidar["Lidar (deprecated)"] --> RangeSensor
 ```
 
 </div>
 
 ## Key Components
 
-### Range Sensor Schemas
+### Range Sensor Schemas (Deprecated)
 
-The `**omni.isaac.RangeSensorSchema**` module provides schemas for distance-measuring sensors. The base [RangeSensor](omni.isaac.RangeSensorSchema/omni.isaac.RangeSensorSchema.RangeSensor) class defines common attributes for range detection, visualization controls, and detection thresholds.
+> **Deprecated since 6.2.0**: The range sensor schemas are deprecated. Use `IsaacRaycastSensor` with `isaacsim.sensors.experimental.physics` or `isaacsim.sensors.experimental.rtx` instead.
 
-**[Lidar](omni.isaac.RangeSensorSchema/omni.isaac.RangeSensorSchema.Lidar)** extends the range sensor with sophisticated scanning capabilities including field-of-view configuration, rotation rates, and semantic data collection. It supports both continuous scanning and single-shot operation modes.
+The `**omni.isaac.RangeSensorSchema**` module provides schemas for distance-measuring sensors. The base {class}`RangeSensor <omni.isaac.RangeSensorSchema.RangeSensor>` class defines common attributes for range detection, visualization controls, and detection thresholds.
 
-**[UltrasonicArray](omni.isaac.RangeSensorSchema/omni.isaac.RangeSensorSchema.UltrasonicArray)** implements multi-emitter ultrasonic sensing with advanced acoustic modeling. It manages collections of emitters through relationships, supports material-based reflection calculations using BRDF models, and implements Beer-Lambert attenuation for realistic acoustic behavior.
+**{class}`Lidar <omni.isaac.RangeSensorSchema.Lidar>`** extends the range sensor with sophisticated scanning capabilities including field-of-view configuration, rotation rates, and semantic data collection. It supports both continuous scanning and single-shot operation modes.
 
-**[UltrasonicEmitter](omni.isaac.RangeSensorSchema/omni.isaac.RangeSensorSchema.UltrasonicEmitter)** represents individual transducer elements within ultrasonic arrays, managing per-ray intensity and adjacency relationships for multi-path reflection calculations.
-
-**[UltrasonicFiringGroup](omni.isaac.RangeSensorSchema/omni.isaac.RangeSensorSchema.UltrasonicFiringGroup)** defines coordinated firing patterns for ultrasonic arrays, specifying which emitters fire and which receivers collect data during each measurement cycle.
-
-**[UltrasonicMaterialAPI](omni.isaac.RangeSensorSchema/omni.isaac.RangeSensorSchema.UltrasonicMaterialAPI)** provides acoustic material properties for ultrasonic simulation, including reflectance, roughness, and metallic characteristics that affect acoustic reflection behavior.
-
-**[Generic](omni.isaac.RangeSensorSchema/omni.isaac.RangeSensorSchema.Generic)** offers a simplified range sensor implementation with basic sampling rate and streaming controls for custom sensor implementations.
+**{class}`Generic <omni.isaac.RangeSensorSchema.Generic>`** offers a simplified range sensor implementation with basic sampling rate and streaming controls for custom sensor implementations.
 
 ### Isaac Sensor Schemas
 
-The `**omni.isaac.IsaacSensorSchema**` module provides specialized sensors for robotics simulation. [IsaacBaseSensor](omni.isaac.IsaacSensorSchema/omni.isaac.IsaacSensorSchema.IsaacBaseSensor) serves as the foundation class with basic enable/disable functionality.
+The `**omni.isaac.IsaacSensorSchema**` module provides specialized sensors for robotics simulation. {class}`IsaacBaseSensor <omni.isaac.IsaacSensorSchema.IsaacBaseSensor>` serves as the foundation class with basic enable/disable functionality.
 
-**[IsaacContactSensor](omni.isaac.IsaacSensorSchema/omni.isaac.IsaacSensorSchema.IsaacContactSensor)** detects contact forces with configurable thresholds and measurement periods, providing visual feedback through colored sphere representation.
+**{class}`IsaacContactSensor <omni.isaac.IsaacSensorSchema.IsaacContactSensor>`** detects contact forces with configurable thresholds and measurement periods, providing visual feedback through colored sphere representation.
 
-**[IsaacImuSensor](omni.isaac.IsaacSensorSchema/omni.isaac.IsaacSensorSchema.IsaacImuSensor)** simulates inertial measurement units with configurable filter widths for linear acceleration, angular velocity, and orientation measurements.
+**{class}`IsaacImuSensor <omni.isaac.IsaacSensorSchema.IsaacImuSensor>`** simulates inertial measurement units with configurable filter widths for linear acceleration, angular velocity, and orientation measurements.
 
-**[IsaacLightBeamSensor](omni.isaac.IsaacSensorSchema/omni.isaac.IsaacSensorSchema.IsaacLightBeamSensor)** creates light curtain sensors with multiple rays, configurable beam direction, and range detection capabilities for industrial automation applications.
+**{class}`IsaacLightBeamSensor <omni.isaac.IsaacSensorSchema.IsaacLightBeamSensor>`** *(deprecated since 6.2.0)* creates light curtain sensors with multiple rays, configurable beam direction, and range detection capabilities for industrial automation applications. Use `IsaacRaycastSensor` with `isaacsim.sensors.experimental.physics` instead.
 
-**[IsaacRtxLidarSensorAPI](omni.isaac.IsaacSensorSchema/omni.isaac.IsaacSensorSchema.IsaacRtxLidarSensorAPI)** and **[IsaacRtxRadarSensorAPI](omni.isaac.IsaacSensorSchema/omni.isaac.IsaacSensorSchema.IsaacRtxRadarSensorAPI)** provide API schema extensions for RTX-accelerated sensor implementations.
+**{class}`IsaacRtxLidarSensorAPI <omni.isaac.IsaacSensorSchema.IsaacRtxLidarSensorAPI>`** and **{class}`IsaacRtxRadarSensorAPI <omni.isaac.IsaacSensorSchema.IsaacRtxRadarSensorAPI>`** provide API schema extensions for RTX-accelerated sensor implementations.
 
 ### Robot Structural Schemas
 

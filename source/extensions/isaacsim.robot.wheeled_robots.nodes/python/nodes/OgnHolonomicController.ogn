@@ -1,0 +1,87 @@
+{
+    "isaacsim.robot.wheeled_robots.HolonomicController": {
+        "version": 2,
+        "description": "Holonomic Controller",
+        "language": "Python",
+        "categories": {
+            "isaacWheeledRobots": "robot controller inside Isaac Sim"
+        },
+        "metadata": {
+            "uiName": "Holonomic Controller"
+        },
+        "$comment": "Calculating the desired wheel speeds when given a desired vehicle speed.",
+        "inputs": {
+            "execIn": {
+                "type": "execution",
+                "description": "The input execution"
+            },
+            "wheelRadius": {
+                "type": "double[]",
+                "description": "An array of wheel radius in meters"
+            },
+            "wheelPositions": {
+                "type": "double[3][]",
+                "description": "Position of the wheel with respect to chassis' center of mass in meters"
+            },
+            "wheelOrientations": {
+                "type": "double[4][]",
+                "description": "Orientation of the wheel with respect to chassis' center of mass frame"
+            },
+            "mecanumAngles": {
+                "type": "double[]",
+                "description": "Angles of the mecanum wheels with respect to wheel's rotation axis in radians"
+            },  
+            "wheelAxis": {
+                "type": "double[3]",
+                "description": "The rotation axis of the wheels",
+                "default": [1.0,0.0,0.0]
+            },
+            "upAxis": {
+                "type": "double[3]",
+                "description": "The rotation axis of the vehicle",
+                "default": [0.0,0.0,1.0]
+            },
+            "inputVelocity":{
+                "type":  "double[3]", 
+                "description": "Velocity in x and y (m/s) and rotation (rad/s)",
+                "metadata": {
+                    "uiName": "Velocity Commands for the vehicle"
+                }
+            },
+            "maxLinearSpeed": {
+                "type": "double",
+                "description": "Maximum speed allowed for the vehicle in m/s",
+                "optional": "true",
+                "default": 100000
+            },
+            "maxAngularSpeed": {
+                "type": "double",
+                "description": "Maximum angular rotation speed allowed for the vehicle in rad/s",
+                "optional": "true",
+                "default": 100000               
+            },
+            "maxWheelSpeed": {
+                "type": "double",
+                "description": "Maximum rotation speed allowed for the wheel joints in rad/s",
+                "optional": "true",
+                "default": 100000
+            },
+            "linearGain": {
+                "type": "double",
+                "description": "Linear gain",
+                "default": 1
+            },
+            "angularGain": {
+                "type": "double",
+                "description": "Angular gain",
+                "default": 1
+            }        
+        },
+        "outputs":{
+            "jointVelocityCommand":{
+                "type": "double[]",
+                "description": "Velocity commands for the wheels joints"
+            }         
+        }
+    }
+}

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,10 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Temporary FixMe menu for legacy or placeholder entries."""
+
 import omni.kit.menu.utils
 import omni.ui as ui
-from omni.kit.menu.utils import LayoutSourceSearch, MenuAlignment, MenuItemDescription, MenuLayout
+from omni.kit.menu.utils import MenuAlignment, MenuItemDescription, MenuLayout
 
 
 class FixmeMenuExtension:
@@ -42,7 +44,7 @@ class FixmeMenuExtension:
             return MenuAlignment.RIGHT
 
         # override build fn to not show menu item...
-        def build_item(self, item: ui.MenuHelper):
+        def build_item(self, item: ui.MenuHelper) -> None:
             """Override item rendering to hide the menu item.
 
             Args:
@@ -54,9 +56,8 @@ class FixmeMenuExtension:
                     delegate = FixmeMenuExtension.MenuDelegate()
                     delegate.build_item(item)
             """
-            pass
 
-    def __init__(self, ext_id: str):
+    def __init__(self, ext_id: str) -> None:
         self._menu_placeholder = [MenuItemDescription(name="FixMe!!!", show_fn=lambda: False)]
         omni.kit.menu.utils.add_menu_items(self._menu_placeholder, "FixMe", delegate=FixmeMenuExtension.MenuDelegate())
 
@@ -106,7 +107,7 @@ class FixmeMenuExtension:
         ]
         omni.kit.menu.utils.add_layout(self.__menu_layout)
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Remove menu layouts and placeholders.
 
         Example:

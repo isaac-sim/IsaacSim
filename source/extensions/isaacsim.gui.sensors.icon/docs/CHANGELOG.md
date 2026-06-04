@@ -1,4 +1,16 @@
 # Changelog
+## [2.2.0] - 2026-04-21
+### Added
+- Add `IsaacRaycastSensor` to recognized sensor types for icon display
+
+### Changed
+- Mark `Lidar`, `IsaacLightBeamSensor`, and `Generic` as deprecated in `SENSOR_TYPES` list (kept for backward compatibility)
+- Update test default prim type from deprecated `Generic` to `IsaacContactSensor`
+
+## [2.1.1] - 2026-03-06
+### Fixed
+- Clear per-frame GLOBAL_EVENT_UPDATE subscription in hide_all() so the callback stops running when sensor icons are hidden
+
 ## [2.1.0] - 2026-03-04
 ### Changed
 - Add Overview.md, python_api.md, SETTINGS.md and update docstrings

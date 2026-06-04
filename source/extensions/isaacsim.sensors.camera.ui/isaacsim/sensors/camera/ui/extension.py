@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,133 +15,118 @@
 
 """Extension for the isaacsim.sensors.camera.ui extension that provides UI integration for camera and depth sensor creation."""
 
-
 import gc
 from pathlib import Path
 
+import carb
+import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.ext
 import omni.kit.actions.core
 import omni.kit.commands
-from isaacsim.core.utils.prims import create_prim
-from isaacsim.core.utils.stage import get_next_free_path
+import omni.usd
 from isaacsim.gui.components.menu import create_submenu
-from isaacsim.sensors.camera import SingleViewDepthSensorAsset
+from isaacsim.sensors.experimental.rtx import (
+    SUPPORTED_CAMERA_CONFIGS,
+    RtxCamera,
+    SingleViewDepthCameraSensor,
+    get_camera_metadata,
+)
 from isaacsim.storage.native import get_assets_root_path
 from omni.kit.menu.utils import add_menu_items, remove_menu_items
+from pxr import Usd
+
+
+def _build_sensors_dict() -> dict:
+    """Build the vendor-grouped sensor menu dict from ``SUPPORTED_CAMERA_CONFIGS``.
+
+    Iterates the registry in declared order and groups entries by their derived
+    vendor name (so dict insertion order also drives menu ordering). The result
+    has the legacy shape so any consumer of ``Extension.SENSORS`` keeps working.
+    """
+    sensors: dict = {}
+    for config_path in SUPPORTED_CAMERA_CONFIGS:
+        meta = get_camera_metadata(config_path)
+        sensors.setdefault(meta["vendor"], {})[meta["display_name"]] = {
+            "prim_prefix": meta["prim_prefix"],
+            "usd_path": config_path,
+            "is_depth_sensor": meta["is_depth_sensor"],
+        }
+    return sensors
+
+
+def _wrap_depth_sensor_cameras(rtx_cam: RtxCamera) -> list:
+    """Wrap each Camera in the loaded asset that has a depth-sensor template render product.
+
+    The deprecated ``SingleViewDepthSensorAsset`` walked the asset tree and discovered every
+    ``RenderProduct`` carrying ``OmniSensorDepthSensorSingleViewAPI`` whose ``camera``
+    relationship targets a Camera prim, then created a runtime sensor per match. We mirror
+    that here using the experimental :class:`SingleViewDepthCameraSensor`, which copies
+    template depth-sensor attributes onto the new sensor's render product via
+    ``_populate_from_asset_template``.
+
+    Args:
+        rtx_cam: Authoring object returned by :meth:`RtxCamera.create`. Its
+            ``_asset_root_path`` is used as the search root.
+
+    Returns:
+        List of created :class:`SingleViewDepthCameraSensor` instances. Empty when
+        the asset has no template render products or the asset root could not be resolved.
+    """
+    asset_root_path = getattr(rtx_cam, "_asset_root_path", None)
+    if asset_root_path is None:
+        return []
+    stage = stage_utils.get_current_stage(backend="usd")
+    root_prim = stage.GetPrimAtPath(asset_root_path)
+    if not root_prim.IsValid():
+        carb.log_warn(f"Asset root prim at '{asset_root_path}' is not valid; skipping depth sensor wrapping.")
+        return []
+    sensors: list = []
+    for child in Usd.PrimRange(root_prim):
+        if not (
+            child.GetTypeName() == "RenderProduct"
+            and child.HasAPI("OmniSensorDepthSensorSingleViewAPI")
+            and child.HasRelationship("camera")
+        ):
+            continue
+        targets = child.GetRelationship("camera").GetTargets()
+        if len(targets) != 1:
+            carb.log_warn(
+                f"Skipping render product '{child.GetPath()}': expected exactly 1 camera target, got {len(targets)}."
+            )
+            continue
+        # USD render product `resolution` is (width, height); the experimental sensor API
+        # follows OpenCV/NumPy convention `(height, width)`, so swap when constructing.
+        res_attr = child.GetAttribute("resolution").Get()
+        if res_attr is None:
+            carb.log_warn(
+                f"Skipping render product '{child.GetPath()}': no `resolution` attribute authored on template."
+            )
+            continue
+        resolution = (int(res_attr[1]), int(res_attr[0]))
+        sensors.append(
+            SingleViewDepthCameraSensor(
+                str(targets[0]),
+                resolution=resolution,
+                annotators="depth_sensor_distance",
+            )
+        )
+    return sensors
 
 
 class Extension(omni.ext.IExt):
     """Extension for the isaacsim.sensors.camera.ui extension that provides UI integration for camera and depth sensor creation.
 
-    This extension adds menu items to the Create menu and context menus that allow users to create various camera and depth sensor prims in the USD stage. It supports sensors from multiple vendors including Orbbec, Leopard Imaging, RealSense, Sensing, SICK, and Stereolabs.
+    This extension adds menu items to the Create menu and context menus that allow users to create various camera and depth sensor prims in the USD stage. The list of supported sensors and their metadata (vendor grouping, display name, depth-sensor flag, default stage prim prefix) is sourced from :data:`isaacsim.sensors.experimental.rtx.SUPPORTED_CAMERA_CONFIGS` so adding a new vendor sensor is a one-place change in the registry.
 
-    The extension automatically registers actions for each supported sensor type and creates a hierarchical menu structure organized by vendor. For depth sensors, it creates specialized SingleViewDepthSensorAsset instances with proper initialization. For regular camera sensors, it creates standard Xform prims with the appropriate USD reference.
-
-    Supported sensor vendors and models include:
-    - Orbbec: Gemini 2, FemtoMega, Gemini 335, Gemini 335L (all depth sensors)
-    - Leopard Imaging: Hawk, Owl
-    - RealSense: D455, D457, D555 (all depth sensors)
-    - Sensing: Multiple SG series models with various configurations
-    - SICK: Inspector83x
-    - Stereolabs: ZED_X (depth sensor)
-
-    The extension provides both main menu integration under Create > Sensors > Camera and Depth Sensors and context menu integration accessible via right-click in the viewport under Isaac > Sensors.
+    All menu actions load the asset via :meth:`isaacsim.sensors.experimental.rtx.RtxCamera.create`. For sensors whose registry entry sets ``is_depth_sensor=True``, every Camera in the loaded asset that has a template render product with the ``OmniSensorDepthSensorSingleViewAPI`` schema is additionally wrapped with :class:`isaacsim.sensors.experimental.rtx.SingleViewDepthCameraSensor`, which copies the template's depth-sensor attributes onto the new render product.
     """
 
-    # Define sensors data organized by vendor and sensor name
-    SENSORS = {
-        "Orbbec": {
-            "Orbbec Gemini 2": {
-                "prim_prefix": "/Gemini2",
-                "usd_path": "/Isaac/Sensors/Orbbec/Gemini2/orbbec_gemini2_v1.0.usd",
-                "is_depth_sensor": True,
-            },
-            "Orbbec FemtoMega": {
-                "prim_prefix": "/Femto",
-                "usd_path": "/Isaac/Sensors/Orbbec/FemtoMega/orbbec_femtomega_v1.0.usd",
-                "is_depth_sensor": True,
-            },
-            "Orbbec Gemini 335": {
-                "prim_prefix": "/Gemini335",
-                "usd_path": "/Isaac/Sensors/Orbbec/Gemini335/orbbec_gemini_335.usd",
-                "is_depth_sensor": True,
-            },
-            "Orbbec Gemini 335L": {
-                "prim_prefix": "/Gemini335L",
-                "usd_path": "/Isaac/Sensors/Orbbec/Gemini335L/orbbec_gemini_335L.usd",
-                "is_depth_sensor": True,
-            },
-        },
-        "Leopard Imaging": {
-            "Hawk": {"prim_prefix": "/Hawk", "usd_path": "/Isaac/Sensors/LeopardImaging/Hawk/hawk_v1.1_nominal.usd"},
-            "Owl": {"prim_prefix": "/Owl", "usd_path": "/Isaac/Sensors/LeopardImaging/Owl/owl.usd"},
-        },
-        "RealSense": {
-            "Realsense D455": {
-                "prim_prefix": "/RealsenseD455",
-                "usd_path": "/Isaac/Sensors/RealSense/D455/rsd455.usd",
-                "is_depth_sensor": True,
-            },
-            "Realsense D457": {
-                "prim_prefix": "/RealsenseD457",
-                "usd_path": "/Isaac/Sensors/RealSense/D457/rsd457.usd",
-                "is_depth_sensor": True,
-            },
-            "Realsense D555": {
-                "prim_prefix": "/RealsenseD555",
-                "usd_path": "/Isaac/Sensors/RealSense/D555/rsd555.usd",
-                "is_depth_sensor": True,
-            },
-        },
-        "Sensing": {
-            "Sensing SG2-AR0233C-5200-G2A-H100F1A": {
-                "prim_prefix": "/SG2_AR0233C_5200_G2A_H100F1A",
-                "usd_path": "/Isaac/Sensors/Sensing/SG2/H100F1A/SG2-AR0233C-5200-G2A-H100F1A.usd",
-            },
-            "Sensing SG2-OX03CC-5200-GMSL2-H60YA": {
-                "prim_prefix": "/SG2_OX03CC_5200_GMSL2_H60YA",
-                "usd_path": "/Isaac/Sensors/Sensing/SG2/H60YA/Camera_SG2_OX03CC_5200_GMSL2_H60YA.usd",
-            },
-            "Sensing SG3-ISX031C-GMSL2F-H190XA": {
-                "prim_prefix": "/SG3_ISX031C_GMSL2F_H190XA",
-                "usd_path": "/Isaac/Sensors/Sensing/SG3/H190XA/SG3S-ISX031C-GMSL2F-H190XA.usd",
-            },
-            "Sensing SG5-IMX490C-5300-GMSL2-H110SA": {
-                "prim_prefix": "/SG5_IMX490C_5300_GMSL2_H110SA",
-                "usd_path": "/Isaac/Sensors/Sensing/SG5/H100SA/SG5-IMX490C-5300-GMSL2-H110SA.usd",
-            },
-            "Sensing SG8S-AR0820C-5300-G2A-H120YA": {
-                "prim_prefix": "/SG8_AR0820C_5300_G2A_H120YA",
-                "usd_path": "/Isaac/Sensors/Sensing/SG8/H120YA/SG8S-AR0820C-5300-G2A-H120YA.usd",
-            },
-            "Sensing SG8S-AR0820C-5300-G2A-H30YA": {
-                "prim_prefix": "/SG8_AR0820C_5300_G2A_H30YA",
-                "usd_path": "/Isaac/Sensors/Sensing/SG8/H30YA/SG8S-AR0820C-5300-G2A-H30YA.usd",
-            },
-            "Sensing SG8S-AR0820C-5300-G2A-H60SA": {
-                "prim_prefix": "/SG8_AR0820C_5300_G2A_H60SA",
-                "usd_path": "/Isaac/Sensors/Sensing/SG8/H60SA/SG8S-AR0820C-5300-G2A-H60SA.usd",
-            },
-        },
-        "SICK": {
-            "Inspector83x": {
-                "prim_prefix": "/Inspector83x",
-                "usd_path": "/Isaac/Sensors/SICK/Inspector83x/SICK_Inspector83x.usd",
-            },
-        },
-        "Stereolabs": {
-            "ZED_X": {
-                "prim_prefix": "/ZED_X",
-                "usd_path": "/Isaac/Sensors/Stereolabs/ZED_X/ZED_X.usdc",
-                "is_depth_sensor": True,
-            }
-        },
-    }
-    """Dictionary containing sensor configurations organized by vendor and sensor name.
+    SENSORS = _build_sensors_dict()
+    """Vendor-grouped sensor metadata derived from ``SUPPORTED_CAMERA_CONFIGS``.
 
-The structure maps vendor names to their sensor models, where each sensor model contains
-configuration data including prim prefix, USD asset path, and optional depth sensor flag.
-Used to dynamically generate menu items and actions for creating sensor prims in the scene."""
+    Outer mapping is ``vendor -> {display_name -> {prim_prefix, usd_path, is_depth_sensor}}``.
+    Used to dynamically generate menu items and actions for creating sensor prims in the scene.
+    """
 
     def on_startup(self, ext_id: str):
         """Initializes the extension by setting up sensor creation actions and menu items.
@@ -152,29 +137,26 @@ Used to dynamically generate menu items and actions for creating sensor prims in
         self._ext_id = ext_id
         self._ext_name = omni.ext.get_extension_name(ext_id)
         self._registered_actions = []
+        self._depth_sensors: list = []
 
         icon_dir = omni.kit.app.get_app().get_extension_manager().get_extension_path_by_module(__name__)
 
         action_registry = omni.kit.actions.core.get_action_registry()
 
-        # Build menu structure based on SENSORS dictionary
+        # Build menu structure based on SENSORS dictionary; vendor order follows
+        # registry declaration order via dict insertion ordering (Python 3.7+).
         vendor_dicts = {}
         for vendor, sensors in self.SENSORS.items():
             sensor_items = []
             for sensor_name, sensor_data in sensors.items():
                 prim_prefix = sensor_data["prim_prefix"]
                 usd_path = sensor_data["usd_path"]
+                is_depth_sensor = sensor_data.get("is_depth_sensor", False)
 
-                # Register an action for this camera sensor.
                 action_id = "create_camera_" + sensor_name.lower().replace(" ", "_").replace("-", "_")
-                if sensor_data.get("is_depth_sensor", False):
-                    action_fn = lambda *_, pp=prim_prefix, up=usd_path: self._create_depth_sensor(pp, up)
-                else:
-                    action_fn = lambda *_, pp=prim_prefix, up=usd_path: create_prim(
-                        prim_path=get_next_free_path(pp, None),
-                        prim_type="Xform",
-                        usd_path=get_assets_root_path() + up,
-                    )
+                action_fn = lambda *_, pp=prim_prefix, up=usd_path, depth=is_depth_sensor: self._create_camera(
+                    pp, up, depth
+                )
                 action_registry.register_action(
                     self._ext_name,
                     action_id,
@@ -187,17 +169,9 @@ Used to dynamically generate menu items and actions for creating sensor prims in
 
             vendor_dicts[vendor] = {"name": {vendor: sensor_items}}
 
-        # Create the menu structure
         camera_and_depth_sensors_dict = {
             "name": {
-                "Camera and Depth Sensors": [
-                    vendor_dicts.get("Orbbec", {}),
-                    vendor_dicts.get("Leopard Imaging", {}),
-                    vendor_dicts.get("RealSense", {}),
-                    vendor_dicts.get("Sensing", {}),
-                    vendor_dicts.get("SICK", {}),
-                    vendor_dicts.get("Stereolabs", {}),
-                ]
+                "Camera and Depth Sensors": list(vendor_dicts.values()),
             }
         }
 
@@ -213,7 +187,6 @@ Used to dynamically generate menu items and actions for creating sensor prims in
         self._menu_items = create_submenu(sensors_menu_dict)
         add_menu_items(self._menu_items, "Create")
 
-        # add sensor to context menu
         context_menu_dict = {
             "name": {
                 "Isaac": [
@@ -230,12 +203,12 @@ Used to dynamically generate menu items and actions for creating sensor prims in
         remove_menu_items(self._menu_items, "Create")
         self._viewport_create_menu = None
 
-        # Deregister all registered actions.
         action_registry = omni.kit.actions.core.get_action_registry()
         for action_id in self._registered_actions:
             action_registry.deregister_action(self._ext_name, action_id)
         self._registered_actions.clear()
 
+        self._depth_sensors.clear()
         gc.collect()
 
     def _get_stage_and_path(self):
@@ -252,15 +225,24 @@ Used to dynamically generate menu items and actions for creating sensor prims in
             curr_prim = None
         return curr_prim
 
-    def _create_depth_sensor(self, prim_prefix: str, usd_path: str):
-        """Creates and initializes a depth sensor asset at the next available path.
+    def _create_camera(self, prim_prefix: str, usd_path: str, is_depth_sensor: bool) -> None:
+        """Create a camera sensor on the stage from a registered config.
+
+        Loads the USD asset via :meth:`RtxCamera.create` at the next available free path
+        derived from *prim_prefix*. When *is_depth_sensor* is true, additionally wraps
+        every Camera in the loaded asset that has a depth-sensor template render product
+        with :class:`SingleViewDepthCameraSensor` so the template's depth-sensor
+        configuration is propagated to the new sensor's render product.
 
         Args:
-            prim_prefix: The prefix for the prim path.
-            usd_path: The USD asset path for the depth sensor.
+            prim_prefix: Default stage prim path prefix for the loaded asset.
+            usd_path: Asset-relative path passed to :meth:`RtxCamera.create`.
+            is_depth_sensor: When ``True``, also instantiate depth-sensor wrappers
+                for every Camera with a matching template render product in the asset.
         """
-        depth_sensor = SingleViewDepthSensorAsset(
-            prim_path=get_next_free_path(prim_prefix, None),
-            asset_path=get_assets_root_path() + usd_path,
+        rtx_cam = RtxCamera.create(
+            path=stage_utils.generate_next_free_path(prim_prefix),
+            usd_path=get_assets_root_path() + usd_path,
         )
-        depth_sensor.initialize()
+        if is_depth_sensor:
+            self._depth_sensors.extend(_wrap_depth_sensor_cameras(rtx_cam))

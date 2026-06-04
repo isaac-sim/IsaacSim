@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -71,6 +71,7 @@ def quat_mul(q1: Quat, q2: Quat) -> Quat:
 
     Returns:
         Product quaternion.
+
     """
     w1, x1, y1, z1 = q1
     w2, x2, y2, z2 = q2
@@ -93,6 +94,7 @@ def quat_conj(q: Quat) -> Quat:
 
     Returns:
         Conjugate [w, -x, -y, -z].
+
     """
     w, x, y, z = q
     return np.array([w, -x, -y, -z], dtype=float)
@@ -107,6 +109,7 @@ def quat_rotate(q: Quat, v: Vec3) -> Vec3:
 
     Returns:
         Rotated vector.
+
     """
     qv = np.concatenate([[0.0], v])
     return quat_mul(quat_mul(q, qv), quat_conj(q))[1:]
@@ -121,6 +124,7 @@ def axis_angle_to_quat(axis: Vec3, angle: float) -> Quat:
 
     Returns:
         Unit quaternion [w, x, y, z].
+
     """
     axis = axis / np.linalg.norm(axis)
     s = np.sin(angle / 2.0)
@@ -135,6 +139,7 @@ def quat_to_matrix(q: Quat) -> Mat:
 
     Returns:
         3×3 rotation matrix.
+
     """
     w, x, y, z = q
     return np.array(
@@ -159,6 +164,7 @@ class Transform:
     Args:
         t: Translation [x, y, z]. Defaults to zeros.
         q: Quaternion [w, x, y, z]. Defaults to identity.
+
     """
 
     t: Vec3
@@ -176,6 +182,7 @@ class Transform:
 
         Returns:
             Composed transform.
+
         """
         t = self.t + quat_rotate(self.q, other.t)
         q = quat_mul(self.q, other.q)
@@ -186,6 +193,7 @@ class Transform:
 
         Returns:
             Inverse of this transform.
+
         """
         qi = quat_conj(self.q)
         ti = -quat_rotate(qi, self.t)
@@ -219,6 +227,7 @@ class Joint:
 
         Returns:
             Relative transform from parent to child.
+
         """
         if self.w @ self.w > 0:
             dq = axis_angle_to_quat(self.w, q)
@@ -245,6 +254,7 @@ def skew(v: Vec3) -> Mat:
 
     Returns:
         3×3 skew matrix such that skew(v) @ w == cross(v, w).
+
     """
     x, y, z = v
     return np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]], dtype=float)
@@ -258,6 +268,7 @@ def adjoint(T: Transform) -> Mat:
 
     Returns:
         6×6 adjoint matrix.
+
     """
     R = quat_to_matrix(T.q)
     p = T.t
@@ -282,6 +293,7 @@ def _gf_quat_to_array(gf_quat: Any) -> Quat:
 
     Returns:
         Numpy array [w, x, y, z].
+
     """
     imag = gf_quat.GetImaginary()
     return np.array([gf_quat.GetReal(), imag[0], imag[1], imag[2]], dtype=float)
@@ -295,6 +307,7 @@ def _gf_vec3_to_array(gf_vec: Any) -> Vec3:
 
     Returns:
         Numpy array of shape (3,).
+
     """
     return np.array([gf_vec[0], gf_vec[1], gf_vec[2]], dtype=float)
 
@@ -307,6 +320,7 @@ def _mat4_to_transform(mat: Any) -> Transform:
 
     Returns:
         Transform with translation and quaternion.
+
     """
     import pxr
 
@@ -325,10 +339,14 @@ def _prim_pose_in_robot_frame(robot_prim: Any, prim: Any) -> Transform:
 
     Returns:
         Transform in robot base frame.
-    """
-    import omni.usd
-    import pxr
 
-    robot_world = pxr.Gf.Matrix4d(omni.usd.get_world_transform_matrix(robot_prim))
-    prim_world = pxr.Gf.Matrix4d(omni.usd.get_world_transform_matrix(prim))
+    """
+    import pxr
+    from pxr import Usd, UsdGeom
+
+    def _world_xform(p: Any) -> pxr.Gf.Matrix4d:
+        return UsdGeom.Xformable(p).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+
+    robot_world = pxr.Gf.Matrix4d(_world_xform(robot_prim))
+    prim_world = pxr.Gf.Matrix4d(_world_xform(prim))
     return _mat4_to_transform(prim_world * robot_world.GetInverse())

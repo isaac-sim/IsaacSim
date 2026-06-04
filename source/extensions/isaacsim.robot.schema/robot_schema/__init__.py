@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,12 +12,56 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Robot schema helpers and applied schema utilities."""
-from enum import Enum
 
-import carb
+"""Robot schema helpers and applied schema utilities."""
+
+from __future__ import annotations
+
+import logging
+import os
+from enum import Enum
+from functools import lru_cache
+
 import pxr
-from pxr import Sdf, Usd
+from pxr import Sdf, Usd  # noqa: F401 — Usd is used through pxr.Usd annotations.
+
+logger = logging.getLogger(__name__)
+
+_SCHEMA_USDA_PATH = os.path.join(os.path.dirname(__file__), "RobotSchema.usda")
+
+
+@lru_cache(maxsize=None)
+def _get_schema_layer() -> Sdf.Layer | None:
+    """Open the RobotSchema.usda file as an Sdf layer (cached)."""
+    return Sdf.Layer.FindOrOpen(_SCHEMA_USDA_PATH)
+
+
+def get_allowed_tokens(attribute: "Attributes") -> tuple[str, ...]:
+    """Return the ``allowedTokens`` list for a robot schema attribute.
+
+    Reads the list directly from the bundled ``RobotSchema.usda`` so the
+    Python-side tuple stays in sync with the authored schema.
+
+    Args:
+        attribute: The schema attribute to query (only Token-typed
+            attributes define allowed tokens).
+
+    Returns:
+        Tuple of allowed token strings, or an empty tuple if the
+        attribute has no ``allowedTokens`` metadata.
+    """
+    layer = _get_schema_layer()
+    if layer is None:
+        logger.warning("Could not open RobotSchema.usda at %s", _SCHEMA_USDA_PATH)
+        return ()
+
+    # IsaacRobotAPI/isaac:robotType -> /IsaacRobotAPI.isaac:robotType
+    for class_name in ("IsaacRobotAPI", "IsaacJointAPI", "IsaacSurfaceGripper", "IsaacAttachmentPointAPI"):
+        attr_spec = layer.GetAttributeAtPath(f"/{class_name}.{attribute.name}")
+        if attr_spec is not None:
+            tokens = attr_spec.GetInfo("allowedTokens") or []
+            return tuple(str(t) for t in tokens)
+    return ()
 
 
 class Classes(Enum):
@@ -134,6 +178,7 @@ class Attributes(Enum):
         .. code-block:: python
 
             attr_name = Attributes.DESCRIPTION.name
+
         """
         return self.value[0]
 
@@ -149,6 +194,7 @@ class Attributes(Enum):
         .. code-block:: python
 
             label = Attributes.DESCRIPTION.display_name
+
         """
         return self.value[1]
 
@@ -164,6 +210,7 @@ class Attributes(Enum):
         .. code-block:: python
 
             attr_type = Attributes.DESCRIPTION.type
+
         """
         return self.value[2]
 
@@ -200,6 +247,7 @@ class Relations(Enum):
         .. code-block:: python
 
             rel_name = Relations.ROBOT_LINKS.name
+
         """
         return self.value[0]
 
@@ -215,6 +263,7 @@ class Relations(Enum):
         .. code-block:: python
 
             label = Relations.ROBOT_LINKS.display_name
+
         """
         return self.value[1]
 
@@ -226,6 +275,7 @@ def _create_attributes(prim: pxr.Usd.Prim, attributes, write_sparsely: bool = Tr
         prim: The prim to receive attributes.
         attributes: Iterable of attribute descriptors to create.
         write_sparsely: Whether to author sparse values.
+
     """
     for attr in attributes:
         prim.CreateAttribute(attr.name, attr.type, write_sparsely)
@@ -238,6 +288,7 @@ def _create_relationships(prim: pxr.Usd.Prim, relationships, custom: bool = True
         prim: The prim to receive relationships.
         relationships: Iterable of relationship descriptors to create.
         custom: Whether to create custom relationships.
+
     """
     for rel in relationships:
         prim.CreateRelationship(rel.name, custom=custom)
@@ -254,6 +305,12 @@ def _apply_api(
 ):
     """Apply a schema API and create related attributes and relationships.
 
+    No-op when ``prim`` already has ``schema`` applied anywhere in its layer
+    stack. The redundant ``AddAppliedSchema`` write would otherwise dirty
+    ``apiSchemas`` metadata on every recalc traversal, forcing USD to
+    re-resolve the prim and resetting any session-only or override pose data
+    keyed on the previous composition state.
+
     Args:
         prim: The prim to update.
         schema: The schema class token to apply.
@@ -261,7 +318,10 @@ def _apply_api(
         relationships: Iterable of relationship descriptors to create.
         write_sparsely: Whether to author sparse values.
         relationships_custom: Whether to create custom relationships.
+
     """
+    if prim.HasAPI(schema.value):
+        return
     prim.AddAppliedSchema(schema.value)
     _create_attributes(prim, attributes, write_sparsely)
     _create_relationships(prim, relationships, relationships_custom)
@@ -278,6 +338,7 @@ def ApplyRobotAPI(prim: pxr.Usd.Prim):
     .. code-block:: python
 
         ApplyRobotAPI(robot_prim)
+
     """
     _apply_api(
         prim,
@@ -302,6 +363,7 @@ def ApplyLinkAPI(prim: pxr.Usd.Prim):
     .. code-block:: python
 
         ApplyLinkAPI(link_prim)
+
     """
     _apply_api(prim, Classes.LINK_API)
 
@@ -317,6 +379,7 @@ def ApplySiteAPI(prim: pxr.Usd.Prim):
     .. code-block:: python
 
         ApplySiteAPI(site_prim)
+
     """
     _apply_api(prim, Classes.SITE_API)
 
@@ -332,8 +395,9 @@ def ApplyReferencePointAPI(prim: pxr.Usd.Prim):
     .. code-block:: python
 
         ApplyReferencePointAPI(reference_prim)
+
     """
-    carb.log_warn("ApplyReferencePointAPI is deprecated. Use ApplySiteAPI instead.")
+    logger.warning("ApplyReferencePointAPI is deprecated. Use ApplySiteAPI instead.")
     _apply_api(prim, Classes.SITE_API)
     # for attr in [Attributes.REFERENCE_DESCRIPTION, Attributes.FORWARD_AXIS]:
     #     prim.CreateAttribute(attr.name, attr.type, True)
@@ -350,6 +414,7 @@ def ApplyJointAPI(prim: pxr.Usd.Prim):
     .. code-block:: python
 
         ApplyJointAPI(joint_prim)
+
     """
     _apply_api(prim, Classes.JOINT_API)
 
@@ -369,6 +434,7 @@ def CreateSurfaceGripper(stage: pxr.Usd.Stage, prim_path: str) -> pxr.Usd.Prim:
     .. code-block:: python
 
         gripper_prim = CreateSurfaceGripper(stage, "/World/Gripper")
+
     """
     # Create the prim
     prim = stage.DefinePrim(prim_path, Classes.SURFACE_GRIPPER.value)
@@ -407,6 +473,7 @@ def ApplyAttachmentPointAPI(prim: pxr.Usd.Prim):
     .. code-block:: python
 
         ApplyAttachmentPointAPI(attachment_prim)
+
     """
     _apply_api(prim, Classes.ATTACHMENT_POINT_API)
     # for attr in [Attributes.FORWARD_AXIS, Attributes.CLEARANCE_OFFSET]:
@@ -428,6 +495,7 @@ def CreateNamedPose(stage: pxr.Usd.Stage, prim_path: str) -> pxr.Usd.Prim:
     .. code-block:: python
 
         named_pose_prim = CreateNamedPose(stage, "/World/Robot/HomePose")
+
     """
     prim = stage.DefinePrim(prim_path, Classes.NAMED_POSE.value)
     _create_attributes(

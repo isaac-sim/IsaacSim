@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Writer for the DOPE (Deep Object Pose Estimation) dataset format."""
-
 
 import io
 import json
@@ -190,7 +189,8 @@ class DOPEWriter(Writer):
         )
 
     def setup_writer(config_data: dict, writer_config: dict):
-        """Initialize writer and attach render product
+        """Initialize writer and attach render product.
+
         Args:
             config_data: A dictionary containing the general configurations for the script.
             writer_config: A dictionary containing writer-specific configurations.
@@ -292,7 +292,7 @@ class DOPEWriter(Writer):
         return self._last_frame_is_valid
 
     def is_last_frame_valid(self) -> bool:
-        """Checks if the last frame was valid (training data was present).
+        """Check if the last frame was valid (training data was present).
 
         Returns:
             bool: True if the last frame was valid, False otherwise.

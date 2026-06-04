@@ -28,6 +28,9 @@ def _register_plugin_path(path: str):
 
     Args:
         path: Directory path containing the plugInfo.json file.
+
+    Returns:
+        None. Exits early if the plugInfo.json file does not exist or all plugins are already registered.
     """
     pluginfo_path = os.path.join(path, "plugInfo.json")
     if not os.path.exists(pluginfo_path):

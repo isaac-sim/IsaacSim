@@ -1,13 +1,13 @@
 <project toolsVersion="5.6">
     <dependency name="nv_ros2_humble" linkPath="../_build/target-deps/nv_ros2_humble">
-        <package name="nv_ros2" version="humble_py_3.12_20251028_aa86b94_manylinux_2_35_aarch64_release" platforms="manylinux_2_35_aarch64"/>
-        <package name="nv_ros2" version="humble_py_3.12_20251028_aa86b94_manylinux_2_35_x86_64_release" platforms="manylinux_2_35_x86_64"/>
-        <package name="nv_ros2" version="humble_py_3.12_20251103_aa86b94_windows-x86_64_release" platforms="windows-x86_64"/>
+        <package name="nv_ros2" version="humble_py_3.12_20260507_c78034f_manylinux_2_35_aarch64_release" platforms="manylinux_2_35_aarch64"/>
+        <package name="nv_ros2" version="humble_py_3.12_20260507_c78034f_manylinux_2_35_x86_64_release" platforms="manylinux_2_35_x86_64"/>
+        <package name="nv_ros2" version="humble_py_3.12_20260417_windows-x86_64_release" platforms="windows-x86_64"/>
     </dependency>
     <dependency name="nv_ros2_jazzy" linkPath="../_build/target-deps/nv_ros2_jazzy">
-        <package name="nv_ros2" version="jazzy_py_3.12_20251028_aa86b94_manylinux_2_35_aarch64_release" platforms="manylinux_2_35_aarch64"/>
-        <package name="nv_ros2" version="jazzy_py_3.12_20251028_aa86b94_manylinux_2_35_x86_64_release" platforms="manylinux_2_35_x86_64"/>
-        <package name="nv_ros2" version="jazzy_py_3.12_20251103_aa86b94_windows-x86_64_release" platforms="windows-x86_64"/>
+        <package name="nv_ros2" version="jazzy_py_3.12_20260415_37804c2_manylinux_2_35_aarch64_release" platforms="manylinux_2_35_aarch64"/>
+        <package name="nv_ros2" version="jazzy_py_3.12_20260414_37804c2_manylinux_2_35_x86_64_release" platforms="manylinux_2_35_x86_64"/>
+        <package name="nv_ros2" version="jazzy_py_3.12_20260417_windows-x86_64_release" platforms="windows-x86_64"/>
     </dependency>
     <dependency name="lula" linkPath="../_build/target-deps/lula">
         <package name="lula" version="v0.10.1_b351d9b.linux-x86_64.py312.release" platforms="manylinux_2_35_x86_64"/>
@@ -29,19 +29,22 @@
         <package name="tinyxml2" version="linux_aarch64_20250203_2c5a6bf" platforms="manylinux_2_35_aarch64" />
         <package name="tinyxml2" version="win_x64_20200824_2c5a6bf" platforms="windows-x86_64" />
     </dependency>
-    <dependency name="omni-isaacsim-schema" linkPath="../_build/target-deps/omni-isaacsim-schema/${platform_target}/${config}">
-        <package name="omniisaacsimschemas_openusd_0.25.11_py_3.12" version="4.0.0-gl.55.358525d9.${platform_target_abi}.${config}"/>
-    </dependency>
-    <dependency name="nlohmann_json" linkPath="../_build/target-deps/nlohmann_json">
+<dependency name="nlohmann_json" linkPath="../_build/target-deps/nlohmann_json">
         <package name="nlohmann_json" version="3.11.3-a3143f5-0"/>
    </dependency>
+    <dependency name="flatbuffers" linkPath="../_build/target-deps/flatbuffers-release">
+        <package name="flatbuffers" version="22.12.06-1-${platform}-static-release" />
+    </dependency>
   <dependency name="generic_model_output_${config}" linkPath="../_build/target-deps/generic_model_output/${platform_target}/${config}">
-    <package name="generic-model-output" version="110.0.0+feature.276876.4a5123f4.gl.${platform_target_abi}.${config}"/>
+    <package name="generic-model-output" version="110.1.1+production.305458.6312fa25.gl.${platform_target_abi}.${config}"/>
   </dependency>
   <dependency name="rapidjson" linkPath="../_build/target-deps/rapidjson">
     <package name="rapidjson" version="5.2.1-5-b4cf59b6" />
   </dependency>
   <dependency name="sensor-checker" linkPath="../_build/target-deps/sensor-checker/${platform_target}/${config}">
-    <package name="sensor-checker" version="110.0.0+feature.276876.4a5123f4.gl.${platform_target_abi}.${config}"/>
+    <package name="sensor-checker" version="110.1.1+production.305458.6312fa25.gl.${platform_target_abi}.${config}"/>
+  </dependency>
+  <dependency name="hsb_emulator" linkPath="../_build/target-deps/hsb_emulator">
+    <package name="hsb_emulator" version="2.6.0-EA.${platform_target_abi}" platforms="manylinux_2_35_x86_64 manylinux_2_35_aarch64"/>
   </dependency>
 </project>

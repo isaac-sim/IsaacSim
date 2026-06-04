@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,20 +15,19 @@
 
 """Base classes for creating wrappers around Omni UI widgets to provide simplified interfaces for specific widget types."""
 
-
 import omni.ui as ui
-from isaacsim.gui.components.ui_utils import get_style
 
 
 class UIWidgetWrapper:
-    """Base class for creating wrappers around any subclass of omni.ui.Widget in order to provide an easy interface
+    """Base class for creating wrappers around any subclass of omni.ui.Widget in order to provide an easy interface.
+
     for creating and managing specific types of widgets such as state buttons or file pickers.
 
     Args:
         container_frame: The Omni UI frame that contains the widget.
     """
 
-    def __init__(self, container_frame: ui.Frame):
+    def __init__(self, container_frame: ui.Frame) -> None:
         self._container_frame = container_frame
 
     @property
@@ -50,7 +49,7 @@ class UIWidgetWrapper:
         return self.container_frame.enabled
 
     @enabled.setter
-    def enabled(self, value: bool):
+    def enabled(self, value: bool) -> None:
         self.container_frame.enabled = value
 
     @property
@@ -63,9 +62,8 @@ class UIWidgetWrapper:
         return self.container_frame.visible
 
     @visible.setter
-    def visible(self, value: bool):
+    def visible(self, value: bool) -> None:
         self.container_frame.visible = value
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Perform any necessary cleanup."""
-        pass

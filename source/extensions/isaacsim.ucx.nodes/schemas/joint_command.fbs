@@ -1,0 +1,31 @@
+include "tensor.fbs";
+include "header.fbs";
+
+namespace isaac;
+
+// Specifies a command to be applied to a set of torque-controlled joints.
+table JointCommand {
+
+  // Header
+  header: Header (id: 0);
+
+  // Names of the joints.
+  name: [string] (id: 1);
+
+  // Target position (q) of each joint (radians or meters).
+  position: Tensor (id: 2);
+
+  // Target velocity (dq) of each joint (radians/second or meters/second).
+  velocity: Tensor (id: 3);
+
+  // Target effort (tau) to apply in each joint (Newton meters or Newtons).
+  effort: Tensor (id: 4);
+
+  // Proportional gain (Kp) of the PID controller, representing the stiffness of each joint.
+  kp: Tensor (id: 5);
+
+  // Derivative gain (Kd) of the PID controller, representing the damping of each joint.
+  kd: Tensor (id: 6);
+}
+
+root_type JointCommand;

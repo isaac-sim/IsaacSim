@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.robot_setup.grasp_editor extension provides functionality for importing and managing robot grasps from YAML files. It enables robotic manipulation tasks by offering tools to parse grasp specifications and perform coordinate transformations between gripper and object poses.
@@ -12,11 +8,11 @@ This extension processes isaac_grasp YAML files to create structured grasp data 
 
 ### Grasp Import and Management
 
-The extension loads grasp specifications from YAML files using the [import_grasps_from_file](isaacsim.robot_setup.grasp_editor/isaacsim.robot_setup.grasp_editor.import_grasps_from_file) function, which returns a [GraspSpec](isaacsim.robot_setup.grasp_editor/isaacsim.robot_setup.grasp_editor.GraspSpec) object containing all parsed grasp data. Each grasp specification includes position, orientation, confidence values, and joint configurations that define how a gripper should approach and grasp an object.
+The extension loads grasp specifications from YAML files using the {func}`import_grasps_from_file <isaacsim.robot_setup.grasp_editor.import_grasps_from_file>` function, which returns a {class}`GraspSpec <isaacsim.robot_setup.grasp_editor.GraspSpec>` object containing all parsed grasp data. Each grasp specification includes position, orientation, confidence values, and joint configurations that define how a gripper should approach and grasp an object.
 
 ### Coordinate Frame Transformations
 
-The [GraspSpec](isaacsim.robot_setup.grasp_editor/isaacsim.robot_setup.grasp_editor.GraspSpec) class provides bidirectional pose transformation methods:
+The {class}`GraspSpec <isaacsim.robot_setup.grasp_editor.GraspSpec>` class provides bidirectional pose transformation methods:
 
 - `compute_gripper_pose_from_rigid_body_pose`: Calculates the required gripper position and orientation given an object's pose in the world
 - `compute_rigid_body_pose_from_gripper_pose`: Determines the object's position and orientation given a gripper's pose

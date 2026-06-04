@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Benchmark RTX radar sensor performance in Isaac Sim."""
+
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -25,21 +27,26 @@ parser.add_argument(
     choices=["LocalLogMetrics", "JSONFileMetrics", "OsmoKPIFile", "OmniPerfKPIFile"],
     help="Benchmarking backend, defaults",
 )
+parser.add_argument(
+    "--tick-rate", type=float, default=0.0, help="Tick rate for radar sensors (Hz). 0.0 means default rate."
+)
 
 args, unknown = parser.parse_known_args()
 
 n_sensor = args.num_sensors
 n_frames = args.num_frames
 n_gpus = args.num_gpus
+tick_rate = args.tick_rate
 
 from isaacsim import SimulationApp
 
-simulation_app = SimulationApp({"headless": True, "max_gpu_count": n_gpus})
+simulation_app = SimulationApp({"headless": True, "enable_motion_bvh": True, "max_gpu_count": n_gpus})
 
 import carb
 import omni.kit.test
 import omni.replicator.core as rep
 from isaacsim.core.utils.extensions import enable_extension
+from isaacsim.sensors.experimental.rtx import Radar
 from pxr import Gf
 
 enable_extension("isaacsim.benchmark.services")
@@ -48,15 +55,22 @@ from isaacsim.benchmark.services import BaseIsaacBenchmark
 
 # Create RTX Radar from params
 def add_rtx_radar(prim_path, sensor_translation, sensor_orientation):
-    _, sensor = omni.kit.commands.execute(
-        "IsaacSensorCreateRtxRadar",
+    """Create an RTX radar sensor at the specified path and transform."""
+    radar = Radar.create(
         path=prim_path,
-        parent=None,
-        config="Example",
-        translation=sensor_translation,
-        orientation=sensor_orientation,
+        translations=[
+            sensor_translation[0],
+            sensor_translation[1],
+            sensor_translation[2],
+        ],
+        orientations=[
+            sensor_orientation.GetReal(),
+            sensor_orientation.GetImaginary()[0],
+            sensor_orientation.GetImaginary()[1],
+            sensor_orientation.GetImaginary()[2],
+        ],
     )
-    return sensor
+    return radar.prims[0]
 
 
 # ----------------------------------------------------------------------
@@ -85,6 +99,11 @@ for i in range(n_sensor):
     sensor_translation = Gf.Vec3f([-0.937, -2.0 + i * 2.0, 0.8940])  # defined for full_warehouse.usd
     sensor_orientation = Gf.Quatd(0.70711, 0.70711, 0, 0)
     sensor = add_rtx_radar(radar_path, sensor_translation, sensor_orientation)
+    if sensor is None:
+        carb.log_error(f"Failed to create RTX radar at {radar_path}. Ensure Motion BVH is enabled.")
+        continue
+    if tick_rate > 0:
+        sensor.GetAttribute("omni:sensor:tickRate").Set(tick_rate)
     sensors.append(sensor)
 
     hydra = rep.create.render_product(sensor.GetPath(), [1, 1], name="Isaac")
@@ -99,7 +118,7 @@ for i in range(n_sensor):
     omni.kit.app.get_app().update()
 
 benchmark.store_measurements()
-benchmark.set_phase("benchmark")
+benchmark.set_phase("benchmark", warmup_frames=15)
 
 timeline = omni.timeline.get_timeline_interface()
 timeline.play()

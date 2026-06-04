@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
 """Style and color constants for the Robot Poser UI."""
 
 import pathlib
+from typing import Any
 
 import omni.kit.app
 import omni.ui as ui
@@ -180,7 +181,7 @@ def get_property_style() -> dict:
     }
 
 
-def get_style():
+def get_style() -> dict[str, Any]:
     """Return the omni.ui style dictionary for the Robot Poser extension.
 
     Returns:

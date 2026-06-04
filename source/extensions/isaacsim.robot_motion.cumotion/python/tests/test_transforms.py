@@ -25,17 +25,22 @@ import warp as wp
 class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
     """Test suite for transforms utilities with Franka robot."""
 
-    async def setUp(self):
-        pass
+    async def setUp(self) -> None:
+        """Sets up the test environment before each test method."""
 
-    async def tearDown(self):
-        pass
+    async def tearDown(self) -> None:
+        """Cleans up the test environment after each test method."""
 
     # ============================================================================
     # Test initialization
     # ============================================================================
 
-    async def test_isaac_sim_to_cumotion_translations_with_identity_base_frame(self):
+    async def test_isaac_sim_to_cumotion_translations_with_identity_base_frame(self) -> None:
+        """Tests Isaac Sim to cumotion translation conversion with an identity base frame.
+
+        Verifies that when the world and base frames coincide (identity transformation),
+        the translation remains unchanged during conversion.
+        """
         # Identity base frame (world and base coincide):
         position_world_to_base = np.array([0.0, 0.0, 0.0])
         quaternion_world_to_base = np.array([1.0, 0.0, 0.0, 0.0])
@@ -47,7 +52,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
         )
         self.assertTrue(np.allclose(cumotion_translation, [1.0, 0.0, 0.0]))
 
-    async def test_isaac_sim_to_cumotion_translations_with_translated_base_frame(self):
+    async def test_isaac_sim_to_cumotion_translations_with_translated_base_frame(self) -> None:
+        """Tests Isaac Sim to cumotion translation conversion with a translated base frame.
+
+        Verifies that translations are correctly adjusted when the base frame is shifted
+        relative to the world frame.
+        """
         # Shift the base frame back one unit in the world:
         position_world_to_base = np.array([-1.0, 0.0, 0.0])
         quaternion_world_to_base = np.array([1.0, 0.0, 0.0, 0.0])
@@ -59,7 +69,13 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
         )
         self.assertTrue(np.allclose(cumotion_translation, [2.0, 0.0, 0.0]))
 
-    async def test_isaac_sim_to_cumotion_translations_with_translated_and_rotated_base_frame(self):
+    async def test_isaac_sim_to_cumotion_translations_with_translated_and_rotated_base_frame(self) -> None:
+        """Tests Isaac Sim to cumotion translation conversion with translated and rotated base frame.
+
+        Verifies that translations are correctly transformed when the base frame has both
+        translational and rotational offsets relative to the world frame. Tests rotations
+        about x, y, and z axes.
+        """
         # Rotate the base frame 90 degrees about the y-axis,
         # which should now mean the target point is at +2 in the z-direction:
         position_world_to_base = np.array([-1.0, 0.0, 0.0])
@@ -102,7 +118,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
         )
         self.assertTrue(np.allclose(cumotion_translation, [0.0, -2.0, 0.0]))
 
-    async def test_degenerate_inputs_isaac_sim_to_cumotion_translation(self):
+    async def test_degenerate_inputs_isaac_sim_to_cumotion_translation(self) -> None:
+        """Tests that invalid inputs raise appropriate errors for Isaac Sim to cumotion translation.
+
+        Verifies that ValueError is raised for translations with incorrect dimensions
+        or batch sizes.
+        """
         with self.assertRaises(ValueError):
             # attempt to pass a translation which is not of size 3:
             cumotion_translation = cu_mg.impl.utils.isaac_sim_to_cumotion_translation(
@@ -119,7 +140,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
     # Test cumotion_to_isaac_sim_translation
     # ============================================================================
 
-    async def test_cumotion_to_isaac_sim_translation_with_identity_base_frame(self):
+    async def test_cumotion_to_isaac_sim_translation_with_identity_base_frame(self) -> None:
+        """Tests cumotion to Isaac Sim translation conversion with an identity base frame.
+
+        Verifies that when the world and base frames coincide (identity transformation),
+        the translation remains unchanged during conversion.
+        """
         # Identity base frame:
         position_world_to_base = np.array([0.0, 0.0, 0.0])
         quaternion_world_to_base = np.array([1.0, 0.0, 0.0, 0.0])
@@ -131,7 +157,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
         )
         self.assertTrue(np.allclose(isaac_sim_translation.numpy(), [1.0, 0.0, 0.0]))
 
-    async def test_cumotion_to_isaac_sim_translation_with_translated_base_frame(self):
+    async def test_cumotion_to_isaac_sim_translation_with_translated_base_frame(self) -> None:
+        """Tests cumotion to Isaac Sim translation conversion with a translated base frame.
+
+        Verifies that translations are correctly adjusted when the base frame is shifted
+        relative to the world frame.
+        """
         # Shift the base frame back one unit in the world:
         position_world_to_base = np.array([-1.0, 0.0, 0.0])
         quaternion_world_to_base = np.array([1.0, 0.0, 0.0, 0.0])
@@ -143,7 +174,13 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
         )
         self.assertTrue(np.allclose(isaac_sim_translation.numpy(), [1.0, 0.0, 0.0]))
 
-    async def test_cumotion_to_isaac_sim_translation_with_translated_and_rotated_base_frame(self):
+    async def test_cumotion_to_isaac_sim_translation_with_translated_and_rotated_base_frame(self) -> None:
+        """Tests cumotion to Isaac Sim translation conversion with translated and rotated base frame.
+
+        Verifies that translations are correctly transformed when the base frame has both
+        translational and rotational offsets relative to the world frame. Tests rotations
+        about x, y, and z axes.
+        """
         # Rotate the base frame 90 degrees about the y-axis:
         position_world_to_base = np.array([-1.0, 0.0, 0.0])
         quaternion_world_to_base = np.array(
@@ -183,7 +220,11 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
         )
         self.assertTrue(np.allclose(isaac_sim_translation.numpy(), [1.0, 0.0, 0.0]))
 
-    async def test_degenerate_inputs_cumotion_to_isaac_sim_translation(self):
+    async def test_degenerate_inputs_cumotion_to_isaac_sim_translation(self) -> None:
+        """Tests that invalid inputs raise appropriate errors for cumotion to Isaac Sim translation.
+
+        Verifies that ValueError is raised for translations with incorrect dimensions.
+        """
         with self.assertRaises(ValueError):
             # attempt to pass a translation which is not of size 3:
             isaac_sim_translation = cu_mg.impl.utils.cumotion_to_isaac_sim_translation(
@@ -194,7 +235,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
     # Test isaac_sim_to_cumotion_rotation
     # ============================================================================
 
-    async def test_rotations_with_identity_base_frame(self):
+    async def test_rotations_with_identity_base_frame(self) -> None:
+        """Tests rotation conversion with identity base frame.
+
+        Verifies that rotations are correctly converted from Isaac Sim to cumotion coordinate system
+        when the base frame is identity (world and base frames coincide).
+        """
         # Identity base frame with identity rotation:
         quaternion_world_to_base = np.array([1.0, 0.0, 0.0, 0.0])
 
@@ -209,7 +255,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
             )
         )
 
-    async def test_rotations_with_rotated_base_frame(self):
+    async def test_rotations_with_rotated_base_frame(self) -> None:
+        """Tests rotation conversion with rotated base frame.
+
+        Verifies that rotations are correctly converted from Isaac Sim to cumotion coordinate system
+        when the base frame is rotated 90 degrees about the y-axis relative to the world frame.
+        """
         # Rotate the base frame 90 degrees about the y-axis:
         quaternion_world_to_base = np.array(
             [np.cos(np.pi / 4), 0.0, np.sin(np.pi / 4), 0.0]  # rotation of 90 degrees about the y-axis
@@ -231,7 +282,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
             )
         )
 
-    async def test_rotation_composition(self):
+    async def test_rotation_composition(self) -> None:
+        """Tests rotation composition in coordinate frame conversion.
+
+        Verifies that rotation composition works correctly when converting between coordinate frames,
+        specifically testing a case where the result should be 180 degrees about the y-axis.
+        """
         # Base frame is rotated by -90 degrees about the y-axis
         quaternion_world_to_base = np.array(
             [np.cos(np.pi / 4), 0.0, -np.sin(np.pi / 4), 0.0]  # 90 degrees about y-axis
@@ -253,7 +309,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
             )
         )
 
-    async def test_degenerate_inputs_rotation(self):
+    async def test_degenerate_inputs_rotation(self) -> None:
+        """Tests error handling for invalid rotation inputs.
+
+        Verifies that appropriate ValueError is raised when attempting to pass rotation data
+        with incorrect dimensions (not size 4).
+        """
         with self.assertRaises(ValueError):
             # attempt to pass a rotation which is not of size 4:
             cumotion_rotation = cu_mg.impl.utils.isaac_sim_to_cumotion_rotation(
@@ -264,7 +325,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
     # Test cumotion_to_isaac_sim_rotation
     # ============================================================================
 
-    async def test_cumotion_to_isaac_sim_rotation_with_identity_base_frame(self):
+    async def test_cumotion_to_isaac_sim_rotation_with_identity_base_frame(self) -> None:
+        """Tests rotation conversion from cumotion to Isaac Sim with identity base frame.
+
+        Verifies that rotations are correctly converted from cumotion to Isaac Sim coordinate system
+        when the base frame is identity (world and base frames coincide).
+        """
         # Identity base frame with identity rotation:
         quaternion_world_to_base = np.array([1.0, 0.0, 0.0, 0.0])
 
@@ -274,7 +340,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
         )
         self.assertTrue(np.allclose(isaac_sim_rotation.numpy(), [1.0, 0.0, 0.0, 0.0]))
 
-    async def test_cumotion_to_isaac_sim_rotation_with_rotated_base_frame(self):
+    async def test_cumotion_to_isaac_sim_rotation_with_rotated_base_frame(self) -> None:
+        """Tests rotation conversion from cumotion to Isaac Sim with rotated base frame.
+
+        Verifies that rotations are correctly converted from cumotion to Isaac Sim coordinate system
+        when the base frame is rotated 90 degrees about the y-axis, testing composition of rotations.
+        """
         # Rotate the base frame 90 degrees about the y-axis:
         quaternion_world_to_base = np.array(
             [np.cos(np.pi / 4), 0.0, np.sin(np.pi / 4), 0.0]  # rotation of 90 degrees about the y-axis
@@ -289,7 +360,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
         # In world frame, this should be 180 degrees about the y-axis:
         self.assertTrue(np.allclose(isaac_sim_rotation.numpy(), [0.0, 0.0, 1.0, 0.0]))
 
-    async def test_cumotion_to_isaac_sim_rotation_round_trip(self):
+    async def test_cumotion_to_isaac_sim_rotation_round_trip(self) -> None:
+        """Tests round-trip conversion of rotations between coordinate systems.
+
+        Verifies that converting a rotation from Isaac Sim to cumotion and back to Isaac Sim
+        produces the original rotation values, ensuring conversion accuracy.
+        """
         # Test that converting to cumotion and back gives the same rotation:
         quaternion_world_to_base = np.array([np.cos(np.pi / 4), 0.0, np.sin(np.pi / 4), 0.0])
 
@@ -309,16 +385,25 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
 
         self.assertTrue(np.allclose(isaac_sim_rotation.numpy(), rotation_world_to_target_original.numpy()))
 
-    async def test_degenerate_inputs_cumotion_to_isaac_sim_rotation(self):
+    async def test_degenerate_inputs_cumotion_to_isaac_sim_rotation(self) -> None:
+        """Tests error handling for cumotion to Isaac Sim rotation conversion.
+
+        This test is intentionally empty as the function accepts a cumotion.Rotation3 object
+        which is always valid by construction.
+        """
         # This test is intentionally empty as there's no degenerate input case for this function
         # The function accepts a cumotion.Rotation3 object which is always valid
-        pass
 
     # ============================================================================
     # Test isaac_sim_to_cumotion_pose
     # ============================================================================
 
-    async def test_pose_with_identity_base_frame(self):
+    async def test_pose_with_identity_base_frame(self) -> None:
+        """Tests pose conversion with identity base frame.
+
+        Verifies that poses (position and orientation) are correctly converted from Isaac Sim
+        to cumotion coordinate system when the base frame is identity.
+        """
         # Identity base frame:
         position_world_to_base = np.array([0.0, 0.0, 0.0])
         quaternion_world_to_base = np.array([1.0, 0.0, 0.0, 0.0])
@@ -342,7 +427,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
             )
         )
 
-    async def test_pose_with_translated_base_frame(self):
+    async def test_pose_with_translated_base_frame(self) -> None:
+        """Tests pose conversion with translated base frame.
+
+        Verifies that poses are correctly converted from Isaac Sim to cumotion coordinate system
+        when the base frame is translated by one unit in the negative x-direction.
+        """
         # Shift the base frame back one unit in the world:
         position_world_to_base = np.array([-1.0, 0.0, 0.0])
         quaternion_world_to_base = np.array([1.0, 0.0, 0.0, 0.0])
@@ -366,7 +456,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
             )
         )
 
-    async def test_pose_with_translated_and_rotated_base_frame(self):
+    async def test_pose_with_translated_and_rotated_base_frame(self) -> None:
+        """Tests isaac_sim_to_cumotion_pose with a translated and rotated base frame.
+
+        Verifies that pose conversion correctly handles a base frame that is both translated and rotated
+        relative to the world coordinate system.
+        """
         # Base frame is rotated by -90 degrees about the y-axis
         position_world_to_base = np.array([-1.0, 0.0, 0.0])
         quaternion_world_to_base = np.array(
@@ -395,7 +490,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
             )
         )
 
-    async def test_pose_accepts_different_input_types(self):
+    async def test_pose_accepts_different_input_types(self) -> None:
+        """Tests isaac_sim_to_cumotion_pose accepts various input data types.
+
+        Verifies that the pose conversion function correctly handles different input formats including
+        Warp arrays, NumPy arrays, and Python lists.
+        """
         # Test with numpy arrays:
         cumotion_pose = cu_mg.impl.utils.isaac_sim_to_cumotion_pose(
             position_world_to_target=np.array([1.0, 0.0, 0.0]),
@@ -409,7 +509,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
         )
         self.assertTrue(np.allclose(cumotion_pose.translation, [1.0, 0.0, 0.0]))
 
-    async def test_degenerate_inputs_pose(self):
+    async def test_degenerate_inputs_pose(self) -> None:
+        """Tests isaac_sim_to_cumotion_pose with invalid input dimensions.
+
+        Verifies that appropriate ValueError exceptions are raised when position or orientation inputs
+        have incorrect dimensions.
+        """
         with self.assertRaises(ValueError):
             # attempt to pass a position which is not of size 3:
             cumotion_pose = cu_mg.impl.utils.isaac_sim_to_cumotion_pose(
@@ -428,7 +533,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
     # Test cumotion_to_isaac_sim_pose
     # ============================================================================
 
-    async def test_cumotion_to_isaac_sim_pose_with_identity_base_frame(self):
+    async def test_cumotion_to_isaac_sim_pose_with_identity_base_frame(self) -> None:
+        """Tests cumotion_to_isaac_sim_pose with an identity base frame.
+
+        Verifies that pose conversion from Cumotion to Isaac Sim coordinate system works correctly when
+        the base frame coincides with the world frame.
+        """
         # Identity base frame:
         position_world_to_base = np.array([0.0, 0.0, 0.0])
         quaternion_world_to_base = np.array([1.0, 0.0, 0.0, 0.0])
@@ -443,7 +553,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(isaac_sim_position.numpy(), [1.0, 0.0, 0.0]))
         self.assertTrue(np.allclose(isaac_sim_orientation.numpy(), [1.0, 0.0, 0.0, 0.0]))
 
-    async def test_cumotion_to_isaac_sim_pose_with_translated_base_frame(self):
+    async def test_cumotion_to_isaac_sim_pose_with_translated_base_frame(self) -> None:
+        """Tests cumotion_to_isaac_sim_pose with a translated base frame.
+
+        Verifies that pose conversion correctly handles a base frame that is translated relative to the
+        world coordinate system.
+        """
         # Shift the base frame back one unit in the world:
         position_world_to_base = np.array([-1.0, 0.0, 0.0])
         quaternion_world_to_base = np.array([1.0, 0.0, 0.0, 0.0])
@@ -458,7 +573,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(isaac_sim_position.numpy(), [1.0, 0.0, 0.0]))
         self.assertTrue(np.allclose(isaac_sim_orientation.numpy(), [1.0, 0.0, 0.0, 0.0]))
 
-    async def test_cumotion_to_isaac_sim_pose_with_translated_and_rotated_base_frame(self):
+    async def test_cumotion_to_isaac_sim_pose_with_translated_and_rotated_base_frame(self) -> None:
+        """Tests cumotion_to_isaac_sim_pose with a translated and rotated base frame.
+
+        Verifies that pose conversion correctly handles a base frame that is both translated and rotated
+        relative to the world coordinate system, including proper composition of transformations.
+        """
         # Base frame is rotated by -90 degrees about the y-axis
         position_world_to_base = np.array([-1.0, 0.0, 0.0])
         quaternion_world_to_base = np.array(
@@ -479,7 +599,12 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
         # In world frame, this should be identity rotation (the two 90 degree rotations cancel)
         self.assertTrue(np.allclose(isaac_sim_orientation.numpy(), [1.0, 0.0, 0.0, 0.0]))
 
-    async def test_cumotion_to_isaac_sim_pose_round_trip(self):
+    async def test_cumotion_to_isaac_sim_pose_round_trip(self) -> None:
+        """Tests round-trip conversion between Isaac Sim and Cumotion pose representations.
+
+        Verifies that converting a pose from Isaac Sim to Cumotion and back to Isaac Sim preserves the
+        original pose data with complex base frame transformations.
+        """
         # Test that converting to cumotion and back gives the same pose:
         position_world_to_base = np.array([-1.0, 2.0, 0.5])
         quaternion_world_to_base_parts = [
@@ -525,7 +650,11 @@ class TestCumotionToIsaacSimTransforms(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(isaac_sim_position.numpy(), position_world_to_target_original.numpy()))
         self.assertTrue(np.allclose(isaac_sim_orientation.numpy(), orientation_world_to_target_original.numpy()))
 
-    async def test_degenerate_inputs_cumotion_to_isaac_sim_pose(self):
+    async def test_degenerate_inputs_cumotion_to_isaac_sim_pose(self) -> None:
+        """Tests cumotion_to_isaac_sim_pose with degenerate inputs.
+
+        This test is intentionally empty as the function accepts cumotion.Pose3 objects which are
+        always valid by construction.
+        """
         # This test is intentionally empty as there's no degenerate input case for this function
         # The function accepts a cumotion.Pose3 object which is always valid
-        pass

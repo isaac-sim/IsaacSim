@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,19 +12,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Tests for the robot schema UI extension."""
 
+import time
+from typing import Any
 from unittest import mock
 
 import carb
 import carb.settings
 import omni.kit.app
 import omni.kit.test
-import omni.kit.ui_test as ui_test
 import omni.ui as ui
 import omni.usd
 from isaacsim.robot.schema.ui import masking_state as ms
 from isaacsim.robot.schema.ui import utils as ui_utils
+from isaacsim.robot.schema.ui.extension import SchemaUIExtension
+from isaacsim.test.utils import MenuUITestCase
 from omni.ui.tests.test_base import OmniUiTest
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 from usd.schema.isaac import robot_schema
@@ -75,7 +79,7 @@ class TestSchemaUI(OmniUiTest):
         robot_prim, link_prim, joint_prim = self._build_simple_robot()
         await omni.kit.app.get_app().next_update_async()
 
-        hierarchy_stage, path_map, joint_connections = ui_utils.generate_robot_hierarchy_stage()
+        hierarchy_stage, path_map, joint_connections = ui_utils.generate_robot_hierarchy_stage(robot_prim.GetPath())
 
         self.assertIsNotNone(hierarchy_stage)
         self.assertIsNotNone(path_map.get_hierarchy_path(robot_prim.GetPath()))
@@ -284,7 +288,7 @@ class TestHierarchyModes(OmniUiTest):
             await omni.kit.app.get_app().next_update_async()
         await omni.kit.app.get_app().next_update_async()
 
-    def _build_simple_robot(self):
+    def _build_simple_robot(self) -> tuple[Usd.Prim, Usd.Prim, Usd.Prim]:
         """Build a minimal articulated robot for hierarchy mode tests.
 
         Returns:
@@ -306,8 +310,8 @@ class TestHierarchyModes(OmniUiTest):
         return robot_prim, link_prim, joint.GetPrim()
 
     async def test_no_robot_returns_none_stage(self) -> None:
-        """Empty stage yields (None, empty_map, [])."""
-        hierarchy_stage, path_map, joint_connections = ui_utils.generate_robot_hierarchy_stage()
+        """A path that does not resolve to a robot yields (None, empty_map, [])."""
+        hierarchy_stage, _, joint_connections = ui_utils.generate_robot_hierarchy_stage("/World/Missing")
         self.assertIsNone(hierarchy_stage)
         self.assertEqual(len(joint_connections), 0)
 
@@ -317,7 +321,7 @@ class TestHierarchyModes(OmniUiTest):
         await omni.kit.app.get_app().next_update_async()
 
         hierarchy_stage, path_map, joint_connections = ui_utils.generate_robot_hierarchy_stage(
-            ui_utils.HierarchyMode.FLAT
+            robot_prim.GetPath(), ui_utils.HierarchyMode.FLAT
         )
 
         self.assertIsNotNone(hierarchy_stage)
@@ -350,7 +354,7 @@ class TestHierarchyModes(OmniUiTest):
         await omni.kit.app.get_app().next_update_async()
 
         hierarchy_stage, path_map, joint_connections = ui_utils.generate_robot_hierarchy_stage(
-            ui_utils.HierarchyMode.LINKED
+            robot_prim.GetPath(), ui_utils.HierarchyMode.LINKED
         )
 
         self.assertIsNotNone(hierarchy_stage)
@@ -377,7 +381,7 @@ class TestHierarchyModes(OmniUiTest):
         await omni.kit.app.get_app().next_update_async()
 
         hierarchy_stage, path_map, joint_connections = ui_utils.generate_robot_hierarchy_stage(
-            ui_utils.HierarchyMode.MUJOCO
+            robot_prim.GetPath(), ui_utils.HierarchyMode.MUJOCO
         )
 
         self.assertIsNotNone(hierarchy_stage)
@@ -397,6 +401,61 @@ class TestHierarchyModes(OmniUiTest):
         self.assertTrue(hierarchy_stage.GetPrimAtPath(hier_link_path).IsValid())
         self.assertTrue(hierarchy_stage.GetPrimAtPath(hier_joint_path).IsValid())
         self.assertEqual(len(joint_connections), 1)
+
+    def _build_named_robot(self, name: str) -> tuple[Usd.Prim, Usd.Prim, Usd.Prim]:
+        """Build a minimal articulated robot at /World/<name> for multi-robot tests.
+
+        Args:
+            name: Sub-path under ``/World`` for the robot.
+
+        Returns:
+            Tuple of (robot_prim, link_prim, joint_prim).
+        """
+        root_path = f"/World/{name}"
+        robot_prim = UsdGeom.Xform.Define(self._stage, root_path).GetPrim()
+        UsdPhysics.RigidBodyAPI.Apply(robot_prim)
+        UsdPhysics.ArticulationRootAPI.Apply(robot_prim)
+        link_prim = UsdGeom.Xform.Define(self._stage, f"{root_path}/Link1").GetPrim()
+        UsdPhysics.RigidBodyAPI.Apply(link_prim)
+        joint = UsdPhysics.Joint.Define(self._stage, f"{root_path}/joint1")
+        joint.CreateBody0Rel().SetTargets([robot_prim.GetPath()])
+        joint.CreateBody1Rel().SetTargets([link_prim.GetPath()])
+        joint.CreateLocalPos0Attr().Set(Gf.Vec3f(0.1, 0.0, 0.0))
+        joint.CreateLocalRot0Attr().Set(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
+        joint.CreateLocalPos1Attr().Set(Gf.Vec3f(0.0, 0.0, 0.0))
+        joint.CreateLocalRot1Attr().Set(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
+        robot_schema.ApplyRobotAPI(robot_prim)
+        return robot_prim, link_prim, joint.GetPrim()
+
+    async def test_robot_root_path_filters_to_single_robot(self) -> None:
+        """Passing ``robot_root_path`` builds the hierarchy for that robot only."""
+        robot_a, link_a, joint_a = self._build_named_robot("RobotA")
+        robot_b, link_b, joint_b = self._build_named_robot("RobotB")
+        await omni.kit.app.get_app().next_update_async()
+
+        hierarchy_stage, path_map, joint_connections = ui_utils.generate_robot_hierarchy_stage(
+            robot_a.GetPath(), ui_utils.HierarchyMode.LINKED
+        )
+
+        self.assertIsNotNone(hierarchy_stage)
+        # RobotA must be present, RobotB must be absent from the path map.
+        self.assertIsNotNone(path_map.get_hierarchy_path(robot_a.GetPath()))
+        self.assertIsNone(path_map.get_hierarchy_path(robot_b.GetPath()))
+        # Joint connections should only reference RobotA's joint.
+        self.assertEqual(len(joint_connections), 1)
+        self.assertEqual(joint_connections[0].robot_root_path, robot_a.GetPath())
+
+    async def test_robot_root_path_invalid_returns_none(self) -> None:
+        """Passing an invalid ``robot_root_path`` yields no hierarchy stage."""
+        self._build_named_robot("RobotA")
+        await omni.kit.app.get_app().next_update_async()
+
+        hierarchy_stage, _, joint_connections = ui_utils.generate_robot_hierarchy_stage(
+            "/World/Missing", ui_utils.HierarchyMode.LINKED
+        )
+
+        self.assertIsNone(hierarchy_stage)
+        self.assertEqual(len(joint_connections), 0)
 
 
 class TestMaskingStateFunctions(omni.kit.test.AsyncTestCase):
@@ -468,8 +527,24 @@ class TestMaskingState(omni.kit.test.AsyncTestCase):
     """Tests for MaskingState singleton state tracking."""
 
     async def setUp(self) -> None:
-        """Reset the MaskingState singleton before each test."""
+        """Reset the MaskingState singleton before each test.
+
+        The production singleton is created when the extension loads and
+        wires a real ``MaskingOperations`` backend into ``state.operations``.
+        These tests substitute a ``mock.Mock`` for that backend, which
+        cannot be allowed to leak across class boundaries — subsequent test
+        classes call ``get_masking_layer_id()`` indirectly through
+        ``generate_robot_hierarchy_stage`` and a stray Mock makes
+        ``Stage.MuteLayer`` raise ``Boost.Python.ArgumentError``.
+
+        Snapshot the live singleton in setUp and restore it in tearDown.
+        """
+        self._saved_masking_state_instance = ms.MaskingState._instance
         ms.MaskingState._instance = None
+
+    async def tearDown(self) -> None:
+        """Restore the production MaskingState singleton."""
+        ms.MaskingState._instance = self._saved_masking_state_instance
 
     async def test_singleton_identity(self) -> None:
         """get_instance always returns the same object."""
@@ -608,7 +683,7 @@ class TestMaskingState(omni.kit.test.AsyncTestCase):
         state = ms.MaskingState.get_instance()
         call_count = [0]
 
-        def cb():
+        def cb() -> None:
             call_count[0] += 1
 
         state.subscribe_changed(cb)
@@ -625,8 +700,8 @@ class TestMaskingState(omni.kit.test.AsyncTestCase):
         joint_path = "/World/Robot/backward_joint"
 
         mock_ops = mock.Mock()
-        mock_ops.bypass_prim.return_value = (joint_path, "enabled")
-        mock_ops.unbypass_prim.return_value = None
+        mock_ops.bypass_prim.return_value = (True, (joint_path, "enabled"))
+        mock_ops.unbypass_prim.return_value = (True, None)
         state.operations = mock_ops
 
         state.toggle_bypassed(link_path)
@@ -654,6 +729,159 @@ class TestMaskingState(omni.kit.test.AsyncTestCase):
         state.operations = mock_ops
         self.assertEqual(state.get_masking_layer_id(), "layer-abc-123")
 
+    async def test_toggle_bypassed_backend_rejection_does_not_pollute_state(self) -> None:
+        """Regression: a rejected bypass must not record in-memory state.
+
+        Reproduces the silent-success defect where toggle_bypassed() returned
+        True and populated ``_bypassed_paths`` even when ``bypass_prim`` was
+        rejected (no USD opinion was ever written).
+        """
+        state = ms.MaskingState.get_instance()
+        mock_ops = mock.Mock()
+        mock_ops.bypass_prim.return_value = (False, None)
+        state.operations = mock_ops
+
+        path = "/World/Rejected"
+        self.assertFalse(state.toggle_bypassed(path))
+        self.assertFalse(state.is_bypassed(path))
+        self.assertFalse(state.is_deactivated(path))
+        self.assertEqual(state.get_bypassed_paths(), set())
+        self.assertEqual(state.get_deactivated_paths(), set())
+
+    async def test_set_bypassed_backend_rejection_does_not_pollute_state(self) -> None:
+        """Regression: set_bypassed must not record state when backend rejects."""
+        state = ms.MaskingState.get_instance()
+        mock_ops = mock.Mock()
+        mock_ops.bypass_prim.return_value = (False, None)
+        state.operations = mock_ops
+
+        path = "/World/Rejected"
+        state.set_bypassed(path, True)
+        self.assertFalse(state.is_bypassed(path))
+        self.assertFalse(state.is_deactivated(path))
+
+    async def test_toggle_bypassed_failure_restores_prior_mask(self) -> None:
+        """A rejected bypass on an already-masked prim restores the mask."""
+        state = ms.MaskingState.get_instance()
+        mock_ops = mock.Mock()
+        # Mask + unmask succeed; bypass is rejected.
+        mock_ops.mask_prim.return_value = True
+        mock_ops.unmask_prim.return_value = True
+        mock_ops.bypass_prim.return_value = (False, None)
+        state.operations = mock_ops
+
+        path = "/World/Rejected"
+        state.set_deactivated(path, True)
+        self.assertTrue(state.is_deactivated(path))
+
+        self.assertFalse(state.toggle_bypassed(path))
+        self.assertFalse(state.is_bypassed(path))
+        # Prior mask should be restored.
+        self.assertTrue(state.is_deactivated(path))
+
+    async def test_toggle_anchored_backend_rejection_does_not_pollute_state(self) -> None:
+        """Regression: a rejected anchor must not record in-memory state."""
+        state = ms.MaskingState.get_instance()
+        mock_ops = mock.Mock()
+        mock_ops.anchor_link.return_value = False
+        state.operations = mock_ops
+
+        path = "/World/Rejected"
+        self.assertFalse(state.toggle_anchored(path))
+        self.assertFalse(state.is_anchored(path))
+        self.assertEqual(state.get_anchored_paths(), set())
+
+    async def test_set_anchored_backend_rejection_does_not_pollute_state(self) -> None:
+        """Regression: set_anchored must not record state when backend rejects."""
+        state = ms.MaskingState.get_instance()
+        mock_ops = mock.Mock()
+        mock_ops.anchor_link.return_value = False
+        state.operations = mock_ops
+
+        path = "/World/Rejected"
+        state.set_anchored(path, True)
+        self.assertFalse(state.is_anchored(path))
+
+    async def test_toggle_deactivated_backend_rejection_does_not_pollute_state(self) -> None:
+        """Regression: a rejected mask must not record in-memory state."""
+        state = ms.MaskingState.get_instance()
+        mock_ops = mock.Mock()
+        mock_ops.mask_prim.return_value = False
+        state.operations = mock_ops
+
+        path = "/World/Rejected"
+        self.assertFalse(state.toggle_deactivated(path))
+        self.assertFalse(state.is_deactivated(path))
+
+    async def test_toggle_unbypass_backend_rejection_preserves_in_memory_state(self) -> None:
+        """Regression: a rejected unbypass must not clear the in-memory sets.
+
+        Mirrors ``test_toggle_bypassed_backend_rejection_does_not_pollute_state``
+        for the opposite direction. If ``unbypass_prim`` reports failure the
+        USD opinions are unchanged, so the in-memory sets must remain
+        unchanged to avoid the same divergence on the way out.
+        """
+        state = ms.MaskingState.get_instance()
+        joint_path = "/World/Robot/joint_back"
+        link_path = "/World/Robot/link_fwd"
+        mock_ops = mock.Mock()
+        mock_ops.bypass_prim.return_value = (True, (joint_path, "enabled"))
+        # First unbypass succeeds (during arrange); the one under test rejects.
+        mock_ops.unbypass_prim.return_value = (False, None)
+        state.operations = mock_ops
+
+        # Arrange: enter bypass state.
+        self.assertTrue(state.toggle_bypassed(link_path))
+        self.assertTrue(state.is_bypassed(link_path))
+        self.assertTrue(state.is_deactivated(link_path))
+
+        # Act: try to unbypass; backend rejects.
+        result = state.toggle_bypassed(link_path)
+
+        # Toggle returned True (still bypassed). In-memory state preserved.
+        self.assertTrue(result)
+        self.assertTrue(state.is_bypassed(link_path))
+        self.assertTrue(state.is_deactivated(link_path))
+
+    async def test_set_bypassed_false_backend_rejection_preserves_in_memory_state(self) -> None:
+        """Regression: set_bypassed(False) must not clear sets when backend rejects."""
+        state = ms.MaskingState.get_instance()
+        joint_path = "/World/Robot/joint_back"
+        link_path = "/World/Robot/link_fwd"
+        mock_ops = mock.Mock()
+        mock_ops.bypass_prim.return_value = (True, (joint_path, "enabled"))
+        mock_ops.unbypass_prim.return_value = (False, None)
+        state.operations = mock_ops
+
+        state.set_bypassed(link_path, True)
+        self.assertTrue(state.is_bypassed(link_path))
+
+        state.set_bypassed(link_path, False)
+        # Rejected: in-memory state unchanged.
+        self.assertTrue(state.is_bypassed(link_path))
+        self.assertTrue(state.is_deactivated(link_path))
+
+    async def test_toggle_bypassed_with_modern_backend_tuple(self) -> None:
+        """A backend returning (True, joint_info) correctly records bypass + joint."""
+        state = ms.MaskingState.get_instance()
+        joint_path = "/World/Robot/joint_back"
+        link_path = "/World/Robot/link_fwd"
+
+        mock_ops = mock.Mock()
+        mock_ops.bypass_prim.return_value = (True, (joint_path, "enabled"))
+        mock_ops.unbypass_prim.return_value = (True, None)
+        state.operations = mock_ops
+
+        self.assertTrue(state.toggle_bypassed(link_path))
+        self.assertTrue(state.is_bypassed(link_path))
+        self.assertTrue(state.is_deactivated(link_path))
+        self.assertTrue(state.is_deactivated(joint_path))
+
+        self.assertFalse(state.toggle_bypassed(link_path))
+        self.assertFalse(state.is_bypassed(link_path))
+        self.assertFalse(state.is_deactivated(link_path))
+        self.assertFalse(state.is_deactivated(joint_path))
+
 
 class TestConnectionItem(OmniUiTest):
     """Tests for ConnectionItem property accessors and is_valid."""
@@ -670,7 +898,7 @@ class TestConnectionItem(OmniUiTest):
             await omni.kit.app.get_app().next_update_async()
         await omni.kit.app.get_app().next_update_async()
 
-    def _make_item(self, with_parent_joint: bool = False):
+    def _make_item(self, with_parent_joint: bool = False) -> Any:
         """Create a `ConnectionItem` with a simple robot joint on stage.
 
         Args:
@@ -878,6 +1106,57 @@ class TestSelectionWatch(omni.kit.test.AsyncTestCase):
 
         watch = SelectionWatch()
         watch.sync_from_stage()
+        watch.destroy()
+
+    async def test_on_selection_changed_skips_when_items_unchanged(self) -> None:
+        """The flash-inducing tree-view repaint is suppressed when items match.
+
+        When the resolved set of tree-view items is identical to the one
+        already applied, ``_on_selection_changed`` must return before
+        touching ``model.update_dirty()`` or applying selection to the
+        widget. Otherwise the inspector tree flashes on every USD
+        ``SELECTION_CHANGED`` event the inspector itself emits when the
+        user re-clicks within the same scope.
+        """
+        from isaacsim.robot.schema.ui.selection_watch import SelectionWatch
+
+        watch = SelectionWatch()
+        watch._path_map = ui_utils.PathMap()
+
+        fake_model = mock.Mock()
+        fake_model.update_dirty = mock.Mock()
+        fake_tree_view = mock.Mock()
+        fake_tree_view.model = fake_model
+        watch._tree_view = fake_tree_view
+
+        # Resolve always returns the same item set; first call updates state,
+        # second call must be a no-op.
+        sentinel_items: set = {mock.Mock(name="item")}
+        with mock.patch.object(watch, "_resolve_selected_items", return_value=sentinel_items):
+            with mock.patch.object(watch, "_expand_to_selected_items") as expand_mock:
+                with mock.patch.object(watch, "_apply_tree_view_selection") as apply_mock:
+                    watch._on_selection_changed()
+                    self.assertEqual(fake_model.update_dirty.call_count, 1)
+                    self.assertEqual(expand_mock.call_count, 1)
+                    self.assertEqual(apply_mock.call_count, 1)
+
+                    # Same items resolved → must early-return.
+                    watch._on_selection_changed()
+                    self.assertEqual(
+                        fake_model.update_dirty.call_count,
+                        1,
+                        "model.update_dirty must not be called when items did not change.",
+                    )
+                    self.assertEqual(
+                        expand_mock.call_count,
+                        1,
+                        "_expand_to_selected_items must not be called when items did not change.",
+                    )
+                    self.assertEqual(
+                        apply_mock.call_count,
+                        1,
+                        "_apply_tree_view_selection must not be called when items did not change.",
+                    )
         watch.destroy()
 
 
@@ -1103,26 +1382,35 @@ class TestMaskingOperationsMask(omni.kit.test.AsyncTestCase):
         self.assertIsNone(ops.get_masking_layer_id())
 
 
-class TestRobotInspectorUI(OmniUiTest):
+class TestRobotInspectorUI(MenuUITestCase):
     """UI tests verifying Robot Inspector widget identifiers and click interactions."""
 
-    WINDOW_NAME = "Robot Inspector"
+    WINDOW_NAME = SchemaUIExtension.WINDOW_NAME
+    MENU_PATH = f"{SchemaUIExtension.MENU_GROUP}/{SchemaUIExtension.WINDOW_NAME}"
     SETTING_KEY = "/persistent/exts/isaacsim.robot.schema.ui/hierarchyMode"
 
     async def setUp(self) -> None:
-        """Create a fresh stage and ensure the Robot Inspector window is visible."""
-        await omni.usd.get_context().new_stage_async()
-        await omni.kit.app.get_app().next_update_async()
-        self._stage = omni.usd.get_context().get_stage()
-        ui.Workspace.show_window(self.WINDOW_NAME)
-        for _ in range(5):
-            await omni.kit.app.get_app().next_update_async()
+        """Create a fresh stage and open the Robot Inspector through the menu."""
+        await super().setUp()
+        window = ui.Workspace.get_window(self.WINDOW_NAME)
+        if window is not None:
+            window.visible = False
+            await self.wait_n_frames(2)
+
+        await self.menu_click_with_retry(self.MENU_PATH, window_name=self.WINDOW_NAME)
+        window = ui.Workspace.get_window(self.WINDOW_NAME)
+        self.assertIsNotNone(window, "Robot Inspector window should exist after opening via the menu")
+        self.assertTrue(window.visible, "Robot Inspector window should be visible after opening via the menu")
+        await self.find_widget_with_retry(self.WINDOW_NAME)
+        await self.wait_n_frames(5)
 
     async def tearDown(self) -> None:
-        """Wait for pending asset loads."""
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
+        """Hide the Robot Inspector and wait for pending asset loads."""
+        window = ui.Workspace.get_window(self.WINDOW_NAME)
+        if window is not None:
+            window.visible = False
+            await self.wait_n_frames(2)
+        await super().tearDown()
 
     def _build_simple_robot(self) -> tuple[Usd.Prim, Usd.Prim, Usd.Prim]:
         """Build a minimal robot for inspector tests.
@@ -1150,7 +1438,9 @@ class TestRobotInspectorUI(OmniUiTest):
         self._build_simple_robot()
         await omni.kit.app.get_app().next_update_async()
 
-        label = ui_test.find(f"{self.WINDOW_NAME}//Frame/**/Label[*].identifier=='robot_inspector_view_label'")
+        label = await self.find_widget_with_retry(
+            f"{self.WINDOW_NAME}//Frame/**/Label[*].identifier=='robot_inspector_view_label'"
+        )
         self.assertIsNotNone(label, "View label not found by identifier")
 
         for mode_id in (
@@ -1158,7 +1448,7 @@ class TestRobotInspectorUI(OmniUiTest):
             "robot_inspector_mode_tree",
             "robot_inspector_mode_mujoco",
         ):
-            frame = ui_test.find(f"{self.WINDOW_NAME}//Frame/**/Frame[*].identifier=='{mode_id}'")
+            frame = await self.find_widget_with_retry(f"{self.WINDOW_NAME}//Frame/**/Frame[*].identifier=='{mode_id}'")
             self.assertIsNotNone(frame, f"Frame '{mode_id}' not found")
 
     async def test_view_mode_label_identifiers(self) -> None:
@@ -1172,7 +1462,7 @@ class TestRobotInspectorUI(OmniUiTest):
             "robot_inspector_mode_mujoco_label": "MuJoCo",
         }
         for label_id, expected_text in expected.items():
-            label = ui_test.find(f"{self.WINDOW_NAME}//Frame/**/Label[*].identifier=='{label_id}'")
+            label = await self.find_widget_with_retry(f"{self.WINDOW_NAME}//Frame/**/Label[*].identifier=='{label_id}'")
             self.assertIsNotNone(label, f"Label '{label_id}' not found")
             self.assertEqual(label.widget.text, expected_text)
 
@@ -1188,13 +1478,586 @@ class TestRobotInspectorUI(OmniUiTest):
             "robot_inspector_mode_mujoco": "MUJOCO",
         }
         for mode_id, expected_mode in mode_map.items():
-            frame = ui_test.find(f"{self.WINDOW_NAME}//Frame/**/Frame[*].identifier=='{mode_id}'")
+            frame = await self.find_enabled_widget_with_retry(
+                f"{self.WINDOW_NAME}//Frame/**/Frame[*].identifier=='{mode_id}'"
+            )
             self.assertIsNotNone(frame, f"Frame '{mode_id}' not found")
             await frame.click()
-            await ui_test.human_delay()
+            await self.wait_n_frames(2)
             stored = settings.get(self.SETTING_KEY)
             self.assertEqual(
                 stored,
                 expected_mode,
                 f"After clicking {mode_id}: expected {expected_mode}, got {stored}",
             )
+
+    def _build_named_robot(self, name: str) -> tuple[Usd.Prim, Usd.Prim, Usd.Prim]:
+        """Build a minimal robot at /World/<name> for multi-robot pinning tests.
+
+        Args:
+            name: Sub-path under ``/World`` for the robot.
+
+        Returns:
+            Tuple of (robot_prim, link_prim, joint_prim).
+        """
+        root_path = f"/World/{name}"
+        robot_prim = UsdGeom.Xform.Define(self._stage, root_path).GetPrim()
+        UsdPhysics.RigidBodyAPI.Apply(robot_prim)
+        UsdPhysics.ArticulationRootAPI.Apply(robot_prim)
+        link_prim = UsdGeom.Xform.Define(self._stage, f"{root_path}/Link1").GetPrim()
+        UsdPhysics.RigidBodyAPI.Apply(link_prim)
+        joint = UsdPhysics.Joint.Define(self._stage, f"{root_path}/joint1")
+        joint.CreateBody0Rel().SetTargets([robot_prim.GetPath()])
+        joint.CreateBody1Rel().SetTargets([link_prim.GetPath()])
+        joint.CreateLocalPos0Attr().Set(Gf.Vec3f(0.1, 0.0, 0.0))
+        joint.CreateLocalRot0Attr().Set(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
+        joint.CreateLocalPos1Attr().Set(Gf.Vec3f(0.0, 0.0, 0.0))
+        joint.CreateLocalRot1Attr().Set(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
+        robot_schema.ApplyRobotAPI(robot_prim)
+        return robot_prim, link_prim, joint.GetPrim()
+
+    def _get_inspector_window(self) -> Any:
+        """Return the live ``RobotInspectorWindow`` instance opened in setUp.
+
+        Returns:
+            The Robot Inspector window object.
+        """
+        from isaacsim.robot.schema.ui.robot_inspector_window import RobotInspectorWindow
+
+        window = ui.Workspace.get_window(self.WINDOW_NAME)
+        self.assertIsInstance(window, RobotInspectorWindow)
+        return window
+
+    async def test_selection_pins_active_robot_scope(self) -> None:
+        """The inspector pins the active robot scope across non-robot selections.
+
+        Selecting a descendant of the same robot or selecting a non-robot prim
+        must NOT trigger a hierarchy refresh nor a viewport-connection push
+        (which would manifest as a UI flash). Only selecting a different
+        robot triggers either. This verifies the saved-scope behavior
+        end-to-end via the UI's ``SELECTION_CHANGED`` handler.
+        """
+        from isaacsim.robot.schema.ui.robot_inspector_window import RobotInspectorWindow
+        from isaacsim.robot.schema.ui.scene import ConnectionInstance
+
+        robot_a, link_a, _ = self._build_named_robot("RobotA")
+        robot_b, link_b, _ = self._build_named_robot("RobotB")
+        # A non-robot prim outside any robot subtree.
+        UsdGeom.Xform.Define(self._stage, "/World/Loose")
+        await omni.kit.app.get_app().next_update_async()
+
+        usd_context = omni.usd.get_context()
+        selection = usd_context.get_selection()
+        window = self._get_inspector_window()
+        connection_instance = ConnectionInstance.get_instance()
+
+        refresh_calls: list[Sdf.Path | None] = []
+        viewport_pushes: list[int] = []
+        original_refresh = RobotInspectorWindow.refresh_ui
+        original_set = ConnectionInstance.set_joint_connections
+
+        def tracking_refresh(self_: RobotInspectorWindow) -> None:
+            refresh_calls.append(self_._active_robot_root_path)
+            original_refresh(self_)
+
+        def tracking_set(self_: ConnectionInstance, joint_connections: list[Any]) -> None:
+            viewport_pushes.append(len(joint_connections))
+            original_set(self_, joint_connections)
+
+        with (
+            mock.patch.object(RobotInspectorWindow, "refresh_ui", new=tracking_refresh),
+            mock.patch.object(ConnectionInstance, "set_joint_connections", new=tracking_set),
+        ):
+            # 1. Select a descendant of RobotA: scope becomes /World/RobotA,
+            # refresh fires, viewport receives the active robot's connections.
+            selection.set_selected_prim_paths([str(link_a.GetPath())], True)
+            await self.wait_n_frames(2)
+            self.assertEqual(window._active_robot_root_path, robot_a.GetPath())
+            calls_after_a = len(refresh_calls)
+            pushes_after_a = len(viewport_pushes)
+            self.assertGreaterEqual(calls_after_a, 1)
+
+            # 2. Select a different descendant of the SAME robot: no refresh,
+            # no viewport push (the filtered set is identical).
+            selection.set_selected_prim_paths([str(robot_a.GetPath())], True)
+            await self.wait_n_frames(2)
+            self.assertEqual(window._active_robot_root_path, robot_a.GetPath())
+            self.assertEqual(
+                len(refresh_calls),
+                calls_after_a,
+                "Selecting another descendant of the same robot must not refresh.",
+            )
+            self.assertEqual(
+                len(viewport_pushes),
+                pushes_after_a,
+                "Selecting another descendant of the same robot must not re-push viewport connections.",
+            )
+
+            # 3. Select a non-robot prim: scope stays pinned to RobotA, no
+            # refresh, no viewport push.
+            selection.set_selected_prim_paths(["/World/Loose"], True)
+            await self.wait_n_frames(2)
+            self.assertEqual(
+                window._active_robot_root_path,
+                robot_a.GetPath(),
+                "Non-robot selection must not clear the pinned active scope.",
+            )
+            self.assertEqual(
+                len(refresh_calls),
+                calls_after_a,
+                "Non-robot selection must not refresh the inspector.",
+            )
+            self.assertEqual(
+                len(viewport_pushes),
+                pushes_after_a,
+                "Non-robot selection must not re-push viewport connections.",
+            )
+
+            # 4. Clear selection entirely: scope still pinned, no refresh,
+            # no viewport push.
+            selection.set_selected_prim_paths([], True)
+            await self.wait_n_frames(2)
+            self.assertEqual(
+                window._active_robot_root_path,
+                robot_a.GetPath(),
+                "Empty selection must not clear the pinned active scope.",
+            )
+            self.assertEqual(
+                len(refresh_calls),
+                calls_after_a,
+                "Empty selection must not refresh the inspector.",
+            )
+            self.assertEqual(
+                len(viewport_pushes),
+                pushes_after_a,
+                "Empty selection must not re-push viewport connections.",
+            )
+
+            # 5. Select RobotB: scope must switch and refresh exactly once,
+            # and push viewport connections exactly once. The single-push
+            # invariant is what stops the per-click flash; tighten the
+            # assertion to catch any future regression that re-introduces
+            # a redundant push during the refresh handshake.
+            selection.set_selected_prim_paths([str(link_b.GetPath())], True)
+            await self.wait_n_frames(2)
+            self.assertEqual(window._active_robot_root_path, robot_b.GetPath())
+            self.assertEqual(
+                len(refresh_calls) - calls_after_a,
+                1,
+                "Selecting a different robot must refresh exactly once.",
+            )
+            self.assertEqual(
+                len(viewport_pushes) - pushes_after_a,
+                1,
+                "Selecting a different robot must push viewport connections exactly once.",
+            )
+
+    async def test_pinned_scope_survives_visibility_cycle(self) -> None:
+        """The pinned active robot survives hide → show even with stale selection.
+
+        After pinning RobotA, hiding the window, and changing the USD
+        selection to RobotB while hidden, re-showing the window must NOT
+        replace the pinned scope with RobotB. The user expects to land back
+        on the same robot they were inspecting.
+        """
+        robot_a, link_a, _ = self._build_named_robot("RobotA")
+        robot_b, link_b, _ = self._build_named_robot("RobotB")
+        await omni.kit.app.get_app().next_update_async()
+
+        usd_context = omni.usd.get_context()
+        selection = usd_context.get_selection()
+        window = self._get_inspector_window()
+
+        selection.set_selected_prim_paths([str(link_a.GetPath())], True)
+        await self.wait_n_frames(2)
+        self.assertEqual(window._active_robot_root_path, robot_a.GetPath())
+
+        window.visible = False
+        await self.wait_n_frames(2)
+        selection.set_selected_prim_paths([str(link_b.GetPath())], True)
+        await self.wait_n_frames(2)
+
+        window.visible = True
+        await self.wait_n_frames(5)
+        self.assertEqual(
+            window._active_robot_root_path,
+            robot_a.GetPath(),
+            "Pinned scope must survive the hide/show cycle.",
+        )
+
+    async def test_hidden_window_drops_selection_subscription(self) -> None:
+        """While hidden, the SELECTION_CHANGED subscription is torn down.
+
+        This is the gating that prevents background tabs from paying the
+        per-click handler cost. Verify the field lifecycle directly: the
+        subscription handle must be ``None`` while hidden and re-attached
+        when the window becomes visible again.
+        """
+        window = self._get_inspector_window()
+        # Sanity: visible window has a subscription.
+        self.assertIsNotNone(
+            window._selection_event_sub,
+            "Visible window must have a SELECTION_CHANGED subscription.",
+        )
+
+        window.visible = False
+        await self.wait_n_frames(2)
+        self.assertIsNone(
+            window._selection_event_sub,
+            "Hidden window must drop the SELECTION_CHANGED subscription.",
+        )
+
+        window.visible = True
+        await self.wait_n_frames(2)
+        self.assertIsNotNone(
+            window._selection_event_sub,
+            "Re-shown window must re-create the SELECTION_CHANGED subscription.",
+        )
+
+    async def test_destroy_selection_subscription_clears_handle(self) -> None:
+        """``_destroy_selection_subscription`` is idempotent and clears the handle."""
+        window = self._get_inspector_window()
+        window._create_selection_subscription()
+        self.assertIsNotNone(window._selection_event_sub)
+
+        window._destroy_selection_subscription()
+        self.assertIsNone(window._selection_event_sub)
+
+        # Idempotent.
+        window._destroy_selection_subscription()
+        self.assertIsNone(window._selection_event_sub)
+
+        # Re-create works.
+        window._create_selection_subscription()
+        self.assertIsNotNone(window._selection_event_sub)
+
+    async def test_search_field_after_view_mode_switch(self) -> None:
+        """``_prefilter`` must not raise when the search field is exercised.
+
+        Regression for ``AttributeError: '_StageModel__usdrt_stage'`` after
+        ``open_stage`` is called with an in-memory hierarchy stage. The
+        defensive ``_patch_stage_model_for_in_memory_stage`` workaround is
+        only effective if ``_prefilter`` is actually invoked; assert no
+        exception by driving the model directly.
+        """
+        # TODO(KIT): remove _patch_stage_model_for_in_memory_stage once the
+        # upstream omni.kit.widget.stage StageModel handles in-memory stages
+        # without USD context attachment. Until then, this test guards the
+        # workaround.
+        self._build_named_robot("RobotA")
+        await omni.kit.app.get_app().next_update_async()
+
+        window = self._get_inspector_window()
+        omni.usd.get_context().get_selection().set_selected_prim_paths(["/World/RobotA"], True)
+        await self.wait_n_frames(5)
+
+        # Switch view mode, which triggers a fresh open_stage with an
+        # in-memory stage and exercises the patch path.
+        from isaacsim.robot.schema.ui.utils import HierarchyMode
+
+        window._set_hierarchy_mode(HierarchyMode.FLAT)
+        await self.wait_n_frames(5)
+
+        stage_widget = window.get_widget()
+        self.assertIsNotNone(stage_widget)
+        model = stage_widget.get_model()
+        self.assertIsNotNone(model)
+        # The patch sets the name-mangled attribute on the StageModel
+        # subclass; assert it is in place so _prefilter cannot AttributeError.
+        self.assertTrue(hasattr(model, "_StageModel__usdrt_stage"))
+        # And drive _prefilter directly to confirm no exception.
+        try:
+            model._prefilter(Sdf.Path.absoluteRootPath)
+        except AttributeError as error:
+            self.fail(f"_prefilter raised AttributeError after view-mode switch: {error}")
+
+    async def test_nested_robot_select_child_shows_only_child(self) -> None:
+        """Selecting a child robot in a nested setup pins to the child only.
+
+        Documents the policy: ``Outer`` and ``Outer/Inner`` both carry the
+        Robot API. Selecting ``Outer/Inner`` must pin the inspector to
+        ``Inner`` rather than absorbing it into ``Outer``.
+        """
+        outer_path = "/World/Outer"
+        inner_path = "/World/Outer/Inner"
+        outer_prim = UsdGeom.Xform.Define(self._stage, outer_path).GetPrim()
+        UsdPhysics.RigidBodyAPI.Apply(outer_prim)
+        UsdPhysics.ArticulationRootAPI.Apply(outer_prim)
+        robot_schema.ApplyRobotAPI(outer_prim)
+        inner_prim = UsdGeom.Xform.Define(self._stage, inner_path).GetPrim()
+        UsdPhysics.RigidBodyAPI.Apply(inner_prim)
+        robot_schema.ApplyRobotAPI(inner_prim)
+        await omni.kit.app.get_app().next_update_async()
+
+        window = self._get_inspector_window()
+        omni.usd.get_context().get_selection().set_selected_prim_paths([inner_path], True)
+        await self.wait_n_frames(3)
+        self.assertEqual(
+            window._active_robot_root_path,
+            inner_prim.GetPath(),
+            "Selecting nested-child robot must pin the inspector to the child.",
+        )
+
+    async def test_empty_stage_on_open_keeps_inspector_clear(self) -> None:
+        """A stage with no robots leaves ``_active_robot_root_path`` as None.
+
+        Verifies the 0-robot path: usdrt query returns empty, the negative
+        cache is populated, and the window does not crash or pin a stale
+        scope.
+        """
+        window = self._get_inspector_window()
+        # Fresh stage, no robots created.
+        await self.wait_n_frames(2)
+        self.assertIsNone(window._active_robot_root_path)
+        self.assertEqual(window._tracked_robot_prim_paths, set())
+        # Drive a selection at a non-robot prim — must remain unpinned.
+        UsdGeom.Xform.Define(self._stage, "/World/NonRobot")
+        await omni.kit.app.get_app().next_update_async()
+        omni.usd.get_context().get_selection().set_selected_prim_paths(["/World/NonRobot"], True)
+        await self.wait_n_frames(2)
+        self.assertIsNone(window._active_robot_root_path)
+
+    async def test_pin_survives_visibility_cycle_with_no_selection_change(self) -> None:
+        """Pin survives hide/show when no other robot is available to switch to.
+
+        Verifies the visibility-cycle preservation path of
+        ``_apply_effective_visibility``: when re-shown, the existing pin
+        still resolves on the stage, so no re-resolve from selection occurs.
+        """
+        robot_a, link_a, _ = self._build_named_robot("RobotA")
+        await omni.kit.app.get_app().next_update_async()
+
+        window = self._get_inspector_window()
+        omni.usd.get_context().get_selection().set_selected_prim_paths([str(link_a.GetPath())], True)
+        await self.wait_n_frames(3)
+        self.assertEqual(window._active_robot_root_path, robot_a.GetPath())
+
+        for _ in range(3):
+            window.visible = False
+            await self.wait_n_frames(2)
+            window.visible = True
+            await self.wait_n_frames(3)
+            self.assertEqual(
+                window._active_robot_root_path,
+                robot_a.GetPath(),
+                "Pin must survive every visibility cycle.",
+            )
+
+    async def test_stage_close_while_hidden_resets_state(self) -> None:
+        """Closing the stage while the inspector is hidden clears state safely.
+
+        The hidden-window path takes the early-return branch in
+        ``_on_stage_opened``; ``_on_stage_closing`` must still run and
+        reset the cached usdrt stage so a subsequent show does not see
+        stale Fabric handles.
+        """
+        robot_a, link_a, _ = self._build_named_robot("RobotA")
+        await omni.kit.app.get_app().next_update_async()
+
+        window = self._get_inspector_window()
+        omni.usd.get_context().get_selection().set_selected_prim_paths([str(link_a.GetPath())], True)
+        await self.wait_n_frames(3)
+        self.assertEqual(window._active_robot_root_path, robot_a.GetPath())
+
+        window.visible = False
+        await self.wait_n_frames(2)
+        await omni.usd.get_context().new_stage_async()
+        await omni.kit.app.get_app().next_update_async()
+        self._stage = omni.usd.get_context().get_stage()
+        await self.wait_n_frames(2)
+
+        # On show, fresh stage with no robots should yield no pin.
+        window.visible = True
+        await self.wait_n_frames(3)
+        self.assertIsNone(
+            window._active_robot_root_path,
+            "Stage close while hidden must reset pinned scope on next show.",
+        )
+
+    async def test_multiselect_picks_first_robot_reached(self) -> None:
+        """Multi-selection across two robots resolves to the first one reached.
+
+        Documents the deterministic primary-pick policy. The order of
+        resolution follows USD selection iteration order, which is
+        insertion order. Pin the policy here so a future change does not
+        silently flip behavior.
+        """
+        robot_a, link_a, _ = self._build_named_robot("RobotA")
+        robot_b, link_b, _ = self._build_named_robot("RobotB")
+        await omni.kit.app.get_app().next_update_async()
+
+        window = self._get_inspector_window()
+        # Order matters: A first, then B.
+        omni.usd.get_context().get_selection().set_selected_prim_paths(
+            [str(link_a.GetPath()), str(link_b.GetPath())], True
+        )
+        await self.wait_n_frames(3)
+        self.assertEqual(
+            window._active_robot_root_path,
+            robot_a.GetPath(),
+            "Multi-selection must resolve to the first robot in iteration order.",
+        )
+
+
+class TestRobotInspectorScaling(omni.kit.test.AsyncTestCase):
+    """Scaling test for the Robot Inspector hot path.
+
+    The Robot Inspector tracks exactly **one** robot at a time — the one
+    implied by the user's primary stage selection. Per-notice work must
+    therefore be independent of how many robots exist on the stage. This
+    test proves that invariant deterministically by counting how many
+    ``HasAPI(RobotAPI)`` checks ``generate_robot_hierarchy_stage``
+    performs while building the inspector view: the count is identical
+    for a stage with one robot and a stage with hundreds.
+
+    Wall-clock times are still recorded for human-readable output but are
+    not used for assertions, so the test remains stable across hardware.
+    """
+
+    _SMALL_COUNT = 1
+    _LARGE_COUNT = 200
+    _ITERATIONS = 5
+
+    async def setUp(self) -> None:
+        """Set up a fresh USD stage for each test."""
+        await omni.usd.get_context().new_stage_async()
+        await omni.kit.app.get_app().next_update_async()
+        self._stage = omni.usd.get_context().get_stage()
+
+    async def tearDown(self) -> None:
+        """Wait for stage loads to finish before cleaning up."""
+        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
+            await omni.kit.app.get_app().next_update_async()
+        await omni.kit.app.get_app().next_update_async()
+
+    def _build_robot(self, name: str) -> Sdf.Path:
+        """Create a single-link, single-joint robot at ``/World/<name>``.
+
+        Args:
+            name: Sub-path under ``/World`` for the robot.
+
+        Returns:
+            The robot root prim path.
+        """
+        root_path = f"/World/{name}"
+        robot_prim = UsdGeom.Xform.Define(self._stage, root_path).GetPrim()
+        UsdPhysics.RigidBodyAPI.Apply(robot_prim)
+        UsdPhysics.ArticulationRootAPI.Apply(robot_prim)
+        link_prim = UsdGeom.Xform.Define(self._stage, f"{root_path}/Link1").GetPrim()
+        UsdPhysics.RigidBodyAPI.Apply(link_prim)
+        joint = UsdPhysics.Joint.Define(self._stage, f"{root_path}/joint1")
+        joint.CreateBody0Rel().SetTargets([robot_prim.GetPath()])
+        joint.CreateBody1Rel().SetTargets([link_prim.GetPath()])
+        joint.CreateLocalPos0Attr().Set(Gf.Vec3f(0.1, 0.0, 0.0))
+        joint.CreateLocalRot0Attr().Set(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
+        joint.CreateLocalPos1Attr().Set(Gf.Vec3f(0.0, 0.0, 0.0))
+        joint.CreateLocalRot1Attr().Set(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
+        robot_schema.ApplyRobotAPI(robot_prim)
+        return robot_prim.GetPath()
+
+    def _populate_stage(self, count: int) -> Sdf.Path:
+        """Add ``count`` robots to the stage. Return the first robot's path.
+
+        Args:
+            count: Number of robots to create on the stage.
+
+        Returns:
+            Path of the robot the measurements target.
+        """
+        first_robot_path: Sdf.Path | None = None
+        for index in range(count):
+            path = self._build_robot(f"Robot_{index:04d}")
+            if first_robot_path is None:
+                first_robot_path = path
+        return first_robot_path
+
+    @staticmethod
+    def _count_robot_api_checks(callable_: Any) -> int:
+        """Run ``callable_`` and return the number of ``HasAPI(RobotAPI)`` calls.
+
+        Wraps :py:meth:`pxr.Usd.Prim.HasAPI` for the duration of the call so
+        every check made anywhere inside ``callable_`` increments a counter.
+        Only checks for the Robot API value are counted; checks for other
+        applied schemas (e.g. ``RigidBodyAPI``) are ignored so the count
+        reflects only the robot-discovery work the inspector performs.
+
+        Args:
+            callable_: Zero-argument callable to instrument.
+
+        Returns:
+            Number of Robot-API checks performed during the call.
+        """
+        robot_api_value = robot_schema.Classes.ROBOT_API.value
+        original_has_api = Usd.Prim.HasAPI
+        count = 0
+
+        def counting_has_api(prim: Any, schema: Any, *args: Any, **kwargs: Any) -> bool:
+            nonlocal count
+            if schema == robot_api_value:
+                count += 1
+            return original_has_api(prim, schema, *args, **kwargs)
+
+        with mock.patch.object(Usd.Prim, "HasAPI", new=counting_has_api):
+            callable_()
+        return count
+
+    @staticmethod
+    def _time_call(callable_: Any, iterations: int) -> float:
+        """Return the average wall-clock time of ``callable_`` (informational).
+
+        Args:
+            callable_: Zero-argument callable to measure.
+            iterations: Number of repetitions.
+
+        Returns:
+            Average elapsed time in seconds.
+        """
+        callable_()  # untimed warm-up
+        start = time.perf_counter()
+        for _ in range(iterations):
+            callable_()
+        return (time.perf_counter() - start) / iterations
+
+    async def test_hierarchy_generation_visits_only_active_robot(self) -> None:
+        """Hierarchy generation inspects exactly one prim regardless of robot count.
+
+        The Robot Inspector window only tracks the robot implied by the
+        primary stage selection, so per-notice work must be independent of
+        how many robots are on the stage. ``generate_robot_hierarchy_stage``
+        only verifies that the requested prim carries the Robot API; the
+        same number of ``HasAPI(RobotAPI)`` calls is made whether the stage
+        contains one robot or hundreds.
+        """
+
+        def _measure(count: int) -> tuple[int, float, Sdf.Path]:
+            target_path = self._populate_stage(count)
+            call = lambda: ui_utils.generate_robot_hierarchy_stage(
+                target_path,
+                ui_utils.HierarchyMode.LINKED,
+                stage=self._stage,
+            )
+            checks = self._count_robot_api_checks(call)
+            duration = self._time_call(call, self._ITERATIONS)
+            return checks, duration, target_path
+
+        small_checks, small_time, _ = _measure(self._SMALL_COUNT)
+
+        await omni.usd.get_context().new_stage_async()
+        await omni.kit.app.get_app().next_update_async()
+        self._stage = omni.usd.get_context().get_stage()
+        large_checks, large_time, _ = _measure(self._LARGE_COUNT)
+
+        print(
+            f"[scaling] {self._SMALL_COUNT} robots: {small_checks} HasAPI calls, "
+            f"{small_time * 1e3:.3f} ms; "
+            f"{self._LARGE_COUNT} robots: {large_checks} HasAPI calls, "
+            f"{large_time * 1e3:.3f} ms"
+        )
+        self.assertEqual(
+            small_checks,
+            large_checks,
+            f"Hierarchy generation visited {large_checks} prims at "
+            f"{self._LARGE_COUNT} robots vs {small_checks} at "
+            f"{self._SMALL_COUNT}: scaling ratio is not 1 — the function "
+            f"is no longer scoped to the active robot.",
+        )

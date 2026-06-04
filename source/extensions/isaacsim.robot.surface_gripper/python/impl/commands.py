@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,63 +13,59 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Commands for creating and managing surface gripper components in Isaac Sim."""
+"""Deprecated surface gripper command implementations."""
 
-
+import carb
 import omni.kit.commands
-from usd.schema.isaac import robot_schema
+from pxr import Usd
+
+from .surface_gripper import create_surface_gripper
 
 
 class CreateSurfaceGripper(omni.kit.commands.Command):
-    """Creates Action graph containing a Surface Gripper node, and all prims to facilitate its creation
+    """Deprecated command that creates a Surface Gripper prim.
 
-    Typical usage example:
-
-    .. code-block:: python
-
-        result, prim  = omni.kit.commands.execute(
-                "CreateSurfaceGripper",
-                prim_path="/SurfaceGripper",
-            )
+    .. deprecated:: Use create_surface_gripper(stage, prim_path) directly instead.
 
     Args:
         prim_path: Path where the surface gripper will be created.
     """
 
-    def __init__(self, prim_path: str = ""):
+    def __init__(self, prim_path: str = "") -> None:
+        carb.log_warn(
+            "CreateSurfaceGripper command is deprecated and will be removed in a future version. "
+            "Use create_surface_gripper(stage, prim_path) directly instead."
+        )
         # condensed way to copy all input arguments into self with an underscore prefix
         for name, value in vars().items():
             if name != "self":
                 setattr(self, f"_{name}", value)
         self._prim = None
         self._stage = omni.usd.get_context().get_stage()
-        self._prim_path = None
-        stage = omni.usd.get_context().get_stage()
         if prim_path == "":
             selection = omni.usd.get_context().get_selection()
             paths = selection.get_selected_prim_paths()
             if paths:
                 prim_path = paths[0]
             else:
-                default_prim = stage.GetDefaultPrim()
-                if default_prim is None:
-                    # If no default prim, create at root level
-                    prim_path = "/"
-                else:
+                default_prim = self._stage.GetDefaultPrim()
+                if default_prim and default_prim.IsValid():
                     prim_path = str(default_prim.GetPath())
-        self._prim_path = omni.usd.get_stage_next_free_path(stage, prim_path + "/SurfaceGripper", False)
-        pass
+                else:
+                    prim_path = "/"
+        self._prim_path = prim_path
 
-    def do(self):
+    def do(self) -> Usd.Prim:
         """Creates the Surface Gripper prim at the specified path.
 
         Returns:
             The created Surface Gripper prim.
         """
-        self._prim = robot_schema.CreateSurfaceGripper(self._stage, self._prim_path)
+        self._prim = create_surface_gripper(self._stage, self._prim_path)
+        self._prim_path = str(self._prim.GetPath())
         return self._prim
 
-    def undo(self):
+    def undo(self) -> bool | None:
         """Removes the created Surface Gripper prim from the stage.
 
         Returns:
@@ -77,7 +73,7 @@ class CreateSurfaceGripper(omni.kit.commands.Command):
         """
         if self._prim:
             return self._stage.RemovePrim(self._prim_path)
-        pass
+        return None
 
 
 omni.kit.commands.register_all_commands_in_module(__name__)

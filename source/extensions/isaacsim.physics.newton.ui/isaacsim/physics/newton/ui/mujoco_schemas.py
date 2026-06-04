@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -97,7 +97,7 @@ def get_mujoco_schema_names() -> tuple[set[str], set[str]]:
 from omni.kit.property.physics.builders import HideWidgetBuilder
 from pxr import UsdPhysics
 
-from .utils import DisableByCallbackBuilder, HideByCallbackBuilder, PrimType, make_hide_cb
+from .utils import DisableByCallbackBuilder, PrimType, make_hide_cb
 
 CallbackBuilder = DisableByCallbackBuilder
 HIDE_PROPERTY = [HideWidgetBuilder]

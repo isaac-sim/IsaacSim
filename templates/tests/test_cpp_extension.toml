@@ -1,0 +1,7 @@
+[isaacsim-cpp-extension]
+extension_name = "isaacsim.template_test.cpp_ext"
+title = "Test C++ Extension"
+version = "0.1.0"
+description = "A test C++ extension with Python bindings."
+category = "Simulation"
+binding_module = "test_cpp_ext"

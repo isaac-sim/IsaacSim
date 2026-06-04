@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -106,3 +106,38 @@ class HolonomicRobotUsdSetup:
             List of wheel joint DOF name strings.
         """
         return self._wheel_dof_names
+
+    @property
+    def wheel_radius(self) -> list:
+        """Radius values for each wheel."""
+        return self._wheel_radius
+
+    @property
+    def wheel_positions(self) -> np.ndarray:
+        """Position coordinates for each wheel relative to the center of mass."""
+        return self._wheel_positions
+
+    @property
+    def wheel_orientations(self) -> np.ndarray:
+        """Orientation quaternions for each wheel relative to the center of mass."""
+        return self._wheel_orientations
+
+    @property
+    def mecanum_angles(self) -> list:
+        """Mecanum wheel angles for each wheel joint."""
+        return self._mecanum_angles
+
+    @property
+    def wheel_dof_names(self) -> list[str]:
+        """Degree of freedom names for each wheel joint."""
+        return self._wheel_dof_names
+
+    @property
+    def wheel_axis(self) -> np.ndarray:
+        """Axis of rotation for the wheels."""
+        return self._wheel_axis
+
+    @property
+    def up_axis(self) -> np.ndarray:
+        """Up axis of the USD stage."""
+        return self._up_axis

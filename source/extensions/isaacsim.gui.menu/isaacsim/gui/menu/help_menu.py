@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Help menu registration and documentation helpers."""
+
 from functools import partial
 
 import omni.ext
@@ -29,38 +31,34 @@ class HelpMenuExtension:
         ext_id: Extension identifier provided by the extension manager.
     """
 
-    def __init__(self, ext_id: str):
+    def __init__(self, ext_id: str) -> None:
         self._ext_id = ext_id
         self._ext_name = omni.ext.get_extension_name(ext_id)
         self._registered_actions = []
 
-        self.__menu_layout = [
-            MenuLayout.Menu(
-                "Help",
-                [
-                    MenuLayout.Seperator("Examples"),
-                    MenuLayout.Item("Physics Examples"),
-                    MenuLayout.Item("Robotics Examples"),
-                    MenuLayout.Item("Warp Sample Scenes"),
-                    MenuLayout.Seperator("Isaac Sim Reference"),
-                    MenuLayout.Item("About"),
-                    MenuLayout.Item("Online Guide", source="Isaac Sim Online Guide"),
-                    MenuLayout.Item("Online Forums", source="Isaac Sim Online Forums"),
-                    MenuLayout.Item("Scripting Manual", source="Isaac Sim Scripting Manual"),
-                    MenuLayout.Seperator("Omniverse Reference"),
-                    MenuLayout.Item("Kit Programming Manual"),
-                    MenuLayout.Item("Omni UI Docs"),
-                    MenuLayout.Seperator("Physics Reference"),
-                    MenuLayout.Item("Physics Programming Manual"),
-                    MenuLayout.Seperator("Warp Reference"),
-                    MenuLayout.Item("Getting Started", source="Window/Warp/Getting Started"),
-                    MenuLayout.Item("Documentation", source="Window/Warp/Documentation"),
-                    MenuLayout.Seperator("USD"),
-                    MenuLayout.Item("USD Reference Guide", source="Help/USD Reference Guide"),
-                    MenuLayout.Seperator(),
-                ],
-            )
+        help_items = [
+            MenuLayout.Seperator("Examples"),
+            MenuLayout.Item("Physics Examples"),
+            MenuLayout.Item("Robotics Examples"),
+            MenuLayout.Seperator("Isaac Sim Reference"),
+            MenuLayout.Item("About"),
+            MenuLayout.Item("Online Guide", source="Isaac Sim Online Guide"),
+            MenuLayout.Item("Online Forums", source="Isaac Sim Online Forums"),
+            MenuLayout.Item("Scripting Manual", source="Isaac Sim Scripting Manual"),
+            MenuLayout.Seperator("Omniverse Reference"),
+            MenuLayout.Item("Kit Programming Manual"),
+            MenuLayout.Item("Omni UI Docs"),
+            MenuLayout.Seperator("Physics Reference"),
+            MenuLayout.Item("Physics Programming Manual"),
+            MenuLayout.Seperator("Warp Reference"),
+            MenuLayout.Item("Warp Getting Started"),
+            MenuLayout.Item("Warp Documentation"),
+            MenuLayout.Seperator("USD"),
+            MenuLayout.Item("OpenUSD Reference Guide"),
+            MenuLayout.Seperator(),
         ]
+
+        self.__menu_layout = [MenuLayout.Menu("Help", help_items)]
         omni.kit.menu.utils.add_layout(self.__menu_layout)
 
         ## hack to have examples in two places
@@ -85,6 +83,9 @@ class HelpMenuExtension:
         MANUAL_URL = ISAAC_DOCS_URL + "/py/index.html"
         FORUMS_URL = "https://forums.developer.nvidia.com/c/omniverse/simulation/69"
         KIT_MANUAL_URL = "https://docs.omniverse.nvidia.com/py/kit/index.html"
+        OPENUSD_REFERENCE_URL = "https://openusd.org/release/index.html"
+        WARP_GETTING_STARTED_URL = "https://docs.omniverse.nvidia.com/extensions/latest/ext_warp.html"
+        WARP_DOCUMENTATION_URL = "https://nvidia.github.io/warp/"
 
         action_registry = omni.kit.actions.core.get_action_registry()
 
@@ -134,6 +135,33 @@ class HelpMenuExtension:
         )
         self._registered_actions.append("open_physics_manual")
 
+        action_registry.register_action(
+            self._ext_name,
+            "open_openusd_reference",
+            partial(self.open_ref_url, OPENUSD_REFERENCE_URL),
+            display_name="Open OpenUSD Reference Guide",
+            description="Open the OpenUSD reference documentation",
+        )
+        self._registered_actions.append("open_openusd_reference")
+
+        action_registry.register_action(
+            self._ext_name,
+            "open_warp_getting_started",
+            partial(self.open_ref_url, WARP_GETTING_STARTED_URL),
+            display_name="Open Warp Getting Started",
+            description="Open the Warp getting started documentation",
+        )
+        self._registered_actions.append("open_warp_getting_started")
+
+        action_registry.register_action(
+            self._ext_name,
+            "open_warp_documentation",
+            partial(self.open_ref_url, WARP_DOCUMENTATION_URL),
+            display_name="Open Warp Documentation",
+            description="Open the Warp reference documentation",
+        )
+        self._registered_actions.append("open_warp_documentation")
+
         reference_guide_menu_item = MenuItemDescription(
             name="Isaac Sim Online Guide", onclick_action=(self._ext_name, "open_isaac_online_guide")
         )
@@ -150,6 +178,15 @@ class HelpMenuExtension:
         physics_menu_item = MenuItemDescription(
             name="Physics Programming Manual", onclick_action=(self._ext_name, "open_physics_manual")
         )
+        openusd_reference_menu_item = MenuItemDescription(
+            name="OpenUSD Reference Guide", onclick_action=(self._ext_name, "open_openusd_reference")
+        )
+        warp_getting_started_menu_item = MenuItemDescription(
+            name="Warp Getting Started", onclick_action=(self._ext_name, "open_warp_getting_started")
+        )
+        warp_documentation_menu_item = MenuItemDescription(
+            name="Warp Documentation", onclick_action=(self._ext_name, "open_warp_documentation")
+        )
 
         add_menu_items(
             [
@@ -158,11 +195,14 @@ class HelpMenuExtension:
                 reference_guide_menu_item,
                 scripting_manual_menu_item,
                 forums_menu_item,
+                openusd_reference_menu_item,
+                warp_getting_started_menu_item,
+                warp_documentation_menu_item,
             ],
             "Help",
         )
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Remove menu layouts and deregister actions.
 
         Example:
@@ -179,11 +219,11 @@ class HelpMenuExtension:
             action_registry.deregister_action(self._ext_name, action_id)
         self._registered_actions = []
 
-    def _open_physics_manual(self):
+    def _open_physics_manual(self) -> None:
         """Open the physics programming manual URL."""
         self.open_ref_url(resolve_physics_ref_url())
 
-    def open_ref_url(self, url: str):
+    def open_ref_url(self, url: str) -> None:
         """Open a documentation URL using the system browser.
 
         Args:

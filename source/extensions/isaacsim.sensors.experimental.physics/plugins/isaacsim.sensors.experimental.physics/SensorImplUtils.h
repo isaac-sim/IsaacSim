@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,9 +22,8 @@
 // and initialization patterns are documented here. Sensor-specific
 // fields are added in each impl's ImplData.
 //
-// Common ImplData fields (present in all three sensors):
+// Common ImplData fields (present in all sensors):
 //   long stageId = 0;
-//   int64_t nextSensorId = 0;
 //   float lastDt = 0.0f;
 //   int stepCount = 0;
 //   ISimulationManager* simManager = nullptr;
@@ -32,7 +31,7 @@
 //   omni::physics::IPhysicsSimulation* physicsSimulation = nullptr;
 //   omni::physics::SubscriptionId physicsStepSub = omni::physics::kInvalidSubscriptionId;
 //   carb::events::ISubscriptionPtr physicsEventSub;
-//   std::unordered_map<int64_t, SensorData> sensors;
+//   std::unordered_map<std::string, SensorData> sensors;  // keyed by prim path
 //
 // Common lifecycle:
 //   1. _subscribeToPhysicsEvents() - subscribe to eStopped/eResumed

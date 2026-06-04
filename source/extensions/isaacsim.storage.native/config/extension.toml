@@ -1,5 +1,5 @@
 [package]
-version = "1.8.0"
+version = "1.9.2"
 category = "Simulation"
 title = "Isaac Sim Native Storage"
 description = "Provides utilities for accessing Isaac Sim assets from Nucleus servers or S3 buckets, including path resolution, asset downloading, and version verification."
@@ -22,7 +22,7 @@ name = "isaacsim.storage.native.tests"
 
 [settings]
 # Default asset root path for Isaac Sim.
-persistent.isaac.asset_root.default = "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0"
+persistent.isaac.asset_root.default = "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0"
 # Timeout in seconds for resolving the asset root path.
 persistent.isaac.asset_root.timeout = 5.0
 # Number of retries for transient asset root connectivity checks.
@@ -77,8 +77,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 

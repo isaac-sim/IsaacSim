@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.6.5] - 2026-05-24
+### Fixed
+- `GetSimulatorFeatures` advertises the subset of constants present in the installed `simulation_interfaces` instead of returning an empty list when a constant is missing.
+- Missing service/action types now skip registration with a warning naming the type, instead of a generic error.
+
+## [1.6.4] - 2026-05-14
+### Changed
+- Add missing type annotations across `entity_utils.py` and `simulation_control.py`, and drop unused `rclpy.node.Node` / `Result` / `SimulationState` imports flagged by ruff
+
+## [1.6.3] - 2026-04-30
+### Changed
+- Added simulate until condition functions to tests to reduce test time
+
+## [1.6.2] - 2026-04-30
+### Fixed
+- `GetAvailableWorlds`: user-provided `additional_sources` are no longer mangled by Nucleus-relative resolution when `offline_only=True` on Windows
+
+## [1.6.1] - 2026-04-27
+### Removed
+- Remove the `omni.isaac.ml_archive` dependency
+
+## [1.6.0] - 2026-04-14
+### Added
+- `GetEntityBounds` service for retrieving axis-aligned bounding boxes of scene entities (feature request by [@Z3ZEL](https://github.com/Z3ZEL))
+- `SpawnEntities` batch spawning service
+- `GetSpawnables` service for discovering available USD assets for spawning
+- `GetSpawnables` defaults to ROS assets under /Isaac/Samples/ROS2/Robots path. Excludes `.thumbs` thumbnail assets from results
+- Shared `_resolve_source_path` helper so both `GetSpawnables` and `GetAvailableWorlds` resolve Nucleus-relative paths from user-supplied sources
+
+## [1.5.0] - 2026-04-01
+### Changed
+- Removed deprecated `isaacsim.core.utils` dependency
+- Migrated to `isaacsim.core.experimental.utils` for stage and prim operations
+- Replaced direct `GetPrimAtPath` calls with `prim_utils.get_prim_at_path`
+- Use `backend="fabric"` for Fabric stage access
+
+## [1.4.1] - 2026-03-26
+### Changed
+- Update the test dependencies to use the new experimental wheeled robots extension
+
+## [1.4.0] - 2026-03-17
+### Changed
+- Updated documentation with AI agent.
+
 ## [1.3.3] - 2025-10-27
 ### Changed
 - Make omni.isaac.ml_archive an explicit test dependency

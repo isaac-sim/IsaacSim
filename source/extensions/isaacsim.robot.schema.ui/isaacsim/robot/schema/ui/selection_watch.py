@@ -1,10 +1,18 @@
-# Copyright (c) 2018-2020, NVIDIA CORPORATION.  All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto.  Any use, reproduction, disclosure or
-# distribution of this software and related documentation without an express
-# license agreement from NVIDIA CORPORATION is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Selection synchronization between the hierarchy view and USD stage."""
 
 import asyncio
@@ -34,7 +42,7 @@ class SelectionWatch:
         usd_context: Optional USD context. Uses the default context if None.
     """
 
-    def __init__(self, tree_view: Any | None = None, usd_context: Any | None = None):
+    def __init__(self, tree_view: Any | None = None, usd_context: Any | None = None) -> None:
         self._usd_context: Any = usd_context or omni.usd.get_context()
         self._is_in_selection = False
         self._tree_view: Any | None = None
@@ -51,12 +59,12 @@ class SelectionWatch:
 
         self.set_tree_view(tree_view)
         self._stage_event_sub: Any | None = carb.eventdispatcher.get_eventdispatcher().observe_event(
-            observer_name="isaacsim.robot.schema.ui:selection_changed",
+            observer_name="isaacsim.robot.schema.ui:selection_watch_selection_changed",
             event_name=self._usd_context.stage_event_name(omni.usd.StageEventType.SELECTION_CHANGED),
             on_event=self._on_stage_selection_changed_event,
         )
 
-    def update_path_map(self, path_map: PathMap | None):
+    def update_path_map(self, path_map: PathMap | None) -> None:
         """Update the path mapping for hierarchy-to-original translation.
 
         Args:
@@ -70,7 +78,7 @@ class SelectionWatch:
         """
         self._path_map = path_map
 
-    def sync_from_stage(self):
+    def sync_from_stage(self) -> None:
         """Reapply current USD stage selection to the tree view and expand to show it.
 
         Call after opening a new hierarchy stage or updating the path map so the
@@ -78,7 +86,7 @@ class SelectionWatch:
         """
         self._on_selection_changed()
 
-    def destroy(self):
+    def destroy(self) -> None:
         """Clean up resources and subscriptions.
 
         Example:
@@ -99,7 +107,7 @@ class SelectionWatch:
             self._tree_view = None
         self._stage_model_selection_subscription = None
 
-    def set_tree_view(self, tree_view: Any | None):
+    def set_tree_view(self, tree_view: Any | None) -> None:
         """Set or replace the tree view for selection synchronization.
 
         Always re-registers callbacks even when the tree view widget is
@@ -129,7 +137,7 @@ class SelectionWatch:
                 self._on_stage_items_selection_changed
             )
 
-    def _on_stage_selection_changed_event(self, event: Any):
+    def _on_stage_selection_changed_event(self, event: Any) -> None:
         """Handle stage selection change events.
 
         Ignores events while we are processing a widget-initiated selection
@@ -147,12 +155,21 @@ class SelectionWatch:
             return
         self._on_selection_changed()
 
-    def _on_selection_changed(self):
+    def _on_selection_changed(self) -> None:
         """Process a selection change from the USD stage.
 
         Translates stage paths to hierarchy paths and updates the tree view.
         Skips when the tree view model is not yet a stage model (e.g. during
         open_stage transitions where the model is a bare AbstractItemModel).
+
+        When the resolved set of tree-view items is identical to the one
+        already applied, this method short-circuits before touching the model
+        or widget. The unconditional ``model.update_dirty()`` /
+        ``_expand_to_selected_items`` / ``_apply_tree_view_selection`` chain
+        would otherwise force the tree view to redraw on every USD
+        ``SELECTION_CHANGED`` event — including the feedback events that the
+        inspector's own selection round-trip emits — which is visible to the
+        user as a flash on every click within the same scope.
 
         Returns:
             None.
@@ -167,9 +184,10 @@ class SelectionWatch:
         selection_paths = self._usd_context.get_selection().get_selected_prim_paths()
         selected_items = self._resolve_selected_items(selection_paths)
 
-        if selected_items != self._selected_items:
-            self._update_selected_items(selected_items)
+        if selected_items == self._selected_items:
+            return
 
+        self._update_selected_items(selected_items)
         model.update_dirty()
         self._expand_to_selected_items(selected_items)
         self._apply_tree_view_selection(selected_items)
@@ -196,7 +214,7 @@ class SelectionWatch:
                     selected_items.add(stage_item)
         return selected_items
 
-    def _expand_to_selected_items(self, selected_items: set[StageItem]):
+    def _expand_to_selected_items(self, selected_items: set[StageItem]) -> None:
         """Expand the tree view to show all selected items.
 
         Args:
@@ -216,7 +234,7 @@ class SelectionWatch:
             for item in full_chain[:-1]:
                 tree_view.set_expanded(item, True, False)
 
-    def _apply_tree_view_selection(self, selected_items: set[StageItem]):
+    def _apply_tree_view_selection(self, selected_items: set[StageItem]) -> None:
         """Apply selection to the tree view.
 
         Args:
@@ -232,7 +250,7 @@ class SelectionWatch:
         tree_view.selection = list(selected_items)
         self._is_in_selection = False
 
-    def set_filtering(self, filter_string: str | None):
+    def set_filtering(self, filter_string: str | None) -> None:
         """Set the filter string for selection filtering.
 
         Args:
@@ -249,7 +267,7 @@ class SelectionWatch:
         else:
             self._filter_string = filter_string
 
-    def enable_filtering_checking(self, enable: bool):
+    def enable_filtering_checking(self, enable: bool) -> None:
         """Enable or disable selection filtering.
 
         Args:
@@ -264,7 +282,7 @@ class SelectionWatch:
         self._is_filter_checking_enabled = enable
 
     @Trace.TraceFunction
-    def _on_stage_items_selection_changed(self):
+    def _on_stage_items_selection_changed(self) -> None:
         """Handle selection changes from the stage model.
 
         Currently disabled; reserved for future bidirectional sync.
@@ -274,7 +292,7 @@ class SelectionWatch:
         """
         return
 
-    def _on_tree_mouse_pressed(self, x: float, y: float, button: int, modifier: int):
+    def _on_tree_mouse_pressed(self, x: float, y: float, button: int, modifier: int) -> None:
         """Capture modifier state at the moment a left-click lands on the tree.
 
         This fires synchronously during the mouse-press event, before the
@@ -321,7 +339,7 @@ class SelectionWatch:
         return False
 
     @Trace.TraceFunction
-    def _on_widget_selection_changed(self, selection: list[StageItem]):
+    def _on_widget_selection_changed(self, selection: list[StageItem]) -> None:
         """Handle selection changes from the tree view widget.
 
         Translates hierarchy paths back to original stage paths and
@@ -420,7 +438,7 @@ class SelectionWatch:
             self._tree_view.selection = selection
         return selection
 
-    def _update_selected_items(self, selections: set[StageItem]):
+    def _update_selected_items(self, selections: set[StageItem]) -> None:
         """Update the internal selected items set.
 
         Args:
@@ -428,7 +446,7 @@ class SelectionWatch:
         """
         self._selected_items = set(selections)
 
-    def set_selected_stage_items(self, selections: list[StageItem], enable_undo: bool = False):
+    def set_selected_stage_items(self, selections: list[StageItem], enable_undo: bool = False) -> None:
         """Set the selected items and update the USD stage selection.
 
         The ``_is_setting_usd_selection`` guard is kept active until the next
@@ -480,7 +498,7 @@ class SelectionWatch:
                 self._schedule_selection_guard_reset()
             self._update_selected_items(all_items)
 
-    def _schedule_selection_guard_reset(self):
+    def _schedule_selection_guard_reset(self) -> None:
         """Reset ``_is_setting_usd_selection`` on the next frame.
 
         Keeping the guard active for one full frame absorbs any feedback
@@ -496,7 +514,7 @@ class SelectionWatch:
         most recent selection, not a stale one.
         """
 
-        async def _reset():
+        async def _reset() -> None:
             await omni.kit.app.get_app().next_update_async()
             if not (self._usd_context and self._path_map and self._tree_view):
                 self._is_setting_usd_selection = False

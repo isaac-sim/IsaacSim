@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test for rigid prim."""
+
+from __future__ import annotations
 
 from typing import Literal
 
@@ -30,6 +34,7 @@ from .common import check_allclose, check_array, cprint, draw_indices, draw_samp
 
 
 async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"], **kwargs) -> None:
+    """Populate stage."""
     assert operation == "wrap", "Other operations except 'wrap' are not supported"
     # create new stage
     await stage_utils.create_new_stage_async()
@@ -51,17 +56,20 @@ async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"
 
 
 class TestRigidPrim(omni.kit.test.AsyncTestCase):
+    """Test rigid prim."""
+
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
     def check_backend(self, backend, prim):
+        """Check backend."""
         if backend == "tensor":
             self.assertTrue(prim.is_physics_tensor_entity_valid(), f"Tensor API should be enabled ({backend})")
         elif backend in ["usd", "usdrt", "fabric"]:
@@ -81,6 +89,7 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
         max_num_prims=1,
     )
     async def test_runtime_instance_creation(self, prim, num_prims, device, backend):
+        """Test runtime instance creation."""
         RigidPrim("/World/A_0")
 
     @parametrize(
@@ -91,6 +100,7 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_len(self, prim, num_prims, device, backend):
+        """Test len."""
         self.assertEqual(len(prim), num_prims, f"Invalid RigidPrim ({num_prims} prims) len")
 
     @parametrize(
@@ -100,6 +110,7 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_world_poses(self, prim, num_prims, device, backend):
+        """Test world poses."""
         # check backend and define USD usage
         self.check_backend(backend, prim)
         if backend in ["usdrt", "fabric"]:
@@ -127,6 +138,7 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_local_poses(self, prim, num_prims, device, backend):
+        """Test local poses."""
         # check backend and define USD usage
         self.check_backend(backend, prim)
         if backend in ["usdrt", "fabric"]:
@@ -155,6 +167,7 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_velocities(self, prim, num_prims, device, backend):
+        """Test velocities."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -178,6 +191,7 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_masses(self, prim, num_prims, device, backend):
+        """Test masses."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -202,6 +216,7 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_enabled_rigid_bodies(self, prim, num_prims, device, backend):
+        """Test enabled rigid bodies."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -223,6 +238,7 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_enabled_gravities(self, prim, num_prims, device, backend):
+        """Test enabled gravities."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -243,6 +259,7 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_coms(self, prim, num_prims, device, backend):
+        """Test coms."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -267,6 +284,8 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_inertias(self, prim, num_prims, device, backend):
+        """Test inertias."""
+
         def _transform(x):  # transform to a diagonal inertia matrix
             x[:, [1, 2, 3, 5, 6, 7]] = 0.0
             return x
@@ -294,6 +313,7 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_densities(self, prim, num_prims, device, backend):
+        """Test densities."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -314,6 +334,7 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_sleep_thresholds(self, prim, num_prims, device, backend):
+        """Test sleep thresholds."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -334,6 +355,7 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_default_state(self, prim, num_prims, device, backend):
+        """Test default state."""
         # check backend
         self.check_backend(backend, prim)
         if backend == "usd":
@@ -364,6 +386,7 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_apply_forces(self, prim, num_prims, device, backend):
+        """Test apply forces."""
         # check backend
         self.check_backend(backend, prim)
 
@@ -410,12 +433,12 @@ async def populate_stage_with_ground(max_num_prims: int, operation: Literal["wra
     )
     GeomPrim(cube_paths, apply_collision_apis=True)
     rigid_prims = RigidPrim(cube_paths, masses=[1.0])
-    # ensure contact reporting is enabled on cubes and ground filter prim
-    RigidPrim.ensure_api(rigid_prims.prims, PhysxSchema.PhysxContactReportAPI)
-    stage = stage_utils.get_current_stage()
-    filter_prim = stage.GetPrimAtPath("/World/GroundPlane/collisionPlane")
-    if filter_prim.IsValid():
-        GeomPrim.ensure_api([filter_prim], PhysxSchema.PhysxContactReportAPI)
+    if SimulationManager.get_active_physics_engine() == "physx":
+        RigidPrim.ensure_api(rigid_prims.prims, PhysxSchema.PhysxContactReportAPI)
+        stage = stage_utils.get_current_stage()
+        filter_prim = stage.GetPrimAtPath("/World/GroundPlane/collisionPlane")
+        if filter_prim.IsValid():
+            GeomPrim.ensure_api([filter_prim], PhysxSchema.PhysxContactReportAPI)
 
 
 def _assert_single_cube_contact_data(
@@ -524,27 +547,36 @@ async def _wait_for_contact_data(
     *,
     backend: str,
     max_steps: int = 120,
-    settle_frames: int = 5,
+    settle_frames: int = 15,
     expected_total_contacts: int | None = None,
     expected_pair_count: int | None = None,
     cube_index: int = 0,
+    counts_tuple_index: int = -2,
 ) -> tuple[wp.array, ...]:
+    """Wait until contact data reports non-zero counts for the given sensor.
+
+    Args:
+        counts_tuple_index: index into the returned data tuple that holds the
+            counts array.  ``-2`` (default) for filtered contact data (2D pair
+            counts), ``4`` for raw contact data (1D counts).
+    """
     data = None
     frames_after = None
     for _ in range(max_steps):
         await omni.kit.app.get_app().next_update_async()
         with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
             data = get_data()
-        pair_counts = data[-2]
-        total_contacts = int(np.sum(pair_counts.numpy()))
+        counts_arr = data[counts_tuple_index].numpy()
+        counts_flat = counts_arr.flatten()
+        total_contacts = int(np.sum(counts_flat))
         ready_total = (
             total_contacts > 0 if expected_total_contacts is None else total_contacts == expected_total_contacts
         )
-        ready_pair = (
-            int(pair_counts.numpy()[cube_index, 0]) > 0
-            if expected_pair_count is None
-            else int(pair_counts.numpy()[cube_index, 0]) == expected_pair_count
-        )
+        if counts_arr.ndim >= 2:
+            sensor_count = int(counts_arr[cube_index, 0])
+        else:
+            sensor_count = int(counts_flat[cube_index])
+        ready_pair = sensor_count > 0 if expected_pair_count is None else sensor_count == expected_pair_count
         if ready_total and ready_pair:
             frames_after = 0 if frames_after is None else frames_after + 1
             if frames_after >= settle_frames:
@@ -553,15 +585,18 @@ async def _wait_for_contact_data(
 
 
 class TestRigidPrimContactTracking(omni.kit.test.AsyncTestCase):
+    """Test rigid prim contact tracking."""
+
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         super().tearDown()
 
     def check_backend(self, backend, prim):
+        """Check backend."""
         if backend == "tensor":
             self.assertTrue(prim.is_physics_tensor_entity_valid(), f"Tensor API should be enabled ({backend})")
         elif backend in ["usd", "usdrt", "fabric"]:
@@ -573,7 +608,6 @@ class TestRigidPrimContactTracking(omni.kit.test.AsyncTestCase):
         backends=["tensor"],
         operations=["wrap"],
         instances=["many"],
-        supported_engines=["physx"],
         prim_class=RigidPrim,
         prim_class_kwargs={
             "masses": [1.0],
@@ -583,10 +617,12 @@ class TestRigidPrimContactTracking(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage_with_ground,
     )
     async def test_contact_tracking_many(self, prim, num_prims, device, backend):
+        """Test contact tracking many."""
         # check backend
         self.check_backend(backend, prim)
         # enabled contact tracking (usd backend)
         with use_backend("usd", raise_on_unsupported=True, raise_on_fallback=True):
+            prim.set_sleep_thresholds([0.0])
             prim.set_enabled_contact_tracking([True])
             output = prim.get_enabled_contact_tracking()
         check_array(output, shape=(num_prims, 1), dtype=wp.bool, device=device)
@@ -640,6 +676,8 @@ class TestRigidPrimContactTracking(omni.kit.test.AsyncTestCase):
             forces = prim_per_filter.get_contact_force_matrix()
         check_array(forces, shape=(num_prims, prim_per_filter.num_contact_filters, 3), dtype=wp.float32, device=device)
         self.assertTrue(np.isfinite(forces.numpy()).all(), "Expected finite contact force matrix values")
+        if SimulationManager.get_active_physics_engine() != "physx":
+            return
         # friction data
         await _wait_for_contact_data(
             lambda: prim.get_contact_force_data(),
@@ -663,7 +701,6 @@ class TestRigidPrimContactTracking(omni.kit.test.AsyncTestCase):
         backends=["tensor"],
         operations=["wrap"],
         instances=["one"],
-        supported_engines=["physx"],
         prim_class=RigidPrim,
         prim_class_kwargs={
             "masses": [1.0],
@@ -674,10 +711,12 @@ class TestRigidPrimContactTracking(omni.kit.test.AsyncTestCase):
         max_num_prims=1,
     )
     async def test_contact_tracking_single(self, prim, num_prims, device, backend):
+        """Test contact tracking single."""
         # check backend
         self.check_backend(backend, prim)
         # enabled contact tracking (usd backend)
         with use_backend("usd", raise_on_unsupported=True, raise_on_fallback=True):
+            prim.set_sleep_thresholds([0.0])
             prim.set_enabled_contact_tracking([True])
             output = prim.get_enabled_contact_tracking()
         check_array(output, shape=(num_prims, 1), dtype=wp.bool, device=device)
@@ -713,6 +752,8 @@ class TestRigidPrimContactTracking(omni.kit.test.AsyncTestCase):
             cube_index=0,
             expected_contacts=4,
         )
+        if SimulationManager.get_active_physics_engine() != "physx":
+            return
         # friction data
         await _wait_for_contact_data(
             lambda: prim.get_contact_force_data(),
@@ -730,3 +771,224 @@ class TestRigidPrimContactTracking(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.isfinite(points.numpy()).all(), "Expected finite friction points")
         self.assertTrue(np.any(np.abs(forces.numpy()) > 0.0), "Expected non-zero friction forces")
         self.assertTrue(np.any(np.linalg.norm(points.numpy(), axis=-1) > 0.0), "Expected non-zero friction points")
+
+
+def _assert_single_cube_raw_contact_data(
+    test_case: omni.kit.test.AsyncTestCase,
+    *,
+    prim: RigidPrim,
+    cube_path: str,
+    forces_np: np.ndarray,
+    points_np: np.ndarray,
+    normals_np: np.ndarray,
+    separations_np: np.ndarray,
+    other_actor_ids_np: np.ndarray,
+    start: int,
+    count: int,
+    cube_index: int = 0,
+    backend: str = "tensor",
+) -> None:
+    """Strict assertions for one cube's raw contact data at equilibrium on a ground plane.
+
+    Checks: force sum == weight, normals == +Z, contact points on bottom face,
+    separations near zero, actor IDs resolve to ground.
+    """
+    slc = slice(start, start + count)
+    forces_slc = forces_np[slc]
+    points_slc = points_np[slc]
+    normals_slc = normals_np[slc]
+    separations_slc = separations_np[slc]
+    ids_slc = other_actor_ids_np[slc]
+
+    # Finite and non-zero
+    test_case.assertTrue(np.isfinite(forces_slc).all(), "Expected finite contact forces")
+    test_case.assertTrue(np.isfinite(points_slc).all(), "Expected finite contact points")
+    test_case.assertTrue(np.isfinite(normals_slc).all(), "Expected finite contact normals")
+    test_case.assertTrue(np.isfinite(separations_slc).all(), "Expected finite contact separations")
+    test_case.assertTrue(np.any(np.abs(forces_slc) > 0.0), "Expected non-zero contact forces")
+
+    # Normals should be strictly +Z (ground contact at equilibrium)
+    test_case.assertTrue(
+        np.all(normals_slc[:, 2] > 0.999),
+        f"Expected normals to point +Z (min Z={normals_slc[:, 2].min():.4f})",
+    )
+    test_case.assertTrue(
+        np.all(np.abs(normals_slc[:, :2]) < 0.01),
+        "Expected normals X/Y components ~0",
+    )
+
+    # Net contact force should equal weight: sum(force_scalar * normal_vec) / dt == [0, 0, mg]
+    dt = SimulationManager.get_physics_dt()
+    force_vectors = forces_slc[:, np.newaxis] * normals_slc
+    net_force = np.sum(force_vectors, axis=0) / dt
+    test_case.assertAlmostEqual(
+        float(net_force[2]),
+        9.81,
+        delta=0.1,
+        msg=f"Cube {cube_index}: net Z force should be ~9.81N, got {net_force[2]:.4f}",
+    )
+    test_case.assertAlmostEqual(
+        float(net_force[0]),
+        0.0,
+        delta=0.1,
+        msg=f"Cube {cube_index}: net X force should be ~0, got {net_force[0]:.4f}",
+    )
+    test_case.assertAlmostEqual(
+        float(net_force[1]),
+        0.0,
+        delta=0.1,
+        msg=f"Cube {cube_index}: net Y force should be ~0, got {net_force[1]:.4f}",
+    )
+
+    # Contact points should lie on cube bottom face
+    stage = stage_utils.get_current_stage()
+    cube_usd = UsdGeom.Cube(stage.GetPrimAtPath(cube_path))
+    cube_size = float(cube_usd.GetSizeAttr().Get())
+    half_size = cube_size / 2.0
+    positions, _ = prim.get_world_poses(indices=[cube_index])
+    cube_center = positions.numpy()[0]
+    expected_z = cube_center[2] - half_size
+    test_case.assertTrue(
+        np.allclose(points_slc[:, 2], expected_z, atol=1e-2),
+        f"Contact points Z should be at cube bottom ({expected_z:.3f}), got {points_slc[:, 2]}",
+    )
+    test_case.assertTrue(
+        np.all(np.abs(points_slc[:, 0] - cube_center[0]) <= half_size + 1e-2),
+        "Contact points X should be within cube footprint",
+    )
+    test_case.assertTrue(
+        np.all(np.abs(points_slc[:, 1] - cube_center[1]) <= half_size + 1e-2),
+        "Contact points Y should be within cube footprint",
+    )
+
+    # Separations should be near zero at equilibrium
+    test_case.assertTrue(
+        np.all(np.abs(separations_slc) < 0.01),
+        f"Expected separations near zero, got max |d|={np.abs(separations_slc).max():.4f}",
+    )
+
+    # Other actor IDs should be non-zero and resolve to the ground
+    test_case.assertTrue(np.all(ids_slc > 0), "Expected non-zero other actor IDs for all contacts")
+    ids_cpu = wp.array(ids_slc.astype(np.uint64), dtype=wp.uint64, device="cpu")
+    with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
+        paths = prim.get_actor_paths_from_ids(ids_cpu)
+    has_ground = any("Ground" in p or "ground" in p or "world" in p for p in paths if p)
+    test_case.assertTrue(has_ground, f"Cube {cube_index} should contact ground. Paths: {paths}")
+
+
+class TestRigidPrimRawContactTracking(omni.kit.test.AsyncTestCase):
+    """Test rigid prim raw contact tracking."""
+
+    async def setUp(self):
+        """Set up test environment."""
+        super().setUp()
+
+    async def tearDown(self):
+        """Tear down test environment."""
+        super().tearDown()
+
+    @parametrize(
+        backends=["tensor"],
+        operations=["wrap"],
+        instances=["many"],
+        prim_class=RigidPrim,
+        prim_class_kwargs={
+            "masses": [1.0],
+            "max_contact_count": 25,
+        },
+        populate_stage_func=populate_stage_with_ground,
+    )
+    async def test_raw_contact_data_many(self, prim, num_prims, device, backend):
+        """Test raw contact data many."""
+        self.assertTrue(prim.is_physics_tensor_entity_valid(), f"Tensor API should be enabled ({backend})")
+        with use_backend("usd", raise_on_unsupported=True, raise_on_fallback=True):
+            prim.set_sleep_thresholds([0.0])
+            prim.set_enabled_contact_tracking([True])
+
+        data = await _wait_for_contact_data(
+            lambda: prim.get_raw_contact_data(),
+            backend=backend,
+            counts_tuple_index=4,
+        )
+        forces, points, normals, separations, counts, start_indices, other_actor_ids = data
+
+        counts_np = counts.numpy().flatten()
+        start_indices_np = start_indices.numpy().flatten()
+        forces_np = forces.numpy().flatten()
+        points_np = points.numpy().reshape(-1, 3)
+        normals_np = normals.numpy().reshape(-1, 3)
+        separations_np = separations.numpy().flatten()
+        other_actor_ids_np = other_actor_ids.numpy().flatten()
+
+        # All cubes should have contacts
+        self.assertTrue(np.all(counts_np > 0), f"All sensors should have contacts. Counts: {counts_np}")
+
+        for cube_index in range(num_prims):
+            start = int(start_indices_np[cube_index])
+            count = int(counts_np[cube_index])
+            self.assertGreater(count, 0, f"Cube {cube_index} should have contacts")
+            _assert_single_cube_raw_contact_data(
+                self,
+                prim=prim,
+                cube_path=f"/World/A_{cube_index}",
+                forces_np=forces_np,
+                points_np=points_np,
+                normals_np=normals_np,
+                separations_np=separations_np,
+                other_actor_ids_np=other_actor_ids_np,
+                start=start,
+                count=count,
+                cube_index=cube_index,
+                backend=backend,
+            )
+
+    @parametrize(
+        backends=["tensor"],
+        operations=["wrap"],
+        instances=["one"],
+        prim_class=RigidPrim,
+        prim_class_kwargs={
+            "masses": [1.0],
+            "max_contact_count": 25,
+        },
+        populate_stage_func=populate_stage_with_ground,
+        max_num_prims=1,
+    )
+    async def test_raw_contact_data_single(self, prim, num_prims, device, backend):
+        """Test raw contact data single."""
+        self.assertTrue(prim.is_physics_tensor_entity_valid(), f"Tensor API should be enabled ({backend})")
+        with use_backend("usd", raise_on_unsupported=True, raise_on_fallback=True):
+            prim.set_sleep_thresholds([0.0])
+            prim.set_enabled_contact_tracking([True])
+
+        data = await _wait_for_contact_data(
+            lambda: prim.get_raw_contact_data(),
+            backend=backend,
+            counts_tuple_index=4,
+        )
+        forces, points, normals, separations, counts, start_indices, other_actor_ids = data
+
+        # Shape checks
+        check_array(forces, shape=(prim._max_contact_count, 1), dtype=wp.float32, device=device)
+        check_array(points, shape=(prim._max_contact_count, 3), dtype=wp.float32, device=device)
+        check_array(normals, shape=(prim._max_contact_count, 3), dtype=wp.float32, device=device)
+        check_array(separations, shape=(prim._max_contact_count, 1), dtype=wp.float32, device=device)
+
+        counts_np = counts.numpy().flatten()
+        start_indices_np = start_indices.numpy().flatten()
+        self.assertGreater(int(counts_np[0]), 0, f"Single cube should have contacts. Count: {counts_np[0]}")
+
+        _assert_single_cube_raw_contact_data(
+            self,
+            prim=prim,
+            cube_path="/World/A_0",
+            forces_np=forces.numpy().flatten(),
+            points_np=points.numpy().reshape(-1, 3),
+            normals_np=normals.numpy().reshape(-1, 3),
+            separations_np=separations.numpy().flatten(),
+            other_actor_ids_np=other_actor_ids.numpy().flatten(),
+            start=int(start_indices_np[0]),
+            count=int(counts_np[0]),
+            cube_index=0,
+            backend=backend,
+        )

@@ -1,3 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Test suite for rotation conversion utilities across different implementations including numpy, experimental, scipy, and USD to ensure consistency in quaternion and Euler angle calculations."""
 
 import numpy as np
@@ -55,12 +70,8 @@ def compute_numpy_rotation(euler_angle: tuple[float, float, float], extrinsic: b
         and euler_angles are the round-trip converted values.
     """
     euler_np = np.array(euler_angle)
-    if extrinsic:
-        euler_np = euler_np[[2, 1, 0]]
     numpy_quat = euler_angles_to_quats(euler_np, degrees=True, extrinsic=extrinsic, device="cpu")
     numpy_euler = quats_to_euler_angles(numpy_quat, degrees=True, extrinsic=extrinsic, device="cpu")
-    if extrinsic:
-        numpy_euler = np.array(numpy_euler)[[2, 1, 0]]
     return numpy_quat, numpy_euler
 
 
@@ -112,15 +123,11 @@ def compute_scipy_rotation(euler_angle: tuple[float, float, float], extrinsic: b
         format (from scipy's XYZW) and euler_angles are the round-trip values.
     """
     euler_np = np.array(euler_angle)
-    if extrinsic:
-        euler_np = euler_np[[2, 1, 0]]
     scipy_seq = "xyz" if extrinsic else "XYZ"
     scipy_rot = Rotation.from_euler(scipy_seq, euler_np, degrees=True)
     scipy_quat_xyzw = scipy_rot.as_quat()
     scipy_quat = np.array([scipy_quat_xyzw[3], scipy_quat_xyzw[0], scipy_quat_xyzw[1], scipy_quat_xyzw[2]])
     scipy_euler = scipy_rot.as_euler(scipy_seq, degrees=True)
-    if extrinsic:
-        scipy_euler = np.array(scipy_euler)[[2, 1, 0]]
     return scipy_quat, scipy_euler
 
 
@@ -142,12 +149,12 @@ def compute_usd_rotation(euler_angle: tuple[float, float, float], extrinsic: boo
     euler_np = np.array(euler_angle)
     if extrinsic:
         usd_rot = (
-            Gf.Rotation(Gf.Vec3d.XAxis(), float(euler_np[2]))
+            Gf.Rotation(Gf.Vec3d.XAxis(), float(euler_np[0]))
             * Gf.Rotation(Gf.Vec3d.YAxis(), float(euler_np[1]))
-            * Gf.Rotation(Gf.Vec3d.ZAxis(), float(euler_np[0]))
+            * Gf.Rotation(Gf.Vec3d.ZAxis(), float(euler_np[2]))
         )
         usd_euler_vec = usd_rot.Decompose(Gf.Vec3d.ZAxis(), Gf.Vec3d.YAxis(), Gf.Vec3d.XAxis())
-        usd_euler = np.array([usd_euler_vec[0], usd_euler_vec[1], usd_euler_vec[2]])
+        usd_euler = np.array([usd_euler_vec[2], usd_euler_vec[1], usd_euler_vec[0]])
     else:
         usd_rot = (
             Gf.Rotation(Gf.Vec3d.ZAxis(), float(euler_np[2]))
@@ -183,18 +190,11 @@ def compute_usd_ui_rotation(euler_angle: tuple[float, float, float], extrinsic: 
         Decomposed Euler angles in the USD UI convention.
     """
     euler_np = np.array(euler_angle)
-    if extrinsic:
-        usd_rot = (
-            Gf.Rotation(Gf.Vec3d.ZAxis(), float(euler_np[0]))
-            * Gf.Rotation(Gf.Vec3d.YAxis(), float(euler_np[1]))
-            * Gf.Rotation(Gf.Vec3d.XAxis(), float(euler_np[2]))
-        )
-    else:
-        usd_rot = (
-            Gf.Rotation(Gf.Vec3d.XAxis(), float(euler_np[0]))
-            * Gf.Rotation(Gf.Vec3d.YAxis(), float(euler_np[1]))
-            * Gf.Rotation(Gf.Vec3d.ZAxis(), float(euler_np[2]))
-        )
+    usd_rot = (
+        Gf.Rotation(Gf.Vec3d.XAxis(), float(euler_np[0]))
+        * Gf.Rotation(Gf.Vec3d.YAxis(), float(euler_np[1]))
+        * Gf.Rotation(Gf.Vec3d.ZAxis(), float(euler_np[2]))
+    )
     usd_ui_euler_vec = usd_rot.Decompose(Gf.Vec3d.XAxis(), Gf.Vec3d.YAxis(), Gf.Vec3d.ZAxis())
     usd_ui_euler = np.array([usd_ui_euler_vec[0], usd_ui_euler_vec[1], usd_ui_euler_vec[2]])
     return usd_ui_euler

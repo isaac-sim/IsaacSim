@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,6 +32,11 @@ includedirs {
     target_deps .. "/usd_ext_physics/%{cfg.buildcfg}/include",
     target_deps .. "/omni_physics/%{config}/include",
     target_deps .. "/omni_client_library/include",
+    -- usdrt headers + Fabric headers are required so that compute() can write
+    -- shader inputs:texture_translate into Fabric when Fabric Scene Delegate is enabled
+    target_deps .. "/rtx_plugins/include",
+    extsbuild_dir .. "/usdrt.scenegraph/include",
+    "%{kit_sdk_bin_dir}/dev/fabric/include/",
 }
 libdirs {
     target_deps .. "/usd/%{cfg.buildcfg}/lib",

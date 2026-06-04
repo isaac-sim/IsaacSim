@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Global variables for the cuMotion world interface example."""
+
 EXTENSION_TITLE = "cuMotion World Interface Example"
 
 EXTENSION_DESCRIPTION = "Demonstrates world state management with CumotionWorldInterface."

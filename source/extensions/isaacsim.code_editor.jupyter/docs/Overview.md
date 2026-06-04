@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.code_editor.jupyter extension integrates Jupyter Notebook functionality directly into Isaac Sim, providing an interactive Python development environment that seamlessly connects with the simulation. This extension creates a bridge between Jupyter's web-based notebook interface and Isaac Sim's Python environment, enabling users to develop, test, and execute code interactively while maintaining full access to Isaac Sim's APIs and capabilities.

@@ -35,12 +35,14 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "BENCHMARK_PHASE_TRIGGER",
+    "KIT_LOG_FILE_SETTING",
     "METRICS_FOLDER_SETTING",
     "add_common_arguments",
     "build_env",
     "configure_logging",
     "discover_benchmarks",
     "format_benchmark_list",
+    "format_kit_log_file_arg",
     "parse_common_args",
     "resolve_benchmark",
     "resolve_output_paths",
@@ -63,10 +65,14 @@ BENCHMARK_PHASE_TRIGGER = "Starting phase: benchmark"
 # Kit setting controlling where benchmark JSON metrics are written.
 METRICS_FOLDER_SETTING = "/exts/isaacsim.benchmark.services/metrics/metrics_output_folder"
 
+# Carb / Kit log file path (see Kit logging guide: runtime path is ``/log/file``).
+KIT_LOG_FILE_SETTING = "/log/file"
+
 # ROS 2 environment defaults (respected only when not already set).
 _ROS2_DISTRO_DEFAULT = "humble"
 _ROS2_RMW_DEFAULT = "rmw_fastrtps_cpp"
-_ROS2_LIB_REL_PATH = Path("exts") / "isaacsim.ros2.core" / "humble" / "lib"
+# Bundled libs live under ``<release>/exts/isaacsim.ros2.core/<ROS_DISTRO>/lib``.
+_ROS2_CORE_EXT_REL = Path("exts") / "isaacsim.ros2.core"
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +165,9 @@ def build_env(
 ) -> dict[str, str]:
     """Build the environment dict for benchmark and capture subprocesses.
 
-    Set ROS 2 variables and optionally enable Python function-scope profiling.
+    Set ROS 2 variables (``ROS_DISTRO`` selects which bundled
+    ``isaacsim.ros2.core`` libs are prepended to ``LD_LIBRARY_PATH``) and
+    optionally enable Python function-scope profiling.
     Callers can inject tool-specific variables (e.g. Tracy defaults) via
     *extra_env*.
 
@@ -178,7 +186,7 @@ def build_env(
     # ROS 2 setup — honour existing env vars, fall back to defaults.
     env.setdefault("ROS_DISTRO", _ROS2_DISTRO_DEFAULT)
     env.setdefault("RMW_IMPLEMENTATION", _ROS2_RMW_DEFAULT)
-    ros2_lib_dir = str(release_dir / _ROS2_LIB_REL_PATH)
+    ros2_lib_dir = str(release_dir / _ROS2_CORE_EXT_REL / env["ROS_DISTRO"] / "lib")
     existing_ld = env.get("LD_LIBRARY_PATH", "")
     if ros2_lib_dir not in existing_ld:
         env["LD_LIBRARY_PATH"] = f"{existing_ld}:{ros2_lib_dir}" if existing_ld else ros2_lib_dir
@@ -270,6 +278,21 @@ def run_benchmark(
     if log_path is not None:
         logger.info("Benchmark log saved to %s", log_path)
     return proc.returncode
+
+
+def format_kit_log_file_arg(absolute_path: Path) -> str:
+    """Return a ``python.sh`` CLI token that sets Kit's carb log output file.
+
+    Sets the ``/log/file`` Carbonite setting so Kit writes its process log to
+    *absolute_path* directly (no post-run copy). Parent directories should exist.
+
+    Args:
+        absolute_path: Destination log file path.
+
+    Returns:
+        A string of the form ``--/log/file=<path>``.
+    """
+    return f"--{KIT_LOG_FILE_SETTING}={absolute_path.resolve()}"
 
 
 # ---------------------------------------------------------------------------
@@ -375,6 +398,24 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
         "--no-log",
         action="store_true",
         help="Do not save benchmark stdout/stderr to a log file alongside the profiling output.",
+    )
+    parser.add_argument(
+        "--no-kit-log-file",
+        action="store_true",
+        help=(
+            "Do not pass Kit's --/log/file setting; carb uses its default log location "
+            "(timestamped path under omni logs). By default this script sets --/log/file so the "
+            "Kit log is written directly to <output-dir>/<output-name>_kit.log."
+        ),
+    )
+    parser.add_argument(
+        "--kit-log-path",
+        type=Path,
+        default=None,
+        help=(
+            "Absolute destination for Kit's carb log file via --/log/file (full path including "
+            "filename). Default when omitted: <output-dir>/<output-name>_kit.log."
+        ),
     )
 
 

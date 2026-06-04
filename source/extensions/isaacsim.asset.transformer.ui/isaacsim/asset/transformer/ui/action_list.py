@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +14,8 @@
 # limitations under the License.
 
 """Scrollable frame that hosts the drag-and-drop action TreeView."""
+
+from typing import Any
 
 import omni.ui as ui
 
@@ -33,7 +35,7 @@ class ActionListFrame(ui.Frame):
         **kwargs: Additional keyword arguments forwarded to ``ui.Frame``.
     """
 
-    def __init__(self, model: ui.AbstractItemModel, *args, **kwargs) -> None:
+    def __init__(self, model: ui.AbstractItemModel, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, height=0, **kwargs)
         self.__list_model = model
         self.__delegate = ActionRowDelegate()

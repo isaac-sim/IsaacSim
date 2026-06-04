@@ -1,8 +1,71 @@
 # Changelog
+
+## [5.2.11] - 2026-05-28
+### Fixed
+- Conditional use of asset until menagerie assets are tested with Isaac lab
+
+## [5.2.10] - 2026-05-21
+### Fixed
+- Restore the prior physics sim device and fabric state in the cleanup paths of the interactive Quadruped, Go2, and Humanoid examples so the PhysX direct-GPU API flag is not left enabled, which previously caused `PxArticulationJointReducedCoordinate::setDriveTarget` errors when modifying USD in subsequent sessions
+
+### Added
+- Unit tests covering the snapshot/restore helpers in `isaacsim.robot.policy.examples.interactive.utils`, plus per-example roundtrip tests that verify the Quadruped, Go2, and Humanoid examples leave the physics sim device and fabric flag unchanged after cleanup
+
+### Changed
+- Extract the snapshot/restore physics-state logic shared by the interactive Quadruped, Go2, and Humanoid examples into `isaacsim.robot.policy.examples.interactive.utils`
+
+
+## [5.2.9] - 2026-05-21
+### Fixed
+- Spot fall over issue in example by reverting the physics dt to 500hz
+
+## [5.2.8] - 2026-05-20
+### Fixed
+- Select the asset's `Physics` variant before constructing the `Articulation` in `PolicyController.__init__`, so `UsdPhysics.ArticulationRootAPI` is authored on a descendant prim before `Articulation.fetch_articulation_root_api_prim_paths` resolves the root (prevents `Path.IsValidPathString(NoneType)` crashes)
+- Apply `PhysxArticulationAPI` to the articulation root prim in `PolicyController._set_articulation_props` if it is missing, avoiding `Empty typeName` USD errors when the asset's Physics variant does not author the API
+- Update default USD paths for Go2 and Spot policy controllers to the nested `Mujoco_Menagerie/<robot>/<robot>/<robot>.usda` layout
+
+## [5.2.7] - 2026-05-20
+### Fixed
+- Missing _timeline error on policy reset
+
+## [5.2.6] - 2026-05-05
+### Added
+- Standing test for the Go2 policy that holds a zero command and asserts the robot remains upright
+
+### Fixed
+- Select the USD `Physics` variant from `SimulationManager.get_active_physics_engine()` so the Newton-compatible variant is chosen when Newton is the active engine
+- Log a warning when the requested USD `Physics` variant is not declared on the robot prim instead of silently selecting a non-existent variant
+- Remove the `_set_physics_variant` override in `SpotFlatTerrainPolicy` so it inherits the engine-to-variant mapping from `PolicyController`
+
+## [5.2.5] - 2026-04-23
+### Changed
+- Decreased test tolerance to pass with newton backend.
+
+## [5.2.4] - 2026-04-23
+### Fixed
+- Added isaacsim.physics.newton.tensors as extension dep
+
+## [5.2.3] - 2026-04-23
+### Changed
+- Defer torch import to avoid loading it at startup
+
+## [5.2.2] - 2026-04-08
+### Fixed
+- Fix physics variant selection to match USD variant names case-insensitively, resolving H1 robot loading failure when variant set uses `Physx` instead of `physx`
+- Register `isaacsim.robot.policy.examples.robots` as a public module in the extension manifest
+
+## [5.2.1] - 2026-04-06
+### Changed
+- Set `reset_xform_op_properties` to True when instantiating the Articulation
+
+## [5.2.0] - 2026-03-17
+### Added
+- Newton can be used as a physics backend
+
 ## [5.1.1] - 2026-03-04
 ### Changed
 - Fix api errors
-
 
 ## [5.1.0] - 2026-03-04
 ### Changed

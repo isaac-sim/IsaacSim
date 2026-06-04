@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Test suite for timeline advancement and physics stepping behavior in Isaac Sim."""
-
 
 import carb
 import numpy as np
@@ -268,7 +267,7 @@ class TestAdvanceTimelineAndPhysics(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(frame_after, 1.0, 3, msg=f"Frame after should be 1.0, got {frame_after}")
         self.assertAlmostEqual(time_after, 0.0167, 3, msg=f"Time after should be 0.0167, got {time_after}")
 
-    async def step_simulation_method(self, step_method: str, no_replicator: bool = False):
+    async def step_simulation_method(self, step_method: str, no_replicator: bool = False) -> None:
         """Run simulation stepping test with specified method.
 
         Args:

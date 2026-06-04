@@ -1,16 +1,12 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.replicator.behavior.ui extension provides UI components for managing behavior script configuration within Isaac Sim's Replicator framework. The extension integrates with the Property window to display exposed variables from behavior scripts, enabling users to configure script parameters through a specialized property widget interface.
 
 ## Key Components
 
-### [ExposedVariablesPropertyWidget](isaacsim.replicator.behavior.ui/isaacsim.replicator.behavior.ui.ExposedVariablesPropertyWidget)
+### {class}`ExposedVariablesPropertyWidget <isaacsim.replicator.behavior.ui.ExposedVariablesPropertyWidget>`
 
-**[ExposedVariablesPropertyWidget](isaacsim.replicator.behavior.ui/isaacsim.replicator.behavior.ui.ExposedVariablesPropertyWidget) extends the standard USD property system to display filtered script variables.** This specialized widget focuses specifically on properties that match defined namespace prefixes, typically those marked as exposed variables from behavior scripts.
+**{class}`ExposedVariablesPropertyWidget <isaacsim.replicator.behavior.ui.ExposedVariablesPropertyWidget>` extends the standard USD property system to display filtered script variables.** This specialized widget focuses specifically on properties that match defined namespace prefixes, typically those marked as exposed variables from behavior scripts.
 
 The widget creates a hierarchical organization of properties based on their namespace structure. For properties with multiple namespace levels like `exposedVar:locationRandomizer:includeChildren`, it removes the filter namespace and creates nested display groups from the remaining parts. This approach provides clear visual organization of complex behavior configurations.
 

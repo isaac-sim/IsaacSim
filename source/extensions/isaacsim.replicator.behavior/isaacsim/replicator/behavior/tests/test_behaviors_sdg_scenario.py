@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,28 +13,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""SDG pipeline integration tests using behavior scripts."""
+
+from __future__ import annotations
+
+from typing import Any
+
 import carb.settings
 import omni.kit.test
 import omni.usd
-from isaacsim.test.utils.file_validation import get_folder_file_summary, validate_folder_contents
+from isaacsim.test.utils.file_validation import validate_folder_contents
 from isaacsim.test.utils.image_comparison import compare_images_in_directories
 
 
 class TestBehaviorsSDGScenario(omni.kit.test.AsyncTestCase):
-    """
-    SDG pipeline test using behavior scripts and comparing to the golden data
-    """
+    """SDG pipeline test using behavior scripts and comparing to the golden data."""
 
     DEPTH_MEAN_TOLERANCE = 5
     RGB_MEAN_TOLERANCE = 10
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Set up a new stage and save DLSS settings before each test."""
         await omni.kit.app.get_app().next_update_async()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
         self.original_dlss_exec_mode = carb.settings.get_settings().get("rtx/post/dlss/execMode")
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Close the stage and restore DLSS settings after each test."""
         omni.usd.get_context().close_stage()
         await omni.kit.app.get_app().next_update_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
@@ -42,8 +48,8 @@ class TestBehaviorsSDGScenario(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
         carb.settings.get_settings().set("rtx/post/dlss/execMode", self.original_dlss_exec_mode)
 
-    async def test_behavior_sdg_pipeline_warehouse(self):
-        import asyncio
+    async def test_behavior_sdg_pipeline_warehouse(self) -> None:
+        """Test the full SDG pipeline with behavior scripts in a warehouse scene."""
         import inspect
         import os
 
@@ -69,7 +75,7 @@ class TestBehaviorsSDGScenario(omni.kit.test.AsyncTestCase):
         from isaacsim.storage.native import get_assets_root_path_async
         from pxr import Gf, UsdGeom
 
-        async def setup_and_run_stacking_simulation_async(prim, seed: int | None = None):
+        async def setup_and_run_stacking_simulation_async(prim: Any, seed: int | None = None) -> None:
             STACK_ASSETS_CSV = (
                 "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxC_01.usd,"
                 "/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxD_01.usd,"
@@ -87,7 +93,7 @@ class TestBehaviorsSDGScenario(omni.kit.test.AsyncTestCase):
             await add_behavior_script_with_parameters_async(prim, script_path, parameters)
 
             # Helper function to handle publishing and waiting for events
-            async def handle_event(action, expected_state, max_wait):
+            async def handle_event(action: str, expected_state: str, max_wait: int) -> bool:
                 return await publish_event_and_wait_for_completion_async(
                     publish_payload={"prim_path": prim.GetPath(), "action": action},
                     expected_payload={"prim_path": prim.GetPath(), "state_name": expected_state},
@@ -106,7 +112,7 @@ class TestBehaviorsSDGScenario(omni.kit.test.AsyncTestCase):
 
             print("Stacking simulation finished.")
 
-        async def setup_texture_randomizer_async(prim, seed: int | None = None):
+        async def setup_texture_randomizer_async(prim: Any, seed: int | None = None) -> None:
             TEXTURE_ASSETS_CSV = (
                 "/Isaac/Materials/Textures/Patterns/nv_bamboo_desktop.jpg,"
                 "/Isaac/Materials/Textures/Patterns/nv_wood_boards_brown.jpg,"
@@ -122,7 +128,9 @@ class TestBehaviorsSDGScenario(omni.kit.test.AsyncTestCase):
                 parameters[f"{EXPOSED_ATTR_NS}:{TextureRandomizer.BEHAVIOR_NS}:seed"] = seed
             await add_behavior_script_with_parameters_async(prim, script_path, parameters)
 
-        async def setup_light_behaviors_async(prim, light_seed: int | None = None, location_seed: int | None = None):
+        async def setup_light_behaviors_async(
+            prim: Any, light_seed: int | None = None, location_seed: int | None = None
+        ) -> None:
             # Light randomization
             light_script_path = inspect.getfile(LightRandomizer)
             light_parameters = {
@@ -145,8 +153,8 @@ class TestBehaviorsSDGScenario(omni.kit.test.AsyncTestCase):
             await add_behavior_script_with_parameters_async(prim, location_script_path, location_parameters)
 
         async def setup_target_asset_behaviors_async(
-            prim, rotation_seed: int | None = None, location_seed: int | None = None
-        ):
+            prim: Any, rotation_seed: int | None = None, location_seed: int | None = None
+        ) -> None:
             # Rotation randomization
             rotation_script_path = inspect.getfile(RotationRandomizer)
             rotation_parameters = {}
@@ -165,7 +173,7 @@ class TestBehaviorsSDGScenario(omni.kit.test.AsyncTestCase):
                 location_parameters[f"{EXPOSED_ATTR_NS}:{LocationRandomizer.BEHAVIOR_NS}:seed"] = location_seed
             await add_behavior_script_with_parameters_async(prim, location_script_path, location_parameters)
 
-        async def setup_camera_behaviors_async(prim, target_prim_path):
+        async def setup_camera_behaviors_async(prim: Any, target_prim_path: str) -> None:
             # Look at behavior following the target asset
             script_path = inspect.getfile(LookAtBehavior)
             parameters = {
@@ -173,7 +181,7 @@ class TestBehaviorsSDGScenario(omni.kit.test.AsyncTestCase):
             }
             await add_behavior_script_with_parameters_async(prim, script_path, parameters)
 
-        async def setup_writer_and_capture_data_async(camera_path, num_captures):
+        async def setup_writer_and_capture_data_async(camera_path: Any, num_captures: int) -> None:
             # Create the writer and the render product
             rp = rep.create.render_product(camera_path, (512, 512))
             writer = rep.writers.get("BasicWriter")
@@ -209,7 +217,7 @@ class TestBehaviorsSDGScenario(omni.kit.test.AsyncTestCase):
             writer.detach()
             rp.destroy()
 
-        async def run_example_async(num_captures, seed: int | None = None):
+        async def run_example_async(num_captures: int, seed: int | None = None) -> None:
             STAGE_URL = "/Isaac/Samples/Replicator/Stage/warehouse_pallets_behavior_scripts.usd"
             PALLETS_ROOT_PATH = "/Root/Pallets"
             LIGHTS_ROOT_PATH = "/Root/Lights"

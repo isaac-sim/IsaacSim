@@ -15,7 +15,6 @@
 
 """Provides enumeration of USD APIs supported by SceneQuery and WorldBinding for motion generation."""
 
-
 from enum import StrEnum
 
 

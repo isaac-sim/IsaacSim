@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.3.2] - 2026-05-12
+### Changed
+- Made `assemble_rigid_bodies` and `create_fixed_joint` private (`_assemble_rigid_bodies`, `_create_fixed_joint`)
+- Added Python type annotations across module, UI, and tests
+- `RobotAssembler.__del__` no longer calls `reset()`/`cancel_assembly()`; finalizers must not touch USD or schedule coroutines because the event loop and `omni.usd` context may already be torn down. Callers needing in-flight teardown must invoke `reset()` explicitly.
+- Variant payloads written by `RobotAssembler.begin_assembly` / `finish_assemble` are now stored under `payloads/<variant_set>/<variant_name>.usd` (relative to the base robot asset) instead of `configuration/<variant_set>_<variant_name>.usd`. The variant-set name now acts as a subdirectory rather than a filename prefix, and the source asset's stem is no longer prepended in direct-edit mode. The destination directory is created automatically when assembling directly on the source asset.
+
+### Fixed
+- `RobotAssembler.cancel_assembly()` no longer raises `AttributeError: 'RobotAssembler' object has no attribute '_assembly_identifier'` when called on a fresh instance or before `begin_assembly()`. `reset()` now initializes the assembly sublayer state (`_assembly_identifier`, `_local_assembly_identifier`, `_assembly_layer`, `_direct_edit`, `_variant_set`, `_variant_name`) so the cancellation guard clause is safe to evaluate at any time. Covered by `test_robot_assembler_cancel_on_idle_instance_is_noop`.
+
+## [3.3.1] - 2026-03-06
+### Fixed
+- Clear assets-loaded and physics subscriptions when window is hidden to avoid callbacks running while the panel is not visible
+
 ## [3.3.0] - 2026-03-04
 ### Changed
 - Added Overview.md, python_api.md and updated docstrings

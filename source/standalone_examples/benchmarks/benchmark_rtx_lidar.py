@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Benchmark RTX lidar sensor performance in Isaac Sim."""
 
 import argparse
 
@@ -45,6 +47,7 @@ import carb
 import omni
 import omni.replicator.core as rep
 from isaacsim.core.utils.extensions import enable_extension
+from isaacsim.sensors.experimental.rtx import Lidar
 from pxr import Gf
 
 enable_extension("isaacsim.benchmark.services")
@@ -77,15 +80,15 @@ for i in range(n_sensor):
     lidar_config = "Example_" + lidar_type
     print("Lidar Config:", lidar_config)
 
-    _, sensor = omni.kit.commands.execute(
-        "IsaacSensorCreateRtxLidar",
+    lidar = Lidar.create(
         path=lidar_path,
-        parent=None,
         config=lidar_config,
-        translation=sensor_translation,
-        orientation=Gf.Quatd(1.0, 0.0, 0.0, 0.0),  # Gf.Quatd is w,i,j,k
+        translations=[sensor_translation[0], sensor_translation[1], sensor_translation[2]],
+        orientations=[1.0, 0.0, 0.0, 0.0],  # wxyz
     )
+    sensor = lidar.prims[0]
     sensors.append(sensor)
+
     hydra_texture = rep.create.render_product(sensor.GetPath(), [1, 1], name="Isaac")
     hydra_textures.append(hydra_texture)
     # Create the post process graph that publishes the render var
@@ -98,7 +101,7 @@ for i in range(n_sensor):
 
 benchmark.store_measurements()
 
-benchmark.set_phase("benchmark")
+benchmark.set_phase("benchmark", warmup_frames=15)
 timeline.play()
 
 for _ in range(1, n_frames):

@@ -1,11 +1,11 @@
 [package]
-version = "1.2.1"
+version = "1.3.5"
 category = "SyntheticData"
 title = "Isaac Sim Asset Validation Rules"
 description = "The extension provides various custom rules to validate content for Isaac Sim."
 keywords = ["Synthetic", "Data", "Generation", "SDG", "Asset", "Validation"]
 changelog = "docs/CHANGELOG.md"
-readme  = "docs/README.md"
+readme = "docs/Overview.md"
 preview_image = "data/preview.png"
 icon = "data/icon.png"
 writeTarget.platform = true # Build separate extensions for Windows and Linux so appropriate libraries are bundled
@@ -22,3 +22,9 @@ writeTarget.platform = true # Build separate extensions for Windows and Linux so
 
 [[python.module]]
 name = "isaacsim.asset.validation"
+
+[[python.module]]
+name = "isaacsim.asset.validation.tests"
+
+[documentation]
+pages = ["docs/Overview.md"]

@@ -1,5 +1,81 @@
 # Changelog
 
+## [6.3.6] - 2026-05-29
+### Added
+- `GetAllRobotComponents` helper (C++ and Python): returns every prim in a robot's subtree that applies any Isaac robot-schema API (`IsaacRobotAPI`, `IsaacLinkAPI`, `IsaacJointAPI`, `IsaacSiteAPI`, `IsaacReferencePointAPI`). Lets consumers enumerate all schema-tagged frames in one call rather than walking `robotLinks` and re-scanning descendants per consumer.
+
+## [6.3.5] - 2026-05-27
+### Fixed
+- `GenerateRobotLinkTree`: rewrite the two `UsdPrimRange` loops to the conventional range-for shape (`for (const UsdPrim& prim : UsdPrimRange(root))`) instead of treating the range as an iterator. The previous form did not compile and made `utils.h` unincludable from C++ consumers.
+- Add `GetRobotLinkParentMap` helper to `utils.h` for resolving `isaac:physics:robotJoints` body0/body1 relationships into a child-link to parent-link path map.
+
+## [6.3.4] - 2026-05-21
+### Fixed
+- `GenerateRobotLinkTree` now grafts links and physics joints from nested sub-robots (for example a gripper variant attached at a wrist link) onto the parent's kinematic tree, so forward-kinematics propagation moves the entire assembly. Previously, only the sub-robot's bridging link was reachable from the parent tree, leaving sibling links such as gripper knuckles and fingers behind when the arm was teleported by the Robot Poser. Per sub-robot, prims carrying `IsaacRobotLinkAPI` / `IsaacRobotJointAPI` are preferred; bare `UsdPhysicsRigidBodyAPI` / `UsdPhysicsJoint` prims are picked up only when the sub-robot has no tagged equivalents, so unrelated rigid bodies inside a properly authored sub-robot are not added to the tree.
+
+## [6.3.3] - 2026-05-18
+### Fixed
+- `robot_schema` now imports `pxr.Usd` during module initialization so `pxr.Usd` annotations resolve in standalone wheel environments.
+
+## [6.3.2] - 2026-04-24
+### Fixed
+- `PopulateRobotSchemaFromArticulation` and `RecalculateRobotSchema` fall back to `robot_prim` as a synthetic articulation root and sweep `Usd.PrimRange` to apply `JointAPI`/`LinkAPI` when BFS yields no chain, ensuring `robotLinks`/`robotJoints` relationships are populated on vehicle and drone assets.
+
+## [6.3.1] - 2026-04-22
+### Added
+- `get_allowed_tokens(attribute)` helper that reads `allowedTokens` directly from the bundled `RobotSchema.usda` so Python consumers can populate UI choice lists without duplicating the schema's token lists.
+
+## [6.3.0] - 2026-04-22
+### Deprecated
+- Deprecated `rangeSensorSchema` plugin types: `RangeSensor`, `Lidar`, `Generic` — used only by the deprecated `isaacsim.sensors.physx` extension. Use `IsaacRaycastSensor` with `isaacsim.sensors.experimental.physics` or `isaacsim.sensors.experimental.rtx` instead.
+- Deprecated `IsaacLightBeamSensor` from `isaacSensorSchema` — used only by the deprecated `isaacsim.sensors.physx` extension. Use `IsaacRaycastSensor` with `isaacsim.sensors.experimental.physics` instead.
+- `omni.isaac.RangeSensorSchema` Python module now emits `DeprecationWarning` on import
+- `IsaacLightBeamSensor` Python wrapper now emits `DeprecationWarning` on construction
+- Reorganized C++ sensor tokens to separate active from deprecated entries
+
+## [6.2.0] - 2026-04-20
+### Added
+- `RecalculateRobotSchema` gains `force_update` kwarg that rebuilds `robotLinks`/`robotJoints` and authors cross-layer `deletedItems`.
+- New shared `_discover_articulation_graph` helper with a `root_link_override` input for seeding traversal from the user's chosen base link.
+- Articulation-root scoring picks the highest-parentness rigid body when the articulation root is a grouping `Xform`.
+- Sub-robot boundary handling registers each sub-robot as one collapsed entry at its first boundary joint.
+- `SaveRobotSchemaToRobotLayer` flushes composed state onto the layer authoring `IsaacRobotAPI` only, with referenced-layer support via namespace translation.
+
+## [6.1.0] - 2026-04-17
+### Added
+- Add `IsaacRaycastSensor` USD schema type, plugInfo entry, sensor tokens, and Python compatibility wrapper
+
+### Changed
+- `PopulateRobotSchemaFromArticulation` and `RecalculateRobotSchema` now traverse DFS by default, with a `traversal` kwarg (`"dfs"` | `"bfs"`).
+- `PopulateRobotSchemaFromArticulation` only registers `RigidBodyAPI` prims as `robotLinks` and `JointAPI` prims as `robotJoints`; grouping Xforms skipped.
+- Targets now written as prepend list ops via `_set_targets_as_prepend`, preserving additive composition with downstream layers.
+- `_apply_api` is a no-op when the schema is already applied, preventing `apiSchemas` churn on recalc.
+
+## [6.0.0] - 2026-04-15
+### Changed
+- Migrated `rangeSensorSchema` and `isaacSensorSchema` from pre-built C++ typed schema libraries (`omni-isaacsim-schema` packman package) to codeless USD schemas
+- Removed `omni-isaacsim-schema` packman dependency and associated native library entries
+- All C++ consumers now use generic `prim.GetAttribute(token)` and `prim.GetTypeName()` instead of typed schema classes
+- Added `sensor_tokens.h` header providing token constants for all sensor schema attributes and type names
+- Added Python compatibility wrappers (`omni.isaac.RangeSensorSchema`, `omni.isaac.IsaacSensorSchema`) so existing Python consumers work without changes
+- Removed ultrasonic sensor schemas (UltrasonicArray, UltrasonicEmitter, UltrasonicFiringGroup, UltrasonicMaterialAPI) — no code references existed
+- Added schema validation tests for both sensor schema and range sensor schema plugin registration
+
+## [5.1.3] - 2026-04-02
+### Changed
+- Replace `carb.log_*` with Python `logging` module
+- Replace `omni.usd.get_world_transform_matrix` with pure `pxr` `UsdGeom.Xformable.ComputeLocalToWorldTransform`
+- Replace `CARB_LOG_WARN` with `fprintf(stderr, ...)` in C++ header
+- Remove `omni.usd` from extension.toml dependencies
+
+## [5.1.2] - 2026-03-19
+### Removed
+- Remove the `omni.isaac.ml_archive` dependency
+
+## [5.1.1] - 2026-03-05
+### Changed
+- Simpify import statements
+
 ## [5.1.0] - 2026-03-04
 ### Changed
 - Added Overview.md, python_api.md and updated docstrings

@@ -17,7 +17,6 @@
 
 """Tests for Path functionality in the motion generation extension."""
 
-
 import isaacsim.robot_motion.experimental.motion_generation as mg
 import numpy as np
 import omni.kit.test

@@ -1,0 +1,123 @@
+---
+description: C++ coding style and conventions for Isaac Sim
+globs:
+  - "**/*.c"
+  - "**/*.cpp"
+  - "**/*.h"
+  - "**/*.hpp"
+---
+
+# C++ Development Rules
+
+You are a senior C++ developer with expertise in modern C++ (C++17), STL, and system-level programming.
+
+## Code Style and Structure
+- Do not use C++20 or newer features
+- Write concise, idiomatic C++ code with accurate examples.
+- Use object-oriented, procedural, or functional programming patterns as appropriate.
+- Leverage STL and standard algorithms for collection operations.
+- Use descriptive variable and method names (e.g., 'isUserSignedIn', 'calculateTotal').
+- Structure files into headers (*.h) and implementation files (*.cpp) with logical separation of concerns.
+- Use US English for all names
+- Use full words (no abbreviations)
+- Method names must start with verbs
+- Use get/set for simple attribute access
+- Use compute/read/write for complex operations
+- Use stateful names for booleans (enabled, initialized)
+- Avoid redundancy in method names
+- End files with blank line
+- Use #pragma once in headers
+- Place source's header first after license
+
+## Naming Conventions
+- Headers: PascalCase.h
+- Sources: PascalCase.cpp
+- Classes/Structs/Enums: PascalCase
+- Constants: kCamelCase
+- Enum values: eCamelCase
+- Public functions: camelCase()
+- Private/Protected functions: _camelCase() (never combine leading underscore with an uppercase letter, e.g., `_Compute` is reserved by the C++ standard)
+- Public members: camelCase
+- Private/Protected members: m_camelCase
+- Private/Protected static members: s_camelCase
+- Global static or constant variables: g_camelCase
+- Local variables: camelCase
+- Macros: SCREAMING_SNAKE_CASE
+
+## C++ Features Usage
+- Prefer modern C++ features (e.g., auto, range-based loops).
+- Use `std::unique_ptr` and `std::shared_ptr` for memory management; prefer smart pointers over raw pointers.
+- Prefer `std::optional`, `std::variant`, and `std::any` for type-safe alternatives.
+- Use `constexpr` and `const` to optimize compile-time computations.
+- Use `std::string_view` for read-only string operations to avoid unnecessary copies.
+- Prefer `enum class` over plain `enum` for strongly typed enumerations.
+- Use size_t for counters/sizes
+- Prefer constexpr over #define
+- Place preprocessor definitions in source files
+- Use #if over #ifdef
+- Always handle platform-specific code properly
+
+## C++ Classes and Structs
+- Order: public, protected, private (once each)
+- Public members at start (no prefix)
+- Private/Protected members at end (m_ prefix)
+- Constructors/destructors first after public members
+- Use override for virtual methods
+- Structs: data-only, no member functions
+
+## C++ Namespaces
+- Use lowercase
+- Do not use C++17 nested namespace syntax (`namespace a::b::c {}`); use separate declarations instead (`namespace a { namespace b { namespace c {`)
+- No indentation inside namespaces
+- Use 'details' namespace for internal code
+- Use anonymous namespace in .cpp files
+- Use the extension name to generate the correct namespace, for example isaacsim.foo.bar becomes isaacsim::foo::bar
+
+## Syntax and Formatting
+- Follow a consistent coding style, such as Google C++ Style Guide or your team's standards.
+- Place braces on the same line for control structures, methods, and classes.
+- Place namespace opening braces on the next line.
+- Use west-const style (`const int` not `int const`).
+- Use clear and consistent commenting practices.
+
+## Error Handling and Validation
+- Use exceptions for error handling (e.g., `std::runtime_error`, `std::invalid_argument`).
+- Use RAII for resource management to avoid memory leaks.
+- Validate inputs at function boundaries.
+- Log errors using a logging library (e.g., spdlog, Boost.Log).
+
+## Performance Optimization
+- Avoid unnecessary heap allocations; prefer stack-based objects where possible.
+- Use `std::move` to enable move semantics and avoid copies.
+- Optimize loops with algorithms from `<algorithm>` (e.g., `std::sort`, `std::for_each`).
+- Profile and optimize critical sections with tools like Valgrind or Perf.
+
+## Key Conventions
+- Avoid global variables; use singletons sparingly.
+- Separate interface from implementation in classes.
+- Use templates and metaprogramming judiciously for generic solutions.
+- Prefer `std::array` or `std::vector` over raw arrays.
+- Avoid C-style casts; use `static_cast`, `dynamic_cast`, or `reinterpret_cast` when necessary.
+- Enforce const-correctness in functions and member variables.
+
+## Testing
+- Write unit tests using doctest (`#include <doctest/doctest.h>`).
+- Use `TEST_SUITE` to group related tests and `TEST_CASE` for individual tests.
+- Use `CHECK`, `CHECK_EQ`, `CHECK_UNARY`, and related doctest macros for assertions.
+- Implement integration tests for system components.
+
+## Documentation and commenting
+- Write clear comments for classes, methods, and critical logic.
+- Use Doxygen for generating API documentation.
+- Document assumptions, constraints, and expected behavior of code.
+- Document all public functions/variables
+
+Follow the official ISO C++ standards and guidelines for best practices in modern C++ development.
+
+## Isaac Sim specific rules
+- If a file includes `<pch/UsdPCH.h>` then it must be the very first include in the file and be wrapped in a clang-format off block:
+```cpp
+// clang-format off
+#include <pch/UsdPCH.h>
+// clang-format on
+```

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,13 +15,10 @@
 
 """Test suite for O3dyn omnidirectional robot simulation including loading, movement, and reference testing."""
 
-
 import carb
 import carb.tokens
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
-import numpy as np
-import omni.graph.core as og
 
 # NOTE:
 #   omni.kit.test - std python's unittest module with additional wrapping to add suport for async/await tests
@@ -31,15 +28,9 @@ import omni.timeline
 from isaacsim.core.experimental.objects import GroundPlane
 from isaacsim.core.experimental.prims import XformPrim
 from isaacsim.core.experimental.utils.app import get_extension_path
+from isaacsim.core.experimental.utils.stage import open_stage_async
 from isaacsim.core.experimental.utils.transform import quaternion_to_euler_angles
-from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.storage.native import get_assets_root_path_async
-
-from .robot_helpers import (
-    init_robot_sim,
-    open_stage_async,
-    setup_robot_og,
-)
 
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
@@ -47,7 +38,7 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
     """Tests for the O3dyn omnidirectional robot simulation."""
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment with O3dyn robot asset path."""
         self._timeline = omni.timeline.get_timeline_interface()
 
@@ -67,8 +58,6 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
         # add in carter (from nucleus)
         self.usd_path = self._assets_root_path + "/Isaac/Robots/Fraunhofer/O3dyn/o3dyn.usd"
 
-        pass
-
     # After running each test
     async def tearDown(self):
         """Clean up test environment and stop timeline."""
@@ -77,12 +66,10 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
-        pass
 
     async def test_loading(self):
         """Test that the O3dyn robot loads and settles at expected position."""
-
-        (result, error) = await open_stage_async(self.usd_path)
+        result, error = await open_stage_async(self.usd_path)
 
         stage = omni.usd.get_context().get_stage()
 
@@ -104,7 +91,6 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
 
         self.assertAlmostEqual(translate[2], -0.01, delta=0.01)
         self._timeline.stop()
-        pass
 
     # general, slowly building up speed testcase
     async def test_add_as_reference(self):
@@ -131,7 +117,6 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
 
         self.assertAlmostEqual(translate[2], -0.05, delta=0.01)
         self._timeline.stop()
-        pass
 
     async def test_move_forward(self):
         """Test O3dyn moves forward when all wheels rotate in same direction."""
@@ -159,8 +144,6 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
         self.assertGreater(translate[0], 1.0)
         self.assertAlmostEqual(translate[1], 0.00, delta=0.02)
         self._timeline.stop()
-
-        pass
 
     async def test_move_sideways(self):
         """Test O3dyn moves sideways using mecanum wheel strafing."""
@@ -194,8 +177,6 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
             1.00,
         )
         self._timeline.stop()
-
-        pass
 
     async def test_rotate(self):
         """Test O3dyn rotates in place using differential wheel speeds."""

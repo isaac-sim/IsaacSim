@@ -1,5 +1,5 @@
 {
-    "OgnCountIndices": {
+    "isaacsim.replicator.domain_randomization.OgnCountIndices": {
         "description": [
             "Get length of array"
         ],

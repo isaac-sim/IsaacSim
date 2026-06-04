@@ -68,6 +68,7 @@ class InterfaceConnectionRule(RuleInterface):
         .. code-block:: python
 
             params = rule.get_configuration_parameters()
+
         """
         return [
             RuleConfigurationParam(
@@ -132,6 +133,7 @@ class InterfaceConnectionRule(RuleInterface):
         .. code-block:: python
 
             rule.process_rule()
+
         """
         params = self.args.get("params", {}) or {}
 
@@ -248,6 +250,7 @@ class InterfaceConnectionRule(RuleInterface):
 
         Returns:
             The prim spec for the default prim.
+
         """
         prim_spec = layer.GetPrimAtPath(prim_path)
         if not prim_spec:
@@ -278,6 +281,7 @@ class InterfaceConnectionRule(RuleInterface):
             asset_path: Relative path to the asset layer.
             connection_type: One of Reference, Payload, or Sublayer.
             prepend: If True, prepend the arc; otherwise append.
+
         """
         if connection_type == CONNECTION_SUBLAYER:
             # Sublayers are on the layer, not the prim
@@ -329,6 +333,7 @@ class InterfaceConnectionRule(RuleInterface):
             default_prim_path: Path to the default prim.
             payloads_folder: Relative path to the payloads folder.
             default_variant_selections: Mapping of variant set names to default variant selection.
+
         """
         payloads_abs_path = os.path.join(self.package_root, payloads_folder)
         if not os.path.isdir(payloads_abs_path):
@@ -413,6 +418,7 @@ class InterfaceConnectionRule(RuleInterface):
 
         Returns:
             List of USD filenames (not full paths).
+
         """
         usd_extensions = utils.USD_EXTENSIONS
         files = []
@@ -431,6 +437,7 @@ class InterfaceConnectionRule(RuleInterface):
 
         Returns:
             True if at least one valid variant subfolder exists.
+
         """
         allowed_usd_exts = {".usd", ".usda", ".usdc", ".usdz"}
         for entry in os.listdir(payloads_abs_path):
@@ -479,6 +486,7 @@ class InterfaceConnectionRule(RuleInterface):
         Args:
             interface_layer: The interface layer to use when asset_path is not specified.
             connections: List of connection specifications.
+
         """
         for spec in connections:
             if not isinstance(spec, dict):
@@ -570,6 +578,7 @@ class InterfaceConnectionRule(RuleInterface):
         Args:
             interface_layer: The interface layer to copy prims into.
             base_layer_path: Absolute path to the base layer on disk.
+
         """
         base_layer = Sdf.Layer.FindOrOpen(base_layer_path)
         if not base_layer or not base_layer.pseudoRoot:

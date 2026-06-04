@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,13 @@
 
 """Utilities for image file input/output operations including RGB, depth, and general image reading functionality."""
 
-
 import os
 from typing import Any
 
 import numpy as np
 
 
-def save_rgb_image(rgb_data: np.ndarray, out_dir: str, file_name: str):
+def save_rgb_image(rgb_data: np.ndarray, out_dir: str, file_name: str) -> None:
     """Save RGB image data to a file on disk.
 
     This function converts numpy array RGB data to a PIL Image and saves it to the
@@ -91,7 +90,7 @@ def save_depth_image(
     out_dir: str,
     file_name: str,
     normalize: bool = False,
-):
+) -> None:
     """Save depth data as TIFF (float32) or grayscale visualization.
 
     This function supports two primary modes:
@@ -205,6 +204,65 @@ def save_depth_image(
         img = Image.fromarray(depth_u8, mode="L")
         img.save(file_path)
         print(f"Saved image as grayscale depth to {file_path}")
+
+
+def save_annotator_data(data: Any, output_path: str) -> None:
+    """Save annotator data returned by :func:`capture_viewport_annotator_data_async` to disk.
+
+    Handles the three forms that annotator data can take:
+
+    * **dict with a ``"data"`` array key** — saves ``data["data"]`` as a ``.npy`` file.
+      Any other dict is serialised to JSON (extension replaced with ``.json``).
+    * **numpy array** — saves as ``.npy`` via ``numpy.save``, or as a PNG image via
+      :func:`save_rgb_image` when *output_path* ends with ``.png``.
+    * **other** — prints the type and a short repr; nothing is written to disk.
+
+    The output directory is created automatically if it does not exist.
+
+    Args:
+        data: Annotator data as returned by ``capture_viewport_annotator_data_async``.
+        output_path: Destination file path.  The extension determines the format for
+            array data (``.npy`` or ``.png``); dict data always uses ``.json``.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> from isaacsim.test.utils.image_io import save_annotator_data
+        >>>
+        >>> # Save depth data captured from the viewport
+        >>> save_annotator_data(depth_data, "/tmp/depth.npy")
+        Saved array: /tmp/depth.npy (shape: (720, 1280, 1), dtype: float32)
+        >>>
+        >>> # Save RGB data as PNG
+        >>> save_annotator_data(rgb_data, "/tmp/frame.png")
+        Saved image to /tmp/frame.png with shape (720, 1280, 4)
+    """
+    import json
+
+    import numpy as np
+
+    out_dir = os.path.dirname(output_path) or "."
+    file_name = os.path.basename(output_path)
+    os.makedirs(out_dir, exist_ok=True)
+
+    if isinstance(data, dict):
+        if "data" in data and hasattr(data["data"], "shape"):
+            np.save(output_path, data["data"])
+            print(f"Saved data['data'] array: {output_path} (shape: {data['data'].shape})")
+        else:
+            json_path = os.path.splitext(output_path)[0] + ".json"
+            with open(json_path, "w") as f:
+                json.dump({k: repr(v) for k, v in data.items()}, f, indent=2)
+            print(f"Saved dict data: {json_path}")
+    elif hasattr(data, "shape"):
+        if output_path.endswith(".png"):
+            save_rgb_image(data, out_dir, file_name)
+        else:
+            np.save(output_path, data)
+            print(f"Saved array: {output_path} (shape: {data.shape}, dtype: {data.dtype})")
+    else:
+        print(f"Annotator returned: {type(data).__name__}: {repr(data)[:200]}")
 
 
 def read_image_as_array(file_path: str, squeeze_singleton_channel: bool = True) -> np.ndarray:

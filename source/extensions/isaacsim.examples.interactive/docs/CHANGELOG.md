@@ -1,5 +1,42 @@
 # Changelog
 
+## [4.16.0] - 2026-04-21
+### Changed
+- Remove deprecated dependency extensions and migrate implementation to core experimental
+
+### Removed
+- Move the `base_sample` module to the `isaacsim.cortex.examples` extension
+
+## [4.15.7] - 2026-04-14
+### Changed
+- Deprecated cortex examples. Moved to source/deprecated/isaacsim.cortex.examples
+- Removed dependencies on cortex from extension.toml
+- Removed public API docs on cortex
+
+## [4.15.6] - 2026-04-10
+### Added
+- Docstring deprecation + runtime warnings; use `isaacsim.examples.base` instead.
+
+## [4.15.5] - 2026-04-06
+### Changed
+- Update imports to use isaacsim.robot.experimental.manipulators.examples
+- Remove deprecated isaacsim.robot.manipulators.examples dependency
+- Add isaacsim.robot_motion.cumotion and isaacsim.robot_motion.experimental.motion_generation dependencies
+- Update test_bin_filling and test_path_planning to use experimental APIs
+
+## [4.15.4] - 2026-03-31
+### Changed
+- Added test for Robo Party example
+- Updated Surface Gripper example to resolve reverse console functionality
+
+## [4.15.3] - 2026-03-26
+### Changed
+- Update the test dependencies to use the new experimental wheeled robots extension
+
+## [4.15.2] - 2026-03-26
+### Changed
+- Updated Python bindings import paths for consistency
+
 ## [4.15.1] - 2026-03-05
 ### Changed
 - Experimental API alignment: app_utils for timeline control, SimulationEvent for physics callbacks.

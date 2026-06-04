@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,15 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Functions for working with USD/USDRT stages.
-"""
+"""Functions for working with USD/USDRT stages."""
 
 from __future__ import annotations
 
 import contextlib
 import threading
-from typing import Generator, Literal
+from collections.abc import Generator
+from typing import Literal
 
 import carb
 import omni.kit.stage_templates
@@ -31,6 +30,7 @@ import usdrt
 from omni.metrics.assembler.core import get_metrics_assembler_interface
 from pxr import Sdf, Usd, UsdGeom, UsdPhysics, UsdUtils
 
+from . import _templates as stage_templates
 from . import backend as backend_utils
 from . import prim as prim_utils
 
@@ -194,7 +194,7 @@ def generate_stage_representation(mode: Literal["list", "tree"] = "tree") -> str
         ├─ PrimC (Camera)
     """
 
-    def _generate_tree(prim, indent=0):
+    def _generate_tree(prim: Usd.Prim, indent: int = 0) -> None:
         prefix = "│  " * (indent - 1) + "├─ " if indent > 0 else ""
         lines.append(f"{prefix}{prim.GetPath().name} ({prim.GetTypeName()})")
         for child in prim.GetChildren():
@@ -221,7 +221,15 @@ def create_new_stage(*, template: str | None = None) -> Usd.Stage:
         At least the following templates should be available.
         Other templates might be available depending on app customizations.
 
-        .. list-table::
+        .. list-table:: Isaac Sim templates
+            :header-rows: 1
+
+            * - Template
+              - Description
+            * - ``"gridroom"``
+              - Stage with a blue gridroom scene.
+
+        .. list-table:: Kit templates
             :header-rows: 1
 
             * - Template
@@ -248,23 +256,25 @@ def create_new_stage(*, template: str | None = None) -> Usd.Stage:
 
         >>> import isaacsim.core.experimental.utils.stage as stage_utils
         >>>
-        >>> # create a new stage from the 'sunlight' template
-        >>> stage_utils.create_new_stage(template="sunlight")
+        >>> # create a new stage from the 'gridroom' template
+        >>> stage_utils.create_new_stage(template="gridroom")
         Usd.Stage.Open(rootLayer=Sdf.Find('anon:...usd'), ...)
 
-        >>> # get the list of available templates
+        >>> # get the list of available Kit templates
         >>> import omni.kit.stage_templates
         >>>
         >>> [name for item in omni.kit.stage_templates.get_stage_template_list() for name in item]
         ['empty', 'sunlight', 'default stage']
     """
     # create 'empty' stage
-    if template is None:
+    if template in [None, "gridroom"]:
         omni.usd.get_context().new_stage()
+        if template == "gridroom":
+            stage_templates.gridroom()
     # create stage from template
     else:
         templates = [name for item in omni.kit.stage_templates.get_stage_template_list() for name in item]
-        if not template in templates:
+        if template not in templates:
             raise ValueError(f"Template '{template}' not found. Available templates: {templates}")
         omni.kit.stage_templates.new_stage(template=template)
     return omni.usd.get_context().get_stage()
@@ -287,12 +297,14 @@ async def create_new_stage_async(*, template: str | None = None) -> Usd.Stage:
         ValueError: When the template is not found.
     """
     # create 'empty' stage
-    if template is None:
+    if template in [None, "gridroom"]:
         await omni.usd.get_context().new_stage_async()
+        if template == "gridroom":
+            stage_templates.gridroom()
     # create stage from template
     else:
         templates = [name for item in omni.kit.stage_templates.get_stage_template_list() for name in item]
-        if not template in templates:
+        if template not in templates:
             raise ValueError(f"Template '{template}' not found. Available templates: {templates}")
         await omni.kit.stage_templates.new_stage_async(template=template)
     await omni.kit.app.get_app().next_update_async()
@@ -360,7 +372,7 @@ async def open_stage_async(usd_path: str) -> tuple[bool, Usd.Stage | None]:
         raise ValueError(f"The file ({usd_path}) is not USD open-able")
     usd_context = omni.usd.get_context()
     usd_context.disable_save_to_recent_files()
-    (result, error) = await omni.usd.get_context().open_stage_async(usd_path)
+    result, error = await omni.usd.get_context().open_stage_async(usd_path)
     usd_context.enable_save_to_recent_files()
     return result, usd_context.get_stage()
 
@@ -410,7 +422,7 @@ def close_stage() -> bool:
 
 
 def add_reference_to_stage(
-    usd_path: str, path: str, *, prim_type: str = "Xform", variants: list[tuple[str, str]] = []
+    usd_path: str, path: str, *, prim_type: str = "Xform", variants: list[tuple[str, str]] | None = None
 ) -> Usd.Prim:
     """Add a USD file reference to the stage at the specified prim path.
 
@@ -470,12 +482,10 @@ def add_reference_to_stage(
 
             omni.kit.commands.execute("AddReference", stage=stage, prim_path=path, reference=reference)
             reference_added = True
-        except Exception as e:
+        except Exception:
             carb.log_warn(
-                (
-                    f"The USD file ({usd_path}) has divergent units. "
-                    "Enable the omni.usd.metrics.assembler.ui extension or convert the file into right units."
-                )
+                f"The USD file ({usd_path}) has divergent units. "
+                "Enable the omni.usd.metrics.assembler.ui extension or convert the file into right units."
             )
     # add reference (if not already added during divergent units check)
     if not reference_added:
@@ -483,6 +493,8 @@ def add_reference_to_stage(
         if not result:
             raise Exception(f"Unable to add reference to the USD file ({usd_path}).")
     # set variants
+    if variants is None:
+        variants = []
     prim_utils.set_prim_variants(prim, variants=variants)
     return prim
 

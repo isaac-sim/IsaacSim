@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -74,6 +74,7 @@ project_ext_bindings {
 add_files("bindings", "bindings/*.*")
 includedirs {
     "%{root}/source/extensions/isaacsim.sensors.physics.nodes/include",
+    "%{root}/source/extensions/isaacsim.core.includes/include",
 }
 
 -- Python files

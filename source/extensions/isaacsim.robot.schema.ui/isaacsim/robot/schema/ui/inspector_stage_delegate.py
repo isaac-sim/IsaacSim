@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Stage delegate for the Robot Inspector stage widget."""
 
 from typing import Any
@@ -31,7 +32,7 @@ class InspectorContextMenu(ContextMenu):
     joint hierarchy tree.
     """
 
-    def on_mouse_event(self, event: Any):
+    def on_mouse_event(self, event: Any) -> None:
         """Handle mouse events to show the context menu.
 
         Args:
@@ -376,5 +377,5 @@ class InspectorStageDelegate(StageDelegate):
     Uses InspectorContextMenu for right-click functionality.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(context_menu=InspectorContextMenu())

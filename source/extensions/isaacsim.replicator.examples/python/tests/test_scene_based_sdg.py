@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import tempfile
+
 import carb.settings
 import omni.kit
 import omni.usd
-from isaacsim.test.utils.file_validation import get_folder_file_summary, validate_folder_contents
+from isaacsim.test.utils.file_validation import validate_folder_contents
 
 
 class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
@@ -36,7 +38,6 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
         carb.settings.get_settings().set("rtx/post/dlss/execMode", self.original_dlss_exec_mode)
 
     async def test_scene_based_sdg(self):
-        import asyncio
         import math
         import os
 
@@ -45,19 +46,30 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
         import omni.kit.app
         import omni.replicator.core as rep
         import omni.usd
-        from isaacsim.core.experimental.prims import GeomPrim, RigidPrim
-        from isaacsim.core.experimental.utils.semantics import remove_all_labels
-        from isaacsim.core.simulation_manager import SimulationManager
-        from isaacsim.core.utils import prims
-        from isaacsim.core.utils.bounds import (
+        from isaacsim.core.experimental.prims import GeomPrim, RigidPrim, XformPrim
+        from isaacsim.core.experimental.utils.bounds import (
             compute_combined_aabb,
             compute_obb,
             create_bbox_cache,
             get_obb_corners,
         )
-        from isaacsim.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
+        from isaacsim.core.experimental.utils.semantics import add_labels, remove_all_labels
+        from isaacsim.core.experimental.utils.stage import add_reference_to_stage, define_prim
+        from isaacsim.core.experimental.utils.transform import euler_angles_to_quaternion, quaternion_to_euler_angles
+        from isaacsim.core.simulation_manager import SimulationManager
         from isaacsim.storage.native import get_assets_root_path_async
         from pxr import Gf, Usd, UsdGeom
+
+        def _create_prim(prim_path, position=None, orientation=None, usd_path=None, semantic_label=None):
+            if usd_path is not None:
+                prim = add_reference_to_stage(usd_path, prim_path)
+            else:
+                prim = define_prim(prim_path, "Xform")
+            if semantic_label is not None:
+                add_labels(prim, labels=[semantic_label], taxonomy="class")
+            if position is not None or orientation is not None:
+                XformPrim(prim_path, positions=position, orientations=orientation, reset_xform_op_properties=True)
+            return prim
 
         def setup_writer(config: dict) -> rep.Writer | None:
             """Setup and initialize writer with optional backend support."""
@@ -125,10 +137,10 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
 
             forklift_transform = omni.usd.get_world_transform_matrix(forklift_prim)
             sim_pallet_offset = Gf.Matrix4d().SetTranslate(Gf.Vec3d(rng.uniform(-1, 1), rng.uniform(-4, -3.6), 0))
-            sim_pallet_position = (sim_pallet_offset * forklift_transform).ExtractTranslation()
-            sim_pallet_rotation = euler_angles_to_quat([0, 0, rng.uniform(0, math.pi)])
+            sim_pallet_position = list((sim_pallet_offset * forklift_transform).ExtractTranslation())
+            sim_pallet_rotation = euler_angles_to_quaternion([0, 0, rng.uniform(0, math.pi)]).numpy()
 
-            sim_pallet = prims.create_prim(
+            sim_pallet = _create_prim(
                 prim_path="/World/SimulatedPallet",
                 position=sim_pallet_position,
                 orientation=sim_pallet_rotation,
@@ -143,10 +155,10 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
 
             sim_box_rigid_prims = []
             for box_index in range(num_boxes):
-                box_xy_offset = Gf.Vec3d(rng.uniform(-0.2, 0.2), rng.uniform(-0.2, 0.2), current_height)
-                sim_box = prims.create_prim(
+                box_xy_offset = [rng.uniform(-0.2, 0.2), rng.uniform(-0.2, 0.2), current_height]
+                sim_box = _create_prim(
                     prim_path=f"/World/SimulatedCardbox_{box_index}",
-                    position=sim_pallet_position + box_xy_offset,
+                    position=[a + b for a, b in zip(sim_pallet_position, box_xy_offset)],
                     orientation=sim_pallet_rotation,
                     usd_path=assets_root_path + config["cardbox"]["url"],
                     semantic_label=config["cardbox"]["class"],
@@ -209,7 +221,7 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
 
             prim_quat = prim_tf.ExtractRotation().GetQuaternion()
             prim_quat_xyzw = (prim_quat.GetReal(), *prim_quat.GetImaginary())
-            prim_rotation_deg = quat_to_euler_angles(np.array(prim_quat_xyzw), degrees=True)
+            prim_rotation_deg = quaternion_to_euler_angles(np.array(prim_quat_xyzw), degrees=True).numpy()
 
             prim_pos = prim_tf.ExtractTranslation()
             scatter_plane_scale = (prim_size[0] * scale_factor, prim_size[1] * scale_factor, 1)
@@ -233,7 +245,7 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
                 bb_cache = create_bbox_cache()
 
             forklift_obb_center, forklift_obb_axes, forklift_obb_extent = compute_obb(
-                bb_cache, forklift_prim.GetPrimPath()
+                forklift_prim, bbox_cache=bb_cache
             )
             enlarged_extent = (
                 forklift_obb_extent[0] * scale_factor,
@@ -251,14 +263,14 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
 
             forklift_obb_quat = Gf.Matrix3d(forklift_obb_axes).ExtractRotation().GetQuaternion()
             forklift_obb_quat_xyzw = (forklift_obb_quat.GetReal(), *forklift_obb_quat.GetImaginary())
-            forklift_rotation_deg = quat_to_euler_angles(np.array(forklift_obb_quat_xyzw), degrees=True)
+            forklift_rotation_deg = quaternion_to_euler_angles(np.array(forklift_obb_quat_xyzw), degrees=True).numpy()
 
             return cone_placement_corners, forklift_rotation_deg
 
         def register_lights_graph_randomizer(forklift_prim: Usd.Prim, pallet_prim: Usd.Prim, event_name: str) -> None:
             """Register graph randomizer for sphere lights."""
             bb_cache = create_bbox_cache()
-            combined_bounds = compute_combined_aabb(bb_cache, [forklift_prim.GetPrimPath(), pallet_prim.GetPrimPath()])
+            combined_bounds = compute_combined_aabb([forklift_prim, pallet_prim], bbox_cache=bb_cache)
             light_pos_min = (combined_bounds[0], combined_bounds[1], 6)
             light_pos_max = (combined_bounds[3], combined_bounds[4], 7)
 
@@ -320,10 +332,10 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
             sdg_scope = stage.DefinePrim("/SDG", "Scope")
 
             # Spawn forklift at random pose
-            forklift_prim = prims.create_prim(
+            forklift_prim = _create_prim(
                 prim_path="/SDG/Forklift",
                 position=(rng.uniform(-20, -2), rng.uniform(-1, 3), 0),
-                orientation=euler_angles_to_quat([0, 0, rng.uniform(0, math.pi)]),
+                orientation=euler_angles_to_quaternion([0, 0, rng.uniform(0, math.pi)]).numpy(),
                 usd_path=assets_root_path + config["forklift"]["url"],
                 semantic_label=config["forklift"]["class"],
             )
@@ -331,11 +343,11 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
             # Spawn pallet in front of forklift with random offset
             forklift_tf = omni.usd.get_world_transform_matrix(forklift_prim)
             pallet_offset_tf = Gf.Matrix4d().SetTranslate(Gf.Vec3d(0, rng.uniform(-1.8, -1.2), 0))
-            pallet_pos = (pallet_offset_tf * forklift_tf).ExtractTranslation()
+            pallet_pos = list((pallet_offset_tf * forklift_tf).ExtractTranslation())
             forklift_quat = forklift_tf.ExtractRotationQuat()
             forklift_quat_xyzw = (forklift_quat.GetReal(), *forklift_quat.GetImaginary())
 
-            pallet_prim = prims.create_prim(
+            pallet_prim = _create_prim(
                 prim_path="/SDG/Pallet",
                 position=pallet_pos,
                 orientation=forklift_quat_xyzw,
@@ -346,7 +358,7 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
             # Create cardboxes for pallet scattering
             cardboxes = []
             for i in range(5):
-                cardbox = prims.create_prim(
+                cardbox = _create_prim(
                     prim_path=f"/SDG/CardBox_{i}",
                     usd_path=assets_root_path + config["cardbox"]["url"],
                     semantic_label=config["cardbox"]["class"],
@@ -354,7 +366,7 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
                 cardboxes.append(cardbox)
 
             # Create traffic cone for corner placement
-            cone = prims.create_prim(
+            cone = _create_prim(
                 prim_path="/SDG/Cone",
                 usd_path=assets_root_path + config["cone"]["url"],
                 semantic_label=config["cone"]["class"],
@@ -532,10 +544,12 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
         env_url = "/Isaac/Environments/Grid/default_environment.usd"
         config["num_frames"] = num_frames
         config["env_url"] = env_url
+        out_dir = tempfile.mkdtemp(prefix="test_scene_based_sdg_")
+        print(f"Output directory: {out_dir}")
+        config["backend_params"]["output_dir"] = out_dir
         await run_example_async(config)
 
         # Validate that all expected files were written to disk
-        out_dir = os.path.join(os.getcwd(), "_out_scene_based_sdg")
         # pngs: num_frames * 3 (cameras) * ( 1 (rgb) + 1 (semantic segmentation))
         # json: num_frames * 3 (cameras) * ( 2 (bounding_box_2d_tight) + 2 (bounding_box_3d) + 1 (semantic segmentation) )
         # npy: num_frames * 3 (cameras) * ( 1 (bounding_box_2d_tight) + 1 (bounding_box_3d) +  1 (distance to image plane) + 1 (occlusion))

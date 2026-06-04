@@ -1,0 +1,17 @@
+# Pip prebundle for isaacsim.replicator.episode_recorder
+#
+# h5py publishes wheels for the desktop platforms we ship, so the recorder can
+# stay generic and self-contained without depending on teleop's Linux-only
+# prebundle.
+
+[[dependency]]
+python = "../_build/target-deps/python"
+packages = [
+    "h5py~=3.16.0", # SWIPAT filed under: https://nvbugs/6101430 # Used by: isaacsim.replicator.episode_recorder
+]
+target = "../_build/target-deps/pip_episode_recorder_prebundle"
+platforms = ["*-x86_64", "linux-aarch64"]
+download_only = false
+install_dependencies = false
+append_to_install_folder = true
+gather_licenses_path = "../_build/PACKAGE-LICENSES/PIP-prebundled-LICENSES.txt"

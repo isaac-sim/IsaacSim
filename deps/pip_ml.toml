@@ -49,13 +49,13 @@
 python = "../_build/target-deps/python"
 packages = [
     # packages
-    "torch==2.10.0+cu128",        # SWIPAT filed under: https://nvbugs/3682155 # Used by: isaacsim.core.simulation_manager, isaacsim.core.utils
-    "torchvision==0.25.0+cu128", # SWIPAT filed under: https://nvbugs/3433812 # Used by: (none found)
-    "torchaudio==2.10.0+cu128",   # SWIPAT filed under: https://nvbugs/5326960 # Used by: (none found)
+    "torch==2.11.0+cu128",        # SWIPAT filed under: https://nvbugs/3682155 # Used by: isaacsim.core.simulation_manager, isaacsim.core.utils
+    "torchvision==0.26.0+cu128", # SWIPAT filed under: https://nvbugs/3433812 # Used by: (none found)
+    "torchaudio==2.11.0+cu128",   # SWIPAT filed under: https://nvbugs/5326960 # Used by: (none found)
 
     # dependencies
-    "filelock==3.20.0",          # SWIPAT filed under: https://nvbugs/5303100 # Used by: (dependency of torch)
-    "fsspec==2025.12.0",          # SWIPAT filed under: https://nvbugs/5303035 # Used by: (dependency of torch)
+    "filelock==3.25.2",          # SWIPAT filed under: https://nvbugs/5303100 # Used by: (dependency of torch)
+    "fsspec==2026.2.0",          # SWIPAT filed under: https://nvbugs/5303035 # Used by: (dependency of torch)
     "mpmath==1.3.0",             # SWIPAT filed under: https://nvbugs/5303037 # Used by: (dependency of sympy)
     "networkx==3.6.1",             # SWIPAT filed under: https://nvbugs/5303034 # Used by: (dependency of torch)
     "sympy==1.14.0",             # SWIPAT filed under: https://nvbugs/5303081 # Used by: (dependency of torch)
@@ -72,13 +72,13 @@ install_dependencies = false
 python = "../_build/target-deps/python"
 packages = [
     # packages -- vision and audio do not have +cu128 versions
-    "torch==2.10.0+cu128",  # SWIPAT filed under: https://nvbugs/3682155 # Used by: isaacsim.core.simulation_manager, isaacsim.core.utils
-    "torchvision==0.25.0+cu128", # SWIPAT filed under: https://nvbugs/3433812 # Used by: (none found)
-    "torchaudio==2.10.0+cu128", # SWIPAT filed under: https://nvbugs/5326960 # Used by: (none found)
+    "torch==2.11.0+cu128",  # SWIPAT filed under: https://nvbugs/3682155 # Used by: isaacsim.core.simulation_manager, isaacsim.core.utils
+    "torchvision==0.26.0+cu128", # SWIPAT filed under: https://nvbugs/3433812 # Used by: (none found)
+    "torchaudio==2.11.0+cu128", # SWIPAT filed under: https://nvbugs/5326960 # Used by: (none found)
 
     # dependencies
-    "filelock==3.20.0", # SWIPAT filed under: https://nvbugs/5303100 # Used by: (dependency of torch)
-    "fsspec==2025.12.0", # SWIPAT filed under: https://nvbugs/5303035 # Used by: (dependency of torch)
+    "filelock==3.25.2", # SWIPAT filed under: https://nvbugs/5303100 # Used by: (dependency of torch)
+    "fsspec==2026.2.0", # SWIPAT filed under: https://nvbugs/5303035 # Used by: (dependency of torch)
     "mpmath==1.3.0", # SWIPAT filed under: https://nvbugs/5303037 # Used by: (dependency of sympy)
     "networkx==3.6.1", # SWIPAT filed under: https://nvbugs/5303034 # Used by: (dependency of torch)
     "sympy==1.14.0", # SWIPAT filed under: https://nvbugs/5303081 # Used by: (dependency of torch)
@@ -101,14 +101,14 @@ packages = [
     "nvidia-cuda-cupti-cu12==12.8.90",    # SWIPAT filed under: NA # Used by: (dependency of torch)
     "nvidia-cuda-nvrtc-cu12==12.8.93",    # SWIPAT filed under: NA # Used by: (dependency of torch)
     "nvidia-cuda-runtime-cu12==12.8.90",  # SWIPAT filed under: NA # Used by: (dependency of torch)
-    "nvidia-cudnn-cu12==9.10.2.21",       # SWIPAT filed under: NA # Used by: (dependency of torch)
+    "nvidia-cudnn-cu12==9.19.0.56",       # SWIPAT filed under: NA # Used by: (dependency of torch)
     "nvidia-cufft-cu12==11.3.3.83",       # SWIPAT filed under: NA # Used by: (dependency of torch)
     "nvidia-cufile-cu12==1.13.1.3",       # SWIPAT filed under: NA # Used by: (dependency of torch)
     "nvidia-curand-cu12==10.3.9.90",      # SWIPAT filed under: NA # Used by: (dependency of torch)
     "nvidia-cusolver-cu12==11.7.3.90",    # SWIPAT filed under: NA # Used by: (dependency of torch)
     "nvidia-cusparse-cu12==12.5.8.93",    # SWIPAT filed under: NA # Used by: (dependency of nvidia-cusolver-cu12, torch)
     "nvidia-cusparselt-cu12==0.7.1",      # SWIPAT filed under: NA # Used by: (dependency of torch)
-    "nvidia-nccl-cu12==2.27.5",           # SWIPAT filed under: NA # Used by: (dependency of torch)
+    "nvidia-nccl-cu12==2.28.9",           # SWIPAT filed under: NA # Used by: (dependency of torch)
     "nvidia-nvjitlink-cu12==12.8.93",     # SWIPAT filed under: NA # Used by: (dependency of nvidia-cufft-cu12, nvidia-cusolver-cu12, nvidia-cusparse-cu12, torch)
     "nvidia-nvshmem-cu12==3.4.5",         # SWIPAT filed under: NA # Used by: (dependency of torch)
     "nvidia-nvtx-cu12==12.8.90",          # SWIPAT filed under: NA # Used by: (dependency of torch)

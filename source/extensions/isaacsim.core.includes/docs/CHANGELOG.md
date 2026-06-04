@@ -1,4 +1,27 @@
 # Changelog
+## [2.9.1] - 2026-04-28
+### Fixed
+- Added warning logs for clarity when rigid body APIs fail
+
+## [2.9.0] - 2026-04-24
+### Added
+- Add `PhysicsEngine.h` header with `getActivePhysicsEngineName()` to query the active physics simulation backend
+
+### Changed
+- `Transforms.h` uses `getActivePhysicsEngineName()` for simulation view creation instead of defaulting to nullptr
+
+## [2.8.0] - 2026-03-20
+### Added
+- Added `BindingsPythonUtils.h` header for pybind11 bindings utilities
+
+### Fixed
+- Fixed brace initialization for `g_kIsaacNameOveride` in `UsdUtilities.h`
+- Added Doxygen `@cond` to hide internal template `QuatFromAxisAngle` in `Quat.h`
+
+## [2.7.0] - 2026-03-04
+### Changed
+- Added Overview.md
+
 ## [2.6.1] - 2026-02-06
 ### Changed
 - Optimize GenericBuffer to re-use memory without allocation if requested size fits within existing capacity.

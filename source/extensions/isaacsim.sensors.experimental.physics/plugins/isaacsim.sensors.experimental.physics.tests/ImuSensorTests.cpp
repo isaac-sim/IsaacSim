@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -93,7 +93,9 @@ TEST_SUITE("isaacsim.sensors.experimental.physics.tests")
         int filterSize = 3;
         float sum = 0.0f;
         for (int i = 0; i < filterSize; i++)
+        {
             sum += buffer[i].angularVelocityZ;
+        }
         float average = sum / filterSize;
 
         CHECK(std::abs(average - 2.0f) < 1e-6f);

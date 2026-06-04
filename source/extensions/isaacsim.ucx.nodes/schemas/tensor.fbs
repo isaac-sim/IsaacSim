@@ -1,0 +1,53 @@
+// FlatBuffers schema demonstrating native_type approach with holoscan::Tensor
+
+native_include "holoscan/core/domain/tensor.hpp";
+
+namespace isaac;
+
+enum DLDataTypeCode : uint8 {
+  kDLInt = 0,
+  kDLUInt = 1,
+  kDLFloat = 2,
+}
+
+// Device type of a tensor.
+enum DLDeviceType : int32 {
+  kDLUnknown = 0,
+  kDLCPU = 1,
+  kDLCUDA = 2,
+  kDLCUDAHost = 3,
+  kDLCUDAManaged = 13,
+}
+
+// Data type of a tensor.
+struct DLDataType {
+  // Base type.
+  code: DLDataTypeCode;
+
+  // Number of bits, common choices are 8, 16, 32.
+  bits: uint8;       // e.g., 32 for float32
+
+  // Number of lanes in the type, used for vector types.
+  lanes: uint16;     // SIMD lanes (1 for scalar)
+}
+
+// Device context of a tensor.
+struct DLDevice {
+  // Device type.
+  device_type: DLDeviceType;
+
+  // Device index.
+  device_id: int32;
+}
+
+// Defines a Tensor message based on DLPack, using holoscan::Tensor as the native type.
+table Tensor (native_type: "holoscan::Tensor") {
+  data: [ubyte];
+  shape: [int64];
+  dtype: DLDataType (native_inline);
+  device: DLDevice (native_inline);
+  ndim: uint32;
+  strides: [int64];
+}
+
+root_type Tensor;

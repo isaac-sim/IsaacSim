@@ -42,6 +42,7 @@ def _build_mirrored_meshes_stage(stage_path: str) -> str:
 
     Returns:
         The file path of the exported stage.
+
     """
     stage = Usd.Stage.CreateNew(stage_path)
     stage.SetMetadata("metersPerUnit", 1.0)
@@ -91,6 +92,7 @@ def _build_no_mesh_stage(stage_path: str) -> str:
 
     Returns:
         The file path of the exported stage.
+
     """
     stage = Usd.Stage.CreateNew(stage_path)
     stage.SetMetadata("metersPerUnit", 1.0)
@@ -116,7 +118,7 @@ def _build_no_mesh_stage(stage_path: str) -> str:
 class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
     """Async tests for GeometriesRoutingRule."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Create a temporary stage for geometry routing tests."""
         self._tmpdir = tempfile.mkdtemp()
         self._temp_asset = os.path.join(self._tmpdir, "payloads/base.usd")
@@ -124,12 +126,12 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
         stage.Export(self._temp_asset)
         self._success = False
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Remove temporary directory after successful tests."""
         if self._success:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
 
-    async def test_get_configuration_parameters(self):
+    async def test_get_configuration_parameters(self) -> None:
         """Verify configuration parameters are exposed."""
         stage = Usd.Stage.Open(_UR10E_SHOULDER_USD)
         rule = GeometriesRoutingRule(
@@ -151,7 +153,7 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertIn("save_base_as_usda", param_names)
         self._success = True
 
-    async def test_process_rule_creates_geometries_layer(self):
+    async def test_process_rule_creates_geometries_layer(self) -> None:
         """Verify geometries and instances layers are created."""
         base_stage = Usd.Stage.Open(self._temp_asset)
         os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
@@ -580,7 +582,7 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
                     )
         self._success = True
 
-    async def test_process_rule_name_clash_instances(self):
+    async def test_process_rule_name_clash_instances(self) -> None:
         """Verify meshes with name clashes are routed to unique instances."""
         os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
         temp_input = os.path.join(self._tmpdir, "test_advanced.usda")
@@ -695,7 +697,171 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_preserves_parent_properties_on_merge(self):
+    async def test_process_rule_inherits_guide_from_grandparent_and_separates_visual(self) -> None:
+        """Verify inherited purpose=guide on an ancestor is propagated and visual/collision usages are not merged.
+
+        Builds a stage where the same prototype mesh is referenced both by a visual Xform
+        (effective purpose=default) and by a collision Xform whose grandparent (not the
+        immediate parent) authors purpose=guide. Verifies that:
+
+        1. The deduplicated visual and collision sources end up referencing different
+           ``/Instances`` entries -- without per-effective-purpose deduplication they
+           would share one instance and the visual usage would be incorrectly hidden.
+        2. The collision-side prototype mesh carries an authored purpose=guide attribute
+           inside the instances layer, even though the value is inherited from an
+           ancestor several levels above the mesh rather than from the immediate parent.
+        3. The visual-side prototype mesh does NOT carry an authored purpose attribute.
+        """
+        os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
+        temp_input = os.path.join(self._tmpdir, "grandparent_guide.usda")
+
+        # Build a stage with a shared prototype mesh under /meshes, referenced once for
+        # visuals (no purpose) and once via a collisions group whose GRANDPARENT carries
+        # purpose=guide. Purpose inheritance must be picked up from the grandparent.
+        stage = Usd.Stage.CreateNew(temp_input)
+        stage.SetMetadata("metersPerUnit", 1.0)
+        stage.SetMetadata("upAxis", "Z")
+        root = UsdGeom.Xform.Define(stage, "/root")
+        stage.SetDefaultPrim(root.GetPrim())
+
+        proto = UsdGeom.Xform.Define(stage, "/meshes/proto")
+        proto_mesh = UsdGeom.Mesh.Define(stage, "/meshes/proto/mesh")
+        proto_mesh.GetFaceVertexCountsAttr().Set([3])
+        proto_mesh.GetFaceVertexIndicesAttr().Set([0, 1, 2])
+        proto_mesh.GetPointsAttr().Set([Gf.Vec3f(0, 0, 0), Gf.Vec3f(1, 0, 0), Gf.Vec3f(0, 1, 0)])
+
+        visual = UsdGeom.Xform.Define(stage, "/root/visuals/part")
+        visual.GetPrim().GetReferences().AddInternalReference("/meshes/proto")
+
+        collisions_group = UsdGeom.Xform.Define(stage, "/root/collisions")
+        collisions_group.GetPrim().GetAttribute("purpose").Set(UsdGeom.Tokens.guide)
+        collision_link = UsdGeom.Xform.Define(stage, "/root/collisions/link")
+        collision = UsdGeom.Xform.Define(stage, "/root/collisions/link/part")
+        collision.GetPrim().GetReferences().AddInternalReference("/meshes/proto")
+
+        stage.Export(temp_input)
+
+        base_stage = Usd.Stage.Open(temp_input)
+        rule = GeometriesRoutingRule(
+            source_stage=base_stage,
+            package_root=self._tmpdir,
+            destination_path="payloads",
+            args={
+                "params": {
+                    "geometries_layer": "geometries.usd",
+                    "instance_layer": "instances.usda",
+                }
+            },
+        )
+
+        updated_stage_path = rule.process_rule()
+        self.assertIsNotNone(updated_stage_path)
+        updated_stage = Usd.Stage.Open(updated_stage_path)
+        instances_stage = Usd.Stage.Open(os.path.join(self._tmpdir, "payloads", "instances.usda"))
+
+        def _instance_path_for(prim_path: str) -> str:
+            prim_spec = updated_stage.GetRootLayer().GetPrimAtPath(prim_path)
+            self.assertIsNotNone(prim_spec, f"No spec at {prim_path}")
+            refs = list(prim_spec.referenceList.GetAddedOrExplicitItems())
+            refs.extend(prim_spec.referenceList.prependedItems)
+            self.assertTrue(refs, f"Expected reference on {prim_path}")
+            return refs[0].primPath.pathString
+
+        visual_inst_path = _instance_path_for("/root/visuals/part")
+        collision_inst_path = _instance_path_for("/root/collisions/link/part")
+        self.assertNotEqual(
+            visual_inst_path,
+            collision_inst_path,
+            "Visual and collision usages of the same prototype must not share an instance",
+        )
+
+        def _proto_mesh_purpose(instance_root_path: str) -> tuple[bool, str]:
+            instance_root = instances_stage.GetPrimAtPath(instance_root_path)
+            self.assertTrue(instance_root.IsValid(), f"Missing instance root {instance_root_path}")
+            for child in instance_root.GetChildren():
+                if child.IsA(UsdGeom.Mesh):
+                    attr = child.GetAttribute("purpose")
+                    return bool(attr and attr.HasAuthoredValue()), attr.Get() if attr else ""
+            self.fail(f"No Mesh child in {instance_root_path}")
+
+        collision_authored, collision_value = _proto_mesh_purpose(collision_inst_path)
+        self.assertTrue(
+            collision_authored,
+            "Collision prototype mesh must carry an authored purpose from inherited ancestor value",
+        )
+        self.assertEqual(collision_value, UsdGeom.Tokens.guide)
+
+        visual_authored, _ = _proto_mesh_purpose(visual_inst_path)
+        self.assertFalse(visual_authored, "Visual prototype mesh must not carry an authored purpose")
+
+        self._success = True
+
+    async def test_process_rule_is_idempotent_with_existing_instances_layer(self) -> None:
+        """Verify re-running the rule against an existing instances layer is safe.
+
+        Re-running must not crash AND must not mutate the source asset on disk.
+
+        Reproduces two regressions:
+        1. ``Sdf.Layer.FindOrOpen`` reuses a previously written ``instances.usda`` that
+           already contains the propagated purpose attribute spec on a prototype mesh.
+           The second run must not raise
+           ``Cannot create spec ... because it already exists`` when re-authoring the spec.
+        2. ``_make_references_non_instanceable`` used to flatten-and-export back to the
+           source layer's ``realPath``, silently mutating the caller's input between
+           runs. ``process_rule`` must treat its source as read-only; the working copy
+           lives inside ``package_root`` instead.
+        """
+        os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
+        temp_input = os.path.join(self._tmpdir, "test_advanced.usda")
+
+        source_stage = Usd.Stage.Open(_TEST_ADVANCED_USD)
+        source_stage.Export(temp_input)
+
+        # Snapshot the input bytes so we can assert the rule does not mutate it.
+        with open(temp_input, "rb") as fh:
+            input_bytes_before = fh.read()
+        input_mtime_before = os.path.getmtime(temp_input)
+
+        def _run() -> str:
+            base_stage = Usd.Stage.Open(temp_input)
+            rule = GeometriesRoutingRule(
+                source_stage=base_stage,
+                package_root=self._tmpdir,
+                destination_path="payloads",
+                args={
+                    "params": {
+                        "geometries_layer": "geometries.usd",
+                        "instance_layer": "instances.usda",
+                    }
+                },
+            )
+            return rule.process_rule()
+
+        first_path = _run()
+        self.assertIsNotNone(first_path, "Initial rule run failed")
+
+        # Source file must be unchanged after first run (no in-place mutation).
+        with open(temp_input, "rb") as fh:
+            input_bytes_after_first = fh.read()
+        self.assertEqual(
+            input_bytes_before,
+            input_bytes_after_first,
+            "process_rule mutated the source asset file in place; it must operate on a working copy",
+        )
+        self.assertEqual(
+            input_mtime_before,
+            os.path.getmtime(temp_input),
+            "Source file mtime changed; process_rule mutated the source asset",
+        )
+
+        # Second run on the same (unmutated) input must not raise. The instances
+        # layer from the first run is reopened via Sdf.Layer.FindOrOpen and
+        # previously-authored purpose specs must be reused.
+        second_path = _run()
+        self.assertIsNotNone(second_path, "Re-running the rule with existing instances layer failed")
+        self._success = True
+
+    async def test_process_rule_preserves_parent_properties_on_merge(self) -> None:
         """Verify merged parent retains authored properties and schemas."""
         os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
         temp_input = os.path.join(self._tmpdir, "test_collision_from_visuals.usda")
@@ -758,7 +924,7 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_with_scope(self):
+    async def test_process_rule_with_scope(self) -> None:
         """Verify scope filter limits geometry routing."""
         stage = Usd.Stage.Open(self._temp_asset)
         os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
@@ -781,7 +947,7 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(any("scope=/ur10e/base_link" in msg for msg in log))
         self._success = True
 
-    async def test_process_rule_without_deduplication(self):
+    async def test_process_rule_without_deduplication(self) -> None:
         """Verify non-deduplicated processing logs are recorded."""
         stage = Usd.Stage.Open(self._temp_asset)
         os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
@@ -804,7 +970,7 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(any("deduplicate=False" in msg for msg in log))
         self._success = True
 
-    async def test_process_rule_affected_stages(self):
+    async def test_process_rule_affected_stages(self) -> None:
         """Verify affected stages are recorded."""
         stage = Usd.Stage.Open(self._temp_asset)
         os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
@@ -826,7 +992,7 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertGreaterEqual(len(affected), 0)
         self._success = True
 
-    async def test_process_rule_logs_operations(self):
+    async def test_process_rule_logs_operations(self) -> None:
         """Verify operation log entries are recorded."""
         stage = Usd.Stage.Open(self._temp_asset)
         os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
@@ -853,7 +1019,7 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
     # Tests for negative-scale decomposition and deduplicate=False path
     # ------------------------------------------------------------------
 
-    async def test_decompose_transform_negative_scale(self):
+    async def test_decompose_transform_negative_scale(self) -> None:
         """Verify _decompose_transform correctly handles negative scale (det < 0).
 
         When a transform matrix has a negative determinant (reflection), the
@@ -911,7 +1077,7 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_no_deduplicate_produces_separate_geometries(self):
+    async def test_no_deduplicate_produces_separate_geometries(self) -> None:
         """Verify deduplicate=False creates independent geometry and instance entries.
 
         Two meshes with identical vertex data but different parent names must each
@@ -1024,7 +1190,7 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
                         msg=f"World transform mismatch at {path}[{row}][{col}]",
                     )
 
-    async def test_no_geometry_prims_saves_base_as_usda(self):
+    async def test_no_geometry_prims_saves_base_as_usda(self) -> None:
         """Verify save_base_as_usda converts the base layer even when no Mesh prims exist.
 
         Assets like MuJoCo-converted robots (ant, humanoid) may contain only
@@ -1080,7 +1246,7 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_preserves_physics_material_bindings(self):
+    async def test_process_rule_preserves_physics_material_bindings(self) -> None:
         """Verify physics material bindings survive geometry routing unchanged.
 
         A mesh with both a visual ``material:binding`` and a physics-purpose
@@ -1183,5 +1349,79 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
                 break
 
         self.assertTrue(vis_binding_found, "No visual material:binding found in instances layer")
+
+        self._success = True
+
+    async def test_multiple_sibling_meshes_not_merged_into_parent(self) -> None:
+        """Verify that a parent Xform with multiple Mesh children keeps all children as separate references.
+
+        Reproduces the anymal_d pattern where /robot/link/visuals has N mesh children.
+        After geometry routing, each mesh should be its own instanceable reference under
+        the parent — the rule must NOT merge the last mesh into the parent and lose the
+        others.  This tests that _is_subtree_empty correctly treats siblings with
+        composition arcs (references) as non-empty, preventing premature merging.
+        """
+        # Build a stage: /Robot/base/visuals has 5 Mesh children
+        stage_path = os.path.join(self._tmpdir, "payloads", "base.usd")
+        os.makedirs(os.path.dirname(stage_path), exist_ok=True)
+        stage = Usd.Stage.CreateNew(stage_path)
+        stage.SetDefaultPrim(stage.DefinePrim("/Robot", "Xform"))
+        base = stage.DefinePrim("/Robot/base", "Xform")
+        visuals = stage.DefinePrim("/Robot/base/visuals", "Xform")
+        mesh_names = ["mesh_a", "mesh_b", "mesh_c", "mesh_d", "mesh_e"]
+        for name in mesh_names:
+            mesh = stage.DefinePrim(f"/Robot/base/visuals/{name}", "Mesh")
+            UsdGeom.Mesh(mesh).CreatePointsAttr([(-1, 0, 0), (1, 0, 0), (0, 1, 0)])
+            UsdGeom.Mesh(mesh).CreateFaceVertexCountsAttr([3])
+            UsdGeom.Mesh(mesh).CreateFaceVertexIndicesAttr([0, 1, 2])
+        stage.Save()
+
+        # Run GeometriesRoutingRule
+        rule = GeometriesRoutingRule(
+            source_stage=Usd.Stage.Open(stage_path),
+            package_root=self._tmpdir,
+            destination_path="payloads",
+            args={
+                "input_stage_path": stage_path,
+                "params": {
+                    "scope": "/",
+                    "geometries_layer": "geometries.usd",
+                    "instance_layer": "instances.usda",
+                    "deduplicate": True,
+                    "save_base_as_usda": False,
+                },
+            },
+        )
+        result = rule.process_rule()
+        self.assertIsNotNone(result, "process_rule should return a path")
+
+        # Re-open the output stage
+        output_stage = Usd.Stage.Open(result)
+        visuals_prim = output_stage.GetPrimAtPath("/Robot/base/visuals")
+        self.assertTrue(visuals_prim.IsValid(), "/Robot/base/visuals should exist after routing")
+
+        # visuals itself should NOT be instanceable (it's the parent container)
+        self.assertFalse(
+            visuals_prim.IsInstanceable(),
+            "/Robot/base/visuals should not be merged/instanceable — it is a container for multiple meshes",
+        )
+
+        # All 5 mesh children should exist as Xform references under visuals
+        children = [c.GetName() for c in visuals_prim.GetChildren()]
+        for name in mesh_names:
+            self.assertIn(
+                name,
+                children,
+                f"{name} missing from visuals children after geometry routing: got {children}",
+            )
+
+        # Each child should be instanceable with a reference
+        for name in mesh_names:
+            child = output_stage.GetPrimAtPath(f"/Robot/base/visuals/{name}")
+            self.assertTrue(child.IsValid(), f"{name} should exist")
+            self.assertTrue(
+                child.IsInstanceable(),
+                f"{name} should be instanceable",
+            )
 
         self._success = True

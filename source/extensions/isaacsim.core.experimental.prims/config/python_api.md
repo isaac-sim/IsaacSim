@@ -1,0 +1,202 @@
+# Public API for module isaacsim.core.experimental.prims:
+
+## Classes
+
+- class Articulation(XformPrim)
+  - def __init__(self, paths: str | list[str])
+  - [property] def num_dofs(self) -> int
+  - [property] def dof_names(self) -> list[str]
+  - [property] def dof_paths(self) -> list[list[str]]
+  - [property] def dof_types(self) -> list[omni.physics.tensors.DofType]
+  - [property] def num_joints(self) -> int
+  - [property] def joint_names(self) -> list[str]
+  - [property] def joint_paths(self) -> list[list[str]]
+  - [property] def joint_types(self) -> list[omni.physics.tensors.JointType]
+  - [property] def num_links(self) -> int
+  - [property] def link_names(self) -> list[str]
+  - [property] def link_paths(self) -> list[list[str]]
+  - [property] def num_shapes(self) -> int
+  - [property] def num_fixed_tendons(self) -> int
+  - [property] def jacobian_matrix_shape(self) -> tuple[int, int, int]
+  - [property] def mass_matrix_shape(self) -> tuple[int, int]
+  - static def fetch_articulation_root_api_prim_paths(paths: str | list[str]) -> list[str | None]
+  - def is_physics_tensor_entity_valid(self) -> bool
+  - def is_physics_tensor_entity_initialized(self) -> bool
+  - def get_link_indices(self, names: str | list[str]) -> wp.array
+  - def get_joint_indices(self, names: str | list[str]) -> wp.array
+  - def get_dof_indices(self, names: str | list[str]) -> wp.array
+  - def get_dof_limits(self) -> tuple[wp.array, wp.array]
+  - def set_dof_limits(self, lower: float | list | np.ndarray | wp.array | None = None, upper: float | list | np.ndarray | wp.array | None = None)
+  - def get_dof_friction_properties(self) -> tuple[wp.array, wp.array, wp.array]
+  - def set_dof_friction_properties(self, static_frictions: float | list | np.ndarray | wp.array | None = None, dynamic_frictions: float | list | np.ndarray | wp.array | None = None, viscous_frictions: float | list | np.ndarray | wp.array | None = None)
+  - def get_dof_drive_model_properties(self) -> tuple[wp.array, wp.array, wp.array]
+  - def set_dof_drive_model_properties(self, speed_effort_gradients: float | list | np.ndarray | wp.array | None = None, maximum_actuator_velocities: float | list | np.ndarray | wp.array | None = None, velocity_dependent_resistances: float | list | np.ndarray | wp.array | None = None)
+  - def set_dof_armatures(self, armatures: float | list | np.ndarray | wp.array)
+  - def get_dof_armatures(self) -> wp.array
+  - def set_dof_position_targets(self, positions: float | list | np.ndarray | wp.array)
+  - def set_dof_positions(self, positions: float | list | np.ndarray | wp.array)
+  - def set_dof_velocity_targets(self, velocities: float | list | np.ndarray | wp.array)
+  - def set_dof_velocities(self, velocities: float | list | np.ndarray | wp.array)
+  - def set_dof_efforts(self, efforts: float | list | np.ndarray | wp.array)
+  - def get_dof_efforts(self) -> wp.array
+  - def get_dof_projected_joint_forces(self) -> wp.array
+  - def get_link_incoming_joint_force(self) -> tuple[wp.array, wp.array]
+  - def get_dof_positions(self) -> wp.array
+  - def get_dof_position_targets(self) -> wp.array
+  - def get_dof_velocities(self) -> wp.array
+  - def get_dof_velocity_targets(self) -> wp.array
+  - def set_world_poses(self, positions: list | np.ndarray | wp.array | None = None, orientations: list | np.ndarray | wp.array | None = None)
+  - def get_world_poses(self) -> tuple[wp.array, wp.array]
+  - def get_local_poses(self) -> tuple[wp.array, wp.array]
+  - def set_local_poses(self, translations: list | np.ndarray | wp.array | None = None, orientations: list | np.ndarray | wp.array | None = None)
+  - def set_velocities(self, linear_velocities: list | np.ndarray | wp.array | None = None, angular_velocities: list | np.ndarray | wp.array | None = None)
+  - def get_velocities(self) -> tuple[wp.array, wp.array]
+  - def set_default_state(self, positions: list | np.ndarray | wp.array | None = None, orientations: list | np.ndarray | wp.array | None = None, linear_velocities: list | np.ndarray | wp.array | None = None, angular_velocities: list | np.ndarray | wp.array | None = None, dof_positions: float | list | np.ndarray | wp.array | None = None, dof_velocities: float | list | np.ndarray | wp.array | None = None, dof_efforts: float | list | np.ndarray | wp.array | None = None)
+  - def get_default_state(self) -> tuple[wp.array | None, wp.array | None, wp.array | None, wp.array | None, wp.array | None, wp.array | None, wp.array | None]
+  - def reset_to_default_state(self)
+  - def get_dof_drive_types(self) -> list[list[str]]
+  - def set_dof_drive_types(self, types: str | list[list[str]])
+  - def set_dof_max_efforts(self, max_efforts: float | list | np.ndarray | wp.array)
+  - def get_dof_max_efforts(self) -> wp.array
+  - def set_dof_max_velocities(self, max_velocities: float | list | np.ndarray | wp.array)
+  - def get_dof_max_velocities(self) -> wp.array
+  - def set_dof_gains(self, stiffnesses: float | list | np.ndarray | wp.array | None = None, dampings: float | list | np.ndarray | wp.array | None = None)
+  - def get_dof_gains(self) -> tuple[wp.array, wp.array]
+  - def switch_dof_control_mode(self, mode: str)
+  - def set_solver_iteration_counts(self, position_counts: int | list | np.ndarray | wp.array | None = None, velocity_counts: int | list | np.ndarray | wp.array | None = None)
+  - def get_solver_iteration_counts(self) -> tuple[wp.array, wp.array]
+  - def set_stabilization_thresholds(self, thresholds: float | list | np.ndarray | wp.array)
+  - def get_stabilization_thresholds(self) -> wp.array
+  - def set_enabled_self_collisions(self, enabled: bool | list | np.ndarray | wp.array)
+  - def get_enabled_self_collisions(self) -> wp.array
+  - def set_sleep_thresholds(self, thresholds: float | list | np.ndarray | wp.array)
+  - def get_sleep_thresholds(self) -> wp.array
+  - def get_jacobian_matrices(self) -> wp.array
+  - def get_mass_matrices(self) -> wp.array
+  - def get_dof_coriolis_and_centrifugal_compensation_forces(self) -> wp.array
+  - def get_dof_gravity_compensation_forces(self) -> wp.array
+  - def get_link_masses(self) -> wp.array
+  - def get_link_coms(self) -> tuple[wp.array, wp.array]
+  - def get_link_inertias(self) -> wp.array
+  - def get_link_enabled_gravities(self) -> wp.array
+  - def set_link_masses(self, masses: float | list | np.ndarray | wp.array)
+  - def set_link_inertias(self, inertias: list | np.ndarray | wp.array)
+  - def set_link_coms(self, positions: list | np.ndarray | wp.array | None = None, orientations: list | np.ndarray | wp.array | None = None)
+  - def set_link_enabled_gravities(self, enabled: bool | list | np.ndarray | wp.array)
+  - def get_fixed_tendon_stiffnesses(self) -> wp.array
+  - def get_fixed_tendon_dampings(self) -> wp.array
+  - def get_fixed_tendon_limit_stiffnesses(self) -> wp.array
+  - def get_fixed_tendon_limits(self) -> tuple[wp.array, wp.array]
+  - def get_fixed_tendon_rest_lengths(self) -> wp.array
+  - def get_fixed_tendon_offsets(self) -> wp.array
+  - def set_fixed_tendon_properties(self)
+  - def initialize_cpp_data_view(self)
+
+- class BufferDtype(str, Enum)
+  - FLOAT: str
+  - FLOAT32: str
+  - UINT8: str
+  - UINT8_T: str
+
+- class DeformablePrim(XformPrim)
+  - def __init__(self, paths: str | list[str])
+  - [property] def deformable_type(self) -> Literal[surface, volume]
+  - [property] def simulation_mesh_paths(self) -> list[str]
+  - [property] def collision_mesh_paths(self) -> list[str]
+  - [property] def num_nodes_per_element(self) -> int
+  - [property] def num_nodes_per_body(self) -> tuple[int, int, int]
+  - [property] def num_elements_per_body(self) -> tuple[int, int, int]
+  - def is_physics_tensor_entity_valid(self) -> bool
+  - def get_element_indices(self) -> tuple[wp.array, wp.array, wp.array]
+  - def get_nodal_positions(self) -> tuple[wp.array, wp.array, wp.array]
+  - def set_nodal_positions(self, positions: list | np.ndarray | wp.array | None = None)
+  - def get_nodal_velocities(self) -> wp.array
+  - def set_nodal_velocities(self, velocities: list | np.ndarray | wp.array | None = None)
+  - def get_nodal_kinematic_position_targets(self) -> tuple[wp.array, wp.array]
+  - def set_nodal_kinematic_position_targets(self, positions: list | np.ndarray | wp.array | None = None, enabled: bool | list | np.ndarray | wp.array | None = None)
+  - def apply_physics_materials(self, materials: type['PhysicsMaterial'] | list[type['PhysicsMaterial']])
+  - def get_applied_physics_materials(self) -> list[type['PhysicsMaterial'] | None]
+  - def get_nodal_rotations(self) -> wp.array
+  - def get_nodal_gradients(self) -> wp.array
+  - def get_nodal_stresses(self) -> wp.array
+
+- class GeomPrim(XformPrim)
+  - def __init__(self, paths: str | list[str])
+  - [property] def geoms(self) -> list[UsdGeom.Gprim]
+  - def set_offsets(self, contact_offsets: float | list | np.ndarray | wp.array = None, rest_offsets: float | list | np.ndarray | wp.array = None)
+  - def get_offsets(self) -> tuple[wp.array, wp.array]
+  - def set_torsional_patch_radii(self, radii: float | list | np.ndarray | wp.array)
+  - def get_torsional_patch_radii(self) -> wp.array
+  - def set_collision_approximations(self, approximations: str | list[str])
+  - def get_collision_approximations(self) -> list[str]
+  - def set_enabled_collisions(self, enabled: bool | list | np.ndarray | wp.array)
+  - def get_enabled_collisions(self) -> wp.array
+  - def apply_collision_apis(self)
+  - def apply_physics_materials(self, materials: type['PhysicsMaterial'] | list[type['PhysicsMaterial']])
+  - def get_applied_physics_materials(self) -> list[type['PhysicsMaterial'] | None]
+
+- class Prim(ABC)
+  - def __init__(self, paths: str | list[str])
+  - [property] def paths(self) -> list[str]
+  - [property] def prims(self) -> list[Usd.Prim]
+  - [property] def valid(self) -> bool
+  - static def ensure_api(prims: list[Usd.Prim], api: type, *args, **kwargs) -> list[type[UsdAPISchemaBase]]
+  - static def resolve_paths(paths: str | list[str], raise_on_mixed_paths: bool = True) -> tuple[list[str], list[str]]
+
+- class RigidPrim(XformPrim)
+  - def __init__(self, paths: str | list[str])
+  - [property] def num_shapes(self) -> int
+  - [property] def num_contact_filters(self) -> int
+  - def is_physics_tensor_entity_valid(self) -> bool
+  - def set_world_poses(self, positions: list | np.ndarray | wp.array | None = None, orientations: list | np.ndarray | wp.array | None = None)
+  - def get_world_poses(self) -> tuple[wp.array, wp.array]
+  - def get_local_poses(self) -> tuple[wp.array, wp.array]
+  - def set_local_poses(self, translations: list | np.ndarray | wp.array | None = None, orientations: list | np.ndarray | wp.array | None = None)
+  - def set_velocities(self, linear_velocities: list | np.ndarray | wp.array | None = None, angular_velocities: list | np.ndarray | wp.array | None = None)
+  - def get_velocities(self) -> tuple[wp.array, wp.array]
+  - def apply_forces(self, forces: list | np.ndarray | wp.array)
+  - def apply_forces_and_torques_at_pos(self, forces: list | np.ndarray | wp.array | None = None, torques: list | np.ndarray | wp.array | None = None)
+  - def get_masses(self) -> wp.array
+  - def get_coms(self) -> tuple[wp.array, wp.array]
+  - def get_inertias(self) -> wp.array
+  - def set_masses(self, masses: float | list | np.ndarray | wp.array)
+  - def set_inertias(self, inertias: list | np.ndarray | wp.array)
+  - def set_coms(self, positions: list | np.ndarray | wp.array | None = None, orientations: list | np.ndarray | wp.array | None = None)
+  - def set_densities(self, densities: float | list | np.ndarray | wp.array)
+  - def get_densities(self) -> wp.array
+  - def set_sleep_thresholds(self, thresholds: float | list | np.ndarray | wp.array)
+  - def get_sleep_thresholds(self) -> wp.array
+  - def set_enabled_rigid_bodies(self, enabled: bool | list | np.ndarray | wp.array)
+  - def get_enabled_rigid_bodies(self) -> wp.array
+  - def set_enabled_gravities(self, enabled: bool | list | np.ndarray | wp.array)
+  - def get_enabled_gravities(self) -> wp.array
+  - def set_enabled_contact_tracking(self, enabled: bool | list | np.ndarray | wp.array)
+  - def get_enabled_contact_tracking(self) -> wp.array
+  - def get_net_contact_forces(self) -> wp.array
+  - def get_contact_force_matrix(self) -> wp.array
+  - def get_contact_force_data(self) -> tuple[wp.array, wp.array, wp.array, wp.array, wp.array, wp.array]
+  - def get_friction_data(self) -> tuple[wp.array, wp.array, wp.array, wp.array]
+  - def get_raw_contact_data(self) -> tuple[wp.array, wp.array, wp.array, wp.array, wp.array, wp.array, wp.array]
+  - def get_actor_paths_from_ids(self, actor_ids: wp.array) -> list[str]
+  - def set_default_state(self, positions: list | np.ndarray | wp.array | None = None, orientations: list | np.ndarray | wp.array | None = None, linear_velocities: list | np.ndarray | wp.array | None = None, angular_velocities: list | np.ndarray | wp.array | None = None)
+  - def get_default_state(self) -> tuple[wp.array | None, wp.array | None, wp.array | None, wp.array | None]
+  - def reset_to_default_state(self)
+  - def initialize_cpp_data_view(self)
+
+- class XformPrim(Prim)
+  - def __init__(self, paths: str | list[str])
+  - [property] def is_non_root_articulation_link(self) -> bool
+  - def set_visibilities(self, visibilities: bool | list | np.ndarray | wp.array)
+  - def get_visibilities(self) -> wp.array
+  - def get_default_state(self) -> tuple[wp.array | None, wp.array | None]
+  - def set_default_state(self, positions: list | np.ndarray | wp.array | None = None, orientations: list | np.ndarray | wp.array | None = None)
+  - def apply_visual_materials(self, materials: type['VisualMaterial'] | list[type['VisualMaterial']])
+  - def get_applied_visual_materials(self) -> list[type['VisualMaterial'] | None]
+  - def get_world_poses(self) -> tuple[wp.array, wp.array]
+  - def set_world_poses(self, positions: list | np.ndarray | wp.array | None = None, orientations: list | np.ndarray | wp.array | None = None)
+  - def get_local_poses(self) -> tuple[wp.array, wp.array]
+  - def set_local_poses(self, translations: list | np.ndarray | wp.array | None = None, orientations: list | np.ndarray | wp.array | None = None)
+  - def set_local_scales(self, scales: list | np.ndarray | wp.array | None = None)
+  - def get_local_scales(self) -> wp.array
+  - def reset_xform_op_properties(self)
+  - def reset_to_default_state(self)

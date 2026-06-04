@@ -1,8 +1,5 @@
-API
-===
-
 Python API
-----------
+==========
 
 .. Summary
 

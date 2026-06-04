@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,37 +13,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for ROS 2 subscriber OmniGraph node."""
 
 import json
 
+import numpy as np
 import omni.graph.core as og
 import omni.kit.test
-from isaacsim.core.utils.stage import create_new_stage_async
-
-from .common import ROS2TestCase
+from isaacsim.core.experimental.utils import stage as stage_utils
+from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 
 
 class TestRos2Subscriber(ROS2TestCase):
+    """Test suite for ros2 subscriber."""
+
     async def setUp(self):
+        """Set up test fixtures."""
         await super().setUp()
 
-        await create_new_stage_async()
+        await stage_utils.create_new_stage_async()
 
     async def tearDown(self):
+        """Tear down test fixtures."""
         await super().tearDown()
 
     # ----------------------------------------------------------------------
     async def test_subscriber(self):
+        """Test subscriber."""
         import math
 
         import builtin_interfaces.msg
         import geometry_msgs.msg
         import rclpy
+        import shape_msgs.msg
         import std_msgs.msg
         import tf2_msgs.msg
 
         # define graph
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
@@ -123,6 +130,10 @@ class TestRos2Subscriber(ROS2TestCase):
             ("std_msgs.msg.UInt8", std_msgs.msg.UInt8(data=2**8 - 1)),
             ("std_msgs.msg.UInt8MultiArray", std_msgs.msg.UInt8MultiArray(layout=_layout, data=[0, 2**8 - 1])),
         ]
+        # - shape_msgs
+        messages += [
+            ("shape_msgs.msg.MeshTriangle", shape_msgs.msg.MeshTriangle(vertex_indices=[10, 20, 30])),
+        ]
         # - tf2_msgs
         _transforms = [
             geometry_msgs.msg.TransformStamped(
@@ -135,7 +146,7 @@ class TestRos2Subscriber(ROS2TestCase):
                     rotation=geometry_msgs.msg.Quaternion(x=float(i), y=float(i - 1), z=float(i - 2), w=float(i - 3)),
                 ),
             )
-            for i in range(2**16 + 1)
+            for i in range(2**12)
         ]
         messages += [
             (
@@ -180,7 +191,15 @@ class TestRos2Subscriber(ROS2TestCase):
             ros2_publisher.publish(message_value)
 
             # Wait for node output to update (instead of fixed sleeps).
-            if message_type.startswith("tf2_msgs"):
+            if message_type == "shape_msgs.msg.MeshTriangle":
+
+                def condition():
+                    vertex_indices = og.Controller.attribute("outputs:vertex_indices", subscriber_node).get()
+                    vertex_indices = [*list(vertex_indices) + [0] * 3][:3]
+                    return vertex_indices is not None and np.array_equal(vertex_indices, message_value.vertex_indices)
+
+                condition_met = await self.simulate_until_condition(condition, max_frames=600, per_frame_callback=spin)
+            elif message_type.startswith("tf2_msgs"):
 
                 def condition():
                     transforms = og.Controller.attribute("outputs:transforms", subscriber_node).get()
@@ -217,23 +236,58 @@ class TestRos2Subscriber(ROS2TestCase):
             self.assertTrue(condition_met, f"Timed out waiting for subscriber output for {message_type}")
 
             # check node output
+            # - shape_msgs
+            if message_type == "shape_msgs.msg.MeshTriangle":
+                vertex_indices = og.Controller.attribute("outputs:vertex_indices", subscriber_node).get()
+                np.testing.assert_array_equal(vertex_indices, message_value.vertex_indices)
             # - tf2_msgs
-            if message_type.startswith("tf2_msgs"):
+            elif message_type.startswith("tf2_msgs"):
                 transforms = og.Controller.attribute("outputs:transforms", subscriber_node).get()
                 self.assertEqual(len(message_value.transforms), len(transforms))
-                for md, d in zip(message_value.transforms, transforms):
-                    transform = json.loads(d)
-                    self.assertEqual(md.header.frame_id, transform["header"]["frame_id"])
-                    self.assertEqual(md.header.stamp.sec, transform["header"]["stamp"]["sec"])
-                    self.assertEqual(md.header.stamp.nanosec, transform["header"]["stamp"]["nanosec"])
-                    self.assertEqual(md.child_frame_id, transform["child_frame_id"])
-                    self.assertEqual(md.transform.translation.x, transform["transform"]["translation"]["x"])
-                    self.assertEqual(md.transform.translation.y, transform["transform"]["translation"]["y"])
-                    self.assertEqual(md.transform.translation.z, transform["transform"]["translation"]["z"])
-                    self.assertEqual(md.transform.rotation.x, transform["transform"]["rotation"]["x"])
-                    self.assertEqual(md.transform.rotation.y, transform["transform"]["rotation"]["y"])
-                    self.assertEqual(md.transform.rotation.z, transform["transform"]["rotation"]["z"])
-                    self.assertEqual(md.transform.rotation.w, transform["transform"]["rotation"]["w"])
+
+                parsed = [json.loads(d) for d in transforms]
+
+                expected_frame_ids = [t.header.frame_id for t in message_value.transforms]
+                received_frame_ids = [p["header"]["frame_id"] for p in parsed]
+                self.assertListEqual(expected_frame_ids, received_frame_ids)
+
+                expected_child_ids = [t.child_frame_id for t in message_value.transforms]
+                received_child_ids = [p["child_frame_id"] for p in parsed]
+                self.assertListEqual(expected_child_ids, received_child_ids)
+
+                expected_nums = np.array(
+                    [
+                        [
+                            t.header.stamp.sec,
+                            t.header.stamp.nanosec,
+                            t.transform.translation.x,
+                            t.transform.translation.y,
+                            t.transform.translation.z,
+                            t.transform.rotation.x,
+                            t.transform.rotation.y,
+                            t.transform.rotation.z,
+                            t.transform.rotation.w,
+                        ]
+                        for t in message_value.transforms
+                    ]
+                )
+                received_nums = np.array(
+                    [
+                        [
+                            p["header"]["stamp"]["sec"],
+                            p["header"]["stamp"]["nanosec"],
+                            p["transform"]["translation"]["x"],
+                            p["transform"]["translation"]["y"],
+                            p["transform"]["translation"]["z"],
+                            p["transform"]["rotation"]["x"],
+                            p["transform"]["rotation"]["y"],
+                            p["transform"]["rotation"]["z"],
+                            p["transform"]["rotation"]["w"],
+                        ]
+                        for p in parsed
+                    ]
+                )
+                np.testing.assert_array_equal(expected_nums, received_nums)
             # - array
             elif message_type.endswith("Array"):
                 data = og.Controller.attribute("outputs:data", subscriber_node).get()

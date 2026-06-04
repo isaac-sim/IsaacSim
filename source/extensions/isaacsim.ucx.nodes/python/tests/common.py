@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Common utilities and base test case for UCX node tests."""
+
 import os
 import socket
-import struct
+
+import numpy as np
 
 try:
     from isaacsim.test.utils import TimedAsyncTestCase
@@ -28,6 +31,13 @@ except ImportError:
 import omni
 import omni.timeline
 import ucxx._lib.libucxx as ucx_api
+
+
+def _read_tensor_f32(tensor: object) -> list:
+    """Read float32 values from a FlatBuffers Tensor's ubyte data vector."""
+    n_bytes = tensor.DataLength()
+    raw = bytes(tensor.Data(i) for i in range(n_bytes))
+    return np.frombuffer(raw, dtype=np.float32).tolist()
 
 
 def find_available_port() -> int:
@@ -55,13 +65,20 @@ def find_available_port() -> int:
 
 
 class UCXTestCase(TimedAsyncTestCase):
-    """Base class for UCX node tests"""
+    """Base class for UCX node tests."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Set up UCX test environment and find an available port."""
         await super().setUp()
 
-        # Set UCX environment variables for TCP-only transport
-        os.environ["UCX_TLS"] = "tcp,self"
+        # UCX transport selection for tests. `tcp` + `self` cover host-to-host TCP
+        # and same-process loopback. `cuda_copy` enables UCX's CUDA memtype module
+        # so it can stage GPU buffers through host memory when one side of a
+        # transfer is `cuda/dev[*]` — required by the GPU-direct two-message path
+        # in OgnUCXPublishImage (`sendCudaBuffer=True`). Without it UCX aborts
+        # the rendezvous recv with "cannot find remote protocol for ... rndv_recv
+        # into host memory from cuda/dev[0]".
+        os.environ["UCX_TLS"] = "tcp,self,cuda_copy"
         os.environ["UCX_NET_DEVICES"] = "all"
 
         self.port = find_available_port()
@@ -71,8 +88,8 @@ class UCXTestCase(TimedAsyncTestCase):
         self.client_worker = None
         self.client_endpoint = None
 
-    async def tearDown(self):
-
+    async def tearDown(self) -> None:
+        """Clean up UCX client resources and stop the timeline."""
         timeline = omni.timeline.get_timeline_interface()
         timeline.stop()
 
@@ -93,7 +110,7 @@ class UCXTestCase(TimedAsyncTestCase):
 
         await super().tearDown()
 
-    def create_ucx_client(self, port: int):
+    def create_ucx_client(self, port: int) -> tuple:
         """Create a UCX client connection to the specified port.
 
         Args:
@@ -118,78 +135,82 @@ class UCXTestCase(TimedAsyncTestCase):
         return self.client_context, self.client_worker, self.client_endpoint
 
 
-def unpack_image_message(buffer):
-    """Unpack a UCX image message.
+_ENCODING_MAP = {
+    0: "custom",
+    1: "rgb8",
+    2: "rgba8",
+    3: "bgr8",
+    4: "bgra8",
+    5: "r8_g8_b8",
+    6: "b8_g8_r8",
+    7: "mono8",
+    8: "mono16",
+    9: "mono32",
+    10: "mono32f",
+}
 
-    Message format:
-    - timestamp (double, 8 bytes)
-    - width (uint32_t, 4 bytes)
-    - height (uint32_t, 4 bytes)
-    - encoding length (uint32_t, 4 bytes)
-    - encoding (variable bytes, padded to 4-byte boundary)
-    - step (uint32_t, 4 bytes) - row length in bytes
-    - image data (variable bytes)
+
+def unpack_image_message(buffer: object) -> tuple:
+    """Unpack a UCX image FlatBuffers message.
 
     Args:
-        buffer: Buffer containing the packed image message.
+        buffer: Buffer containing the FlatBuffers-encoded Image message.
 
     Returns:
         Tuple of (timestamp, width, height, encoding, step, image_data).
+        encoding is a lowercase string (e.g. "rgb8").
+        step is derived as total_bytes / height.
+        image_data is a bytes object containing the raw pixel data.
 
-    Raises:
-        ValueError: If the buffer contains invalid data.
+    Note:
+        When the publisher uses the GPU-direct two-message protocol
+        (``sendCudaBuffer=True``, the default for ``UCXCameraHelper``), this
+        message carries only metadata: ``image_data`` is empty and ``step`` is
+        derived from the ubyte vector length, which is 0. The expected pixel
+        byte count is encoded in the Tensor's ``shape[0]`` field — callers can
+        use :py:func:`get_image_pixel_data_size` to read it and post a second
+        ``tag_recv`` on the same tag for the raw pixel buffer.
     """
-    offset = 0
+    from isaacsim.ucx.nodes.messages.isaac import Image as ImageFb
 
-    # Ensure buffer has minimum size for header
-    if len(buffer) < 24:
-        raise ValueError(f"Buffer too small: {len(buffer)} bytes, need at least 24")
+    buf = bytearray(buffer.tobytes())
+    msg = ImageFb.Image.GetRootAs(buf, 0)
 
-    timestamp = struct.unpack("<d", buffer[offset : offset + 8].tobytes())[0]
-    offset += 8
+    timestamp = msg.Header().Stamp().TimeNs() / 1e9
+    height = msg.Height()
+    width = msg.Width()
+    encoding = _ENCODING_MAP.get(msg.Encoding(), "custom")
 
-    width = struct.unpack("<I", buffer[offset : offset + 4].tobytes())[0]
-    offset += 4
+    tensor = msg.Data()
+    n_bytes = tensor.DataLength()
+    image_data = bytes(tensor.Data(i) for i in range(n_bytes))
 
-    height = struct.unpack("<I", buffer[offset : offset + 4].tobytes())[0]
-    offset += 4
-
-    # Read encoding
-    encoding_len = struct.unpack("<I", buffer[offset : offset + 4].tobytes())[0]
-    offset += 4
-
-    # Validate encoding length
-    if encoding_len == 0 or encoding_len > 100:
-        raise ValueError(f"Invalid encoding length: {encoding_len}")
-
-    if offset + encoding_len > len(buffer):
-        raise ValueError(f"Buffer too small for encoding: need {offset + encoding_len}, have {len(buffer)}")
-
-    try:
-        encoding = buffer[offset : offset + encoding_len].tobytes().decode("utf-8")
-    except UnicodeDecodeError as e:
-        # Print buffer content for debugging
-        raw_bytes = buffer[offset : offset + encoding_len].tobytes()
-        raise ValueError(f"Failed to decode encoding string (length {encoding_len}): {raw_bytes.hex()} - {e}")
-
-    offset += encoding_len
-    offset = (offset + 3) & ~3  # Align to 4-byte boundary
-
-    if offset + 4 > len(buffer):
-        raise ValueError(f"Buffer too small for step field: need {offset + 4}, have {len(buffer)}")
-
-    step = struct.unpack("<I", buffer[offset : offset + 4].tobytes())[0]
-    offset += 4
-
-    # Validate dimensions
-    if width == 0 or height == 0:
-        raise ValueError(f"Invalid dimensions: width={width}, height={height}")
-
-    # Read image data
-    data_size = height * step
-    if offset + data_size > len(buffer):
-        raise ValueError(f"Buffer too small for image data: need {offset + data_size}, have {len(buffer)}")
-
-    image_data = buffer[offset : offset + data_size]
+    step = n_bytes // height if height > 0 else 0
 
     return timestamp, width, height, encoding, step, image_data
+
+
+def get_image_pixel_data_size(buffer: object) -> int:
+    """Return the expected pixel byte count from an Image FlatBuffer's tensor shape.
+
+    Args:
+        buffer: Buffer containing the FlatBuffers-encoded Image message.
+
+    Returns:
+        The pixel data size in bytes as recorded in ``Tensor.shape[0]``.
+
+    The publisher always sets the Tensor's shape vector to ``[dataSize]`` even
+    on the GPU-direct path where the embedded ``data`` ubyte vector is empty.
+    Receivers compare this against ``len(image_data)`` from
+    :py:func:`unpack_image_message`: when ``len(image_data) == 0`` and this
+    returns a non-zero value, the publisher used the two-message protocol and
+    the raw pixel buffer is the next message on the same UCX tag.
+    """
+    from isaacsim.ucx.nodes.messages.isaac import Image as ImageFb
+
+    buf = bytearray(buffer.tobytes())
+    msg = ImageFb.Image.GetRootAs(buf, 0)
+    tensor = msg.Data()
+    if tensor.ShapeLength() == 0:
+        return 0
+    return int(tensor.Shape(0))

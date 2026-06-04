@@ -15,7 +15,6 @@
 
 """Controller structures for composing and organizing multiple robot motion controllers."""
 
-
 from enum import Enum
 from typing import Optional
 

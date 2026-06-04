@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test for visual material."""
+
 from typing import Literal
 
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -26,6 +28,7 @@ from isaacsim.core.experimental.materials import (
 
 
 async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"]) -> None:
+    """Populate stage."""
     # create new stage
     await stage_utils.create_new_stage_async()
     # define prims
@@ -41,17 +44,20 @@ async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"
 
 
 class TestVisualMaterial(omni.kit.test.AsyncTestCase):
+    """Test visual material."""
+
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
     async def test_fetch_instances(self):
+        """Test fetch instances."""
         await stage_utils.create_new_stage_async()
         # create materials
         OmniGlassMaterial("/World/material_01")

@@ -49,7 +49,10 @@ The script:
    benchmark metrics JSON output into ``--output-dir``.
 5. Saves the full benchmark stdout/stderr to a ``.log`` file alongside
    the ``.tracy`` capture (disable with ``--no-log``).
-6. After the benchmark exits, stops the capture thread and optionally
+6. Sets Kit's ``--/log/file`` so the carb process log is written directly to
+   ``<output-dir>/<output-name>_kit.log`` (override with ``--kit-log-path``, or
+   pass ``--no-kit-log-file`` to keep Kit's default log location).
+7. After the benchmark exits, stops the capture thread and optionally
    compresses the resulting ``.tracy`` file.
 """
 
@@ -70,6 +73,7 @@ from _common import (
     build_env,
     configure_logging,
     format_benchmark_list,
+    format_kit_log_file_arg,
     parse_common_args,
     resolve_benchmark,
     resolve_output_paths,
@@ -238,6 +242,7 @@ def build_benchmark_command(
     extra_args: list[str],
     *,
     metrics_output_dir: Path | None = None,
+    kit_log_file: Path | None = None,
 ) -> list[str]:
     """Assemble the full command line for the Tracy-profiled benchmark.
 
@@ -247,6 +252,7 @@ def build_benchmark_command(
         extra_args: Additional CLI arguments forwarded to the benchmark.
         metrics_output_dir: If provided, inject the Kit setting that tells
             ``isaacsim.benchmark.services`` to write JSON metrics here.
+        kit_log_file: If provided, set ``/log/file`` so carb writes its log here.
 
     Returns:
         List of command tokens ready for ``subprocess.run``.
@@ -258,6 +264,8 @@ def build_benchmark_command(
     cmd = [str(python_sh), str(benchmark_script), *TRACY_KIT_ARGS]
     if metrics_output_dir is not None:
         cmd.append(f"--{METRICS_FOLDER_SETTING}={metrics_output_dir}")
+    if kit_log_file is not None:
+        cmd.append(format_kit_log_file_arg(kit_log_file))
     cmd.extend(extra_args)
     return cmd
 
@@ -470,6 +478,16 @@ def main(argv: list[str] | None = None) -> int:
         args.output_dir, args.output_name, benchmark_script, ".tracy"
     )
 
+    kit_log_file: Path | None = None
+    if not args.no_kit_log_file:
+        kit_log_file = (
+            args.kit_log_path.resolve()
+            if args.kit_log_path is not None
+            else (output_dir / f"{base_name}_kit.log").resolve()
+        )
+        kit_log_file.parent.mkdir(parents=True, exist_ok=True)
+        logger.info("Kit carb log (--/log/file): %s", kit_log_file)
+
     # Discover Tracy tools.
     try:
         tracy_ext = find_tracy_extension(release_dir)
@@ -488,7 +506,11 @@ def main(argv: list[str] | None = None) -> int:
     # Build benchmark command.
     try:
         cmd = build_benchmark_command(
-            release_dir, benchmark_script, args.extra_benchmark_args, metrics_output_dir=output_dir
+            release_dir,
+            benchmark_script,
+            args.extra_benchmark_args,
+            metrics_output_dir=output_dir,
+            kit_log_file=kit_log_file,
         )
     except FileNotFoundError as exc:
         logger.error("%s", exc)

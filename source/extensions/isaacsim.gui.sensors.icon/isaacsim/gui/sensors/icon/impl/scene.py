@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,12 @@
 
 """Scene management for sensor icon display and manipulation in the viewport."""
 
-
 __all__ = ["IconScene"]
 
 import carb.eventdispatcher
 import carb.input
 import carb.settings
 import omni.timeline
-import omni.ui as ui
 from omni.ui import scene as sc
 
 from .manipulator import IconManipulator, PreventOthers
@@ -40,7 +38,7 @@ class IconScene:  # pragma: no cover
         **kwargs: Additional keyword arguments passed to the parent class.
     """
 
-    def __init__(self, title: str = None, icon_scale: float = 1.0, **kwargs):
+    def __init__(self, title: str | None = None, icon_scale: float = 1.0, **kwargs: object) -> None:
         self._sensor_icon = SensorIcon.get_instance()
         self._manipulater = IconManipulator(
             model=self._sensor_icon.get_model(),
@@ -74,7 +72,7 @@ class IconScene:  # pragma: no cover
         # ])
         self.visible = True
 
-    def _end_drag(self, sender):
+    def _end_drag(self, sender: object) -> None:
         """Handles the end of a drag gesture on sensor icons.
 
         Rebuilds the icons with position checking to ensure they remain within the viewport area.
@@ -94,12 +92,12 @@ class IconScene:  # pragma: no cover
         return self._manipulater.visible
 
     @visible.setter
-    def visible(self, value: bool):
+    def visible(self, value: bool) -> None:
         value = bool(value)
         # self._model.beam_visible = value
         self._manipulater.visible = value
 
-    def destroy(self):
+    def destroy(self) -> None:
         """Destroys the icon scene and releases all resources.
 
         Clears all icons and sets the manipulator to None to prevent further operations.
@@ -107,7 +105,7 @@ class IconScene:  # pragma: no cover
         self.clear()
         self._manipulater = None
 
-    def clear(self):
+    def clear(self) -> None:
         """Clears all icons from the manipulator.
 
         Removes all sensor icons currently displayed in the scene without destroying the manipulator itself.
@@ -116,7 +114,7 @@ class IconScene:  # pragma: no cover
             return
         self._manipulater.clear()
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Destructor that ensures proper cleanup when the object is garbage collected.
 
         Calls destroy() to release all resources and prevent memory leaks.
@@ -146,7 +144,7 @@ class SensorIcon:
     _instance = None
     """Singleton instance of the SensorIcon class."""
 
-    def __init__(self, test: bool = False):
+    def __init__(self, test: bool = False) -> None:
         self.model = IconModel()
         self._settings = carb.settings.get_settings()
         self._visible_sub = self._settings.subscribe_to_node_change_events(VISIBLE_SETTING, self._on_visible_changed)
@@ -162,7 +160,7 @@ class SensorIcon:
             observer_name="isaacsim.gui.sensors.icon.SensorIcon._on_timeline_stop",
         )
 
-    def _on_timeline_stop(self, event):
+    def _on_timeline_stop(self, event: object) -> None:
         """Timeline stop event callback - refresh icon visuals.
 
         Args:
@@ -171,7 +169,7 @@ class SensorIcon:
         if self.model:
             self.model.refresh_all_icon_visuals()
 
-    def _on_visible_changed(self, *args):
+    def _on_visible_changed(self, *args: object) -> None:
         """Handles visibility setting changes for sensor icons.
 
         Args:
@@ -188,7 +186,7 @@ class SensorIcon:
         for fn in self.toggle_all_fn:
             fn(visible)
 
-    def register_toggle_all_fn(self, fn):
+    def register_toggle_all_fn(self, fn: callable) -> None:
         """Registers a callback function to be called when all sensor icons are toggled.
 
         Args:
@@ -196,7 +194,7 @@ class SensorIcon:
         """
         self.toggle_all_fn.append(fn)
 
-    def unregister_toggle_all_fn(self, fn):
+    def unregister_toggle_all_fn(self, fn: callable) -> None:
         """Unregisters a previously registered toggle all callback function.
 
         Args:
@@ -215,14 +213,14 @@ class SensorIcon:
             SensorIcon._instance = SensorIcon()
         return SensorIcon._instance
 
-    def destroy(self):
+    def destroy(self) -> None:
         """Destroys the SensorIcon instance and cleans up resources."""
         self.timeline_event_sub = None
         self.clear()
         self.model = None
         SensorIcon._instance = None
 
-    def get_model(self):
+    def get_model(self) -> IconModel | None:
         """The IconModel instance used by this SensorIcon.
 
         Returns:
@@ -230,7 +228,7 @@ class SensorIcon:
         """
         return self.model
 
-    def add_sensor_icon(self, prim_path: str, icon_url: str | None = None):
+    def add_sensor_icon(self, prim_path: str, icon_url: str | None = None) -> None:
         """Adds a sensor icon for the specified prim path.
 
         Args:
@@ -241,7 +239,7 @@ class SensorIcon:
             return
         self.model.add_sensor_icon(prim_path, icon_url)
 
-    def remove_sensor_icon(self, prim_path: str):
+    def remove_sensor_icon(self, prim_path: str) -> None:
         """Removes the sensor icon for the specified prim path.
 
         Args:
@@ -251,7 +249,7 @@ class SensorIcon:
             return
         self.model.remove_sensor_icon(prim_path)
 
-    def set_icon_click_fn(self, prim_path: str, call_back):
+    def set_icon_click_fn(self, prim_path: str, call_back: callable) -> None:
         """Sets a callback function to be called when the sensor icon is clicked.
 
         Args:
@@ -262,7 +260,7 @@ class SensorIcon:
             return
         self.model.set_icon_click_fn(prim_path, call_back)
 
-    def show_sensor_icon(self, prim_path):
+    def show_sensor_icon(self, prim_path: str) -> None:
         """Shows the sensor icon for the specified prim.
 
         Args:
@@ -272,7 +270,7 @@ class SensorIcon:
             return
         self.model.show_sensor_icon(prim_path)
 
-    def hide_sensor_icon(self, prim_path):
+    def hide_sensor_icon(self, prim_path: str) -> None:
         """Hides the sensor icon for the specified prim.
 
         Args:
@@ -282,7 +280,7 @@ class SensorIcon:
             return
         self.model.hide_sensor_icon(prim_path)
 
-    def clear(self):
+    def clear(self) -> None:
         """Clears all sensor icons from the model."""
         if not self.model:
             return

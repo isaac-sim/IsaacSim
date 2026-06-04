@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Isaac Sim physics utilities extension that provides a UI for applying and removing physics APIs on USD prims."""
-
 
 import asyncio
 import gc
@@ -101,8 +100,6 @@ class Extension(omni.ext.IExt):
                 self._progress_bar = progress_bar_builder("Current Progress")
                 self._progress_bar.set_value(0)
 
-        pass
-
     def _menu_callback(self):
         """Toggle the visibility of the extension window."""
         self._window.visible = not self._window.visible
@@ -164,8 +161,6 @@ class Extension(omni.ext.IExt):
 
         asyncio.ensure_future(_task())
 
-        pass
-
     def remove_physics_apis_on_selected(self):
         """Remove all physics APIs from the currently selected prims.
 
@@ -191,9 +186,9 @@ class Extension(omni.ext.IExt):
 
         asyncio.ensure_future(_task())
 
-        pass
-
-    def traverse_prims(self, selection, include_xform=False, ignore_rigid=True, visible_only=True) -> list:
+    def traverse_prims(
+        self, selection: list, include_xform: bool = False, ignore_rigid: bool = True, visible_only: bool = True
+    ) -> list:
         """Traverse and collect valid prims from the given selection.
 
         Iterates through the selected prim paths and their children (if enabled), filtering
@@ -244,7 +239,7 @@ class Extension(omni.ext.IExt):
                     prims.append(curr_prim)
         return prims
 
-    def prim_is_valid(self, prim, include_xform=False, visible_only=True) -> bool:
+    def prim_is_valid(self, prim: Usd.Prim, include_xform: bool = False, visible_only: bool = True) -> bool:
         """Check if a prim is valid for physics API application.
 
         A prim is considered valid if it is a geometric primitive (Cylinder, Capsule, Cone,
@@ -276,9 +271,8 @@ class Extension(omni.ext.IExt):
         elif include_xform and prim.IsA(UsdGeom.Xformable):
             return True
         return False
-        pass
 
-    def apply_collision_to_prim(self, prim, approximationShape="none"):
+    def apply_collision_to_prim(self, prim: Usd.Prim, approximationShape: str = "none") -> None:
         """Apply collision API to a single prim.
 
         For instanceable prims, applies CollisionAPI and MeshCollisionAPI directly.
@@ -297,7 +291,7 @@ class Extension(omni.ext.IExt):
         else:
             utils.setCollider(prim, approximationShape)
 
-    def unapply_collision_on_prim(self, prim):
+    def unapply_collision_on_prim(self, prim: Usd.Prim) -> None:
         """Remove collision API from a single prim.
 
         Args:
@@ -305,7 +299,7 @@ class Extension(omni.ext.IExt):
         """
         utils.removeCollider(prim)
 
-    def remove_physics_apis_on_prim(self, prim):
+    def remove_physics_apis_on_prim(self, prim: Usd.Prim) -> None:
         """Remove all physics-related APIs from a single prim.
 
         Removes a comprehensive list of physics APIs including rigid body, collision,
@@ -343,4 +337,3 @@ class Extension(omni.ext.IExt):
         """
         remove_menu_items(self._menu_items, "Tools")
         gc.collect()
-        pass

@@ -42,6 +42,7 @@ class RobotSchemaRule(RuleInterface):
 
         Returns:
             Tuple of (destination layer or None, destination label).
+
         """
         destination_label = os.path.join(destination, stage_name) if stage_name else destination
         if not destination_label:
@@ -60,6 +61,7 @@ class RobotSchemaRule(RuleInterface):
 
         Returns:
             True if the sublayer was inserted successfully.
+
         """
         if not sublayer_path or not root_layer:
             return False
@@ -90,6 +92,7 @@ class RobotSchemaRule(RuleInterface):
         .. code-block:: python
 
             params = rule.get_configuration_parameters()
+
         """
         return [
             RuleConfigurationParam(
@@ -140,6 +143,7 @@ class RobotSchemaRule(RuleInterface):
         .. code-block:: python
 
             rule.process_rule()
+
         """
         params = self.args.get("params", {}) or {}
         prim_path = params.get("prim_path") or ""

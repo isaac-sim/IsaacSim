@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 This extension provides a user interface for creating teleoperated mobility data collection sessions in Isaac Sim. It enables users to configure robot types, scenario parameters, and occupancy maps to generate machine learning training datasets through physics-based simulation with real-time control input.

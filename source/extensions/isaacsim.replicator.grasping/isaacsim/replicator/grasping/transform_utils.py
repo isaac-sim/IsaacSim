@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,12 @@
 
 """Utility functions for transforming USD prim locations, orientations, scales, and coordinate spaces."""
 
+from __future__ import annotations
 
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 
-def set_location(prim: Usd.Prim, location: Gf.Vec3d):
+def set_location(prim: Usd.Prim, location: Gf.Vec3d) -> None:
     """Set the location of the prim, handling translate xformOps.
 
     Args:
@@ -49,7 +50,7 @@ def set_location(prim: Usd.Prim, location: Gf.Vec3d):
             op_order_attr.Set(op_order)
 
 
-def set_orientation(prim: Usd.Prim, orientation: Gf.Quatf | Gf.Quatd):
+def set_orientation(prim: Usd.Prim, orientation: Gf.Quatf | Gf.Quatd) -> None:
     """Set the orientation of the prim, handling orient xformOps.
 
     Args:
@@ -106,7 +107,7 @@ def set_orientation(prim: Usd.Prim, orientation: Gf.Quatf | Gf.Quatd):
             op_order_attr.Set(op_order)
 
 
-def set_rotation(prim: Usd.Prim, rotation: Gf.Vec3f | Gf.Vec3d | Gf.Rotation):
+def set_rotation(prim: Usd.Prim, rotation: Gf.Vec3f | Gf.Vec3d | Gf.Rotation) -> None:
     """Set the rotation of the prim, handling rotateXYZ xformOps.
 
     Args:
@@ -157,7 +158,7 @@ def set_rotation(prim: Usd.Prim, rotation: Gf.Vec3f | Gf.Vec3d | Gf.Rotation):
             op_order_attr.Set(op_order)
 
 
-def set_scale(prim: Usd.Prim, scale: Gf.Vec3f):
+def set_scale(prim: Usd.Prim, scale: Gf.Vec3f) -> None:
     """Set the scale of the prim, handling scale xformOps.
 
     Args:
@@ -188,7 +189,7 @@ def set_scale(prim: Usd.Prim, scale: Gf.Vec3f):
             op_order_attr.Set(op_order)
 
 
-def set_transform_matrix(prim: Usd.Prim, transform: Gf.Matrix4d):
+def set_transform_matrix(prim: Usd.Prim, transform: Gf.Matrix4d) -> None:
     """Set the transformation matrix of the prim using a transform op.
 
     Args:
@@ -226,7 +227,7 @@ def set_transform_attributes(
     rotation: Gf.Vec3f | Gf.Vec3d | Gf.Rotation | None = None,
     scale: Gf.Vec3f | None = None,
     transform: Gf.Matrix4d | None = None,
-):
+) -> None:
     """Set or update the transform attributes of a prim.
 
     Args:

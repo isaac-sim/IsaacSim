@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Demonstrate basic synthetic data generation with a writer and render product."""
+
 import os
 
 from isaacsim import SimulationApp
@@ -25,6 +27,7 @@ import omni.usd
 
 
 def run_example():
+    """Run a basic SDG pipeline capturing RGB and bounding box data."""
     # Create a new stage and disable capture on play
     omni.usd.get_context().new_stage()
     rep.orchestrator.set_capture_on_play(False)
@@ -62,7 +65,40 @@ def run_example():
     rp.destroy()
 
 
-# Run the example
 run_example()
+
+# <start-sdg-getting-started-01-test>
+import argparse
+import sys
+
+from isaacsim.core.utils.extensions import enable_extension
+
+enable_extension("isaacsim.test.utils")
+from isaacsim.test.utils.file_validation import validate_folder_contents
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--test",
+    action="store_true",
+    help="Validate captured output files against expected counts and exit.",
+)
+args, _ = parser.parse_known_args()
+
+if args.test:
+    # BasicWriter with rgb + bounding_box_2d_tight writes per capture:
+    # 1 rgb png, 1 bbox npy, 1 bbox labels json, 1 bbox prim_paths json (= 2 json per capture).
+    num_captures = 3
+    out_dir = os.path.join(os.getcwd(), "_out_basic_writer")
+    ok = validate_folder_contents(
+        path=out_dir,
+        recursive=True,
+        expected_counts={"png": num_captures, "npy": num_captures, "json": num_captures * 2},
+        fail_on_empty_files=True,
+    )
+    if not ok:
+        print(f"[SDG][Test][FAIL] Output validation failed for {out_dir}")
+        sys.exit(1)
+    print(f"[SDG][Test][PASS] Output validation succeeded for {out_dir}")
+# <end-sdg-getting-started-01-test>
 
 simulation_app.close()

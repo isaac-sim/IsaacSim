@@ -15,7 +15,6 @@
 
 """Provides classes for representing and converting joint-space paths to minimal-time trajectories."""
 
-
 from typing import Optional, Union
 
 import numpy as np
@@ -123,7 +122,6 @@ class Path:
             ValueError: If consecutive waypoints are equal within the allowed tolerances.
             ValueError: If there are not at least two waypoints.
         """
-
         return MinimalTimeJointTrajectory(
             path=self,
             max_velocities=place(max_velocities, dtype=self._waypoints.dtype, device=self._waypoints.device),
@@ -605,5 +603,3 @@ def _get_joint_targets_kernel(
     )
     out_desired_position[i_joint] = pos + p0
     out_desired_velocity[i_joint] = vel
-
-    return

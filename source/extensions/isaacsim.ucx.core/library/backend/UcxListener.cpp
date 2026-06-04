@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -151,6 +151,9 @@ void UCXListener::shutdown()
         std::lock_guard<std::mutex> lock(m_endpointMutex);
         if (m_endpoint)
         {
+            // Detach the close callback before releasing the endpoint to prevent
+            // it from firing with a dangling 'this' after the listener is destroyed.
+            m_endpoint->setCloseCallback(nullptr, nullptr);
             m_endpoint.reset();
         }
     }

@@ -1,0 +1,6 @@
+[isaacsim-python-extension]
+extension_name = "isaacsim.template_test.python_ext"
+title = "Test Python Extension"
+version = "0.1.0"
+description = "A test Python extension."
+category = "Simulation"

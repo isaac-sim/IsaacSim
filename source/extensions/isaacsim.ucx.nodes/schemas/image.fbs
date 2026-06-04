@@ -1,0 +1,65 @@
+include "tensor.fbs";
+include "header.fbs";
+
+namespace isaac;
+
+enum ImageEncoding : byte {
+  // Specifies a custom image encoding.
+  CUSTOM = 0,
+
+  // Specifies a three-component, 24-bit unsigned normalized format with 8-bit R, G, B in bytes 0,
+  // 1, 2 respectively.
+  RGB8 = 1,
+
+  // Specifies a four-component, 32-bit unsigned normalized format with 8-bit R, G, B, A in bytes
+  // 0, 1, 2, 3 respectively.
+  RGBA8 = 2,
+
+  // Specifies a three-component, 24-bit unsigned normalized format with 8-bit B, G, R in bytes 0, 1, 2
+  // respectively.
+  BGR8 = 3,
+
+  // Specifies a four-component, 32-bit unsigned normalized format with 8-bit B, G, R, A in bytes
+  // 0, 1, 2, 3 respectively.
+  BGRA8 = 4,
+
+  // Specifies a multiplanar, three-component, 24-bit unsigned normalized format with 8-bit R, G, B
+  // in separate planes.
+  R8_G8_B8 = 5,
+
+  // Specifies a multiplanar, three-component, 24-bit unsigned normalized format with 8-bit B, G, R
+  // in separate planes.
+  B8_G8_R8 = 6,
+
+  // Specifies a one-component, 8-bit unsigned integer format.
+  MONO8 = 7,
+
+  // Specifies a one-component, 16-bit unsigned integer format.
+  MONO16 = 8,
+
+  // Specifies a one-component, 32-bit unsigned integer format.
+  MONO32 = 9,
+
+  // Specifies a one-component, 32-bit floating point format.
+  MONO32F = 10,
+}
+
+// Image data.
+table Image {
+  // Header.
+  header: Header (id: 0);
+
+  // Image height in pixels.
+  height: int32 (id: 1);
+
+  // Image width in pixels.
+  width: int32 (id: 2);
+
+  // Image data encoding.
+  encoding: ImageEncoding (id: 3);
+
+  // Image data, interpreted according to the encoding.
+  data: Tensor (id: 4);
+}
+
+root_type Image;

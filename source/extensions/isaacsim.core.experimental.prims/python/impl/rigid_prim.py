@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""High level wrapper for manipulating prims with Rigid Body API applied and their rigid body properties."""
+
 from __future__ import annotations
 
 import weakref
+from typing import Any
 
 import carb
 import carb.eventdispatcher
@@ -151,7 +154,7 @@ class RigidPrim(XformPrim):
             self.set_densities(densities)
 
         # setup subscriptions
-        def safe_timeline_stop_callback(event, obj=weakref.proxy(self)):
+        def safe_timeline_stop_callback(event: Any, obj: Any = weakref.proxy(self)) -> None:
             try:
                 obj._on_timeline_stop(event)
             except ReferenceError:
@@ -168,7 +171,8 @@ class RigidPrim(XformPrim):
             SimulationManager._physics_sim_interface.flush_changes()
             self._on_physics_ready(None)
 
-    def __del__(self):
+    def __del__(self) -> None:
+        """Clean up rigid body physics views and subscriptions."""
         super().__del__()
         self._subscription_to_timeline_stop_event = None
         if hasattr(self, "_physics_rigid_body_view"):
@@ -1343,6 +1347,8 @@ class RigidPrim(XformPrim):
         """
         assert self.valid, _MSG_PRIM_NOT_VALID
         # USD API
+        if SimulationManager.get_active_physics_engine() != "physx":
+            return
         indices = ops_utils.resolve_indices(indices, count=len(self), device="cpu")
         enabled = ops_utils.place(enabled, device="cpu").numpy().reshape((-1, 1))
         for i, index in enumerate(indices.numpy()):
@@ -1389,6 +1395,9 @@ class RigidPrim(XformPrim):
         # USD API
         indices = ops_utils.resolve_indices(indices, count=len(self), device="cpu")
         enabled = np.zeros((indices.shape[0], 1), dtype=np.bool_)
+        if SimulationManager.get_active_physics_engine() != "physx":
+            enabled[:] = bool(self._contact_filter_paths)
+            return ops_utils.place(enabled, device=self._device)
         for i, index in enumerate(indices.numpy()):
             enabled[i] = self.prims[index].HasAPI(PhysxSchema.PhysxContactReportAPI)
         return ops_utils.place(enabled, device=self._device)
@@ -1472,6 +1481,7 @@ class RigidPrim(XformPrim):
         """
         assert self.valid, _MSG_PRIM_NOT_VALID
         assert self._physics_rigid_contact_view is not None, "Physics contact view is not valid"
+        assert self._contact_filter_paths, "contact_filter_paths must be provided at construction"
         # Tensor API
         contact_force_matrix = self._physics_rigid_contact_view.get_contact_force_matrix(dt)
         indices = ops_utils.resolve_indices(indices, count=len(self), device=contact_force_matrix.device)
@@ -1522,6 +1532,7 @@ class RigidPrim(XformPrim):
         """
         assert self.valid, _MSG_PRIM_NOT_VALID
         assert self._physics_rigid_contact_view is not None, "Physics contact view is not valid"
+        assert self._contact_filter_paths, "contact_filter_paths must be provided at construction"
         # Tensor API
         forces, points, normals, distances, pair_contacts_count, pair_contacts_start_indices = (
             self._physics_rigid_contact_view.get_contact_data(dt)
@@ -1579,6 +1590,7 @@ class RigidPrim(XformPrim):
         """
         assert self.valid, _MSG_PRIM_NOT_VALID
         assert self._physics_rigid_contact_view is not None, "Physics contact view is not valid"
+        assert self._contact_filter_paths, "contact_filter_paths must be provided at construction"
         # Tensor API
         forces, points, pair_contacts_count, pair_contacts_start_indices = (
             self._physics_rigid_contact_view.get_friction_data(dt)
@@ -1590,6 +1602,86 @@ class RigidPrim(XformPrim):
             pair_contacts_count[indices, :].contiguous().to(self._device),
             pair_contacts_start_indices[indices, :].contiguous().to(self._device),
         )
+
+    def get_raw_contact_data(
+        self,
+        *,
+        indices: int | list | np.ndarray | wp.array | None = None,
+        dt: float = 1.0,
+    ) -> tuple[wp.array, wp.array, wp.array, wp.array, wp.array, wp.array, wp.array]:
+        """Get raw contact data for all contacts per sensor without filter patterns.
+
+        Backends: :guilabel:`tensor`.
+
+        Returns all contacts for each sensor along with the IDs of the other contacting bodies.
+        Unlike :meth:`get_contact_force_data`, this method does not require ``contact_filter_paths``
+        at construction. The output count and start-index tensors are indexed by sensor only
+        (not sensor x filter). Use :meth:`get_actor_paths_from_ids` to convert actor IDs
+        to USD paths.
+
+        .. note::
+
+            This method requires ``max_contact_count > 0`` at construction.
+
+        Args:
+            indices: Indices of prims to process (shape ``(N,)``). If not defined, all wrapped prims are processed.
+            dt: Time step multiplier to convert impulses to forces. Default value returns contact impulses.
+
+        Returns:
+            Seven-element tuple. 1) Force magnitudes (shape ``(max_contact_count, 1)``).
+            2) Contact points (shape ``(max_contact_count, 3)``).
+            3) Contact normals (shape ``(max_contact_count, 3)``).
+            4) Separation distances (shape ``(max_contact_count, 1)``).
+            5) Contact count per sensor (shape ``(N,)``).
+            6) Start indices per sensor (shape ``(N,)``).
+            7) Other actor IDs (shape ``(max_contact_count,)``), uint64.
+
+        Raises:
+            AssertionError: Wrapped prims are not valid.
+            AssertionError: Physics contact view is not valid.
+        """
+        assert self.valid, _MSG_PRIM_NOT_VALID
+        assert self._physics_rigid_contact_view is not None, "Physics contact view is not valid"
+        # Tensor API
+        forces, points, normals, separations, counts, start_indices, other_actor_ids = (
+            self._physics_rigid_contact_view.get_raw_contact_data(dt)
+        )
+        indices = ops_utils.resolve_indices(indices, count=len(self), device=counts.device)
+        return (
+            forces.to(self._device),
+            points.to(self._device),
+            normals.to(self._device),
+            separations.to(self._device),
+            counts[indices].contiguous().to(self._device),
+            start_indices[indices].contiguous().to(self._device),
+            other_actor_ids.to(self._device),
+        )
+
+    def get_actor_paths_from_ids(
+        self,
+        actor_ids: wp.array,
+    ) -> list[str]:
+        """Convert actor IDs from :meth:`get_raw_contact_data` to USD paths.
+
+        Backends: :guilabel:`tensor`.
+
+        Args:
+            actor_ids: Tensor of actor IDs (uint64) or a slice from :meth:`get_raw_contact_data`.
+                Must be a CPU tensor.
+
+        Returns:
+            List of USD paths. Empty string for invalid IDs.
+
+        Raises:
+            AssertionError: Wrapped prims are not valid.
+            AssertionError: Physics contact view is not valid.
+        """
+        assert self.valid, _MSG_PRIM_NOT_VALID
+        assert self._physics_rigid_contact_view is not None, "Physics contact view is not valid"
+        view = self._physics_rigid_contact_view
+        if hasattr(view, "get_actor_paths_from_ids"):
+            return view.get_actor_paths_from_ids(actor_ids)
+        return view.get_other_actor_paths_from_ids(actor_ids)
 
     def set_default_state(
         self,
@@ -1761,7 +1853,15 @@ class RigidPrim(XformPrim):
     """
 
     def _check_for_tensor_backend(self, backend: str, *, fallback_backend: str = "usd") -> str:
-        """Check if the tensor backend is valid."""
+        """Check if the tensor backend is valid.
+
+        Args:
+            backend: The backend to check.
+            fallback_backend: The fallback backend to use if tensor backend is invalid.
+
+        Returns:
+            The validated backend name.
+        """
         if backend == "tensor" and not self.is_physics_tensor_entity_valid():
             if backend_utils.is_backend_set():
                 if backend_utils.should_raise_on_fallback():
@@ -1778,8 +1878,12 @@ class RigidPrim(XformPrim):
     Internal callbacks.
     """
 
-    def _on_physics_ready(self, event) -> None:
-        """Handle physics ready event."""
+    def _on_physics_ready(self, event: object) -> None:
+        """Handle physics ready event.
+
+        Args:
+            event: The physics ready event.
+        """
         super()._on_physics_ready(event)
         # get physics simulation view
         physics_simulation_view = SimulationManager._physics_sim_view__warp
@@ -1797,13 +1901,17 @@ class RigidPrim(XformPrim):
                 f"Unable to create rigid body view for {self.paths}. Underlying physics objects are not valid"
             )
             self._physics_rigid_body_view = None
-        # create rigid contact view if filter patterns are provided
-        if self._contact_filter_paths:
-            # If there is one filter path per prim, use it directly. Otherwise, apply the same filters to all prims.
-            if len(self._contact_filter_paths) == len(self.paths):
-                filter_patterns = [[path] for path in self._contact_filter_paths]
+        # create rigid contact view if filter patterns or max_contact_count are provided
+        if self._contact_filter_paths or self._max_contact_count > 0:
+            if self._contact_filter_paths:
+                # If there is one filter path per prim, use it directly.
+                # Otherwise, apply the same filters to all prims.
+                if len(self._contact_filter_paths) == len(self.paths):
+                    filter_patterns = [[path] for path in self._contact_filter_paths]
+                else:
+                    filter_patterns = [self._contact_filter_paths for _ in range(len(self.paths))]
             else:
-                filter_patterns = [self._contact_filter_paths for _ in range(len(self.paths))]
+                filter_patterns = []
             self._physics_rigid_contact_view = physics_simulation_view.create_rigid_contact_view(
                 self.paths,
                 filter_patterns=filter_patterns,
@@ -1822,7 +1930,7 @@ class RigidPrim(XformPrim):
         # C++ data view setup is intentionally opt-in to avoid affecting
         # existing Python-only workflows/tests unless explicitly requested.
 
-    def _setup_cpp_data_view(self):
+    def _setup_cpp_data_view(self) -> None:
         """Set up C++ read-only data view for this rigid body.
 
         For PhysX: C++ sets up TensorApi callbacks internally -- no Python work needed.
@@ -1849,18 +1957,21 @@ class RigidPrim(XformPrim):
         if rb_view is None:
             return
 
-        is_newton = hasattr(rb_view, "_newton_stage")
-        engine_type = "newton" if is_newton else "physx"
+        engine_type = SimulationManager.get_active_physics_engine()
         view_id = f"rigid_body_{id(self)}"
         self._cpp_data_view_id = view_id
 
         self._cpp_data_view = reader.create_rigid_body_view(view_id, self.paths, engine_type)
 
-        if is_newton:
+        if engine_type == "newton":
             self._setup_newton_rigid_body_callbacks(rb_view)
 
-    def _setup_newton_rigid_body_callbacks(self, rb_view):
-        """Register Python fill callbacks for Newton-backed rigid body fields."""
+    def _setup_newton_rigid_body_callbacks(self, rb_view: object) -> None:
+        """Register Python fill callbacks for Newton-backed rigid body fields.
+
+        Args:
+            rb_view: The rigid body view.
+        """
         from ._cpp_buffers import wrap_cpp_buffer
 
         count = rb_view.count
@@ -1879,15 +1990,15 @@ class RigidPrim(XformPrim):
             cpp_buf = wrap_cpp_buffer(view, field_name, shape=shape)
             fn = getter_fn
 
-            def make_cb(f=fn, b=cpp_buf):
-                def cb():
+            def make_cb(f: Any = fn, b: Any = cpp_buf) -> Any:
+                def cb() -> None:
                     wp.copy(b, f())
 
                 return cb
 
             view.register_field_callback(field_name, make_cb())
 
-    def initialize_cpp_data_view(self):
+    def initialize_cpp_data_view(self) -> None:
         """Initialize the optional C++ read-only data view.
 
         This method is opt-in and can be called by users that need C++ consumers
@@ -1895,7 +2006,7 @@ class RigidPrim(XformPrim):
         """
         self._setup_cpp_data_view()
 
-    def _teardown_cpp_data_view(self):
+    def _teardown_cpp_data_view(self) -> None:
         """Clean up C++ data view."""
         if self._cpp_data_view_id is not None:
             from .extension import get_prim_data_reader
@@ -1906,8 +2017,12 @@ class RigidPrim(XformPrim):
             self._cpp_data_view = None
             self._cpp_data_view_id = None
 
-    def _on_timeline_stop(self, event) -> None:
-        """Handle timeline stop event."""
+    def _on_timeline_stop(self, event: object) -> None:
+        """Handle timeline stop event.
+
+        Args:
+            event: The timeline stop event.
+        """
         self._teardown_cpp_data_view()
         # invalidate rigid body view
         self._physics_rigid_body_view = None

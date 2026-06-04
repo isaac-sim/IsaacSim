@@ -1,4 +1,26 @@
 # Changelog
+
+## [1.2.3] - 2026-04-30
+### Changed
+- Migrated examples and tests to the new `isaacsim.sensors.experimental.physics` 3.0.0 API: call `IMU.create()`, `Contact.create()`, `Raycast.create()` (the authoring classes) and wrap the returned authoring object with the runtime sensor for data reads. The deleted `*Backend` classes and the runtime `XSensor.create()` class methods are no longer used; examples and tests use `IMUSensor`, `ContactSensor`, `RaycastSensor` directly. Updated all transform arguments to plural `translations`/`orientations` arrays matching the new API.
+- Beam-curtain raycast example now derives the hit-count threshold from each sensor's configured `max_range` instead of a hardcoded `100.0`, so misses (which return `maxRange`) are no longer counted as hits for the 10 m beam curtain.
+
+## [1.2.2] - 2026-04-28
+### Fixed
+- IMU example raised `AttributeError` when reading orientation; read scalar `orientation_w/x/y/z` fields individually instead of indexing.
+
+## [1.2.1] - 2026-04-21
+### Changed
+- Replaced `omni.kit.commands` sensor creation with `ContactSensor.create()`, `IMUSensor.create()`, and `RaycastSensor.create()` class methods
+
+## [1.2.0] - 2026-04-17
+### Added
+- Add example for creating solid state, rotating, and beam curtain raycast sensors
+
+## [1.1.1] - 2026-04-09
+### Removed
+- Remove the `omni.isaac.ml_archive` dependency
+
 ## [1.1.0] - 2026-03-04
 ### Changed
 - Added Overview.md and python_api.md and updated docstrings

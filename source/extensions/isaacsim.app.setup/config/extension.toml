@@ -1,5 +1,5 @@
 [package]
-version = "1.10.0"
+version = "1.12.0"
 category = "Setup"
 title = "Isaac Sim Setup"
 description = "This Extension does the setup of the Isaac Sim App"
@@ -28,7 +28,7 @@ name = "isaacsim.app.setup"
 
 [settings]
 # Creates a new stage when this extension is enabled so that something is visible in the viewport.
-isaac.startup.create_new_stage = true 
+isaac.startup.create_new_stage = true
 
 [settings."filter:platform"."windows-x86_64"]
 # Set this to specify the ROS bridge extension to use on Windows. Leave it blank for no ROS bridge.
@@ -49,7 +49,6 @@ dependencies = [
     "isaacsim.replicator.synthetic_recorder", # extension with synthetic_recorder,
     "isaacsim.robot.schema.ui", # Robot Inspector window,
     "omni.graph.window.action", # window for action graph,
-    "omni.isaac.ml_archive",
     "omni.kit.ui_test",
     "omni.kit.viewport.window", # viewport,
     "omni.kit.widget.layers", # layer window,
@@ -103,9 +102,14 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
+    ### Extension specific args
+    # Short-circuit /ExternalSimulationTime check when multitick is enabled
+    "--/rtx/hydra/multiTickRateForcedFixedSimRate=60"
 ]
 
 stdoutFailPatterns.exclude = [

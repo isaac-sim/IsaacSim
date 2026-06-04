@@ -1,0 +1,23 @@
+{
+    "ExampleCpp": {
+        "version": 1,
+        "icon": "icons/isaac-sim.svg",
+        "description": "An example C++ OmniGraph node.",
+        "uiName": "Example C++ Node",
+        "categoryDefinitions": "config/CategoryDefinition.json",
+        "categories": "{{python_module_toplevel}}",
+        "inputs": {
+            "value": {
+                "type": "double",
+                "description": "Input value.",
+                "default": 0.0
+            }
+        },
+        "outputs": {
+            "result": {
+                "type": "double",
+                "description": "Output result."
+            }
+        }
+    }
+}

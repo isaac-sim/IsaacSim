@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Asset root path check utility for Isaac Sim."""
 
 from __future__ import annotations
@@ -49,7 +50,7 @@ class AssetCheck:
         # Run initial check (skips on first startup)
         self._await_new_scene = asyncio.ensure_future(self._assets_check_window())
 
-    def destroy(self):
+    def destroy(self) -> None:
         """Release UI resources."""
         self._server_window = None
         self._check_success = None
@@ -66,7 +67,7 @@ class AssetCheck:
             return True
         return False
 
-    def _notify_visibility_changed(self, _visible=None) -> None:
+    def _notify_visibility_changed(self, _visible: bool | None = None) -> None:
         """Notify the visibility changed callback.
 
         Args:
@@ -118,7 +119,7 @@ class AssetCheck:
             # use native system level open, handles snap based browsers better
             subprocess.Popen(["xdg-open", path])
 
-    async def _assets_check_success_window(self):
+    async def _assets_check_success_window(self) -> None:
         """Show a small pop-up confirming that assets were found."""
         self._check_success = ui.Window(
             "Isaac Sim Assets Check Successful",
@@ -133,7 +134,7 @@ class AssetCheck:
         )
         self._check_success.set_visibility_changed_fn(self._notify_visibility_changed)
 
-        def hide(w):
+        def hide(w: ui.Window) -> None:
             w.visible = False
 
         with self._check_success.frame:
@@ -149,7 +150,7 @@ class AssetCheck:
 
         await omni.kit.app.get_app().next_update_async()
 
-    async def _assets_check_window(self):
+    async def _assets_check_window(self) -> None:
         """Perform the actual asset root path check and show results."""
         if self._assets_check is False and self._startup_run:
             self._startup_run = False

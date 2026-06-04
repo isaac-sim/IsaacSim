@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Custom IPython kernel launcher for Isaac Sim Jupyter integration."""
+
 import asyncio
 import json
 import os
@@ -21,6 +23,7 @@ import sys
 
 SOCKET_HOST = "127.0.0.1"
 SOCKET_PORT = 8227
+SOCKET_TOKEN = ""
 PACKAGES_PATH = []
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -34,6 +37,10 @@ with open(os.path.join(SCRIPT_DIR, "packages.txt"), "r") as f:
                 print("Adding package to sys.path: {}".format(p))
                 sys.path.append(p)
 
+# read authentication token from file
+with open(os.path.join(SCRIPT_DIR, "token.txt"), "r") as f:
+    SOCKET_TOKEN = f.read().strip()
+
 
 from ipykernel.kernelapp import IPKernelApp
 from ipykernel.kernelbase import Kernel
@@ -41,7 +48,7 @@ from ipykernel.kernelbase import Kernel
 
 async def _send_and_recv(message):
     reader, writer = await asyncio.open_connection(host=SOCKET_HOST, port=SOCKET_PORT, family=socket.AF_INET)
-    writer.write(message.encode())
+    writer.write((SOCKET_TOKEN + message).encode())
     await writer.drain()
     data = await reader.read()
     writer.close()
@@ -57,7 +64,7 @@ def _get_line_column(code, cursor_pos):
 
 
 class EmbeddedKernel(Kernel):
-    """Omniverse Kit Python wrapper kernels
+    """Omniverse Kit Python wrapper kernels.
 
     It re-use the IPython's kernel machinery
     https://jupyter-client.readthedocs.io/en/latest/wrapperkernels.html
@@ -81,7 +88,7 @@ class EmbeddedKernel(Kernel):
     ]
 
     async def do_execute(self, code, silent, store_history=True, user_expressions=None, allow_stdin=False):
-        """Execute user code"""
+        """Execute user code."""
         # https://jupyter-client.readthedocs.io/en/latest/messaging.html#execute
         execute_reply = {"status": "ok", "execution_count": self.execution_count, "payload": [], "user_expressions": {}}
         # no code
@@ -127,10 +134,11 @@ class EmbeddedKernel(Kernel):
         return execute_reply
 
     def do_debug_request(self, msg):
+        """Handle a debug request message."""
         return {}
 
     async def do_complete(self, code, cursor_pos):
-        """Code completation"""
+        """Code completation."""
         # https://jupyter-client.readthedocs.io/en/latest/messaging.html#msging-completion
         complete_reply = {"status": "ok", "matches": [], "cursor_start": 0, "cursor_end": cursor_pos, "metadata": {}}
 
@@ -158,7 +166,7 @@ class EmbeddedKernel(Kernel):
         return complete_reply
 
     async def do_inspect(self, code, cursor_pos, detail_level=0, omit_sections=()):
-        """Object introspection"""
+        """Object introspection."""
         # https://jupyter-client.readthedocs.io/en/latest/messaging.html#msging-inspection
         inspect_reply = {"status": "ok", "found": False, "data": {}, "metadata": {}}
 

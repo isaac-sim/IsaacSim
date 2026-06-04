@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import omni.kit.test
 from isaacsim.asset.gen.omap.utils import compute_coordinates, generate_image, update_location
 
 
 class MockOccupancyMap:
-    """Mock occupancy map for testing utility functions."""
+    """Mock occupancy map for testing utility functions.
 
-    def __init__(self, min_bound=(0.0, 0.0, 0.0), max_bound=(1.0, 1.0, 1.0), buffer=None, dimensions=(10, 10, 1)):
+    Args:
+        min_bound: Minimum boundary coordinates.
+        max_bound: Maximum boundary coordinates.
+        buffer: Occupancy buffer (list of float values).
+        dimensions: Map dimensions (x, y, z).
+    """
+
+    def __init__(
+        self,
+        min_bound: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        max_bound: tuple[float, float, float] = (1.0, 1.0, 1.0),
+        buffer: list[float] | None = None,
+        dimensions: tuple[int, int, int] = (10, 10, 1),
+    ) -> None:
         """Initialize mock occupancy map.
 
         Args:
@@ -36,42 +51,73 @@ class MockOccupancyMap:
         self._transform_set = False
         self._cell_size = 0.05
 
-    def get_min_bound(self):
-        """Get minimum bound."""
+    def get_min_bound(self) -> tuple:
+        """Minimum boundary coordinates of the occupancy map.
+
+        Returns:
+            The minimum boundary coordinates as a tuple.
+        """
         return self._min_bound
 
-    def get_max_bound(self):
-        """Get maximum bound."""
+    def get_max_bound(self) -> tuple:
+        """Maximum boundary coordinates of the occupancy map.
+
+        Returns:
+            The maximum boundary coordinates as a tuple.
+        """
         return self._max_bound
 
-    def get_buffer(self):
-        """Get occupancy buffer."""
+    def get_buffer(self) -> list[float]:
+        """Occupancy buffer containing the map data.
+
+        Returns:
+            The occupancy buffer as a list of float values.
+        """
         return self._buffer
 
-    def get_dimensions(self):
-        """Get map dimensions."""
+    def get_dimensions(self) -> tuple:
+        """Map dimensions of the occupancy map.
+
+        Returns:
+            The map dimensions as a tuple (x, y, z).
+        """
         return self._dimensions
 
-    def set_transform(self, origin, min_point, max_point):
-        """Set transform parameters."""
+    def set_transform(
+        self,
+        origin: tuple[float, float, float],
+        min_point: tuple[float, float, float],
+        max_point: tuple[float, float, float],
+    ) -> None:
+        """Set transform parameters for the occupancy map.
+
+        Args:
+            origin: Origin coordinates for the transform.
+            min_point: Minimum point coordinates.
+            max_point: Maximum point coordinates.
+        """
         self._transform_set = True
         self._origin = origin
         self._min_point = min_point
         self._max_point = max_point
 
-    def update(self):
+    def update(self) -> None:
         """Update the map (no-op for mock)."""
         pass
 
-    def set_cell_size(self, cell_size):
-        """Set cell size."""
+    def set_cell_size(self, cell_size: float) -> None:
+        """Set cell size for the occupancy map.
+
+        Args:
+            cell_size: Size of each cell in the map.
+        """
         self._cell_size = cell_size
 
 
 class TestUtilsFunctions(omni.kit.test.AsyncTestCase):
     """Test suite for occupancy map utility functions."""
 
-    def test_update_location(self):
+    def test_update_location(self) -> None:
         """Test update_location function."""
         mock_om = MockOccupancyMap()
         start_location = (1.0, 2.0, 3.0)
@@ -86,7 +132,7 @@ class TestUtilsFunctions(omni.kit.test.AsyncTestCase):
         self.assertEqual(mock_om._min_point, lower_bound)
         self.assertEqual(mock_om._max_point, upper_bound)
 
-    def test_compute_coordinates(self):
+    def test_compute_coordinates(self) -> None:
         """Test compute_coordinates function."""
         mock_om = MockOccupancyMap(min_bound=(-5.0, -5.0, 0.0), max_bound=(5.0, 5.0, 2.0))
         cell_size = 0.05
@@ -105,7 +151,7 @@ class TestUtilsFunctions(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(top_left[0], mock_om._max_bound[0] - cell_size / 2.0, places=5)
         self.assertAlmostEqual(top_right[0], mock_om._min_bound[0] + cell_size / 2.0, places=5)
 
-    def test_generate_image_all_unknown(self):
+    def test_generate_image_all_unknown(self) -> None:
         """Test generate_image with all unknown cells."""
         buffer = [0.5] * 100  # 10x10 grid, all unknown
         mock_om = MockOccupancyMap(buffer=buffer, dimensions=(10, 10, 1))
@@ -123,7 +169,7 @@ class TestUtilsFunctions(omni.kit.test.AsyncTestCase):
         for i in range(0, len(image), 4):
             self.assertEqual(image[i : i + 4], unknown_col)
 
-    def test_generate_image_mixed_occupancy(self):
+    def test_generate_image_mixed_occupancy(self) -> None:
         """Test generate_image with mixed occupancy states."""
         # Create buffer with known pattern: occupied, unknown, freespace
         buffer = [1.0] * 10 + [0.5] * 10 + [0.0] * 10  # 30 cells
@@ -150,7 +196,7 @@ class TestUtilsFunctions(omni.kit.test.AsyncTestCase):
         for i in range(20 * 4, 30 * 4, 4):
             self.assertEqual(image[i : i + 4], freespace_col)
 
-    def test_generate_image_custom_colors(self):
+    def test_generate_image_custom_colors(self) -> None:
         """Test generate_image with custom colors."""
         buffer = [1.0]  # Single occupied cell
         mock_om = MockOccupancyMap(buffer=buffer, dimensions=(1, 1, 1))
@@ -165,7 +211,7 @@ class TestUtilsFunctions(omni.kit.test.AsyncTestCase):
         # Verify occupied cell is red
         self.assertEqual(image, occupied_col)
 
-    def test_generate_image_empty_buffer(self):
+    def test_generate_image_empty_buffer(self) -> None:
         """Test generate_image with empty buffer."""
         buffer = []
         mock_om = MockOccupancyMap(buffer=buffer, dimensions=(0, 0, 1))
@@ -179,7 +225,7 @@ class TestUtilsFunctions(omni.kit.test.AsyncTestCase):
         # Empty buffer should produce empty image
         self.assertEqual(len(image), 0)
 
-    def test_generate_image_performance(self):
+    def test_generate_image_performance(self) -> None:
         """Test generate_image performance with large map."""
         # Create a large map (1000x1000 = 1M cells)
         size = 1000
@@ -196,7 +242,7 @@ class TestUtilsFunctions(omni.kit.test.AsyncTestCase):
         # Verify correct size
         self.assertEqual(len(image), size * size * 4)
 
-    def test_compute_coordinates_symmetry(self):
+    def test_compute_coordinates_symmetry(self) -> None:
         """Test compute_coordinates with symmetric bounds."""
         mock_om = MockOccupancyMap(min_bound=(-10.0, -10.0, 0.0), max_bound=(10.0, 10.0, 2.0))
         cell_size = 0.1
@@ -213,7 +259,7 @@ class TestUtilsFunctions(omni.kit.test.AsyncTestCase):
         # Bottom left Y should equal bottom right Y
         self.assertAlmostEqual(bottom_left[1], bottom_right[1], places=5)
 
-    def test_update_location_with_zero_bounds(self):
+    def test_update_location_with_zero_bounds(self) -> None:
         """Test update_location with zero-sized bounds."""
         mock_om = MockOccupancyMap()
         start_location = (0.0, 0.0, 0.0)

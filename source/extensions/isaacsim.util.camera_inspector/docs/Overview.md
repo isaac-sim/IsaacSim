@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The Camera Inspector extension provides a comprehensive tool for examining and managing cameras within Isaac Sim scenes. This extension creates a dedicated window interface that automatically discovers all cameras in the scene and presents detailed information about their properties, positioning, and orientation in real-time.

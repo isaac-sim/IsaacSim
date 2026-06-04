@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,16 +13,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test for articulation."""
+
 from typing import Literal
+from unittest.mock import patch
 
 import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
+import omni.kit.app
 import omni.kit.test
 import warp as wp
 from isaacsim.core.experimental.prims import Articulation
+from isaacsim.core.experimental.prims.impl._usd_articulation import (
+    _find_containing_articulation_root_path,
+    _get_dof_type,
+    _query_articulation_metadata_from_usd,
+)
 from isaacsim.core.experimental.utils.backend import use_backend
+from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.storage.native import get_assets_root_path
+from pxr import Sdf, UsdGeom, UsdPhysics
 
 from .common import (
     check_allclose,
@@ -37,6 +48,7 @@ from .common import (
 
 
 async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"], **kwargs) -> None:
+    """Populate stage."""
     assert operation == "wrap", "Other operations except 'wrap' are not supported"
     # create new stage
     await stage_utils.create_new_stage_async()
@@ -49,6 +61,7 @@ async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"
 
 
 async def play_stop_timeline():
+    """Play stop timeline."""
     omni.timeline.get_timeline_interface().play()
     await omni.kit.app.get_app().next_update_async()
     omni.timeline.get_timeline_interface().stop()
@@ -56,23 +69,93 @@ async def play_stop_timeline():
 
 
 class TestArticulation(omni.kit.test.AsyncTestCase):
+    """Test articulation."""
+
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
     def check_backend(self, backend, prim):
+        """Check backend."""
         if backend == "tensor":
             self.assertTrue(prim.is_physics_tensor_entity_valid(), f"Tensor API should be enabled ({backend})")
         elif backend in ["usd", "usdrt", "fabric"]:
             self.assertFalse(prim.is_physics_tensor_entity_valid(), f"Tensor API should be disabled ({backend})")
         else:
             raise ValueError(f"Invalid backend: {backend}")
+
+    # --------------------------------------------------------------------
+
+    async def test_usd_articulation_query_resolves_descendant_joint_target(self):
+        await stage_utils.create_new_stage_async()
+        stage = stage_utils.get_current_stage(backend="usd")
+
+        def define_rigid_body(path: str):
+            prim = UsdGeom.Xform.Define(stage, path).GetPrim()
+            UsdPhysics.RigidBodyAPI.Apply(prim)
+            return prim
+
+        UsdGeom.Xform.Define(stage, "/World")
+        UsdGeom.Xform.Define(stage, "/World/Robot")
+        define_rigid_body("/World/Robot/base")
+        define_rigid_body("/World/Robot/tool")
+        define_rigid_body("/World/Robot/ee_link/robotiq_base_link")
+        define_rigid_body("/World/Robot/ee_link/finger")
+
+        root_joint = UsdPhysics.FixedJoint.Define(stage, "/World/Robot/root_joint")
+        root_joint.CreateBody1Rel().SetTargets([Sdf.Path("/World/Robot/base")])
+        UsdPhysics.ArticulationRootAPI.Apply(root_joint.GetPrim())
+
+        wrist_joint = UsdPhysics.RevoluteJoint.Define(stage, "/World/Robot/wrist_joint")
+        wrist_joint.CreateBody0Rel().SetTargets([Sdf.Path("/World/Robot/base")])
+        wrist_joint.CreateBody1Rel().SetTargets([Sdf.Path("/World/Robot/tool")])
+        UsdPhysics.DriveAPI.Apply(wrist_joint.GetPrim(), "angular").CreateTargetPositionAttr(0.0)
+
+        fixed_joint = UsdPhysics.FixedJoint.Define(stage, "/World/Robot/ee_fixed_joint")
+        fixed_joint.CreateBody0Rel().SetTargets([Sdf.Path("/World/Robot/tool")])
+        fixed_joint.CreateBody1Rel().SetTargets([Sdf.Path("/World/Robot/ee_link/robotiq_base_link")])
+
+        finger_joint = UsdPhysics.RevoluteJoint.Define(stage, "/World/Robot/ee_link/finger_joint")
+        finger_joint.CreateBody0Rel().SetTargets([Sdf.Path("/World/Robot/ee_link/robotiq_base_link")])
+        finger_joint.CreateBody1Rel().SetTargets([Sdf.Path("/World/Robot/ee_link/finger")])
+        UsdPhysics.DriveAPI.Apply(finger_joint.GetPrim(), "angular").CreateTargetPositionAttr(0.0)
+
+        target_path = "/World/Robot/ee_link/finger_joint"
+        link_paths, joint_paths, dof_paths, dof_types = _query_articulation_metadata_from_usd(stage, target_path)
+
+        self.assertEqual(_find_containing_articulation_root_path(stage, target_path), "/World/Robot/root_joint")
+        self.assertIn("/World/Robot/ee_link/finger", link_paths)
+        self.assertIn("/World/Robot/ee_link/finger_joint", joint_paths)
+        self.assertIn("/World/Robot/ee_link/finger_joint", dof_paths)
+        self.assertEqual(
+            dof_types[dof_paths.index("/World/Robot/ee_link/finger_joint")], omni.physics.tensors.DofType.Rotation
+        )
+
+    async def test_usd_dof_type_query_matches_physx_generic_drive_order(self):
+        class FakeAttribute:
+            def __init__(self, name: str) -> None:
+                self._name = name
+
+            def GetName(self) -> str:
+                return self._name
+
+        class FakeJoint:
+            def IsA(self, _schema: object) -> bool:
+                return False
+
+            def GetAttributes(self) -> list[FakeAttribute]:
+                return [
+                    FakeAttribute("drive:custom:targetPosition"),
+                    FakeAttribute("drive:angular:targetPosition"),
+                ]
+
+        self.assertEqual(_get_dof_type(FakeJoint()), omni.physics.tensors.DofType.Invalid)
 
     # --------------------------------------------------------------------
 
@@ -85,18 +168,21 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         max_num_prims=1,
     )
     async def test_runtime_instance_creation(self, prim, num_prims, device, backend):
+        """Test runtime instance creation."""
         Articulation("/World/A_0")
 
     @parametrize(
         backends=["tensor", "usd"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage
     )
     async def test_len(self, prim, num_prims, device, backend):
+        """Test len."""
         self.assertEqual(len(prim), num_prims, f"Invalid Articulation ({num_prims} prims) len")
 
     @parametrize(
         backends=["tensor", "usd"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage
     )
     async def test_properties_and_getters(self, prim, num_prims, device, backend):
+        """Test properties and getters."""
         # check backend
         self.check_backend(backend, prim)
         # test cases (properties)
@@ -181,6 +267,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
 
     @parametrize(operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage)
     async def test_world_poses(self, prim, num_prims, device, backend):
+        """Test world poses."""
         # check backend and define USD usage
         self.check_backend(backend, prim)
         if backend in ["usdrt", "fabric"]:
@@ -203,6 +290,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
 
     @parametrize(backends=["tensor"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage)
     async def test_velocities(self, prim, num_prims, device, backend):
+        """Test velocities."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -220,6 +308,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
 
     @parametrize(backends=["usd"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage)
     async def test_enabled_self_collisions(self, prim, num_prims, device, backend):
+        """Test enabled self collisions."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -234,6 +323,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
 
     @parametrize(backends=["usd"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage)
     async def test_sleep_thresholds(self, prim, num_prims, device, backend):
+        """Test sleep thresholds."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -248,6 +338,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
 
     @parametrize(backends=["usd"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage)
     async def test_stabilization_thresholds(self, prim, num_prims, device, backend):
+        """Test stabilization thresholds."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -262,6 +353,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
 
     @parametrize(backends=["usd"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage)
     async def test_solver_iteration_counts(self, prim, num_prims, device, backend):
+        """Test solver iteration counts."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -285,6 +377,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_jacobians_and_mass_matrices(self, prim, num_prims, device, backend):
+        """Test jacobians and mass matrices."""
         # check backend
         self.check_backend(backend, prim)
         # test cases (shapes)
@@ -305,6 +398,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         backends=["tensor", "usd"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage
     )
     async def test_link_masses(self, prim, num_prims, device, backend):
+        """Test link masses."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -324,11 +418,13 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
                         device=device,
                     )
                     check_allclose(expected_v0, output, given=(v0,))
-                    expected_inverse = 1.0 / (output.numpy() + 1e-8)
+                    expected_inverse = 1.0 / output.numpy()
                     check_allclose(expected_inverse, inverse_output, given=(v0,))
 
     @parametrize(backends=["tensor"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage)
     async def test_link_inertias(self, prim, num_prims, device, backend):
+        """Test link inertias."""
+
         def _transform(x):  # transform to a diagonal inertia matrix
             x[:, :, [1, 2, 3, 5, 6, 7]] = 0.0
             return x
@@ -363,6 +459,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
 
     @parametrize(backends=["tensor"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage)
     async def test_link_coms(self, prim, num_prims, device, backend):
+        """Test link coms."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -393,6 +490,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_dof_compensation_forces(self, prim, num_prims, device, backend):
+        """Test dof compensation forces."""
         # check backend
         self.check_backend(backend, prim)
         # test cases (coriolis and centrifugal compensation forces)
@@ -422,6 +520,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_link_enabled_gravities(self, prim, num_prims, device, backend):
+        """Test link enabled gravities."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -440,6 +539,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         backends=["tensor", "usd"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage
     )
     async def test_dof_armatures(self, prim, num_prims, device, backend):
+        """Test dof armatures."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -458,6 +558,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         backends=["tensor", "usd"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage
     )
     async def test_dof_max_efforts(self, prim, num_prims, device, backend):
+        """Test dof max efforts."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -476,6 +577,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         backends=["tensor", "usd"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage
     )
     async def test_dof_max_velocities(self, prim, num_prims, device, backend):
+        """Test dof max velocities."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -494,6 +596,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         backends=["tensor", "usd"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage
     )
     async def test_dof_gains(self, prim, num_prims, device, backend):
+        """Test dof gains."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -515,6 +618,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         backends=["tensor", "usd"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage
     )
     async def test_dof_targets(self, prim, num_prims, device, backend):
+        """Test dof targets."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -545,6 +649,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_dof_states(self, prim, num_prims, device, backend):
+        """Test dof states."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -602,6 +707,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_dof_drive_types(self, prim, num_prims, device, backend):
+        """Test dof drive types."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -624,6 +730,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_dof_limits(self, prim, num_prims, device, backend):
+        """Test dof limits."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -655,6 +762,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_dof_friction_properties(self, prim, num_prims, device, backend):
+        """Test dof friction properties."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -681,6 +789,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_dof_drive_model_properties(self, prim, num_prims, device, backend):
+        """Test dof drive model properties."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -727,6 +836,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         populate_stage_func_kwargs={"usd_path": "Isaac/Robots/ShadowRobot/ShadowHand/shadow_hand.usd"},
     )
     async def test_fixed_tendons_properties(self, prim, num_prims, device, backend):
+        """Test fixed tendons properties."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -792,6 +902,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         backends=["tensor", "usd"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage
     )
     async def test_default_state(self, prim, num_prims, device, backend):
+        """Test default state."""
         # check backend
         self.check_backend(backend, prim)
         if backend == "usd":
@@ -835,6 +946,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
 
     @parametrize(operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage)
     async def test_local_poses(self, prim, num_prims, device, backend):
+        """Test local poses."""
         # check backend
         self.check_backend(backend, prim)
         if backend in ["usdrt", "fabric"]:
@@ -859,6 +971,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         backends=["tensor", "usd"], operations=["wrap"], prim_class=Articulation, populate_stage_func=populate_stage
     )
     async def test_switch_control_mode(self, prim, num_prims, device, backend):
+        """Test switch control mode."""
         # check backend
         self.check_backend(backend, prim)
         # test cases
@@ -898,6 +1011,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_fetch_articulation_root_api_prim_paths(self, prim, num_prims, device, backend):
+        """Test fetch articulation root api prim paths."""
         for backend in ["usd", "usdrt", "fabric"]:
             with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
                 self.assertListEqual(Articulation.fetch_articulation_root_api_prim_paths("/World"), ["/World/A_0"])
@@ -912,3 +1026,76 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
                     Articulation.fetch_articulation_root_api_prim_paths(["/", "/World/.*1", "/World/A_2/Arm"]),
                     ["/World/A_0", "/World/A_1", None],
                 )
+                if backend == "usd":
+                    with patch(
+                        "isaacsim.core.experimental.prims.impl.articulation.SimulationManager.get_active_physics_engine",
+                        return_value="remotesim",
+                    ):
+                        self.assertListEqual(
+                            Articulation.fetch_articulation_root_api_prim_paths(["/World/A_2/Arm"]),
+                            ["/World/A_2"],
+                        )
+
+    async def _assert_articulation_metadata_consistent(self, asset_relative_path: str) -> None:
+        """Assert link/joint/DOF metadata is non-empty pre-physics and matches post-physics."""
+        await stage_utils.create_new_stage_async()
+        usd_path = f"{get_assets_root_path()}/{asset_relative_path}"
+        stage_utils.add_reference_to_stage(usd_path=usd_path, path="/Robot")
+        articulation = Articulation("/Robot")
+        engine = SimulationManager.get_active_physics_engine()
+        self.assertIsNone(
+            SimulationManager.get_physics_simulation_view(),
+            "Precondition: no physics simulation view should exist before the test reads metadata.",
+        )
+
+        pre_link_names = list(articulation.link_names)
+        pre_joint_names = list(articulation.joint_names)
+        pre_dof_names = list(articulation.dof_names)
+        self.assertGreater(len(pre_link_names), 0, f"Pre-physics link_names empty under engine '{engine}'.")
+        self.assertGreater(len(pre_joint_names), 0, f"Pre-physics joint_names empty under engine '{engine}'.")
+        self.assertGreater(len(pre_dof_names), 0, f"Pre-physics dof_names empty under engine '{engine}'.")
+
+        pre_link_indices = articulation.get_link_indices(names=pre_link_names).numpy().tolist()
+        pre_joint_indices = articulation.get_joint_indices(names=pre_joint_names).numpy().tolist()
+        pre_dof_indices = articulation.get_dof_indices(names=pre_dof_names).numpy().tolist()
+        self.assertListEqual(pre_link_indices, list(range(len(pre_link_names))))
+        self.assertListEqual(pre_joint_indices, list(range(len(pre_joint_names))))
+        self.assertListEqual(pre_dof_indices, list(range(len(pre_dof_names))))
+
+        SimulationManager.initialize_physics()
+        for _ in range(10):
+            await omni.kit.app.get_app().next_update_async()
+
+        post_link_names = list(articulation.link_names)
+        post_joint_names = list(articulation.joint_names)
+        post_dof_names = list(articulation.dof_names)
+        self.assertEqual(
+            pre_link_names,
+            post_link_names,
+            f"link_names order changed after physics initialization under engine '{engine}'.",
+        )
+        self.assertEqual(
+            pre_joint_names,
+            post_joint_names,
+            f"joint_names order changed after physics initialization under engine '{engine}'.",
+        )
+        self.assertEqual(
+            pre_dof_names,
+            post_dof_names,
+            f"dof_names order changed after physics initialization under engine '{engine}'.",
+        )
+
+        post_link_indices = articulation.get_link_indices(names=post_link_names).numpy().tolist()
+        post_joint_indices = articulation.get_joint_indices(names=post_joint_names).numpy().tolist()
+        post_dof_indices = articulation.get_dof_indices(names=post_dof_names).numpy().tolist()
+        self.assertListEqual(pre_link_indices, post_link_indices)
+        self.assertListEqual(pre_joint_indices, post_joint_indices)
+        self.assertListEqual(pre_dof_indices, post_dof_indices)
+
+    async def test_articulation_metadata_consistent_fixed_base(self):
+        """Fixed-base articulation (Franka): pre-physics metadata must match post-physics."""
+        await self._assert_articulation_metadata_consistent("Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd")
+
+    async def test_articulation_metadata_consistent_floating_base(self):
+        """Floating-base articulation (Spot quadruped): pre-physics metadata must match post-physics."""
+        await self._assert_articulation_metadata_consistent("Isaac/Robots/BostonDynamics/spot/spot.usd")

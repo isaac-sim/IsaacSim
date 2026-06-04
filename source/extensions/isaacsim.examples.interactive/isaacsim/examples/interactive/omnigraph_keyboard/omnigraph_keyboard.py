@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,16 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 """Interactive sample demonstrating keyboard control of a cube's size using Omni Graph."""
 
-
 import isaacsim.core.experimental.utils.stage as stage_utils
-import omni.ext
 import omni.graph.core as og
 from isaacsim.core.experimental.materials import PreviewSurfaceMaterial
 from isaacsim.core.experimental.objects import Cube
-from isaacsim.core.utils.viewports import set_camera_view
+from isaacsim.core.rendering_manager import ViewportManager
 from isaacsim.examples.base.base_sample_experimental import BaseSample
 from isaacsim.storage.native import get_assets_root_path
 
@@ -53,7 +50,7 @@ class OmnigraphKeyboard(BaseSample):
     and graph-based logic systems.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._gamepad_gains = (40.0, 40.0, 2.0)
         self._gamepad_deadzone = 0.15
@@ -61,7 +58,7 @@ class OmnigraphKeyboard(BaseSample):
         self._initial_position = [0, 0, 1.0]
         self._initial_size = 1.0
 
-    def setup_scene(self):
+    def setup_scene(self) -> None:
         """Sets up the scene with a controllable cube and keyboard input graph.
 
         Creates a cyan cube that can be resized using A and D keys through an Omni Graph action graph.
@@ -83,7 +80,7 @@ class OmnigraphKeyboard(BaseSample):
             path="/World/ground",
         )
 
-        set_camera_view(eye=[5, 5, 3], target=[0, 0, 0])
+        ViewportManager.set_camera_view("/OmniverseKit_Persp", eye=[5, 5, 3], target=[0, 0, 0])
 
         # setup graph
         keys = og.Controller.Keys
@@ -135,21 +132,19 @@ class OmnigraphKeyboard(BaseSample):
             },
         )
 
-    async def setup_post_load(self):
+    async def setup_post_load(self) -> None:
         """Called after the scene is loaded."""
-        pass
 
-    async def setup_pre_reset(self):
+    async def setup_pre_reset(self) -> None:
         """Called before world reset."""
-        pass
 
-    async def setup_post_reset(self):
+    async def setup_post_reset(self) -> None:
         """Called after world reset to restore cube to initial state."""
         if self._cube:
             # Reset cube position and size to initial values
             self._cube.set_world_poses(positions=self._initial_position)
             self._cube.set_sizes(sizes=[self._initial_size])
 
-    async def setup_post_clear(self):
+    async def setup_post_clear(self) -> None:
         """Called after clearing the scene."""
         self._cube = None

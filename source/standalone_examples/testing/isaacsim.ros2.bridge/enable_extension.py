@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test enabling the ROS2 bridge extension."""
 
 from isaacsim import SimulationApp
 
 # Example ROS bridge sample showing rospy and rosclock interaction
 kit = SimulationApp()
-from isaacsim.core.utils.extensions import enable_extension
+import isaacsim.core.experimental.utils.app as app_utils
 
 # enable ROS bridge extension
-enable_extension("isaacsim.ros2.bridge")
+app_utils.enable_extension("isaacsim.ros2.bridge")
 kit.update()
 kit.close()

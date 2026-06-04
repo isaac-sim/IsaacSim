@@ -1,0 +1,63 @@
+[package]
+version = "1.0.0"
+category = "Simulation"
+title = "Holoscan Sensor Bridge Core"
+description = "Core backend library for the Holoscan Sensor Bridge (HSB) extension, providing HSB emulator communication, image encoding, and GPU-accelerated format conversion."
+keywords = ["isaac", "holoscan", "hsb", "sensor", "core", "emulator"]
+changelog = "docs/CHANGELOG.md"
+readme = "docs/Overview.md"
+preview_image = "data/preview.png"
+icon = "data/icon.png"
+writeTarget.kit = true
+writeTarget.platform = true
+
+[dependencies]
+"omni.usd.libs" = {}
+
+[[python.module]]
+name = "isaacsim.hsb.core"
+
+[[python.module]]
+name = "isaacsim.hsb.core.bindings"
+public = false
+
+[[native.plugin]]
+path = "bin/*.plugin"
+recursive = false
+
+[fswatcher.patterns]
+include = ["*.py", "*.toml"]
+
+[fswatcher.paths]
+exclude = ["*/bin", "*/__pycache__/*", "*/.git/*"]
+
+[[test]]
+name = "startup"
+enabled = true
+timeout = 300
+args = [
+    "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
+]
+stdoutFailPatterns.exclude = [
+    "*[HSB Core] Failed to connect: Failed to create socket*",
+    "*Failed to initialize endpoint*",
+]
+
+[[test]]
+name = "doctest"
+enabled = true
+timeout = 300
+dependencies = [
+    "isaacsim.test.utils",
+]
+cppTests.libraries = ["bin/${lib_prefix}isaacsim.hsb.core.tests${lib_ext}"]
+args = [
+    "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
+]
+stdoutFailPatterns.exclude = [
+    "*[HSB Core] Failed to connect: Failed to create socket*",
+    "*Failed to initialize endpoint*",
+]
+
+[documentation]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

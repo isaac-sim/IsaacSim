@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,10 +12,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import List, Union
+
+"""Grid cloner module."""
+
+from __future__ import annotations
+
+__all__ = ["GridCloner"]
+
 
 import numpy as np
-import omni.usd
 from isaacsim.core.cloner import Cloner
 from pxr import Gf, Usd, UsdGeom
 
@@ -25,6 +30,13 @@ class GridCloner(Cloner):
 
     This class extends :class:`Cloner` to provide automatic grid-based positioning
     of clones, simplifying the creation of environments arranged in a regular grid.
+
+    Args:
+        spacing: Spacing between clones in the grid.
+        num_per_row: Number of clones to place in a row. Defaults to sqrt(num_clones)
+            if set to -1.
+        stage: USD stage where source prim and clones are added to.
+            Defaults to the current stage from the USD context.
 
     Example:
 
@@ -39,35 +51,25 @@ class GridCloner(Cloner):
         ...     source_prim_path="/World/envs/env_0",
         ...     prim_paths=prim_paths,
         ... )
+
+    .. code-block:: python
+
+        >>> from isaacsim.core.cloner import GridCloner
+        >>>
+        >>> # Create a grid cloner with 2.0 spacing
+        >>> cloner = GridCloner(spacing=2.0)
+        >>>
+        >>> # Create a grid cloner with 3 clones per row
+        >>> cloner = GridCloner(spacing=1.5, num_per_row=3)
     """
 
-    def __init__(self, spacing: float, num_per_row: int = -1, stage: Usd.Stage = None):
-        """Initialize the GridCloner instance.
-
-        Args:
-            spacing: Spacing between clones in the grid.
-            num_per_row: Number of clones to place in a row. Defaults to sqrt(num_clones)
-                if set to -1.
-            stage: USD stage where source prim and clones are added to.
-                Defaults to the current stage from the USD context.
-
-        Example:
-
-        .. code-block:: python
-
-            >>> from isaacsim.core.cloner import GridCloner
-            >>>
-            >>> # Create a grid cloner with 2.0 spacing
-            >>> cloner = GridCloner(spacing=2.0)
-            >>>
-            >>> # Create a grid cloner with 3 clones per row
-            >>> cloner = GridCloner(spacing=1.5, num_per_row=3)
-        """
+    def __init__(self, spacing: float, num_per_row: int = -1, stage: Usd.Stage = None) -> None:
         self._spacing = spacing
         self._num_per_row = num_per_row
 
         self._positions = None
         self._orientations = None
+        self._cached_num_clones = None
 
         Cloner.__init__(self, stage)
 
@@ -76,7 +78,7 @@ class GridCloner(Cloner):
         num_clones: int,
         position_offsets: np.ndarray = None,
         orientation_offsets: np.ndarray = None,
-    ):
+    ) -> tuple[list, list]:
         """Compute the positions and orientations of clones in a grid.
 
         Args:
@@ -115,7 +117,7 @@ class GridCloner(Cloner):
             # - convert from torch (without explicit importing it)
             try:
                 position_offsets = position_offsets.detach().cpu().numpy()
-            except:
+            except Exception:
                 pass
             # - convert from other types
             if not isinstance(position_offsets, np.ndarray):
@@ -127,17 +129,39 @@ class GridCloner(Cloner):
             # - convert from torch (without explicit importing it)
             try:
                 orientation_offsets = orientation_offsets.detach().cpu().numpy()
-            except:
+            except Exception:
                 pass
             # - convert from other types
             if not isinstance(orientation_offsets, np.ndarray):
                 orientation_offsets = np.asarray(orientation_offsets)
 
-        if self._positions is not None and self._orientations is not None:
+        if num_clones < 0:
+            raise ValueError("num_clones must be non-negative")
+
+        use_cache = position_offsets is None and orientation_offsets is None
+
+        if (
+            use_cache
+            and self._positions is not None
+            and self._orientations is not None
+            and self._cached_num_clones == num_clones
+        ):
             return self._positions, self._orientations
 
-        self._num_per_row = int(np.sqrt(num_clones)) if self._num_per_row == -1 else self._num_per_row
-        num_rows = np.ceil(num_clones / self._num_per_row)
+        if num_clones == 0:
+            positions = []
+            orientations = []
+            if use_cache:
+                self._positions = positions
+                self._orientations = orientations
+                self._cached_num_clones = num_clones
+            return positions, orientations
+
+        num_per_row = int(np.sqrt(num_clones)) if self._num_per_row == -1 else self._num_per_row
+        if num_per_row <= 0:
+            raise ValueError("num_per_row must be positive")
+
+        num_rows = np.ceil(num_clones / num_per_row)
         num_cols = np.ceil(num_clones / num_rows)
 
         row_offset = 0.5 * self._spacing * (num_rows - 1)
@@ -178,15 +202,17 @@ class GridCloner(Cloner):
             positions.append(translation)
             orientations.append(orientation)
 
-        self._positions = positions
-        self._orientations = orientations
+        if use_cache:
+            self._positions = positions
+            self._orientations = orientations
+            self._cached_num_clones = num_clones
 
         return positions, orientations
 
     def clone(
         self,
         source_prim_path: str,
-        prim_paths: List[str],
+        prim_paths: list[str],
         position_offsets: np.ndarray = None,
         orientation_offsets: np.ndarray = None,
         replicate_physics: bool = False,
@@ -195,7 +221,7 @@ class GridCloner(Cloner):
         copy_from_source: bool = False,
         enable_env_ids: bool = False,
         clone_in_fabric: bool = False,
-    ):
+    ) -> list:
         """Create clones in a grid pattern with automatically computed positions.
 
         Args:
@@ -241,7 +267,6 @@ class GridCloner(Cloner):
             >>> len(positions)
             9
         """
-
         num_clones = len(prim_paths)
 
         positions, orientations = self.get_clone_transforms(num_clones, position_offsets, orientation_offsets)

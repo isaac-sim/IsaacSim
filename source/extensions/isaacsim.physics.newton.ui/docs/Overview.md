@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.physics.newton.ui extension provides UI integration for Newton and Mujoco physics schemas within Isaac Sim. It registers schema definitions and property widgets that enable users to configure and interact with Newton and Mujoco physics parameters through the property panel interface.
@@ -12,14 +8,14 @@ The isaacsim.physics.newton.ui extension provides UI integration for Newton and 
 
 The extension provides functions to retrieve schema type names for both physics systems:
 
-- [get_newton_schema_names](isaacsim.physics.newton.ui/isaacsim.physics.newton.ui.get_newton_schema_names) returns prim type names and API schema names for Newton physics
-- [get_mujoco_schema_names](isaacsim.physics.newton.ui/isaacsim.physics.newton.ui.get_mujoco_schema_names) returns prim type names and API schema names for Mujoco physics
+- {func}`get_newton_schema_names <isaacsim.physics.newton.ui.get_newton_schema_names>` returns prim type names and API schema names for Newton physics
+- {func}`get_mujoco_schema_names <isaacsim.physics.newton.ui.get_mujoco_schema_names>` returns prim type names and API schema names for Mujoco physics
 
 These functions enable the property system to recognize and handle Newton and Mujoco specific schemas.
 
 ### UI Definitions
 
-**[NewtonUiDefinitions](isaacsim.physics.newton.ui/isaacsim.physics.newton.ui.NewtonUiDefinitions)** and **[MujocoUiDefinitions](isaacsim.physics.newton.ui/isaacsim.physics.newton.ui.MujocoUiDefinitions)** classes contain comprehensive UI configuration for their respective physics systems. Each definition class includes:
+**{class}`NewtonUiDefinitions <isaacsim.physics.newton.ui.NewtonUiDefinitions>`** and **{class}`MujocoUiDefinitions <isaacsim.physics.newton.ui.MujocoUiDefinitions>`** classes contain comprehensive UI configuration for their respective physics systems. Each definition class includes:
 
 - Property widget specifications for displaying physics parameters
 - Property builders for creating custom UI elements

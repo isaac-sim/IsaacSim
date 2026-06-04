@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,24 +12,49 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Robot asset validation rules for ensuring proper structure, naming, and physics layer organization."""
+
+from __future__ import annotations
+
+import re
+
 import omni.asset_validator.core as av_core
 import omni.client
 from omni.asset_validator.core import AuthoringLayers, registerRule
-from pxr import Usd
+from pxr import Usd, UsdPhysics
 from usd.schema.isaac import robot_schema
 
-from .util import is_relationship_prepended, make_relationship_prepended
+from .util import DedupBaseRuleChecker, is_relationship_prepended, make_relationship_prepended
+
+# Compiled once at module level for efficiency.
+_PHYSICS_LAYER_RE = re.compile(r"_?physics\.usda?$")
+
+
+def _is_physics_layer(identifier: str) -> bool:
+    """Check whether a layer identifier refers to a physics layer.
+
+    Accepts both the legacy ``_physics.usd`` suffix and the transformer's
+    ``physics.usda`` naming convention.
+
+    Args:
+        identifier: The layer identifier string to check.
+
+    Returns:
+        True if the identifier matches a known physics layer naming pattern.
+    """
+    return _PHYSICS_LAYER_RE.search(identifier) is not None
 
 
 @registerRule("IsaacSim.RobotRules")
-class RobotNaming(av_core.BaseRuleChecker):
+class RobotNaming(DedupBaseRuleChecker):
     """Validates that robot assets follow the standard naming convention.
 
     This rule checks that robot assets follow the naming convention of
     <Manufacturer>/<robot>/<robot.usd> or <Manufacturer>/<robot>/<version>/<robot.usd>.
     """
 
-    def CheckStage(self, stage: Usd.Stage) -> None:
+    def CheckStage(self, stage: Usd.Stage) -> None:  # noqa: N802
         """Check if the robot asset follows proper naming conventions.
 
         Args:
@@ -57,14 +82,19 @@ class RobotNaming(av_core.BaseRuleChecker):
 
 
 @registerRule("IsaacSim.RobotRules")
-class CleanFolder(av_core.BaseRuleChecker):
+class CleanFolder(DedupBaseRuleChecker):
     """Validates that robot asset folders don't contain unexpected files.
 
     This rule checks that the folder containing a robot asset doesn't contain
     unexpected files that might cause confusion or conflicts.
     """
 
-    def CheckStage(self, stage: Usd.Stage) -> None:
+    def CheckStage(self, stage: Usd.Stage) -> None:  # noqa: N802
+        """Validates that the robot asset folder doesn't contain unexpected files.
+
+        Args:
+            stage: The USD stage to validate for clean folder structure.
+        """
         folders = stage.GetRootLayer().realPath.replace("\\", "/").split("/")
         folder = "/".join(folders[:-1])
         res, entries = omni.client.list(folder)
@@ -79,7 +109,7 @@ class CleanFolder(av_core.BaseRuleChecker):
             self._AddWarning(message=f"Folder <{folder}> contains unexpected file <{entry.relative_path}>")
 
 
-def get_overridden_attributes(prim):
+def get_overridden_attributes(prim: Usd.Prim) -> list[str]:
     """Get list of attribute names that have overridden values.
 
     Args:
@@ -105,15 +135,22 @@ def get_overridden_attributes(prim):
 
 
 @registerRule("IsaacSim.RobotRules")
-class NoOverrides(av_core.BaseRuleChecker):
+class NoOverrides(DedupBaseRuleChecker):
     """Validates that prims don't have overridden attributes.
 
     This rule checks that prims don't have attributes with the SpecifierOver specifier,
     which can cause unexpected behavior in robot assets. This only applies for the open stage.
     """
 
-    def CheckPrim(self, prim: Usd.Prim) -> None:
+    def CheckPrim(self, prim: Usd.Prim) -> None:  # noqa: N802
+        """Validates that the prim does not have overridden attributes.
 
+        Checks if the prim has attributes with overridden values, which can cause unexpected behavior
+        in robot assets. Prims under "/Render" paths are skipped from validation.
+
+        Args:
+            prim: The USD prim to check for overridden attributes.
+        """
         if "/Render" in prim.GetPath().pathString:
             return
 
@@ -126,14 +163,23 @@ class NoOverrides(av_core.BaseRuleChecker):
 
 
 @registerRule("IsaacSim.RobotRules")
-class RobotSchema(av_core.BaseRuleChecker):
+class RobotSchema(DedupBaseRuleChecker):
     """Validates that robot assets have the required RobotAPI and relationships.
 
     This rule checks that robot assets have a default prim with the RobotAPI applied
     and the required robotLinks and robotJoints relationships defined.
     """
 
-    def CheckStage(self, stage: Usd.Stage) -> None:
+    def CheckStage(self, stage: Usd.Stage) -> None:  # noqa: N802
+        """Validates that the robot asset has required RobotAPI and relationships.
+
+        Checks that the default prim has the RobotAPI applied and contains the required robotLinks and
+        robotJoints relationships. Reports errors for missing RobotAPI or relationships, and warnings for
+        empty relationship targets.
+
+        Args:
+            stage: The USD stage to validate.
+        """
         prim = stage.GetDefaultPrim()
         if not prim:
             self._AddError(
@@ -176,14 +222,24 @@ class RobotSchema(av_core.BaseRuleChecker):
 
 
 @registerRule("IsaacSim.RobotRules")
-class JointsExist(av_core.BaseRuleChecker):
+class JointsExist(DedupBaseRuleChecker):
     """Validates that robot assets contain at least one joint.
 
     This rule checks that robot assets have at least one prim with the JointAPI
     applied, which is typically required for articulated robots.
     """
 
-    def CheckStage(self, stage: Usd.Stage) -> None:
+    def CheckStage(self, stage: Usd.Stage) -> None:  # noqa: N802
+        """Check if the robot asset contains at least one joint prim.
+
+        Skipped on rigid-body-only assets (vehicles, non-articulated props)
+        which are not expected to carry any ``isaac:physics:JointAPI``.
+
+        Args:
+            stage: The USD stage to validate for joint prims.
+        """
+        if not any(prim.IsA(UsdPhysics.Joint) for prim in stage.Traverse()):
+            return
         for prim in stage.Traverse():
             if prim.HasAPI(robot_schema.Classes.JOINT_API.value):
                 return
@@ -194,14 +250,24 @@ class JointsExist(av_core.BaseRuleChecker):
 
 
 @registerRule("IsaacSim.RobotRules")
-class LinksExist(av_core.BaseRuleChecker):
+class LinksExist(DedupBaseRuleChecker):
     """Validates that robot assets contain at least one link.
 
     This rule checks that robot assets have at least one prim with the LinkAPI
     applied, which is typically required for articulated robots.
     """
 
-    def CheckStage(self, stage: Usd.Stage) -> None:
+    def CheckStage(self, stage: Usd.Stage) -> None:  # noqa: N802
+        """Check if the robot asset contains at least one link.
+
+        Skipped on rigid-body-only assets (vehicles, non-articulated props)
+        which are not expected to carry any ``isaac:physics:LinkAPI``.
+
+        Args:
+            stage: The USD stage to validate for link existence.
+        """
+        if not any(prim.IsA(UsdPhysics.Joint) for prim in stage.Traverse()):
+            return
         for prim in stage.Traverse():
             if prim.HasAPI(robot_schema.Classes.LINK_API.value):
                 return
@@ -212,14 +278,22 @@ class LinksExist(av_core.BaseRuleChecker):
 
 
 @registerRule("IsaacSim.RobotRules")
-class ThumbnailExists(av_core.BaseRuleChecker):
+class ThumbnailExists(DedupBaseRuleChecker):
     """Validates that robot assets have a thumbnail image.
 
     This rule checks that robot assets have a thumbnail image at the expected
     path, which is used for display in asset browsers.
     """
 
-    def CheckStage(self, stage: Usd.Stage) -> None:
+    def CheckStage(self, stage: Usd.Stage) -> None:  # noqa: N802
+        """Check if a thumbnail image exists for the robot asset.
+
+        Validates that a thumbnail image exists at the expected path (.thumbs/256x256/{filename}.png)
+        relative to the robot asset's folder location.
+
+        Args:
+            stage: The USD stage to validate for thumbnail existence.
+        """
         folders = stage.GetRootLayer().realPath.replace("\\", "/").split("/")
         folder = "/".join(folders[:-1])
         thumbnail_path = f"{folder}/.thumbs/256x256/{folders[-1]}.png"
@@ -231,7 +305,7 @@ class ThumbnailExists(av_core.BaseRuleChecker):
 
 
 @registerRule("IsaacSim.RobotRules")
-class CheckRobotRelationships(av_core.BaseRuleChecker):
+class CheckRobotRelationships(DedupBaseRuleChecker):
     """Validates that robot relationships are properly defined and prepended.
 
     This rule checks that robot assets have the required robotLinks and robotJoints
@@ -239,27 +313,27 @@ class CheckRobotRelationships(av_core.BaseRuleChecker):
     """
 
     @classmethod
-    def create_link_relationship(cls, stage, prim):
+    def create_link_relationship(cls, stage: object, prim: object) -> None:
         """Create the robotLinks relationship on a prim.
 
         Args:
             stage: The USD stage containing the prim.
             prim: The prim to create the relationship on.
         """
-        relationship = prim.CreateRelationship(robot_schema.Relations.ROBOT_LINKS.name)
+        prim.CreateRelationship(robot_schema.Relations.ROBOT_LINKS.name)
 
     @classmethod
-    def create_joint_relationship(cls, stage, prim):
+    def create_joint_relationship(cls, stage: object, prim: object) -> None:
         """Create the robotJoints relationship on a prim.
 
         Args:
             stage: The USD stage containing the prim.
             prim: The prim to create the relationship on.
         """
-        relationship = prim.CreateRelationship(robot_schema.Relations.ROBOT_JOINTS.name)
+        prim.CreateRelationship(robot_schema.Relations.ROBOT_JOINTS.name)
 
     @classmethod
-    def make_joint_relationship_prepended(cls, stage, prim):
+    def make_joint_relationship_prepended(cls, stage: object, prim: object) -> None:
         """Make the robotJoints relationship prepended for composition.
 
         Args:
@@ -270,7 +344,7 @@ class CheckRobotRelationships(av_core.BaseRuleChecker):
         make_relationship_prepended(relationship)
 
     @classmethod
-    def make_link_relationship_prepended(cls, stage, prim):
+    def make_link_relationship_prepended(cls, stage: object, prim: object) -> None:
         """Make the robotLinks relationship prepended for composition.
 
         Args:
@@ -280,7 +354,7 @@ class CheckRobotRelationships(av_core.BaseRuleChecker):
         relationship = prim.GetRelationship(robot_schema.Relations.ROBOT_LINKS.name)
         make_relationship_prepended(relationship)
 
-    def CheckStage(self, stage: Usd.Stage) -> None:
+    def CheckStage(self, stage: Usd.Stage) -> None:  # noqa: N802
         """Check if robot relationships are properly configured.
 
         Args:
@@ -321,22 +395,37 @@ class CheckRobotRelationships(av_core.BaseRuleChecker):
 
 
 @registerRule("IsaacSim.RobotRules")
-class VerifyRobotPhysicsAttributesSourceLayer(av_core.BaseRuleChecker):
+class VerifyRobotPhysicsAttributesSourceLayer(DedupBaseRuleChecker):
     """Validates that physics attributes are authored in the physics layer.
 
     This rule checks that physics attributes in robot assets are authored in
-    the physics layer (_physics.usd), following the recommended layer structure.
+    a physics layer (matching ``_physics.usd`` or ``physics.usda``), following
+    the recommended layer structure.
+
+    ``physics:collisionEnabled`` on prims with ``PhysicsCollisionAPI`` is exempted
+    because the transformer deliberately keeps ``CollisionAPI`` in ``base.usda``.
     """
 
-    def CheckStage(self, stage: Usd.Stage) -> None:
+    def CheckStage(self, stage: Usd.Stage) -> None:  # noqa: N802
+        """Check if physics attributes are authored in the physics layer.
+
+        Examines every physics attribute in the stage to ensure they are authored in
+        a physics layer (matching ``_physics.usd`` or ``physics.usda``), following
+        the recommended layer structure for robot assets.
+
+        Args:
+            stage: The USD stage to validate.
+        """
         # examine every physics attribute in the stage and ensure that they are authored in the physics layer
         for prim in stage.Traverse():
             for attr in prim.GetAttributes():
                 property_stack = attr.GetPropertyStack()
                 for stack_item in property_stack:
-                    if attr.GetName().startswith("physics:") and not stack_item.layer.identifier.endswith(
-                        "_physics.usd"
-                    ):
+                    if attr.GetName().startswith("physics:") and not _is_physics_layer(stack_item.layer.identifier):
+                        # Exempt physics:collisionEnabled on prims with PhysicsCollisionAPI —
+                        # the transformer deliberately keeps CollisionAPI in base.usda.
+                        if attr.GetName() == "physics:collisionEnabled" and prim.HasAPI(UsdPhysics.CollisionAPI):
+                            continue
                         self._AddWarning(
                             message=f"Physics Attribute {attr.GetName()} in robot asset <{stage.GetRootLayer().realPath}> has authored value NOT in the physics layer",
                             at=attr,
@@ -344,14 +433,24 @@ class VerifyRobotPhysicsAttributesSourceLayer(av_core.BaseRuleChecker):
 
 
 @registerRule("IsaacSim.RobotRules")
-class VerifyRobotPhysicsSchemaSourceLayer(av_core.BaseRuleChecker):
+class VerifyRobotPhysicsSchemaSourceLayer(DedupBaseRuleChecker):
     """Validates that physics schemas are applied in the physics layer.
 
     This rule checks that physics schemas in robot assets are applied in
-    the physics layer (_physics.usd), following the recommended layer structure.
+    a physics layer (matching ``_physics.usd`` or ``physics.usda``), following
+    the recommended layer structure.
     """
 
-    def CheckStage(self, stage: Usd.Stage) -> None:
+    def CheckStage(self, stage: Usd.Stage) -> None:  # noqa: N802
+        """Validates that physics schemas are applied in the physics layer.
+
+        Examines every prim in the stage to ensure physics schemas (PhysX and Physics APIs) are authored
+        in a physics layer (matching ``_physics.usd`` or ``physics.usda``) following the recommended
+        layer structure for robot assets.
+
+        Args:
+            stage: The USD stage to validate for physics schema layer compliance.
+        """
         # examine every prim schema in the stage and ensure that they are authored in the physics layer
         for prim in stage.Traverse():
             for layer in stage.GetLayerStack():
@@ -366,7 +465,7 @@ class VerifyRobotPhysicsSchemaSourceLayer(av_core.BaseRuleChecker):
                     for applied_api in api_schemas.GetAppliedItems():
                         if (
                             applied_api.startswith("Physx") or applied_api.startswith("Physics")
-                        ) and not layer.identifier.endswith("_physics.usd"):
+                        ) and not _is_physics_layer(layer.identifier):
                             self._AddWarning(
                                 message=f"Physics Schema [{applied_api}] on {prim.GetPath()} in robot asset <{stage.GetRootLayer().realPath}> has applied schema NOT in the physics layer",
                                 at=prim,

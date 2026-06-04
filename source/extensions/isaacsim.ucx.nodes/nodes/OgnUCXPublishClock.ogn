@@ -18,23 +18,30 @@
             "port": {
                 "type": "uint",
                 "description": "Port number for UCX listener",
-                "default": 13337
+                "default": 50008
             },
             "tag": {
                 "type": "uint64",
-                "description": "UCX tag for message identification",
-                "default": 5
+                "description": "UCX tag for message identification. Default is FNV-1a 32-bit hash of 'isaac.Time'.",
+                "default": 2985021151
             },
             "timeStamp": {
                 "type": "double",
-                "description": "Time in seconds to publish",
-                "default": 0
+                "description": "Timestamp in seconds",
+                "uiName": "Timestamp",
+                "default": 0.0
             },
             "timeoutMs": {
                 "type": "uint",
                 "description": "Timeout in milliseconds for UCX send requests. If 0, waits indefinitely.",
                 "uiName": "Timeout (ms)",
-                "default": 1
+                "default": 0
+            }
+        },
+        "outputs": {
+            "execOut": {
+                "type": "execution",
+                "description": "The output execution port"
             }
         }
     }

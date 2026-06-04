@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,24 +15,21 @@
 
 """Extension module for Isaac Sim content browser implementation with enhanced file browsing capabilities."""
 
-
 import asyncio
 import weakref
 
 import carb
 import omni.ext
-from omni.kit.widget.filebrowser import FileBrowserModel
 from omni.kit.window.content_browser import get_content_window
-from omni.kit.window.filepicker import CollectionData
 
 from .detail_view import ExtendedFileInfo
 from .isaac_collection import IsaacCollection
 
 
 class Extension(omni.ext.IExt):
-    """The Extension class"""
+    """The Extension class."""
 
-    def on_startup(self, ext_id):
+    def on_startup(self, ext_id: str) -> None:
         """Method called when the extension is loaded/enabled.
 
         Args:
@@ -40,10 +37,9 @@ class Extension(omni.ext.IExt):
         """
         carb.log_info(f"on_startup {ext_id}")
         self._content_browser_ref = weakref.ref(get_content_window(), lambda ref: self.destroy())
-
         self._add_isim_content()
 
-    def _add_isim_content(self):
+    def _add_isim_content(self) -> None:
         """Adds Isaac Sim content to the content browser.
 
         Registers the Isaac collection, expands collections, and populates asset information.
@@ -57,7 +53,7 @@ class Extension(omni.ext.IExt):
         self._expand_collections()
         self._populate_asset_info()
 
-    def _populate_asset_info(self):
+    def _populate_asset_info(self) -> None:
         """Populates asset information in the content browser.
 
         Adds an extended file info detail frame to display additional asset information.
@@ -69,14 +65,14 @@ class Extension(omni.ext.IExt):
         assetFileInfo = ExtendedFileInfo()
         content_browser.api.add_detail_frame_from_controller("File Info", assetFileInfo)
 
-    def _expand_collections(self):
+    def _expand_collections(self) -> None:
         """Expands the Isaac Sim collection in the content browser.
 
         Asynchronously expands the Isaac collection while collapsing other collections after the UI is ready.
         """
         # Only expand Isaac Sim collection after the UI is ready
 
-        async def expand_collections_async():
+        async def expand_collections_async() -> None:
             # The collection expand status is set 6 frames later after the window displayed
             for _ in range(7):
                 await omni.kit.app.get_app().next_update_async()
@@ -94,7 +90,7 @@ class Extension(omni.ext.IExt):
 
         asyncio.ensure_future(expand_collections_async())
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Method called when the extension is disabled."""
         carb.log_info(f"on_shutdown")
         content_browser = self._content_browser_ref()

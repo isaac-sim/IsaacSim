@@ -1,4 +1,44 @@
 # Changelog
+## [2.0.3] - 2026-05-05
+### Changed
+- Preview image
+
+## [2.0.2] - 2026-04-30
+### Changed
+- Use codeless physx schema
+
+## [2.0.1] - 2026-04-28
+### Fixed
+- Preserve mesh scale when exporting instanceable geometry containers (e.g. `<link>/geometry` Xform with `instanceable=true` and a non-unit `xformOp:scale`, as in collected Isaac Sim assets like `franka.usd`); the scale is now emitted on the URDF `<mesh scale=...>` attribute instead of being silently dropped
+- Replace `Usd.Prim.GetAncestorsRange` (C++-only API) with a `GetParent` walk in mesh prototype path resolution; the previous code raised `AttributeError` whenever a non-instanced mesh was exported
+
+### Changed
+- `matrix4_to_origin` now decomposes the matrix via `Gf.Transform` so RPY is computed from the unscaled rotation; `ExtractRotation` on a scaled matrix produced incorrect angles
+
+## [2.0.0] - 2026-04-09
+### Changed
+- Rewrite as physics-graph-driven converter (UsdToUrdfConverter)
+
+### Added
+- Round-trip drive breadcrumbs: `isaac:source_drive` XML comments preserve DriveAPI gains (stiffness, damping, maxForce, targetPosition), MjcActuator parameters, and PhysxJointAPI armature across URDF export/import
+
+### Fixed
+- DriveAPI values no longer incorrectly populate URDF `<dynamics>`, `<limit effort>`, or `<calibration reference_position>` — these URDF elements now only contain passive joint properties per the URDF-to-USD concept mapping
+- Split into API extension (this) and UI extension (isaacsim.asset.exporter.urdf.ui)
+- Remove nvidia-srl-usd-to-urdf dependency
+- Remove omni.physics.physx dependency from core API
+
+## [1.5.0] - 2026-04-08
+### Changed
+- Improve Python API documentation (`config/python_api.md` and/or module docstrings).
+
+## [1.4.5] - 2026-04-02
+### Changed
+- Update imports for compare usd function as it's moved
+
+## [1.4.4] - 2026-03-25
+### Changed
+- Replace deprecated onclick_fn with onclick_action for menu registration
 
 ## [1.4.3] - 2026-02-24
 ### Changed

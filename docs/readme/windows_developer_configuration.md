@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Windows C++ Developer Configuration
 
 ## Introduction

@@ -13,21 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Scene validation utilities for checking ancestor transform validity.
+"""Scene validation utilities for checking ancestor transform validity.
 
 This module provides utilities to validate that prims in a USD stage have valid
 ancestor transforms, specifically checking that no parent prims have non-identity
 scaling that would cause issues with world-space operations.
 """
 
+from __future__ import annotations
+
 import isaacsim.core.experimental.utils.prim as prim_utils
 import numpy as np
-from isaacsim.core.experimental.prims import XformPrim
-from pxr import UsdGeom
 
 
-def _prim_scaling_is_valid(prim) -> bool:
+def _prim_scaling_is_valid(prim: Usd.Prim) -> bool:
     """Check if a prim has valid (identity) scaling.
 
     Validates that the prim has identity local scaling [1,1,1] and, if present,

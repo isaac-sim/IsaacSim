@@ -1,10 +1,18 @@
-# Copyright (c) 2018-2020, NVIDIA CORPORATION.  All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto.  Any use, reproduction, disclosure or
-# distribution of this software and related documentation without an express
-# license agreement from NVIDIA CORPORATION is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Robot Inspector window for joint tree visualization and component masking."""
 
 __all__ = ["RobotInspectorWindow"]
@@ -19,6 +27,7 @@ import carb.settings
 import omni.kit.app
 import omni.ui as ui
 import omni.usd
+import usdrt
 from omni.kit.widget.stage import StageWidget
 from pxr import Sdf, Tf, Usd
 from usd.schema.isaac import robot_schema
@@ -73,12 +82,14 @@ class RobotInspectorWindow(ui.Window):
         self._original_stage_id = None
         self._current_joints: set[str] = set()
         self._current_hierarchy_mode: HierarchyMode | None = None
+        self._active_robot_root_path: Sdf.Path | None = None
         self._tracked_robot_prim_paths: set[str] = set()
         self._stage_listener: Any | None = None
         self._refresh_ui_pending: bool = False
         self._refresh_ui_task: asyncio.Task[Any] | None = None
         self._tabbed_out: bool = False
         self._joint_connections_full: list[Any] = []
+        self._last_pushed_viewport_keys: tuple[str, ...] | None = None
         self._hierarchy_executor: ThreadPoolExecutor | None = None
         self._hierarchy_stage: Usd.Stage | None = None
         self._path_map: PathMap | None = None
@@ -86,6 +97,10 @@ class RobotInspectorWindow(ui.Window):
         self._view_mode_collection: Any = None
         self._option_hovered: list[bool] = []
         self._option_frames: list[Any] = []
+        self._selection_event_sub: Any | None = None
+        self._usdrt_stage: usdrt.Usd.Stage | None = None
+        self._usdrt_stage_id: int | None = None
+        self._robot_paths_cache: set[str] | None = None
 
         super().__init__(
             "Robot Inspector",
@@ -112,6 +127,7 @@ class RobotInspectorWindow(ui.Window):
                     columns_enabled=["Deactivate", "Bypass", "Anchor"],
                     stage_delegate=InspectorStageDelegate(),
                 )
+        self._patch_stage_model_for_in_memory_stage()
 
         self._stage_subscriptions: list[Any] | None = self._create_stage_subscriptions()
         self._selection_watch = SelectionWatch(usd_context=self._usd_context)
@@ -121,6 +137,13 @@ class RobotInspectorWindow(ui.Window):
         self._masking_state.subscribe_changed(self._on_masking_changed)
 
         self._on_stage_opened()
+        # Create the selection subscription up-front when the window is born
+        # effectively visible. The dock callback may not fire on construction
+        # (no dock change happens), so without this call the selection
+        # subscription would only be created the first time the user toggled
+        # visibility or the dock state.
+        if self._is_effectively_visible():
+            self._create_selection_subscription()
 
     def _get_schema_ui_icons_dir(self) -> str:
         """Resolve this extension's data/icons directory for view-mode radio icons.
@@ -314,6 +337,11 @@ class RobotInspectorWindow(ui.Window):
     def _create_stage_subscriptions(self) -> list[Any]:
         """Create event subscriptions for stage lifecycle events.
 
+        Only ``OPENED`` and ``CLOSING`` are wired here so the inspector
+        always tracks stage swaps. ``SELECTION_CHANGED`` is gated on
+        effective visibility via :meth:`_create_selection_subscription`
+        so background tabs do not pay the per-click handler cost.
+
         Returns:
             List of event subscription handles.
         """
@@ -326,9 +354,30 @@ class RobotInspectorWindow(ui.Window):
             for event, handler in (
                 (omni.usd.StageEventType.OPENED, lambda _: self._on_stage_opened()),
                 (omni.usd.StageEventType.CLOSING, lambda _: self._on_stage_closing()),
-                (omni.usd.StageEventType.SELECTION_CHANGED, lambda _: self._on_stage_selection_changed()),
             )
         ]
+
+    def _create_selection_subscription(self) -> None:
+        """Subscribe to USD ``SELECTION_CHANGED`` events.
+
+        Called from :meth:`_apply_effective_visibility` when the window
+        becomes effectively visible. Idempotent: a second call is a no-op.
+        """
+        if self._selection_event_sub is not None:
+            return
+        self._selection_event_sub = carb.eventdispatcher.get_eventdispatcher().observe_event(
+            observer_name="isaacsim.robot.schema.ui:window_selection_changed",
+            event_name=self._usd_context.stage_event_name(omni.usd.StageEventType.SELECTION_CHANGED),
+            on_event=lambda _: self._on_stage_selection_changed(),
+        )
+
+    def _destroy_selection_subscription(self) -> None:
+        """Drop the ``SELECTION_CHANGED`` subscription if one is active.
+
+        Called from :meth:`_apply_effective_visibility` when the window
+        becomes hidden or tabbed out. Idempotent.
+        """
+        self._selection_event_sub = None
 
     def _is_effectively_visible(self) -> bool:
         """True if the window is visible and not tabbed out (we only set tabbed-out when the dock callback fires False).
@@ -338,58 +387,248 @@ class RobotInspectorWindow(ui.Window):
         """
         return bool(self.visible and not self._tabbed_out)
 
-    def _get_robot_roots_with_selection(self) -> set[str]:
-        """Return robot root path strings that have at least one selected prim (prim or descendant has ancestor with RobotAPI).
+    def _get_usdrt_stage(self) -> usdrt.Usd.Stage | None:
+        """Return a cached usdrt stage handle attached to the current USD context.
+
+        The cached handle is reattached whenever the USD context's stage id
+        changes (e.g. after stage open/close). Returns ``None`` if no stage
+        is currently attached or the usdrt attach call fails.
 
         Returns:
-            Set of robot root path strings.
+            Cached usdrt stage, or ``None`` on failure.
         """
-        stage = self._usd_context.get_stage()
-        if not stage:
+        stage_id = self._usd_context.get_stage_id()
+        if stage_id is None or stage_id < 0:
+            self._reset_usdrt_stage_cache()
+            return None
+        if self._usdrt_stage is not None and self._usdrt_stage_id == stage_id:
+            return self._usdrt_stage
+        try:
+            self._usdrt_stage = usdrt.Usd.Stage.Attach(stage_id)
+            self._usdrt_stage_id = stage_id
+        except Exception as error:
+            carb.log_warn(f"Failed to attach usdrt stage for robot inspector: {error}")
+            self._reset_usdrt_stage_cache()
+            return None
+        return self._usdrt_stage
+
+    def _reset_usdrt_stage_cache(self) -> None:
+        """Drop the cached usdrt stage handle and the derived robot-paths set.
+
+        Called on stage open/close and on window destruction so the next
+        :meth:`_get_usdrt_stage` call re-attaches against whatever stage is
+        currently bound to the USD context.
+        """
+        self._usdrt_stage = None
+        self._usdrt_stage_id = None
+        self._invalidate_robot_paths_cache()
+
+    def _get_robot_root_path_set(self) -> set[str]:
+        """Return path strings for every prim in the stage carrying the Robot API.
+
+        Uses usdrt's ``GetPrimsWithAppliedAPIName`` so the filter runs against
+        Fabric's columnar storage rather than a USD-side traversal. The
+        result is cached for the lifetime of the current stage attachment;
+        the cache is invalidated by :meth:`_invalidate_robot_paths_cache` on
+        stage open/close, and explicitly by :meth:`_on_objects_changed` when
+        a notice could change the Robot-API prim set.
+
+        Returns:
+            Set of robot root path strings; empty if no usdrt stage is
+            available or no prim carries the Robot API.
+        """
+        if self._robot_paths_cache is not None:
+            return self._robot_paths_cache
+        usdrt_stage = self._get_usdrt_stage()
+        if usdrt_stage is None:
             return set()
+        try:
+            paths = usdrt_stage.GetPrimsWithAppliedAPIName(robot_schema.Classes.ROBOT_API.value)
+        except Exception as error:
+            carb.log_warn(f"usdrt GetPrimsWithAppliedAPIName failed for robot inspector: {error}")
+            return set()
+        self._robot_paths_cache = {str(path) for path in paths}
+        return self._robot_paths_cache
+
+    def _invalidate_robot_paths_cache(self) -> None:
+        """Drop the cached robot-root path set so the next access re-queries usdrt."""
+        self._robot_paths_cache = None
+
+    def _resolve_active_robot_root(self, stage: Usd.Stage | None) -> Sdf.Path | None:
+        """Return the robot root path implied by the current USD selection.
+
+        For each selected prim, walks ancestors toward the stage root and
+        returns the first one that appears in the set of prims carrying the
+        Robot API (queried via usdrt for efficient Fabric-side filtering).
+        If multiple selected prims belong to different robots, the first
+        robot reached is chosen so that the inspector always represents a
+        single robot.
+
+        Args:
+            stage: USD stage to resolve against. ``None`` short-circuits.
+
+        Returns:
+            Path of the active robot root, or ``None`` if the selection does
+            not resolve to any robot.
+        """
+        if not stage:
+            return None
         selection = self._usd_context.get_selection()
         selected_paths = list(selection.get_selected_prim_paths() or [])
-        roots = set()
+        if not selected_paths:
+            return None
+
+        robot_paths = self._get_robot_root_path_set()
+        if not robot_paths:
+            return None
+
         for path in selected_paths:
-            prim_path = Sdf.Path(str(path)) if not isinstance(path, Sdf.Path) else path
-            prim = stage.GetPrimAtPath(prim_path)
-            while prim and prim.IsValid():
-                if prim.HasAPI(robot_schema.Classes.ROBOT_API.value):
-                    roots.add(prim.GetPath().pathString)
-                    break
-                prim = prim.GetParent()
-        return roots
+            sdf_path = path if isinstance(path, Sdf.Path) else Sdf.Path(str(path))
+            current = sdf_path
+            while current and current != Sdf.Path.absoluteRootPath:
+                if current.pathString in robot_paths:
+                    return current
+                current = current.GetParentPath()
+        return None
+
+    def _pinned_robot_still_valid(self, stage: Usd.Stage | None) -> bool:
+        """Return True if the cached active robot path still resolves to a Robot-API prim.
+
+        Used by visibility/stage-open paths to preserve the user's pinned
+        scope across hide/show cycles instead of re-resolving from whatever
+        selection happens to be active at the time of the toggle.
+
+        Args:
+            stage: USD stage to validate against. ``None`` returns ``False``.
+
+        Returns:
+            True if ``_active_robot_root_path`` is set and points at a prim
+            that still carries the Robot API on ``stage``.
+        """
+        if not stage or self._active_robot_root_path is None:
+            return False
+        prim = stage.GetPrimAtPath(self._active_robot_root_path)
+        if not prim or not prim.IsValid():
+            return False
+        return prim.HasAPI(robot_schema.Classes.ROBOT_API.value)
+
+    def _collect_active_robot_prim_paths(self, stage: Usd.Stage | None) -> set[str]:
+        """Collect the path strings owned by the active robot for change tracking.
+
+        The active robot's own path plus every link/joint listed in its
+        ``robotLinks`` and ``robotJoints`` relationships are returned. The
+        full stage is **not** traversed.
+
+        Args:
+            stage: USD stage hosting the active robot.
+
+        Returns:
+            Set of path strings to compare against incoming USD notices.
+        """
+        if not stage or self._active_robot_root_path is None:
+            return set()
+        robot_prim = stage.GetPrimAtPath(self._active_robot_root_path)
+        if not robot_prim or not robot_prim.IsValid():
+            return set()
+        if not robot_prim.HasAPI(robot_schema.Classes.ROBOT_API.value):
+            return set()
+        paths = {self._active_robot_root_path.pathString}
+        for rel_name in (robot_schema.Relations.ROBOT_LINKS.name, robot_schema.Relations.ROBOT_JOINTS.name):
+            rel = robot_prim.GetRelationship(rel_name)
+            if not rel:
+                continue
+            for target in rel.GetTargets():
+                paths.add(str(target))
+        return paths
 
     def _update_viewport_connections_for_selection(self) -> None:
-        """Set viewport joint lines to only the robot(s) that have selection; no lines if none selected."""
+        """Set viewport joint lines to only the active robot, or none if no selection.
+
+        Memoizes the last-pushed connection set by joint-prim path so that
+        repeated calls with an identical payload do not re-enter the
+        ``ConnectionModel`` rebuild path. Pushing the same list still triggers
+        an overlay/clustering refresh inside the model, which manifests as a
+        visible viewport flash; the early-return below avoids that flash when
+        the active scope (and therefore the filtered set) has not changed.
+        """
         if not self._is_effectively_visible():
             return
-        if not self._joint_connections_full:
+        if not self._joint_connections_full or self._active_robot_root_path is None:
+            if self._last_pushed_viewport_keys == ():
+                return
             ConnectionInstance.get_instance().set_joint_connections([])
+            self._last_pushed_viewport_keys = ()
             return
-        robot_root_strs = self._get_robot_roots_with_selection()
-        filtered = [c for c in self._joint_connections_full if c._robot_root_path.pathString in robot_root_strs]
+        active_str = self._active_robot_root_path.pathString
+        filtered = [c for c in self._joint_connections_full if c.robot_root_path.pathString == active_str]
+        keys = tuple(c.joint_prim_path.pathString for c in filtered)
+        if keys == self._last_pushed_viewport_keys:
+            return
         ConnectionInstance.get_instance().set_joint_connections(filtered)
+        self._last_pushed_viewport_keys = keys
 
     def _on_stage_selection_changed(self) -> None:
-        """Update viewport lines to show only the selected robot(s)."""
+        """React to USD selection changes by re-targeting the active robot.
+
+        The inspector pins to the most recently selected robot scope. Selecting
+        a different robot (or any descendant of one) switches the scope and
+        forces a refresh. Selecting prims that do not resolve to any robot is
+        ignored so the user can interact with non-robot prims in the stage
+        without losing the inspector view of the previously selected robot.
+
+        When the active scope is unchanged, the viewport-connection refresh is
+        also skipped: the filtered connection set is identical to the one
+        already on screen, so re-pushing it would only cause a visible flash
+        as the underlying ``ConnectionModel`` re-runs its overlay clustering
+        and rebuild pipeline.
+        """
+        if not self._is_effectively_visible():
+            return
+        stage = self._usd_context.get_stage()
+        new_active = self._resolve_active_robot_root(stage)
+        # Pin the scope: only re-target when the new selection points at a
+        # different robot. A selection that does not resolve to any robot
+        # leaves the saved scope intact.
+        if new_active is None or new_active == self._active_robot_root_path:
+            return
+        self._active_robot_root_path = new_active
+        self._tracked_robot_prim_paths = self._collect_active_robot_prim_paths(stage)
+        self.refresh_ui()
         self._update_viewport_connections_for_selection()
 
     def _apply_effective_visibility(self) -> None:
-        """Apply teardown or setup based on effective visibility (visible and selected in dock)."""
+        """Apply teardown or setup based on effective visibility (visible and selected in dock).
+
+        When effectively visible, the USD stage objects-changed listener and
+        the ``SELECTION_CHANGED`` event subscription are both attached. When
+        not effectively visible, both are torn down so the inspector pays no
+        per-stage-tick or per-selection cost while it is hidden or tabbed out.
+
+        The pinned ``_active_robot_root_path`` is preserved across hide/show
+        cycles when the prim still resolves on the stage. If the prim is
+        gone (or the field was never set), the active scope is re-resolved
+        from the current USD selection.
+        """
         if self._is_effectively_visible():
             self._destroy_selection_watch()
             self._selection_watch = SelectionWatch(usd_context=self._usd_context)
             if self._path_map:
                 self._selection_watch.update_path_map(self._path_map)
             stage = self._usd_context.get_stage()
-            self._tracked_robot_prim_paths = self._collect_robot_prim_paths(stage)
+            # Preserve the previously pinned robot across visibility cycles.
+            # Only re-resolve from the current selection when the prior pin is
+            # missing or no longer carries the Robot API on the current stage.
+            if not self._pinned_robot_still_valid(stage):
+                self._active_robot_root_path = self._resolve_active_robot_root(stage)
+            self._tracked_robot_prim_paths = self._collect_active_robot_prim_paths(stage)
             self._create_stage_listener(stage)
+            self._create_selection_subscription()
             self.refresh_ui()
             if self._stage_widget:
                 self._stage_widget.set_selection_watch(self._selection_watch)
             self._update_viewport_connections_for_selection()
         else:
+            self._destroy_selection_subscription()
             self._destroy_stage_listener()
             if self._refresh_ui_task is not None:
                 self._refresh_ui_task.cancel()
@@ -397,6 +636,7 @@ class RobotInspectorWindow(ui.Window):
             self._refresh_ui_pending = False
             self._destroy_selection_watch()
             ConnectionInstance.get_instance().set_joint_connections([])
+            self._last_pushed_viewport_keys = ()
             if self._stage_widget:
                 self._stage_widget.set_selection_watch(self._selection_watch)
 
@@ -448,34 +688,64 @@ class RobotInspectorWindow(ui.Window):
     def _on_objects_changed(self, notice: Any, stage: Any) -> None:
         """Handle USD stage objects changed notice.
 
-        Triggers a deferred refresh when:
-        - Prims are added or removed (resync)
-        - Robot relationships change (links/joints)
+        Walks only the paths reported by the notice and updates the
+        ``_tracked_robot_prim_paths`` set incrementally. The stage is **not**
+        re-scanned, so the cost of a notice is bounded by the number of
+        affected paths rather than the number of robots in the stage.
 
-        Refresh is deferred to the next frame so multiple prim additions
-        in a single app.update() coalesce into one refresh. Does NOT trigger
-        on camera, selection, or transform changes.
+        A refresh is scheduled when:
+
+        - The active robot's own prim was resynced (added, removed, or
+          re-targeted by a Robot API change),
+        - A prim listed in (or now missing from) the active robot's
+          ``robotLinks`` / ``robotJoints`` relationships was resynced,
+        - A property change touches the ``robotLinks`` /
+          ``robotJoints`` relationships on the active robot root.
+
+        Refresh is deferred to the next frame so multiple changes in a single
+        ``app.update()`` coalesce into one refresh. Camera, selection, and
+        plain transform writes are ignored.
 
         Args:
             notice: The USD change notice.
             stage: The USD stage that changed.
         """
-        resync_paths = notice.GetResyncedPaths()
-        if resync_paths:
-            current_robot_paths = self._collect_robot_prim_paths(stage)
-            if current_robot_paths != self._tracked_robot_prim_paths:
-                self._tracked_robot_prim_paths = current_robot_paths
-                self._schedule_refresh_ui()
-                return
-
-        changed_paths = notice.GetChangedInfoOnlyPaths()
-        if not changed_paths:
+        if self._active_robot_root_path is None:
+            # Even with no active scope, a structural change (e.g. a Robot API
+            # being added/removed) invalidates the cached robot path set so
+            # the next selection-driven resolve sees the updated stage.
+            if any(True for _ in notice.GetResyncedPaths()):
+                self._invalidate_robot_paths_cache()
             return
 
-        for changed_path in changed_paths:
-            if self._is_robot_structure_change(changed_path):
-                self._schedule_refresh_ui()
-                return
+        active_root_str = self._active_robot_root_path.pathString
+        tracked = self._tracked_robot_prim_paths
+        needs_refresh = False
+        robot_set_dirty = False
+
+        for resynced_path in notice.GetResyncedPaths():
+            robot_set_dirty = True
+            path_str = str(resynced_path)
+            if (
+                path_str == active_root_str
+                or path_str in tracked
+                or resynced_path.HasPrefix(self._active_robot_root_path)
+            ):
+                needs_refresh = True
+                break
+
+        if not needs_refresh:
+            for changed_path in notice.GetChangedInfoOnlyPaths():
+                if self._is_robot_structure_change(changed_path):
+                    needs_refresh = True
+                    break
+
+        if robot_set_dirty:
+            self._invalidate_robot_paths_cache()
+
+        if needs_refresh:
+            self._tracked_robot_prim_paths = self._collect_active_robot_prim_paths(stage)
+            self._schedule_refresh_ui()
 
     def _schedule_refresh_ui(self) -> None:
         """Schedule a single refresh_ui on the next frame.
@@ -498,6 +768,9 @@ class RobotInspectorWindow(ui.Window):
             self._refresh_ui_pending = False
         if self._stage_widget is None:
             return
+        if self._active_robot_root_path is None:
+            self._apply_hierarchy_result(None, PathMap(), [])
+            return
         stage = self._usd_context.get_stage()
         if not stage:
             return
@@ -511,6 +784,7 @@ class RobotInspectorWindow(ui.Window):
         if self._hierarchy_executor is None:
             self._hierarchy_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="robot_hierarchy")
         loop = asyncio.get_event_loop()
+        active_root_str = self._active_robot_root_path.pathString
         try:
             data = await loop.run_in_executor(
                 self._hierarchy_executor,
@@ -518,6 +792,7 @@ class RobotInspectorWindow(ui.Window):
                 root_layer_identifier,
                 masking_layer_id,
                 self._hierarchy_mode,
+                active_root_str,
             )
         except asyncio.CancelledError:
             return
@@ -528,18 +803,24 @@ class RobotInspectorWindow(ui.Window):
         self._apply_hierarchy_result(hierarchy_stage, path_map, joint_connections)
 
     def _is_robot_structure_change(self, changed_path: Any) -> bool:
-        """Check if a USD change affects robot structure (links/joints).
+        """Check if a USD change affects the active robot's link/joint relationships.
+
+        Only property paths on the active robot root prim qualify. All other
+        property writes (transforms, attributes on links, etc.) are ignored
+        so the inspector does not refresh on every stage tick.
 
         Args:
             changed_path: The USD path change to inspect.
 
         Returns:
-            True if the change affects robot relationships.
+            True if the change targets ``robotLinks`` or ``robotJoints`` on
+            the active robot.
         """
+        if self._active_robot_root_path is None:
+            return False
         if not changed_path.IsPropertyPath():
             return False
-        prim_path_str = str(changed_path.GetPrimPath())
-        if prim_path_str not in self._tracked_robot_prim_paths:
+        if changed_path.GetPrimPath() != self._active_robot_root_path:
             return False
         path_string = str(changed_path)
         if "." not in path_string:
@@ -549,33 +830,6 @@ class RobotInspectorWindow(ui.Window):
             robot_schema.Relations.ROBOT_LINKS.name,
             robot_schema.Relations.ROBOT_JOINTS.name,
         }
-
-    def _collect_robot_prim_paths(self, stage: Usd.Stage | None) -> set[str]:
-        """Collect all robot-related prim paths from the stage.
-
-        Args:
-            stage: The USD stage to scan.
-
-        Returns:
-            Set of prim path strings for all robots and their links/joints.
-        """
-        if not stage:
-            return set()
-
-        paths = set()
-        root_prim = stage.GetPrimAtPath("/")
-        for prim in Usd.PrimRange(root_prim):
-            if prim.HasAPI(robot_schema.Classes.ROBOT_API.value):
-                paths.add(str(prim.GetPath()))
-                robot_links_rel = prim.GetRelationship(robot_schema.Relations.ROBOT_LINKS.name)
-                if robot_links_rel:
-                    for target in robot_links_rel.GetTargets():
-                        paths.add(str(target))
-                robot_joints_rel = prim.GetRelationship(robot_schema.Relations.ROBOT_JOINTS.name)
-                if robot_joints_rel:
-                    for target in robot_joints_rel.GetTargets():
-                        paths.add(str(target))
-        return paths
 
     def set_visibility_changed_listener(self, listener: Any | None) -> None:
         """Set a callback for visibility changes.
@@ -614,7 +868,9 @@ class RobotInspectorWindow(ui.Window):
         if self._hierarchy_executor is not None:
             self._hierarchy_executor.shutdown(wait=False)
             self._hierarchy_executor = None
+        self._destroy_selection_subscription()
         self._destroy_stage_listener()
+        self._reset_usdrt_stage_cache()
         if self._masking_state:
             self._masking_state.unsubscribe_changed(self._on_masking_changed)
             self._masking_state.path_map = None
@@ -637,9 +893,11 @@ class RobotInspectorWindow(ui.Window):
     def refresh_ui(self) -> None:
         """Refresh the inspector view from the current stage (synchronous path).
 
-        Regenerates the hierarchy stage and updates the widget. For deferred
-        updates from USD changes, hierarchy generation runs in a background
-        thread and the result is applied via callback.
+        Regenerates the hierarchy stage for the active robot and updates the
+        widget. When no robot is selected the inspector is cleared instead of
+        scanning the stage. For deferred updates from USD changes, hierarchy
+        generation runs in a background thread and the result is applied via
+        callback.
 
         Example:
 
@@ -647,7 +905,13 @@ class RobotInspectorWindow(ui.Window):
 
             window.refresh_ui()
         """
-        hierarchy_stage, path_map, joint_connections = generate_robot_hierarchy_stage(self._hierarchy_mode)
+        if self._active_robot_root_path is None:
+            self._apply_hierarchy_result(None, PathMap(), [])
+            return
+        hierarchy_stage, path_map, joint_connections = generate_robot_hierarchy_stage(
+            self._active_robot_root_path,
+            self._hierarchy_mode,
+        )
         self._apply_hierarchy_result(hierarchy_stage, path_map, joint_connections)
 
     def _apply_hierarchy_result(
@@ -686,6 +950,7 @@ class RobotInspectorWindow(ui.Window):
 
         self._apply_masking_icons()
         self._stage_widget.open_stage(hierarchy_stage)
+        self._patch_stage_model_for_in_memory_stage()
         if self._selection_watch:
             self._selection_watch.update_path_map(path_map)
 
@@ -719,6 +984,34 @@ class RobotInspectorWindow(ui.Window):
             Set of joint prim path strings.
         """
         return {joint.joint_prim_path.pathString for joint in joint_connections}
+
+    def _patch_stage_model_for_in_memory_stage(self) -> None:
+        """Defensively pre-seed ``StageModel.__usdrt_stage`` to ``None``.
+
+        The hierarchy view drives the stage widget with an in-memory
+        ``Usd.Stage`` (no attached USD context), and upstream
+        ``omni.kit.widget.stage.StageModel`` only assigns its
+        ``__usdrt_stage`` attribute when both a stage **and** a USD
+        context are present at construction. Without that attribute,
+        ``StageModel._prefilter`` raises ``AttributeError`` the first
+        time the user types in the inspector's search field after a
+        view-mode switch (or any other ``open_stage`` call into an
+        in-memory stage). Setting the name-mangled attribute to ``None``
+        here lets the unconditional ``if self.__usdrt_stage:`` check
+        evaluate falsy and fall through to the USD code path.
+
+        This is a workaround for a bug in
+        ``omni.kit.widget.stage`` ``StageModel.__init__`` /
+        ``StageModel._prefilter``; remove once the upstream version is
+        fixed and the inspector pins to it.
+        """
+        if self._stage_widget is None:
+            return
+        model = self._stage_widget.get_model()
+        if model is None:
+            return
+        if not hasattr(model, "_StageModel__usdrt_stage"):
+            setattr(model, "_StageModel__usdrt_stage", None)
 
     def _apply_masking_icons(self) -> None:
         """Set customData on hierarchy prims to signal deactivation state.
@@ -773,24 +1066,50 @@ class RobotInspectorWindow(ui.Window):
     def _on_stage_opened(self) -> None:
         """Handle stage open event.
 
-        Creates the stage listener and refreshes the inspector UI.
+        Drops the cached usdrt stage so it will be re-attached against the
+        new stage on the next robot-root resolve. When the inspector is
+        effectively visible, preserves the previously pinned robot if its
+        path still resolves on the new stage; otherwise resolves the active
+        robot from the current selection. Then primes the tracked-path set,
+        attaches the stage objects-changed listener, and refreshes the
+        inspector UI.
+
+        When the inspector is not effectively visible (closed or tabbed out),
+        listener attachment and UI refresh are skipped: both will be performed
+        the next time the window becomes visible via
+        :meth:`_apply_effective_visibility`.
         """
         stage = self._usd_context.get_stage()
         self._original_stage_id = self._usd_context.get_stage_id()
-        self._tracked_robot_prim_paths = self._collect_robot_prim_paths(stage)
+        self._reset_usdrt_stage_cache()
+        if not self._is_effectively_visible():
+            self._active_robot_root_path = None
+            self._tracked_robot_prim_paths = set()
+            return
+        # Preserve the prior pin if the freshly opened stage still hosts a
+        # Robot-API prim at the same path (re-open of the same scene). When
+        # the path no longer resolves, fall back to selection-derived resolve.
+        if not self._pinned_robot_still_valid(stage):
+            self._active_robot_root_path = self._resolve_active_robot_root(stage)
+        self._tracked_robot_prim_paths = self._collect_active_robot_prim_paths(stage)
         self._create_stage_listener(stage)
         self.refresh_ui()
 
     def _on_stage_closing(self) -> None:
         """Handle stage closing event.
 
-        Clears the inspector view, resets connections, masking state, and removes
-        the stage listener.
+        Clears the inspector view, resets connections, masking state, removes
+        the stage listener, and drops the cached usdrt stage handle so the
+        next robot-root resolve will re-attach against the freshly opened
+        stage.
         """
         self._destroy_stage_listener()
+        self._reset_usdrt_stage_cache()
+        self._active_robot_root_path = None
         self._tracked_robot_prim_paths.clear()
         self._current_joints.clear()
         self._joint_connections_full.clear()
+        self._last_pushed_viewport_keys = None
         self._hierarchy_stage = None
         self._path_map = None
         if self._masking_state:

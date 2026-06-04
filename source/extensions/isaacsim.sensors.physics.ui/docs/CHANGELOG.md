@@ -1,4 +1,21 @@
 # Changelog
+
+## [1.2.2] - 2026-04-30
+### Changed
+- Migrated menu callbacks to the new `isaacsim.sensors.experimental.physics` 3.0.0 API: call `Contact.create()` / `IMU.create()` / `Raycast.create()` (the authoring classes) directly instead of the removed runtime `XSensor.create()` class methods, and use plural `translations`/`orientations` arrays. The IMU menu uses the returned authoring object's `set_visibilities([False])`; the runtime sensor no longer forwards XformPrim attribute access (aligns with `isaacsim.sensors.experimental.rtx`).
+
+## [1.2.1] - 2026-04-21
+### Changed
+- Replaced `omni.kit.commands` sensor creation with `ContactSensor.create()`, `IMUSensor.create()`, and `RaycastSensor.create()` class methods
+
+## [1.2.0] - 2026-04-17
+### Added
+- Add menu items for creating solid state, rotating, and beam curtain raycast sensors
+
+## [1.1.1] - 2026-04-09
+### Removed
+- Remove the `omni.isaac.ml_archive` dependency
+
 ## [1.1.0] - 2026-03-04
 ### Changed
 - Added Overview.md and python_api.md and updated docstrings

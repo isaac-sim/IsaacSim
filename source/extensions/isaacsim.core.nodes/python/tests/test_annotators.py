@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 
 import time
 
@@ -29,7 +28,7 @@ from isaacsim.core.simulation_manager import _simulation_manager
 
 class TestAnnotators(omni.kit.test.AsyncTestCase):
     async def setUp(self):
-        """Set up  test environment, to be torn down when done"""
+        """Set up  test environment, to be torn down when done."""
         await omni.usd.get_context().new_stage_async()
         self._render_product_path = prim_utils.get_prim_path(ViewportManager.get_render_product())
 
@@ -76,20 +75,21 @@ class TestAnnotators(omni.kit.test.AsyncTestCase):
         app_utils.stop()
         await app_utils.update_app_async()
         app_utils.play()
-        await omni.syntheticdata.sensors.next_render_simulation_async(self._render_product_path, 10)
+        await app_utils.update_app_async(steps=10)
         fabric_time_data = fabric_time_annotator.get_data()
         data_read_sim_time = annotator_read_sim_time.get_data()
         data_read_system_time = annotator_read_system_time.get_data()
-        self.assertAlmostEqual(
-            data_read_sim_time["simulationTime"], 0.01666666753590107 * 12
-        )  # Two extra steps happen to init physics on play
-        self.assertAlmostEqual(data_read_system_time["systemTime"], time.time(), delta=0.5)
 
-        self._simulation_manager_interface = _simulation_manager.acquire_simulation_manager_interface()
-        current_sim_time = self._simulation_manager_interface.get_simulation_time_at_time(
-            (fabric_time_data["referenceTimeNumerator"], fabric_time_data["referenceTimeDenominator"])
-        )
-        self.assertAlmostEqual(current_sim_time, 0.01666666753590107 * 12)
+        sim_manager_iface = _simulation_manager.acquire_simulation_manager_interface()
+        reference_time = (fabric_time_data["referenceTimeNumerator"], fabric_time_data["referenceTimeDenominator"])
+        expected_sim_time = sim_manager_iface.get_simulation_time_at_time(reference_time)
+
+        # The annotator sim time and get_simulation_time_at_time both correspond
+        # to the same rendered frame, which may lag behind get_simulation_time()
+        # due to render pipeline latency under multi-tick rendering.
+        self.assertGreater(expected_sim_time, 0.0)
+        self.assertAlmostEqual(data_read_sim_time["simulationTime"], expected_sim_time)
+        self.assertAlmostEqual(data_read_system_time["systemTime"], time.time(), delta=0.5)
         annotator_read_sim_time.detach()
         annotator_read_system_time.detach()
         fabric_time_annotator.detach()
@@ -102,7 +102,7 @@ class TestAnnotators(omni.kit.test.AsyncTestCase):
         annotator.attach([self._render_product_path])
 
         app_utils.play()
-        await omni.syntheticdata.sensors.next_render_simulation_async(self._render_product_path, 10)
+        await app_utils.update_app_async(steps=10)
         data = annotator.get_data()
         self.assertTrue(np.all(data["data"] > 150))
         annotator.detach()
@@ -115,7 +115,7 @@ class TestAnnotators(omni.kit.test.AsyncTestCase):
         annotator.attach([self._render_product_path])
 
         app_utils.play()
-        await omni.syntheticdata.sensors.next_render_simulation_async(self._render_product_path, 10)
+        await app_utils.update_app_async(steps=10)
         data = annotator.get_data()
         self.assertTrue(np.all(np.linalg.norm(data["data"], axis=1) > 0))
         annotator.detach()

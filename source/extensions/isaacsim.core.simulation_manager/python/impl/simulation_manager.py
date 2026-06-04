@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,10 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Provide centralized management of physics simulation operations, events, callbacks, and time-related functionality."""
+
 from __future__ import annotations
 
 import weakref
-from typing import Callable, Literal
+from collections.abc import Callable
+from typing import Any, Literal
 
 import carb
 import isaacsim.core.experimental.utils.app as app_utils
@@ -24,6 +27,7 @@ import isaacsim.core.experimental.utils.ops as ops_utils
 import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.physics.core
+import omni.physics.tensors
 import omni.timeline
 import omni.usd
 import warp as wp
@@ -41,40 +45,66 @@ _SETTING_PHYSICS_SUPPRESS_READBACK = "/physics/suppressReadback"
 
 
 class SimulationManager:
-    """This class provide functions that take care of many time-related events such as
-    warm starting simulation in order for the physics data to be retrievable.
-    Adding/ removing callback functions that gets triggered with certain events such as a physics step,
-    on post reset, on physics ready..etc."""
+    """Manage physics simulation operations, events, callbacks, and time-related functionality.
+
+    This class provides centralized control over physics simulation lifecycle, including warm starting
+    simulation for physics data retrieval, managing callback functions triggered by simulation events
+    such as physics steps, timeline changes, and stage operations.
+    """
 
     _warmup_needed = True
+    """Flag indicating whether physics warmup is needed before simulation can run."""
     _timeline = omni.timeline.get_timeline_interface()
+    """Timeline interface for managing simulation playback and timeline events."""
     _message_bus = carb.eventdispatcher.get_eventdispatcher()
+    """Event dispatcher for handling simulation and application events."""
     _physics_sim_interface = omni.physics.core.get_physics_simulation_interface()
+    """Physics simulation interface for controlling physics simulation."""
     _physics_stage_update_interface = omni.physics.core.get_physics_stage_update_interface()
+    """Physics stage update interface for managing physics stage updates."""
     _physics_interface = omni.physics.core.get_physics_interface()
+    """Core physics interface for physics engine management."""
     _physx_fabric_interface = None
+    """PhysX fabric interface for fabric-enabled physics operations."""
     _physics_sim_view = None
+    """Deprecated physics simulation view for tensor operations."""
     _physics_sim_view__warp = None
+    """Warp-based physics simulation view for tensor operations."""
     _carb_settings = carb.settings.get_settings()
-    _callbacks = dict()
+    """Carb settings interface for accessing application settings."""
+    _callbacks = {}
+    """Dictionary storing registered callback subscriptions by unique ID."""
     _simulation_manager_interface = None
+    """Internal simulation manager interface for core operations."""
     _simulation_view_created = False
+    """Flag indicating whether the simulation view has been created."""
     _assets_loaded = True
+    """Flag indicating whether stage assets have finished loading."""
     _assets_loading_callback = None
+    """Callback subscription for asset loading events."""
     _assets_loaded_callback = None
+    """Callback subscription for asset loaded events."""
 
     _physics_scenes: dict[str, PhysicsScene] = {}
+    """Dictionary mapping physics scene paths to PhysicsScene objects."""
 
     # physics engine
     _engine = "physx"
+    """Name of the currently active physics engine."""
     _simulation_registry_sub = None
+    """Subscription to simulation registry events for engine synchronization."""
     _device: wp.Device | None = None  # Explicitly requested device (for Newton)
+    """Explicitly requested Warp device for physics simulation."""
 
     # default callbacks
     _default_callback_on_stop = None
+    """Default callback subscription for timeline stop events."""
     _default_callback_stage_open = None
+    """Default callback subscription for stage opened events."""
     _default_callback_stage_close = None
+    """Default callback subscription for stage closed events."""
     _default_callback_warm_start = None
+    """Default callback subscription for timeline play events."""
     _default_callbacks_state = {
         "on_stop": True,
         "stage_open": True,
@@ -82,9 +112,11 @@ class SimulationManager:
         "warm_start": True,
         "post_warm_start": True,  # deprecated
     }
+    """Dictionary tracking the enabled state of default callbacks."""
 
     # deprecated variables
     _backend = "numpy"
+    """Deprecated backend type used by the simulation manager."""
     _default_physics_scene_path = None
 
     """
@@ -92,7 +124,7 @@ class SimulationManager:
     """
 
     @classmethod
-    def get_active_physics_engine(cls) -> Literal["physx"]:
+    def get_active_physics_engine(cls) -> Literal["physx", "newton", "remotesim"]:
         """Get the currently active physics engine.
 
         Returns:
@@ -114,7 +146,7 @@ class SimulationManager:
         """Get list of all available physics engines.
 
         Args:
-            verbose: If True, print available engines. Defaults to False.
+            verbose: If True, print available engines.
 
         Returns:
             List of tuples (engine_name, is_active) for all registered engines.
@@ -137,12 +169,12 @@ class SimulationManager:
         return engines
 
     @classmethod
-    def switch_physics_engine(cls, engine_name: Literal["physx", "newton"], verbose: bool = False) -> bool:
+    def switch_physics_engine(cls, engine_name: Literal["physx", "newton", "remotesim"], verbose: bool = False) -> bool:
         """Switch to a specific physics engine.
 
         Args:
             engine_name: Name of the engine to switch to.
-            verbose: If True, log switch details to console. Defaults to False.
+            verbose: If True, log switch details to console.
 
         Returns:
             True if switch was successful, False otherwise.
@@ -229,6 +261,16 @@ class SimulationManager:
 
         cls._warmup_needed = True
 
+        for path in list(cls._physics_scenes):
+            prim = cls._physics_scenes[path].prim
+            if engine_name == "physx":
+                prim.RemoveAPI("MjcSceneAPI")
+                prim.RemoveAPI("NewtonXpbdSceneAPI")
+            else:
+                if prim.HasAPI(PhysxSchema.PhysxSceneAPI):
+                    prim.RemoveAPI(PhysxSchema.PhysxSceneAPI)
+            cls._physics_scenes[path] = cls._create_physics_scene(path)
+
     @classmethod
     def _sync_engine_state(cls) -> None:
         """Sync the _engine variable with the actual active physics engine.
@@ -271,8 +313,15 @@ class SimulationManager:
             cls._engine = "physx"
             carb.log_warn("No physics engines found, defaulting to PhysX")
 
+    @staticmethod
     def _on_simulation_registry_event(event_type: SimulationRegistryEventType, simulation_id: int, name: str) -> None:
-        """Handle simulation registry events to keep _engine in sync."""
+        """Handle simulation registry events to keep _engine in sync.
+
+        Args:
+            event_type: Type of simulation registry event.
+            simulation_id: ID of the simulation.
+            name: Name of the simulation.
+        """
         engine_name = name.lower()
         if event_type == SimulationRegistryEventType.SIMULATION_ACTIVATED:
             if SimulationManager._engine != engine_name:
@@ -287,6 +336,11 @@ class SimulationManager:
 
     @classmethod
     def _startup(cls) -> None:
+        """Initialize the simulation manager by enabling default callbacks and resetting state.
+
+        This method synchronizes the engine state with the active physics engine and subscribes
+        to simulation registry events to maintain consistency with UI and other systems.
+        """
         cls.enable_all_default_callbacks(True)
         cls._reset(
             reset_assets=True,
@@ -306,6 +360,11 @@ class SimulationManager:
 
     @classmethod
     def _shutdown(cls) -> None:
+        """Shutdown the simulation manager by disabling default callbacks and cleaning up state.
+
+        This method unsubscribes from simulation registry events and resets all internal state
+        to prepare for shutdown.
+        """
         # Unsubscribe from simulation registry events
         cls._simulation_registry_sub = None
 
@@ -328,6 +387,15 @@ class SimulationManager:
         reset_physics_scenes: bool = False,
         track_physics_scenes: bool = False,
     ) -> None:
+        """Reset various components of the simulation manager state.
+
+        Args:
+            reset_assets: Whether to reset asset-related state including loading callbacks.
+            reset_callbacks: Whether to clear all registered callbacks.
+            reset_physics: Whether to reset physics-related state and invalidate physics.
+            reset_physics_scenes: Whether to clear tracked physics scenes.
+            track_physics_scenes: Whether to start tracking physics scene additions and deletions.
+        """
         cls._simulation_manager_interface.reset()
         # asset-related state
         if reset_assets:
@@ -350,6 +418,10 @@ class SimulationManager:
 
     @classmethod
     def _setup_warm_start_callback(cls) -> None:
+        """Set up the warm start callback to initialize physics when simulation starts.
+
+        Creates a timeline subscription to listen for PLAY events that trigger physics initialization.
+        """
         if cls._default_callbacks_state["warm_start"] and cls._default_callback_warm_start is None:
             cls._default_callback_warm_start = (
                 cls._timeline.get_timeline_event_stream().create_subscription_to_pop_by_type(
@@ -359,6 +431,10 @@ class SimulationManager:
 
     @classmethod
     def _setup_on_stop_callback(cls) -> None:
+        """Set up the callback to handle simulation stop events.
+
+        Creates a timeline subscription to listen for STOP events and clean up physics resources.
+        """
         if cls._default_callbacks_state["on_stop"] and cls._default_callback_on_stop is None:
             cls._default_callback_on_stop = (
                 cls._timeline.get_timeline_event_stream().create_subscription_to_pop_by_type(
@@ -368,6 +444,10 @@ class SimulationManager:
 
     @classmethod
     def _setup_stage_open_callback(cls) -> None:
+        """Set up the callback to handle stage open events.
+
+        Creates a message bus subscription to listen for OPENED stage events and reset simulation state.
+        """
         if cls._default_callbacks_state["stage_open"] and cls._default_callback_stage_open is None:
             cls._default_callback_stage_open = cls._message_bus.observe_event(
                 event_name=omni.usd.get_context().stage_event_name(omni.usd.StageEventType.OPENED),
@@ -377,6 +457,10 @@ class SimulationManager:
 
     @classmethod
     def _setup_stage_close_callback(cls) -> None:
+        """Set up the callback to handle stage close events.
+
+        Creates a message bus subscription to listen for CLOSED stage events and clean up simulation resources.
+        """
         if cls._default_callbacks_state["stage_close"] and cls._default_callback_stage_close is None:
             cls._default_callback_stage_close = cls._message_bus.observe_event(
                 event_name=omni.usd.get_context().stage_event_name(omni.usd.StageEventType.CLOSED),
@@ -386,12 +470,17 @@ class SimulationManager:
 
     @classmethod
     def _track_physics_scenes(cls) -> None:
-        def add_physics_scene(path):
+        """Set up tracking of physics scenes in the stage.
+
+        Registers callbacks to automatically add and remove physics scenes when they are created or deleted.
+        """
+
+        def add_physics_scene(path: str) -> None:
             prim = prim_utils.get_prim_at_path(path)
             if prim.GetTypeName() == "PhysicsScene":
                 cls._physics_scenes[path] = cls._create_physics_scene(path)
 
-        def remove_physics_scene(path):
+        def remove_physics_scene(path: str) -> None:
             # TODO: search for child prims that are also physics scenes???
             if path in cls._physics_scenes:
                 del cls._physics_scenes[path]
@@ -401,6 +490,14 @@ class SimulationManager:
 
     @classmethod
     def _create_physics_scene(cls, path: str = "/PhysicsScene") -> PhysicsScene | None:
+        """Create a physics scene at the specified path.
+
+        Args:
+            path: Path where the physics scene will be created.
+
+        Returns:
+            The created physics scene, or None if creation failed.
+        """
         try:
             if cls._engine == "physx":
                 return PhysxScene(path)
@@ -409,6 +506,9 @@ class SimulationManager:
                 from .mjc_scene import NewtonMjcScene
 
                 return NewtonMjcScene(path)
+            elif cls._engine == "remotesim":
+                # Remote-sim backend only needs a lightweight scene wrapper for dt/config access.
+                return PhysicsScene(path)
             else:
                 carb.log_warn(f"Unknown engine '{cls._engine}', defaulting to PhysX")
                 return PhysxScene(path)
@@ -451,11 +551,19 @@ class SimulationManager:
     Internal callbacks.
     """
 
-    def _on_stage_opened(event) -> None:
-        def _assets_loading(event):
+    @staticmethod
+    def _on_stage_opened(event: Any) -> None:
+        """Handle stage opened events to reset simulation state and track asset loading."""
+
+        def _assets_loading(event: Any) -> None:
             SimulationManager._assets_loaded = False
 
-        def _assets_loaded(event):
+        def _assets_loaded(event: object) -> None:
+            """Flag indicating whether stage assets have finished loading.
+
+            Args:
+                event: The stage event indicating assets have loaded.
+            """
             SimulationManager._assets_loaded = True
 
         SimulationManager._reset(
@@ -476,7 +584,9 @@ class SimulationManager:
             observer_name="SimulationManager._assets_loaded_callback",
         )
 
-    def _on_stage_closed(event) -> None:
+    @staticmethod
+    def _on_stage_closed(event: Any) -> None:
+        """Handle stage closed events to reset all simulation resources."""
         SimulationManager._reset(
             reset_assets=True,
             reset_callbacks=True,
@@ -485,7 +595,9 @@ class SimulationManager:
             track_physics_scenes=True,
         )
 
-    def _on_play(event) -> None:
+    @staticmethod
+    def _on_play(event: Any) -> None:
+        """Handle timeline play events to initialize physics simulation."""
         if SimulationManager._carb_settings.get_as_bool(_SETTING_PLAY_SIMULATION):
             # Verify the stage is valid before attempting any physics operations
             # This handles cases where play is triggered on an expired/invalid stage
@@ -513,7 +625,9 @@ class SimulationManager:
             else:
                 SimulationManager._message_bus.dispatch_event(SimulationEvent.SIMULATION_RESUMED.value, payload={})
 
-    def _on_stop(event) -> None:
+    @staticmethod
+    def _on_stop(event: Any) -> None:
+        """Handle timeline stop events to invalidate physics."""
         SimulationManager.invalidate_physics()
 
     """
@@ -544,40 +658,10 @@ class SimulationManager:
                 return
         # initialize physics engine
         cls._physics_stage_update_interface.force_load_physics_from_usd()
-        cls._physics_stage_update_interface.start_simulation()
-
-        cls._physics_sim_interface.simulate(cls.get_physics_dt(), 0.0)
-        cls._physics_sim_interface.fetch_results()
-        # create simulation view
-        stage_id = stage_utils.get_stage_id(stage_utils.get_current_stage(backend="usd"))
-        # - deprecated simulation view
-        create_simulation_view = True
-        if "cuda" in cls.get_physics_sim_device() and cls._backend == "numpy":
-            cls._backend = "torch"
-            carb.log_warn("Changing backend from 'numpy' to 'torch' since NumPy cannot be used with GPU piplines")
-        if cls.get_backend() == "torch":
-            try:
-                import torch
-            except ModuleNotFoundError:
-                create_simulation_view = False
-        # Create backend-specific simulation views
-        if cls._engine == "physx":
-            import omni.physics.tensors
-
-            cls._physics_sim_view__warp = omni.physics.tensors.create_simulation_view("warp", stage_id=stage_id)
-            cls._physics_sim_view__warp.set_subspace_roots("/")
-            # Create physx simulation views (deprecated)
-            if create_simulation_view:
-                cls._physics_sim_view = omni.physics.tensors.create_simulation_view(
-                    cls.get_backend(), stage_id=stage_id
-                )
-                cls._physics_sim_view.set_subspace_roots("/")
-
-        elif cls._engine == "newton":
-            # Use newton tensors extension
+        # Engine-specific pre-initialization, initialize Newton stage before calling simulate
+        if cls._engine == "newton":
             try:
                 import isaacsim.physics.newton
-                import isaacsim.physics.newton.tensors
 
                 newton_stage = isaacsim.physics.newton.acquire_stage()
                 if newton_stage is None:
@@ -587,35 +671,50 @@ class SimulationManager:
                 requested_device = cls.get_physics_sim_device()
                 requested_device_str = requested_device if isinstance(requested_device, str) else str(requested_device)
 
-                # Check if newton needs to be reinitialized on a different device
-                if newton_stage.initialized and newton_stage.device_str != requested_device_str:
-                    carb.log_warn(
-                        f"newton device mismatch: initialized on {newton_stage.device_str}, requested {requested_device_str}. Reinitializing..."
-                    )
+                if not newton_stage.initialized or newton_stage.device_str != requested_device_str:
+                    if newton_stage.device_str != requested_device_str:
+                        carb.log_warn(
+                            f"newton device mismatch: initialized on {newton_stage.device_str}, requested {requested_device_str}. Reinitializing..."
+                        )
                     newton_stage.initialize_newton(requested_device_str)
 
-                # Ensure device is synced
                 newton_stage.device_str = requested_device_str
                 newton_stage.device = wp.get_device(newton_stage.device_str)
-
-                # Create newton simulation views
-                if create_simulation_view:
-                    cls._physics_sim_view = isaacsim.physics.newton.tensors.create_simulation_view(
-                        cls.get_backend(), newton_stage, stage_id=stage_id
-                    )
-                    cls._physics_sim_view.set_subspace_roots("/")
-
-                cls._physics_sim_view__warp = isaacsim.physics.newton.tensors.create_simulation_view(
-                    "warp", newton_stage, stage_id=stage_id
-                )
-                cls._physics_sim_view__warp.set_subspace_roots("/")
-                carb.log_info(f"Created newton tensor simulation views (backend: {cls.get_backend()})")
             except Exception as e:
-                carb.log_error(f"Failed to create newton simulation view: {e}")
-                raise Exception(f"Failed to create newton simulation view backend: {e}")
+                carb.log_error(f"Failed to initialize Newton: {e}")
+
+        cls._physics_stage_update_interface.start_simulation()
 
         cls._physics_sim_interface.simulate(cls.get_physics_dt(), 0.0)
-        cls._physics_sim_interface.fetch_results()
+        # create simulation view
+        stage_id = stage_utils.get_stage_id(stage_utils.get_current_stage(backend="usd"))
+        # - deprecated simulation view
+        create_simulation_view = True
+        if "cuda" in cls.get_physics_sim_device() and cls._backend == "numpy":
+            cls._backend = "torch"
+            carb.log_warn("Changing backend from 'numpy' to 'torch' since NumPy cannot be used with GPU piplines")
+        if cls.get_backend() == "torch":
+            try:
+                import importlib.util
+
+                if importlib.util.find_spec("torch") is None:
+                    raise ModuleNotFoundError("torch not found")
+            except ModuleNotFoundError:
+                create_simulation_view = False
+
+        # Create simulation views (unified path for all backends)
+        cls._physics_sim_view__warp = omni.physics.tensors.create_simulation_view(
+            "warp", stage_id=stage_id, backend=cls._engine
+        )
+        cls._physics_sim_view__warp.set_subspace_roots("/")
+        if create_simulation_view:
+            cls._physics_sim_view = omni.physics.tensors.create_simulation_view(
+                cls.get_backend(), stage_id=stage_id, backend=cls._engine
+            )
+            cls._physics_sim_view.set_subspace_roots("/")
+        carb.log_info(f"Created simulation views (engine: {cls._engine}, backend: {cls.get_backend()})")
+
+        cls._physics_sim_interface.simulate(cls.get_physics_dt(), 0.0)
         # set internal states
         cls._warmup_needed = False
         cls._simulation_view_created = True
@@ -650,7 +749,7 @@ class SimulationManager:
 
     @classmethod
     def setup_simulation(cls, dt: float | None = None, device: str | wp.Device | None = None) -> None:
-        """Setup the (physics) simulation.
+        """Set up the (physics) simulation.
 
         .. hint::
 
@@ -698,7 +797,7 @@ class SimulationManager:
         return list(cls._physics_scenes.values())
 
     @classmethod
-    def get_physics_simulation_view(cls) -> "SimulationView" | None:
+    def get_physics_simulation_view(cls) -> Any | None:
         """Get the physics (tensor API) simulation view.
 
         Returns:
@@ -711,7 +810,7 @@ class SimulationManager:
             >>> from isaacsim.core.simulation_manager import SimulationManager
             >>>
             >>> SimulationManager.get_physics_simulation_view()
-            <omni.physics.tensors.impl.api.SimulationView object at 0x...>
+            <omni.physics.tensors.api.SimulationView object at 0x...>
         """
         return cls._physics_sim_view__warp
 
@@ -831,7 +930,6 @@ class SimulationManager:
             simulation_time = cls.get_simulation_time()
             # step physics simulation
             cls._physics_sim_interface.simulate(dt, simulation_time)
-            cls._physics_sim_interface.fetch_results()
             # update fabric (PhysX only - Newton handles fabric updates differently)
             if update_fabric and cls._engine == "physx":
                 if not cls.is_fabric_enabled():
@@ -853,6 +951,7 @@ class SimulationManager:
 
         Raises:
             ValueError: If the device is invalid.
+            Exception: If the device is unknown.
 
         Example:
 
@@ -966,7 +1065,7 @@ class SimulationManager:
         """Check if fabric is enabled.
 
         Returns:
-            bool: True if fabric is enabled, otherwise False.
+            True if fabric is enabled, otherwise False.
 
         Example:
 
@@ -981,7 +1080,7 @@ class SimulationManager:
 
     @classmethod
     def register_callback(
-        cls, callback: Callable, event: SimulationEvent | IsaacEvents, *, order: int = 0, **kwargs
+        cls, callback: Callable, event: SimulationEvent | IsaacEvents, *, order: int = 0, **kwargs: Any
     ) -> int:
         """Register/subscribe a callback to be triggered when a specific simulation event occurs.
 
@@ -995,6 +1094,7 @@ class SimulationManager:
             event: The simulation event to subscribe to.
             order: The subscription order.
                 Callbacks registered within the same order will be triggered in the order they were registered.
+            **kwargs: Additional arguments. The ``name`` parameter is deprecated and will result in a warning.
 
         Returns:
             The unique identifier of the callback subscription.
@@ -1026,10 +1126,13 @@ class SimulationManager:
             raise ValueError(f"Invalid simulation event: {event}. Supported events are: {list(SimulationEvent)}")
         # handle deprecations
         if "name" in kwargs:
-            carb.log_warn(f"The parameter 'name' is not longer supported and will be removed in a future version")
+            carb.log_warn("The parameter 'name' is not longer supported and will be removed in a future version")
         # check for weak reference support (when the callback is a method of a class)
         if hasattr(callback, "__self__"):
-            on_event = lambda e, obj=weakref.proxy(callback.__self__): getattr(obj, callback.__name__)(e)
+
+            def on_event(e: Any, obj: Any = weakref.proxy(callback.__self__)) -> Any:
+                return getattr(obj, callback.__name__)(e)
+
         else:
             on_event = callback
         # get a unique id for the callback
@@ -1056,11 +1159,15 @@ class SimulationManager:
             IsaacEvents.POST_PHYSICS_STEP,
         ]:
             if hasattr(callback, "__self__"):
-                on_event = lambda step_dt, context, obj=weakref.proxy(callback.__self__): (
-                    getattr(obj, callback.__name__)(step_dt, context) if cls._simulation_view_created else None
-                )
+
+                def on_event(step_dt: float, context: Any, obj: Any = weakref.proxy(callback.__self__)) -> Any:
+                    return getattr(obj, callback.__name__)(step_dt, context) if cls._simulation_view_created else None
+
             else:
-                on_event = lambda step_dt, context: callback(step_dt, context) if cls._simulation_view_created else None
+
+                def on_event(step_dt: float, context: Any) -> Any:
+                    return callback(step_dt, context) if cls._simulation_view_created else None
+
             cls._callbacks[uid] = cls._physics_sim_interface.subscribe_physics_on_step_events(
                 on_update=on_event,
                 pre_step=event in [SimulationEvent.PHYSICS_PRE_STEP, IsaacEvents.PRE_PHYSICS_STEP],
@@ -1159,7 +1266,7 @@ class SimulationManager:
         cls._simulation_manager_interface.enable_usd_notice_handler(enable)
 
     @classmethod
-    def enable_fabric_usd_notice_handler(cls, stage_id, enable: bool) -> None:
+    def enable_fabric_usd_notice_handler(cls, stage_id: int, enable: bool) -> None:
         """Enable or disable the fabric USD notice handler.
 
         Args:
@@ -1179,7 +1286,7 @@ class SimulationManager:
         cls._simulation_manager_interface.enable_fabric_usd_notice_handler(stage_id, enable)
 
     @classmethod
-    def is_fabric_usd_notice_handler_enabled(cls, stage_id):
+    def is_fabric_usd_notice_handler_enabled(cls, stage_id: int) -> bool:
         """Check if the fabric USD notice handler is enabled.
 
         Args:
@@ -1318,6 +1425,14 @@ class SimulationManager:
 
     @classmethod
     def _get_backend_utils(cls) -> str:
+        """Get the backend utilities module based on the current backend.
+
+        Returns:
+            The backend utilities module corresponding to the current backend (numpy, torch, or warp).
+
+        Raises:
+            Exception: If the backend is not supported.
+        """
         # defer imports to avoid an explicit dependency on the deprecated core API
         if SimulationManager._backend == "numpy":
             import isaacsim.core.utils.numpy as np_utils
@@ -1337,7 +1452,15 @@ class SimulationManager:
             )
 
     @classmethod
-    def _get_physics_scene_api(cls, physics_scene: str = None):
+    def _get_physics_scene_api(cls, physics_scene: str | None = None) -> Any:
+        """Get the PhysX scene API for the specified physics scene.
+
+        Args:
+            physics_scene: Path to the physics scene prim.
+
+        Returns:
+            The PhysX scene API for the specified physics scene, or None if not found.
+        """
         if physics_scene:
             if physics_scene in cls._physics_scenes:
                 return prim_utils.ensure_api(cls._physics_scenes[physics_scene].prim, PhysxSchema.PhysxSceneAPI)
@@ -1443,6 +1566,9 @@ class SimulationManager:
         .. deprecated:: 1.8.0
 
             |br| No replacement is provided, as the core experimental API relies solely on Warp.
+
+        Args:
+            val: Backend name.
         """
         SimulationManager._backend = val
 
@@ -1453,11 +1579,14 @@ class SimulationManager:
         .. deprecated:: 1.8.0
 
             |br| No replacement is provided, as the core experimental API relies solely on Warp.
+
+        Returns:
+            Backend name.
         """
         return SimulationManager._backend
 
     @classmethod
-    def get_physics_sim_view(cls):
+    def get_physics_sim_view(cls) -> Any:
         """Get the physics simulation view.
 
         .. deprecated:: 1.8.0
@@ -1470,7 +1599,7 @@ class SimulationManager:
         return cls._physics_sim_view
 
     @classmethod
-    def set_default_physics_scene(cls, physics_scene_prim_path: str):
+    def set_default_physics_scene(cls, physics_scene_prim_path: str) -> None:
         """Set the default physics scene.
 
         .. deprecated:: 1.8.0
@@ -1514,7 +1643,7 @@ class SimulationManager:
         return None
 
     @classmethod
-    def set_physics_sim_device(cls, val) -> None:
+    def set_physics_sim_device(cls, val: str) -> None:
         """Set the physics simulation device.
 
         .. deprecated:: 1.8.0
@@ -1533,6 +1662,9 @@ class SimulationManager:
         .. deprecated:: 1.8.0
 
             |br| Use the :py:meth:`~isaacsim.core.simulation_manager.SimulationManager.get_device` method instead.
+
+        Returns:
+            Physics simulation device as a string.
         """
         device = cls.get_device()
         if device.is_cuda:
@@ -1543,8 +1675,9 @@ class SimulationManager:
             raise Exception(f"Unknown device: {device}")
 
     @classmethod
+    @classmethod
     def set_physics_dt(cls, dt: float = 1.0 / 60.0, physics_scene: str = None) -> None:
-        """Sets the physics dt on the physics scene provided.
+        """Set the physics dt on the physics scene provided.
 
         .. deprecated:: 1.8.0
 
@@ -1553,8 +1686,8 @@ class SimulationManager:
             instead for each targeted Physics Scene.
 
         Args:
-            dt (float, optional): physics dt. Defaults to 1.0/60.0.
-            physics_scene (str, optional): physics scene prim path. Defaults to first physics scene found in the stage.
+            dt: Physics dt.
+            physics_scene: Physics scene prim path.
 
         Raises:
             RuntimeError: If the simulation is running/playing and dt is being set.
@@ -1570,9 +1703,8 @@ class SimulationManager:
             _physics_scene.set_dt(dt)
 
     @classmethod
-    def get_physics_dt(cls, physics_scene: str = None) -> float:
-        """
-         Returns the current physics dt.
+    def get_physics_dt(cls, physics_scene: str | None = None) -> float:
+        """Get the current physics dt.
 
         .. deprecated:: 1.8.0
 
@@ -1581,13 +1713,13 @@ class SimulationManager:
             instead for each targeted Physics Scene.
 
         Args:
-            physics_scene (str, optional): physics scene prim path.
+            physics_scene: Physics scene prim path.
 
         Raises:
             Exception: If the prim path registered in context doesn't correspond to a valid prim path currently.
 
         Returns:
-            float: physics dt.
+            Physics dt.
         """
         if not cls._physics_scenes:
             cls._create_physics_scene()
@@ -1601,8 +1733,8 @@ class SimulationManager:
         return _physics_scene.get_dt()
 
     @classmethod
-    def get_broadphase_type(cls, physics_scene: str = None) -> str:
-        """Gets current broadcast phase algorithm type.
+    def get_broadphase_type(cls, physics_scene: str | None = None) -> str:
+        """Get current broadphase algorithm type.
 
         .. deprecated:: 1.8.0
 
@@ -1610,13 +1742,13 @@ class SimulationManager:
             instead for each targeted Physics Scene.
 
         Args:
-            physics_scene (str, optional): physics scene prim path.
+            physics_scene: Physics scene prim path.
 
         Raises:
             Exception: If the prim path registered in context doesn't correspond to a valid prim path currently.
 
         Returns:
-            str: Broadcast phase algorithm used.
+            Broadphase algorithm used.
         """
         if not cls._physics_scenes:
             cls._create_physics_scene()
@@ -1624,8 +1756,8 @@ class SimulationManager:
         return physics_scene_api.GetBroadphaseTypeAttr().Get()
 
     @classmethod
-    def set_broadphase_type(cls, val: str, physics_scene: str = None) -> None:
-        """Broadcast phase algorithm used in simulation.
+    def set_broadphase_type(cls, val: str, physics_scene: str | None = None) -> None:
+        """Broadphase algorithm used in simulation.
 
         .. deprecated:: 1.8.0
 
@@ -1633,8 +1765,8 @@ class SimulationManager:
             instead for each targeted Physics Scene.
 
         Args:
-            val (str): type of broadcasting to be used, can be "MBP".
-            physics_scene (str, optional): physics scene prim path.
+            val: Broadphase algorithm type (e.g. "MBP", "GPU", "SAP").
+            physics_scene: Physics scene prim path.
 
         Raises:
             Exception: If the prim path registered in context doesn't correspond to a valid prim path currently.
@@ -1647,8 +1779,8 @@ class SimulationManager:
                 _physics_scene.set_broadphase_type(val)
 
     @classmethod
-    def enable_ccd(cls, flag: bool, physics_scene: str = None) -> None:
-        """Enables Continuous Collision Detection (CCD).
+    def enable_ccd(cls, flag: bool, physics_scene: str | None = None) -> None:
+        """Enable Continuous Collision Detection (CCD).
 
         .. deprecated:: 1.8.0
 
@@ -1656,8 +1788,8 @@ class SimulationManager:
             instead for each targeted Physics Scene.
 
         Args:
-            flag (bool): enables or disables CCD on the PhysicsScene.
-            physics_scene (str, optional): physics scene prim path.
+            flag: Enables or disables CCD on the PhysicsScene.
+            physics_scene: Physics scene prim path.
 
         Raises:
             Exception: If the prim path registered in context doesn't correspond to a valid prim path currently.
@@ -1673,8 +1805,8 @@ class SimulationManager:
                 _physics_scene.set_enabled_ccd(flag)
 
     @classmethod
-    def is_ccd_enabled(cls, physics_scene: str = None) -> bool:
-        """Checks if Continuous Collision Detection (CCD) is enabled.
+    def is_ccd_enabled(cls, physics_scene: str | None = None) -> bool:
+        """Check if Continuous Collision Detection (CCD) is enabled.
 
         .. deprecated:: 1.8.0
 
@@ -1682,13 +1814,13 @@ class SimulationManager:
             instead for each targeted Physics Scene.
 
         Args:
-            physics_scene (str, optional): physics scene prim path.
+            physics_scene: Physics scene prim path.
 
         Raises:
             Exception: If the prim path registered in context doesn't correspond to a valid prim path currently.
 
         Returns:
-            bool: True if CCD is enabled, otherwise False.
+            True if CCD is enabled, otherwise False.
         """
         if not cls._physics_scenes:
             cls._create_physics_scene()
@@ -1696,8 +1828,8 @@ class SimulationManager:
         return physx_scene_api.GetEnableCCDAttr().Get()
 
     @classmethod
-    def enable_gpu_dynamics(cls, flag: bool, physics_scene: str = None) -> None:
-        """Enables gpu dynamics pipeline, required for deformables for instance.
+    def enable_gpu_dynamics(cls, flag: bool, physics_scene: str | None = None) -> None:
+        """Enable gpu dynamics pipeline, required for deformables for instance.
 
         .. deprecated:: 1.8.0
 
@@ -1705,8 +1837,8 @@ class SimulationManager:
             instead for each targeted Physics Scene.
 
         Args:
-            flag (bool): enables or disables gpu dynamics on the PhysicsScene. If flag is true, CCD is disabled.
-            physics_scene (str, optional): physics scene prim path.
+            flag: Enables or disables gpu dynamics on the PhysicsScene. If flag is true, CCD is disabled.
+            physics_scene: Physics scene prim path.
 
         Raises:
             Exception: If the prim path registered in context doesn't correspond to a valid prim path currently.
@@ -1719,8 +1851,8 @@ class SimulationManager:
                 _physics_scene.set_enabled_gpu_dynamics(flag)
 
     @classmethod
-    def is_gpu_dynamics_enabled(cls, physics_scene: str = None) -> bool:
-        """Checks if Gpu Dynamics is enabled.
+    def is_gpu_dynamics_enabled(cls, physics_scene: str | None = None) -> bool:
+        """Check if Gpu Dynamics is enabled.
 
         .. deprecated:: 1.8.0
 
@@ -1728,13 +1860,13 @@ class SimulationManager:
             instead for each targeted Physics Scene.
 
         Args:
-            physics_scene (str, optional): physics scene prim path.
+            physics_scene: Physics scene prim path.
 
         Raises:
             Exception: If the prim path registered in context doesn't correspond to a valid prim path currently.
 
         Returns:
-            bool: True if Gpu Dynamics is enabled, otherwise False.
+            True if Gpu Dynamics is enabled, otherwise False.
         """
         if not cls._physics_scenes:
             cls._create_physics_scene()
@@ -1742,8 +1874,8 @@ class SimulationManager:
         return physx_scene_api.GetEnableGPUDynamicsAttr().Get()
 
     @classmethod
-    def set_solver_type(cls, solver_type: str, physics_scene: str = None) -> None:
-        """solver used for simulation.
+    def set_solver_type(cls, solver_type: str, physics_scene: str | None = None) -> None:
+        """Set the solver type used for simulation.
 
         .. deprecated:: 1.8.0
 
@@ -1751,8 +1883,8 @@ class SimulationManager:
             instead for each targeted Physics Scene.
 
         Args:
-            solver_type (str): can be "TGS" or "PGS".
-            physics_scene (str, optional): physics scene prim path.
+            solver_type: Can be "TGS" or "PGS".
+            physics_scene: Physics scene prim path.
 
         Raises:
             Exception: If the prim path registered in context doesn't correspond to a valid prim path currently.
@@ -1765,8 +1897,8 @@ class SimulationManager:
                 _physics_scene.set_solver_type(solver_type)
 
     @classmethod
-    def get_solver_type(cls, physics_scene: str = None) -> str:
-        """Gets current solver type.
+    def get_solver_type(cls, physics_scene: str | None = None) -> str:
+        """Get current solver type.
 
         .. deprecated:: 1.8.0
 
@@ -1774,13 +1906,13 @@ class SimulationManager:
             instead for each targeted Physics Scene.
 
         Args:
-            physics_scene (str, optional): physics scene prim path.
+            physics_scene: Physics scene prim path.
 
         Raises:
             Exception: If the prim path registered in context doesn't correspond to a valid prim path currently.
 
         Returns:
-            str: solver used for simulation.
+            Solver used for simulation.
         """
         if not cls._physics_scenes:
             cls._create_physics_scene()
@@ -1788,8 +1920,8 @@ class SimulationManager:
         return physx_scene_api.GetSolverTypeAttr().Get()
 
     @classmethod
-    def enable_stablization(cls, flag: bool, physics_scene: str = None) -> None:
-        """Enables additional stabilization pass in the solver.
+    def enable_stablization(cls, flag: bool, physics_scene: str | None = None) -> None:
+        """Enable additional stabilization pass in the solver.
 
         .. deprecated:: 1.8.0
 
@@ -1797,8 +1929,8 @@ class SimulationManager:
             instead for each targeted Physics Scene.
 
         Args:
-            flag (bool): enables or disables stabilization on the PhysicsScene
-            physics_scene (str, optional): physics scene prim path.
+            flag: Enables or disables stabilization on the PhysicsScene
+            physics_scene: Physics scene prim path.
 
         Raises:
             Exception: If the prim path registered in context doesn't correspond to a valid prim path currently.
@@ -1812,7 +1944,7 @@ class SimulationManager:
 
     @classmethod
     def is_stablization_enabled(cls, physics_scene: str = None) -> bool:
-        """Checks if stabilization is enabled.
+        """Check if stabilization is enabled.
 
         .. deprecated:: 1.8.0
 
@@ -1820,13 +1952,13 @@ class SimulationManager:
             instead for each targeted Physics Scene.
 
         Args:
-            physics_scene (str, optional): physics scene prim path.
+            physics_scene: Physics scene prim path.
 
         Raises:
             Exception: If the prim path registered in context doesn't correspond to a valid prim path currently.
 
         Returns:
-            bool: True if stabilization is enabled, otherwise False.
+            True if stabilization is enabled, otherwise False.
         """
         if not cls._physics_scenes:
             cls._create_physics_scene()

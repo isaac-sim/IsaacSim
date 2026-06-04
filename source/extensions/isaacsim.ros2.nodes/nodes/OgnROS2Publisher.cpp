@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,9 +35,10 @@ public:
         AttributeObj attrMessagePackageObj = nodeObj.iNode->getAttribute(nodeObj, "inputs:messagePackage");
         AttributeObj attrMessageSubfolderObj = nodeObj.iNode->getAttribute(nodeObj, "inputs:messageSubfolder");
         AttributeObj attrMessageNameObj = nodeObj.iNode->getAttribute(nodeObj, "inputs:messageName");
-        attrMessagePackageObj.iAttribute->registerValueChangedCallback(attrMessagePackageObj, onMessageChanged, true);
-        attrMessageSubfolderObj.iAttribute->registerValueChangedCallback(attrMessageSubfolderObj, onMessageChanged, true);
-        attrMessageNameObj.iAttribute->registerValueChangedCallback(attrMessageNameObj, onMessageChanged, true);
+        attrMessagePackageObj.iAttribute->registerValueChangedCallback(attrMessagePackageObj, _onMessageChanged, true);
+        attrMessageSubfolderObj.iAttribute->registerValueChangedCallback(
+            attrMessageSubfolderObj, _onMessageChanged, true);
+        attrMessageNameObj.iAttribute->registerValueChangedCallback(attrMessageNameObj, _onMessageChanged, true);
     }
 
     static bool compute(OgnROS2PublisherDatabase& db)
@@ -86,7 +87,7 @@ public:
         // Update message and node attributes
         if (state.m_messageUpdateNeeded || !state.m_message)
         {
-            bool status = createMessageAndAttributes(
+            bool status = _createMessageAndAttributes(
                 nodeObj, state.m_messagePackage, state.m_messageSubfolder, state.m_messageName);
             if (!status)
             {
@@ -168,7 +169,7 @@ public:
         state.reset();
     }
 
-    virtual void reset()
+    void reset() override
     {
         m_publisherUpdateNeeded = false;
         m_messageUpdateNeeded = false;
@@ -208,7 +209,7 @@ public:
                 if (messageField.isArray)
                 {
                     auto inputValue =
-                        getAttributeReadableArrayData<bool*>(db.abi_node(), "inputs:" + messageField.name, arraySize);
+                        _getAttributeReadableArrayData<bool*>(db.abi_node(), "inputs:" + messageField.name, arraySize);
                     auto data = std::static_pointer_cast<std::vector<bool>>(messageData[i]);
                     data->clear();
                     data->resize(arraySize);
@@ -220,7 +221,7 @@ public:
                 }
                 else
                 {
-                    auto inputValue = getAttributeReadableData<bool>(db.abi_node(), "inputs:" + messageField.name);
+                    auto inputValue = _getAttributeReadableData<bool>(db.abi_node(), "inputs:" + messageField.name);
                     *std::static_pointer_cast<bool>(messageData[i]) = *inputValue;
                 }
                 break;
@@ -229,8 +230,8 @@ public:
             {
                 if (messageField.isArray)
                 {
-                    auto inputValue =
-                        getAttributeReadableArrayData<uint8_t*>(db.abi_node(), "inputs:" + messageField.name, arraySize);
+                    auto inputValue = _getAttributeReadableArrayData<uint8_t*>(
+                        db.abi_node(), "inputs:" + messageField.name, arraySize);
                     auto data = std::static_pointer_cast<std::vector<uint8_t>>(messageData[i]);
                     data->clear();
                     data->resize(arraySize);
@@ -238,7 +239,7 @@ public:
                 }
                 else
                 {
-                    auto inputValue = getAttributeReadableData<uint8_t>(db.abi_node(), "inputs:" + messageField.name);
+                    auto inputValue = _getAttributeReadableData<uint8_t>(db.abi_node(), "inputs:" + messageField.name);
                     *std::static_pointer_cast<uint8_t>(messageData[i]) = *inputValue;
                 }
                 break;
@@ -247,8 +248,8 @@ public:
             {
                 if (messageField.isArray)
                 {
-                    auto inputValue =
-                        getAttributeReadableArrayData<int32_t*>(db.abi_node(), "inputs:" + messageField.name, arraySize);
+                    auto inputValue = _getAttributeReadableArrayData<int32_t*>(
+                        db.abi_node(), "inputs:" + messageField.name, arraySize);
                     auto data = std::static_pointer_cast<std::vector<int32_t>>(messageData[i]);
                     data->clear();
                     data->resize(arraySize);
@@ -256,7 +257,7 @@ public:
                 }
                 else
                 {
-                    auto inputValue = getAttributeReadableData<int32_t>(db.abi_node(), "inputs:" + messageField.name);
+                    auto inputValue = _getAttributeReadableData<int32_t>(db.abi_node(), "inputs:" + messageField.name);
                     *std::static_pointer_cast<int32_t>(messageData[i]) = *inputValue;
                 }
                 break;
@@ -265,7 +266,7 @@ public:
             {
                 if (messageField.isArray)
                 {
-                    auto inputValue = getAttributeReadableArrayData<uint32_t*>(
+                    auto inputValue = _getAttributeReadableArrayData<uint32_t*>(
                         db.abi_node(), "inputs:" + messageField.name, arraySize);
                     auto data = std::static_pointer_cast<std::vector<uint32_t>>(messageData[i]);
                     data->clear();
@@ -274,7 +275,7 @@ public:
                 }
                 else
                 {
-                    auto inputValue = getAttributeReadableData<uint32_t>(db.abi_node(), "inputs:" + messageField.name);
+                    auto inputValue = _getAttributeReadableData<uint32_t>(db.abi_node(), "inputs:" + messageField.name);
                     *std::static_pointer_cast<uint32_t>(messageData[i]) = *inputValue;
                 }
                 break;
@@ -283,8 +284,8 @@ public:
             {
                 if (messageField.isArray)
                 {
-                    auto inputValue =
-                        getAttributeReadableArrayData<int64_t*>(db.abi_node(), "inputs:" + messageField.name, arraySize);
+                    auto inputValue = _getAttributeReadableArrayData<int64_t*>(
+                        db.abi_node(), "inputs:" + messageField.name, arraySize);
                     auto data = std::static_pointer_cast<std::vector<int64_t>>(messageData[i]);
                     data->clear();
                     data->resize(arraySize);
@@ -292,7 +293,7 @@ public:
                 }
                 else
                 {
-                    auto inputValue = getAttributeReadableData<int64_t>(db.abi_node(), "inputs:" + messageField.name);
+                    auto inputValue = _getAttributeReadableData<int64_t>(db.abi_node(), "inputs:" + messageField.name);
                     *std::static_pointer_cast<int64_t>(messageData[i]) = *inputValue;
                 }
                 break;
@@ -301,7 +302,7 @@ public:
             {
                 if (messageField.isArray)
                 {
-                    auto inputValue = getAttributeReadableArrayData<uint64_t*>(
+                    auto inputValue = _getAttributeReadableArrayData<uint64_t*>(
                         db.abi_node(), "inputs:" + messageField.name, arraySize);
                     auto data = std::static_pointer_cast<std::vector<uint64_t>>(messageData[i]);
                     data->clear();
@@ -310,7 +311,7 @@ public:
                 }
                 else
                 {
-                    auto inputValue = getAttributeReadableData<uint64_t>(db.abi_node(), "inputs:" + messageField.name);
+                    auto inputValue = _getAttributeReadableData<uint64_t>(db.abi_node(), "inputs:" + messageField.name);
                     *std::static_pointer_cast<uint64_t>(messageData[i]) = *inputValue;
                 }
                 break;
@@ -325,7 +326,7 @@ public:
                 if (messageField.isArray)
                 {
                     auto inputValue =
-                        getAttributeReadableArrayData<float*>(db.abi_node(), "inputs:" + messageField.name, arraySize);
+                        _getAttributeReadableArrayData<float*>(db.abi_node(), "inputs:" + messageField.name, arraySize);
                     auto data = std::static_pointer_cast<std::vector<float>>(messageData[i]);
                     data->clear();
                     data->resize(arraySize);
@@ -333,7 +334,7 @@ public:
                 }
                 else
                 {
-                    auto inputValue = getAttributeReadableData<float>(db.abi_node(), "inputs:" + messageField.name);
+                    auto inputValue = _getAttributeReadableData<float>(db.abi_node(), "inputs:" + messageField.name);
                     *std::static_pointer_cast<float>(messageData[i]) = *inputValue;
                 }
                 break;
@@ -343,7 +344,7 @@ public:
                 if (messageField.isArray)
                 {
                     auto inputValue =
-                        getAttributeReadableArrayData<double*>(db.abi_node(), "inputs:" + messageField.name, arraySize);
+                        _getAttributeReadableArrayData<double*>(db.abi_node(), "inputs:" + messageField.name, arraySize);
                     auto data = std::static_pointer_cast<std::vector<double>>(messageData[i]);
                     data->clear();
                     data->resize(arraySize);
@@ -351,7 +352,7 @@ public:
                 }
                 else
                 {
-                    auto inputValue = getAttributeReadableData<double>(db.abi_node(), "inputs:" + messageField.name);
+                    auto inputValue = _getAttributeReadableData<double>(db.abi_node(), "inputs:" + messageField.name);
                     *std::static_pointer_cast<double>(messageData[i]) = *inputValue;
                 }
                 break;
@@ -360,7 +361,7 @@ public:
             {
                 if (messageField.isArray)
                 {
-                    auto inputValue = getAttributeReadableArrayData<NameToken*>(
+                    auto inputValue = _getAttributeReadableArrayData<NameToken*>(
                         db.abi_node(), "inputs:" + messageField.name, arraySize);
                     auto data = std::static_pointer_cast<std::vector<std::string>>(messageData[i]);
                     data->clear();
@@ -372,7 +373,7 @@ public:
                 }
                 else
                 {
-                    auto inputValue = getAttributeReadableData<NameToken>(db.abi_node(), "inputs:" + messageField.name);
+                    auto inputValue = _getAttributeReadableData<NameToken>(db.abi_node(), "inputs:" + messageField.name);
                     *std::static_pointer_cast<std::string>(messageData[i]) = db.tokenToString(*inputValue);
                 }
                 break;
@@ -381,7 +382,7 @@ public:
             {
                 if (messageField.isArray)
                 {
-                    auto inputValue = getAttributeReadableArrayData<NameToken*>(
+                    auto inputValue = _getAttributeReadableArrayData<NameToken*>(
                         db.abi_node(), "inputs:" + messageField.name, arraySize);
                     auto data = std::static_pointer_cast<std::vector<nlohmann::json>>(messageData[i]);
                     data->clear();
@@ -422,7 +423,7 @@ private:
 
     // OGN utils
 
-    static AttributeObj getAttributeObj(const NodeObj& nodeObj, const std::string& attrName)
+    static AttributeObj _getAttributeObj(const NodeObj& nodeObj, const std::string& attrName)
     {
         AttributeObj attrObj = nodeObj.iNode->getAttribute(nodeObj, attrName.c_str());
         CARB_ASSERT(attrObj.isValid());
@@ -430,7 +431,7 @@ private:
     }
 
     template <typename T>
-    static const T* getAttributeReadableData(const NodeObj& nodeObj, const std::string& attrName)
+    static const T* _getAttributeReadableData(const NodeObj& nodeObj, const std::string& attrName)
     {
         GraphObj graphObj = nodeObj.iNode->getGraph(nodeObj);
         GraphContextObj context = graphObj.iGraph->getDefaultGraphContext(graphObj);
@@ -441,7 +442,7 @@ private:
     }
 
     template <typename T>
-    static T const* getAttributeReadableArrayData(const NodeObj& nodeObj, const std::string& attrName, size_t& countOut)
+    static T const* _getAttributeReadableArrayData(const NodeObj& nodeObj, const std::string& attrName, size_t& countOut)
     {
         GraphObj graphObj = nodeObj.iNode->getGraph(nodeObj);
         GraphContextObj context = graphObj.iGraph->getDefaultGraphContext(graphObj);
@@ -454,7 +455,7 @@ private:
         return value;
     }
 
-    static const char* getTokenText(AttributeObj const& attrObj)
+    static const char* _getTokenText(AttributeObj const& attrObj)
     {
         NodeObj nodeObj = attrObj.iAttribute->getNode(attrObj);
         GraphObj graphObj = nodeObj.iNode->getGraph(nodeObj);
@@ -466,25 +467,25 @@ private:
         return token->getText();
     }
 
-    static const char* getTokenText(const NodeObj& nodeObj, const std::string& attrName)
+    static const char* _getTokenText(const NodeObj& nodeObj, const std::string& attrName)
     {
-        return getTokenText(getAttributeObj(nodeObj, attrName));
+        return _getTokenText(_getAttributeObj(nodeObj, attrName));
     }
 
-    static const char* getTokenText(const NodeObj& nodeObj, const omni::graph::core::NameToken& token)
+    static const char* _getTokenText(const NodeObj& nodeObj, const omni::graph::core::NameToken& token)
     {
         return token.getText();
     }
 
-    static bool setAllowedTokens(const NodeObj& nodeObj,
-                                 const std::string& attrName,
-                                 const std::vector<std::string>& allowedTokens)
+    static bool _setAllowedTokens(const NodeObj& nodeObj,
+                                  const std::string& attrName,
+                                  const std::vector<std::string>& allowedTokens)
     {
         // OGN
         std::stringstream stream;
         copy(allowedTokens.begin(), allowedTokens.end(), std::ostream_iterator<std::string>(stream, ","));
         std::string ognAllowedTokens = stream.str();
-        AttributeObj attrObj = getAttributeObj(nodeObj, attrName);
+        AttributeObj attrObj = _getAttributeObj(nodeObj, attrName);
         attrObj.iAttribute->setMetadata(attrObj, kOgnMetadataAllowedTokens, ognAllowedTokens.c_str());
         // USD
         pxr::UsdStagePtr stage = omni::usd::UsdContext::getContext()->getStage();
@@ -502,7 +503,7 @@ private:
         return true;
     }
 
-    static bool removeDynamicAttributes(const NodeObj& nodeObj, AttributePortType portType)
+    static bool _removeDynamicAttributes(const NodeObj& nodeObj, AttributePortType portType)
     {
         // Get node attributes
         auto attrCount = nodeObj.iNode->getAttributeCount(nodeObj);
@@ -534,10 +535,10 @@ private:
 
     // Node
 
-    static bool createMessageAndAttributes(const NodeObj& nodeObj,
-                                           const std::string& messagePackage,
-                                           const std::string& messageSubfolder,
-                                           const std::string& messageName)
+    static bool _createMessageAndAttributes(const NodeObj& nodeObj,
+                                            const std::string& messagePackage,
+                                            const std::string& messageSubfolder,
+                                            const std::string& messageName)
     {
         auto db = OgnROS2PublisherDatabase(nodeObj);
         auto& state = db.perInstanceState<OgnROS2Publisher>();
@@ -559,14 +560,14 @@ private:
             return false;
         }
         // Check if existing dynamic attributes match the message
-        if (checkForMatchingAttributes(nodeObj, messageFields))
+        if (_checkForMatchingAttributes(nodeObj, messageFields))
         {
             CARB_LOG_INFO("OgnROS2Publisher: reuse of existing dynamic attributes: %s", messageType.c_str());
             return true;
         }
         // Remove dynamic attributes
         CARB_LOG_INFO("OgnROS2Publisher: remove dynamic attributes: %s", messageType.c_str());
-        status = removeDynamicAttributes(nodeObj, AttributePortType::kAttributePortType_Input);
+        status = _removeDynamicAttributes(nodeObj, AttributePortType::kAttributePortType_Input);
         if (!status)
         {
             db.logWarning("Unable to remove existing attributes from the node");
@@ -588,14 +589,14 @@ private:
             {
                 db.logWarning(
                     ("Unable to create attribute " + messageField.name + " of type " + messageField.ognType).c_str());
-                removeDynamicAttributes(nodeObj, AttributePortType::kAttributePortType_Input);
+                _removeDynamicAttributes(nodeObj, AttributePortType::kAttributePortType_Input);
                 return false;
             }
         }
         return status;
     }
 
-    static bool checkForMatchingAttributes(const NodeObj& nodeObj, std::vector<DynamicMessageField> messageFields)
+    static bool _checkForMatchingAttributes(const NodeObj& nodeObj, std::vector<DynamicMessageField> messageFields)
     {
         auto db = OgnROS2PublisherDatabase(nodeObj);
         auto dynamicInputs = db.getDynamicInputs();
@@ -622,7 +623,7 @@ private:
 
     // Node events
 
-    static void onMessageChanged(AttributeObj const& attrObj, void const* userData)
+    static void _onMessageChanged(AttributeObj const& attrObj, void const* userData)
     {
         // Get message package, subfolder and name
         NodeObj nodeObj = attrObj.iAttribute->getNode(attrObj);
@@ -631,7 +632,7 @@ private:
         std::string messageSubfolder = std::string(db.inputs.messageSubfolder());
         std::string messageName = std::string(db.inputs.messageName());
         // Build message attributes
-        createMessageAndAttributes(nodeObj, messagePackage, messageSubfolder, messageName);
+        _createMessageAndAttributes(nodeObj, messagePackage, messageSubfolder, messageName);
     }
 };
 

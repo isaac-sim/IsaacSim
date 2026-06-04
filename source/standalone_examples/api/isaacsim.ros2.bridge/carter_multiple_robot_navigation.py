@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,10 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Demonstrate multi-robot navigation with Carter robots using ROS 2."""
+
 import argparse
 import sys
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--test", default=False, action="store_true", help="Run in test mode")
 parser.add_argument(
     "--environment",
     type=str,
@@ -33,16 +37,17 @@ if args.environment == "hospital":
 elif args.environment == "office":
     ENV_USD_PATH = OFFICE_USD_PATH
 
-import carb
 from isaacsim import SimulationApp
 
 CONFIG = {"renderer": "RealTimePathTracing", "headless": False}
 
 # Example ROS2 bridge sample demonstrating the manual loading of Multiple Robot Navigation scenario
 simulation_app = SimulationApp(CONFIG)
+import carb
 import omni
-from isaacsim.core.api import SimulationContext
-from isaacsim.core.utils.extensions import enable_extension
+from isaacsim.core.experimental.utils.app import enable_extension
+from isaacsim.core.experimental.utils.stage import is_stage_loading
+from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.storage.native import get_assets_root_path
 
 # enable ROS2 bridge extension
@@ -65,24 +70,30 @@ simulation_app.update()
 simulation_app.update()
 
 print("Loading stage...")
-from isaacsim.core.utils.stage import is_stage_loading
+from isaacsim.core.experimental.utils.stage import is_stage_loading
 
 while is_stage_loading():
     simulation_app.update()
 print("Loading Complete")
 
-simulation_context = SimulationContext(stage_units_in_meters=1.0)
+SimulationManager.setup_simulation(dt=1.0 / 60.0, device="cpu")
 
 simulation_app.update()
 
-simulation_context.play()
+import isaacsim.core.experimental.utils.app as app_utils
+
+app_utils.play()
 
 simulation_app.update()
 
+frame_count = 0
 while simulation_app.is_running():
 
     # runs with a realtime clock
     simulation_app.update()
+    frame_count += 1
+    if args.test and frame_count >= 10:
+        break
 
-simulation_context.stop()
+app_utils.stop()
 simulation_app.close()

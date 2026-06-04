@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+import tempfile
 
 import carb.settings
 import omni.kit
@@ -47,7 +49,6 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         carb.settings.get_settings().set("rtx/post/dlss/execMode", self.original_dlss_exec_mode)
 
     async def test_sdg_snippet_custom_fps_writer_annotator(self):
-        import asyncio
         import os
 
         import carb.settings
@@ -64,6 +65,9 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         STAGE_FPS = 100.0
         SENSOR_FPS = 10.0
         SENSOR_DT = 1.0 / SENSOR_FPS
+
+        out_dir_rgb = tempfile.mkdtemp(prefix="test_writer_fps_rgb_")
+        print(f"Output directory: {out_dir_rgb}")
 
         async def run_custom_fps_example_async(duration_seconds):
             # Create a new stage
@@ -93,7 +97,6 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
             rp.hydra_texture.set_updates_enabled(False)
 
             # Create the backend for the writer
-            out_dir_rgb = os.path.join(os.getcwd(), "_out_writer_fps_rgb")
             print(f"Writer data will be written to: {out_dir_rgb}")
             backend = rep.backends.get("DiskBackend")
             backend.initialize(output_dir=out_dir_rgb)
@@ -171,12 +174,10 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         await run_custom_fps_example_async(duration_seconds=duration)
 
         # Validate the output directory contents
-        out_dir = os.path.join(os.getcwd(), "_out_writer_fps_rgb")
-        folder_contents_success = validate_folder_contents(path=out_dir, expected_counts={"png": NUM_CAPTURES})
-        self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {out_dir}")
+        folder_contents_success = validate_folder_contents(path=out_dir_rgb, expected_counts={"png": NUM_CAPTURES})
+        self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {out_dir_rgb}")
 
     async def test_sdg_snippet_subscribers_and_events(self):
-        import asyncio
         import time
 
         import carb.eventdispatcher
@@ -242,12 +243,14 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
             timeline = omni.timeline.get_timeline_interface()
 
             if USE_CUSTOM_TIMELINE_SETTINGS:
-                # Ideal to make simulation and animation synchronized.
+                # When True, the timeline forces `dt = 1 / timeCodesPerSecond` per accepted tick
+                # (ignoring the run loop's measured wall-clock dt). On Play it also overrides
+                # `/app/runLoops/main/rateLimitFrequency` to a value computed from
+                # `targetFramerate` and `timeCodesPerSecond`.
                 # Default: True in editor, False in standalone.
                 # NOTE:
-                # - It may limit the frame rate (see 'timeline.set_play_every_frame') such that the elapsed wall clock time matches the frame's delta time.
-                # - If the app runs slower than this, animation playback may slow down (see 'CompensatePlayDelayInSecs').
-                # - For performance benchmarks, turn this off or set a very high target in `timeline.set_target_framerate`
+                # - If the app cannot sustain that rate, animation playback may slow down (see 'CompensatePlayDelayInSecs').
+                # - For performance benchmarks, turn this off so the timeline advances by the loop's measured dt.
                 carb.settings.get_settings().set("/app/player/useFixedTimeStepping", USE_FIXED_TIME_STEPPING)
 
                 # This compensates for frames that require more computation time than the frame's fixed delta time, by temporarily speeding up playback.
@@ -305,7 +308,10 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
 
                 # FPS limit of the main run loop (UI, rendering, etc.)
                 # Default: 120
-                # NOTE: disabled if `/app/player/useFixedTimeStepping` is False
+                # NOTE: This caps the loop's tick rate (sleeps at end of frame); it does NOT set the
+                # timeline's per-tick dt. On Play with `/app/player/useFixedTimeStepping=True`,
+                # the timeline computes its own `rateLimitFrequency` from `targetFramerate` and
+                # `timeCodesPerSecond` and overrides this value at that moment.
                 carb.settings.get_settings().set("/app/runLoops/main/rateLimitFrequency", int(APP_FPS))
 
             # Simulations can be selectively disabled (or toggled at specific times)
@@ -321,7 +327,7 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
             print(f"    - Play delay compensation: {PLAY_DELAY_COMPENSATION}s  (/app/player/CompensatePlayDelayInSecs)")
             print(f"  Physics:")
             print(f"    - PhysX FPS: {PHYSX_FPS}  (physxScene.timeStepsPerSecond)")
-            print(f"    - Min simulation FPS: {MIN_SIM_FPS}  (/persistent/simulation/minFrameRate)")
+            print(f"    - PhysX min frame-rate clamp: {MIN_SIM_FPS}  (/persistent/simulation/minFrameRate)")
             print(f"    - Simulations enabled: {not DISABLE_SIMULATIONS}  (/app/player/playSimulations)")
             print(f"  Rendering:")
             print(

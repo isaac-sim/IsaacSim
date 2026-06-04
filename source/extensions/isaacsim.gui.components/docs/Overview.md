@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 isaacsim.gui.components provides a comprehensive collection of UI builder functions and wrapper classes for creating standardized Isaac Sim user interfaces. The extension offers both functional builder APIs and object-oriented wrapper classes to construct common UI elements with consistent styling and behavior across Isaac Sim extensions.
@@ -40,30 +36,30 @@ dropdown = DropDown(label="Selection", populate_fn=get_options, on_selection_fn=
 
 The extension includes specialized builders for complex UI patterns that combine multiple elements:
 
-- [combo_cb_str_builder](isaacsim.gui.components/isaacsim.gui.components.combo_cb_str_builder): Checkbox paired with string field
-- [combo_floatfield_slider_builder](isaacsim.gui.components/isaacsim.gui.components.combo_floatfield_slider_builder): Float field with synchronized slider
-- [combo_cb_plot_builder](isaacsim.gui.components/isaacsim.gui.components.combo_cb_plot_builder): Checkbox-controlled plot widget
-- [combo_cb_xyz_plot_builder](isaacsim.gui.components/isaacsim.gui.components.combo_cb_xyz_plot_builder): Multi-axis plotting with toggle controls
+- {func}`combo_cb_str_builder <isaacsim.gui.components.combo_cb_str_builder>`: Checkbox paired with string field
+- {func}`combo_floatfield_slider_builder <isaacsim.gui.components.combo_floatfield_slider_builder>`: Float field with synchronized slider
+- {func}`combo_cb_plot_builder <isaacsim.gui.components.combo_cb_plot_builder>`: Checkbox-controlled plot widget
+- {func}`combo_cb_xyz_plot_builder <isaacsim.gui.components.combo_cb_xyz_plot_builder>`: Multi-axis plotting with toggle controls
 
 ## Key Components
 
 ### Data Visualization
 
-**[XYPlot](isaacsim.gui.components/isaacsim.gui.components.XYPlot)** provides interactive plotting capabilities with multiple dataset support, automatic axis scaling, and legends. The widget supports hover tooltips showing coordinates and handles data interpolation for smooth visualization.
+**{class}`XYPlot <isaacsim.gui.components.XYPlot>`** provides interactive plotting capabilities with multiple dataset support, automatic axis scaling, and legends. The widget supports hover tooltips showing coordinates and handles data interpolation for smooth visualization.
 
-**[plot_builder](isaacsim.gui.components/isaacsim.gui.components.plot_builder)** functions create various plot types including single plots, XYZ coordinate plots, and checkbox-controlled dynamic plots for real-time data display.
+**{func}`plot_builder <isaacsim.gui.components.plot_builder>`** functions create various plot types including single plots, XYZ coordinate plots, and checkbox-controlled dynamic plots for real-time data display.
 
 ### Input Controls
 
-**[StateButton](isaacsim.gui.components/isaacsim.gui.components.StateButton)** implements two-state toggle behavior with different text displays and callbacks for each state. It supports physics callback functions that execute continuously while in the active state.
+**{class}`StateButton <isaacsim.gui.components.StateButton>`** implements two-state toggle behavior with different text displays and callbacks for each state. It supports physics callback functions that execute continuously while in the active state.
 
-**[DropDown](isaacsim.gui.components/isaacsim.gui.components.DropDown)** offers dynamic population through user-defined functions and includes specialized methods for finding USD objects by type, making it particularly useful for scene object selection.
+**{class}`DropDown <isaacsim.gui.components.DropDown>`** offers dynamic population through user-defined functions and includes specialized methods for finding USD objects by type, making it particularly useful for scene object selection.
 
 ### Layout Elements
 
-**[CollapsableFrame](isaacsim.gui.components/isaacsim.gui.components.CollapsableFrame)** and **[ScrollingFrame](isaacsim.gui.components/isaacsim.gui.components.ScrollingFrame)** provide structured content organization with expand/collapse functionality and scrollable content areas respectively.
+**{class}`CollapsableFrame <isaacsim.gui.components.CollapsableFrame>`** and **{class}`ScrollingFrame <isaacsim.gui.components.ScrollingFrame>`** provide structured content organization with expand/collapse functionality and scrollable content areas respectively.
 
-**[setup_ui_headers](isaacsim.gui.components/isaacsim.gui.components.setup_ui_headers)** creates standardized extension headers with title, documentation links, overview text, and utility buttons for accessing source code and folders.
+**{func}`setup_ui_headers <isaacsim.gui.components.setup_ui_headers>`** creates standardized extension headers with title, documentation links, overview text, and utility buttons for accessing source code and folders.
 
 ### File System Integration
 
@@ -71,4 +67,4 @@ String field builders and wrappers include folder picker integration through `**
 
 ## Integration
 
-The extension uses `**omni.kit.menu.utils**` for creating context menus and accessing standard menu functionality within UI components. Physics integration occurs through `**omni.physics**` dependencies, enabling [StateButton](isaacsim.gui.components/isaacsim.gui.components.StateButton) widgets to register physics step callbacks for continuous execution during active states.
+The extension uses `**omni.kit.menu.utils**` for creating context menus and accessing standard menu functionality within UI components. Physics integration occurs through `**omni.physics**` dependencies, enabling {class}`StateButton <isaacsim.gui.components.StateButton>` widgets to register physics step callbacks for continuous execution during active states.

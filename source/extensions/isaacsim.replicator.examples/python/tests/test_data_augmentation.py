@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import shutil
+
+import tempfile
 
 import carb.settings
 import omni.kit
@@ -24,7 +25,12 @@ from isaacsim.test.utils.image_comparison import compare_images_in_directories
 
 class TestDataAugmentation(omni.kit.test.AsyncTestCase):
 
-    MEAN_DIFF_TOLERANCE = 25
+    # Per-channel mean-diff tolerances. Bit-stable augmentations (annotator RGB channel
+    # swap) stay close to the golden, while noisy augmentations (gaussian noise on RGB
+    # or depth, amplified for depth by the min/max normalization in convert_depth_to_uint8)
+    # accumulate larger per-pixel deltas.
+    NO_NOISE_MEAN_DIFF_TOLERANCE = 5
+    NOISE_MEAN_DIFF_TOLERANCE = 30
 
     async def setUp(self):
         await omni.kit.app.get_app().next_update_async()
@@ -48,7 +54,7 @@ class TestDataAugmentation(omni.kit.test.AsyncTestCase):
         import numpy as np
         import omni.replicator.core as rep
         import warp as wp
-        from isaacsim.core.utils.stage import open_stage
+        from isaacsim.core.experimental.utils.stage import open_stage
         from isaacsim.storage.native import get_assets_root_path_async
         from omni.replicator.core.functional import write_image
 
@@ -57,6 +63,9 @@ class TestDataAugmentation(omni.kit.test.AsyncTestCase):
         USE_WARP = False
         ENV_URL = "/Isaac/Environments/Grid/default_environment.usd"
         SEED = 42
+
+        annot_test_root = tempfile.mkdtemp(prefix="test_augm_annot_")
+        print(f"Test output root: {annot_test_root}")
 
         # Enable warp scripts
         carb.settings.get_settings().set_bool("/app/omni.graph.scriptnode/opt_in", True)
@@ -162,23 +171,24 @@ class TestDataAugmentation(omni.kit.test.AsyncTestCase):
             depth_annot_1.attach(rp)
             depth_annot_2.attach(rp)
 
-            # Create a red cube and randomize its rotation every capture frame using a replicator randomizer graph
+            # Create a red cube and randomize its rotation on a custom event sent before each capture step
             red_cube = rep.functional.create.cube(position=(0, 0, 0.71))
             rep.functional.create.material(mdl="OmniPBR.mdl", bind_prims=[red_cube], diffuse_color_constant=(1, 0, 0))
 
-            with rep.trigger.on_frame():
+            with rep.trigger.on_custom_event(event_name="randomize_red_cube"):
                 red_cube_node = rep.get.prim_at_path(red_cube.GetPath())
                 with red_cube_node:
                     rep.randomizer.rotation()
 
             # Output directory
-            out_dir = os.path.join(os.getcwd(), f"_out_augm_annot_{'warp' if use_warp else 'numpy'}")
+            out_dir = os.path.join(annot_test_root, f"{'warp' if use_warp else 'numpy'}")
             print(f"Writing data to: {out_dir}")
             os.makedirs(out_dir, exist_ok=True)
 
             capture_start = time.time()
             for frame_idx in range(num_frames):
                 print(f"  Capturing frame {frame_idx + 1}/{num_frames}")
+                rep.utils.send_og_event(event_name="randomize_red_cube")
                 await rep.orchestrator.step_async(rt_subframes=32)
 
                 # Get the data from the annotators
@@ -225,10 +235,10 @@ class TestDataAugmentation(omni.kit.test.AsyncTestCase):
             golden_dir = os.path.join(
                 os.path.dirname(os.path.realpath(__file__)), "data", "golden", f"_out_augm_annot_{mode_label}"
             )
-            out_dir = os.path.join(os.getcwd(), f"_out_augm_annot_{mode_label}")
             await run_example_async(
                 num_frames=test_num_frames, resolution=RESOLUTION, use_warp=test_use_warp, env_url=""
             )
+            out_dir = os.path.join(annot_test_root, mode_label)
 
             folder_contents_success = validate_folder_contents(
                 path=out_dir, expected_counts={"png": test_num_frames * 3}
@@ -237,16 +247,33 @@ class TestDataAugmentation(omni.kit.test.AsyncTestCase):
                 folder_contents_success, f"Folder contents validation failed ({mode_label}). Output dir: {out_dir}"
             )
 
-            result = compare_images_in_directories(
+            rgb_result = compare_images_in_directories(
                 golden_dir=golden_dir,
                 test_dir=out_dir,
-                path_pattern=r"\.png$",
+                path_pattern=r"^annot_rgb_.*\.png$",
                 allclose_rtol=None,
                 allclose_atol=None,
-                mean_tolerance=self.MEAN_DIFF_TOLERANCE,
+                mean_tolerance=self.NO_NOISE_MEAN_DIFF_TOLERANCE,
                 print_all_stats=False,
             )
-            self.assertTrue(result["all_passed"], f"Image comparison failed ({mode_label}). Output dir: {out_dir}")
+            self.assertTrue(
+                rgb_result["all_passed"],
+                f"RGB image comparison failed ({mode_label}, tol={self.NO_NOISE_MEAN_DIFF_TOLERANCE}). Output dir: {out_dir}",
+            )
+
+            depth_result = compare_images_in_directories(
+                golden_dir=golden_dir,
+                test_dir=out_dir,
+                path_pattern=r"^annot_depth_.*\.png$",
+                allclose_rtol=None,
+                allclose_atol=None,
+                mean_tolerance=self.NOISE_MEAN_DIFF_TOLERANCE,
+                print_all_stats=False,
+            )
+            self.assertTrue(
+                depth_result["all_passed"],
+                f"Depth image comparison failed ({mode_label}, tol={self.NOISE_MEAN_DIFF_TOLERANCE}). Output dir: {out_dir}",
+            )
 
     async def test_data_augmentation_writer(self):
         import asyncio
@@ -257,7 +284,7 @@ class TestDataAugmentation(omni.kit.test.AsyncTestCase):
         import numpy as np
         import omni.replicator.core as rep
         import warp as wp
-        from isaacsim.core.utils.stage import open_stage
+        from isaacsim.core.experimental.utils.stage import open_stage
         from isaacsim.storage.native import get_assets_root_path_async
 
         NUM_FRAMES = 5
@@ -265,6 +292,9 @@ class TestDataAugmentation(omni.kit.test.AsyncTestCase):
         USE_WARP = False
         ENV_URL = "/Isaac/Environments/Grid/default_environment.usd"
         SEED = 42
+
+        writer_test_root = tempfile.mkdtemp(prefix="test_augm_writer_")
+        print(f"Test output root: {writer_test_root}")
 
         # Enable warp scripts
         carb.settings.get_settings().set_bool("/app/omni.graph.scriptnode/opt_in", True)
@@ -371,7 +401,8 @@ class TestDataAugmentation(omni.kit.test.AsyncTestCase):
             gn_depth_augm = rep.annotators.get_augmentation("gn_depth_wp" if use_warp else "gn_depth_np")
 
             # Create a writer and apply the augmentations to its corresponding annotators
-            out_dir = os.path.join(os.getcwd(), f"_out_augm_writer_{'warp' if use_warp else 'numpy'}")
+            out_dir = os.path.join(writer_test_root, f"{'warp' if use_warp else 'numpy'}")
+            os.makedirs(out_dir)
             backend = rep.backends.get("DiskBackend")
             backend.initialize(output_dir=out_dir)
             print(f"Writing data to: {out_dir}")
@@ -390,10 +421,10 @@ class TestDataAugmentation(omni.kit.test.AsyncTestCase):
             rp = rep.create.render_product(cam, resolution)
             writer.attach(rp)
 
-            # Create a red cube and randomize its rotation every capture frame using a replicator randomizer graph
+            # Create a red cube and randomize its rotation on a custom event sent before each capture step
             red_cube = rep.functional.create.cube(position=(0, 0, 0.71))
             rep.functional.create.material(mdl="OmniPBR.mdl", bind_prims=[red_cube], diffuse_color_constant=(1, 0, 0))
-            with rep.trigger.on_frame():
+            with rep.trigger.on_custom_event(event_name="randomize_red_cube"):
                 red_cube_node = rep.get.prim_at_path(red_cube.GetPath())
                 with red_cube_node:
                     rep.randomizer.rotation()
@@ -401,6 +432,7 @@ class TestDataAugmentation(omni.kit.test.AsyncTestCase):
             capture_start = time.time()
             for frame_idx in range(num_frames):
                 print(f"  Capturing frame {frame_idx + 1}/{num_frames}")
+                rep.utils.send_og_event(event_name="randomize_red_cube")
                 await rep.orchestrator.step_async(rt_subframes=32)
 
             # Wait for the data to be written to disk and release resources
@@ -429,10 +461,10 @@ class TestDataAugmentation(omni.kit.test.AsyncTestCase):
             golden_dir = os.path.join(
                 os.path.dirname(os.path.realpath(__file__)), "data", "golden", f"_out_augm_writer_{mode_label}"
             )
-            out_dir = os.path.join(os.getcwd(), f"_out_augm_writer_{mode_label}")
             await run_example_async(
                 num_frames=test_num_frames, resolution=RESOLUTION, use_warp=test_use_warp, env_url=""
             )
+            out_dir = os.path.join(writer_test_root, mode_label)
 
             folder_contents_success = validate_folder_contents(
                 path=out_dir, expected_counts={"png": test_num_frames * 2, "npy": test_num_frames}
@@ -441,13 +473,30 @@ class TestDataAugmentation(omni.kit.test.AsyncTestCase):
                 folder_contents_success, f"Folder contents validation failed ({mode_label}). Output dir: {out_dir}"
             )
 
-            result = compare_images_in_directories(
+            rgb_result = compare_images_in_directories(
                 golden_dir=golden_dir,
                 test_dir=out_dir,
-                path_pattern=r"\.png$",
+                path_pattern=r"^rgb_.*\.png$",
                 allclose_rtol=None,
                 allclose_atol=None,
-                mean_tolerance=self.MEAN_DIFF_TOLERANCE,
+                mean_tolerance=self.NOISE_MEAN_DIFF_TOLERANCE,
                 print_all_stats=False,
             )
-            self.assertTrue(result["all_passed"], f"Image comparison failed ({mode_label}). Output dir: {out_dir}")
+            self.assertTrue(
+                rgb_result["all_passed"],
+                f"RGB image comparison failed ({mode_label}, tol={self.NOISE_MEAN_DIFF_TOLERANCE}). Output dir: {out_dir}",
+            )
+
+            depth_result = compare_images_in_directories(
+                golden_dir=golden_dir,
+                test_dir=out_dir,
+                path_pattern=r"^distance_to_camera_.*\.png$",
+                allclose_rtol=None,
+                allclose_atol=None,
+                mean_tolerance=self.NOISE_MEAN_DIFF_TOLERANCE,
+                print_all_stats=False,
+            )
+            self.assertTrue(
+                depth_result["all_passed"],
+                f"Depth image comparison failed ({mode_label}, tol={self.NOISE_MEAN_DIFF_TOLERANCE}). Output dir: {out_dir}",
+            )

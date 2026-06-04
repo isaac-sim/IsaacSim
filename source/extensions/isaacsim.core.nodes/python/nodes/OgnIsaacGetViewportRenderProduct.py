@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,9 +25,7 @@ class OgnIsaacGetViewportRenderProductInternalState:
 
 
 class OgnIsaacGetViewportRenderProduct:
-    """
-    Isaac Sim Create Hydra Texture
-    """
+    """Isaac Sim Create Hydra Texture."""
 
     @staticmethod
     def internal_state():

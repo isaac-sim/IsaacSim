@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Utilities for managing USD session sublayers during robot assembly operations."""
-
 
 import asyncio
 import os
@@ -38,7 +37,7 @@ def get_sublayer_filename(base_name: str) -> str:
     return f"{base_name}.usd"
 
 
-def remove_session_sublayer(stage: Usd.Stage, layer_filename: str, save: bool = False):
+def remove_session_sublayer(stage: Usd.Stage, layer_filename: str, save: bool = False) -> None:
     """Remove a sublayer from the session layer.
 
     Args:
@@ -108,7 +107,7 @@ def start_assembly_session_sublayer(stage: Usd.Stage, sublayer_filename: str) ->
     return stage.GetRootLayer()
 
 
-def stop_assembly_session_sublayer(stage: Usd.Stage, sublayer_filename: str, save: bool = False):
+def stop_assembly_session_sublayer(stage: Usd.Stage, sublayer_filename: str, save: bool = False) -> None:
     """Stop and remove an assembly session sublayer.
 
     Args:
@@ -119,7 +118,7 @@ def stop_assembly_session_sublayer(stage: Usd.Stage, sublayer_filename: str, sav
     remove_session_sublayer(stage, sublayer_filename, save)
 
 
-def merge_assembly_session_sublayer(stage: Usd.Stage):
+def merge_assembly_session_sublayer(stage: Usd.Stage) -> None:
     """Merge the assembly session sublayer into the main stage and cleanup.
 
     Stitches the contents of the assembly layer into the main stage's root layer,

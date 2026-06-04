@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.replicator.behavior extension provides a collection of behavior scripts for Isaac Sim's Synthetic Data Generation (SDG) workflows. These scripts enable procedural randomization and dynamic behaviors that can be attached to USD prims, making simulation scenarios more diverse and realistic for training machine learning models.

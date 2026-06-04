@@ -13,8 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Complete example demonstrating scene interaction with the Motion Generation API.
+"""Complete example demonstrating scene interaction with the Motion Generation API.
 
 This example shows how to use SceneQuery, ObstacleStrategy, WorldInterface, and WorldBinding
 to connect USD scene objects to a motion planning library.
@@ -39,8 +38,8 @@ import numpy as np
 import omni.timeline
 from isaacsim.core.experimental.objects import Cube, Mesh, Sphere
 from isaacsim.core.experimental.prims import GeomPrim, RigidPrim
+from isaacsim.core.rendering_manager import ViewportManager
 from isaacsim.core.simulation_manager import SimulationManager
-from isaacsim.core.utils.viewports import set_camera_view
 from isaacsim.robot_motion.experimental.motion_generation import WorldInterface
 
 
@@ -49,8 +48,7 @@ from isaacsim.robot_motion.experimental.motion_generation import WorldInterface
 # ============================================================================
 # <start-setup-scene-snippet>
 def setup_scene():
-    """
-    Create a simple example scene with obstacles.
+    """Create a simple example scene with obstacles.
 
     The scene is created from the default template which includes a ground plane, lights, etc.
     In practice, your scene could come from:
@@ -102,7 +100,7 @@ def setup_scene():
     RigidPrim(["/World/Mesh1", "/World/Mesh2"], masses=[1.0, 1.0])
 
     # Set camera view
-    set_camera_view(eye=[3.0, 3.0, 2.0], target=[0.0, 0.0, 0.5], camera_prim_path="/OmniverseKit_Persp")
+    ViewportManager.set_camera_view("/OmniverseKit_Persp", eye=[3.0, 3.0, 2.0], target=[0.0, 0.0, 0.5])
 
     print("Scene setup complete")
 
@@ -189,8 +187,7 @@ def demonstrate_obstacle_strategy(obstacle_paths):
 # ============================================================================
 # <start-world-interface-snippet>
 class ExampleWorldInterface(WorldInterface):
-    """
-    Example implementation of WorldInterface.
+    """Example implementation of WorldInterface.
 
     In practice, you would implement this to translate obstacle data into your
     planning library's world representation. The methods receive pure data:

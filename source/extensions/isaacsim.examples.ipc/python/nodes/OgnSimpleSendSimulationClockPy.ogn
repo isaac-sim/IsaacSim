@@ -1,0 +1,38 @@
+{
+    "SimpleSendSimulationClockPy": {
+        "version": 1,
+        "icon": "icons/isaac-sim.svg",
+        "description": [
+            "Sends simulation time over TCP as a little-endian int64 (nanoseconds from simulationTime). Takes simulationTime in seconds (same attribute as Isaac Read Simulation Time). Python implementation; connects as a client to host:port in uri."
+        ],
+        "language": "Python",
+        "metadata": {
+            "uiName": "Send Simulation Clock (Python)"
+        },
+        "categoryDefinitions": "config/CategoryDefinition.json",
+        "categories": "isaacExamples",
+        "inputs": {
+            "execIn": {
+                "type": "execution",
+                "description": "The input execution port."
+            },
+            "uri": {
+                "type": "string",
+                "description": "TCP endpoint as host:port (e.g. 127.0.0.1:9000). The node connects as a client.",
+                "default": "127.0.0.1:9000"
+            },
+            "simulationTime": {
+                "type": "double",
+                "description": "Simulation time in seconds (e.g. from Isaac Read Simulation Time ``simulationTime``). Converted to nanoseconds before send.",
+                "default": 0.0,
+                "uiName": "Simulation Time"
+            }
+        },
+        "outputs": {
+            "execOut": {
+                "type": "execution",
+                "description": "Output execution port"
+            }
+        }
+    }
+}

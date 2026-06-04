@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,6 @@
 
 import asyncio
 
-import carb
 import omni.graph.core as og
 import omni.graph.core.tests as ogts
 import omni.kit.test
@@ -51,7 +50,7 @@ class TestIsaacReadWorldPose(ogts.OmniGraphTestCase):
         graph_path = "/ActionGraph"
         node_name = "readWorldPoseNode"
 
-        (graph, nodes, _, _) = og.Controller.edit(
+        graph, nodes, _, _ = og.Controller.edit(
             {"graph_path": graph_path, "evaluator_name": "push"},
             {
                 og.Controller.Keys.CREATE_NODES: [

@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The Omni USD Mujoco Schema extension hosts and registers Mujoco USD schemas for simulation workflows. This extension provides the foundational schema definitions needed to work with Mujoco physics simulation data within the USD ecosystem, enabling consistent data representation and interoperability for physics-based simulations.

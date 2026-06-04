@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +13,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <carb/BindingsPythonUtils.h>
-
+#include <isaacsim/core/includes/BindingsPythonUtils.h>
 #include <isaacsim/sensors/experimental/physics/IContactSensor.h>
 #include <isaacsim/sensors/experimental/physics/IEffortSensor.h>
 #include <isaacsim/sensors/experimental/physics/IImuSensor.h>
 #include <isaacsim/sensors/experimental/physics/IJointStateSensor.h>
+#include <isaacsim/sensors/experimental/physics/IRaycastSensor.h>
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 
@@ -59,8 +59,14 @@ PYBIND11_MODULE(_physics_sensors, m)
             "create_sensor",
             [](IImuSensor& self, const std::string& primPath) { return self.createSensor(primPath.c_str()); },
             py::arg("prim_path"))
-        .def("remove_sensor", &IImuSensor::removeSensor, py::arg("sensor_id"))
-        .def("get_sensor_reading", &IImuSensor::getSensorReading, py::arg("sensor_id"), py::arg("read_gravity"));
+        .def(
+            "remove_sensor", [](IImuSensor& self, const std::string& primPath) { self.removeSensor(primPath.c_str()); },
+            py::arg("prim_path"))
+        .def(
+            "get_sensor_reading",
+            [](IImuSensor& self, const std::string& primPath, bool readGravity)
+            { return self.getSensorReading(primPath.c_str(), readGravity); },
+            py::arg("prim_path"), py::arg("read_gravity"));
 
     // --- Contact sensor ---
     py::class_<ContactSensorReading>(m, "ContactSensorReading")
@@ -77,15 +83,21 @@ PYBIND11_MODULE(_physics_sensors, m)
             "create_sensor",
             [](IContactSensor& self, const std::string& primPath) { return self.createSensor(primPath.c_str()); },
             py::arg("prim_path"))
-        .def("remove_sensor", &IContactSensor::removeSensor, py::arg("sensor_id"))
-        .def("get_sensor_reading", &IContactSensor::getSensorReading, py::arg("sensor_id"))
+        .def(
+            "remove_sensor",
+            [](IContactSensor& self, const std::string& primPath) { self.removeSensor(primPath.c_str()); },
+            py::arg("prim_path"))
+        .def(
+            "get_sensor_reading",
+            [](IContactSensor& self, const std::string& primPath) { return self.getSensorReading(primPath.c_str()); },
+            py::arg("prim_path"))
         .def(
             "get_raw_contacts",
-            [](IContactSensor& self, int64_t sensorId) -> py::list
+            [](IContactSensor& self, const std::string& primPath) -> py::list
             {
                 const ContactRawData* data = nullptr;
                 int32_t count = 0;
-                self.getRawContacts(sensorId, &data, &count);
+                self.getRawContacts(primPath.c_str(), &data, &count);
                 py::list result;
                 for (int32_t i = 0; i < count; i++)
                 {
@@ -104,7 +116,7 @@ PYBIND11_MODULE(_physics_sensors, m)
                 }
                 return result;
             },
-            py::arg("sensor_id"));
+            py::arg("prim_path"));
 
     // --- Effort sensor ---
     py::class_<EffortSensorReading>(m, "EffortSensorReading")
@@ -121,8 +133,15 @@ PYBIND11_MODULE(_physics_sensors, m)
             [](IEffortSensor& self, const std::string& jointPrimPath)
             { return self.createSensor(jointPrimPath.c_str()); },
             py::arg("joint_prim_path"))
-        .def("remove_sensor", &IEffortSensor::removeSensor, py::arg("sensor_id"))
-        .def("get_sensor_reading", &IEffortSensor::getSensorReading, py::arg("sensor_id"));
+        .def(
+            "remove_sensor",
+            [](IEffortSensor& self, const std::string& jointPrimPath) { self.removeSensor(jointPrimPath.c_str()); },
+            py::arg("prim_path"))
+        .def(
+            "get_sensor_reading",
+            [](IEffortSensor& self, const std::string& jointPrimPath)
+            { return self.getSensorReading(jointPrimPath.c_str()); },
+            py::arg("prim_path"));
 
     // --- Joint state sensor ---
     // positions / velocities / efforts: one copy from C into numpy arrays (no list intermediate).
@@ -137,15 +156,21 @@ PYBIND11_MODULE(_physics_sensors, m)
                                {
                                    py::list result;
                                    if (r.dofNames)
+                                   {
                                        for (int32_t i = 0; i < r.dofCount; i++)
+                                       {
                                            result.append(py::str(r.dofNames[i]));
+                                       }
+                                   }
                                    return result;
                                })
         .def_property_readonly("positions",
                                [](const JointStateSensorReading& r) -> py::array_t<float>
                                {
                                    if (!r.positions || r.dofCount <= 0)
+                                   {
                                        return py::array_t<float>({ 0 });
+                                   }
                                    py::array_t<float> arr({ static_cast<py::ssize_t>(r.dofCount) });
                                    std::copy(r.positions, r.positions + r.dofCount, arr.mutable_data());
                                    return arr;
@@ -154,7 +179,9 @@ PYBIND11_MODULE(_physics_sensors, m)
                                [](const JointStateSensorReading& r) -> py::array_t<float>
                                {
                                    if (!r.velocities || r.dofCount <= 0)
+                                   {
                                        return py::array_t<float>({ 0 });
+                                   }
                                    py::array_t<float> arr({ static_cast<py::ssize_t>(r.dofCount) });
                                    std::copy(r.velocities, r.velocities + r.dofCount, arr.mutable_data());
                                    return arr;
@@ -163,7 +190,9 @@ PYBIND11_MODULE(_physics_sensors, m)
                                [](const JointStateSensorReading& r) -> py::array_t<float>
                                {
                                    if (!r.efforts || r.dofCount <= 0)
+                                   {
                                        return py::array_t<float>({ 0 });
+                                   }
                                    py::array_t<float> arr({ static_cast<py::ssize_t>(r.dofCount) });
                                    std::copy(r.efforts, r.efforts + r.dofCount, arr.mutable_data());
                                    return arr;
@@ -172,7 +201,9 @@ PYBIND11_MODULE(_physics_sensors, m)
                                [](const JointStateSensorReading& r) -> py::array_t<uint8_t>
                                {
                                    if (!r.dofTypes || r.dofCount <= 0)
+                                   {
                                        return py::array_t<uint8_t>({ 0 });
+                                   }
                                    py::array_t<uint8_t> arr({ static_cast<py::ssize_t>(r.dofCount) });
                                    std::copy(r.dofTypes, r.dofTypes + r.dofCount, arr.mutable_data());
                                    return arr;
@@ -187,8 +218,111 @@ PYBIND11_MODULE(_physics_sensors, m)
             [](IJointStateSensor& self, const std::string& articulationRootPath)
             { return self.createSensor(articulationRootPath.c_str()); },
             py::arg("articulation_root_path"))
-        .def("remove_sensor", &IJointStateSensor::removeSensor, py::arg("sensor_id"))
-        .def("get_sensor_reading", &IJointStateSensor::getSensorReading, py::arg("sensor_id"));
+        .def(
+            "remove_sensor",
+            [](IJointStateSensor& self, const std::string& articulationRootPath)
+            { self.removeSensor(articulationRootPath.c_str()); },
+            py::arg("prim_path"))
+        .def(
+            "get_sensor_reading",
+            [](IJointStateSensor& self, const std::string& articulationRootPath)
+            { return self.getSensorReading(articulationRootPath.c_str()); },
+            py::arg("prim_path"));
+
+    // --- Raycast sensor ---
+    py::class_<RaycastSensorReading>(m, "RaycastSensorReading")
+        .def(py::init<>())
+        .def_readonly("ray_count", &RaycastSensorReading::rayCount)
+        .def_readonly("time", &RaycastSensorReading::time)
+        .def_readonly("is_valid", &RaycastSensorReading::isValid)
+        .def_property_readonly("depths",
+                               [](const RaycastSensorReading& r) -> py::array_t<float>
+                               {
+                                   if (!r.depths || r.rayCount == 0)
+                                   {
+                                       return py::array_t<float>({ 0 });
+                                   }
+                                   py::array_t<float> arr({ static_cast<py::ssize_t>(r.rayCount) });
+                                   std::copy(r.depths, r.depths + r.rayCount, arr.mutable_data());
+                                   return arr;
+                               })
+        .def_property_readonly(
+            "hit_positions",
+            [](const RaycastSensorReading& r) -> py::array_t<float>
+            {
+                if (!r.hitPositions || r.rayCount == 0)
+                {
+                    return py::array_t<float>(std::vector<py::ssize_t>{ 0, 3 });
+                }
+                py::array_t<float> arr({ static_cast<py::ssize_t>(r.rayCount), static_cast<py::ssize_t>(3) });
+                std::copy(r.hitPositions, r.hitPositions + r.rayCount * 3, arr.mutable_data());
+                return arr;
+            })
+        .def_property_readonly(
+            "hit_normals",
+            [](const RaycastSensorReading& r) -> py::array_t<float>
+            {
+                if (!r.hitNormals || r.rayCount == 0)
+                {
+                    return py::array_t<float>(std::vector<py::ssize_t>{ 0, 3 });
+                }
+                py::array_t<float> arr({ static_cast<py::ssize_t>(r.rayCount), static_cast<py::ssize_t>(3) });
+                std::copy(r.hitNormals, r.hitNormals + r.rayCount * 3, arr.mutable_data());
+                return arr;
+            })
+        .def_property_readonly("hit_prim_paths",
+                               [](const RaycastSensorReading& r) -> py::list
+                               {
+                                   py::list result;
+                                   if (r.hitPrimPaths && r.rayCount > 0)
+                                   {
+                                       for (uint32_t i = 0; i < r.rayCount; i++)
+                                       {
+                                           result.append(py::str(r.hitPrimPaths[i] ? r.hitPrimPaths[i] : ""));
+                                       }
+                                   }
+                                   return result;
+                               })
+        .def_property_readonly(
+            "ray_origins_world",
+            [](const RaycastSensorReading& r) -> py::array_t<float>
+            {
+                if (!r.rayOriginsWorld || r.rayCount == 0)
+                {
+                    return py::array_t<float>(std::vector<py::ssize_t>{ 0, 3 });
+                }
+                py::array_t<float> arr({ static_cast<py::ssize_t>(r.rayCount), static_cast<py::ssize_t>(3) });
+                std::copy(r.rayOriginsWorld, r.rayOriginsWorld + r.rayCount * 3, arr.mutable_data());
+                return arr;
+            })
+        .def_property_readonly(
+            "ray_end_points_world",
+            [](const RaycastSensorReading& r) -> py::array_t<float>
+            {
+                if (!r.rayEndPointsWorld || r.rayCount == 0)
+                {
+                    return py::array_t<float>(std::vector<py::ssize_t>{ 0, 3 });
+                }
+                py::array_t<float> arr({ static_cast<py::ssize_t>(r.rayCount), static_cast<py::ssize_t>(3) });
+                std::copy(r.rayEndPointsWorld, r.rayEndPointsWorld + r.rayCount * 3, arr.mutable_data());
+                return arr;
+            });
+
+    carb::defineInterfaceClass<IRaycastSensor>(
+        m, "IRaycastSensor", "acquire_raycast_sensor_interface", "release_raycast_sensor_interface")
+        .def("shutdown", &IRaycastSensor::shutdown)
+        .def(
+            "create_sensor",
+            [](IRaycastSensor& self, const std::string& primPath) { return self.createSensor(primPath.c_str()); },
+            py::arg("prim_path"))
+        .def(
+            "remove_sensor",
+            [](IRaycastSensor& self, const std::string& primPath) { self.removeSensor(primPath.c_str()); },
+            py::arg("prim_path"))
+        .def(
+            "get_sensor_reading",
+            [](IRaycastSensor& self, const std::string& primPath) { return self.getSensorReading(primPath.c_str()); },
+            py::arg("prim_path"));
 }
 
 } // anonymous namespace

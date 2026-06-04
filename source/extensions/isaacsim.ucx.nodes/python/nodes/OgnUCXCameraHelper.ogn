@@ -42,7 +42,13 @@
             "frameSkipCount": {
                 "type": "uint",
                 "description": "Specifies the number of simulation frames to skip between each message publish. (e.g. Set to 0 to publish each frame. Set 1 to publish every other frame)",
-                "default": 0
+                "default": 0,
+                "deprecated": "Frame skipping is deprecated. Control publish rate by setting omni:sensor:tickRate on the sensor prim instead."
+            },
+            "sendCudaBuffer": {
+                "type": "bool",
+                "description": "When true, passes the raw CUDA buffer to UCX for transport. UCX selects the transport automatically. Receiver must set tensor_buffer_size. When false, copies frame data to CPU before sending.",
+                "default": true
             }
         },
         "outputs": {

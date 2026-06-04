@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,18 +17,99 @@
 
 #include <carb/logging/Log.h>
 
+#include <linux/limits.h>
 #include <ucxx/api.h>
 
+#include <cstdio>
+#include <cstdlib>
+#include <dlfcn.h>
+#include <glob.h>
 #include <stdexcept>
+#include <string>
+#include <unistd.h>
 
 namespace isaacsim::ucx::core
 {
 std::unordered_map<uint16_t, std::shared_ptr<UCXListener>> UCXListenerRegistry::g_listeners;
 std::mutex UCXListenerRegistry::g_registryMutex;
 
+// Sets UCX_MODULE_DIR so the UCS module loader finds libuct_cuda.so.0 / libucm_cuda.so.0
+// in the ucx/ subdirectory alongside this library, and pre-loads libucm_cuda.so.0's
+// transitive CUDA dependency into the global symbol table so UCX's own dlopen succeeds
+// without needing bin/ucx/ in LD_LIBRARY_PATH at process start.
+// Must be called before ucxx::createContext() which triggers ucp_config_read().
+static void ensureUcxModuleDir()
+{
+    Dl_info info{};
+    if (!dladdr(reinterpret_cast<void*>(&UCXListenerRegistry::addListener), &info) || !info.dli_fname)
+    {
+        CARB_LOG_WARN("[isaacsim.ucx.core] dladdr failed — UCX_MODULE_DIR not set");
+        return;
+    }
+
+    // Resolve to absolute path in case LD_LIBRARY_PATH gave a relative path.
+    char resolved[PATH_MAX]{};
+    const char* absPath = realpath(info.dli_fname, resolved) ? resolved : info.dli_fname;
+    std::string libDir = absPath;
+    size_t lastSlash = libDir.rfind('/');
+    if (lastSlash != std::string::npos)
+        libDir = libDir.substr(0, lastSlash);
+    std::string moduleDir = libDir + "/ucx";
+
+    // Set UCX_MODULE_DIR so the UCS module loader finds libuct_cuda.so.0 / libucm_cuda.so.0.
+    if (!getenv("UCX_MODULE_DIR"))
+    {
+        setenv("UCX_MODULE_DIR", moduleDir.c_str(), 0);
+        CARB_LOG_INFO("[isaacsim.ucx.core] UCX_MODULE_DIR set to: %s (exists=%s)", moduleDir.c_str(),
+                      (access(moduleDir.c_str(), F_OK) == 0) ? "yes" : "NO");
+    }
+
+    // glibc caches LD_LIBRARY_PATH at process startup — setenv() cannot update the
+    // internal path list used by dlopen(). Instead, pre-load libucm_cuda.so.0's
+    // dependency using its full absolute path with RTLD_GLOBAL so it is already in
+    // the global symbol table when UCX dlopen's libucm_cuda.so.0.
+    static bool cudartPreloaded = false;
+    if (!cudartPreloaded)
+    {
+        // Glob for libcudart-*.so.* to avoid hardcoding the hash embedded in the filename,
+        // which changes across prebundle versions.
+        std::string pattern = moduleDir + "/libcudart-*.so.*";
+        glob_t globResult{};
+        std::string cudartPath;
+        if (glob(pattern.c_str(), GLOB_NOSORT, nullptr, &globResult) == 0 && globResult.gl_pathc > 0)
+        {
+            cudartPath = globResult.gl_pathv[0];
+        }
+        globfree(&globResult);
+
+        void* handle = nullptr;
+        if (!cudartPath.empty())
+        {
+            handle = dlopen(cudartPath.c_str(), RTLD_NOW | RTLD_GLOBAL | RTLD_NOLOAD);
+            if (!handle)
+                handle = dlopen(cudartPath.c_str(), RTLD_NOW | RTLD_GLOBAL);
+        }
+        if (handle)
+        {
+            CARB_LOG_INFO("[isaacsim.ucx.core] pre-loaded %s into global symbol table", cudartPath.c_str());
+            cudartPreloaded = true;
+        }
+        if (cudartPath.empty())
+        {
+            CARB_LOG_WARN("[isaacsim.ucx.core] no libcudart found matching %s", pattern.c_str());
+        }
+        else if (!handle)
+        {
+            const char* err = dlerror();
+            CARB_LOG_WARN("[isaacsim.ucx.core] could not pre-load %s: %s", cudartPath.c_str(), err ? err : "unknown");
+        }
+    }
+}
+
 std::shared_ptr<UCXListener> UCXListenerRegistry::addListener(uint16_t port)
 {
     std::lock_guard<std::mutex> lock(g_registryMutex);
+    ensureUcxModuleDir();
 
     // When port is 0, always create a new listener on an ephemeral port
     if (port == 0)
@@ -36,7 +117,8 @@ std::shared_ptr<UCXListener> UCXListenerRegistry::addListener(uint16_t port)
         CARB_LOG_INFO("UCXListenerRegistry::addListener: creating new listener on ephemeral port");
         try
         {
-            auto context = ucxx::createContext({}, ucxx::Context::defaultFeatureFlags);
+            auto context =
+                ucxx::createContext({ { "TLS", "cuda_copy,sm,self,tcp" } }, ucxx::Context::defaultFeatureFlags);
             if (!context)
             {
                 throw std::runtime_error("UCXListenerRegistry: failed to create UCX context");
@@ -68,7 +150,8 @@ std::shared_ptr<UCXListener> UCXListenerRegistry::addListener(uint16_t port)
         CARB_LOG_INFO("UCXListenerRegistry::addListener: port %u", port);
         try
         {
-            auto context = ucxx::createContext({}, ucxx::Context::defaultFeatureFlags);
+            auto context =
+                ucxx::createContext({ { "TLS", "cuda_copy,sm,self,tcp" } }, ucxx::Context::defaultFeatureFlags);
             if (!context)
             {
                 throw std::runtime_error("UCXListenerRegistry: failed to create UCX context");

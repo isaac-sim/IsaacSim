@@ -14,6 +14,8 @@
 # limitations under the License.
 
 
+"""Extension for cuMotion robot motion planning integration within Isaac Sim."""
+
 import os
 import pathlib
 
@@ -28,8 +30,20 @@ if os.name == "nt":
 
 
 class Extension(omni.ext.IExt):
-    def on_startup(self, ext_id):
-        pass
+    """Extension for cuMotion robot motion planning integration.
 
-    def on_shutdown(self):
-        pass
+    This extension enables cuMotion robot motion planning capabilities within Isaac Sim. It handles the setup
+    and integration of the cuMotion library, providing robot motion planning functionality for robotics
+    applications. On Windows systems, it automatically configures DLL loading paths to ensure proper
+    functioning of the cuMotion Python extension module and its dependencies.
+    """
+
+    def on_startup(self, ext_id) -> None:
+        """Startup the extension.
+
+        Args:
+            ext_id: The extension ID.
+        """
+
+    def on_shutdown(self) -> None:
+        """Shutdown the extension."""

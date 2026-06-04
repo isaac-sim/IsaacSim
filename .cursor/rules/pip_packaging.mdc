@@ -1,0 +1,453 @@
+---
+description: Creating standalone pip packages from Kit extensions using in-place pyproject.toml
+globs:
+  - source/extensions/**/pyproject.toml
+  - source/extensions/**/__init__.py
+alwaysApply: false
+---
+# Standalone Pip Packages from Kit Extensions
+
+Create lightweight, standalone pip packages from Kit extensions so they work
+without a full Isaac Sim / Omniverse Kit install.
+
+## Design Principle: In-Place Packaging
+
+Each extension gets a `pyproject.toml` at its root. The **same source files** serve
+both Kit (loaded by Kit's extension manager) and pip (installed as a standalone wheel).
+No code movement, no duplication, single source of truth.
+
+**Import paths are identical in Kit and standalone.** Pip packages install under
+the original namespace using implicit namespace packages. No flat-name remapping.
+
+## How It Works: Implicit Namespace Packages
+
+Multiple standalone pip packages can share a common namespace (e.g. `isaacsim.*`)
+because:
+
+- None of the standalone wheels install `__init__.py` at intermediate levels
+  (e.g. `isaacsim/`, `isaacsim/asset/`) — those are **implicit namespace
+  packages** (PEP 420).
+- Each wheel only installs the leaf package.
+- Python resolves sub-packages from the same site-packages directory tree.
+
+**Critical constraint:** Standalone packages must NOT create `__init__.py` files
+in intermediate namespace directories. Setuptools `find` naturally skips
+directories without `__init__.py`, so this works automatically with correct
+`include` patterns.
+
+## Build Tool
+
+Standalone wheels are built by a repo tool integrated into the standard build system:
+
+```bash
+./repo.sh build_standalone_wheels              # Build all eligible extensions
+./repo.sh build_standalone_wheels --list       # List extensions with pyproject.toml
+./repo.sh build_standalone_wheels --ext NAME   # Build specific extension(s)
+./repo.sh build_standalone_wheels --clean      # Wipe output dir first
+./repo.sh build_standalone_wheels --clean --test  # Build + run standalone tests in temp venv
+```
+
+The tool auto-discovers extensions with `pyproject.toml` in `source/extensions/`,
+builds each using Kit's bundled Python (for consistent ABI tags), and outputs to
+`_build/packages/standalone_wheels/`. It is invoked explicitly via `./repo.sh
+build_standalone_wheels` and is *not* run automatically by `./build.sh`.
+
+Implementation: `tools/isaac_build/build_standalone_wheels.py`
+Registration: `repo_tools.toml` → `[build_standalone_wheels]`
+
+### Build-Time Symlinks
+
+Symlinks required by Pattern B/C layouts are **not committed to the repo**. They are
+declared in `pyproject.toml` under `[tool.standalone-wheel]` and created/destroyed
+automatically by the build tool:
+
+```toml
+[tool.standalone-wheel]
+symlinks = [
+    {link = "<namespace>/<path>/__init__.py", target = "python/__init__.py"},
+    {link = "<namespace>/<path>/impl", target = "python/impl"},
+]
+```
+
+- `link`: path relative to the extension root where the symlink is created.
+- `target`: path relative to the extension root that the symlink points to.
+- The build tool computes the correct relative symlink from link parent → target.
+- Symlinks are created before `pip wheel` and removed in a `finally` block (even on failure).
+- Empty parent directories created for symlinks are also cleaned up.
+- Pattern A extensions need no symlinks — omit `[tool.standalone-wheel]` entirely.
+
+## Source Layout Patterns
+
+Extensions follow three source layout patterns, each requiring different symlink strategies.
+
+### Pattern A: Namespace Directory Layout
+
+The extension already has a directory structure matching its import path
+(e.g. `isaacsim/asset/transformer/`). **No symlinks needed** — `pyproject.toml`
+discovers the package directly.
+
+### Pattern B: `python/` Directory Layout
+
+The extension uses Kit's `python/` convention where `python/__init__.py` maps to
+the module name. The build tool creates transient symlinks to make the source tree
+look like Pattern A during wheel build.
+
+```toml
+# Example: isaacsim.asset.importer.urdf
+[tool.standalone-wheel]
+symlinks = [
+    {link = "isaacsim/asset/importer/urdf/__init__.py", target = "python/__init__.py"},
+    {link = "isaacsim/asset/importer/urdf/impl", target = "python/impl"},
+]
+```
+
+**Do not commit symlinks to the repo** — they only exist during wheel creation.
+
+### Pattern C: Non-Standard Module Name
+
+The Kit module name differs from the extension name (e.g. extension
+`isaacsim.robot.schema` installs as `usd.schema.isaac`). Declare symlinks
+mapping to the actual import namespace:
+
+```toml
+# Example: isaacsim.robot.schema → usd.schema.isaac
+[tool.standalone-wheel]
+symlinks = [
+    {link = "usd/schema/isaac/__init__.py", target = "python/__init__.py"},
+    {link = "usd/schema/isaac/robot_schema", target = "robot_schema"},
+]
+```
+
+No `__init__.py` at `usd/` or `usd/schema/` — implicit namespace packages.
+
+## Step-by-Step: Adding a `pyproject.toml` to an Extension
+
+### 1. Gate Kit-Only Imports
+
+In `__init__.py`, gate the `Extension` class import:
+
+```python
+from .my_module import MyPublicClass, MyConfig  # Core API — always available
+
+try:
+    from .extension import *  # Kit Extension class — only in Kit
+except ImportError:
+    pass
+```
+
+In `extension.py`, gate `omni.ext`:
+
+```python
+try:
+    import omni.ext
+    _ExtBase = omni.ext.IExt
+except ImportError:
+    class _ExtBase:
+        def on_startup(self, ext_id: str) -> None: ...
+        def on_shutdown(self) -> None: ...
+```
+
+**Rules:**
+- Core API imports MUST come before the gated extension import.
+- `__all__` MUST NOT include `Extension`.
+- Catch `ImportError` only — don't catch `Exception`.
+
+### 2. Replace Kit-Only Schema Imports
+
+`from pxr import PhysxSchema` does not exist in `usd-core`. For extensions that
+use PhysX schemas, use the `physx_types` module which ships bundled codeless
+schema definitions (`generatedSchema.usda` + `plugInfo.json`). These are
+auto-registered at import time by `_ensure_physx_schemas_registered()`, so
+`prim.ApplyAPI("PhysxJointAPI")` and `prim.HasAPI("PhysxJointAPI")` work
+natively in standalone — no try/except guards needed.
+
+```python
+# BEFORE (Kit-only)
+from pxr import PhysxSchema
+PhysxSchema.PhysxJointAPI.Apply(prim)
+friction = PhysxSchema.PhysxJointAPI(prim).GetJointFrictionAttr().Get()
+
+# AFTER (works both in Kit and standalone)
+from isaacsim.asset.importer.utils.impl.physx_types import PhysxAttr, PhysxSchema
+
+prim.ApplyAPI(PhysxSchema.JOINT_API)  # works via bundled schema
+friction = prim.GetAttribute(PhysxAttr.JOINT_FRICTION.name).Get()
+```
+
+**Common replacements:**
+| Kit-only (`pxr.PhysxSchema`) | Standalone (`physx_types`) |
+|---|---|
+| `PhysxSchema.PhysxJointAPI.Apply(p)` | `p.ApplyAPI(PhysxSchema.JOINT_API)` |
+| `PhysxSchema.PhysxArticulationAPI.Apply(p)` | `p.ApplyAPI(PhysxSchema.ARTICULATION_API)` |
+| `PhysxSchema.JointStateAPI.Apply(p, n)` | `p.ApplyAPI(PhysxSchema.JOINT_STATE_API, n)` |
+| `PhysxSchema.PhysxMimicJointAPI.Apply(p, n)` | `p.ApplyAPI(PhysxSchema.MIMIC_JOINT_API, n)` |
+| `PhysxSchema.PhysxJointAPI(p).GetArmatureAttr()` | `p.GetAttribute(PhysxAttr.JOINT_ARMATURE.name)` |
+| `PhysxSchema.PhysxJointAPI(p).GetJointFrictionAttr()` | `p.GetAttribute(PhysxAttr.JOINT_FRICTION.name)` |
+| `PhysxSchema.PhysxJointAPI(p).GetMaxJointVelocityAttr()` | `p.GetAttribute(PhysxAttr.JOINT_MAX_VELOCITY.name)` |
+| `PhysxSchema.PhysxMimicJointAPI(p, n).GetReferenceJointRel()` | `p.GetRelationship(PhysxMimicRel.REFERENCE_JOINT.format(n))` |
+| `PhysxSchema.PhysxMimicJointAPI(p, n).GetGearingAttr()` | `p.GetAttribute(PhysxMimicAttr.GEARING.format(n))` |
+
+Raw string literals are acceptable only in comments, schema name parsing
+(`GetAppliedSchemas()` results), and `physx_types.py` itself.
+
+**General pattern for other Kit-only schemas:** If an extension uses any USD schema
+that only exists inside Kit (not in `usd-core`), create a similar lightweight
+enum module with bundled codeless schema files and `package-data` to include them.
+
+### 3. Fix Missing Explicit Imports from `pxr`
+
+In Kit, `pxr.UsdPhysics` is often available because some other extension imported
+it first. In standalone, you must import it explicitly:
+
+```python
+# WRONG — works in Kit by accident
+import pxr
+pxr.UsdPhysics.Tokens.transX  # AttributeError standalone!
+
+# CORRECT
+from pxr import UsdGeom, UsdPhysics  # explicit import
+```
+
+### 4. Handle Data Files
+
+For non-Python data files (`*.json`, `*.usda`, `*.xml`) that the extension needs
+at runtime:
+
+1. If the data lives outside the Python package tree, declare a symlink:
+   ```toml
+   [tool.standalone-wheel]
+   symlinks = [
+       {link = "<namespace>/<path>/data", target = "data"},
+   ]
+   ```
+2. Resolve paths relative to `__file__`, not relative to extension root:
+   ```python
+   DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "my_file.json")
+   ```
+3. Declare in `package-data` so setuptools includes them in the wheel:
+   ```toml
+   [tool.setuptools.package-data]
+   "<dotted.package.name>" = ["data/*.json", "schemas/*.usda", "schemas/*.json"]
+   ```
+
+### 5. Handle External Dependencies
+
+**Dependencies on PyPI** — use `>=` version floors in `pyproject.toml`. The
+corresponding prebundle tomls (`deps/pip_*.toml`) pin exact versions for Kit
+reproducibility:
+
+```toml
+# pyproject.toml — flexible floors for pip users
+dependencies = [
+    "usd-core>=24.0",
+    "some-converter>=0.1.1",
+]
+```
+
+**Dependencies not on PyPI** — use optional dependencies:
+
+```toml
+[project.optional-dependencies]
+extra-feature = ["some-native-package>=1.0"]
+```
+
+### 6. Create `pyproject.toml`
+
+**Template** (replace placeholders):
+
+```toml
+[project]
+name = "<extension-dots-to-hyphens>"        # e.g. isaacsim-asset-transformer
+version = "<version>"                       # Match extension.toml
+description = "<description>"
+requires-python = ">=3.10"
+dependencies = [
+    "usd-core>=24.0",
+    # Add other pip dependencies here
+]
+readme = "docs/Overview.md"
+license = "Apache-2.0"
+keywords = ["nvidia", "isaac", "sim", "usd"]
+authors = [{name = "NVIDIA Corporation"}]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+# For Pattern B/C only:
+# [tool.standalone-wheel]
+# symlinks = [
+#     {link = "<namespace>/<path>/__init__.py", target = "python/__init__.py"},
+#     {link = "<namespace>/<path>/impl", target = "python/impl"},
+# ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["<dotted.package.name>", "<dotted.package.name>.*"]
+exclude = ["<dotted.package.name>.tests"]
+
+# If non-Python data files exist:
+# [tool.setuptools.package-data]
+# "<dotted.package.name>" = ["data/*.json", "schemas/*.usda"]
+```
+
+### 7. Build and Verify
+
+```bash
+./repo.sh build_standalone_wheels --ext <extension-name> --clean
+```
+
+**Verify wheel contents — ALWAYS do this:**
+
+```bash
+unzip -l _build/packages/standalone_wheels/<wheel-filename>.whl
+```
+
+**Check for these problems:**
+- `<namespace>/__init__.py` in the wheel → namespace pollution, fix `include` pattern
+- Empty wheel (only `.dist-info`) → `include` pattern doesn't match, check symlinks
+- Test files included → add to `exclude`
+- Missing data files → check symlinks and `package-data`
+
+### 8. Test in a Clean Venv
+
+```bash
+VENV=/tmp/test_pkg
+KIT_PYTHON=_build/linux-x86_64/release/kit/python/python3
+$KIT_PYTHON -s -m venv $VENV
+$VENV/bin/pip install usd-core
+$VENV/bin/pip install --no-deps _build/packages/standalone_wheels/*.whl
+
+$VENV/bin/python3 -c "
+from <your.package> import <SomeClass>
+import sys
+omni_mods = [m for m in sys.modules if m.startswith('omni.')]
+assert not omni_mods, f'Unexpected: {omni_mods}'
+print('OK')
+"
+rm -rf $VENV
+```
+
+## Standalone Tests
+
+Each extension can have a `standalone_tests/` directory alongside the existing Kit
+`tests/` directory. These tests run in a minimal `usd-core` venv without Kit.
+
+```
+source/extensions/<extension-name>/
+├── standalone_tests/
+│   ├── test_smoke.py          # Import checks, no omni.* leakage
+│   └── test_functional.py     # Feature tests against USD output
+├── python/
+│   └── tests/                 # Kit tests (require full Isaac Sim)
+└── pyproject.toml
+```
+
+**Smoke tests** (every package): import public API, verify no `omni.*` modules loaded.
+**Functional tests** (importers/exporters/etc.): exercise core features, check USD output.
+
+Run with:
+```bash
+./repo.sh build_standalone_wheels --clean --test  # All packages
+```
+
+The build tool creates a temp venv, installs `usd-core` + all built wheels +
+their dependencies, then runs `unittest discover` on each extension's
+`standalone_tests/` directory.
+
+**Test conventions:**
+- Use inline test data (XML/URDF strings, in-memory USD stages) to avoid repo file dependencies.
+- Skip tests that require schemas/plugins not available in `usd-core` with `@unittest.skipUnless`.
+- Use `tempfile.mkdtemp()` for output; clean up in `tearDown`.
+
+## Common Pitfalls
+
+1. **Kit Python has no setuptools** — Use `pip wheel` (not `python -m build`
+   directly) with build isolation. The build tool handles this.
+
+2. **`pxr` submodules not imported** — In Kit, transitive imports make submodules
+   available on `pxr.*`. Standalone requires explicit `from pxr import UsdPhysics`.
+
+3. **Kit-only schema typed APIs (`pxr.PhysxSchema`, etc.)** — These don't exist in
+   `usd-core`. Use `physx_types` enums with bundled codeless schema definitions.
+   `ApplyAPI`/`HasAPI` work natively because the schema files are auto-registered.
+
+4. **Namespace pollution** — If `setuptools.find` creates `__init__.py` at
+   intermediate namespace levels in the wheel, other packages break. Always use
+   explicit `include` patterns matching only the leaf package.
+
+5. **Symlinks not followed** — `pip wheel` follows symlinks by default. If a wheel
+   is missing files, verify the symlink target exists and resolves correctly.
+
+6. **Data files missing from wheel** — Non-Python files (schemas, JSON, etc.) are
+   not included by default. Declare them in `[tool.setuptools.package-data]`:
+   ```toml
+   [tool.setuptools.package-data]
+   "<dotted.package.name>" = ["schemas/*.usda", "schemas/*.json", "data/*.json"]
+   ```
+
+7. **Stale symlinks** — Symlinks are build-time only and must never be committed.
+   If you see untracked namespace directories in `git status`, delete them.
+
+## Package Naming Convention
+
+- **Pip package name:** Replace dots with hyphens (e.g. `isaacsim.asset.transformer` → `isaacsim-asset-transformer`).
+- **Import path:** Matches the Kit module name. Usually identical to the extension
+  name, but may differ (e.g. `isaacsim.robot.schema` imports as `usd.schema.isaac.robot_schema`).
+
+## Existing Packages
+
+| Extension | Wheel | Pattern | Key Notes |
+|---|---|---|---|
+| `isaacsim.asset.transformer` | `isaacsim-asset-transformer` | A | — |
+| `isaacsim.asset.transformer.rules` | `isaacsim-asset-transformer-rules` | A | data/ symlink, subpackages |
+| `isaacsim.robot.schema` | `isaacsim-robot-schema` | C | `usd.schema.isaac` namespace |
+| `isaacsim.asset.importer.utils` | `isaacsim-asset-importer-utils` | B | physx_types, bundled schemas |
+| `isaacsim.asset.importer.urdf` | `isaacsim-asset-importer-urdf` | B | + urdf-usd-converter |
+| `isaacsim.asset.importer.mjcf` | `isaacsim-asset-importer-mjcf` | B | + mujoco-usd-converter |
+| `isaacsim.asset.exporter.urdf` | `isaacsim-asset-exporter-urdf` | A | depends on importer-utils |
+
+## Dependency Graph
+
+```
+usd-core
+├── isaacsim-robot-schema
+├── isaacsim-asset-transformer
+│   └── isaacsim-asset-transformer-rules
+│       ├── isaacsim-robot-schema
+│       └── isaacsim-asset-importer-utils
+│           ├── isaacsim-asset-importer-urdf (+ urdf-usd-converter)
+│           └── isaacsim-asset-importer-mjcf (+ mujoco-usd-converter)
+└── isaacsim-asset-exporter-urdf
+    └── isaacsim-asset-importer-utils
+```
+
+## Checklist
+
+Before declaring a pip package complete:
+
+- [ ] `__init__.py` gates `extension.py` import behind `try/except ImportError`
+- [ ] No module-level `omni.*` or Kit-only schema imports in non-extension files
+- [ ] `pxr` submodules explicitly imported (not relying on Kit's transitive imports)
+- [ ] `[tool.standalone-wheel] symlinks` declared for Pattern B/C layouts
+- [ ] `pyproject.toml` uses `packages.find` with explicit `include`/`exclude`
+- [ ] Non-Python data files declared in `[tool.setuptools.package-data]`
+- [ ] Version matches `extension.toml`
+- [ ] `./repo.sh build_standalone_wheels --ext <name>` succeeds
+- [ ] Wheel contains files under correct namespace with NO `__init__.py` at intermediate levels
+- [ ] Data files present in wheel (verify with `unzip -l`)
+- [ ] Tests excluded from wheel
+- [ ] `standalone_tests/test_smoke.py` exists and passes
+- [ ] Clean venv install + import works with only `usd-core`
+- [ ] Import path is identical to Kit
+- [ ] No `omni.*` modules loaded after import
+- [ ] `./repo.sh build_standalone_wheels --clean --test` passes
+
+## Reference
+
+- SDD: `docs/design/standalone-pip-packaging.md`
+- Testing plan: `docs/design/standalone-pip-testing.md`
+- Migration plan: `docs/design/pip-packages-from-extensions-sdd.md`
+- Build tool: `tools/isaac_build/build_standalone_wheels.py`
+- PhysX types: `source/extensions/isaacsim.asset.importer.utils/python/impl/physx_types.py`
+- Bundled schemas: `source/extensions/isaacsim.asset.importer.utils/python/impl/schemas/`

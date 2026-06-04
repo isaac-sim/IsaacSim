@@ -75,7 +75,7 @@ files_strip = [
 
 files_strip_exclude = [
     ["*extscache/omni.kit.pip_archive*/pip_prebundle/**"],
-    ["*exts/omni.isaac.ml_archive/pip_prebundle/**"],
+    ["*extsDeprecated/omni.isaac.ml_archive/pip_prebundle/**"],
     ["*exts/omni.isaac.core_archive/pip_prebundle/**"],
     ["*exts/omni.pip.cloud/pip_prebundle/**"],
     ["*exts/omni.pip.compute/pip_prebundle/**"],

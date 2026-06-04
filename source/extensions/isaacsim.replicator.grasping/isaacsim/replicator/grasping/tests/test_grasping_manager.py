@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test the grasping manager functionality."""
 
 import omni.kit.app
 import omni.kit.commands
@@ -39,20 +41,25 @@ DEFAULT_SAMPLER_CONFIG = {
 OBJECT_ASSET_URL = "/Isaac/Props/YCB/Axis_Aligned/003_cracker_box.usd"
 
 
-class TestGraspingManager((omni.kit.test.AsyncTestCase)):
-    async def setUp(self):
+class TestGraspingManager(omni.kit.test.AsyncTestCase):
+    """Test grasp pose generation with the grasping manager."""
+
+    async def setUp(self) -> None:
+        """Set up test fixtures."""
         await omni.kit.app.get_app().next_update_async()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Tear down test fixtures."""
         omni.usd.get_context().close_stage()
         await omni.kit.app.get_app().next_update_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_grasp_pose_generation_cube(self):
+    async def test_grasp_pose_generation_cube(self) -> None:
+        """Test grasp pose generation on a simple cube primitive."""
         if not check_grasp_pose_generation_dependencies():
             print("Warning: Skipping test because grasp pose generation dependencies are not installed.")
             return
@@ -77,7 +84,8 @@ class TestGraspingManager((omni.kit.test.AsyncTestCase)):
         self.assertTrue(success_generation)
         self.assertTrue(len(grasping_manager.grasp_locations) > 0)
 
-    async def test_grasp_pose_generation_assets(self):
+    async def test_grasp_pose_generation_assets(self) -> None:
+        """Test grasp pose generation on a referenced USD asset."""
         if not check_grasp_pose_generation_dependencies():
             print("Warning: Skipping test because grasp pose generation dependencies are not installed.")
             return

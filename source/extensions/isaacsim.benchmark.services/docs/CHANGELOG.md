@@ -1,4 +1,22 @@
 # Changelog
+## [4.2.1] - 2026-05-14
+### Fixed
+- Improved docstrings and return type clarity
+
+## [4.2.0] - 2026-04-24
+### Added
+- `rtf_stability` data recorder: windowed real-time factor (sim time / wall time) with mean/stdev for stability analysis. Default wall window is 100 ms. Controlled with settings: `/exts/isaacsim.benchmark.services/rtf_stability/window_wall_ms`, `/exts/isaacsim.benchmark.services/rtf_stability/export_window_samples`.
+- `rtf_stability` derived metrics: percent of windows within ±0.01/±0.10 of the phase mean windowed RTF
+- Add support for running warmup frames when starting a benchmarking phase
+- Add physics-step-interval recorder, track duration between physics update steps
+
+### Changed
+- Frametime metric sample trimming disabled by default
+
+## [4.1.4] - 2026-03-30
+### Changed
+- Add multitick validation features (timestamp tolerance, golden directory management) to validation.py
+
 ## [4.1.3] - 2026-03-05
 ### Changed
 - Fix api and docs syntax issues

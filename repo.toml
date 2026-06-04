@@ -14,6 +14,13 @@ import_configs = [
 # Repository Name. It is used for solution name and final package name
 name = "isaac-sim"
 
+########################################################################################################################
+# Extension / App Template Tool
+########################################################################################################################
+
+[repo_kit_template]
+extension_templates_config = "${root}/templates/templates.toml"
+
 #logging = "warn"
 
 # Specify python executable path for each platform
@@ -73,12 +80,14 @@ fetch.pip.files_to_pull = [
   "${root}/deps/pip_ml.toml",
   "${root}/deps/pip_lula.toml",
   "${root}/deps/pip_cumotion.toml",
+  "${root}/deps/pip_pink.toml",
   "${root}/deps/pip_compute.toml",
-  "${root}/deps/pip_usd_to_urdf.toml",
   "${root}/deps/pip_urdf_usd.toml",
   "${root}/deps/pip_cloud.toml",
   "${root}/deps/pip_ucx.toml",
   "${root}/deps/pip_newton.toml",
+  "${root}/deps/pip_episode_recorder.toml",
+  "${root}/deps/pip_teleop.toml",
 ]
 fetch.pip.licensing_enabled = false
 fetch.pip.publish_pip_cache = false
@@ -109,13 +118,15 @@ vscode.python_env.PYTHONPATH = [
   "$root/_build/$platform/$config/exts/isaacsim.simulation_app",
   "$root/_build/$platform/$config/kit/kernel/py",
   "$root/_build/$platform/$config/kit/plugins/bindings-python/",
-  "$root/_build/$platform/$config/exts/isaacsim.robot_motion.lula/pip_prebundle",
+  "$root/_build/$platform/$config/exts/isaacsim.replicator.episode_recorder/pip_prebundle",
+  "$root/_build/$platform/$config/exts/isaacsim.replicator.teleop/pip_prebundle",
+  "$root/_build/$platform/$config/extsDeprecated/isaacsim.robot_motion.lula/pip_prebundle",
   "$root/_build/$platform/$config/exts/isaacsim.robot_motion.cumotion/pip_prebundle",
+  "$root/_build/$platform/$config/exts/isaacsim.robot_motion.pink/pip_prebundle",
   "$root/_build/$platform/$config/exts/isaacsim.asset.exporter.urdf/pip_prebundle",
   "$root/_build/$platform/$config/extscache/omni.kit.pip_archive*/pip_prebundle",
   "$root/_build/$platform/$config/kit/exts/omni.kit.pip_archive*/pip_prebundle",
   "$root/_build/$platform/$config/exts/omni.isaac.core_archive/pip_prebundle",
-  "$root/_build/$platform/$config/exts/omni.isaac.ml_archive/pip_prebundle",
   "$root/_build/$platform/$config/exts/omni.pip.compute/pip_prebundle",
   "$root/_build/$platform/$config/exts/omni.pip.cloud/pip_prebundle",
 ]
@@ -124,8 +135,9 @@ vscode.python_env.PATH = [
   "$$$${PATH}",
   "$root/_build/$platform/$config",
   "$root/_build/$platform/$config/exts/isaacsim.robot.schema/plugins/lib",
-  "$root/_build/$platform/$config/exts/isaacsim.robot_motion.lula/pip_prebundle",
+  "$root/_build/$platform/$config/extsDeprecated/isaacsim.robot_motion.lula/pip_prebundle",
   "$root/_build/$platform/$config/exts/isaacsim.robot_motion.cumotion/pip_prebundle",
+  "$root/_build/$platform/$config/exts/isaacsim.robot_motion.pink/pip_prebundle",
   "$root/_build/$platform/$config/exts/isaacsim.asset.exporter.urdf/pip_prebundle",
   "$root/_build/$platform/$config/kit",
   "$root/_build/$platform/$config/kit/kernel/plugins",
@@ -161,9 +173,6 @@ fetch.after_pull_commands = [
 
 # Extensions precache before build to pick up headers/binaries for linking
 post_build.commands = [
-  # ["${root}/repo${shell_ext}", "stubgen", "-c", "${config}"],
-  # ["${root}/repo${shell_ext}", "precache_exts", "-c", "${config}", "${precache_flag_0}"] ,
-  # ["${root}/tools/build_docs${shell_ext}", "--config", "${config}", "--warn-as-error=0"], # disabled to reduce local build times
   [
     "${root}/repo${shell_ext}",
     "generate_vscode_settings",
@@ -190,6 +199,8 @@ post_build.commands = [
   #   "${config}",
   # ],
 ]
+
+
 pre_build.commands = [
   [
     "${root}/repo${shell_ext}",
@@ -276,7 +287,7 @@ apps = [
     "${root}/_build/$platform/$config/apps/isaacsim.exp.extscache.kit"
 ]
 
-registries = [
+"registries.++" = [
     { name = "isaacsim/prod/6.0", url = "https://ovextensionsprod.blob.core.windows.net/exts/isaacsim/prod/6.0/shared" },
 ]
 
@@ -290,9 +301,6 @@ links.exts.include = [
   "omni.kit.test",
   "isaacsim.util.debug_draw",
   "omni.kit.asset_converter",
-  # AUTOREMOVE: BEGIN
-  "omni.kit.xr.core",
-  # AUTOREMOVE: END
 ]
 links.path = "${root}/_build/${platform}/${config}/extsbuild"
 
@@ -425,7 +433,7 @@ packages = ["isaac-sim*"]
   ],
   [
     "LD_LIBRARY_PATH",
-    "${root}/_build/${platform}/${config}/exts/isaacsim.ros2.core/humble/lib",
+    "${root}/_build/${platform}/${config}/exts/isaacsim.ros2.core/jazzy/lib",
   ],
 ]
 
@@ -782,6 +790,10 @@ tc_report_enabled = false
 timeout = 960
 
 [[repo_test.suites.nativepythontests.bucket]]
+include = ["tests-nativepython-deprecated*${shell_ext}"]
+name = "deprecated"
+
+[[repo_test.suites.nativepythontests.bucket]]
 include = ["tests-nativepython-replicator*${shell_ext}"]
 name = "replicator"
 
@@ -826,30 +838,23 @@ timeout = 300
 kind = "glob_and_exec"
 path = "${test_root}/tests/doc_snippets"
 stdout_fail_patterns.include = ["*[error]*", "*[fatal]*", "*[fail]*"]
+stdout_fail_patterns.exclude = [
+  "*[Error] [omni.physx.plugin]*",
+  "*[Error] [omni.usd]*",
+  "*[Error] [omni.ext.plugin]*",
+  "*[Error] [omni.kit.app._impl]*",
+  "*[Error] [asyncio]*",
+  "*[Error] [omni.behavior.scripting*",
+  "*[Error] [omni.kit.asset_converter*",
+  "*[Error] [_snippet_test_*",
+  "*[Error] [isaacsim.core.simulation_manager*",
+]
 tc_report_enabled = false
-
-generate_report_cmd = [
-  "./repo${shell_ext}",
-  "ci",
-  "standalone_report",
-  "--",
-  "${test_root}/_testoutput",
-  "doc_snippets_async",
-]
-
-"platform:windows-x86_64".generate_report_cmd = [
-  "repo${shell_ext}",
-  "ci",
-  "standalone_report",
-  "--",
-  "${test_root}/_testoutput",
-  "doc_snippets_async",
-]
 
 [[repo_test.suites.doc_snippets_async.group]]
 include = ["*test_snippets_async*"]
 args = [
-  "--experience-csv experiences.csv",
+  "--junit-xml ${test_root}/_testoutput/results.xml",
 ]
 timeout = 1800
 
@@ -956,7 +961,13 @@ python.maintain_legal_blurbs = false
 
 
 cpp.files.exclude = [
+  "templates/**",
   "tools/container/**",
+]
+
+python.files.include = [
+  "**",
+  ".cursor/**",
 ]
 
 python.files.exclude = [
@@ -970,6 +981,7 @@ python.files.exclude = [
   ".venv/*",
   ".vscode/*",
   "schemas/*",
+  "templates/**",
   "tools/autopull/**",
   "tools/ci/**",
   "tools/container/**",
@@ -1022,11 +1034,13 @@ sections = [
   "description",
   "preview",
   "enable-extension",
+  "toctree",
   { "usage" = "usage.rst" },
   { "api" = "api.rst" },
   { "actions" = "../config/actions_api.md" },
   "ogn",
   "settings",
+  "python-api",
 ]
 
 # These extensions are excluded as they do not contain any documentation
@@ -1046,7 +1060,6 @@ excluded_extensions = [
 
 # Extensions from extsbuild that needed to be included in docs
 extsbuild_exts_includes = [
-    "isaacsim.util.debug_draw",
 ]
 
 ########################################################################################################################
@@ -1058,7 +1071,6 @@ extsbuild_exts_includes = [
 build_path = "${root}/_build/${platform}/release/exts"
 home_path = "${root}/source/extensions"
 ogn_exts_includes = [
-  "isaacsim.replicator.domain_randomization",
   "isaacsim.replicator.experimental.domain_randomization",
   "isaacsim.replicator.examples",
   "isaacsim.replicator.writers",
@@ -1069,8 +1081,9 @@ ogn_exts_includes = [
   "isaacsim.sensors.rtx",
   "isaacsim.core.nodes",
   "isaacsim.examples.interactive_nodes",
-  "isaacsim.robot.wheeled_robots",
+  "isaacsim.robot.wheeled_robots.nodes",
   "isaacsim.robot.experimental.wheeled_robots",
+  "isaacsim.streaming.rtsp",
   # "isaacsim.util.debug_draw",
 
 ]
@@ -1099,30 +1112,6 @@ files.exclude = [
   "tools/packman/*",
   "tools/container/*"
 ]
-
-
-########################################################################################################################
-# Clang-Tidy
-########################################################################################################################
-
-[repo_clang_tidy]
-# Path to the clang-tidy configuration file
-config_file = "${root}/.clang-tidy"
-# Path to the compile_commands.json file
-compile_commands = "${root}/_build/${platform}/${config}/compile_commands.json"
-# Paths to exclude from analysis (glob patterns)
-exclude_paths = [
-  "*/isaacsim.robot.schema/*"
-]
-# Extra arguments to pass to clang-tidy
-extra_args = [
-  "--extra-arg=-std=c++17",
-  "--extra-arg=-Wno-error",
-  "--quiet",
-  "--warnings-as-errors=-*"
-]
-
-
 
 ########################################################################################################################
 # Tool to pull kit kernel and extensions before running
@@ -1179,3 +1168,97 @@ python_analysis_extra_mapping = [
 [repo_edit_sysconfig]
 "platform:linux-x86_64".sysconfig_path = "${root}/_build/${platform}/${config}/kit/python/lib/python3.12/_sysconfigdata__linux_x86_64-linux-gnu.py"
 "platform:linux-aarch64".sysconfig_path = "${root}/_build/${platform}/${config}/kit/python/lib/python3.12/_sysconfigdata__linux_aarch64-linux-gnu.py"
+
+########################################################################################################################
+# API Check tool
+########################################################################################################################
+
+[repo_checkapi]
+enabled = true
+
+[repo_checkapi.python]
+
+exts.folders = [
+    "${root}/_build/${platform}/${config}/exts",
+    "${root}/_build/${platform}/${config}/extsDeprecated",
+
+]
+
+exts.extra_folders = [
+]
+
+# Check and fail on CI when API changed. That encourages to update and commit the python_api.md files.
+fail_on_changed_api = true
+
+########################################################################################################################
+# Python packages generation
+########################################################################################################################
+# Configuration for `./repo.sh python_package --create | --wheel`. See README.md -> Additional Build Tools ->
+# PIP Packages for end-user instructions.
+[repo_python_package]
+enabled = true
+
+templates.pyproject = """
+[build-system]
+requires = [ "setuptools >= 78.1.1" ]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+package-dir = { "" = "src" }
+
+[project.scripts]
+isaacsim = "isaacsim:main"
+"""
+
+# package generation
+definition_paths = [
+  "${root}/python_packages.toml",
+  "${root}/python_packages-isolated.toml"
+]
+distributions_folder = "${root}/_build/packages/dist"
+namespace = "isaacsim"
+packages_folder = "${root}/_build/packages/python"
+source_folder = "${root}/_build/${platform}/release"
+
+# package metadata (common)
+# pyproject.toml
+pyproject.authors = [{name = "Isaac Sim team"}]
+pyproject.classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "License :: Other/Proprietary License",
+]
+pyproject.license = {text = "NVIDIA Proprietary Software"}
+pyproject.readme = """
+See [Install Isaac Sim using PIP](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_python.html)
+for details on how to install and run Isaac Sim in a (virtual) Python environment.
+"""
+pyproject.requires-python = "==3.12.*"
+pyproject.urls = [
+  {"Home page" = "https://developer.nvidia.com/isaac-sim"},
+  {"Documentation" = "https://docs.isaacsim.omniverse.nvidia.com"},
+  {"Forum" = "https://forums.developer.nvidia.com/c/omniverse/simulation/69"},
+]
+pyproject.version = "${build_string}"
+
+# wheel specifications
+wheel.platforms = {"linux-x86_64" = "manylinux_2_35_x86_64", "windows-x86_64" = "win_amd64", "linux-aarch64" = "manylinux_2_35_aarch64"}
+wheel.python = "cp312"
+
+########################################################################################################################
+# Comment archive extension dependencies
+########################################################################################################################
+# Post-processing pass between `python_package --create` and `python_package --wheel` that strips references to Kit
+# pip-archive extensions (which are shipped as runtime pip bundles, not as wheel-time dependencies) from the generated
+# extension.toml and .kit files under `_build/packages/python`.
+[repo_comment_archive_deps]
+archives = [
+  "isaacsim.pip.newton",
+  "omni.isaac.core_archive",
+  "omni.isaac.ml_archive",
+  "omni.pip.compute",
+  "omni.pip.cloud",
+  "omni.kit.pip_archive",
+]
+search_folder = "${root}/_build/packages/python"

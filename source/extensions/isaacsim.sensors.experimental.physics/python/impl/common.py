@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Common utilities, data classes, and managers for physics-based sensors.
 
 This module provides shared functionality for IMU and contact sensors including:
@@ -20,6 +21,7 @@ This module provides shared functionality for IMU and contact sensors including:
 - Utility functions for vector/quaternion operations
 - Singleton managers for sensor lifecycle and contact events
 """
+
 from __future__ import annotations
 
 import weakref
@@ -28,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
+import warp as wp
 from isaacsim.core.experimental.utils import transform as transform_utils
 from isaacsim.core.simulation_manager import SimulationEvent, SimulationManager
 
@@ -270,8 +273,11 @@ class _SensorStepManager:
 
     _instance: _SensorStepManager | None = None
 
-    def __init__(self):
-        self._sensors: weakref.WeakSet[_PhysicsSensorBase] = weakref.WeakSet()
+    def __init__(self) -> None:
+        # WeakSet of registered sensors. Items are ``_PhysicsSensorRuntimeBase``
+        # instances (defined in ``_sensor_base.py``); typed loosely here to
+        # avoid a circular import.
+        self._sensors: weakref.WeakSet[Any] = weakref.WeakSet()
 
         self._post_step_callback = SimulationManager.register_callback(
             self._on_physics_step, event=SimulationEvent.PHYSICS_POST_STEP
@@ -294,28 +300,13 @@ class _SensorStepManager:
             cls._instance = cls()
         return cls._instance
 
-    def register(self, sensor: _PhysicsSensorBase):
+    def register(self, sensor: Any) -> None:
         """Register a sensor to receive physics step updates.
 
         Args:
-            sensor: Sensor instance to register.
+            sensor: A ``_PhysicsSensorRuntimeBase`` instance.
         """
         self._sensors.add(sensor)
-
-    def get_imu_backend(self, prim_path: str) -> _PhysicsSensorBase | None:
-        """Get an IMU backend by prim path.
-
-        .. deprecated::
-            IMU backends are now managed by the C++ IImuSensor plugin.
-            Use ImuSensorBackend(prim_path) directly instead.
-
-        Args:
-            prim_path: IMU prim path to look up.
-
-        Returns:
-            None (IMU backends are no longer tracked by the step manager).
-        """
-        return None
 
     def _on_simulation_start(self, event: Any) -> None:
         """Handle simulation start events.
@@ -323,9 +314,8 @@ class _SensorStepManager:
         Args:
             event: Simulation start event data.
         """
-        pass
 
-    def _on_physics_step(self, step_dt: float, context: Any = None):
+    def _on_physics_step(self, step_dt: float, context: Any = None) -> None:
         """Handle physics step events.
 
         Notifies the contact report manager and all registered sensors of the physics step update.
@@ -337,7 +327,7 @@ class _SensorStepManager:
         for sensor in list(self._sensors):
             sensor.on_physics_step(step_dt)
 
-    def _on_timeline_stop(self, event: Any):
+    def _on_timeline_stop(self, event: Any) -> None:
         """Handle timeline stop events.
 
         Notifies all registered sensors of the timeline stop and clears auto-discovered IMU backends and contact data.
@@ -349,24 +339,47 @@ class _SensorStepManager:
             sensor.on_timeline_stop()
 
 
-class _PhysicsSensorBase:
-    """Abstract base class for physics-based sensors."""
+def _create_sensor_prim(
+    path: str,
+    parent: str,
+    schema_type: type,
+    *,
+    positions: list | np.ndarray | wp.array | None = None,
+    translations: list | np.ndarray | wp.array | None = None,
+    orientations: list | np.ndarray | wp.array | None = None,
+) -> tuple[Any, str]:
+    """Create a sensor prim with common setup (path, schema, enabled attr, transform).
 
-    def on_physics_step(self, step_dt: float):
-        """Called after each physics simulation step.
+    Args:
+        path: Sensor name path (e.g. ``"/SensorName"``).
+        parent: Parent prim path.
+        schema_type: USD schema class to ``Define`` (e.g. ``IsaacSensorSchema.IsaacImuSensor``).
+        positions: World-frame positions (shape ``(N, 3)``). Mutually exclusive with ``translations``.
+        translations: Local-frame translations (shape ``(N, 3)``).
+        orientations: Orientations as quaternion ``wxyz`` (shape ``(N, 4)``).
 
-        Args:
-            step_dt: Physics step duration in seconds.
+    Returns:
+        Tuple of (schema prim object, resolved prim path string).
+    """
+    import omni.isaac.IsaacSensorSchema as IsaacSensorSchema
+    import omni.usd
+    from isaacsim.core.experimental.prims import XformPrim
+    from isaacsim.core.experimental.utils import stage as stage_utils
 
-        Raises:
-            NotImplementedError: If the base class method is called directly.
-        """
-        raise NotImplementedError
+    if positions is not None and translations is not None:
+        raise ValueError("'positions' and 'translations' can't be both specified")
 
-    def on_timeline_stop(self):
-        """Called when the simulation timeline stops.
+    stage = omni.usd.get_context().get_stage()
+    base_path = f"{parent.rstrip('/')}/{path.lstrip('/')}"
+    prim_path = stage_utils.generate_next_free_path(base_path, prepend_default_prim=False)
+    prim = schema_type.Define(stage, prim_path)
+    IsaacSensorSchema.IsaacBaseSensor(prim).CreateEnabledAttr(True)
 
-        Raises:
-            NotImplementedError: If the base class method is called directly.
-        """
-        raise NotImplementedError
+    XformPrim(
+        prim_path,
+        reset_xform_op_properties=True,
+        positions=positions,
+        translations=translations,
+        orientations=orientations,
+    )
+    return prim, prim_path

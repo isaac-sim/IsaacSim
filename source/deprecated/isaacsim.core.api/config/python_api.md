@@ -1,0 +1,139 @@
+# Public API for module isaacsim.core.api:
+
+## Classes
+
+- class PhysicsContext(object)
+  - def __init__(self, physics_dt: Optional[float] = None, prim_path: str = '/physicsScene', sim_params: dict = None, set_defaults: bool = True)
+  - [property] def prim_path(self) -> str
+  - [property] def device(self) -> str
+  - [property] def use_gpu_sim(self) -> bool
+  - [property] def use_gpu_pipeline(self) -> bool
+  - [property] def use_fabric(self) -> bool
+  - def warm_start(self)
+  - def get_current_physics_scene_prim(self) -> Optional[Usd.Prim]
+  - def set_physics_dt(self, dt: float = 1.0 / 60.0, substeps: int = 1)
+  - def get_physics_dt(self) -> float
+  - def enable_fabric(self, enable)
+  - def enable_ccd(self, flag: bool)
+  - def is_ccd_enabled(self) -> bool
+  - def enable_stablization(self, flag: bool)
+  - def is_stablization_enabled(self) -> bool
+  - def enable_gpu_dynamics(self, flag: bool)
+  - def is_gpu_dynamics_enabled(self) -> bool
+  - def set_broadphase_type(self, broadcast_type: str)
+  - def get_broadphase_type(self) -> str
+  - def set_solver_type(self, solver_type: str)
+  - def get_solver_type(self) -> str
+  - def set_gravity(self, value: float)
+  - def get_gravity(self) -> Tuple[List, float]
+  - def set_physx_update_transformations_settings(self, update_to_usd: Optional[bool] = None, update_velocities_to_usd: Optional[bool] = None, output_velocities_local_space: Optional[bool] = None)
+  - def get_physx_update_transformations_settings(self) -> Tuple[bool, bool, bool, bool]
+  - def set_invert_collision_group_filter(self, invert_collision_group_filter: bool)
+  - def get_invert_collision_group_filter(self) -> int
+  - def set_bounce_threshold(self, value: float)
+  - def get_bounce_threshold(self) -> float
+  - def set_friction_offset_threshold(self, value: float)
+  - def get_friction_offset_threshold(self) -> float
+  - def set_friction_correlation_distance(self, value: float)
+  - def get_friction_correlation_distance(self) -> float
+  - def set_enable_scene_query_support(self, enable_scene_query_support: bool)
+  - def get_enable_scene_query_support(self) -> bool
+  - def set_gpu_max_rigid_contact_count(self, value: int)
+  - def get_gpu_max_rigid_contact_count(self) -> int
+  - def set_gpu_max_rigid_patch_count(self, value: int)
+  - def get_gpu_max_rigid_patch_count(self) -> int
+  - def set_gpu_found_lost_pairs_capacity(self, value: int)
+  - def get_gpu_found_lost_pairs_capacity(self) -> int
+  - def set_gpu_found_lost_aggregate_pairs_capacity(self, value: int)
+  - def get_gpu_found_lost_aggregate_pairs_capacity(self) -> int
+  - def set_gpu_total_aggregate_pairs_capacity(self, value: int)
+  - def get_gpu_total_aggregate_pairs_capacity(self) -> int
+  - def set_gpu_max_soft_body_contacts(self, value: int)
+  - def get_gpu_max_soft_body_contacts(self) -> int
+  - def set_gpu_max_particle_contacts(self, value: int)
+  - def get_gpu_max_particle_contacts(self) -> int
+  - def set_gpu_heap_capacity(self, value: int)
+  - def get_gpu_heap_capacity(self) -> int
+  - def set_gpu_temp_buffer_capacity(self, value: int)
+  - def get_gpu_temp_buffer_capacity(self) -> int
+  - def set_gpu_max_num_partitions(self, value: int)
+  - def get_gpu_max_num_partitions(self) -> int
+  - def set_gpu_collision_stack_size(self, value: int)
+  - def get_gpu_collision_stack_size(self) -> int
+  - def set_solve_articulation_contact_last(self, solve_articulation_contact_last: bool)
+  - def get_solve_articulation_contact_last(self) -> bool
+
+- class SimulationContext
+  - def __init__(self, physics_dt: Optional[float] = None, rendering_dt: Optional[float] = None, stage_units_in_meters: Optional[float] = None, physics_prim_path: str = '/physicsScene', sim_params: dict = None, set_defaults: bool = True, backend: str = 'numpy', device: Optional[str] = None, stage: Optional[Usd.Stage] = None)
+  - class def instance(cls) -> SimulationContext
+  - class def clear_instance(cls)
+  - [property] def app(self) -> omni.kit.app.IApp
+  - [property] def current_time_step_index(self) -> int
+  - [property] def current_time(self) -> float
+  - [property] def stage(self) -> Usd.Stage
+  - [property] def backend(self) -> str
+  - [property] def device(self) -> str
+  - [property] def backend_utils(self)
+  - [property] def physics_sim_view(self)
+  - def get_physics_context(self) -> PhysicsContext
+  - def set_simulation_dt(self, physics_dt: Optional[float] = None, rendering_dt: Optional[float] = None)
+  - def get_physics_dt(self) -> float
+  - def get_rendering_dt(self) -> float
+  - def set_block_on_render(self, block: bool)
+  - def get_block_on_render(self) -> bool
+  - async def initialize_simulation_context_async(self)
+  - def initialize_physics(self)
+  - def reset(self, soft: bool = False)
+  - async def reset_async(self, soft: bool = False)
+  - def step(self, render: bool = True, update_fabric: bool = False)
+  - def render(self)
+  - async def render_async(self)
+  - def clear(self)
+  - def is_simulating(self) -> bool
+  - def is_playing(self) -> bool
+  - def is_stopped(self) -> bool
+  - async def play_async(self)
+  - def play(self)
+  - async def pause_async(self)
+  - def pause(self)
+  - async def stop_async(self)
+  - def stop(self)
+  - def add_physics_callback(self, callback_name: str, callback_fn: Callable[[float], None])
+  - def remove_physics_callback(self, callback_name: str)
+  - def physics_callback_exists(self, callback_name: str) -> bool
+  - def clear_physics_callbacks(self)
+  - def add_stage_callback(self, callback_name: str, callback_fn: Callable)
+  - def remove_stage_callback(self, callback_name: str)
+  - def stage_callback_exists(self, callback_name: str) -> bool
+  - def clear_stage_callbacks(self)
+  - def add_timeline_callback(self, callback_name: str, callback_fn: Callable)
+  - def remove_timeline_callback(self, callback_name: str)
+  - def timeline_callback_exists(self, callback_name: str) -> bool
+  - def clear_timeline_callbacks(self)
+  - def add_render_callback(self, callback_name: str, callback_fn: Callable)
+  - def remove_render_callback(self, callback_name: str)
+  - def render_callback_exists(self, callback_name: str) -> bool
+  - def clear_render_callbacks(self)
+  - def clear_all_callbacks(self)
+  - def skip_next_stage_open_callback(self)
+
+- class World(SimulationContext)
+  - def __init__(self, physics_dt: Optional[float] = None, rendering_dt: Optional[float] = None, stage_units_in_meters: Optional[float] = None, physics_prim_path: str = '/physicsScene', sim_params: dict = None, set_defaults: bool = True, backend: str = 'numpy', device: Optional[str] = None)
+  - class def clear_instance(cls)
+  - [property] def scene(self) -> Scene
+  - def add_task(self, task: BaseTask)
+  - def is_tasks_scene_built(self) -> bool
+  - def get_current_tasks(self) -> List[BaseTask]
+  - def get_task(self, name: str) -> BaseTask
+  - def get_observations(self, task_name: Optional[str] = None) -> dict
+  - def calculate_metrics(self, task_name: Optional[str] = None) -> dict
+  - def is_done(self, task_name: Optional[str] = None) -> bool
+  - def get_data_logger(self) -> DataLogger
+  - def initialize_physics(self)
+  - def reset(self, soft: bool = False)
+  - async def reset_async_set_up_scene(self, soft: bool = False)
+  - async def reset_async_no_set_up_scene(self, soft: bool = False)
+  - async def reset_async(self, soft: bool = False)
+  - def step(self, render: bool = True, step_sim: bool = True, update_fabric: bool = False)
+  - def step_async(self, step_size: Optional[float] = None)
+  - def clear(self)

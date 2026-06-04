@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,6 @@ import omni.ui as ui
 from omni.kit.widget.searchfield import SearchField
 
 from ..utils.treeview_delegate import (
-    AddNamedPoseItem,
     SearchableItem,
     TreeViewIDColumn,
     TreeViewWithPlacerHolderDelegate,

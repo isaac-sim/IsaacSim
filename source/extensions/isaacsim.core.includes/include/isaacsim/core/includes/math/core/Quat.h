@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -307,6 +307,7 @@ CUDA_CALLABLE bool operator==(const XQuat<T>& lhs, const XQuat<T>& rhs)
     return (lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z && lhs.w == rhs.w);
 }
 
+/// @cond DOXYGEN_SHOULD_SKIP_THIS
 template <typename T>
 CUDA_CALLABLE inline XQuat<T> QuatFromAxisAngle(const Vec3& axis, float angle)
 {
@@ -320,6 +321,7 @@ CUDA_CALLABLE inline XQuat<T> QuatFromAxisAngle(const Vec3& axis, float angle)
 
     return XQuat<T>(v.x, v.y, v.z, w);
 }
+/// @endcond
 
 CUDA_CALLABLE inline float Dot(const Quat& a, const Quat& b)
 {

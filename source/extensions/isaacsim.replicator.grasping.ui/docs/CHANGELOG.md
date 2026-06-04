@@ -1,4 +1,16 @@
 # Changelog
+## [1.1.3] - 2026-05-08
+### Fixed
+- Set explicit checkbox/label widths so checkboxes are reliably toggled via the Omniverse Kit API.
+
+## [1.1.2] - 2026-05-01
+### Changed
+- Updated UI tests to use shared menu interaction helpers for more robust CI execution.
+
+## [1.1.1] - 2026-04-18
+### Changed
+- Added return type annotations and imperative-mood docstrings
+
 ## [1.1.0] - 2026-03-04
 ### Changed
 - Added Overview.md, python_api.md and updated docstrings

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,20 +15,15 @@
 
 #define CARB_EXPORTS
 
-// clang-format off
-#include <pch/UsdPCH.h>
-// clang-format on
 
 #include <carb/Framework.h>
 #include <carb/PluginUtils.h>
 #include <carb/logging/Log.h>
 #include <carb/settings/ISettings.h>
 
-#include <isaacsim/ucx/core/UcxListenerRegistry.h>
 #include <isaacsim/ucx/nodes/IUcxNodes.h>
 #include <omni/fabric/IToken.h>
 #include <omni/graph/core/NodeTypeRegistrar.h>
-#include <omni/graph/core/iComputeGraph.h>
 #include <omni/graph/core/ogn/Registration.h>
 
 const struct carb::PluginImplDesc g_kPluginDesc = { "isaacsim.ucx.nodes.plugin", "Isaac UCX OmniGraph Nodes", "NVIDIA",

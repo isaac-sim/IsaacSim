@@ -1,14 +1,10 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 isaacsim.benchmark.services provides a comprehensive framework for performance benchmarking in Isaac Sim applications. The extension offers structured approaches to measure and analyze CPU, GPU, memory, and frame time performance through both synchronous and asynchronous benchmark implementations.
 
 ## Key Components
 
-### [BaseIsaacBenchmark](isaacsim.benchmark.services/isaacsim.benchmark.services.BaseIsaacBenchmark)
+### {class}`BaseIsaacBenchmark <isaacsim.benchmark.services.BaseIsaacBenchmark>`
 
 The synchronous benchmark class designed for standalone scripts that need deterministic performance measurements. It provides phase-based benchmarking where different stages of execution can be measured independently.
 
@@ -23,7 +19,7 @@ benchmark.store_measurements()
 benchmark.stop()
 ```
 
-### [BaseIsaacBenchmarkAsync](isaacsim.benchmark.services/isaacsim.benchmark.services.BaseIsaacBenchmarkAsync)
+### {class}`BaseIsaacBenchmarkAsync <isaacsim.benchmark.services.BaseIsaacBenchmarkAsync>`
 
 An asynchronous benchmark class that inherits from `**omni.kit.test.AsyncTestCase**`, enabling integration with Isaac Sim's test framework. This approach is ideal for test cases that require async operations and proper test lifecycle management.
 
@@ -81,4 +77,4 @@ The extension provides settings for customizing benchmark behavior:
 
 ## Dependencies
 
-The extension integrates with Isaac Sim's core systems through several dependencies. It uses `**omni.kit.test**` to provide the async test case foundation for [BaseIsaacBenchmarkAsync](isaacsim.benchmark.services/isaacsim.benchmark.services.BaseIsaacBenchmarkAsync), and leverages `**omni.physics**` and `**omni.physics.physx**` for physics-related performance measurements.
+The extension integrates with Isaac Sim's core systems through several dependencies. It uses `**omni.kit.test**` to provide the async test case foundation for {class}`BaseIsaacBenchmarkAsync <isaacsim.benchmark.services.BaseIsaacBenchmarkAsync>`, and leverages `**omni.physics**` and `**omni.physics.physx**` for physics-related performance measurements.

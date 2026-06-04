@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,6 +46,7 @@ def pose_error(Td: Transform, T: Transform) -> VecN:
 
     Returns:
         6-vector [rot_x, rot_y, rot_z, pos_x, pos_y, pos_z].
+
     """
     dp = Td.t - T.t
     dq = quat_mul(Td.q, quat_conj(T.q))
@@ -84,6 +85,7 @@ class IKSolver(ABC):
 
         Returns:
             Joint values that (approximately) achieve the target.
+
         """
         ...
 
@@ -111,6 +113,7 @@ class IKSolverRegistry:
             name: Registry key for the solver.
             solver_cls: Solver class to register.
             default: If True, use as the default solver when name is None.
+
         """
         cls._solvers[name] = solver_cls
         if default or not cls._default:
@@ -128,6 +131,7 @@ class IKSolverRegistry:
 
         Raises:
             KeyError: When the requested solver name is not registered.
+
         """
         name = name or cls._default
         if name not in cls._solvers:
@@ -140,6 +144,7 @@ class IKSolverRegistry:
 
         Returns:
             List of registered solver names.
+
         """
         return list(cls._solvers.keys())
 
@@ -149,5 +154,6 @@ class IKSolverRegistry:
 
         Returns:
             Default solver name.
+
         """
         return cls._default

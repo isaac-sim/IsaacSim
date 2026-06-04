@@ -1,3 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Flatten rule for USD asset transformation."""
 
 from __future__ import annotations
@@ -34,6 +49,7 @@ class FlattenRule(RuleInterface):
         .. code-block:: python
 
             params = rule.get_configuration_parameters()
+
         """
         return [
             RuleConfigurationParam(
@@ -70,10 +86,29 @@ class FlattenRule(RuleInterface):
     def process_rule(self) -> str | None:
         """Flatten the original input stage and export to the output path.
 
-        Opens the original input stage (before any processing), applies variant
-        selections if configured, clears remaining variant selections if configured,
-        flattens it, and exports to the destination.
-        This preserves relative paths that would be broken after initial processing.
+        Opens a private :class:`Usd.Stage` from ``args["input_stage_path"]``
+        (intentionally ignoring any ``args["input_stage"]`` object the caller
+        may have supplied), applies variant selections if configured, clears
+        remaining variant selections if configured, flattens, and exports.
+        This preserves relative paths that would be broken after initial
+        processing.
+
+        Variant edits are routed to that private stage's session layer via
+        :class:`Usd.EditContext`. Two guarantees follow:
+
+        1. The shared root ``Sdf.Layer`` (potentially shared with other
+           Stages through USD's process-wide layer cache, notably the
+           editor's active Stage) is never mutated. Mutating it fires
+           change notifications that have been observed to invalidate
+           Hydra render product prims mid-frame and crash ``librtx.hydra``.
+        2. A caller-owned Stage passed via ``args["input_stage"]`` is never
+           touched -- its session layer (which in the editor commonly
+           carries user-driven overrides such as visibility toggles, purpose
+           settings, and camera opinions) is left intact.
+
+        ``Usd.Stage.Open`` is cheap because USD's layer cache reuses any
+        already-loaded root layer; only the new Stage's session layer is
+        created fresh.
 
         Returns:
             Path to the flattened stage for subsequent rules to use.
@@ -83,6 +118,7 @@ class FlattenRule(RuleInterface):
         .. code-block:: python
 
             output_path = rule.process_rule()
+
         """
         params = self.args.get("params", {}) or {}
 
@@ -103,32 +139,30 @@ class FlattenRule(RuleInterface):
             f"case_insensitive={case_insensitive}"
         )
 
-        # Open the original input stage
+        # Always open a fresh, private Stage from the input path; do not
+        # use ``args["input_stage"]`` even if the caller provided one.
+        # The fresh Stage owns an empty session layer we can author into
+        # freely without disturbing any caller-held Stage's session layer.
+        # The Stage is local to this function and is garbage-collected on
+        # return, so no explicit cleanup of the session layer is required.
         input_stage = Usd.Stage.Open(input_stage_path)
         if not input_stage:
             self.log_operation(f"Failed to open input stage: {input_stage_path}")
             return None
 
-        # Reload the root layer from disk so that modifications made by
-        # previous flatten operations (e.g. cleared variant selections)
-        # do not leak through USD's process-wide layer cache.
-        input_stage.GetRootLayer().Reload()
+        session_layer = input_stage.GetSessionLayer()
+        if session_layer is None:
+            # ``Usd.Stage.Open`` always provides a session layer; this
+            # branch is purely defensive for future API changes.
+            session_layer = Sdf.Layer.CreateAnonymous("flatten-session.usda")
+            input_stage = Usd.Stage.Open(input_stage.GetRootLayer(), session_layer)
 
-        # Clear remaining variant selections before flattening
-        if clear_variants:
-            self._clear_all_variant_selections(input_stage)
-
-        # Apply selected variant selections on the default prim
-        if selected_variants:
-            self._apply_variant_selections(input_stage, selected_variants, case_insensitive)
-
-        # Flatten the stage
-        flattened_layer = input_stage.Flatten()
-
-        # Restore the root layer from disk so that in-memory edits
-        # (cleared/applied variant selections) don't persist in the
-        # USD layer cache and affect other code sharing the same layer.
-        input_stage.GetRootLayer().Reload()
+        with Usd.EditContext(input_stage, session_layer):
+            if clear_variants:
+                self._clear_all_variant_selections(input_stage)
+            if selected_variants:
+                self._apply_variant_selections(input_stage, selected_variants, case_insensitive)
+            flattened_layer = input_stage.Flatten()
 
         if not flattened_layer:
             self.log_operation("Failed to flatten input stage")
@@ -176,6 +210,7 @@ class FlattenRule(RuleInterface):
             stage: The stage containing the default prim.
             selected_variants: Dictionary mapping variant set names to variant selections.
             case_insensitive: If True, match variant names case-insensitively.
+
         """
         default_prim = stage.GetDefaultPrim()
         if not default_prim or not default_prim.IsValid():
@@ -221,32 +256,34 @@ class FlattenRule(RuleInterface):
             self.log_operation("No variant selections applied")
 
     def _clear_all_variant_selections(self, stage: Usd.Stage) -> None:
-        """Clear variant selections on all prims in the given stage.
+        """Block variant selections on all prims via the current edit target.
 
-        Iterates through the prim stack and clears the variantSelections metadata
-        to ensure a neutral base before flattening.
+        Walks the composed stage and writes a *block* opinion for every
+        authored variant selection through :class:`UsdVariantSet`. Block
+        opinions override weaker selections so the flattened output picks
+        no variant -- without mutating the root layer.
+
+        Must be called inside a :class:`Usd.EditContext` whose target is the
+        session layer (or another non-root layer); see
+        :meth:`process_rule` for the rationale.
 
         Args:
             stage: The stage to clear variant selections from.
+
         """
         cleared_count = 0
-        root_layer = stage.GetRootLayer()
 
         for prim in Usd.PrimRange(stage.GetPseudoRoot()):
             if not prim.IsValid():
                 continue
 
-            prim_path = prim.GetPath()
-            prim_spec = root_layer.GetPrimAtPath(prim_path)
-            if not prim_spec:
-                continue
-
-            # Clear variant selections on this prim spec
-            variant_selections = prim_spec.variantSelections
-            if variant_selections:
-                variant_set_names = list(variant_selections.keys())  # noqa: SIM118
-                for variant_set_name in variant_set_names:
-                    del variant_selections[variant_set_name]
+            variant_sets = prim.GetVariantSets()
+            for vs_name in variant_sets.GetNames():
+                if not variant_sets.HasVariantSet(vs_name):
+                    continue
+                variant_set = variant_sets.GetVariantSet(vs_name)
+                if variant_set.GetVariantSelection():
+                    variant_set.BlockVariantSelection()
                     cleared_count += 1
 
         if cleared_count > 0:

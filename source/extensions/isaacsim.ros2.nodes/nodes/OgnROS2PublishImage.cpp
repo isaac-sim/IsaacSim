@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -129,8 +129,8 @@ class PublishImageWorkerThread
 public:
     static PublishImageWorkerThread& getInstance()
     {
-        static PublishImageWorkerThread instance;
-        return instance;
+        static PublishImageWorkerThread s_instance;
+        return s_instance;
     }
 
     void setQueueThreadSleepUs(int64_t durationUs)
@@ -147,7 +147,7 @@ public:
             if (!m_workerThreadCreated)
             {
                 m_workerThreadShutdown = false;
-                m_workerThread = std::thread(&PublishImageWorkerThread::workerThreadFunction, this);
+                m_workerThread = std::thread(&PublishImageWorkerThread::_workerThreadFunction, this);
                 m_workerThreadCreated = true;
             }
 
@@ -189,7 +189,7 @@ private:
     PublishImageWorkerThread(const PublishImageWorkerThread&) = delete;
     PublishImageWorkerThread& operator=(const PublishImageWorkerThread&) = delete;
 
-    void workerThreadFunction();
+    void _workerThreadFunction();
 
     std::queue<PublishImageThreadData> m_publishQueue;
     carb::thread::mutex m_queueMutex;
@@ -448,7 +448,7 @@ public:
         if (data.bufferSize == 0)
         {
             CARB_PROFILE_ZONE(1, "[IsaacSim] data in gpu texture");
-            cudaArray_t levelArray = 0;
+            cudaArray_t levelArray = nullptr;
             CUDA_CHECK(
                 cudaGetMipmappedArrayLevel(&levelArray, reinterpret_cast<cudaMipmappedArray_t>(data.inputDataPtr), 0));
             switch (static_cast<carb::Format>(data.resourceFormat))
@@ -668,7 +668,7 @@ public:
         if (data.bufferSize == 0)
         {
             CARB_PROFILE_ZONE(1, "[IsaacSim] data in gpu texture");
-            cudaArray_t levelArray = 0;
+            cudaArray_t levelArray = nullptr;
             CUDA_CHECK(
                 cudaGetMipmappedArrayLevel(&levelArray, reinterpret_cast<cudaMipmappedArray_t>(data.inputDataPtr), 0));
             switch (static_cast<carb::Format>(data.resourceFormat))
@@ -717,7 +717,7 @@ public:
         state.reset();
     }
 
-    virtual void reset()
+    void reset() override
     {
         {
             CARB_PROFILE_ZONE(1, "[IsaacSim] wait for previous publish");
@@ -781,7 +781,7 @@ private:
     bool m_publishWithQueueThread = true;
 };
 
-void PublishImageWorkerThread::workerThreadFunction()
+void PublishImageWorkerThread::_workerThreadFunction()
 {
     // Set thread name for profiling (platform-neutral via Carbonite)
     carb::this_thread::setName("ROS2ImgPubWrk");

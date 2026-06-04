@@ -1,5 +1,94 @@
 # Changelog
 
+## [5.10.4] - 2026-05-29
+### Fixed
+- `OgnIsaacComputeTransformTree`: refine the `IsaacRobotAPI` fallback via `isaacsim.robot.schema`'s `GetAllRobotComponents` helper — emits frames for every schema-tagged prim in the robot subtree (links, sites, reference points), skips a component path that matches `parentPrim` to avoid the `TF_SELF_TRANSFORM` self-loop, and applies the ROS optical-frame rotation to camera-sites.
+
+## [5.10.3] - 2026-05-27
+### Fixed
+- `OgnIsaacComputeTransformTree`: when the supplied target prim carries `IsaacRobotAPI` but not `UsdPhysicsArticulationRootAPI`, resolve the link list via `isaac:physics:robotLinks` and emit one frame per link instead of a single frame for the root prim. Handles assets where the articulation root sits on a deeper `base_link` (e.g. exported turtlebot scenes).
+- `OgnIsaacComputeOdometry`: when `chassisPrim` carries `IsaacRobotAPI` but not `UsdPhysicsRigidBodyAPI` / `UsdPhysicsArticulationRootAPI`, walk `isaac:physics:robotLinks` to find a link with the appropriate physics API before forwarding the path to `omni.physx.tensors`. Previously the tensors plugin emitted a `Pattern '<path>' did not match any rigid bodies` warning before the node's own `logError`.
+- `OgnIsaacComputeTransformTree`: reconstruct kinematic parent-child topology from `isaac:physics:robotJoints` when expanding `IsaacRobotAPI` targets, so the emitted TF tree mirrors the joint graph instead of parenting every link to world.
+- `OgnIsaacJointNameResolver`: when the supplied `targetPrim` / `robotPath` lacks `UsdPhysicsArticulationRootAPI`, descend the prim hierarchy looking for the first descendant that has it (handles `IsaacRobotAPI`-only root prims and ancestor `Xform` targets).
+- `OgnIsaacJointNameResolver`: pass `state.m_robotPath.c_str()` to `db.logError("...%s", ...)` instead of the `std::string` itself, so error messages print the actual prim path rather than garbled memory.
+
+## [5.10.2] - 2026-05-21
+### Fixed
+- `OgnIsaacComputeOdometry`: bind `chassisPrim` to a rigid body view whenever the prim has `UsdPhysicsRigidBodyAPI`, even if it also has `UsdPhysicsArticulationRootAPI`. Previously the node read `IArticulationDataView::getRootTransforms()`, which returns the pose of the link PhysX auto-selects as the articulation root by minimum graph eccentricity. Attaching extra bodies (for example via Robot Assembler) extended the articulation graph and shifted the auto-selected root onto a non-chassis link, producing incorrect odometry position/velocity.
+
+## [5.10.1] - 2026-05-12
+### Fixed
+- `IsaacArticulationController`: promote silent `db.log_warn` failures to `db.log_error` for both the catch-all exception path and the command-validation path so OmniGraph users see actionable errors instead of a stationary robot with no diagnostic. Errors now include the prim path and the original exception text. (6109472, 6113767)
+- `IsaacArticulationController`: validate `positionCommand`, `velocityCommand`, and `effortCommand` atomically before any target is written, so a single bad command no longer leaves the articulation in a half-applied state. Mismatch errors now name the offending command, the provided value count, the selected joint count, and the selected joint indices. (6114423)
+
+## [5.10.0] - 2026-05-06
+### Changed
+- `OgnIsaacComputeTransformTree`: optimized world-pose computation by reading physics poses from the active backend and composing non-physics prims from cached USD local transforms.
+- `OgnIsaacComputeTransformTree`: improved non-physics, camera, and `parentPrim` handling, including `isaac:nameOverride`, `resetXformStack`, physics-ancestor discovery, and RTX lidar camera-frame behavior.
+- `OgnIsaacComputeTransformTree`: expanded Python test coverage for physics-backed and USD-backed transform-tree paths.
+
+## [5.9.1] - 2026-05-05
+### Changed
+- Switch to app_uitls.update_app_async(...) instead of omni.syntheticdata.sensors.next_render_simulation_async(...) in unit tests for multitick compatibility
+
+## [5.9.0] - 2026-05-05
+### Fixed
+- Make `IsaacArticulationController` reject command arrays whose length does not match an explicit joint selection.
+- Make `IsaacArticulationController` skip `NaN` command entries instead of reading previous targets from local tensor state.
+
+## [5.8.1] - 2026-05-04
+### Fixed
+- `OgnIsaacComputeTransformTree`: skip invalid/non-existent target prim definitions instead of crashing in the xform view layer
+
+## [5.8.0] - 2026-04-30
+### Changed
+- `OgnOnPhysicsStep` uses the generic `IPhysicsSimulation` API instead of the PhysX-specific `IPhysx` API for physics step event subscriptions, enabling OmniGraph execution with any physics backend
+
+## [5.7.5] - 2026-04-24
+### Changed
+- `OgnIsaacComputeOdometry` and `OgnIsaacComputeTransformTree` use `getActivePhysicsEngineName()` to select the simulation backend dynamically instead of hardcoding `"physx"`
+
+## [5.7.4] - 2026-04-21
+### Changed
+- `OgnIsaacComputeTransformTree`: deferred frame name resolution to compute time so `isaac:nameOverride` attributes are fully authored before lookup
+- `OgnIsaacComputeTransformTree`: leaf prims take priority over mount parents sharing the same `nameOverride`; collisions fall back to ancestor-prefixed names (e.g. `robot_name_frame`) instead of replacing the full USD path with underscores
+- `OgnIsaacComputeTransformTree`: output arrays are only resized when the pair count changes, avoiding per-frame allocations
+- `OgnIsaacJointNameResolver`: skip prims without `isaac:nameOverride` during name override map construction, avoiding unnecessary attribute lookups
+- `OgnIsaacJointNameResolver`: name override map stores `std::string` prim names instead of live `pxr::UsdPrim` handles
+
+## [5.7.3] - 2026-04-20
+### Changed
+- `OgnIsaacComputeOdometry`: call `update()` on the articulation/rigid-body view at the start of each physics tick to flush pending data from the PhysX backend before reading transforms and velocities
+- `OgnIsaacComputeTransformTree`: add `<cstdint>` include; simplify compute path to return false immediately when `ensureCurrentView` fails instead of attempting a re-initialization
+
+## [5.7.2] - 2026-04-15
+### Changed
+- Modified the `OgnIsaacComputeOdometry` and `OgnIsaacComputeTransformTree` nodes to validate that their current prim views are correct before executing.
+
+## [5.7.1] - 2026-03-25
+### Fixed
+- IsaacComputeTransformTree now applies a 180-degree x-axis rotation for UsdGeomCamera prims to convert from USD camera convention to ROS optical frame convention
+
+### Changed
+- IsaacComputeTransformTree uses quaternion math instead of GfMatrix4d for relative transform computation, improving performance
+- IsaacComputeTransformTree caches parent world poses to avoid redundant lookups
+
+## [5.7.0] - 2026-03-21
+### Changed
+- IsaacCreateRenderProduct node now supports re-using existing render products via `renderProductPrim` input
+- IsaacCreateRenderProduct node now supports SRTX render product creation
+
+## [5.6.0] - 2026-03-04
+### Changed
+- Added Overview.md, python_api.md and updated docstrings
+
+## [5.5.0] - 2026-03-04
+### Added
+- IsaacComputeTransformTree node that computes parent/child frame names, translations, and orientations for a prim hierarchy using IXformDataView (no physics tensors required)
+
+### Changed
+- Remove unused carb/Defines.h and carb/Types.h includes from OgnIsaacComputeOdometry
+
 ## [5.4.0] - 2026-02-27
 ### Changed
 - Migrate Odometry and joint name resolved nodes to use core experimental prims APIs

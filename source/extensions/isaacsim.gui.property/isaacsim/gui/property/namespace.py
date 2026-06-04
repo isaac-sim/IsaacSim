@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,23 +15,14 @@
 
 """Property widget for the Isaac Namespace attribute on prims."""
 
-
 import omni
 import omni.ui as ui
 from omni.kit.property.usd.prim_selection_payload import PrimSelectionPayload
-from omni.kit.property.usd.usd_attribute_model import UsdAttributeModel
-from omni.kit.property.usd.usd_property_widget import UsdPropertiesWidget, UsdPropertyUiEntry
-from omni.kit.property.usd.usd_property_widget_builder import UsdPropertiesWidgetBuilder
-from omni.kit.property.usd.widgets import ICON_PATH
-from omni.kit.window.property.templates import (
-    HORIZONTAL_SPACING,
-    LABEL_HEIGHT,
-    LABEL_WIDTH,
-    SimplePropertyWidget,
-    build_frame_header,
-)
-from pxr import Gf, Sdf, Tf, Usd
+from omni.kit.property.usd.usd_property_widget import UsdPropertiesWidget
+from pxr import Sdf, Usd
 from usd.schema.isaac import robot_schema
+
+from .robot_schema import _singleton
 
 _ROBOT_SCHEMA_CLASSES = (
     robot_schema.Classes.ROBOT_API,
@@ -40,26 +31,7 @@ _ROBOT_SCHEMA_CLASSES = (
 )
 
 
-def _singleton(class_: type):  # noqa: N802
-    """Decorator that ensures only one instance of a class is created.
-
-    Args:
-        class_: The class to wrap as a singleton.
-
-    Returns:
-        A wrapper that always returns the same instance.
-    """
-    instances = {}
-
-    def getinstance(*args, **kwargs):
-        if class_ not in instances:
-            instances[class_] = class_(*args, **kwargs)
-        return instances[class_]
-
-    return getinstance
-
-
-def _prim_has_robot_schema(prim) -> bool:
+def _prim_has_robot_schema(prim: object) -> bool:
     """Check if a prim has any Isaac Sim robot schema API applied.
 
     Examines the prim to determine if it has ROBOT_API, LINK_API, or JOINT_API schemas from Isaac Sim's robot schema.
@@ -84,7 +56,7 @@ class NamespaceWidget(UsdPropertiesWidget):
         collapsed: Whether the widget starts collapsed.
     """
 
-    def __init__(self, title: str, collapsed: bool = False):
+    def __init__(self, title: str, collapsed: bool = False) -> None:
         super().__init__(title, collapsed)
         from omni.kit.property.usd import PrimPathWidget
 
@@ -96,7 +68,7 @@ class NamespaceWidget(UsdPropertiesWidget):
         )
         self._old_payload = None
 
-    def destroy(self):
+    def destroy(self) -> None:
         """Remove button menu entries and clean up resources."""
         from omni.kit.property.usd import PrimPathWidget
 
@@ -134,7 +106,7 @@ class NamespaceWidget(UsdPropertiesWidget):
                 return True
         return False
 
-    def _button_onclick(self, payload: PrimSelectionPayload):
+    def _button_onclick(self, payload: PrimSelectionPayload) -> None:
         """Handles the click event for the namespace button by creating namespace attributes on selected prims.
 
         Args:
@@ -152,7 +124,7 @@ class NamespaceWidget(UsdPropertiesWidget):
                     )
         self._request_refresh()
 
-    def _request_refresh(self):
+    def _request_refresh(self) -> None:
         """Refresh the entire property window."""
         selection = omni.usd.get_context().get_selection()
         selected_paths = selection.get_selected_prim_paths()
@@ -163,7 +135,7 @@ class NamespaceWidget(UsdPropertiesWidget):
         selection.set_selected_prim_paths(selected_paths, True)
         window.frame.rebuild()
 
-    def _on_usd_changed(self, notice, stage):
+    def _on_usd_changed(self, notice: object, stage: object) -> None:
         """Handles USD stage change notifications and refreshes the widget when needed.
 
         Args:
@@ -178,7 +150,7 @@ class NamespaceWidget(UsdPropertiesWidget):
         else:
             super()._on_usd_changed(notice, stage)
 
-    def _get_prim(self, prim_path) -> Usd.Prim | None:
+    def _get_prim(self, prim_path: object) -> Usd.Prim | None:
         """Retrieves a prim that is eligible for namespace attribute management.
 
         Args:
@@ -199,7 +171,7 @@ class NamespaceWidget(UsdPropertiesWidget):
                     return prim
         return None
 
-    def on_new_payload(self, payload: list):
+    def on_new_payload(self, payload: list) -> Usd.Prim | bool:
         """See ``PropertyWidget.on_new_payload``.
 
         Args:
@@ -221,7 +193,7 @@ class NamespaceWidget(UsdPropertiesWidget):
 
         return self._prim
 
-    def on_remove_attr(self):
+    def on_remove_attr(self) -> None:
         """Remove the Namespace attribute from the selected prim."""
         stage = self._payload.get_stage()
         if stage:
@@ -229,7 +201,7 @@ class NamespaceWidget(UsdPropertiesWidget):
             if prim and prim.HasAttribute(robot_schema.Attributes.NAMESPACE.name):
                 prim.RemoveProperty(robot_schema.Attributes.NAMESPACE.name)
 
-    def _filter_props_to_build(self, props) -> list[Usd.Attribute]:
+    def _filter_props_to_build(self, props: list) -> list[Usd.Attribute]:
         """Filters properties to only include namespace attributes and sets their display properties.
 
         Args:
@@ -253,7 +225,7 @@ class NamespaceWidget(UsdPropertiesWidget):
         if self._collapsable_frame and not self._collapsable_frame.collapsed and self._prim:
             super().build_items()
 
-    def _build_frame_header(self, collapsed: bool, text: str, id: str | None = None):
+    def _build_frame_header(self, collapsed: bool, text: str, id: str | None = None) -> None:
         """Build a custom header for the CollapsableFrame with a remove button.
 
         Args:

@@ -1,5 +1,5 @@
 {
-    "OgnWritePhysicsSimulationContext": {
+    "isaacsim.replicator.domain_randomization.OgnWritePhysicsSimulationContext": {
         "version": 1,
         "language": "python",
         "categories": {

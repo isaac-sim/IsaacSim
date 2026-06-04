@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+
 """ROS 2 robot description reader helpers."""
 
 import re
@@ -46,7 +48,8 @@ def replace_package_urls_with_paths(input_string: str) -> tuple[str, bool]:
         input_string: URDF string containing package URLs.
 
     Returns:
-        Updated URDF string and whether any package URL was resolved.
+        A tuple of (updated_urdf_string, package_found) where updated_urdf_string contains resolved paths and
+        package_found indicates whether any package URL was successfully resolved.
     """
     pattern = r"package://([^/]+)"
     matches = re.findall(pattern, input_string)
@@ -55,7 +58,8 @@ def replace_package_urls_with_paths(input_string: str) -> tuple[str, bool]:
     for package_name in matches:
         try:
             package_path = package_path_to_system_path(package_name)
-        except Exception:
+        except Exception as e:
+            carb.log_error(f"Could not resolve package '{package_name}'")
             continue
         package_url = "package://" + package_name
         input_string = input_string.replace(package_url, package_path)
@@ -75,7 +79,7 @@ def singleton(class_: type) -> typing.Callable:
     """
     instances: dict[type, typing.Any] = {}
 
-    def getinstance(*args, **kwargs):
+    def getinstance(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
         if class_ not in instances:
             instances[class_] = class_(*args, **kwargs)
         return instances[class_]
@@ -88,7 +92,11 @@ Singleton = singleton
 
 @singleton
 class RobotDefinitionReader:
-    """Fetch robot descriptions from ROS 2 nodes."""
+    """Fetch robot descriptions from ROS 2 nodes.
+
+    This is a singleton class that queries ROS 2 nodes for robot_description parameters and resolves package URLs
+    to filesystem paths.
+    """
 
     def __init__(self) -> None:
         self.node_name = None
@@ -105,7 +113,10 @@ class RobotDefinitionReader:
         import rclpy
 
         if self.node:
-            self.node.destroy_node()
+            try:
+                self.node.destroy_node()
+            except Exception:
+                pass
         rclpy.try_shutdown()
 
     def on_description_received(self, _: str) -> None:
@@ -129,37 +140,43 @@ class RobotDefinitionReader:
         import rclpy
         from rcl_interfaces.srv import GetParameters
 
-        client = node.create_client(GetParameters, f"/{self.node_name}/get_parameters")
-        if client.wait_for_service(timeout_sec=1.0):
-            request = GetParameters.Request()
-            request.names = ["robot_description"]
-            self.future = client.call_async(request)
+        try:
+            client = node.create_client(GetParameters, f"/{self.node_name}/get_parameters")
+            if client.wait_for_service(timeout_sec=1.0):
+                request = GetParameters.Request()
+                request.names = ["robot_description"]
+                self.future = client.call_async(request)
 
-            while rclpy.ok():
-                if self.future.cancelled():
-                    break
-                rclpy.spin_once(node)
+                while rclpy.ok():
+                    if self.future.cancelled():
+                        break
+                    rclpy.spin_once(node)
+                    if self.future.done():
+                        break
+
                 if self.future.done():
-                    break
+                    try:
+                        response = self.future.result()
+                        if response.values:
+                            for param in response.values:
+                                self.urdf_doc = param.string_value
+                                self.urdf_abs, self.package_found = replace_package_urls_with_paths(self.urdf_doc)
+                                self.on_description_received(self.urdf_abs)
+                    except Exception as e:
+                        carb.log_error(f"Service call failed {e!r}")
+                        if self.status_fn:
+                            self.status_fn("ROS node error", 0xFF0000FF)
+            else:
+                carb.log_error(f"node '{self.node_name}' not found. is the spelling correct?")
+                if self.status_fn:
+                    self.status_fn(f"ROS node '{self.node_name}' not found", 0xFF0000FF)
+        except rclpy._rclpy_pybind11.RCLError:
+            carb.log_warn(f"ROS 2 context shut down while querying node '{self.node_name}'")
 
-            if self.future.done():
-                try:
-                    response = self.future.result()
-                    if response.values:
-                        for param in response.values:
-                            self.urdf_doc = param.string_value
-                            self.urdf_abs, self.package_found = replace_package_urls_with_paths(self.urdf_doc)
-                            self.on_description_received(self.urdf_abs)
-                except Exception as e:
-                    carb.log_error(f"Service call failed {e!r}")
-                    if self.status_fn:
-                        self.status_fn("ROS node error", 0xFF0000FF)
-        else:
-            carb.log_error(f"node '{self.node_name}' not found. is the spelling correct?")
-            if self.status_fn:
-                self.status_fn(f"ROS node '{self.node_name}' not found", 0xFF0000FF)
-
-        node.destroy_node()
+        try:
+            node.destroy_node()
+        except rclpy._rclpy_pybind11.RCLError:
+            pass
         rclpy.try_shutdown()
 
     def start_get_robot_description(self, node_name: str) -> None:

@@ -47,7 +47,9 @@ The script:
    session.
 5. Saves the full benchmark stdout/stderr to a ``.log`` file alongside
    the ``.nsys-rep`` capture (disable with ``--no-log``).
-6. After the benchmark exits, waits for the capture session to complete
+6. Sets Kit's ``--/log/file`` so the carb process log is written directly under
+   ``--output-dir`` (same defaults as ``tracy_capture.py``).
+7. After the benchmark exits, waits for the capture session to complete
    and reports the output file location.
 
 .. note::
@@ -75,6 +77,7 @@ from _common import (
     build_env,
     configure_logging,
     format_benchmark_list,
+    format_kit_log_file_arg,
     parse_common_args,
     resolve_benchmark,
     resolve_output_paths,
@@ -246,6 +249,7 @@ def build_nsys_launch_command(
     session_name: str = NSYS_SESSION_NAME,
     traces: str = NSYS_DEFAULT_TRACES,
     metrics_output_dir: Path | None = None,
+    kit_log_file: Path | None = None,
     env: dict[str, str] | None = None,
     sudo: bool = False,
 ) -> list[str]:
@@ -258,6 +262,7 @@ def build_nsys_launch_command(
         session_name: nsys session name.
         traces: Comma-separated list of nsys trace types.
         metrics_output_dir: If provided, inject the Kit metrics folder setting.
+        kit_log_file: If provided, set ``/log/file`` so carb writes its log here.
         env: Environment dict — critical vars are forwarded via ``--env-var``.
         sudo: If True, prefix with ``sudo -E``.
 
@@ -296,6 +301,8 @@ def build_nsys_launch_command(
     cmd.extend(NSYS_KIT_ARGS)
     if metrics_output_dir is not None:
         cmd.append(f"--{METRICS_FOLDER_SETTING}={metrics_output_dir}")
+    if kit_log_file is not None:
+        cmd.append(format_kit_log_file_arg(kit_log_file))
     cmd.extend(extra_args)
     return cmd
 
@@ -413,6 +420,16 @@ def main(argv: list[str] | None = None) -> int:
     # Output paths — nsys appends `.nsys-rep` to the base, so pass empty extension.
     output_dir, base_name, nsys_output = resolve_output_paths(args.output_dir, args.output_name, benchmark_script, "")
 
+    kit_log_file: Path | None = None
+    if not args.no_kit_log_file:
+        kit_log_file = (
+            args.kit_log_path.resolve()
+            if args.kit_log_path is not None
+            else (output_dir / f"{base_name}_kit.log").resolve()
+        )
+        kit_log_file.parent.mkdir(parents=True, exist_ok=True)
+        logger.info("Kit carb log (--/log/file): %s", kit_log_file)
+
     # Build environment and command.
     env = build_env(release_dir, enable_python_profiling=args.enable_python_profiling)
 
@@ -423,6 +440,7 @@ def main(argv: list[str] | None = None) -> int:
             args.extra_benchmark_args,
             traces=args.trace,
             metrics_output_dir=output_dir,
+            kit_log_file=kit_log_file,
             env=env,
             sudo=args.sudo,
         )

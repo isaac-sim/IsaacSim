@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Utilities for importing and managing grasp specifications from isaac_grasp YAML files."""
-
 
 from isaacsim.robot_setup.grasp_editor.extension import *
 from isaacsim.robot_setup.grasp_editor.grasp_importer import GraspSpec, import_grasps_from_file

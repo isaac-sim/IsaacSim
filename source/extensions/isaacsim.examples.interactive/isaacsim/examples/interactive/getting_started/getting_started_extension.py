@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Extension that provides an interactive tutorial for getting started with Isaac Sim basics."""
-
 
 import os
 
@@ -49,7 +48,7 @@ class GettingStartedExtension(omni.ext.IExt):
     to prevent duplication and enabling subsequent steps as prerequisites are met.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Called when the extension starts up.
 
         Initializes the Getting Started tutorial extension by setting up the UI and registering
@@ -82,7 +81,7 @@ class GettingStartedExtension(omni.ext.IExt):
 
         return
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Called when the extension shuts down.
 
         Cleans up by deregistering the Getting Started tutorial from the examples browser.
@@ -117,26 +116,22 @@ class GettingStartedUI(BaseSampleUITemplate):
             arguments include ext_id, file_path, title, doc_link, overview, and sample instance.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
 
-    def build_window(self):
+    def build_window(self) -> None:
         """Builds the main window for the Getting Started tutorial."""
-        pass
 
-    def post_reset_button_event(self):
+    def post_reset_button_event(self) -> None:
         """Handles actions after the reset button is pressed."""
-        pass
 
-    def post_load_button_event(self):
+    def post_load_button_event(self) -> None:
         """Handles actions after the load button is pressed."""
-        pass
 
-    def post_clear_button_event(self):
+    def post_clear_button_event(self) -> None:
         """Handles actions after the clear button is pressed."""
-        pass
 
-    def build_extra_frames(self):
+    def build_extra_frames(self) -> None:
         """Builds additional UI frames for the Getting Started tutorial.
 
         Creates a collapsible frame containing interactive tutorial elements for learning Isaac Sim basics.
@@ -156,7 +151,7 @@ class GettingStartedUI(BaseSampleUITemplate):
             ):
                 self.build_getting_started_ui()
 
-    def build_getting_started_ui(self):
+    def build_getting_started_ui(self) -> None:
         """Builds the main UI elements for the Getting Started tutorial.
 
         Creates interactive buttons for adding ground plane, light source, visual cubes, and physics cubes to the scene. Each button demonstrates different aspects of Isaac Sim scene creation and physics properties.
@@ -219,7 +214,7 @@ class GettingStartedUI(BaseSampleUITemplate):
             self.task_ui_elements["Add Collision Properties"] = btn_builder(**dict)
             self.task_ui_elements["Add Collision Properties"].enabled = False
 
-    def _add_visual_cube(self):
+    def _add_visual_cube(self) -> None:
         """Adds visual cubes to the scene without physics properties.
 
         Creates two visual cubes with different colors (yellow and green) positioned at different locations in the scene. Disables the visual cube button and enables the physics properties button.
@@ -241,7 +236,7 @@ class GettingStartedUI(BaseSampleUITemplate):
         # enable the add physics properties button
         self.task_ui_elements["Add Physics Properties"].enabled = True
 
-    def _add_physics_cube(self):
+    def _add_physics_cube(self) -> None:
         """Adds a cube with physics and collision properties to the scene.
 
         Creates a cyan-colored cube with rigid body physics and collision APIs applied. The cube is positioned to demonstrate dynamic physics behavior when the simulation runs.
@@ -263,7 +258,7 @@ class GettingStartedUI(BaseSampleUITemplate):
 
         self.task_ui_elements["Add Physics Cube"].enabled = False
 
-    def _add_ground_plane(self):
+    def _add_ground_plane(self) -> None:
         """Adds a ground plane to the scene.
 
         Creates a ground plane at the world origin to provide a surface for physics objects to interact with. Disables the ground plane button after creation.
@@ -273,7 +268,7 @@ class GettingStartedUI(BaseSampleUITemplate):
         GroundPlane("/World/GroundPlane", positions=[0, 0, 0])
         self.task_ui_elements["Add Ground Plane"].enabled = False
 
-    def _add_light_source(self):
+    def _add_light_source(self) -> None:
         """Adds a distant light source to the scene.
 
         Creates a distant light with intensity of 300 to illuminate the scene. Disables the light source button after creation.
@@ -284,7 +279,7 @@ class GettingStartedUI(BaseSampleUITemplate):
         light.set_intensities(300)
         self.task_ui_elements["Add Light Source"].enabled = False
 
-    def _add_physics_properties(self):
+    def _add_physics_properties(self) -> None:
         """Adds physics properties to an existing visual cube in the scene.
 
         Applies rigid body physics to the '/visual_cube' prim and updates the UI button states to enable collision properties and disable physics properties buttons.
@@ -296,7 +291,7 @@ class GettingStartedUI(BaseSampleUITemplate):
         self.task_ui_elements["Add Collision Properties"].enabled = True
         self.task_ui_elements["Add Physics Properties"].enabled = False
 
-    def _add_collision_properties(self):
+    def _add_collision_properties(self) -> None:
         """Adds collision properties to an existing visual cube in the scene.
 
         Applies collision APIs to the '/visual_cube' prim using GeomPrim and disables the collision properties button in the UI.

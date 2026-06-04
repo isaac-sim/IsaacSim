@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,8 +12,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Directional pad (D-Pad) UI widget for controlling movement in Isaac Sim."""
+
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import omni.appwindow
 import omni.ext
@@ -25,9 +28,43 @@ ICON_FOLDER_PATH = Path(f"{omni.kit.app.get_app().get_extension_manager().get_ex
 
 
 class Dpad:
+    """D-Pad Controller Class.
+
+    Args:
+        name: Window Title. Defaults to "D-Pad Controller".
+        clicked_fn_up: Sets the function that will be called when when the button is activated
+            (i.e., pressed down then released while the mouse cursor is inside the button). Defaults to None.
+        mouse_pressed_fn_up: Sets the function that will be called when the user presses the
+            mouse button inside the widget. The function should be like this:
+            void onMousePressed(float x, float y, int32_t button, carb::input::KeyboardModifierFlags modifier)
+            Where 'button' is the number of the mouse button pressed. 'modifier' is the flag for the keyboard modifier key.
+            Defaults to None.
+        mouse_released_fn_up: Sets the function that will be called when the user releases the
+            mouse button if this button was pressed inside the widget. The function should be like this:
+            void onMouseReleased(float x, float y, int32_t button, carb::input::KeyboardModifierFlags modifier)
+            Defaults to None.
+        clicked_fn_down: On Click Function. Defaults to None.
+        mouse_pressed_fn_down: On Mouse Pressed Function. Defaults to None.
+        mouse_released_fn_down: On Mouse Released Function. Defaults to None.
+        clicked_fn_left: On Click Function. Defaults to None.
+        mouse_pressed_fn_left: On Mouse Pressed Function. Defaults to None.
+        mouse_released_fn_left: On Mouse Released Function. Defaults to None.
+        clicked_fn_right: On Click Function. Defaults to None.
+        mouse_pressed_fn_right: On Mouse Pressed Function. Defaults to None.
+        mouse_released_fn_right: On Mouse Released Function. Defaults to None.
+        clicked_fn_cw: On Click Function. Defaults to None.
+        mouse_pressed_fn_cw: On Mouse Pressed Function. Defaults to None.
+        mouse_released_fn_cw: On Mouse Released Function. Defaults to None.
+        clicked_fn_ccw: On Click Function. Defaults to None.
+        mouse_pressed_fn_ccw: On Mouse Pressed Function. Defaults to None.
+        mouse_released_fn_ccw: On Mouse Released Function. Defaults to None.
+        width: Window Width. Defaults to 210.
+        height: Window Height. Defaults to 210.
+    """
+
     def __init__(
         self,
-        name="D-Pad Controller",
+        name: str = "D-Pad Controller",
         clicked_fn_up: Callable = None,
         mouse_pressed_fn_up: Callable = None,
         mouse_released_fn_up: Callable = None,
@@ -46,42 +83,9 @@ class Dpad:
         clicked_fn_ccw: Callable = None,
         mouse_pressed_fn_ccw: Callable = None,
         mouse_released_fn_ccw: Callable = None,
-        width=210,
-        height=210,
-    ):
-        """D-Pad Controller Class
-
-        Args:
-            name (str, optional): Window Title. Defaults to "D-Pad Controller".
-            clicked_fn_up (Callable, optional): Sets the function that will be called when when the button is activated
-            (i.e., pressed down then released while the mouse cursor is inside the button). Defaults to None.
-            mouse_pressed_fn_up (Callable, optional): Sets the function that will be called when the user presses the
-            mouse button inside the widget. The function should be like this:
-            void onMousePressed(float x, float y, int32_t button, carb::input::KeyboardModifierFlags modifier)
-            Where 'button' is the number of the mouse button pressed. 'modifier' is the flag for the keyboard modifier key.
-            Defaults to None.
-            mouse_released_fn_up (Callable, optional): Sets the function that will be called when the user releases the
-            mouse button if this button was pressed inside the widget. The function should be like this:
-            void onMouseReleased(float x, float y, int32_t button, carb::input::KeyboardModifierFlags modifier)
-            Defaults to None.
-            clicked_fn_down (Callable, optional): On Click Function. Defaults to None.
-            mouse_pressed_fn_down (Callable, optional): On Mouse Pressed Function. Defaults to None.
-            mouse_released_fn_down (Callable, optional): On Mouse Released Function. Defaults to None.
-            clicked_fn_left (Callable, optional): On Click Function. Defaults to None.
-            mouse_pressed_fn_left (Callable, optional): On Mouse Pressed Function. Defaults to None.
-            mouse_released_fn_left (Callable, optional): On Mouse Released Function. Defaults to None.
-            clicked_fn_right (Callable, optional): On Click Function. Defaults to None.
-            mouse_pressed_fn_right (Callable, optional): On Mouse Pressed Function. Defaults to None.
-            mouse_released_fn_right (Callable, optional): On Mouse Released Function. Defaults to None.
-            clicked_fn_cw (Callable, optional): On Click Function. Defaults to None.
-            mouse_pressed_fn_cw (Callable, optional): On Mouse Pressed Function. Defaults to None.
-            mouse_released_fn_cw (Callable, optional): On Mouse Released Function. Defaults to None.
-            clicked_fn_ccw (Callable, optional): On Click Function. Defaults to None.
-            mouse_pressed_fn_ccw (Callable, optional): On Mouse Pressed Function. Defaults to None.
-            mouse_released_fn_ccw (Callable, optional): On Mouse Released Function. Defaults to None.
-            width (int, optional): Window Width. Defaults to 210.
-            height (int, optional): Window Height. Defaults to 210.
-        """
+        width: int = 210,
+        height: int = 210,
+    ) -> None:
         self.name = name
 
         self.clicked_fn_up = clicked_fn_up
@@ -113,7 +117,7 @@ class Dpad:
         self._build_ui()
         return
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
         self._window = ui.Window(
             title=self.name,
             width=self.width,
@@ -125,7 +129,6 @@ class Dpad:
         with self._window.frame:
             padding = 6
             h_spacing = self.width / 3.0 - padding
-            v_spacing = h_spacing
             with ui.VStack(spacing=0, height=self.height, width=self.width):
                 with ui.HStack():
                     if self.clicked_fn_ccw or self.mouse_pressed_fn_ccw or self.mouse_released_fn_ccw:
@@ -195,7 +198,8 @@ class Dpad:
                     ui.Spacer()
         return
 
-    def shutdown(self):
+    def shutdown(self) -> None:
+        """Clean up the D-Pad window and release resources."""
         self._window = None
         self.name = None
         self.width = None

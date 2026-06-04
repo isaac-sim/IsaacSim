@@ -15,7 +15,6 @@
 
 """Tests for minimal time trajectory generation functionality."""
 
-
 from copy import deepcopy
 
 # Import extension python module we are testing with absolute import path, as if we are an external user (i.e. a different extension)

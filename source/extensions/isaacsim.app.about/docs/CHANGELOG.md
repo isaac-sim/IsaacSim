@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.3.0] - 2026-05-15
+### Changed
+- Refactor About dialog: remove OK button (dismiss via titlebar X), align header rows, simplify plugin list, restyle hover tooltip. Fix clipped OK button and clipboard "Kit SDK Version" separator.
+
 ## [2.2.0] - 2026-03-04
 ### Changed
 - Add Overview.md, python_api.md and update docstrings

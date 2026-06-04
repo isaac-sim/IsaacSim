@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,42 @@ if os.target() == "linux" then
     -- Build the C++ plugin that provides the OmniGraph nodes
     project_ext_plugin(ext, "isaacsim.ucx.nodes.plugin")
 
+    local flatc = path.join(root, "_build/target-deps/flatbuffers-release/bin/flatc")
+    local schemas_dir = path.join(root, "source/extensions/isaacsim.ucx.nodes/schemas")
+    local generated_flatbuffers_cpp_dir = path.join(root, "_build/flatbuffers/include")
+    local generated_flatbuffers_python_dir = ogn.python_target_path .. "/messages"
+
+    prebuildcommands {
+      string.format('"%s" --version', flatc),
+      string.format('"%s" --cpp -o "%s" "%s/time.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
+      string.format('"%s" --cpp -o "%s" "%s/header.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
+      string.format('"%s" --cpp -o "%s" "%s/tensor.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
+      string.format('"%s" --cpp -o "%s" "%s/math_types.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
+      string.format('"%s" --cpp -o "%s" "%s/pose.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
+      string.format('"%s" --cpp -o "%s" "%s/twist.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
+      string.format('"%s" --cpp -o "%s" "%s/pose_with_covariance.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
+      string.format('"%s" --cpp -o "%s" "%s/twist_with_covariance.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
+      string.format('"%s" --cpp -o "%s" "%s/imu.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
+      string.format('"%s" --cpp -o "%s" "%s/odometry.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
+      string.format('"%s" --cpp -o "%s" "%s/joint_state.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
+      string.format('"%s" --cpp -o "%s" "%s/joint_command.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
+      string.format('"%s" --cpp -o "%s" "%s/image.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
+      string.format('mkdir -p "%s"', generated_flatbuffers_python_dir),
+      string.format('"%s" --python -o "%s" "%s/time.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
+      string.format('"%s" --python -o "%s" "%s/header.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
+      string.format('"%s" --python -o "%s" "%s/tensor.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
+      string.format('"%s" --python -o "%s" "%s/math_types.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
+      string.format('"%s" --python -o "%s" "%s/pose.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
+      string.format('"%s" --python -o "%s" "%s/twist.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
+      string.format('"%s" --python -o "%s" "%s/pose_with_covariance.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
+      string.format('"%s" --python -o "%s" "%s/twist_with_covariance.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
+      string.format('"%s" --python -o "%s" "%s/imu.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
+      string.format('"%s" --python -o "%s" "%s/odometry.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
+      string.format('"%s" --python -o "%s" "%s/joint_state.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
+      string.format('"%s" --python -o "%s" "%s/joint_command.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
+      string.format('"%s" --python -o "%s" "%s/image.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
+    }
+
     add_files("impl", "plugins")
     add_files("ogn", ogn.nodes_path)
 
@@ -33,6 +69,7 @@ if os.target() == "linux" then
         "%{root}/source/extensions/isaacsim.core.nodes/include",
         "%{root}/source/extensions/isaacsim.ucx.core/include",
         "%{root}/source/extensions/isaacsim.ucx.nodes/include",
+        "%{root}/_build/target-deps/flatbuffers-release/include",
         "%{root}/_build/target-deps/pip_ucx_prebundle/librmm/include",
         "%{root}/_build/target-deps/pip_ucx_prebundle/libucx/include",
         "%{root}/_build/target-deps/pip_ucx_prebundle/libucxx/include",
@@ -42,6 +79,7 @@ if os.target() == "linux" then
         "%{root}/_build/target-deps/usd/%{cfg.buildcfg}/include",
         "%{root}/_build/target-deps/usd_ext_physics/%{cfg.buildcfg}/include",
         extsbuild_dir .. "/omni.syntheticdata/include",
+        generated_flatbuffers_cpp_dir,
     }
 
     -- Add PhysX includes (needed for PxActor.h and other PhysX headers)
@@ -119,11 +157,12 @@ if os.target() == "linux" then
     repo_build.prebuild_copy {
         { "python/__init__.py", ogn.python_target_path },
         { "python/extension.py", ogn.python_target_path },
+        { "python/messages/__init__.py", generated_flatbuffers_python_dir },
     }
 
     repo_build.prebuild_link {
-        { "python/tests", ogn.python_target_path .. "/tests" },
         { "python/nodes", ogn.python_target_path .. "/nodes" },
+        { "python/tests", ogn.python_target_path .. "/tests" },
         { "include", ext.target_dir .. "/include" },
         { "docs", ext.target_dir .. "/docs" },
         { "data", ext.target_dir .. "/data" },

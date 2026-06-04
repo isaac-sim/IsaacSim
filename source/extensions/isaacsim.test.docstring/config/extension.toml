@@ -1,5 +1,5 @@
 [package]
-version = "1.3.0"
+version = "1.3.1"
 category = "Internal"
 title = "Isaac Sim DocTest"
 description = "Provides test case base classes for validating Python docstring examples using Python's doctest module in both standalone and async execution contexts."

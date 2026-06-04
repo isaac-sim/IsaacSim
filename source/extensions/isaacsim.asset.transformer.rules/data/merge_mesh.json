@@ -1,0 +1,17 @@
+{
+  "profile_name": "Merge Mesh",
+  "version": "1.0",
+  "rules": [
+    {
+      "name": "Merge Meshes",
+      "type": "isaacsim.asset.transformer.rules.isaac_sim.merge_mesh.MergeMeshRule",
+      "destination": "",
+      "params": {},
+      "enabled": true
+    }
+  ],
+  "interface_asset_name": null,
+  "output_package_root": null,
+  "flatten_source": false,
+  "base_name": null
+}

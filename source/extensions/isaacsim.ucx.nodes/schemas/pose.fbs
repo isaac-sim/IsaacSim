@@ -1,0 +1,14 @@
+include "tensor.fbs";
+
+namespace isaac;
+
+// Describes a pose.
+table Pose {
+  // Position of the pose (x, y, z) in meters.
+  position: Tensor (id: 0);
+
+  // Orientation of the pose (w, x, y, z).
+  orientation: Tensor (id: 1);
+}
+
+root_type Pose;

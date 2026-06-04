@@ -1,11 +1,11 @@
 [package]
-version = "1.0.3"
+version = "1.2.3"
 category = "Simulation"
 title = "Isaac Sim Asset Transformer"
 description = "Python-only extension providing asset transformation utilities"
 keywords = ["isaac", "assets", "transform"]
 changelog = "docs/CHANGELOG.md"
-readme = "docs/README.md"
+readme = "docs/Overview.md"
 preview_image = "data/preview.png"
 icon = "data/icon.png"
 
@@ -22,3 +22,6 @@ name = "isaacsim.asset.transformer.tests"
 stdoutFailPatterns.exclude = [
     "*[isaacsim.asset.transformer.manager] Rule '*' failed*",
 ]
+
+[documentation]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +15,8 @@
 
 """Provides functionality for executing Python statements and expressions from strings with customizable namespaces."""
 
-
-import __future__
+from __future__ import annotations  # isort:skip — must be first import
+import __future__ as __future_module__  # isort:skip — needed for _Feature check below
 
 import contextlib
 import dis
@@ -30,16 +30,16 @@ except ImportError:
 
 
 class Executor:
-    """Execute Python statements or expressions from strings
+    """Execute Python statements or expressions from strings.
 
     Args:
         globals: Global namespace.
         locals: Local namespace.
     """
 
-    def __init__(self, globals: dict = {}, locals: dict = {}):
-        self._globals = globals
-        self._locals = locals
+    def __init__(self, globals: dict | None = None, locals: dict | None = None) -> None:
+        self._globals = globals if globals is not None else {}
+        self._locals = locals if locals is not None else {}
         self._compiler_flags = self._get_compiler_flags()
         self._coroutine_flag = self._get_coroutine_flag()
 
@@ -52,7 +52,7 @@ class Executor:
         flags = 0
         for value in globals().values():
             try:
-                if isinstance(value, __future__._Feature):
+                if isinstance(value, __future_module__._Feature):
                     flags |= value.compiler_flag
             except BaseException:
                 pass
@@ -97,6 +97,18 @@ class Executor:
                 # await the result if it is a coroutine
                 if self._coroutine_flag != -1 and bool(code.co_flags & self._coroutine_flag):
                     result = await result
+        except SystemExit as exc:
+            error = RuntimeError(
+                f"SystemExit({exc.code}): The Jupyter executor caught SystemExit to prevent application shutdown."
+            )
+            return output.getvalue(), error, traceback.format_exc()
         except Exception as e:
             return output.getvalue(), e, traceback.format_exc()
+        except BaseException as exc:
+            # Catch remaining BaseException subclasses (GeneratorExit, KeyboardInterrupt,
+            # custom subclasses) to prevent them from crashing Kit.
+            error = RuntimeError(
+                f"{type(exc).__name__}({exc}): The Jupyter executor caught this to prevent application shutdown."
+            )
+            return output.getvalue(), error, traceback.format_exc()
         return output.getvalue(), None, ""

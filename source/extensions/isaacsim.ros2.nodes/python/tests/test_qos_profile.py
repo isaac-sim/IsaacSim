@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,28 +13,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for ROS 2 QoS profile configuration."""
+
 import json
 
 import omni.graph.core as og
 import omni.kit.test
-
-from .common import ROS2TestCase
+from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 
 NODE_TYPE = "isaacsim.ros2.bridge.ROS2QoSProfile"
 
 
 class TestROS2QoSProfile(ROS2TestCase):
+    """Test suite for r o s2 qo s profile."""
 
     async def setUp(self):
+        """Set up test fixtures."""
         await super().setUp()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
     async def tearDown(self):
+        """Tear down test fixtures."""
         await super().tearDown()
 
     async def _create_qos_graph(self, graph_path, set_values=None):
-        """Helper to create a graph with a QoS Profile node and return (graph, qos_node)."""
+        """Create a graph with a QoS Profile node and return (graph, qos_node)."""
         edit_spec = {
             og.Controller.Keys.CREATE_NODES: [
                 ("QoSProfile", NODE_TYPE),
@@ -43,7 +47,7 @@ class TestROS2QoSProfile(ROS2TestCase):
         if set_values:
             edit_spec[og.Controller.Keys.SET_VALUES] = set_values
 
-        (graph, nodes, _, _) = og.Controller.edit(
+        graph, nodes, _, _ = og.Controller.edit(
             {"graph_path": graph_path, "evaluator_name": "push"},
             edit_spec,
         )
@@ -267,7 +271,7 @@ class TestROS2QoSProfile(ROS2TestCase):
     async def test_connected_to_publisher(self):
         """Verify the QoS profile node can be connected to a publisher node."""
         graph_path = "/TestGraph"
-        (graph, nodes, _, _) = og.Controller.edit(
+        graph, nodes, _, _ = og.Controller.edit(
             {"graph_path": graph_path, "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
@@ -285,8 +289,7 @@ class TestROS2QoSProfile(ROS2TestCase):
         exception_caught = False
         try:
             self._timeline.play()
-            await omni.kit.app.get_app().next_update_async()
-            await omni.kit.app.get_app().next_update_async()
+            await self.simulate_until_condition(lambda: False, max_frames=2)
         except Exception:
             exception_caught = True
         finally:

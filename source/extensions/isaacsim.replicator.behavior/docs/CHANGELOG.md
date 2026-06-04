@@ -1,4 +1,35 @@
 # Changelog
+## [1.5.3] - 2026-05-19
+### Changed
+- Clarified `LocationRandomizer` docstrings for the `frame:useRelativeFrame` and `frame:targetPrimPath` exposed attributes to disambiguate how the random offset is composed with the initial location and the optional target prim.
+
+## [1.5.2] - 2026-05-08
+### Fixed
+- `TextureRandomizer._apply_behavior` now skips the tick (with a warning) when no texture URLs are configured, instead of letting `numpy.random.Generator.choice` raise on an empty list.
+
+### Added
+- Test covering `TextureRandomizer._apply_behavior` with an empty `_texture_urls` list.
+
+## [1.5.1] - 2026-04-28
+### Fixed
+- `LightRandomizer._reset` now skips cached `inputs:intensity`/`inputs:color` values that were unauthored at setup time and logs a warning instead of writing `None` back to the prim.
+- `decompose_rotation` now supports single-axis `xformOp:rotateX|Y|Z` ops by returning a scalar angle and raises `ValueError` for unsupported rotation orders; `set_rotation_with_ops` catches the error and logs a warning.
+
+## [1.5.0] - 2026-04-22
+### Changed
+- Dropped the `omni.kit.window.property` dependency. The property window refresh is now dispatched via the `isaacsim.replicator.behavior.EXPOSED_VARS_CHANGED` carb event, which `isaacsim.replicator.behavior.ui` subscribes to, so the core behaviors can run headless.
+
+### Fixed
+- Made `_setup` idempotent in `TextureRandomizer`, `RotationRandomizer`, `LocationRandomizer`, `LightRandomizer`, and `LookAtBehavior`. A play/pause/play loop (as used by the SDG capture pipeline) previously re-cached the already-randomized state as "initial", so `on_stop` restored stale values (e.g. pallets left bound to a removed randomizer material and rendered gray). Exposed variables are still re-read on every call; prim resolution, initial-state caching, and material creation run only on the first entry of a play session.
+
+## [1.4.2] - 2026-04-18
+### Changed
+- Added return type annotations, `from __future__ import annotations`, and imperative-mood docstrings
+
+## [1.4.1] - 2026-04-11
+### Changed
+- Add omni.kit.viewport.window to test dependencies
+
 ## [1.4.0] - 2026-03-04
 ### Changed
 - Added Overview.md, python_api.md and updated docstrings

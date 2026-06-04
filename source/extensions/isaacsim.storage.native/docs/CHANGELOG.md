@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.9.2] - 2026-05-04
+### Fixed
+- `path_join`: treat any URL-scheme path (including `file://`) as forward-slash on Windows
+- `path_join`: normalize backslashes in relative path components to forward slashes, fixing traversal failures when `omni.client.list` returns Windows-style paths on Nucleus/remote URLs
+
+## [1.9.1] - 2026-04-30
+### Fixed
+- `path_join` uses forward-slash concatenation for all URL schemes, not just `omniverse://`, fixing backslash-corrupted paths on Windows when the assets root is an `https://` URL
+- `path_join` `../` traversal uses `rsplit` instead of `os.path.dirname` to avoid the same backslash issue
+
+## [1.9.0] - 2026-04-02
+### Added
+- Support overriding the default asset root via the `ISAACSIM_ASSET_ROOT` environment variable
+
 ## [1.8.0] - 2026-03-04
 ### Changed
 - Added Overview.md, python_api.md, and SETTINGS.md and updated docstrings

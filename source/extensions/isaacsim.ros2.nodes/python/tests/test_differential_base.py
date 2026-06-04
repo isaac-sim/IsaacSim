@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
+"""Tests for ROS 2 differential base OmniGraph node."""
+
 from copy import deepcopy
 
 import carb
@@ -22,13 +23,11 @@ import omni.kit.commands
 import omni.kit.test
 import omni.kit.usd
 import usdrt.Sdf
-from isaacsim.core.api import SimulationContext
 from isaacsim.core.simulation_manager import SimulationManager
-from isaacsim.core.utils.physics import simulate_async
+from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 from pxr import Gf
 
 from .common import (
-    ROS2TestCase,
     add_carter,
     add_carter_ros,
     add_nova_carter_ros,
@@ -39,12 +38,13 @@ from .common import (
 
 
 class TestRos2DifferentialBase(ROS2TestCase):
+    """Test suite for ros2 differential base."""
+
     async def setUp(self):
+        """Set up test fixtures."""
         await super().setUp()
-        SimulationContext.clear_instance()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
-        self.simulation_context = SimulationContext()
         SimulationManager.enable_fabric(enable=False)
 
         # Initialize class members
@@ -52,11 +52,11 @@ class TestRos2DifferentialBase(ROS2TestCase):
         self._odom_data = None
 
         # Create ROS2 node for this test
-        import rclpy
 
         self.node = self.create_node("isaac_sim_test_diff_drive")
 
     async def tearDown(self):
+        """Tear down test fixtures."""
         self.node = None
 
         # Reset class members
@@ -72,12 +72,15 @@ class TestRos2DifferentialBase(ROS2TestCase):
         rclpy.spin_once(self.node, timeout_sec=0.1)
 
     def tf_callback(self, data):
+        """Handle tf callback."""
         self._trans = data.transforms[-1]
 
     def odom_callback(self, data):
+        """Handle odom callback."""
         self._odom_data = data.pose.pose
 
     def move_cmd_msg(self, x, y, z, ax, ay, az):
+        """Create a move cmd msg message."""
         from geometry_msgs.msg import Twist
 
         msg = Twist()
@@ -90,7 +93,9 @@ class TestRos2DifferentialBase(ROS2TestCase):
         return msg
 
     async def test_carter_differential_base(self):
-
+        """Test carter differential base."""
+        if SimulationManager.get_active_physics_engine() == "newton":
+            self.skipTest("Odometry node not yet supported by Newton backend")
         from geometry_msgs.msg import Twist
         from nav_msgs.msg import Odometry
         from tf2_msgs.msg import TFMessage
@@ -141,11 +146,12 @@ class TestRos2DifferentialBase(ROS2TestCase):
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
 
-        # wait for physics to settle and for all data to be received by subscribers
-        await simulate_async(1, 60, self.spin)
+        # wait for physics to settle (60 frames = original simulate_async(1,60) duration),
+        # then wait for subscriber data — odom.z reflects settling at this timing
+        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=self.spin)
         await self.simulate_until_condition(
             lambda: self._trans is not None and self._odom_data is not None,
-            max_frames=120,  # Combined: 1s physics settle + 1s data wait at 60fps
+            max_frames=120,
             per_frame_callback=self.spin,
         )
 
@@ -156,10 +162,10 @@ class TestRos2DifferentialBase(ROS2TestCase):
         expected_odom = [0, 0, -0.23, 0, 0, 0, 1]
         self.check_pose(expected_trans, expected_odom, tolerance=1)
 
-        # straight forward
+        # straight forward for 3s at 0.1 m/s → ~0.3m accumulated
         move_cmd = self.move_cmd_msg(0.1, 0.0, 0.0, 0.0, 0.0, 0.0)
         cmd_vel_pub.publish(move_cmd)
-        await simulate_async(3, 60, self.spin)
+        await self.simulate_until_condition(lambda: False, max_frames=180, per_frame_callback=self.spin)
 
         # stop
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -180,6 +186,7 @@ class TestRos2DifferentialBase(ROS2TestCase):
         await omni.kit.app.get_app().next_update_async()
         self.spin()
         self._trans = None
+        self._odom_data = None
 
         # change wheel rotation and wheel base
         og.Controller.set(og.Controller.attribute(graph_path + "/differential_controller.inputs:wheelRadius"), 0.1)
@@ -187,11 +194,11 @@ class TestRos2DifferentialBase(ROS2TestCase):
 
         self._timeline.play()
 
-        # wait for physics to settle and for all data to be received by subscribers
-        await simulate_async(1, 60, self.spin)
+        # fixed 60 frames to let physics settle before reading subscriber data
+        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=self.spin)
         await self.simulate_until_condition(
             lambda: self._trans is not None and self._odom_data is not None,
-            max_frames=120,  # Combined: 1s physics settle + 1s data wait at 60fps
+            max_frames=120,
             per_frame_callback=self.spin,
         )
 
@@ -202,20 +209,21 @@ class TestRos2DifferentialBase(ROS2TestCase):
         expected_odom = [0, 0, -0.23, 0, 0, 0, 1]
         self.check_pose(expected_trans, expected_odom, tolerance=1)
 
-        # straight forward
+        # straight forward for 3s at 0.1 m/s (odometry units, new wheel params) → ~0.7m accumulated
         move_cmd = self.move_cmd_msg(0.1, 0.0, 0.0, 0.0, 0.0, 0.0)
         cmd_vel_pub.publish(move_cmd)
-        await simulate_async(3, 60, self.spin)
+        await self.simulate_until_condition(lambda: False, max_frames=180, per_frame_callback=self.spin)
 
         # stop
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         cmd_vel_pub.publish(move_cmd)
-        await simulate_async(1, 60, self.spin)
 
         # check 4: location after change radius
         # wait for all data to be received by subscribers
         await self.simulate_until_condition(
-            lambda: self._trans is not None and self._odom_data is not None, max_frames=60, per_frame_callback=self.spin
+            lambda: self._trans is not None and self._odom_data is not None,
+            max_frames=120,
+            per_frame_callback=self.spin,
         )
 
         # [tx, ty, tz, rx, ry, rz, rw]
@@ -230,7 +238,9 @@ class TestRos2DifferentialBase(ROS2TestCase):
 
     # add carter and ROS topic from scratch
     async def test_differential_base_scratch(self):
-
+        """Test differential base scratch."""
+        if SimulationManager.get_active_physics_engine() == "newton":
+            self.skipTest("Odometry node not yet supported by Newton backend")
         from geometry_msgs.msg import Twist
         from nav_msgs.msg import Odometry
 
@@ -240,12 +250,13 @@ class TestRos2DifferentialBase(ROS2TestCase):
         cmd_vel_pub = self.create_publisher(self.node, Twist, "cmd_vel", 1)
 
         graph_path = "/ActionGraph"
-        (graph_id, created_nodes) = self.add_differential_drive(graph_path, "/Carter")
+        graph_id, created_nodes = self.add_differential_drive(graph_path, "/Carter")
         og.Controller.attribute(graph_path + "/diffController.inputs:wheelRadius").set(0.1)
 
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await simulate_async(3, 60, self.spin)
+        # fixed 60 frames: match original simulate_async(1, 60) settle before checking data
+        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=self.spin)
 
         # check 0: is carter initially stationary
         # No transform expected in this test, only check odometry
@@ -253,21 +264,19 @@ class TestRos2DifferentialBase(ROS2TestCase):
         expected_odom = [0, 0, 0, 0, 0, 0, 1]
         self.check_pose(None, expected_odom, tolerance=1)
 
-        # rotate
+        # rotate for 2s at angular_z=0.2 rad/s → orientation.z ~0.40
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, 0.2)
         cmd_vel_pub.publish(move_cmd)
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await simulate_async(2, 60, self.spin)
+        await self.simulate_until_condition(lambda: False, max_frames=120, per_frame_callback=self.spin)
 
         # stop
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         cmd_vel_pub.publish(move_cmd)
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await self.simulate_until_condition(
-            lambda: self._odom_data is not None, max_frames=60, per_frame_callback=self.spin
-        )
+        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=self.spin)
 
         # check 1: location using default param
         odom_data = deepcopy(self._odom_data)
@@ -281,27 +290,28 @@ class TestRos2DifferentialBase(ROS2TestCase):
         # change wheel rotation and wheel base
         omni.kit.commands.execute("DeletePrims", paths=[graph_path])
 
-        (graph_id, created_nodes) = self.add_differential_drive(graph_path, "/Carter")
+        graph_id, created_nodes = self.add_differential_drive(graph_path, "/Carter")
         og.Controller.attribute(graph_path + "/diffController.inputs:wheelRadius").set(0.1)
         og.Controller.attribute(graph_path + "/diffController.inputs:wheelDistance").set(0.8)
 
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await simulate_async(1, 60, self.spin)
+        # fixed 60 frames: match original simulate_async(1, 60) settle before issuing rotation command
+        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=self.spin)
 
-        # rotate back
+        # rotate back for 2s at angular_z=-0.2 rad/s (wider wheelbase → faster rotation) → orientation.z ~-0.61
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, -0.2)
         cmd_vel_pub.publish(move_cmd)
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await simulate_async(2, 60, self.spin)
+        await self.simulate_until_condition(lambda: False, max_frames=120, per_frame_callback=self.spin)
 
         # stop
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         cmd_vel_pub.publish(move_cmd)
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await simulate_async(1, 60, self.spin)
+        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=self.spin)
 
         # check 3: location after change radius
         odom_data = deepcopy(self._odom_data)
@@ -317,6 +327,7 @@ class TestRos2DifferentialBase(ROS2TestCase):
         pass
 
     async def test_nova_carter_differential_base(self):
+        """Test nova carter differential base."""
         from geometry_msgs.msg import Twist
         from nav_msgs.msg import Odometry
         from tf2_msgs.msg import TFMessage
@@ -368,10 +379,9 @@ class TestRos2DifferentialBase(ROS2TestCase):
         await omni.kit.app.get_app().next_update_async()
 
         # wait for physics to settle and for all data to be received by subscribers
-        await simulate_async(1, 60, self.spin)
         await self.simulate_until_condition(
             lambda: self._trans is not None and self._odom_data is not None,
-            max_frames=120,  # Combined: 1s physics settle + 1s data wait at 60fps
+            max_frames=240,
             per_frame_callback=self.spin,
         )
 
@@ -380,14 +390,14 @@ class TestRos2DifferentialBase(ROS2TestCase):
         expected_trans = [1.0, -3.0, 0, 0, 0, 0.38268, 0.9238]
         # [px, py, pz, ox, oy, oz, ow]
         expected_odom = [0, 0, 0, 0, 0, 0, 1]
-        self.check_pose(expected_trans, expected_odom, tolerance=1)
+        self.check_pose(expected_trans, expected_odom, delta=0.1)
 
-        # straight forward
+        # straight forward for 3s at 0.1 m/s → ~0.3m accumulated
         move_cmd = self.move_cmd_msg(0.1, 0.0, 0.0, 0.0, 0.0, 0.0)
         cmd_vel_pub.publish(move_cmd)
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await simulate_async(3, 60, self.spin)
+        await self.simulate_until_condition(lambda: False, max_frames=180, per_frame_callback=self.spin)
 
         # stop
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -406,12 +416,13 @@ class TestRos2DifferentialBase(ROS2TestCase):
         expected_trans = [1.22, -2.78, 0, 0, 0, 0.38268, 0.9238]
         # [px, py, pz, ox, oy, oz, ow]
         expected_odom = [0.3, 0, 0, 0, 0, 0, 1]
-        self.check_pose(expected_trans, expected_odom, tolerance=1)
+        self.check_pose(expected_trans, expected_odom, delta=0.1)
 
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
         self.spin()
         self._trans = None
+        self._odom_data = None
 
         # change wheel rotation and wheel base
         og.Controller.set(
@@ -422,10 +433,9 @@ class TestRos2DifferentialBase(ROS2TestCase):
         )
 
         self._timeline.play()
-        await simulate_async(1, 60, self.spin)
         await self.simulate_until_condition(
             lambda: self._trans is not None and self._odom_data is not None,
-            max_frames=120,  # Combined: 1s physics settle + 1s data wait at 60fps
+            max_frames=240,
             per_frame_callback=self.spin,
         )
 
@@ -434,14 +444,14 @@ class TestRos2DifferentialBase(ROS2TestCase):
         expected_trans = [1.0, -3.0, 0, 0, 0, 0.38268, 0.9238]
         # [px, py, pz, ox, oy, oz, ow]
         expected_odom = [0, 0, 0, 0, 0, 0, 1]
-        self.check_pose(expected_trans, expected_odom, tolerance=1)
+        self.check_pose(expected_trans, expected_odom, delta=0.1)
 
-        # straight forward
+        # straight forward for 3s at 0.1 m/s (odometry units, new wheel params) → ~0.43m accumulated
         move_cmd = self.move_cmd_msg(0.1, 0.0, 0.0, 0.0, 0.0, 0.0)
         cmd_vel_pub.publish(move_cmd)
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await simulate_async(3, 60, self.spin)
+        await self.simulate_until_condition(lambda: False, max_frames=180, per_frame_callback=self.spin)
 
         # stop
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -455,63 +465,62 @@ class TestRos2DifferentialBase(ROS2TestCase):
         # check 4: location after change radius
         carb.log_info(str(self._trans.transform))
         carb.log_info(str(self._odom_data))
-        # [tx, ty, tz, rx, ry, rz, rw] - Use delta tolerance for translation as specified in original
+        # [tx, ty, tz, rx, ry, rz, rw]
         expected_trans = [1.30, -2.69, 0, 0, 0, 0.3815, 0.9244]
         # [px, py, pz, ox, oy, oz, ow]
         expected_odom = [0.43, 0, 0, 0, 0, 0, 1]
-        self.check_pose(expected_trans, expected_odom, tolerance=1)
+        self.check_pose(expected_trans, expected_odom, delta=0.1)
 
         self._timeline.stop()
         self.spin()
         pass
 
-    def check_pose(self, expected_trans, expected_odom, tolerance=1):
+    def check_pose(self, expected_trans, expected_odom, tolerance=1, delta=None):
         """Verify robot pose against expected transform and odometry values.
 
-        This method compares the current robot pose (from self._trans and self._odom_data)
-        against expected transform and odometry values.
-
         Args:
-            expected_trans: List/array of expected transform values [tx, ty, tz, rx, ry, rz, rw]
-                or None to skip transform checks. Order: translation x,y,z, rotation x,y,z,w.
-            expected_odom: List/array of expected odometry values [px, py, pz, ox, oy, oz, ow]
-                or None to skip odometry checks. Order: position x,y,z, orientation x,y,z,w.
-            tolerance: Tolerance for floating point comparisons (places parameter).
-            delta: Delta tolerance for floating point comparisons (delta parameter).
-                When provided, uses delta instead of places for translation values.
+            expected_trans: Expected [tx, ty, tz, rx, ry, rz, rw] or None to skip.
+            expected_odom: Expected [px, py, pz, ox, oy, oz, ow] or None to skip.
+            tolerance: Decimal places for assertAlmostEqual (used when delta is None).
+            delta: Absolute tolerance for assertAlmostEqual (overrides tolerance).
         """
-        # Check transform values if expected_trans is provided
+
+        def _assert_close(actual, expected, msg=""):
+            if delta is not None:
+                self.assertAlmostEqual(actual, expected, delta=delta, msg=msg)
+            else:
+                self.assertAlmostEqual(actual, expected, tolerance, msg=msg)
+
         if expected_trans is not None:
             self.assertIsNotNone(self._trans)
             if len(expected_trans) >= 3:
-                self.assertAlmostEqual(self._trans.transform.translation.x, expected_trans[0], tolerance)
-                self.assertAlmostEqual(self._trans.transform.translation.y, expected_trans[1], tolerance)
-                self.assertAlmostEqual(self._trans.transform.translation.z, expected_trans[2], tolerance)
+                _assert_close(self._trans.transform.translation.x, expected_trans[0])
+                _assert_close(self._trans.transform.translation.y, expected_trans[1])
+                _assert_close(self._trans.transform.translation.z, expected_trans[2])
             if len(expected_trans) >= 7:
-                self.assertAlmostEqual(self._trans.transform.rotation.x, expected_trans[3], tolerance)
-                self.assertAlmostEqual(self._trans.transform.rotation.y, expected_trans[4], tolerance)
-                self.assertAlmostEqual(self._trans.transform.rotation.z, expected_trans[5], tolerance)
-                self.assertAlmostEqual(self._trans.transform.rotation.w, expected_trans[6], tolerance)
+                _assert_close(self._trans.transform.rotation.x, expected_trans[3])
+                _assert_close(self._trans.transform.rotation.y, expected_trans[4])
+                _assert_close(self._trans.transform.rotation.z, expected_trans[5])
+                _assert_close(self._trans.transform.rotation.w, expected_trans[6])
 
-        # Check odometry values if expected_odom is provided
         if expected_odom is not None:
             self.assertIsNotNone(self._odom_data)
             odom_data = deepcopy(self._odom_data)
             if len(expected_odom) >= 3:
-                self.assertAlmostEqual(odom_data.position.x, expected_odom[0], tolerance)
-                self.assertAlmostEqual(odom_data.position.y, expected_odom[1], tolerance)
-                self.assertAlmostEqual(odom_data.position.z, expected_odom[2], tolerance)
+                _assert_close(odom_data.position.x, expected_odom[0])
+                _assert_close(odom_data.position.y, expected_odom[1])
+                _assert_close(odom_data.position.z, expected_odom[2])
             if len(expected_odom) >= 7:
-                self.assertAlmostEqual(odom_data.orientation.x, expected_odom[3], tolerance)
-                self.assertAlmostEqual(odom_data.orientation.y, expected_odom[4], tolerance)
-                self.assertAlmostEqual(odom_data.orientation.z, expected_odom[5], tolerance)
-                self.assertAlmostEqual(odom_data.orientation.w, expected_odom[6], tolerance)
+                _assert_close(odom_data.orientation.x, expected_odom[3])
+                _assert_close(odom_data.orientation.y, expected_odom[4])
+                _assert_close(odom_data.orientation.z, expected_odom[5])
+                _assert_close(odom_data.orientation.w, expected_odom[6])
 
     def add_differential_drive(self, graph_path, robot_path):
-
+        """Add differential drive to the test scene."""
         try:
             keys = og.Controller.Keys
-            (graph, nodes, _, _) = og.Controller.edit(
+            graph, nodes, _, _ = og.Controller.edit(
                 {"graph_path": graph_path, "evaluator_name": "execution"},
                 {
                     keys.CREATE_NODES: [

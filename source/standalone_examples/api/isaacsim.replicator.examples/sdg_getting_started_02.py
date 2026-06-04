@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Demonstrate SDG with custom writers and multiple render products."""
+
 import os
 
 from isaacsim import SimulationApp
@@ -25,8 +27,9 @@ import omni.usd
 from omni.replicator.core import Writer
 
 
-# Create a custom writer to access annotator data
 class MyWriter(Writer):
+    """Access and print annotator data from attached render products."""
+
     def __init__(self, camera_params: bool = True, bounding_box_3d: bool = True):
         # Organize data from render product perspective (legacy, annotator, renderProduct)
         self.data_structure = "renderProduct"
@@ -38,6 +41,7 @@ class MyWriter(Writer):
         self._frame_id = 0
 
     def write(self, data: dict):
+        """Print captured annotator data for each frame."""
         print(f"[MyWriter][{self._frame_id}] data:")
         for key, value in data.items():
             print(f"  {key}: {value}")
@@ -49,6 +53,7 @@ rep.writers.register_writer(MyWriter)
 
 
 def run_example():
+    """Run SDG with custom writer, pose writer, and annotator data access."""
     # Create a new stage and disable capture on play
     omni.usd.get_context().new_stage()
     rep.orchestrator.set_capture_on_play(False)
@@ -110,5 +115,39 @@ def run_example():
 
 
 run_example()
+
+# <start-sdg-getting-started-02-test>
+import argparse
+import sys
+
+from isaacsim.core.utils.extensions import enable_extension
+
+enable_extension("isaacsim.test.utils")
+from isaacsim.test.utils.file_validation import validate_folder_contents
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--test",
+    action="store_true",
+    help="Validate captured output files against expected counts and exit.",
+)
+args, _ = parser.parse_known_args()
+
+if args.test:
+    # PoseWriter with write_debug_images=True writes 1 json + 1 png + 1 _overlay.png per capture,
+    # plus a single metadata.txt for the run. 3 steps x 2 render products = 6 captures.
+    num_captures = 3 * 2
+    out_dir = os.path.join(os.getcwd(), "_out_pose_writer")
+    ok = validate_folder_contents(
+        path=out_dir,
+        recursive=True,
+        expected_counts={"json": num_captures, "png": num_captures * 2, "txt": 1},
+        fail_on_empty_files=True,
+    )
+    if not ok:
+        print(f"[SDG][Test][FAIL] Output validation failed for {out_dir}")
+        sys.exit(1)
+    print(f"[SDG][Test][PASS] Output validation succeeded for {out_dir}")
+# <end-sdg-getting-started-02-test>
 
 simulation_app.close()

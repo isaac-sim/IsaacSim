@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
 
 """Utilities and base class for testing menu UI components in Isaac Sim."""
 
+from __future__ import annotations
 
 import asyncio
 from typing import Any
@@ -33,6 +34,7 @@ from .menu_utils import (
 from .menu_utils import find_enabled_widget_with_retry as _find_enabled_widget_with_retry
 from .menu_utils import find_widget_with_retry as _find_widget_with_retry
 from .menu_utils import menu_click_with_retry as _menu_click_with_retry
+from .menu_utils import scroll_to_widget as _scroll_to_widget
 from .menu_utils import wait_for_widget_enabled as _wait_for_widget_enabled
 
 
@@ -54,7 +56,7 @@ class MenuUITestCase(OmniUiTest):
         ...         self.assertIn("Create", menu)
     """
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment before each test method.
 
         Creates a new stage, initializes the timeline interface, and waits for
@@ -66,7 +68,7 @@ class MenuUITestCase(OmniUiTest):
         await omni.kit.app.get_app().next_update_async()
         await self.wait_for_stage_loading()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test environment after each test method.
 
         Waits for any pending stage loading operations to complete before
@@ -76,7 +78,7 @@ class MenuUITestCase(OmniUiTest):
         await self.wait_for_stage_loading()
         await super().tearDown()
 
-    async def wait_for_stage_loading(self):
+    async def wait_for_stage_loading(self) -> None:
         """Wait until the stage has finished loading.
 
         Polls the stage loading status and waits until all files have been loaded.
@@ -89,7 +91,7 @@ class MenuUITestCase(OmniUiTest):
         omni.kit.menu.utils.rebuild_menus()
         await omni.kit.app.get_app().next_update_async()
 
-    async def new_stage(self):
+    async def new_stage(self) -> None:
         """Create a new stage and wait for it to load.
 
         Useful for resetting the stage between test iterations in a loop.
@@ -98,7 +100,7 @@ class MenuUITestCase(OmniUiTest):
         await omni.kit.app.get_app().next_update_async()
         await self.wait_for_stage_loading()
 
-    async def wait_n_frames(self, n: int = 10):
+    async def wait_n_frames(self, n: int = 10) -> None:
         """Wait for N app update frames.
 
         Args:
@@ -138,7 +140,7 @@ class MenuUITestCase(OmniUiTest):
 
     async def menu_click_with_retry(
         self, menu_path: str, delays: list[int] = None, window_name: str = None, wait_n_frames: int = 10
-    ):
+    ) -> Any:
         """Click a menu item with retry at different delay speeds.
 
         Some menu items require different timing to be clicked successfully.
@@ -159,7 +161,9 @@ class MenuUITestCase(OmniUiTest):
             menu_path, delays=delays, window_name=window_name, wait_n_frames=wait_n_frames
         )
 
-    async def find_widget_with_retry(self, query: str, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES, parent=None):
+    async def find_widget_with_retry(
+        self, query: str, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES, parent: Any = None
+    ) -> Any:
         """Poll ``ui_test.find`` until the widget is found or *max_frames* is exceeded.
 
         Convenience wrapper around :func:`~isaacsim.test.utils.menu_utils.find_widget_with_retry`.
@@ -177,7 +181,9 @@ class MenuUITestCase(OmniUiTest):
         """
         return await _find_widget_with_retry(query, max_frames=max_frames, parent=parent)
 
-    async def find_enabled_widget_with_retry(self, query: str, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES, parent=None):
+    async def find_enabled_widget_with_retry(
+        self, query: str, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES, parent: Any = None
+    ) -> Any:
         """Poll ``ui_test.find`` until the widget is found **and** enabled.
 
         Convenience wrapper around :func:`~isaacsim.test.utils.menu_utils.find_enabled_widget_with_retry`.
@@ -195,7 +201,23 @@ class MenuUITestCase(OmniUiTest):
         """
         return await _find_enabled_widget_with_retry(query, max_frames=max_frames, parent=parent)
 
-    async def wait_for_widget_enabled(self, widget, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES) -> bool:
+    async def scroll_to_widget(self, widget_ref: Any, settle_frames: int = 3) -> bool:
+        """Scroll the enclosing ``ScrollingFrame`` so ``widget_ref`` is visible.
+
+        Convenience wrapper around :func:`~isaacsim.test.utils.menu_utils.scroll_to_widget`.
+
+        Args:
+            widget_ref: A ``WidgetRef`` returned by ``ui_test.find`` /
+                :meth:`find_widget_with_retry`.
+            settle_frames: Number of frames to wait after scrolling.
+
+        Returns:
+            True if the widget was scrolled into view, False if no enclosing
+            ``ScrollingFrame`` was found.
+        """
+        return await _scroll_to_widget(widget_ref, settle_frames=settle_frames)
+
+    async def wait_for_widget_enabled(self, widget: Any, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES) -> bool:
         """Poll until ``widget.widget.enabled`` becomes True.
 
         Convenience wrapper around :func:`~isaacsim.test.utils.menu_utils.wait_for_widget_enabled`.
@@ -224,7 +246,7 @@ class MenuUITestCase(OmniUiTest):
                 count += 1
         return count
 
-    async def run_timeline_frames(self, n: int = 50):
+    async def run_timeline_frames(self, n: int = 50) -> None:
         """Play the timeline for N frames then stop.
 
         Useful for tests that need physics or sensor processing to occur.
@@ -236,7 +258,7 @@ class MenuUITestCase(OmniUiTest):
         await self.wait_n_frames(n)
         self._timeline.stop()
 
-    def select_prim(self, prim_path: str):
+    def select_prim(self, prim_path: str) -> None:
         """Select a prim by its path.
 
         Args:

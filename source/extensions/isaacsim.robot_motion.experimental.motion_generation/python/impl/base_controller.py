@@ -15,7 +15,6 @@
 
 """Base controller interface for robot motion generation in Isaac Sim."""
 
-
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -54,7 +53,6 @@ class BaseController(ABC):
             >>> if desired is None:
             ...     print("Controller failed")
         """
-        pass
 
     @abstractmethod
     def reset(self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs) -> bool:
@@ -80,4 +78,3 @@ class BaseController(ABC):
             >>> if not controller.reset(estimated_state, setpoint_state, t):
             ...     raise RuntimeError("Controller reset failed")
         """
-        pass

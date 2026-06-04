@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Provide base class for creating and wrapping USD Light prims."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
 import isaacsim.core.experimental.utils.ops as ops_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
+import matplotlib.colors
 import numpy as np
 import warp as wp
 from isaacsim.core.experimental.prims import XformPrim
@@ -87,10 +90,10 @@ class Light(XformPrim, ABC):
 
     @property
     def lights(self) -> list[UsdLux.Light]:
-        """USD Light encapsulated by the wrapper.
+        """USD Light prims encapsulated by the wrapper.
 
         Returns:
-            List of USD Light.
+            List of USD Light prims.
 
         Example:
 
@@ -606,17 +609,20 @@ class Light(XformPrim, ABC):
         *,
         indices: int | list | np.ndarray | wp.array | None = None,
     ) -> None:
-        """Set the color (normalized RGB) of emitted light (in energy-linear terms) of the prims.
+        """Set the emitted light colors of the prims.
 
         Backends: :guilabel:`usd`.
 
         Args:
-            colors: Colors (shape ``(N, 3)``).
+            colors: Normalized RGB colors (shape ``(N, 3)``) or case-insensitive string representations.
+                Supported string representations include hex codes and X11/CSS4 color names without spaces,
+                as well as any other format supported by Matplotlib. Alpha channel is ignored for string representations.
                 If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).
             indices: Indices of prims to process (shape ``(N,)``). If not defined, all wrapped prims are processed.
 
         Raises:
             AssertionError: Wrapped prims are not valid.
+            ValueError: Invalid string representation format for the colors.
 
         Example:
 
@@ -626,24 +632,26 @@ class Light(XformPrim, ABC):
             >>> prims.set_colors([1.0, 0.0, 0.0])
             >>>
             >>> # set only the color (green) for the second prim
-            >>> prims.set_colors([0.0, 1.0, 0.0], indices=[1])
+            >>> prims.set_colors("#00ff00", indices=[1])
         """
         assert self.valid, _MSG_PRIM_NOT_VALID
         # USD API
         indices = ops_utils.resolve_indices(indices, count=len(self), device="cpu")
-        colors = ops_utils.place(colors, device="cpu").numpy().reshape((-1, 3))
-        broadcast = colors.shape[0] == 1
-        colors = colors.tolist()
+        if isinstance(colors, str):
+            colors = matplotlib.colors.to_rgb(colors)
+        elif isinstance(colors, (list, tuple)):
+            colors = [matplotlib.colors.to_rgb(color) if isinstance(color, str) else color for color in colors]
+        colors = ops_utils.broadcast_to(colors, shape=(indices.shape[0], 3), dtype=wp.float32, device="cpu").numpy()
         for i, index in enumerate(indices.numpy()):
             light_api = Light.ensure_api([self.prims[index]], UsdLux.LightAPI)[0]
-            light_api.GetColorAttr().Set(Gf.Vec3f(*colors[0 if broadcast else i]))
+            light_api.GetColorAttr().Set(Gf.Vec3f(*colors[i].tolist()))
 
     def get_colors(
         self,
         *,
         indices: int | list | np.ndarray | wp.array | None = None,
     ) -> wp.array:
-        """Get the color (normalized RGB) of emitted light (in energy-linear terms) of the prims.
+        """Get the emitted light colors of the prims.
 
         Backends: :guilabel:`usd`.
 
@@ -651,7 +659,7 @@ class Light(XformPrim, ABC):
             indices: Indices of prims to process (shape ``(N,)``). If not defined, all wrapped prims are processed.
 
         Returns:
-            The colors (shape ``(N, 3)``).
+            The normalized RGB colors (shape ``(N, 3)``).
 
         Raises:
             AssertionError: Wrapped prims are not valid.
@@ -694,7 +702,6 @@ class Light(XformPrim, ABC):
         Returns:
             Boolean flags indicating if the prims are valid for creating Light instances.
         """
-        pass
 
     @staticmethod
     def fetch_instances(paths: str | Usd.Prim | list[str | Usd.Prim]) -> list[Light | None]:

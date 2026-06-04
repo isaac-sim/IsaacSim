@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,40 +13,50 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test the grasping workflow end-to-end."""
+
+from __future__ import annotations
+
 import os
 
 import omni.kit.app
 import omni.usd
-from isaacsim.core.utils.extensions import get_extension_path_from_name
+from isaacsim.core.experimental.utils.app import get_extension_path
 from isaacsim.replicator.grasping.grasping_manager import GraspingManager
 from isaacsim.storage.native import get_assets_root_path_async
 
 from .common import check_grasp_pose_generation_dependencies
 
 
-class TestGraspingWorkflow((omni.kit.test.AsyncTestCase)):
-    async def setUp(self):
+class TestGraspingWorkflow(omni.kit.test.AsyncTestCase):
+    """Test the grasping workflow with configuration and evaluation."""
+
+    async def setUp(self) -> None:
+        """Set up test fixtures."""
         await omni.kit.app.get_app().next_update_async()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Tear down test fixtures."""
         omni.usd.get_context().close_stage()
         await omni.kit.app.get_app().next_update_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_grasping_workflow_example(self):
+    async def test_grasping_workflow_example(self) -> None:
+        """Test the full grasping workflow with config loading and pose evaluation."""
+
         async def run_example_async(
-            stage_path,
-            config_path=None,
-            sampler_config=None,
-            physics_scene_path=None,
-            output_dir=None,
-            gripper_path=None,
-            object_prim_path=None,
-        ):
+            stage_path: str | None = None,
+            config_path: str | None = None,
+            sampler_config: dict | None = None,
+            physics_scene_path: str | None = None,
+            output_dir: str | None = None,
+            gripper_path: str | None = None,
+            object_prim_path: str | None = None,
+        ) -> None:
             assets_root_path = await get_assets_root_path_async()
             print(f"Assets root path: {assets_root_path}")
             stage_url = assets_root_path + stage_path
@@ -136,7 +146,7 @@ class TestGraspingWorkflow((omni.kit.test.AsyncTestCase)):
 
         stage_path = "/Isaac/Samples/Replicator/Stage/sdg_grasping_xarm.usd"
 
-        ext_path = get_extension_path_from_name("isaacsim.replicator.grasping")
+        ext_path = get_extension_path("isaacsim.replicator.grasping")
         config_path = os.path.join(ext_path, "data/gripper_configs/xarm_antipodal_soup_can.yaml")
         output_dir = os.path.join(os.getcwd(), "xarm_antipodal")
 

@@ -1,0 +1,53 @@
+{
+    "isaacsim.robot.wheeled_robots.CheckGoal2D": {
+        "version": 1,
+        "description": "Check if wheeled robot has reached goal",
+        "language": "Python",
+        "categories": {
+            "isaacWheeledRobots": "robot path planning inside Isaac Sim"
+        },
+        "metadata": {
+            "uiName": "Check Goal 2D"
+        },
+        "$comment": "",
+        "inputs": {
+            "execIn": {
+                "type": "execution",
+                "description": "The input execution"
+            },
+            "currentPosition":{
+                "type": "vectord[3]",
+                "description": "Current position of the robot (recommended to use Get Prim Local to World Transform node)"
+            },
+            "currentOrientation":{
+                "type": "quatd[4]",
+                "description": "Current rotation of the robot as a quaternion (recommended to use Get Prim Local to World Transform node)"
+            },
+            "target":{
+                "type": "double[3]",
+                "description": "Target position and orientation",
+                "default": [0,0,0]
+            },
+            "targetChanged":{
+                "type": "bool",
+                "description": "Target position/orientation has changed",
+                "default": false
+            },
+            "thresholds":{
+                "type": "double[2]",
+                "description": "Position and orientation thresholds at target",
+                "default": [0.1, 0.1]
+            }
+        },
+        "outputs": {
+            "execOut": {
+                "type": "execution",
+                "description": "The output execution"
+            },
+            "reachedGoal": {
+                "type": "bool[]",
+                "description": "Reached position and orientation goals"
+            }
+        }
+    }
+}

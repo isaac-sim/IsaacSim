@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +14,8 @@
 # limitations under the License.
 
 """UCX Nodes Extension - manages lifecycle of native plugin."""
+
+import os
 
 import carb
 import omni
@@ -31,13 +33,16 @@ BRIDGE_PREFIX = "UCX"
 class UCXBridgeExtension(omni.ext.IExt):
     """UCX Bridge Extension class."""
 
-    def on_startup(self, ext_id):
-        """Called when the extension is loaded.
+    def on_startup(self, ext_id: str) -> None:
+        """Initialize the extension when it is loaded.
 
         Args:
             ext_id: The extension identifier.
         """
         carb.log_info("UCX Bridge Extension starting up")
+
+        # Must be set before UCX context creation.
+        os.environ["UCX_CM_USE_ALL_DEVICES"] = "n"
 
         # Acquire the native plugin interface - this triggers plugin load
         from .bindings._ucx_nodes import acquire_interface
@@ -48,8 +53,8 @@ class UCXBridgeExtension(omni.ext.IExt):
 
         carb.log_info("UCX Bridge Extension started")
 
-    def on_shutdown(self):
-        """Called when the extension is unloaded."""
+    def on_shutdown(self) -> None:
+        """Clean up resources when the extension is unloaded."""
         carb.log_info("UCX Bridge Extension shutting down")
 
         # Release the native plugin interface
@@ -63,9 +68,8 @@ class UCXBridgeExtension(omni.ext.IExt):
 
         carb.log_info("UCX Bridge Extension shut down")
 
-    def register_nodes(self):
+    def register_nodes(self) -> None:
         """Register the nodes for the UCX Bridge Extension."""
-
         # For Simulation and System time. Removed first S char in keys to account for both upper and lower cases.
         TIME_TYPES = [("imulationTime", ""), ("ystemTime", "SystemTime")]
 
@@ -84,7 +88,7 @@ class UCXBridgeExtension(omni.ext.IExt):
                 category=BRIDGE_NAME,
             )
 
-    def unregister_nodes(self):
+    def unregister_nodes(self) -> None:
         """Unregister the nodes for the UCX Bridge Extension."""
         for writer in rep.WriterRegistry.get_writers(category=BRIDGE_NAME):
             rep.writers.unregister_writer(writer)

@@ -15,7 +15,6 @@
 
 """Implementation for robot motion trajectory following controllers."""
 
-
 from typing import Optional
 
 from .base_controller import BaseController
@@ -35,7 +34,6 @@ class TrajectoryFollower(BaseController):
     """
 
     def __init__(self):
-        """Initialize a TrajectoryFollower controller."""
         self._trajectory = None
 
         # Time when the trajectory starts to run in the sim/real world.
@@ -56,7 +54,6 @@ class TrajectoryFollower(BaseController):
         Returns:
             True if reset succeeded, False if no trajectory had been set.
         """
-
         # If there is no trajectory, this is not ready to run.
         if self._trajectory is None:
             return False

@@ -15,7 +15,6 @@
 
 """Utilities for determining USD prim shape types in the Isaac Sim robot motion generation system."""
 
-
 from typing import Type
 
 # TODO: Does something in the core experimental API already do this?
@@ -42,7 +41,6 @@ def get_shape_type(prim_path: str) -> Type[Shape]:
         >>> prim_path = "/World/SomeShape"
         >>> _ = get_shape_type(prim_path)  # doctest: +SKIP
     """
-
     if Sphere.are_of_type(prim_path).numpy().item():
         return Sphere
 

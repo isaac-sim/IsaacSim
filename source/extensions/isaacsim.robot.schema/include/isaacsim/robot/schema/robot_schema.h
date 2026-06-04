@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,9 +12,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#pragma once
 
-#include <carb/logging/Log.h>
+#pragma once
 
 #include <pxr/base/tf/token.h>
 #include <pxr/base/vt/array.h>
@@ -32,6 +31,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <deque>
 #include <string>
 #include <unordered_map>
@@ -126,7 +126,7 @@ enum class DofOffsetOpOrder
 };
 
 /** @brief Common prefix token for Isaac schema attributes. */
-const std::string _attrPrefix("isaac");
+const std::string _attrPrefix = "isaac";
 
 /** @brief Array of schema class name strings indexed by Classes enum. */
 const std::string classNames[] = { "IsaacRobotAPI", "IsaacLinkAPI",        "IsaacReferencePointAPI", "IsaacSiteAPI",
@@ -225,10 +225,10 @@ inline pxr::TfToken getAttributeName(Attributes attr);
 namespace details
 {
 /** @brief Token for PhysicsD6Joint type name. */
-inline const pxr::TfToken kPhysicsD6JointType("PhysicsD6Joint");
+inline const pxr::TfToken kPhysicsD6JointType{ "PhysicsD6Joint" };
 
 /** @brief Token for PhysicsSphericalJoint type name. */
-inline const pxr::TfToken kPhysicsSphericalJointType("PhysicsSphericalJoint");
+inline const pxr::TfToken kPhysicsSphericalJointType{ "PhysicsSphericalJoint" };
 
 /**
  * @brief Check if a joint prim is a multi-axis joint.
@@ -277,6 +277,7 @@ inline const std::array<DeprecatedDofAttributeDescriptor, 6> kDeprecatedDofAttri
     DeprecatedDofAttributeDescriptor{ pxr::TfToken("isaac:physics:Rot_Z:DoFOffset"), "RotZ", pxr::UsdPhysicsTokens->rotZ }
 };
 
+/// @cond DOXYGEN_SHOULD_SKIP_THIS
 inline const std::unordered_map<std::string, size_t> kTokenFallbackOrder = []()
 {
     std::unordered_map<std::string, size_t> order;
@@ -286,6 +287,7 @@ inline const std::unordered_map<std::string, size_t> kTokenFallbackOrder = []()
     }
     return order;
 }();
+/// @endcond
 
 /**
  * @brief Check if a joint axis has valid limit values.
@@ -548,7 +550,7 @@ inline void ApplySiteAPI(pxr::UsdPrim& prim)
  */
 inline void ApplyReferencePointAPI(pxr::UsdPrim& prim)
 {
-    CARB_LOG_WARN("ApplyReferencePointAPI is deprecated. Use ApplySiteAPI instead.");
+    fprintf(stderr, "Warning: ApplyReferencePointAPI is deprecated. Use ApplySiteAPI instead.\n");
     ApplySiteAPI(prim);
 }
 

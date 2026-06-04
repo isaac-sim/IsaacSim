@@ -1,10 +1,18 @@
-# Copyright (c) 2018-2021, NVIDIA CORPORATION.  All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto.  Any use, reproduction, disclosure or
-# distribution of this software and related documentation without an express
-# license agreement from NVIDIA CORPORATION is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Viewport gesture helpers for overlay menu interactions."""
 
 from typing import Any
@@ -22,7 +30,7 @@ class PreventOthers(sc.GestureManager):
     that are in BEGAN or CHANGED states.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
     def can_be_prevented(self, gesture: Any) -> bool:
@@ -63,13 +71,13 @@ class OverlayMenuClick(sc.ClickGesture):
         **kwargs: Additional keyword arguments for the base click gesture.
     """
 
-    def __init__(self, connection: Any, *args: Any, **kwargs: Any):
+    def __init__(self, connection: Any, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._connection = connection
         self._context_menu_disabled = None
         self._viewport_disabled = None
 
-    def on_began(self):
+    def on_began(self) -> None:
         """Handle the start of a click gesture.
 
         Disables viewport context menu and selection to prevent
@@ -79,7 +87,7 @@ class OverlayMenuClick(sc.ClickGesture):
         self._context_menu_disabled = disable_context_menu(viewport_window)
         self._viewport_disabled = disable_selection(viewport_window)
 
-    def on_ended(self, *args: Any):
+    def on_ended(self, *args: Any) -> None:
         """Handle the end of a click gesture.
 
         Shows the overlay menu and re-enables viewport interactions.
@@ -90,7 +98,7 @@ class OverlayMenuClick(sc.ClickGesture):
         OverlayMenu.show_menu(self._connection)
         self._cleanup_disabled_states()
 
-    def _cleanup_disabled_states(self):
+    def _cleanup_disabled_states(self) -> None:
         """Re-enable viewport context menu and selection."""
         if self._context_menu_disabled:
             del self._context_menu_disabled

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,8 +16,6 @@
 // clang-format off
 #include <pch/UsdPCH.h>
 // clang-format on
-
-#include <carb/extras/Library.h>
 
 #include <isaacsim/ros2/core/Ros2Factory.h>
 #include <isaacsim/ros2/core/Ros2Node.h>
@@ -113,7 +111,7 @@ public:
         state.reset();
     }
 
-    virtual void reset()
+    void reset() override
     {
         m_publisher.reset(); // This should be reset before we reset the handle.
         Ros2Node::reset();

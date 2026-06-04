@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,3 +18,4 @@
 from ._urdf import _urdf as _urdf
 from .config import URDFImporterConfig as URDFImporterConfig
 from .converter import URDFImporter as URDFImporter
+from .urdf_utils import merge_fixed_joints as merge_fixed_joints

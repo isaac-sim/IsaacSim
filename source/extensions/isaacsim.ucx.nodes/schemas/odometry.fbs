@@ -1,0 +1,19 @@
+include "header.fbs";
+include "pose_with_covariance.fbs";
+include "twist_with_covariance.fbs";
+
+namespace isaac;
+
+// Describes the pose and twist of a frame in a parent frame.
+table Odometry {
+  // Header containing timestamp and frame_id.
+  header: Header (id: 0);
+
+  // The pose of the child frame in the parent frame.
+  pose: PoseWithCovariance (id: 1);
+
+  // The twist of the child frame in the parent frame.
+  twist: TwistWithCovariance (id: 2);
+}
+
+root_type Odometry;

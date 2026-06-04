@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,16 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
+"""CLI wrapper for replaying MobilityGen recordings and rendering sensor data.
 
-This script launches a simulation app for replaying and rendering
-a recording.
+Example usage (from the Isaac Sim build directory):
 
+    cd _build/linux-x86_64/release
+    ./python.sh ../../../source/standalone_examples/replicator/mobility_gen/replay_directory.py \\
+        --render_interval 6 \\
+        --enable isaacsim.replicator.mobility_gen.examples \\
+        --input ~/MobilityGenData/recordings \\
+        --output ~/MobilityGenData/replays
+
+Note: multi_gpu is disabled to avoid crashes on Kit 110.1.x with multiple GPUs.
 """
 
 from isaacsim import SimulationApp
 
-simulation_app = SimulationApp(launch_config={"headless": True})
+simulation_app = SimulationApp(launch_config={"headless": True, "multi_gpu": False})
 
 import argparse
 import glob
@@ -31,11 +38,25 @@ import shutil
 import time
 
 import carb
+import isaacsim.core.experimental.utils.app as app_utils
 import omni.replicator.core as rep
-from isaacsim.replicator.mobility_gen.impl.build import load_scenario
-from isaacsim.replicator.mobility_gen.impl.reader import MobilityGenReader
-from isaacsim.replicator.mobility_gen.impl.utils.global_utils import get_world
-from isaacsim.replicator.mobility_gen.impl.writer import MobilityGenWriter
+import omni.timeline
+from isaacsim.core.experimental.utils.stage import get_current_stage
+from isaacsim.core.simulation_manager import SimulationManager
+
+app_utils.enable_extension("isaacsim.replicator.experimental.mobility_gen")
+app_utils.enable_extension("isaacsim.replicator.mobility_gen.examples")
+
+simulation_app.update()
+
+from isaacsim.replicator.experimental.mobility_gen import (
+    MobilityGenReader,
+    MobilityGenWriter,
+    apply_nurec_replay_overrides,
+    apply_sensor_overrides,
+    load_scenario,
+    log_camera_properties,
+)
 
 if "MOBILITY_GEN_DATA" in os.environ:
     DATA_DIR = os.environ["MOBILITY_GEN_DATA"]
@@ -57,26 +78,39 @@ if __name__ == "__main__":
         help="The path to output the recordings with rendered sensor data",
     )
 
-    parser.add_argument("--rgb_enabled", type=bool, default=True, help="Set true to enable RGB image rendering.")
+    parser.add_argument(
+        "--rgb_enabled",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable RGB image rendering (--rgb_enabled / --no-rgb_enabled).",
+    )
 
     parser.add_argument(
         "--segmentation_enabled",
-        type=bool,
+        action=argparse.BooleanOptionalAction,
         default=True,
-        help="Set true to enable semantic segmentation image rendering.",
+        help="Enable semantic segmentation rendering (--segmentation_enabled / --no-segmentation_enabled).",
     )
 
-    parser.add_argument("--depth_enabled", type=bool, default=True, help="Set true to enable depth image rendering.")
+    parser.add_argument(
+        "--depth_enabled",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable depth image rendering (--depth_enabled / --no-depth_enabled).",
+    )
 
     parser.add_argument(
         "--instance_id_segmentation_enabled",
-        type=bool,
+        action=argparse.BooleanOptionalAction,
         default=False,
-        help="Set true to enable instance segmentation image rendering.",
+        help="Enable instance segmentation rendering (--instance_id_segmentation_enabled / --no-instance_id_segmentation_enabled).",
     )
 
     parser.add_argument(
-        "--normals_enabled", type=bool, default=False, help="Set true to enable surface normal image rendering."
+        "--normals_enabled",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable surface normal image rendering (--normals_enabled / --no-normals_enabled).",
     )
 
     parser.add_argument(
@@ -95,24 +129,33 @@ if __name__ == "__main__":
         "some timesteps missing images.",
     )
 
-    args, unknown = parser.parse_known_args()
+    cli_args, unknown = parser.parse_known_args()
 
-    args.input = os.path.expanduser(args.input)
-    args.output = os.path.expanduser(args.output)
+    cli_args.input = os.path.expanduser(cli_args.input)
+    cli_args.output = os.path.expanduser(cli_args.output)
 
-    recording_paths = glob.glob(os.path.join(args.input, "*"))
+    recording_paths = glob.glob(os.path.join(cli_args.input, "*"))
 
-    recording_count = 0
-    for recording_path in recording_paths:
-        recording_count += 1
+    for i, recording_path in enumerate(recording_paths, start=1):
+        # Per-iteration copy of the CLI namespace: apply_nurec_replay_overrides
+        # mutates this in place when a NuRec stage is detected. Without a fresh
+        # copy each iteration, a NuRec recording would silently disable non-RGB
+        # modalities for every subsequent non-NuRec recording in the batch.
+        args = argparse.Namespace(**vars(cli_args))
+
         name = os.path.basename(recording_path)
 
         output_path = os.path.join(args.output, name)
 
         scenario = load_scenario(recording_path)
 
-        world = get_world()
-        world.reset()
+        # If the loaded stage is NuRec (contains ParticleField prims), force
+        # the per-modality replay flags to the supported subset (RGB only)
+        # and re-assert the gaussian-pass tonemap setting (which the stage's
+        # customLayerData can revert on open). No-op on non-NuRec stages.
+        apply_nurec_replay_overrides(args, get_current_stage())
+
+        SimulationManager.initialize_physics()
 
         if args.rgb_enabled:
             scenario.enable_rgb_rendering()
@@ -129,8 +172,16 @@ if __name__ == "__main__":
         if args.normals_enabled:
             scenario.enable_normals_rendering()
 
-        simulation_app.update()
+        # Re-enable hydra texture updates now that all annotators are attached.
+        scenario.finalize_rendering()
+
         rep.orchestrator.step(rt_subframes=args.render_rt_subframes, delta_time=0.0, pause_timeline=False)
+
+        # Apply camera calibration overrides after the render graph is fully
+        # initialised — applying them earlier causes Kit to queue a USD change
+        # notice that races with SDGPipeline construction and crashes OmniGraph.
+        apply_sensor_overrides("/World/robot", recording_path)
+        log_camera_properties(get_current_stage(), "/World/robot")
 
         reader = MobilityGenReader(recording_path)
         num_steps = len(reader)
@@ -141,7 +192,7 @@ if __name__ == "__main__":
         writer = MobilityGenWriter(output_path)
         writer.copy_init(recording_path)
 
-        carb.log_warn(f"============== Replaying {recording_count} / {len(recording_paths)}==============")
+        carb.log_warn(f"============== Replaying {i} / {len(recording_paths)} ==============")
         carb.log_warn(f"\tInput path: {recording_path}")
         carb.log_warn(f"\tOutput path: {output_path}")
         carb.log_warn(f"\tRgb enabled: {args.rgb_enabled}")
@@ -158,6 +209,13 @@ if __name__ == "__main__":
 
             scenario.load_state_dict(state_dict_original)
             scenario.write_replay_data()
+
+            # Propagate tensor-API pose/joint writes to USD before rendering.
+            # set_world_poses() / set_dof_positions() write into PhysX tensor buffers; PhysX
+            # only syncs these back to USD during simulate() + fetch_results().
+            # SimulationManager.initialize_physics() does not start the Kit timeline, so
+            # simulation_app.update() does not tick physics here — a direct step() call is needed.
+            SimulationManager.step(steps=1)
 
             simulation_app.update()
 
@@ -188,4 +246,12 @@ if __name__ == "__main__":
 
         carb.log_warn(f"Process time per frame: {count / (t1 - t0)}")
 
+        rep.orchestrator.wait_until_complete()
+        scenario.disable_rendering()
+        writer.close()
+
+    # Stop the timeline so Kit's shutdown sequence receives the stop event and
+    # can clean up physics properly.  Without this, the timeline is left paused
+    # and simulation_app.close() hangs for 120 s waiting for physics teardown.
+    omni.timeline.get_timeline_interface().stop()
     simulation_app.close()

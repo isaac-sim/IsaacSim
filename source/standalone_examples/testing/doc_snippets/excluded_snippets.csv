@@ -1,0 +1,29 @@
+# Excluded snippets — these are completely skipped during test discovery.
+# Use this for snippets that crash, hang, or kill the test process (e.g. via
+# uninterruptible native-code timeouts that bypass expected-failure matching).
+#
+# Format: one snippet path per line, relative to the snippets directory.
+# Lines starting with '#' are comments.
+#
+# NOTE: For snippets that fail gracefully (raise a Python exception), use
+# expected_failures.csv instead — it allows the test to run and verifies
+# the failure mode.  This file is only for snippets that would kill the
+# entire test process.
+
+# cosmos_writer_simple downloads a large warehouse asset from S3; when the
+# download is slow the 120s snippet timeout fires a SIGALRM.  The Omniverse
+# writer cleanup path is stuck in native C++ code that swallows the Python
+# exception, so the 30s escalation handler calls os._exit(1) and kills the
+# entire test process — no subsequent tests run.
+replicator_tutorials/tutorial_replicator_isaac_snippets/cosmos_writer_simple_script_editor.py
+
+# This manipulation tutorial is an interactive ROS2 loop.  In headless snippet
+# collection it can consume the per-snippet timeout and kill the whole suite
+# before expected-failure matching can run.
+ros2_tutorials/tutorial_ros2_manipulation/position_and_velocity_control_modes.py
+
+# These migration snippets are intentionally top-level await examples.  Running
+# them through snippet tests would require wrapping them in asyncio.ensure_future,
+# and these APIs are not expected to change.
+sensors/isaacsim_sensors_multitick_rendering/migration_render_wait_new.py
+sensors/isaacsim_sensors_multitick_rendering/migration_render_wait_old.py

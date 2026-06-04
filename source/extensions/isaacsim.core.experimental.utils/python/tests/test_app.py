@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test for app."""
+
 import os
+import unittest
 
 import isaacsim.core.experimental.utils.app as app_utils
 import omni.kit.test
@@ -23,17 +26,20 @@ EXTENSION_NAME = "omni.pip.cloud"
 
 
 class TestApp(omni.kit.test.AsyncTestCase):
+    """Test app."""
+
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
-
+    @unittest.skip("Skipping update_app tests in async environment")
     async def test_update_app(self):
+        """Test update app."""
         # perform 1 update step
         app_utils.update_app()
         # perform 5 update steps
@@ -50,6 +56,7 @@ class TestApp(omni.kit.test.AsyncTestCase):
         self.assertEqual(counter[0], 2)
 
     async def test_update_app_async(self):
+        """Test update app async."""
         # perform 1 update step
         await app_utils.update_app_async()
         # perform 7 update steps
@@ -66,6 +73,7 @@ class TestApp(omni.kit.test.AsyncTestCase):
         self.assertEqual(counter[0], 5)
 
     async def test_enable_extension(self):
+        """Test enable extension."""
         for _ in range(3):
             # - enable extension
             self.assertTrue(app_utils.enable_extension(EXTENSION_NAME))
@@ -79,6 +87,8 @@ class TestApp(omni.kit.test.AsyncTestCase):
             self.assertFalse(app_utils.is_extension_enabled(EXTENSION_NAME), f"{EXTENSION_NAME} should be disabled")
 
     async def test_extension_id(self):
+        """Test extension id."""
+
         def _check_id(uid):
             self.assertEqual(len(uid.split("-")), 2)
             self.assertEqual(uid.split("-")[0], EXTENSION_NAME)
@@ -103,6 +113,7 @@ class TestApp(omni.kit.test.AsyncTestCase):
         self.assertIsNone(app_utils.get_extension_id(EXTENSION_NAME))
 
     async def test_extension_path(self):
+        """Test extension path."""
         self.assertTrue(app_utils.enable_extension(EXTENSION_NAME))  # ensure extension is enabled
         # test cases
         # - get from name
@@ -117,6 +128,8 @@ class TestApp(omni.kit.test.AsyncTestCase):
         self.assertEqual(path, "")
 
     async def test_extension_dict(self):
+        """Test extension dict."""
+
         def _check_dict(data):
             self.assertTrue(isinstance(data, dict), f"{data} should be a dictionary")
             self.assertIn("path", data)
@@ -137,6 +150,8 @@ class TestApp(omni.kit.test.AsyncTestCase):
         self.assertIsNone(app_utils.get_extension_dict(EXTENSION_NAME))
 
     async def test_timeline(self):
+        """Test timeline."""
+
         def check_timeline_state(*, is_playing, is_paused, is_stopped):
             self.assertEqual(app_utils.is_playing(), is_playing, "Timeline should be 'playing'")
             self.assertEqual(app_utils.is_paused(), is_paused, "Timeline should be 'paused'")

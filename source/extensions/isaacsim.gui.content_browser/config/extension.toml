@@ -1,5 +1,5 @@
 [package]
-version = "0.3.3"
+version = "0.4.2"
 category = "other"
 title = "Content Browser"
 description = "Extends the Omniverse content browser with an Isaac Sim collection providing quick access to curated robot models, environments, materials, and sensor assets."
@@ -11,6 +11,7 @@ icon = "data/icon.png"
 writeTarget.kit = true
 
 [dependencies]
+"isaacsim.storage.native" = {}
 "omni.kit.widget.filebrowser" = {}
 "omni.kit.window.content_browser" = {}
 "omni.kit.window.filepicker" = {}
@@ -27,27 +28,20 @@ name = "isaacsim.gui.content_browser.tests"
 [settings]
 # Timeout for resolving the content browser settings.
 exts."isaacsim.gui.content_browser".timeout = 5
-# List of SimReady asset search locations. Currently, only the first entry is used.
-exts."omni.simready.content.browser".content_root_urls = [
-    "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/SimReady"
-]
-# Default content root URL index into the `content_root_urls` list above.
-exts."omni.simready.content.browser".default_content_root_url_index = 0
 
-# Specifies the USD search server endpoint.
-exts."omni.simready.content.browser".usd_search_endpoint = "https://search.stg.simready.omniverse.nvidia.com/"
-
-# Defines the list of Omniverse folders to be displayed in the content browser.
+# Folder paths to display in the content browser, relative to persistent.isaac.asset_root.default.
+# Full URLs (http://, https://, omniverse://) are used as-is; relative paths are joined with the asset root.
 exts."isaacsim.gui.content_browser".folders = [
-    "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Robots",
-    "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Environments",
-    "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/IsaacLab",
-    "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Materials",
-    "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/People",
-    "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Props",
-    "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Samples",
-    "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Sensors",
-    "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/SimReady",
+    "/Isaac/Robots",
+    "/Isaac/Robots_Multiphysics",
+    "/Isaac/Environments",
+    "/Isaac/IsaacLab",
+    "/Isaac/Materials",
+    "/Isaac/People",
+    "/Isaac/Props",
+    "/Isaac/Samples",
+    "/Isaac/Sensors",
+    "/Isaac/SimReady",
 ]
 
 [[test]]

@@ -43,6 +43,7 @@ def get_schema_property_namespace(schema_token: object) -> str | None:
     .. code-block:: python
 
         namespace = get_schema_property_namespace("PhysxJointAPI")
+
     """
     schema_str = str(schema_token)
 
@@ -104,6 +105,7 @@ def props_from_applied_api_token(schema_token: object) -> set[str]:
     .. code-block:: python
 
         props = props_from_applied_api_token("PhysicsDriveAPI:angular")
+
     """
     reg = Usd.SchemaRegistry()
     primDef = reg.FindAppliedAPIPrimDefinition(schema_token)
@@ -127,6 +129,7 @@ def move_applied_api_schemas(src_spec: Sdf.PrimSpec, dst_spec: Sdf.PrimSpec, sch
     .. code-block:: python
 
         move_applied_api_schemas(src_spec, dst_spec, schema_tokens)
+
     """
     if not schema_tokens:
         return
@@ -211,6 +214,7 @@ def move_applied_apis_and_props(
 
         patterns = utils.compile_patterns(["Physics.*"])
         move_applied_apis_and_props(prim, patterns, src_layer, dst_layer)
+
     """
     prim_path = src_prim.GetPath()
     applied = src_prim.GetAppliedSchemas()
@@ -293,6 +297,7 @@ class SchemaRoutingRule(RuleInterface):
         .. code-block:: python
 
             params = rule.get_configuration_parameters()
+
         """
         return [
             RuleConfigurationParam(
@@ -328,6 +333,7 @@ class SchemaRoutingRule(RuleInterface):
         .. code-block:: python
 
             rule.process_rule()
+
         """
         params = self.args.get("params", {}) or {}
         schemas = params.get("schemas") or []

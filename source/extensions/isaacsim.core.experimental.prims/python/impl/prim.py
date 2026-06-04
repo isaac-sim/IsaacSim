@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,10 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Base wrapper class for managing USD prims with support for regex path matching and batch operations."""
+
 from __future__ import annotations
 
 import re
 from abc import ABC
+from typing import Any
 
 import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -49,6 +52,7 @@ class Prim(ABC):
 
     Raises:
         ValueError: If no prims are found matching the specified path(s).
+        AssertionError: If specified paths correspond to non-existing prims.
 
     Example:
 
@@ -171,7 +175,7 @@ class Prim(ABC):
     """
 
     @staticmethod
-    def ensure_api(prims: list[Usd.Prim], api: type, *args, **kwargs) -> list[type["UsdAPISchemaBase"]]:
+    def ensure_api(prims: list[Usd.Prim], api: type, *args: Any, **kwargs: Any) -> list[type["UsdAPISchemaBase"]]:
         """Ensure that all prims have the specified API schema applied.
 
         Backends: :guilabel:`usd`.
@@ -285,8 +289,12 @@ class Prim(ABC):
     Internal callbacks.
     """
 
-    def _on_physics_ready(self, event) -> None:
-        """Handle physics ready event."""
+    def _on_physics_ready(self, event: object) -> None:
+        """Handle physics ready event.
+
+        Args:
+            event: The physics ready event.
+        """
         self._device = wp.get_device(SimulationManager.get_physics_sim_device())
 
     def _on_prim_deletion(self, prim_path: str) -> None:

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Test module for validating docstring examples in the isaacsim.test.docstring extension using standalone doctests."""
-
 
 import isaacsim.test.docstring
 
@@ -33,12 +32,10 @@ class TestStandaloneDocTest(isaacsim.test.docstring.AsyncDocTestCase):
     # Before running each test
     async def setUp(self):
         """Set up the test case before running each test."""
-        pass
 
     # After running each test
     async def tearDown(self):
         """Clean up the test case after running each test."""
-        pass
 
     async def test_async_doctest_case(self):
         """Test the StandaloneDocTestCase by running its doctests."""

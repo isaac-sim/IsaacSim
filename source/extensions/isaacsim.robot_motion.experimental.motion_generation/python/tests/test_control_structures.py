@@ -15,7 +15,6 @@
 
 """Tests for motion generation control structures including controllers and their compositions."""
 
-
 from enum import Enum
 from typing import Optional
 

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,7 @@
 #include <omni/fabric/FabricUSD.h>
 #include <omni/fabric/IToken.h>
 #include <omni/fabric/SimStageWithHistory.h>
+#include <omni/fabric/core/Type.h>
 #include <omni/graph/core/Type.h>
 #include <omni/kit/IMinimal.h>
 #include <omni/kit/IStageUpdate.h>
@@ -75,13 +76,46 @@ size_t g_numPhysicsSteps = 0;
 bool g_simulating = false;
 bool g_paused = false;
 
+/// Monotonic time tracking across simulation stop/start cycles and rate changes.
+/// g_monotonicTimeAccumulated stores the monotonic time from previous segments
+/// (prior simulation runs or prior rate periods). g_monotonicStepCount tracks
+/// steps within the current segment. g_lastStepsPerSecond detects rate changes.
+double g_monotonicTimeAccumulated = 0.0;
+uint64_t g_monotonicStepCount = 0;
+uint32_t g_lastStepsPerSecond = 0;
+
 void updateMultiTickExternalSimulationTime()
 {
-    auto settings = carb::getCachedInterface<carb::settings::ISettings>();
-    if (g_runLoopRunnerInterface && settings && settings->getAsBool("/rtx/hydra/supportMultiTickRate"))
+    // Write the current simulation time to the Fabric prim
+    // /ExternalSimulationTime (attribute omni:time). Writing here from onPhysicsStep
+    // (eUsdContextUpdate, order -10) ensures the multitick rendering codepath
+    // reads the up-to-date value at eHydraRendering (order 30),
+    // within the same app update.
+    auto iSRW = carb::getCachedInterface<omni::fabric::IStageReaderWriter>();
+    if (iSRW && g_stageId.id)
     {
-        std::string runloopName;
-        g_runLoopRunnerInterface->setNextSimulationTime(g_simulationTime, runloopName);
+        auto srwId = iSRW->get(g_stageId);
+        if (srwId != omni::fabric::kInvalidStageReaderWriterId)
+        {
+            static const omni::fabric::Path externalTimePrim =
+                omni::fabric::Path::createImmortal("/ExternalSimulationTime");
+            static const omni::fabric::Token timeAttrToken = omni::fabric::Token::createImmortal("omni:time");
+
+            iSRW->createPrim(srwId, externalTimePrim);
+            static constexpr omni::fabric::Type kDoubleType = { omni::fabric::BaseDataType::eDouble, 1, 0,
+                                                                omni::fabric::AttributeRole::eNone };
+            iSRW->createAttribute(srwId, externalTimePrim, timeAttrToken, omni::fabric::TypeC(kDoubleType));
+
+            auto span = iSRW->getAttributeWr(srwId, externalTimePrim, timeAttrToken);
+            if (auto* p = span.getTypedPointer<double>())
+            {
+                *p = g_simulationTime;
+            }
+            else
+            {
+                CARB_LOG_ERROR("Failed to write external simulation time to Fabric");
+            }
+        }
     }
 }
 
@@ -116,37 +150,7 @@ public:
     {
         m_usdNoticeListenerKey =
             pxr::TfNotice::Register(pxr::TfCreateWeakPtr(m_usdNoticeListener.get()), &UsdNoticeListener::handle);
-        auto ed = carb::getCachedInterface<carb::eventdispatcher::IEventDispatcher>();
-        static const carb::RStringKey s_kEventName("IsaacSimStageOpenedUsdNoticeListener");
-        auto usdContext = omni::usd::UsdContext::getContext();
-        m_stageEventSubscription = ed->observeEvent(
-            s_kEventName, 1000, usdContext->stageEventName(omni::usd::StageEventType::eOpened),
-            [this, usdContext](const auto&)
-            {
-                auto stage = usdContext->getStage();
-                PXR_NS::UsdStageCache& cache = PXR_NS::UsdUtilsStageCache::Get();
-                omni::fabric::UsdStageId stageId = { static_cast<uint64_t>(cache.GetId(stage).ToLongInt()) };
-                omni::fabric::IStageReaderWriter* iStageReaderWriter =
-                    carb::getCachedInterface<omni::fabric::IStageReaderWriter>();
-                omni::fabric::StageReaderWriterId stageInProgress = iStageReaderWriter->get(stageId);
-                usdrt::UsdStageRefPtr usdrtStage = usdrt::UsdStage::Attach(stageId, stageInProgress);
-                for (auto& usdrtPath : usdrtStage->GetPrimsWithTypeName(usdrt::TfToken("UsdPhysicsScene")))
-                {
-                    const omni::fabric::Path path(usdrtPath);
-                    const pxr::SdfPath primPath = omni::fabric::toSdfPath(path);
-                    pxr::UsdPrim prim = stage->GetPrimAtPath(primPath);
-                    if (m_usdNoticeListener->getPhysicsScenes().count(primPath) == 0)
-                    {
-                        m_usdNoticeListener->getPhysicsScenes().emplace(
-                            primPath, pxr::PhysxSchemaPhysxSceneAPI::Apply(prim));
-                        for (auto const& [key, AdditionFunc] : m_usdNoticeListener->getPhysicsSceneAdditionCallbacks())
-                        {
-                            (void)key;
-                            AdditionFunc(primPath.GetString());
-                        }
-                    }
-                }
-            });
+        _initializeStageEventSubscription();
     }
 
     /**
@@ -170,6 +174,7 @@ public:
      */
     int registerDeletionCallback(const std::function<void(std::string)>& callback) override
     {
+        _initializeStageEventSubscription();
         int& callbackIter = m_usdNoticeListener->getCallbackIter();
         m_usdNoticeListener->getDeletionCallbacks().emplace(callbackIter, callback);
         callbackIter += 1;
@@ -186,6 +191,7 @@ public:
      */
     int registerPhysicsSceneAdditionCallback(const std::function<void(std::string)>& callback) override
     {
+        _initializeStageEventSubscription();
         int& callbackIter = m_usdNoticeListener->getCallbackIter();
         m_usdNoticeListener->getPhysicsSceneAdditionCallbacks().emplace(callbackIter, callback);
         callbackIter += 1;
@@ -581,6 +587,58 @@ public:
     }
 
 private:
+    void _initializeStageEventSubscription()
+    {
+        if (m_stageEventSubscription)
+        {
+            return;
+        }
+
+        auto usdContext = omni::usd::UsdContext::getContext();
+        if (!usdContext)
+        {
+            CARB_LOG_WARN("USD context is not available; stage-opened subscription is deferred");
+            return;
+        }
+
+        auto stage = usdContext->getStage();
+        if (!stage)
+        {
+            CARB_LOG_WARN("USD stage is not available; stage-opened subscription is deferred");
+            return;
+        }
+
+        auto ed = carb::getCachedInterface<carb::eventdispatcher::IEventDispatcher>();
+        static const carb::RStringKey s_kEventName("IsaacSimStageOpenedUsdNoticeListener");
+        m_stageEventSubscription = ed->observeEvent(
+            s_kEventName, 1000, usdContext->stageEventName(omni::usd::StageEventType::eOpened),
+            [this, usdContext](const auto&)
+            {
+                auto stage = usdContext->getStage();
+                PXR_NS::UsdStageCache& cache = PXR_NS::UsdUtilsStageCache::Get();
+                omni::fabric::UsdStageId stageId = { static_cast<uint64_t>(cache.GetId(stage).ToLongInt()) };
+                omni::fabric::IStageReaderWriter* iStageReaderWriter =
+                    carb::getCachedInterface<omni::fabric::IStageReaderWriter>();
+                omni::fabric::StageReaderWriterId stageInProgress = iStageReaderWriter->get(stageId);
+                usdrt::UsdStageRefPtr usdrtStage = usdrt::UsdStage::Attach(stageId, stageInProgress);
+                for (auto& usdrtPath : usdrtStage->GetPrimsWithTypeName(usdrt::TfToken("UsdPhysicsScene")))
+                {
+                    const omni::fabric::Path path(usdrtPath);
+                    const pxr::SdfPath primPath = omni::fabric::toSdfPath(path);
+                    pxr::UsdPrim prim = stage->GetPrimAtPath(primPath);
+                    if (m_usdNoticeListener->getPhysicsScenes().count(primPath) == 0)
+                    {
+                        m_usdNoticeListener->getPhysicsScenes().emplace(primPath, pxr::PhysxSchemaPhysxSceneAPI(prim));
+                        for (auto const& [key, AdditionFunc] : m_usdNoticeListener->getPhysicsSceneAdditionCallbacks())
+                        {
+                            (void)key;
+                            AdditionFunc(primPath.GetString());
+                        }
+                    }
+                }
+            });
+    }
+
     /**
      * @brief USD notice listener object that handles USD notices.
      */
@@ -629,8 +687,27 @@ void onResume(float currentTime, void* userData)
  */
 void onPhysicsStep(float timeElapsed, const omni::physics::PhysicsStepContext& context)
 {
-    g_simulationTime += timeElapsed;
-    g_simulationTimeMonotonic += timeElapsed;
+    // Derive simulation time from integer step count and steps-per-second to avoid
+    // accumulated floating-point drift from repeated addition of float dt.
+    // All physics backends must implement getSimulationStepCount() and
+    // getSimulationTimeStepsPerSecond() on IPhysicsSimulation.
+    uint32_t stepsPerSecond = g_physicsSimulationInterface->getSimulationTimeStepsPerSecond(
+        context.simulationId, g_stageId.id, context.scenePath);
+    uint64_t stepCount = g_physicsSimulationInterface->getSimulationStepCount(context.simulationId);
+
+    g_simulationTime = static_cast<double>(stepCount) / static_cast<double>(stepsPerSecond);
+
+    // Monotonic time: accumulate across simulation restarts and rate changes.
+    if (stepsPerSecond != g_lastStepsPerSecond && g_lastStepsPerSecond != 0)
+    {
+        g_monotonicTimeAccumulated = g_simulationTimeMonotonic;
+        g_monotonicStepCount = 0;
+    }
+    g_lastStepsPerSecond = stepsPerSecond;
+    g_monotonicStepCount++;
+    g_simulationTimeMonotonic =
+        g_monotonicTimeAccumulated + static_cast<double>(g_monotonicStepCount) / static_cast<double>(stepsPerSecond);
+
     g_numPhysicsSteps += 1;
     g_systemTime = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
     g_simulating = true;
@@ -697,6 +774,9 @@ void onStop(void* userData)
     // Reset simulation state
     g_simulationTime = 0;
     g_numPhysicsSteps = 0;
+    // Preserve monotonic time across stop/start; reset segment counter
+    g_monotonicTimeAccumulated = g_simulationTimeMonotonic;
+    g_monotonicStepCount = 0;
     updateMultiTickExternalSimulationTime();
 }
 
@@ -714,6 +794,11 @@ void onAttach(long int stageId, double metersPerUnit, void* userData)
     // Reset simulation state
     g_simulationTime = 0;
     g_numPhysicsSteps = 0;
+    // New stage: reset all monotonic time tracking
+    g_simulationTimeMonotonic = 0.0;
+    g_monotonicTimeAccumulated = 0.0;
+    g_monotonicStepCount = 0;
+    g_lastStepsPerSecond = 0;
 
     // Find the USD stage to validate it exists
     pxr::UsdStageWeakPtr stage = pxr::UsdUtilsStageCache::Get().Find(pxr::UsdStageCache::Id::FromLongInt(stageId));
@@ -785,6 +870,9 @@ public:
         g_simulationTime = 0;
         g_simulationTimeMonotonic = 0;
         g_numPhysicsSteps = 0;
+        g_monotonicTimeAccumulated = 0.0;
+        g_monotonicStepCount = 0;
+        g_lastStepsPerSecond = 0;
 
         // Set the initial simulation time to zero
         updateMultiTickExternalSimulationTime();
@@ -821,6 +909,8 @@ public:
         desc.onDetach = onDetach;
         desc.onResume = onResume;
         g_stageUpdate->createStageUpdateNode(desc);
+
+        g_runLoopRunnerInterface = carb::getCachedInterface<omni::kit::IRunLoopRunnerImpl>();
     }
 
     /**

@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.robot.surface_gripper.ui extension provides user interface components for creating and configuring surface grippers in Isaac Sim. Surface grippers simulate physics-based suction or surface-type grippers that can attach to and manipulate objects in robotic simulations. This extension integrates surface gripper functionality directly into the Isaac Sim interface through menu items and specialized property widgets.

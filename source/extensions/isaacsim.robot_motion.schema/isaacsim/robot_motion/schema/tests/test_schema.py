@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test suite for robot motion planning USD schema registration and application."""
+
 import omni.kit.test
 import omni.usd
 from isaacsim.robot_motion.schema import (
@@ -24,11 +26,14 @@ from pxr import Plug, Sdf, Usd
 
 
 class CodelessTests(omni.kit.test.AsyncTestCase):
+    """Test robot motion planning codeless schema registration and application."""
+
     async def _new_stage(self):
         await omni.usd.get_context().new_stage_async()
         return omni.usd.get_context().get_stage()
 
     async def test_api_schema_registration(self):
+        """Test that the motion planning API schema is correctly registered."""
         codeless_plugin = Plug.Registry().GetPluginWithName("RobotMotionSchema")
         self.assertIsNotNone(codeless_plugin)
 
@@ -40,6 +45,7 @@ class CodelessTests(omni.kit.test.AsyncTestCase):
         self.assertFalse(registry.IsConcrete(MOTION_PLANNING_API_NAME))
 
     async def test_apply_api_on_prim(self):
+        """Test applying the motion planning API schema on a prim."""
         stage = await self._new_stage()
         self.assertIsNotNone(stage)
 
@@ -56,6 +62,7 @@ class CodelessTests(omni.kit.test.AsyncTestCase):
         self.assertTrue(prim.GetAttribute(MOTION_PLANNING_ENABLED_ATTR).Get())
 
     async def test_apply_helper_sets_attribute(self):
+        """Test that the apply helper correctly set the enabled attribute."""
         stage = await self._new_stage()
         self.assertIsNotNone(stage)
 
@@ -66,6 +73,7 @@ class CodelessTests(omni.kit.test.AsyncTestCase):
         self.assertFalse(prim.GetAttribute(MOTION_PLANNING_ENABLED_ATTR).Get())
 
     async def test_read_applied_schemas(self):
+        """Test reading applied schemas from a prim with the motion planning API."""
         stage = await self._new_stage()
         self.assertIsNotNone(stage)
 

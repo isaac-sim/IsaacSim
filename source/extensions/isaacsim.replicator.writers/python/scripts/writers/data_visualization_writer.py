@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,6 @@
 
 """Provides a writer for visualizing annotator data such as bounding boxes overlaid on background images."""
 
-
 import carb
 import numpy as np
 from omni.replicator.core import AnnotatorRegistry, BackendDispatch, Writer
@@ -25,7 +24,7 @@ __version__ = "0.1.0"
 
 
 class DataVisualizationWriter(Writer):
-    """Data Visualization Writer
+    """Data Visualization Writer.
 
     This writer can be used to visualize various annotator data.
 
@@ -123,7 +122,7 @@ class DataVisualizationWriter(Writer):
             self.annotators.append(AnnotatorRegistry.get_annotator(background))
 
     def write(self, data: dict):
-        """Processes annotation data and generates visualization images with overlays.
+        """Process annotation data and generates visualization images with overlays.
 
         Iterates through render products and applies visualization overlays (2D/3D bounding boxes)
         onto background images, then saves the results to the output directory.
@@ -158,7 +157,7 @@ class DataVisualizationWriter(Writer):
         self._frame_id += 1
 
     def _get_background_image(self, annotators_data: dict, background_type: str, resolution: tuple) -> Image:
-        """Retrieves and converts background image data for visualization overlay.
+        """Retrieve and converts background image data for visualization overlay.
 
         Converts annotator data to PIL Image format. For RGB data, uses direct conversion.
         For normals data, applies color mapping. Returns transparent image if background type
@@ -187,7 +186,7 @@ class DataVisualizationWriter(Writer):
         return Image.new("RGBA", resolution, (0, 0, 0, 0))
 
     def _draw_2d_bounding_boxes(self, draw: ImageDraw, annot_data: dict, write_params: dict):
-        """Draws 2D bounding box rectangles on the image.
+        """Draw 2D bounding box rectangles on the image.
 
         Extracts bounding box coordinates from annotation data and renders rectangles
         using the specified drawing parameters for fill, outline color, and width.
@@ -214,7 +213,7 @@ class DataVisualizationWriter(Writer):
             )
 
     def _draw_3d_bounding_boxes(self, draw: ImageDraw, annot_data: dict, camera_params: dict, write_params: dict):
-        """Projects and draws 3D bounding box edges on the image.
+        """Project and draws 3D bounding box edges on the image.
 
         Transforms 3D bounding box vertices from local space to screen coordinates using
         camera view and projection matrices, then renders the 12 edges of each bounding box.
@@ -293,7 +292,7 @@ class DataVisualizationWriter(Writer):
             draw.line([vertices_screen[6], vertices_screen[7]], fill=line_color, width=line_width)
 
     def _is_valid_background(self, background: str) -> bool:
-        """Validates if the specified background type is supported.
+        """Validate if the specified background type is supported.
 
         Checks against the list of supported background types and logs a warning
         if an unsupported type is provided.
@@ -313,7 +312,7 @@ class DataVisualizationWriter(Writer):
             return False
 
     def detach(self):
-        """Resets the writer state and detaches from the backend.
+        """Reset the writer state and detaches from the backend.
 
         Resets the frame counter to zero and calls the parent class detach method
         to properly clean up backend connections.

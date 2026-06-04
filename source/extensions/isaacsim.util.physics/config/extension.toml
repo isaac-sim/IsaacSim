@@ -1,5 +1,5 @@
 [package]
-version = "1.2.0"
+version = "1.2.1"
 category = "Simulation"
 title = "Isaac Sim Physics API Editor"
 description = "Provides a UI tool for applying and removing physics APIs (collision, rigid body, articulation) on USD prims with support for convex hull and triangle mesh collision shapes."
@@ -27,4 +27,4 @@ stdoutFailPatterns.exclude = [
 ]
 
 [documentation]
-pages = ["docs/Overview.md"]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

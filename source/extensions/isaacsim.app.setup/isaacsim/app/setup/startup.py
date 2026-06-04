@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -118,11 +118,12 @@ async def await_viewport(
         sub = None
 
     app.print_and_log(f"{app_title} App is loaded.")
+
     record_startup_benchmark(ext_manager)
     await update_callback()
 
 
-def record_startup_benchmark(ext_manager: IExtensionManager):
+def record_startup_benchmark(ext_manager: IExtensionManager) -> None:
     """Record startup time as a benchmark metric if benchmarking is enabled.
 
     Args:

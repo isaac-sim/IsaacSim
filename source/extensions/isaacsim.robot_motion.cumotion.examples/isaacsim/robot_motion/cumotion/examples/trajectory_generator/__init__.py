@@ -12,4 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Example extension demonstrating trajectory generation using cuMotion for robot motion planning."""
+
 from .extension import *
+
+__all__ = ["UIBuilder"]

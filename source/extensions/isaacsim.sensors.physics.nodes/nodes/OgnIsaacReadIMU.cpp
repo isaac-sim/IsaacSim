@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -83,19 +83,19 @@ public:
 
         std::string primPath = omni::fabric::toSdfPath(imuPrim[0]).GetString();
 
-        if (state.m_firstFrame || primPath != state.m_primPath || state.m_sensorId < 0)
+        if (state.m_firstFrame || primPath != state.m_primPath || !state.m_sensorCreated)
         {
-            if (state.m_sensorId >= 0)
+            if (state.m_sensorCreated)
             {
-                state.m_imuInterface->removeSensor(state.m_sensorId);
-                state.m_sensorId = -1;
+                state.m_imuInterface->removeSensor(state.m_primPath.c_str());
+                state.m_sensorCreated = false;
             }
 
             state.m_primPath = primPath;
-            state.m_sensorId = state.m_imuInterface->createSensor(primPath.c_str());
+            state.m_sensorCreated = state.m_imuInterface->createSensor(primPath.c_str());
             state.m_firstFrame = false;
 
-            if (state.m_sensorId < 0)
+            if (!state.m_sensorCreated)
             {
                 setDefaultOutputs(db);
                 db.outputs.execOut() = kExecutionAttributeStateDisabled;
@@ -104,14 +104,13 @@ public:
         }
 
         bool readGravity = db.inputs.readGravity();
-        ImuSensorReading reading = state.m_imuInterface->getSensorReading(state.m_sensorId, readGravity);
+        ImuSensorReading reading = state.m_imuInterface->getSensorReading(state.m_primPath.c_str(), readGravity);
 
         if (reading.isValid)
         {
             db.outputs.linAcc() = { reading.linearAccelerationX, reading.linearAccelerationY,
                                     reading.linearAccelerationZ };
             db.outputs.angVel() = { reading.angularVelocityX, reading.angularVelocityY, reading.angularVelocityZ };
-            // quatd is R,I,J,K; using GfQuatd avoids component-order ambiguity.
             db.outputs.orientation() =
                 GfQuatd(reading.orientationW, reading.orientationX, reading.orientationY, reading.orientationZ);
             db.outputs.sensorTime() = reading.time;
@@ -119,15 +118,15 @@ public:
             return true;
         }
 
-        if (state.m_sensorId >= 0)
+        if (state.m_sensorCreated)
         {
-            state.m_imuInterface->removeSensor(state.m_sensorId);
-            state.m_sensorId = -1;
+            state.m_imuInterface->removeSensor(state.m_primPath.c_str());
+            state.m_sensorCreated = false;
         }
-        state.m_sensorId = state.m_imuInterface->createSensor(state.m_primPath.c_str());
-        if (state.m_sensorId >= 0)
+        state.m_sensorCreated = state.m_imuInterface->createSensor(state.m_primPath.c_str());
+        if (state.m_sensorCreated)
         {
-            reading = state.m_imuInterface->getSensorReading(state.m_sensorId, readGravity);
+            reading = state.m_imuInterface->getSensorReading(state.m_primPath.c_str(), readGravity);
             if (reading.isValid)
             {
                 db.outputs.linAcc() = { reading.linearAccelerationX, reading.linearAccelerationY,
@@ -155,10 +154,10 @@ public:
 private:
     void cleanup()
     {
-        if (m_imuInterface && m_sensorId >= 0)
+        if (m_imuInterface && m_sensorCreated)
         {
-            m_imuInterface->removeSensor(m_sensorId);
-            m_sensorId = -1;
+            m_imuInterface->removeSensor(m_primPath.c_str());
+            m_sensorCreated = false;
         }
         m_primPath.clear();
     }
@@ -172,7 +171,7 @@ private:
     }
 
     IImuSensor* m_imuInterface = nullptr;
-    int64_t m_sensorId = -1;
+    bool m_sensorCreated = false;
     std::string m_primPath;
     bool m_firstFrame = true;
 };

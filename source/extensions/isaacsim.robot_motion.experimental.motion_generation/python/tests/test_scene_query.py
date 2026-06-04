@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test suite for scene query functionality in robot motion generation."""
+
 import isaacsim.core.experimental.utils.stage as stage_utils
 
 # Import extension python module we are testing with absolute import path, as if we are an external user (i.e. a different extension)
@@ -25,7 +27,6 @@ from isaacsim.core.experimental.objects import (
     Sphere,
 )
 from isaacsim.core.experimental.prims import (
-    Articulation,
     GeomPrim,
     RigidPrim,
 )
@@ -36,6 +37,8 @@ from omni.kit.app import get_app
 
 # Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of the module will make it auto-discoverable by omni.kit.test
 class TestSceneQuery(omni.kit.test.AsyncTestCase):
+    """Test scene query operations for detecting prims in the USD stage."""
+
     # Before running each test
     async def setUp(self):
         """Set up test environment before each test."""
@@ -48,6 +51,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
 
     # After running each test
     async def tearDown(self):
+        """Clean up test environment after each test."""
         # Stop timeline if running
         if self._timeline.is_playing():
             self._timeline.stop()
@@ -59,6 +63,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         await get_app().next_update_async()
 
     async def test_scene_query_with_box_prim(self):
+        """Test scene query detection of a box prim with collision API."""
         # Add a Cube to the scene:
         cube_path = "/World/Cube"
         cube = Cube(
@@ -152,6 +157,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         self.assertTrue(cube_path in prim_list)
 
     async def test_scene_query_with_unrotated_plane_prim(self):
+        """Test scene query detection of an unrotated plane prim."""
         # Add a Plane to the scene:
         plane_path = "/World/Plane"
         plane = Plane(paths=plane_path, axes="Z")
@@ -270,6 +276,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         self.assertTrue(plane_path in prim_list)
 
     async def test_scene_query_with_rotated_plane_prim(self):
+        """Test scene query detection of a rotated plane prim."""
         # Add a Plane to the scene:
         plane_path = "/World/Plane"
         plane = Plane(paths=plane_path, axes="Z")
@@ -332,6 +339,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         self.assertTrue(plane_path in prim_list)
 
     async def test_different_searchable_apis(self):
+        """Test scene query with different searchable API types."""
         # Add a dynamic cube, and a collision cube:
         dynamic_cube_path = "/World/DynamicCube"
         collision_cube_path = "/World/CollisionCube"
@@ -384,6 +392,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         )
 
     async def test_motion_generation_collision_api(self):
+        """Test scene query with the motion generation collision API."""
         # Test the new motion generation collision API
         motion_planning_cube_path = "/World/MotionPlanningCube"
         motion_planning_cube = Cube(
@@ -439,6 +448,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         self.assertTrue(motion_planning_cube_path not in physics_prims)
 
     async def test_search_bounds(self):
+        """Test scene query with various search box bounds and positions."""
         scene_query = SceneQuery()
 
         # box is not well formed:
@@ -573,6 +583,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         )
 
     async def test_robot_search(self):
+        """Test scene query for finding robots in the stage."""
         # Add a robot to the stage:
         usd_path = f"{get_assets_root_path()}/Isaac/Robots/IsaacSim/SimpleArticulation/simple_articulation.usd"
 
@@ -585,6 +596,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         self.assertTrue(len(robot_paths) == 10)
 
     async def test_robot_prim_tracking(self):
+        """Test scene query with robot prim exclusion for collision detection."""
         usd_path = f"{get_assets_root_path()}/Isaac/Robots/IsaacSim/SimpleArticulation/simple_articulation.usd"
 
         controlled_robot_path = "/World/ControlledRobot"
@@ -605,6 +617,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         print(f"Collision prims that we found are: {collision_prims}")
 
     async def test_include_exclude_paths(self):
+        """Test scene query include and exclude path filtering."""
         cube_paths = ["/World/Group1/Cube", "/World/Group2/Cube", "/World/Group3/Cube"]
         sphere_paths = ["/World/Group1/Sphere", "/World/Group2/Sphere", "/World/Group3/Sphere"]
 
@@ -712,6 +725,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         )
 
     async def test_include_exclude_invalid_paths(self):
+        """Test scene query behavior with invalid include and exclude paths."""
         cube_paths = ["/World/Group1/Cube", "/World/Group2/Cube"]
         Cube(paths=cube_paths, sizes=5.0)
         GeomPrim(paths=cube_paths, apply_collision_apis=True)

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,41 +13,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
+"""Tests for ROS 2 camera helper OmniGraph node."""
+
 import math
 import os
 import shutil
-
-import numpy as np
-import omni.graph.core as og
-
-# Import extension python module we are testing with absolute import path, as if we are external user (other extension)
-import omni.kit.commands
+import time
+import unittest
 
 # NOTE:
 #   omni.kit.test - std python's unittest module with additional wrapping to add support for async/await tests
 #   For most things refer to unittest docs: https://docs.python.org/3/library/unittest.html
+import carb
+import omni.graph.core as og
+
+# Import extension python module we are testing with absolute import path, as if we are external user (other extension)
+import omni.kit.commands
 import omni.kit.test
 import omni.kit.usd
 import omni.kit.viewport.utility
 import omni.usd
 import rclpy
 import usdrt.Sdf
-from isaacsim.core.api.objects import VisualCone, VisualCuboid, VisualCylinder, VisualSphere
+from isaacsim.core.experimental.objects import Cube
 from isaacsim.core.experimental.prims import RigidPrim, XformPrim
+from isaacsim.core.experimental.utils import semantics as semantics_utils
 from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.core.experimental.utils import transform as transform_utils
+from isaacsim.core.rendering_manager import ViewportManager
 from isaacsim.core.simulation_manager import SimulationManager
-from isaacsim.core.utils.semantics import add_labels
-from isaacsim.core.utils.stage import open_stage_async
-from isaacsim.core.utils.viewports import set_camera_view
+from isaacsim.ros2.core.impl.ros2_image_test_utils import ros2_image_to_buffer
+from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 from isaacsim.storage.native import get_assets_root_path
 from isaacsim.test.utils.image_comparison import compare_arrays_within_tolerances
 from isaacsim.test.utils.image_io import read_image_as_array, save_rgb_image
 from pxr import PhysxSchema, Sdf
 from sensor_msgs.msg import Image
 
-from .common import ROS2TestCase, get_qos_profile, ros2_image_to_buffer
+from .common import add_carter_ros, add_cube, get_qos_profile
 
 
 def _camera_orientation_at_angle_deg(angle_deg: float):
@@ -56,7 +59,7 @@ def _camera_orientation_at_angle_deg(angle_deg: float):
     Camera local -Z is the view direction. Extrinsic ZYX Euler: Rz(angle-90) * Ry(0) * Rx(90)
     maps camera -Z to (cos(angle), sin(angle), 0) and camera +Y to world +Z.
     """
-    quat = transform_utils.euler_angles_to_quaternion([angle_deg - 90.0, 0.0, 90.0], degrees=True, extrinsic=True)
+    quat = transform_utils.euler_angles_to_quaternion([90.0, 0.0, angle_deg - 90.0], degrees=True, extrinsic=True)
     return quat.numpy().tolist()
 
 
@@ -101,13 +104,14 @@ def _match_buffered_images(image_buffer, sim_times, timestamp_tolerance, label="
     """Match buffered (timestamp, image) pairs to target sim_times by closest timestamp.
 
     Args:
-        image_buffer: List of (timestamp, image_array) tuples.
+        image_buffer: List of (timestamp, ROS2 image message or image array) tuples.
         sim_times: Dict mapping target_angle -> sim_time to match against.
         timestamp_tolerance: Maximum allowed difference between image timestamp and sim_time.
         label: Optional prefix for log messages (e.g. "golden ").
 
     Returns:
         Dict mapping target_angle -> image_array for all matched targets.
+
     """
     matched = {}
     matched_ts = {}
@@ -122,7 +126,15 @@ def _match_buffered_images(image_buffer, sim_times, timestamp_tolerance, label="
                 best_match = img
                 best_ts = ts
         if best_diff <= timestamp_tolerance:
-            matched[target] = best_match
+            if hasattr(best_match, "shape"):
+                matched[target] = best_match
+            else:
+                matched[target] = ros2_image_to_buffer(
+                    best_match,
+                    normalize_color_order=True,
+                    squeeze_singleton_channel=True,
+                    copy=True,
+                )
             matched_ts[target] = best_ts
             print(f"Matched {label}{target}° - " f"best_diff={best_diff:.6f}s (tolerance={timestamp_tolerance:.6f}s)")
         else:
@@ -134,7 +146,10 @@ def _match_buffered_images(image_buffer, sim_times, timestamp_tolerance, label="
 
 
 class TestRos2Camera(ROS2TestCase):
+    """Test suite for ros2 camera."""
+
     async def setUp(self):
+        """Set up test fixtures."""
         await super().setUp()
 
         # acquire the viewport window
@@ -144,11 +159,12 @@ class TestRos2Camera(ROS2TestCase):
         await omni.kit.app.get_app().next_update_async()
 
     async def test_camera(self):
+        """Test camera."""
         scene_path = "/Isaac/Environments/Grid/default_environment.usd"
-        await open_stage_async(self._assets_root_path + scene_path)
+        await stage_utils.open_stage_async(self._assets_root_path + scene_path)
 
-        cube_1 = VisualCuboid("/cube_1", position=[0, 0, 0], scale=[1.5, 1, 1])
-        add_labels(cube_1.prim, labels=["Cube0"], instance_name="class")
+        cube_1 = Cube("/cube_1", sizes=1.0, positions=[0, 0, 0], scales=[1.5, 1, 1])
+        semantics_utils.add_labels(cube_1.prims[0], labels=["Cube0"])
 
         import rclpy
         import usdrt.Sdf
@@ -164,9 +180,6 @@ class TestRos2Camera(ROS2TestCase):
                         ("DepthPclPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
                         ("InstancePublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
                         ("SemanticPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
-                        ("Bbox2dTightPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
-                        ("Bbox2dLoosePublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
-                        ("Bbox3dPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
                         ("CreateRenderProduct", "isaacsim.core.nodes.IsaacCreateRenderProduct"),
                     ],
                     og.Controller.Keys.SET_VALUES: [
@@ -188,15 +201,6 @@ class TestRos2Camera(ROS2TestCase):
                         ("SemanticPublish.inputs:topicName", "semantic_segmentation"),
                         ("SemanticPublish.inputs:type", "semantic_segmentation"),
                         ("SemanticPublish.inputs:resetSimulationTimeOnStop", True),
-                        ("Bbox2dTightPublish.inputs:topicName", "bbox_2d_tight"),
-                        ("Bbox2dTightPublish.inputs:type", "bbox_2d_tight"),
-                        ("Bbox2dTightPublish.inputs:resetSimulationTimeOnStop", True),
-                        ("Bbox2dLoosePublish.inputs:topicName", "bbox_2d_loose"),
-                        ("Bbox2dLoosePublish.inputs:type", "bbox_2d_loose"),
-                        ("Bbox2dLoosePublish.inputs:resetSimulationTimeOnStop", True),
-                        ("Bbox3dPublish.inputs:topicName", "bbox_3d"),
-                        ("Bbox3dPublish.inputs:type", "bbox_3d"),
-                        ("Bbox3dPublish.inputs:resetSimulationTimeOnStop", True),
                     ],
                     og.Controller.Keys.CONNECT: [
                         ("OnPlaybackTick.outputs:tick", "CreateRenderProduct.inputs:execIn"),
@@ -205,23 +209,11 @@ class TestRos2Camera(ROS2TestCase):
                         ("CreateRenderProduct.outputs:execOut", "DepthPclPublish.inputs:execIn"),
                         ("CreateRenderProduct.outputs:execOut", "InstancePublish.inputs:execIn"),
                         ("CreateRenderProduct.outputs:execOut", "SemanticPublish.inputs:execIn"),
-                        ("CreateRenderProduct.outputs:execOut", "Bbox2dTightPublish.inputs:execIn"),
-                        ("CreateRenderProduct.outputs:execOut", "Bbox2dLoosePublish.inputs:execIn"),
-                        ("CreateRenderProduct.outputs:execOut", "Bbox3dPublish.inputs:execIn"),
                         ("CreateRenderProduct.outputs:renderProductPath", "RGBPublish.inputs:renderProductPath"),
                         ("CreateRenderProduct.outputs:renderProductPath", "DepthPublish.inputs:renderProductPath"),
                         ("CreateRenderProduct.outputs:renderProductPath", "DepthPclPublish.inputs:renderProductPath"),
                         ("CreateRenderProduct.outputs:renderProductPath", "InstancePublish.inputs:renderProductPath"),
                         ("CreateRenderProduct.outputs:renderProductPath", "SemanticPublish.inputs:renderProductPath"),
-                        (
-                            "CreateRenderProduct.outputs:renderProductPath",
-                            "Bbox2dTightPublish.inputs:renderProductPath",
-                        ),
-                        (
-                            "CreateRenderProduct.outputs:renderProductPath",
-                            "Bbox2dLoosePublish.inputs:renderProductPath",
-                        ),
-                        ("CreateRenderProduct.outputs:renderProductPath", "Bbox3dPublish.inputs:renderProductPath"),
                     ],
                 },
             )
@@ -230,16 +222,12 @@ class TestRos2Camera(ROS2TestCase):
         await omni.kit.app.get_app().next_update_async()
 
         from sensor_msgs.msg import Image, PointCloud2
-        from vision_msgs.msg import Detection2DArray, Detection3DArray
 
         self._rgb = None
         self._depth = None
         self._depth_pcl = None
         self._instance_segmentation = None
         self._semantic_segmentation = None
-        self._bbox_2d_tight = None
-        self._bbox_2d_loose = None
-        self._bbox_3d = None
 
         def rgb_callback(data):
             self._rgb = data
@@ -256,15 +244,6 @@ class TestRos2Camera(ROS2TestCase):
         def semantic_segmentation_callback(data):
             self._semantic_segmentation = data
 
-        def bbox_2d_tight_callback(data):
-            self._bbox_2d_tight = data
-
-        def bbox_2d_loose_callback(data):
-            self._bbox_2d_loose = data
-
-        def bbox_3d_callback(data):
-            self._bbox_3d = data
-
         node = self.create_node("camera_tester")
         rgb_sub = self.create_subscription(node, Image, "rgb", rgb_callback, get_qos_profile())
         depth_sub = self.create_subscription(node, Image, "depth", depth_callback, get_qos_profile())
@@ -275,13 +254,6 @@ class TestRos2Camera(ROS2TestCase):
         semantic_segmentation_sub = self.create_subscription(
             node, Image, "semantic_segmentation", semantic_segmentation_callback, get_qos_profile()
         )
-        bbox_2d_tight_sub = self.create_subscription(
-            node, Detection2DArray, "bbox_2d_tight", bbox_2d_tight_callback, get_qos_profile()
-        )
-        bbox_2d_loose_sub = self.create_subscription(
-            node, Detection2DArray, "bbox_2d_loose", bbox_2d_loose_callback, get_qos_profile()
-        )
-        bbox_3d_sub = self.create_subscription(node, Detection3DArray, "bbox_3d", bbox_3d_callback, get_qos_profile())
 
         await omni.kit.app.get_app().next_update_async()
         omni.kit.commands.execute(
@@ -304,13 +276,10 @@ class TestRos2Camera(ROS2TestCase):
         og.Controller.attribute("/ActionGraph/DepthPclPublish" + ".inputs:useSystemTime").set(True)
         og.Controller.attribute("/ActionGraph/InstancePublish" + ".inputs:useSystemTime").set(True)
         og.Controller.attribute("/ActionGraph/SemanticPublish" + ".inputs:useSystemTime").set(True)
-        og.Controller.attribute("/ActionGraph/Bbox2dTightPublish" + ".inputs:useSystemTime").set(True)
-        og.Controller.attribute("/ActionGraph/Bbox2dLoosePublish" + ".inputs:useSystemTime").set(True)
-        og.Controller.attribute("/ActionGraph/Bbox3dPublish" + ".inputs:useSystemTime").set(True)
 
         await omni.kit.app.get_app().next_update_async()
 
-        system_time = time.time()
+        system_time = int(time.time())
 
         self._timeline.play()
         await self.simulate_until_condition(
@@ -318,9 +287,6 @@ class TestRos2Camera(ROS2TestCase):
                 self._rgb is not None
                 and self._instance_segmentation is not None
                 and self._semantic_segmentation is not None
-                and self._bbox_2d_tight is not None
-                and self._bbox_2d_loose is not None
-                and self._bbox_3d is not None
             ),
             max_frames=600,
             per_frame_callback=spin,
@@ -329,394 +295,15 @@ class TestRos2Camera(ROS2TestCase):
         self.assertIsNotNone(self._rgb)
         self.assertIsNotNone(self._instance_segmentation)
         self.assertIsNotNone(self._semantic_segmentation)
-        self.assertIsNotNone(self._bbox_2d_tight)
-        self.assertIsNotNone(self._bbox_2d_loose)
-        self.assertIsNotNone(self._bbox_3d)
 
         self.assertGreaterEqual(self._rgb.header.stamp.sec, system_time)
         self.assertGreaterEqual(self._depth.header.stamp.sec, system_time)
         self.assertGreaterEqual(self._depth_pcl.header.stamp.sec, system_time)
         self.assertGreaterEqual(self._instance_segmentation.header.stamp.sec, system_time)
         self.assertGreaterEqual(self._semantic_segmentation.header.stamp.sec, system_time)
-        self.assertGreaterEqual(self._bbox_2d_tight.header.stamp.sec, system_time)
-        self.assertGreaterEqual(self._bbox_2d_loose.header.stamp.sec, system_time)
-        self.assertGreaterEqual(self._bbox_3d.header.stamp.sec, system_time)
-
-    async def test_bbox(self):
-        cube_1 = VisualCuboid("/cube_1", position=[2, 0, 0], scale=[1.5, 1, 1])
-        cube_2 = VisualCuboid("/cube_2", position=[-1.5, 0, 0], scale=[1, 2, 1])
-        cube_3 = VisualCuboid("/cube_3", position=[100, 0, 0], scale=[1, 1, 3])
-        cube_4 = VisualCuboid("/cube_4", position=[0, 1, 0], scale=[1, 1, 3])
-        add_labels(cube_1.prim, labels=["Cube0"], instance_name="class")
-        add_labels(cube_2.prim, labels=["Cube1"], instance_name="class")
-        add_labels(cube_3.prim, labels=["Cube2"], instance_name="class")
-        add_labels(cube_4.prim, labels=["Cube3"], instance_name="class")
-        set_camera_view(eye=[0, -6, 0.5], target=[0, 0, 0.5], camera_prim_path="/OmniverseKit_Persp")
-        import json
-
-        import rclpy
-
-        viewport_api = omni.kit.viewport.utility.get_active_viewport()
-        render_product_path = viewport_api.get_render_product_path()
-
-        try:
-            og.Controller.edit(
-                {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
-                {
-                    og.Controller.Keys.CREATE_NODES: [
-                        ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
-                        ("Bbox2dTightPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
-                        ("Bbox2dLoosePublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
-                        ("Bbox3dPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
-                        ("InstancePublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
-                        ("SemanticPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
-                    ],
-                    og.Controller.Keys.SET_VALUES: [
-                        ("InstancePublish.inputs:renderProductPath", render_product_path),
-                        ("InstancePublish.inputs:topicName", "instance_segmentation"),
-                        ("InstancePublish.inputs:type", "instance_segmentation"),
-                        ("InstancePublish.inputs:resetSimulationTimeOnStop", True),
-                        ("SemanticPublish.inputs:renderProductPath", render_product_path),
-                        ("SemanticPublish.inputs:topicName", "semantic_segmentation"),
-                        ("SemanticPublish.inputs:type", "semantic_segmentation"),
-                        ("SemanticPublish.inputs:resetSimulationTimeOnStop", True),
-                        ("Bbox2dTightPublish.inputs:renderProductPath", render_product_path),
-                        ("Bbox2dTightPublish.inputs:topicName", "bbox_2d_tight"),
-                        ("Bbox2dTightPublish.inputs:type", "bbox_2d_tight"),
-                        ("Bbox2dTightPublish.inputs:resetSimulationTimeOnStop", True),
-                        ("Bbox2dLoosePublish.inputs:renderProductPath", render_product_path),
-                        ("Bbox2dLoosePublish.inputs:topicName", "bbox_2d_loose"),
-                        ("Bbox2dLoosePublish.inputs:type", "bbox_2d_loose"),
-                        ("Bbox2dLoosePublish.inputs:resetSimulationTimeOnStop", True),
-                        ("Bbox3dPublish.inputs:renderProductPath", render_product_path),
-                        ("Bbox3dPublish.inputs:topicName", "bbox_3d"),
-                        ("Bbox3dPublish.inputs:type", "bbox_3d"),
-                        ("Bbox3dPublish.inputs:resetSimulationTimeOnStop", True),
-                        # enable semantics
-                        ("InstancePublish.inputs:enableSemanticLabels", True),
-                        ("InstancePublish.inputs:semanticLabelsTopicName", "semantic_labels_instance"),
-                        ("SemanticPublish.inputs:enableSemanticLabels", True),
-                        ("SemanticPublish.inputs:semanticLabelsTopicName", "semantic_labels_semantic"),
-                        ("Bbox2dTightPublish.inputs:enableSemanticLabels", True),
-                        ("Bbox2dTightPublish.inputs:semanticLabelsTopicName", "semantic_labels_tight"),
-                        ("Bbox2dLoosePublish.inputs:enableSemanticLabels", True),
-                        ("Bbox2dLoosePublish.inputs:semanticLabelsTopicName", "semantic_labels_loose"),
-                        ("Bbox3dPublish.inputs:enableSemanticLabels", True),
-                        ("Bbox3dPublish.inputs:semanticLabelsTopicName", "semantic_labels_3d"),
-                    ],
-                    og.Controller.Keys.CONNECT: [
-                        ("OnPlaybackTick.outputs:tick", "InstancePublish.inputs:execIn"),
-                        ("OnPlaybackTick.outputs:tick", "SemanticPublish.inputs:execIn"),
-                        ("OnPlaybackTick.outputs:tick", "Bbox2dTightPublish.inputs:execIn"),
-                        ("OnPlaybackTick.outputs:tick", "Bbox2dLoosePublish.inputs:execIn"),
-                        ("OnPlaybackTick.outputs:tick", "Bbox3dPublish.inputs:execIn"),
-                    ],
-                },
-            )
-        except Exception as e:
-            print(e)
-
-        # acquire the viewport window
-        viewport_api = omni.kit.viewport.utility.get_active_viewport()
-        # Set viewport resolution, changes will occur on next frame
-
-        await omni.kit.app.get_app().next_update_async()
-
-        from std_msgs.msg import String
-        from vision_msgs.msg import Detection2DArray, Detection3DArray
-
-        self._bbox_2d_tight = None
-        self._bbox_2d_loose = None
-        self._bbox_3d = None
-        self._semantic_data_instance = None
-        self._semantic_data_semantic = None
-        self._semantic_data_3d = None
-        self._semantic_data_tight = None
-        self._semantic_data_loose = None
-
-        def bbox_2d_tight_callback(data):
-            self._bbox_2d_tight = data
-
-        def bbox_2d_loose_callback(data):
-            self._bbox_2d_loose = data
-
-        def bbox_3d_callback(data):
-            self._bbox_3d = data
-
-        def semantic_callback_instance(data):
-            self._semantic_data_instance = data
-
-        def semantic_callback_semantic(data):
-            self._semantic_data_semantic = data
-
-        def semantic_callback_3d(data):
-            self._semantic_data_3d = data
-
-        def semantic_callback_tight(data):
-            self._semantic_data_tight = data
-
-        def semantic_callback_loose(data):
-            self._semantic_data_loose = data
-
-        node = self.create_node("bbox_tester")
-
-        bbox_2d_tight_sub = self.create_subscription(
-            node, Detection2DArray, "bbox_2d_tight", bbox_2d_tight_callback, get_qos_profile()
-        )
-        bbox_2d_loose_sub = self.create_subscription(
-            node, Detection2DArray, "bbox_2d_loose", bbox_2d_loose_callback, get_qos_profile()
-        )
-
-        bbox_3d_sub = self.create_subscription(node, Detection3DArray, "bbox_3d", bbox_3d_callback, get_qos_profile())
-        semantic_labels_instance_sub = self.create_subscription(
-            node, String, "semantic_labels_instance", semantic_callback_instance, get_qos_profile()
-        )
-        semantic_labels_semantic_sub = self.create_subscription(
-            node, String, "semantic_labels_semantic", semantic_callback_semantic, get_qos_profile()
-        )
-        semantic_labels_3d_sub = self.create_subscription(
-            node, String, "semantic_labels_3d", semantic_callback_3d, get_qos_profile()
-        )
-        semantic_labels_tight_sub = self.create_subscription(
-            node, String, "semantic_labels_tight", semantic_callback_tight, get_qos_profile()
-        )
-        semantic_labels_loose_sub = self.create_subscription(
-            node, String, "semantic_labels_loose", semantic_callback_loose, get_qos_profile()
-        )
-
-        def spin():
-            rclpy.spin_once(node, timeout_sec=0.01)
-
-        await omni.kit.app.get_app().next_update_async()
-
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await self.simulate_until_condition(
-            lambda: (
-                self._bbox_2d_tight is not None
-                and self._bbox_2d_loose is not None
-                and self._bbox_3d is not None
-                and self._semantic_data_instance is not None
-                and self._semantic_data_semantic is not None
-                and self._semantic_data_3d is not None
-                and self._semantic_data_tight is not None
-                and self._semantic_data_loose is not None
-            ),
-            max_frames=600,
-            per_frame_callback=spin,
-        )
-
-        self.assertIsNotNone(self._bbox_2d_tight)
-        self.assertIsNotNone(self._bbox_2d_loose)
-        self.assertIsNotNone(self._bbox_3d)
-        self.assertIsNotNone(self._semantic_data_instance)
-        self.assertIsNotNone(self._semantic_data_semantic)
-        self.assertIsNotNone(self._semantic_data_3d)
-        self.assertIsNotNone(self._semantic_data_tight)
-        self.assertIsNotNone(self._semantic_data_loose)
-
-        detections = self._bbox_3d.detections
-        semantic_instance_dict = json.loads(self._semantic_data_instance.data)
-        semantic_semantic_dict = json.loads(self._semantic_data_semantic.data)
-        semantic_tight_dict = json.loads(self._semantic_data_tight.data)
-        semantic_loose_dict = json.loads(self._semantic_data_loose.data)
-        semantic_3d_dict = json.loads(self._semantic_data_3d.data)
-        print(semantic_instance_dict)
-        print(semantic_semantic_dict)
-        print(semantic_tight_dict)
-        print(semantic_loose_dict)
-        print(semantic_3d_dict)
-        self.assertEqual(semantic_instance_dict["0"], "BACKGROUND")
-        self.assertEqual(semantic_instance_dict["1"], "UNLABELLED")
-        self.assertEqual(semantic_instance_dict["2"], "/cube_1")
-        self.assertEqual(semantic_instance_dict["3"], "/cube_2")
-        self.assertEqual(semantic_instance_dict["5"], "/cube_4")
-
-        self.assertEqual(semantic_semantic_dict["0"]["class"], "BACKGROUND")
-        self.assertEqual(len(semantic_semantic_dict.keys()), 6)  # (background + unalbeled + 3 cubes + timestamp)
-
-        # all times should match
-        # TODO: Find a way to align timestamps for testing
-        # self.assertDictEqual(semantic_3d_dict["time_stamp"], semantic_instance_dict["time_stamp"])
-        # self.assertDictEqual(semantic_3d_dict["time_stamp"], semantic_semantic_dict["time_stamp"])
-
-        # bbox semantics should match
-        # TODO: Find a way to align timestamps for testing
-        # self.assertEqual(self._semantic_data_3d.data, self._semantic_data_tight.data)
-        # self.assertEqual(self._semantic_data_3d.data, self._semantic_data_loose.data)
-
-        self.assertEqual(semantic_3d_dict["0"]["class"], "cube0")
-        self.assertEqual(semantic_3d_dict["1"]["class"], "cube1")
-        self.assertEqual(semantic_3d_dict["2"]["class"], "cube3")
-
-        # there should be 3 bboxes
-        self.assertEqual(len(detections), 3)
-        self.assertEqual(detections[0].results[0].hypothesis.class_id, "0")
-        self.assertEqual(detections[1].results[0].hypothesis.class_id, "1")
-        self.assertEqual(detections[2].results[0].hypothesis.class_id, "2")
-
-        self.assertEqual(detections[0].bbox.size.x, 1.5)
-        self.assertEqual(detections[0].bbox.size.y, 1)
-        self.assertEqual(detections[0].bbox.size.z, 1)
-
-        self.assertEqual(detections[1].bbox.size.x, 1)
-        self.assertEqual(detections[1].bbox.size.y, 2)
-        self.assertEqual(detections[1].bbox.size.z, 1)
-
-        self.assertEqual(detections[2].bbox.size.x, 1)
-        self.assertEqual(detections[2].bbox.size.y, 1)
-        self.assertEqual(detections[2].bbox.size.z, 3)
-
-        self.assertEqual(detections[0].bbox.center.position.x, 2)
-        self.assertEqual(detections[0].bbox.center.position.y, 0)
-        self.assertEqual(detections[0].bbox.center.position.z, 0)
-
-        self.assertEqual(detections[1].bbox.center.position.x, -1.5)
-        self.assertEqual(detections[1].bbox.center.position.y, 0)
-        self.assertEqual(detections[1].bbox.center.position.z, 0)
-
-        self.assertEqual(detections[2].bbox.center.position.x, 0)
-        self.assertEqual(detections[2].bbox.center.position.y, 1)
-        self.assertEqual(detections[2].bbox.center.position.z, 0)
-
-        detections = self._bbox_2d_tight.detections
-        self.assertEqual(len(detections), 3)
-
-        print(detections[0].results)
-        print(detections[1].results)
-        print(detections[2].results)
-
-        self.assertEqual(detections[0].results[0].hypothesis.class_id, "0")
-        self.assertEqual(detections[1].results[0].hypothesis.class_id, "1")
-        self.assertEqual(detections[2].results[0].hypothesis.class_id, "2")
-
-        self.assertEqual(detections[0].bbox.size_x, 340.0)
-        self.assertEqual(detections[0].bbox.size_y, 201.0)
-
-        self.assertEqual(detections[1].bbox.size_x, 284.0)
-        self.assertEqual(detections[1].bbox.size_y, 221.0)
-
-        self.assertEqual(detections[2].bbox.size_x, 169.0)
-        self.assertEqual(detections[2].bbox.size_y, 511.0)
-        self.assertEqual(detections[0].bbox.center.position.x, 1023.0)
-        self.assertEqual(detections[0].bbox.center.position.y, 460.5)
-        self.assertEqual(detections[0].bbox.center.theta, 0)
-
-        self.assertEqual(detections[1].bbox.center.position.x, 339.0)
-        self.assertEqual(detections[1].bbox.center.position.y, 470.5)
-        self.assertEqual(detections[1].bbox.center.theta, 0)
-
-        self.assertEqual(detections[2].bbox.center.position.x, 639.5)
-        self.assertEqual(detections[2].bbox.center.position.y, 444.5)
-        self.assertEqual(detections[2].bbox.center.theta, 0)
-
-        detections = self._bbox_2d_loose.detections
-        self.assertEqual(len(detections), 3)
-
-        self.assertEqual(detections[0].results[0].hypothesis.class_id, "0")
-        self.assertEqual(detections[1].results[0].hypothesis.class_id, "1")
-        self.assertEqual(detections[2].results[0].hypothesis.class_id, "2")
-
-        self.assertEqual(detections[0].bbox.size_x, 340.0)
-        self.assertEqual(detections[0].bbox.size_y, 201.0)
-
-        self.assertEqual(detections[1].bbox.size_x, 284.0)
-        self.assertEqual(detections[1].bbox.size_y, 221.0)
-
-        self.assertEqual(detections[2].bbox.size_x, 169.0)
-        self.assertEqual(detections[2].bbox.size_y, 511.0)
-
-        self.assertEqual(detections[0].bbox.center.position.x, 1023.0)
-        self.assertEqual(detections[0].bbox.center.position.y, 460.5)
-        self.assertEqual(detections[0].bbox.center.theta, 0)
-
-        self.assertEqual(detections[1].bbox.center.position.x, 339.0)
-        self.assertEqual(detections[1].bbox.center.position.y, 470.5)
-        self.assertEqual(detections[1].bbox.center.theta, 0)
-
-        self.assertEqual(detections[2].bbox.center.position.x, 639.5)
-        self.assertEqual(detections[2].bbox.center.position.y, 444.5)
-        self.assertEqual(detections[2].bbox.center.theta, 0)
-
-    async def test_empty_semantics(self):
-        cube_3 = VisualCuboid("/cube_3", position=[100, 0, 0], scale=[1, 1, 3])
-        add_labels(cube_3.prim, labels=["Cube2"], instance_name="class")
-        set_camera_view(eye=[0, -6, 0.5], target=[0, 0, 0.5], camera_prim_path="/OmniverseKit_Persp")
-        import json
-
-        import rclpy
-
-        viewport_api = omni.kit.viewport.utility.get_active_viewport()
-        render_product_path = viewport_api.get_render_product_path()
-
-        try:
-            og.Controller.edit(
-                {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
-                {
-                    og.Controller.Keys.CREATE_NODES: [
-                        ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
-                        ("Bbox3dPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
-                    ],
-                    og.Controller.Keys.SET_VALUES: [
-                        ("Bbox3dPublish.inputs:renderProductPath", render_product_path),
-                        ("Bbox3dPublish.inputs:topicName", "bbox_3d"),
-                        ("Bbox3dPublish.inputs:type", "bbox_3d"),
-                        ("Bbox3dPublish.inputs:resetSimulationTimeOnStop", True),
-                        # enable semantics
-                        ("Bbox3dPublish.inputs:enableSemanticLabels", True),
-                        ("Bbox3dPublish.inputs:semanticLabelsTopicName", "semantic_labels"),
-                    ],
-                    og.Controller.Keys.CONNECT: [("OnPlaybackTick.outputs:tick", "Bbox3dPublish.inputs:execIn")],
-                },
-            )
-        except Exception as e:
-            print(e)
-
-        # acquire the viewport window
-        viewport_api = omni.kit.viewport.utility.get_active_viewport()
-        # Set viewport resolution, changes will occur on next frame
-
-        await omni.kit.app.get_app().next_update_async()
-
-        from std_msgs.msg import String
-        from vision_msgs.msg import Detection2DArray, Detection3DArray
-
-        self._bbox_3d = None
-        self._semantic_data = None
-
-        def bbox_3d_callback(data):
-            self._bbox_3d = data
-
-        def semantic_callback(data):
-            self._semantic_data = data
-
-        node = self.create_node("bbox_tester")
-
-        bbox_3d_sub = self.create_subscription(node, Detection3DArray, "bbox_3d", bbox_3d_callback, get_qos_profile())
-        semantic_labels_sub = self.create_subscription(
-            node, String, "semantic_labels", semantic_callback, get_qos_profile()
-        )
-
-        def spin():
-            rclpy.spin_once(node, timeout_sec=0.01)
-
-        await asyncio.sleep(2.0)
-
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await self.simulate_until_condition(
-            lambda: self._semantic_data is not None, max_frames=600, per_frame_callback=spin
-        )
-
-        self.assertIsNotNone(self._semantic_data)
-
-        semantic_dict = json.loads(self._semantic_data.data)
-        self.assertTrue("time_stamp" in semantic_dict)
-        self.assertFalse("0" in semantic_dict)
 
     async def test_rgb_golden_image_comparison(self):
         """Subscribe to an RGB image topic and compare received buffer against a golden image."""
-
         # Retrieve golden image from data/tests/golden_img folder
         golden_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data", "golden")
         golden_img_path = os.path.join(golden_dir, "nova_carter_warehouse_front_stereo_left_rgb.png")
@@ -727,7 +314,7 @@ class TestRos2Camera(ROS2TestCase):
 
         assets_root_path = get_assets_root_path()
         warehouse_scene = assets_root_path + "/Isaac/Samples/ROS2/Scenario/carter_warehouse_navigation.usd"
-        (success, error) = await stage_utils.open_stage_async(warehouse_scene)
+        success, error = await stage_utils.open_stage_async(warehouse_scene)
         self.assertTrue(success, f"Failed to open stage: {error}")
 
         await omni.kit.app.get_app().next_update_async()
@@ -821,7 +408,7 @@ class TestRos2Camera(ROS2TestCase):
 
         assets_root_path = get_assets_root_path()
         warehouse_scene = assets_root_path + "/Isaac/Samples/ROS2/Scenario/carter_warehouse_navigation.usd"
-        (success, error) = await stage_utils.open_stage_async(warehouse_scene)
+        success, error = await stage_utils.open_stage_async(warehouse_scene)
         self.assertTrue(success, f"Failed to open stage: {error}")
 
         await omni.kit.app.get_app().next_update_async()
@@ -968,8 +555,8 @@ class TestRos2Camera(ROS2TestCase):
         golden_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data", "golden", "spinning_camera")
 
         # Open the pre-built scene USD (contains physics scene and scattered objects).
-        scene_usd_path = os.path.join(golden_dir, "spinning_camera_scene.usd")
-        await open_stage_async(scene_usd_path)
+        scene_usd_path = os.path.join(golden_dir, "spinning_camera_scene.usda")
+        await stage_utils.open_stage_async(scene_usd_path)
         await omni.kit.app.get_app().next_update_async()
 
         # Add the grid environment as a reference.
@@ -1007,12 +594,11 @@ class TestRos2Camera(ROS2TestCase):
         await omni.kit.app.get_app().next_update_async()
 
         # Buffer all received ROS2 images with their timestamps
-        image_buffer = []  # list of (timestamp, image_array)
+        image_buffer = []  # list of (timestamp, ROS2 Image message)
 
         def rgb_callback(data):
             ts = data.header.stamp.sec + data.header.stamp.nanosec / 1e9
-            img = ros2_image_to_buffer(data, normalize_color_order=True, squeeze_singleton_channel=True, copy=True)
-            image_buffer.append((ts, img))
+            image_buffer.append((ts, data))
 
         node = self.create_node("spinning_camera_test_node")
         self.start_async_spinning(node)
@@ -1021,15 +607,14 @@ class TestRos2Camera(ROS2TestCase):
             Image,
             "spinning_camera_rgb",
             rgb_callback,
-            get_qos_profile(history="system_default"),
+            get_qos_profile(depth=100),
         )
 
         # ============================================================
         # STEP 1: Physics-based rotation - simulate and buffer images
         # ============================================================
         self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
+        await self.simulate_until_condition(lambda: False, max_frames=2)
 
         # Wait for the first ROS2 image to confirm the pipeline is running
         await self.simulate_until_condition(
@@ -1037,6 +622,17 @@ class TestRos2Camera(ROS2TestCase):
         )
 
         stage_fps = self._timeline.get_time_codes_per_second()
+        ros_drain_delay_sec = 1.0 / stage_fps
+
+        async def _simulate_frames_with_ros_drain(max_frames, per_frame_callback=None):
+            for _ in range(max_frames):
+                await omni.kit.app.get_app().next_update_async()
+                if per_frame_callback is not None:
+                    per_frame_callback()
+                # The ROS executor runs in a background thread. Yield wall-clock
+                # time here so callbacks drain before the next frame is published.
+                time.sleep(ros_drain_delay_sec)
+
         angle_tolerance_deg = 0.1
         # One full rotation plus extra frames for pipeline-delayed images to arrive
         rotation_frames = int((360.0 / rotation_speed_deg_per_sec) * stage_fps)
@@ -1054,10 +650,8 @@ class TestRos2Camera(ROS2TestCase):
         )
 
         print(f"Starting physics-based rotation capture ({rotation_speed_deg_per_sec} deg/s)...")
-        for _ in range(total_frames):
-            await omni.kit.app.get_app().next_update_async()
 
-            # Record angle if near any unrecorded target
+        def _record_angles_step():
             if len(recorded_sim_times) < len(keyframe_angles_deg):
                 sim_time = SimulationManager.get_simulation_time()
                 _, orientations = camera_rigid.get_world_poses()
@@ -1073,6 +667,8 @@ class TestRos2Camera(ROS2TestCase):
                         recorded_sim_times[target] = sim_time
                         recorded_angles[target] = actual_angle
                         print(f"Angle {target}° at sim_time={sim_time:.6f}s (actual={actual_angle:.2f}°)")
+
+        await _simulate_frames_with_ros_drain(total_frames, per_frame_callback=_record_angles_step)
 
         missing_angles = [a for a in keyframe_angles_deg if a not in recorded_sim_times]
         if missing_angles:
@@ -1096,7 +692,7 @@ class TestRos2Camera(ROS2TestCase):
         stage_utils.define_prim(camera_path_2, type_name="Camera")
         cam2_xform = XformPrim(camera_path_2, reset_xform_op_properties=True)
         cam2_local_quat = transform_utils.euler_angles_to_quaternion(
-            [0.0, 180.0, -cam2_tilt_deg], degrees=True, extrinsic=True
+            [-cam2_tilt_deg, 180.0, 0.0], degrees=True, extrinsic=True
         )
         cam2_xform.set_local_poses(
             translations=[[0.0, cam2_vertical_offset, 0.0]],
@@ -1112,15 +708,14 @@ class TestRos2Camera(ROS2TestCase):
 
         def rgb_callback_2(data):
             ts = data.header.stamp.sec + data.header.stamp.nanosec / 1e9
-            img = ros2_image_to_buffer(data, normalize_color_order=True, squeeze_singleton_channel=True, copy=True)
-            image_buffer_2.append((ts, img))
+            image_buffer_2.append((ts, data))
 
         self.create_subscription(
             node,
             Image,
             "spinning_camera_2_rgb",
             rgb_callback_2,
-            get_qos_profile(history="system_default"),
+            get_qos_profile(depth=100),
         )
         print("[Live] Camera 2 subscription added, background executor handles both cameras.")
 
@@ -1137,9 +732,8 @@ class TestRos2Camera(ROS2TestCase):
         angle_tolerance_1b_deg = 0.2
 
         print("[STEP 1b] Both cameras rotating (same rig)...")
-        for _ in range(total_frames):
-            await omni.kit.app.get_app().next_update_async()
 
+        def _record_angles_1b_step():
             if len(recorded_sim_times_1b) < len(keyframe_angles_deg):
                 sim_time = SimulationManager.get_simulation_time()
                 _, orientations = camera_rigid.get_world_poses()
@@ -1155,6 +749,8 @@ class TestRos2Camera(ROS2TestCase):
                         recorded_sim_times_1b[target] = sim_time
                         recorded_angles_1b[target] = actual_angle
                         print(f"  rig {target}° at sim_time={sim_time:.6f}s (actual={actual_angle:.2f}°)")
+
+        await _simulate_frames_with_ros_drain(total_frames, per_frame_callback=_record_angles_1b_step)
 
         missing_angles_1b = [a for a in keyframe_angles_deg if a not in recorded_sim_times_1b]
         if missing_angles_1b:
@@ -1179,7 +775,8 @@ class TestRos2Camera(ROS2TestCase):
                 f"Buffered {len(image_buffer_r1)} images, tolerance={timestamp_tolerance:.6f}s"
             )
 
-        # Find timestamps present in both cam1 and cam2, then match to rig angles
+        # Keep common timestamps in the log because missing common frames are useful
+        # evidence, but do not require common timestamps for image comparison.
         cam1_by_ts = {ts: img for ts, img in image_buffer}
         cam2_by_ts = {ts: img for ts, img in image_buffer_2}
         cam1_timestamps = sorted(cam1_by_ts.keys())
@@ -1199,26 +796,14 @@ class TestRos2Camera(ROS2TestCase):
         print(f"Recorded rig sim_times: { {a: f'{t:.6f}' for a, t in sorted(recorded_sim_times_1b.items())} }")
         print("=== End timestamp dump ===\n")
 
-        physics_images_1b = {}
-        physics_images_2 = {}
-        for target_angle in keyframe_angles_deg:
-            target_sim_time = recorded_sim_times_1b[target_angle]
-            best_ts = None
-            best_diff = float("inf")
-            for ts in common_timestamps:
-                diff = abs(ts - target_sim_time)
-                if diff < best_diff:
-                    best_diff = diff
-                    best_ts = ts
-            if best_ts is not None and best_diff <= timestamp_tolerance:
-                physics_images_1b[target_angle] = cam1_by_ts[best_ts]
-                physics_images_2[target_angle] = cam2_by_ts[best_ts]
-                print(f"  {target_angle}° paired at ts={best_ts:.6f}s (diff={best_diff:.6f}s)")
-            else:
-                print(
-                    f"WARNING: no common timestamp for {target_angle}° "
-                    f"(sim_time={target_sim_time:.6f}s, best_diff={best_diff:.6f}s)"
-                )
+        # Match each camera independently. A dropped cam2 frame should not force cam1
+        # to compare against a later common timestamp.
+        physics_images_1b, _ = _match_buffered_images(
+            image_buffer, recorded_sim_times_1b, timestamp_tolerance, label="cam1 second rotation "
+        )
+        physics_images_2, _ = _match_buffered_images(
+            image_buffer_2, recorded_sim_times_1b, timestamp_tolerance, label="cam2 "
+        )
 
         if save_debug_images:
             debug_dir_1b = os.path.join(golden_dir, "debug_captured_camera_1_2nd")
@@ -1230,11 +815,14 @@ class TestRos2Camera(ROS2TestCase):
             for target, img in physics_images_2.items():
                 save_rgb_image(img, debug_dir_2, f"physics_angle_{target}.png")
 
-        missing_1b = [a for a in keyframe_angles_deg if a not in physics_images_1b]
-        if missing_1b:
+        missing_1b_cam1 = [a for a in keyframe_angles_deg if a not in physics_images_1b]
+        missing_1b_cam2 = [a for a in keyframe_angles_deg if a not in physics_images_2]
+        if missing_1b_cam1 or missing_1b_cam2:
             self.fail(
-                f"[STEP 1b] Could not match cam1/cam2 pair for angles: {missing_1b}. "
-                f"{len(common_timestamps)} common timestamps, tolerance={timestamp_tolerance:.6f}s"
+                f"[STEP 1b] Could not match images for cam1 angles: {missing_1b_cam1}, "
+                f"cam2 angles: {missing_1b_cam2}. "
+                f"cam1={len(cam1_timestamps)} timestamps, cam2={len(cam2_timestamps)} timestamps, "
+                f"common={len(common_timestamps)} timestamps, tolerance={timestamp_tolerance:.6f}s"
             )
 
         # ============================================================
@@ -1254,8 +842,7 @@ class TestRos2Camera(ROS2TestCase):
             image_buffer.clear()
             image_buffer_2.clear()
 
-            for _ in range(15):
-                await omni.kit.app.get_app().next_update_async()
+            await self.simulate_until_condition(lambda: False, max_frames=15)
 
             # Single pass: teleport rig once per angle, capture both cameras together.
             print("Generating goldens (both cameras, single pass)...")
@@ -1267,8 +854,10 @@ class TestRos2Camera(ROS2TestCase):
                 )
                 cam1_pre = len(image_buffer)
                 cam2_pre = len(image_buffer_2)
-                for _ in range(15):
-                    await omni.kit.app.get_app().next_update_async()
+                await self.simulate_until_condition(
+                    lambda: len(image_buffer) > cam1_pre and len(image_buffer_2) > cam2_pre,
+                    max_frames=30,
+                )
                 self.assertGreater(
                     len(image_buffer),
                     cam1_pre,
@@ -1279,8 +868,18 @@ class TestRos2Camera(ROS2TestCase):
                     cam2_pre,
                     f"No new cam2 image after teleporting to {target_angle}°",
                 )
-                golden_images[target_angle] = image_buffer[-1][1]
-                golden_images_2[target_angle] = image_buffer_2[-1][1]
+                golden_images[target_angle] = ros2_image_to_buffer(
+                    image_buffer[-1][1],
+                    normalize_color_order=True,
+                    squeeze_singleton_channel=True,
+                    copy=True,
+                )
+                golden_images_2[target_angle] = ros2_image_to_buffer(
+                    image_buffer_2[-1][1],
+                    normalize_color_order=True,
+                    squeeze_singleton_channel=True,
+                    copy=True,
+                )
                 print(f"  {target_angle}° captured (cam1 + cam2)")
 
             self.stop_async_spinning(node)
@@ -1386,7 +985,7 @@ class TestRos2Camera(ROS2TestCase):
         )
 
         scene_path = "/Isaac/Environments/Grid/default_environment.usd"
-        await open_stage_async(self._assets_root_path + scene_path)
+        await stage_utils.open_stage_async(self._assets_root_path + scene_path)
         await omni.kit.app.get_app().next_update_async()
 
         # Two cameras at the exact same world pose
@@ -1403,7 +1002,7 @@ class TestRos2Camera(ROS2TestCase):
         cam2_xform.set_world_poses(positions=[camera_pos], orientations=[cam_orientation])
         await omni.kit.app.get_app().next_update_async()
 
-        cube = VisualCuboid("/World/MovingCube", position=[cube_distance, cube_start_y, camera_height])
+        cube = Cube("/World/MovingCube", sizes=1.0, positions=[cube_distance, cube_start_y, camera_height])
         cube_xform = XformPrim("/World/MovingCube")
         await omni.kit.app.get_app().next_update_async()
 
@@ -1414,15 +1013,21 @@ class TestRos2Camera(ROS2TestCase):
         image_buffer_1 = []
         image_buffer_2 = []
 
+        def _to_image_array(image_msg):
+            return ros2_image_to_buffer(
+                image_msg,
+                normalize_color_order=True,
+                squeeze_singleton_channel=True,
+                copy=True,
+            )
+
         def rgb_callback_1(data):
             ts = data.header.stamp.sec + data.header.stamp.nanosec / 1e9
-            img = ros2_image_to_buffer(data, normalize_color_order=True, squeeze_singleton_channel=True, copy=True)
-            image_buffer_1.append((ts, img))
+            image_buffer_1.append((ts, data))
 
         def rgb_callback_2(data):
             ts = data.header.stamp.sec + data.header.stamp.nanosec / 1e9
-            img = ros2_image_to_buffer(data, normalize_color_order=True, squeeze_singleton_channel=True, copy=True)
-            image_buffer_2.append((ts, img))
+            image_buffer_2.append((ts, data))
 
         node = self.create_node("dual_camera_test_node")
         self.start_async_spinning(node)
@@ -1430,14 +1035,14 @@ class TestRos2Camera(ROS2TestCase):
         self.create_subscription(node, Image, "dual_cam_2_rgb", rgb_callback_2, get_qos_profile(depth=num_frames + 40))
 
         self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
+        await self.simulate_until_condition(lambda: False, max_frames=2)
 
         # Wait for both render pipelines to start producing images
         await self.simulate_until_condition(
             lambda: len(image_buffer_1) > 0 and len(image_buffer_2) > 0,
         )
 
+        ros_drain_delay_sec = 1.0 / self._timeline.get_time_codes_per_second()
         image_buffer_1.clear()
         image_buffer_2.clear()
         capture_start_time = SimulationManager.get_simulation_time()
@@ -1449,11 +1054,13 @@ class TestRos2Camera(ROS2TestCase):
             cube_y = cube_start_y + frame_idx * cube_step_m
             cube_xform.set_world_poses(positions=[[cube_distance, cube_y, camera_height]])
             await omni.kit.app.get_app().next_update_async()
+            time.sleep(ros_drain_delay_sec)
 
         # Extra frames so pipeline-delayed images flush through
         pipeline_drain_frames = 30
         for _ in range(pipeline_drain_frames):
             await omni.kit.app.get_app().next_update_async()
+            time.sleep(ros_drain_delay_sec)
 
         self.stop_async_spinning(node)
         self._timeline.stop()
@@ -1479,24 +1086,30 @@ class TestRos2Camera(ROS2TestCase):
 
         # Save all debug images first (both cameras, every frame)
         if save_debug_images:
-            for idx, (ts, img) in enumerate(image_buffer_1):
-                save_rgb_image(img, debug_dir, f"cam1_{idx:03d}_ts_{ts:.6f}.png")
-            for idx, (ts, img) in enumerate(image_buffer_2):
-                save_rgb_image(img, debug_dir, f"cam2_{idx:03d}_ts_{ts:.6f}.png")
+            for idx, (ts, img_msg) in enumerate(image_buffer_1):
+                save_rgb_image(_to_image_array(img_msg), debug_dir, f"cam1_{idx:03d}_ts_{ts:.6f}.png")
+            for idx, (ts, img_msg) in enumerate(image_buffer_2):
+                save_rgb_image(_to_image_array(img_msg), debug_dir, f"cam2_{idx:03d}_ts_{ts:.6f}.png")
             print(f"Saved {len(image_buffer_1)} cam1 + {len(image_buffer_2)} cam2 " f"debug images to {debug_dir}")
 
-        # Index cam2 images by timestamp for exact matching
+        # Compare only timestamps present in both cameras. Randomly dropped frames
+        # should not fail the test as long as enough exact same-frame pairs remain.
+        cam1_by_ts = {ts: img for ts, img in image_buffer_1}
         cam2_by_ts = {ts: img for ts, img in image_buffer_2}
+        common_timestamps = sorted(set(cam1_by_ts) & set(cam2_by_ts))
+        cam1_only = sorted(set(cam1_by_ts) - set(cam2_by_ts))
+        cam2_only = sorted(set(cam2_by_ts) - set(cam1_by_ts))
+        if cam1_only:
+            print(f"cam1-only timestamps ({len(cam1_only)}): {[f'{ts:.6f}' for ts in cam1_only]}")
+        if cam2_only:
+            print(f"cam2-only timestamps ({len(cam2_only)}): {[f'{ts:.6f}' for ts in cam2_only]}")
 
         matched_pairs = 0
         comparison_failures = []
 
-        for ts1, img1 in image_buffer_1:
-            self.assertIn(ts1, cam2_by_ts, f"cam1 timestamp {ts1:.6f}s has no exact match in cam2")
-            # if ts1 not in cam2_by_ts:
-            #     print(f"Skipping cam1 ts={ts1:.6f}s (no matching cam2 image)")
-            #     continue
-            img2 = cam2_by_ts[ts1]
+        for ts1 in common_timestamps:
+            img1 = _to_image_array(cam1_by_ts[ts1])
+            img2 = _to_image_array(cam2_by_ts[ts1])
 
             matched_pairs += 1
             print(f"Pair {matched_pairs}: ts={ts1:.6f}s")
@@ -1514,10 +1127,476 @@ class TestRos2Camera(ROS2TestCase):
 
         print(f"Compared {matched_pairs} image pairs with identical timestamps")
 
-        self.assertGreater(matched_pairs, 0, "No image pairs with matching timestamps")
+        self.assertGreaterEqual(
+            matched_pairs,
+            num_frames,
+            f"Expected at least {num_frames} matching timestamp pairs, got {matched_pairs}. "
+            f"cam1={len(image_buffer_1)}, cam2={len(image_buffer_2)}, "
+            f"cam1_only={len(cam1_only)}, cam2_only={len(cam2_only)}",
+        )
         self.assertEqual(
             len(comparison_failures),
             0,
             f"{len(comparison_failures)} of {matched_pairs} pairs failed image comparison: "
             f"{comparison_failures[0][1] if comparison_failures else 'N/A'}",
         )
+
+    async def test_camera_tf_includes_180_x_rotation(self):
+        """Camera prims in the TF tree must include a 180-deg x-axis rotation.
+
+        Verifies the USD camera convention (-Z forward, +Y up) to ROS optical
+        frame convention (+Z forward, +Y down) conversion applied by
+        OgnIsaacComputeTransformTree.  Uses two cameras (identity and 90-deg Z
+        rotated) and a plain Xform control to confirm the rotation is applied
+        only to cameras and that it composes correctly with authored orientation.
+        """
+        from tf2_msgs.msg import TFMessage
+
+        await omni.usd.get_context().new_stage_async()
+        await omni.kit.app.get_app().next_update_async()
+
+        stage_utils.define_prim("/CameraIdentity", "Camera")
+        cam_id = XformPrim("/CameraIdentity", reset_xform_op_properties=True)
+        cam_id.set_world_poses(positions=[[1.0, 2.0, 3.0]], orientations=[[1, 0, 0, 0]])
+
+        cos45 = math.cos(math.radians(45))
+        sin45 = math.sin(math.radians(45))
+        stage_utils.define_prim("/CameraRotZ90", "Camera")
+        cam_rot = XformPrim("/CameraRotZ90", reset_xform_op_properties=True)
+        cam_rot.set_world_poses(positions=[[4.0, 5.0, 6.0]], orientations=[[cos45, 0, 0, sin45]])
+
+        stage_utils.define_prim("/ControlXform", "Xform")
+        ctrl = XformPrim("/ControlXform", reset_xform_op_properties=True)
+        ctrl.set_world_poses(positions=[[7.0, 8.0, 9.0]], orientations=[[1, 0, 0, 0]])
+
+        await omni.kit.app.get_app().next_update_async()
+
+        self._camera_tf_data = None
+
+        def tf_callback(data: TFMessage):
+            self._camera_tf_data = data
+
+        node = self.create_node("camera_tf_tester")
+        self.create_subscription(node, TFMessage, "/tf_camera_test", tf_callback, get_qos_profile())
+
+        try:
+            og.Controller.edit(
+                {"graph_path": "/CameraTFGraph", "evaluator_name": "execution"},
+                {
+                    og.Controller.Keys.CREATE_NODES: [
+                        ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
+                        ("ReadSimTime", "isaacsim.core.nodes.IsaacReadSimulationTime"),
+                        ("ComputeTF", "isaacsim.core.nodes.IsaacComputeTransformTree"),
+                        ("PublishTF", "isaacsim.ros2.bridge.ROS2PublishTransformTree"),
+                    ],
+                    og.Controller.Keys.SET_VALUES: [
+                        ("PublishTF.inputs:topicName", "/tf_camera_test"),
+                        (
+                            "ComputeTF.inputs:targetPrims",
+                            [
+                                usdrt.Sdf.Path("/CameraIdentity"),
+                                usdrt.Sdf.Path("/CameraRotZ90"),
+                                usdrt.Sdf.Path("/ControlXform"),
+                            ],
+                        ),
+                    ],
+                    og.Controller.Keys.CONNECT: [
+                        ("OnPlaybackTick.outputs:tick", "ComputeTF.inputs:execIn"),
+                        ("ComputeTF.outputs:execOut", "PublishTF.inputs:execIn"),
+                        ("ComputeTF.outputs:parentFrames", "PublishTF.inputs:parentFrames"),
+                        ("ComputeTF.outputs:childFrames", "PublishTF.inputs:childFrames"),
+                        ("ComputeTF.outputs:translations", "PublishTF.inputs:translations"),
+                        ("ComputeTF.outputs:orientations", "PublishTF.inputs:orientations"),
+                        ("ReadSimTime.outputs:simulationTime", "PublishTF.inputs:timeStamp"),
+                    ],
+                },
+            )
+        except Exception as e:
+            print(e)
+
+        def spin():
+            rclpy.spin_once(node, timeout_sec=0.01)
+
+        self._timeline.play()
+        await omni.kit.app.get_app().next_update_async()
+        await self.simulate_until_condition(
+            lambda: self._camera_tf_data is not None,
+            max_frames=60,
+            per_frame_callback=spin,
+        )
+
+        self.assertIsNotNone(self._camera_tf_data, "Expected TF data from camera TF test")
+
+        tf_map = {t.child_frame_id: t for t in self._camera_tf_data.transforms}
+        all_frames = list(tf_map.keys())
+
+        cam_id_tf = tf_map.get("CameraIdentity")
+        cam_rot_tf = tf_map.get("CameraRotZ90")
+        ctrl_tf = tf_map.get("ControlXform")
+
+        self.assertIsNotNone(cam_id_tf, f"CameraIdentity not in TF. Frames: {all_frames}")
+        self.assertIsNotNone(cam_rot_tf, f"CameraRotZ90 not in TF. Frames: {all_frames}")
+        self.assertIsNotNone(ctrl_tf, f"ControlXform not in TF. Frames: {all_frames}")
+
+        # Control xform at identity — no camera rotation applied
+        r = ctrl_tf.transform.rotation
+        self.assertAlmostEqual(r.w, 1.0, places=5, msg="Control w")
+        self.assertAlmostEqual(r.x, 0.0, places=5, msg="Control x")
+        self.assertAlmostEqual(r.y, 0.0, places=5, msg="Control y")
+        self.assertAlmostEqual(r.z, 0.0, places=5, msg="Control z")
+
+        # Camera at identity: 180-deg x-rotation -> (x~1, y~0, z~0, w~0)
+        r = cam_id_tf.transform.rotation
+        self.assertAlmostEqual(r.w, 0.0, places=4, msg="CameraIdentity w")
+        self.assertAlmostEqual(abs(r.x), 1.0, places=4, msg="CameraIdentity |x|")
+        self.assertAlmostEqual(r.y, 0.0, places=4, msg="CameraIdentity y")
+        self.assertAlmostEqual(r.z, 0.0, places=4, msg="CameraIdentity z")
+
+        # Camera at 90-deg Z composed with 180-deg x -> (x~cos45, y~sin45, z~0, w~0)
+        r = cam_rot_tf.transform.rotation
+        self.assertAlmostEqual(r.w, 0.0, places=4, msg="CameraRotZ90 w")
+        self.assertAlmostEqual(abs(r.x), cos45, places=4, msg="CameraRotZ90 |x|")
+        self.assertAlmostEqual(abs(r.y), sin45, places=4, msg="CameraRotZ90 |y|")
+        self.assertAlmostEqual(r.z, 0.0, places=4, msg="CameraRotZ90 z")
+
+        # Positions should match authored values
+        t = cam_id_tf.transform.translation
+        self.assertAlmostEqual(t.x, 1.0, places=3)
+        self.assertAlmostEqual(t.y, 2.0, places=3)
+        self.assertAlmostEqual(t.z, 3.0, places=3)
+
+        t = cam_rot_tf.transform.translation
+        self.assertAlmostEqual(t.x, 4.0, places=3)
+        self.assertAlmostEqual(t.y, 5.0, places=3)
+        self.assertAlmostEqual(t.z, 6.0, places=3)
+
+        t = ctrl_tf.transform.translation
+        self.assertAlmostEqual(t.x, 7.0, places=3)
+        self.assertAlmostEqual(t.y, 8.0, places=3)
+        self.assertAlmostEqual(t.z, 9.0, places=3)
+
+        self._timeline.stop()
+        spin()
+
+    async def test_semantic_labels_publishing(self):
+        """Verify enableSemanticLabels publishes semantic labels on a separate topic."""
+        Cube("/World/cube", sizes=1.0, positions=[2.0, 0.0, 0.0])
+        semantics_utils.add_labels("/World/cube", labels=["TestCube"])
+
+        from isaacsim.sensors.experimental.rtx import RtxCamera
+
+        # Orientation (90, -90, 0) intrinsic XYZ = looking down +X toward the cube
+        cam = RtxCamera("/World/camera", positions=[0.0, 0.0, 0.5], orientations=[0.5, 0.5, -0.5, -0.5])
+
+        og.Controller.edit(
+            {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
+            {
+                og.Controller.Keys.CREATE_NODES: [
+                    ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
+                    ("CreateRenderProduct", "isaacsim.core.nodes.IsaacCreateRenderProduct"),
+                    ("SemanticPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
+                ],
+                og.Controller.Keys.SET_VALUES: [
+                    ("CreateRenderProduct.inputs:cameraPrim", [usdrt.Sdf.Path("/World/camera")]),
+                    ("CreateRenderProduct.inputs:height", 480),
+                    ("CreateRenderProduct.inputs:width", 640),
+                    ("SemanticPublish.inputs:topicName", "semantic_seg"),
+                    ("SemanticPublish.inputs:type", "semantic_segmentation"),
+                    ("SemanticPublish.inputs:enableSemanticLabels", True),
+                    ("SemanticPublish.inputs:semanticLabelsTopicName", "semantic_labels"),
+                    ("SemanticPublish.inputs:resetSimulationTimeOnStop", True),
+                ],
+                og.Controller.Keys.CONNECT: [
+                    ("OnPlaybackTick.outputs:tick", "CreateRenderProduct.inputs:execIn"),
+                    ("CreateRenderProduct.outputs:execOut", "SemanticPublish.inputs:execIn"),
+                    ("CreateRenderProduct.outputs:renderProductPath", "SemanticPublish.inputs:renderProductPath"),
+                ],
+            },
+        )
+
+        from std_msgs.msg import String
+
+        label_data = None
+        node = self.create_node("test_semantic_labels")
+        self.start_async_spinning(node)
+
+        def on_label(msg):
+            nonlocal label_data
+            label_data = msg.data
+
+        self.create_subscription(node, String, "semantic_labels", on_label, get_qos_profile(depth=10))
+
+        self._timeline.play()
+        # Wait for a label message that contains our TestCube label
+        # Note: the pipeline lowercases semantic labels
+        condition_met = await self.simulate_until_condition(
+            lambda: label_data is not None and "testcube" in label_data.lower(), max_frames=180
+        )
+        self._timeline.stop()
+
+        self.assertTrue(condition_met, f"testcube not found in semantic labels. Last received: {label_data}")
+
+    async def test_enabled_input_disables_publishing(self):
+        """Verify setting enabled=False stops message publishing."""
+        Cube("/World/cube", sizes=1.0, positions=[2.0, 0.0, 0.0])
+
+        from isaacsim.sensors.experimental.rtx import RtxCamera
+
+        cam = RtxCamera("/World/camera", positions=[0.0, 0.0, 0.5], orientations=[0.5, 0.5, -0.5, -0.5])
+
+        og.Controller.edit(
+            {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
+            {
+                og.Controller.Keys.CREATE_NODES: [
+                    ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
+                    ("CreateRenderProduct", "isaacsim.core.nodes.IsaacCreateRenderProduct"),
+                    ("RGBPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
+                ],
+                og.Controller.Keys.SET_VALUES: [
+                    ("CreateRenderProduct.inputs:cameraPrim", [usdrt.Sdf.Path("/World/camera")]),
+                    ("CreateRenderProduct.inputs:height", 240),
+                    ("CreateRenderProduct.inputs:width", 320),
+                    ("RGBPublish.inputs:topicName", "rgb_enabled_test"),
+                    ("RGBPublish.inputs:type", "rgb"),
+                    ("RGBPublish.inputs:enabled", False),
+                    ("RGBPublish.inputs:resetSimulationTimeOnStop", True),
+                ],
+                og.Controller.Keys.CONNECT: [
+                    ("OnPlaybackTick.outputs:tick", "CreateRenderProduct.inputs:execIn"),
+                    ("CreateRenderProduct.outputs:execOut", "RGBPublish.inputs:execIn"),
+                    ("CreateRenderProduct.outputs:renderProductPath", "RGBPublish.inputs:renderProductPath"),
+                ],
+            },
+        )
+
+        msg_count = 0
+        node = self.create_node("test_enabled")
+        self.start_async_spinning(node)
+
+        def on_image(msg):
+            nonlocal msg_count
+            msg_count += 1
+
+        self.create_subscription(node, Image, "rgb_enabled_test", on_image, get_qos_profile(depth=10))
+
+        self._timeline.play()
+        await self.simulate_until_condition(lambda: False, max_frames=60)
+        self._timeline.stop()
+
+        self.assertEqual(msg_count, 0, "Expected no messages when enabled=False")
+
+    async def test_tick_rate_reduces_publish_frequency(self):
+        """Verify that omni:sensor:tickRate throttles render product output and reduces publish rate.
+
+        Creates two cameras: one at 10 Hz tickRate, one at autotrigger (0 = every frame).
+        Both publish RGB via ROS2CameraHelper. After 120 frames (~2s at 60 Hz), the slow
+        camera should have significantly fewer unique frames than the fast one.
+        A moving cube ensures each rendered frame is visually distinct.
+        """
+        # Add a dome light so the scene is visible
+        from pxr import UsdLux
+
+        dome_light = UsdLux.DomeLight.Define(stage_utils.get_current_stage(), "/World/dome_light")
+        dome_light.CreateIntensityAttr(1000)
+
+        # Create a cube in the camera's FOV — we'll move it each frame to ensure unique renders
+        cube = Cube("/World/cube", sizes=1.0, positions=[3.0, 0.0, 0.5], colors=[1, 0, 0])
+
+        from isaacsim.sensors.experimental.rtx import RtxCamera
+
+        cam_slow = RtxCamera(
+            "/World/camera_slow",
+            tick_rate=10.0,
+            positions=[0.0, 0.0, 0.5],
+            orientations=[0.5, 0.5, -0.5, -0.5],
+        )
+        cam_fast = RtxCamera(
+            "/World/camera_fast",
+            positions=[0.0, 1.0, 0.5],
+            orientations=[0.5, 0.5, -0.5, -0.5],
+        )
+
+        og.Controller.edit(
+            {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
+            {
+                og.Controller.Keys.CREATE_NODES: [
+                    ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
+                    ("CreateRPSlow", "isaacsim.core.nodes.IsaacCreateRenderProduct"),
+                    ("CreateRPFast", "isaacsim.core.nodes.IsaacCreateRenderProduct"),
+                    ("RGBSlow", "isaacsim.ros2.bridge.ROS2CameraHelper"),
+                    ("RGBFast", "isaacsim.ros2.bridge.ROS2CameraHelper"),
+                ],
+                og.Controller.Keys.SET_VALUES: [
+                    ("CreateRPSlow.inputs:cameraPrim", [usdrt.Sdf.Path("/World/camera_slow")]),
+                    ("CreateRPSlow.inputs:height", 240),
+                    ("CreateRPSlow.inputs:width", 320),
+                    ("CreateRPFast.inputs:cameraPrim", [usdrt.Sdf.Path("/World/camera_fast")]),
+                    ("CreateRPFast.inputs:height", 240),
+                    ("CreateRPFast.inputs:width", 320),
+                    ("RGBSlow.inputs:topicName", "rgb_slow"),
+                    ("RGBSlow.inputs:type", "rgb"),
+                    ("RGBSlow.inputs:resetSimulationTimeOnStop", True),
+                    ("RGBFast.inputs:topicName", "rgb_fast"),
+                    ("RGBFast.inputs:type", "rgb"),
+                    ("RGBFast.inputs:resetSimulationTimeOnStop", True),
+                ],
+                og.Controller.Keys.CONNECT: [
+                    ("OnPlaybackTick.outputs:tick", "CreateRPSlow.inputs:execIn"),
+                    ("OnPlaybackTick.outputs:tick", "CreateRPFast.inputs:execIn"),
+                    ("CreateRPSlow.outputs:execOut", "RGBSlow.inputs:execIn"),
+                    ("CreateRPSlow.outputs:renderProductPath", "RGBSlow.inputs:renderProductPath"),
+                    ("CreateRPFast.outputs:execOut", "RGBFast.inputs:execIn"),
+                    ("CreateRPFast.outputs:renderProductPath", "RGBFast.inputs:renderProductPath"),
+                ],
+            },
+        )
+
+        import hashlib
+        import tempfile
+
+        SAVE_DEBUG_FRAMES = False  # Set True to save frames for debugging
+
+        slow_count = 0
+        fast_count = 0
+        slow_unique_hashes = set()
+        fast_unique_hashes = set()
+        slow_debug_dir = os.path.join(tempfile.gettempdir(), "debug_tick_rate_slow")
+        fast_debug_dir = os.path.join(tempfile.gettempdir(), "debug_tick_rate_fast")
+        if SAVE_DEBUG_FRAMES:
+            os.makedirs(slow_debug_dir, exist_ok=True)
+            os.makedirs(fast_debug_dir, exist_ok=True)
+
+        node = self.create_node("test_tick_rate")
+        self.start_async_spinning(node)
+
+        def _save_frame(msg, directory, count):
+            try:
+                import numpy as _np
+                from PIL import Image as PILImage
+
+                arr = _np.frombuffer(bytes(msg.data), dtype=_np.uint8).reshape((msg.height, msg.width, 3))
+                PILImage.fromarray(arr).save(os.path.join(directory, f"frame_{count:04d}.png"))
+            except Exception:
+                pass
+
+        def on_slow(msg):
+            nonlocal slow_count
+            slow_count += 1
+            slow_unique_hashes.add(hashlib.md5(bytes(msg.data)).hexdigest())
+            if SAVE_DEBUG_FRAMES:
+                _save_frame(msg, slow_debug_dir, slow_count)
+
+        def on_fast(msg):
+            nonlocal fast_count
+            fast_count += 1
+            fast_unique_hashes.add(hashlib.md5(bytes(msg.data)).hexdigest())
+            if SAVE_DEBUG_FRAMES:
+                _save_frame(msg, fast_debug_dir, fast_count)
+
+        self.create_subscription(node, Image, "rgb_slow", on_slow, get_qos_profile(depth=100))
+        self.create_subscription(node, Image, "rgb_fast", on_fast, get_qos_profile(depth=100))
+
+        self._timeline.play()
+        for i in range(120):
+            # Move cube each frame to ensure visually distinct renders
+            cube.set_world_poses(positions=[[3.0 + i * 0.01, 0.0, 0.5]])
+            await omni.kit.app.get_app().next_update_async()
+        self._timeline.stop()
+
+        carb.log_warn(
+            f"tickRate test: slow_count={slow_count} (unique={len(slow_unique_hashes)}), "
+            f"fast_count={fast_count} (unique={len(fast_unique_hashes)})"
+        )
+        if SAVE_DEBUG_FRAMES:
+            carb.log_warn(f"Debug frames saved to {slow_debug_dir} and {fast_debug_dir}")
+
+        # At 60 Hz sim rate, fast (autotrigger) should render ~120 unique frames,
+        # slow (10 Hz) should render ~20 unique frames.
+        # The writer may republish stale frames, so check unique image count.
+        self.assertGreater(fast_count, 0, "Fast camera should have published messages")
+        self.assertGreater(slow_count, 0, "Slow camera should have published some messages")
+        if len(fast_unique_hashes) > 10:
+            self.assertLess(
+                len(slow_unique_hashes),
+                len(fast_unique_hashes) * 0.5,
+                f"tickRate not respected: slow has {len(slow_unique_hashes)} unique frames "
+                f"(of {slow_count} msgs) vs fast {len(fast_unique_hashes)} unique frames "
+                f"(of {fast_count} msgs). "
+                f"Expected slow ~{len(fast_unique_hashes) * 10 // 60} unique frames at 10 Hz.",
+            )
+
+    async def test_camera_depth_to_pcl(self):
+        """Test camera depth to pcl."""
+        from sensor_msgs.msg import PointCloud2
+
+        robot_path = await add_carter_ros(self._assets_root_path)
+        await add_cube("/cube", 0.80, (1.60, 0.10, 0.50))
+
+        graph_path = robot_path + "/ROS_Cameras"
+
+        og.Controller.attribute(graph_path + "/isaac_create_render_product_left.inputs:enabled").set(False)
+
+        try:
+            keys = og.Controller.Keys
+            og.Controller.edit(
+                graph_path,
+                {
+                    keys.CREATE_NODES: [("depthToPCL", "isaacsim.ros2.bridge.ROS2CameraHelper")],
+                    keys.CONNECT: [
+                        (graph_path + "/isaac_create_render_product_left.outputs:execOut", "depthToPCL.inputs:execIn"),
+                        (graph_path + "/camera_frameId_left.inputs:value", "depthToPCL.inputs:frameId"),
+                        (
+                            graph_path + "/isaac_create_render_product_left.outputs:renderProductPath",
+                            "depthToPCL.inputs:renderProductPath",
+                        ),
+                    ],
+                    og.Controller.Keys.SET_VALUES: [
+                        ("depthToPCL.inputs:topicName", "/point_cloud_left"),
+                        ("depthToPCL.inputs:type", "depth_pcl"),
+                    ],
+                },
+            )
+        except Exception as e:
+            print(e)
+
+        og.Controller.set(
+            og.Controller.attribute(graph_path + "/isaac_create_render_product_left.inputs:enabled"), True
+        )
+
+        viewport_api = omni.kit.viewport.utility.get_active_viewport()
+        viewport_api.set_texture_resolution((1280, 720))
+
+        self._point_cloud_data = None
+
+        def point_cloud_callback(data: PointCloud2):
+            self._point_cloud_data = data
+
+        node = self.create_node("depth_point_cloud_tester")
+        self.create_subscription(node, PointCloud2, "point_cloud_left", point_cloud_callback, get_qos_profile())
+
+        def spin():
+            rclpy.spin_once(node, timeout_sec=0.1)
+
+        self._timeline.play()
+        await omni.kit.app.get_app().next_update_async()
+        await self.simulate_until_condition(
+            lambda: self._point_cloud_data is not None, max_frames=120, per_frame_callback=spin
+        )
+
+        self.assertIsNotNone(self._point_cloud_data)
+        self.assertGreater(self._point_cloud_data.width, 1)
+        self.assertEqual(
+            self._point_cloud_data.row_step / self._point_cloud_data.point_step, self._point_cloud_data.width
+        )
+        self.assertEqual(
+            len(self._point_cloud_data.data) / self._point_cloud_data.row_step, self._point_cloud_data.height
+        )
+
+        self.assertEqual(self._point_cloud_data.data[526327], 190)
+        self.assertEqual(self._point_cloud_data.data[712187], 63)
+        self.assertEqual(self._point_cloud_data.fields[0].datatype, 7)
+        self.assertEqual(self._point_cloud_data.fields[1].datatype, 7)
+        self.assertEqual(self._point_cloud_data.fields[2].datatype, 7)
+
+        self._timeline.stop()
+        spin()

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,11 @@ from isaacsim.core.simulation_manager import SimulationManager
 
 
 def get_device_ordinal() -> int:
-    """Get the simulation device ordinal (-1 for CPU, >=0 for GPU)."""
+    """Get the simulation device ordinal (-1 for CPU, >=0 for GPU).
+
+    Returns:
+        The device ordinal.
+    """
     device = SimulationManager.get_device()
     if device.is_cuda:
         return device.ordinal

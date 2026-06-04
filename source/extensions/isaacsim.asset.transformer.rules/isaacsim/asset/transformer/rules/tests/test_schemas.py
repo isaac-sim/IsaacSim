@@ -1,10 +1,12 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
+#
 # http://www.apache.org/licenses/LICENSE-2.0
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -36,6 +38,7 @@ def get_all_schema_items(api_schemas: Sdf.TokenListOp | None) -> list[object]:
 
     Returns:
         List of all schema items across the list op sublists.
+
     """
     if not api_schemas:
         return []
@@ -51,17 +54,17 @@ def get_all_schema_items(api_schemas: Sdf.TokenListOp | None) -> list[object]:
 class TestSchemaRoutingRule(omni.kit.test.AsyncTestCase):
     """Async tests for SchemaRoutingRule."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Create a temporary directory for test output."""
         self._tmpdir = tempfile.mkdtemp()
         self._success = False
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Remove temporary directory after successful tests."""
         if self._success:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
 
-    async def test_get_configuration_parameters(self):
+    async def test_get_configuration_parameters(self) -> None:
         """Verify configuration parameters are exposed."""
         stage = Usd.Stage.Open(_TEST_USD)
         rule = SchemaRoutingRule(
@@ -82,7 +85,7 @@ class TestSchemaRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertIn("ignore_prim_names", param_names)
         self._success = True
 
-    async def test_process_rule_no_schemas_skips(self):
+    async def test_process_rule_no_schemas_skips(self) -> None:
         """Verify rule skips when no schemas are provided."""
         stage = Usd.Stage.Open(_TEST_USD)
         rule = SchemaRoutingRule(
@@ -97,7 +100,7 @@ class TestSchemaRoutingRule(omni.kit.test.AsyncTestCase):
         log = rule.get_operation_log()
         self.assertTrue(any("No schemas" in msg for msg in log))
 
-    async def test_process_rule_logs_completion(self):
+    async def test_process_rule_logs_completion(self) -> None:
         """Verify start log entry is recorded."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_TEST_USD, temp_asset)
@@ -126,7 +129,7 @@ class TestSchemaRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_with_prim_names(self):
+    async def test_process_rule_with_prim_names(self) -> None:
         """Verify prim name filters route schema opinions."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_TEST_USD, temp_asset)
@@ -169,7 +172,7 @@ class TestSchemaRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_with_ignore_prim_names(self):
+    async def test_process_rule_with_ignore_prim_names(self) -> None:
         """Verify ignore prim name filters exclude schemas."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_TEST_USD, temp_asset)
@@ -211,7 +214,7 @@ class TestSchemaRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_with_schema_patterns(self):
+    async def test_process_rule_with_schema_patterns(self) -> None:
         """Verify schema patterns route matching schemas."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_TEST_USD, temp_asset)
@@ -252,7 +255,7 @@ class TestSchemaRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_with_ignore_schemas(self):
+    async def test_process_rule_with_ignore_schemas(self) -> None:
         """Verify ignore schema patterns exclude schemas."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_TEST_USD, temp_asset)

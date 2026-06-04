@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,9 +14,15 @@
 # limitations under the License.
 
 
+"""OmniGraph node for configuring ROS 2 RTX lidar point cloud metadata."""
+
+
 class OgnROS2RtxLidarPointCloudConfig:
+    """OmniGraph node that configures RTX lidar point cloud metadata selection."""
+
     @staticmethod
     def compute(db) -> bool:
+        """Compute the node outputs."""
         selectedMetadata = []
         if db.inputs.outputIntensity:
             selectedMetadata.append("Intensity")

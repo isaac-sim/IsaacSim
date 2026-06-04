@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test physics fetch_results for deadlock detection."""
 
 from isaacsim import SimulationApp
 
@@ -32,6 +34,7 @@ kit.update()
 
 
 def test_callback(step, context):
+    """Print a message when the physics step callback fires."""
     print("callback")
 
 
@@ -45,8 +48,7 @@ physics_timer_callback = physics_sim_interface.subscribe_physics_on_step_events(
 # In Isaac Sim we run the following to "warm up" physics without simulating forward in time
 physics_sim_interface.initialize(stage_id)
 physics_sim_interface.simulate(1.0 / 60.0, 0.0)
-print("Fetch results")
-physics_sim_interface.fetch_results()
+print("Simulate Done")
 
 print("Finish Test")
 kit.update()

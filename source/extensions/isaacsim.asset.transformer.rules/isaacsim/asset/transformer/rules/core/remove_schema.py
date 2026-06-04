@@ -1,3 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Rule for deleting applied API schema opinions from a USD layer."""
 
 from __future__ import annotations
@@ -25,6 +40,7 @@ class RemoveSchemaRule(RuleInterface):
         .. code-block:: python
 
             params = rule.get_configuration_parameters()
+
         """
         return [
             RuleConfigurationParam(
@@ -82,6 +98,7 @@ class RemoveSchemaRule(RuleInterface):
         .. code-block:: python
 
             rule.process_rule()
+
         """
         params = self.args.get("params", {}) or {}
         schema_patterns = utils.compile_patterns(params.get("schema_patterns") or [])
@@ -107,7 +124,7 @@ class RemoveSchemaRule(RuleInterface):
 
         source_stage = self.source_stage
         if input_stage_path:
-            source_stage = Usd.Stage.Open(input_stage_path)
+            source_stage = self.args.get("input_stage") or Usd.Stage.Open(input_stage_path)
             if not source_stage:
                 self.log_operation(f"Failed to open input stage: {input_stage_path}")
                 return None
@@ -166,6 +183,7 @@ class RemoveSchemaRule(RuleInterface):
 
         Returns:
             List of matching prim paths.
+
         """
         if not prim_path_patterns:
             return [prim.GetPath().pathString for prim in stage.Traverse()]
@@ -189,6 +207,7 @@ class RemoveSchemaRule(RuleInterface):
 
         Returns:
             Count of deleted schema tokens.
+
         """
         applied_schemas = [str(token) for token in source_prim.GetAppliedSchemas()]
         matching_schemas = [schema for schema in applied_schemas if utils.matches_any_pattern(schema, schema_patterns)]
@@ -237,6 +256,7 @@ class RemoveSchemaRule(RuleInterface):
 
         Returns:
             Count of removed properties.
+
         """
         removed_count = 0
         for prop_name, _ in list(prim_spec.properties.items()):

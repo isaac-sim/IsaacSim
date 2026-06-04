@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +15,8 @@
 
 """Extension for displaying sensor icons in Isaac Sim with visual representations and viewport controls for sensor prims."""
 
-
 from pathlib import Path
 
-import carb.settings
 import omni.ext
 import omni.kit.widget.stage
 from omni.kit.viewport.menubar.core import CategoryStateItem
@@ -47,7 +45,7 @@ class SensorIconExtension(omni.ext.IExt):
 
     # ext_id is current extension id. It can be used with extension manager to query additional information, like where
     # this extension is located on filesystem.
-    def on_startup(self, ext_id):
+    def on_startup(self, ext_id: str) -> None:
         """Called when the extension is enabled.
 
         Sets up the sensor icon system including viewport scene registration, stage widget icons,
@@ -77,7 +75,7 @@ class SensorIconExtension(omni.ext.IExt):
         self._custom_item = CategoryStateItem("Sensors", setting_path=VISIBLE_SETTING)
         self._menubar_display_inst.register_custom_category_item("Show By Type", self._custom_item)
 
-    def on_shutdown(self):  # pragma: no cover
+    def on_shutdown(self) -> None:  # pragma: no cover
         """Called when the extension is disabled.
 
         Cleans up the sensor icon system by deregistering viewport scenes, stage widget icons,

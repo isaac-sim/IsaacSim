@@ -13,53 +13,87 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
+"""User interface builder for the UR10 trajectory generator example.
 
-import omni.kit.app
+Strictly a view: builds widgets, forwards button clicks to the
+:class:`UR10TrajectoryGeneratorExample` scenario, and resets widget
+state on USD stage changes.  All scene-loading and trajectory state
+live on the scenario.
+"""
+
+import asyncio
+from typing import Any
+
 import omni.timeline
 import omni.ui as ui
-from isaacsim.core.experimental.utils import stage as stage_utils
-from isaacsim.core.rendering_manager import RenderingManager, ViewportManager
-from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.gui.components.element_wrappers import Button, CollapsableFrame, StateButton
 from isaacsim.gui.components.style import get_style
-from pxr import UsdPhysics
+from omni.kit.async_engine import run_coroutine
 
 from .scenario import UR10TrajectoryGeneratorExample
 
 
 class UIBuilder:
-    def __init__(self):
-        self.frames = []
-        self.wrapped_ui_elements = []
+    """Builds and drives the UR10 trajectory generator UI.
+
+    Owns only widgets and the asyncio task for scene loading.  The
+    :class:`UR10TrajectoryGeneratorExample` scenario owns all
+    scene/trajectory state.
+
+    The UI has two sections:
+      - **World Controls** - Load the scene and reset the scenario.
+      - **Run Scenario** - Choose one of three trajectory styles and play.
+    """
+
+    def __init__(self) -> None:
+        self.frames: list[Any] = []
+        self.wrapped_ui_elements: list[Any] = []
         self._timeline = omni.timeline.get_timeline_interface()
-        self._on_init()
+        self._load_task: asyncio.Task | None = None
+        self._scenario: UR10TrajectoryGeneratorExample | None = UR10TrajectoryGeneratorExample()
 
-    def on_menu_callback(self):
-        pass
+    # ------------------------------------------------------------- lifecycle
 
-    def on_timeline_event(self, event):
-        self._cspace_trajectory_btn.reset()
-        self._taskspace_trajectory_btn.reset()
-        self._hybrid_trajectory_btn.reset()
-        self._cspace_trajectory_btn.enabled = False
-        self._taskspace_trajectory_btn.enabled = False
-        self._hybrid_trajectory_btn.enabled = False
+    def cleanup(self) -> None:
+        """Tear down the UI on extension shutdown or window close.
 
-    def on_physics_step(self, step: float):
-        pass
-
-    def on_stage_event(self, event):
-        self._reset_extension()
-
-    def cleanup(self):
+        Cancels any in-flight load task, cleans up wrapped widgets, and
+        drops scenario references so the closing UsdStage can be fully
+        released (avoids the ``Unexpected reference count of 2`` warning).
+        """
+        if self._load_task is not None and not self._load_task.done():
+            self._load_task.cancel()
+            self._load_task = None
         for ui_elem in self.wrapped_ui_elements:
             ui_elem.cleanup()
+        self.wrapped_ui_elements.clear()
+        if self._scenario is not None:
+            self._scenario.cleanup()
 
-    def build_ui(self):
-        world_controls_frame = CollapsableFrame("World Controls", collapsed=False)
+    def on_stage_changed(self, event: Any) -> None:
+        """Reset widget state in response to a USD stage event.
 
-        with world_controls_frame:
+        Skipped while a load is in flight (the load itself triggers stage
+        events; resetting state mid-load would clobber it).
+        """
+        if self._load_task is not None and not self._load_task.done():
+            return
+        if self._scenario is not None:
+            self._scenario.cleanup()
+        self._scenario = UR10TrajectoryGeneratorExample()
+        self._reset_widgets()
+
+    def on_timeline_event(self, event: Any) -> None:
+        """Reset all trajectory state buttons on timeline state changes."""
+        for btn in (self._cspace_trajectory_btn, self._taskspace_trajectory_btn, self._hybrid_trajectory_btn):
+            btn.reset()
+            btn.enabled = False
+
+    # -------------------------------------------------------------- build UI
+
+    def build_ui(self) -> None:
+        """Construct the widget tree."""
+        with CollapsableFrame("World Controls", collapsed=False):
             with ui.VStack(style=get_style(), spacing=5, height=0):
                 self._load_btn = Button(
                     "Load Button",
@@ -70,14 +104,15 @@ class UIBuilder:
                 self.wrapped_ui_elements.append(self._load_btn)
 
                 self._reset_btn = Button(
-                    "Reset Button", "RESET", tooltip="Reset the scenario", on_click_fn=self._on_reset_btn
+                    "Reset Button",
+                    "RESET",
+                    tooltip="Reset the scenario",
+                    on_click_fn=self._on_reset_btn,
                 )
                 self._reset_btn.enabled = False
                 self.wrapped_ui_elements.append(self._reset_btn)
 
-        run_scenario_frame = CollapsableFrame("Run Scenario", collapsed=False)
-
-        with run_scenario_frame:
+        with CollapsableFrame("Run Scenario", collapsed=False):
             with ui.VStack(style=get_style(), spacing=5, height=0):
                 self._cspace_trajectory_btn = StateButton(
                     "Run CSpace Trajectory",
@@ -113,130 +148,74 @@ class UIBuilder:
                 self.wrapped_ui_elements.append(self._taskspace_trajectory_btn)
                 self.wrapped_ui_elements.append(self._hybrid_trajectory_btn)
 
-    def _on_init(self):
+    # ------------------------------------------------------------ handlers
+
+    def _on_load_btn(self) -> None:
+        """Handle LOAD click - cancel any prior load, drop the old scenario, kick off a new one."""
+        if self._load_task is not None and not self._load_task.done():
+            self._load_task.cancel()
+        if self._scenario is not None:
+            self._scenario.cleanup()
         self._scenario = UR10TrajectoryGeneratorExample()
+        self._reset_widgets()
+        self._load_task = run_coroutine(self._load_scene_async())
 
-    def _on_load_btn(self):
-        """Handle Load button click - loads scene and initializes scenario."""
-        asyncio.ensure_future(self._load_scene_async())
-
-    async def _load_scene_async(self):
-        """Async function to load the scene without using World."""
-        # Create new stage
-        await stage_utils.create_new_stage_async(template="sunlight")
-
-        # Set up stage properties
-        stage_utils.set_stage_up_axis("Z")
-        stage_utils.set_stage_units(meters_per_unit=1.0)
-
-        # Setup scene (load assets)
-        self._setup_scene()
-
-        # Set camera view
-        ViewportManager.set_camera_view(camera="/OmniverseKit_Persp", eye=[2, 1.5, 2], target=[0, 0, 0])
-
-        # Create physics scene if it doesn't exist
-        stage = stage_utils.get_current_stage()
-        physics_scene_path = "/World/PhysicsScene"
-        if not stage.GetPrimAtPath(physics_scene_path).IsValid():
-            UsdPhysics.Scene.Define(stage, physics_scene_path)
-        await omni.kit.app.get_app().next_update_async()
-
-        # Set physics and rendering timesteps
-        SimulationManager.set_physics_dt(dt=1.0 / 60.0)
-        RenderingManager.set_dt(dt=1.0 / 60.0)
-        await omni.kit.app.get_app().next_update_async()
-
-        # Initialize physics if needed
-        if SimulationManager.get_physics_sim_view() is None:
-            SimulationManager.initialize_physics()
-
-        # Play timeline to initialize physics tensors
-        self._timeline.play()
-        # Wait for multiple updates to ensure physics runs and tensors are initialized
-        for _ in range(5):
-            await omni.kit.app.get_app().next_update_async()
-        self._timeline.stop()
-        await omni.kit.app.get_app().next_update_async()
-
-        # Setup scenario (post-load callback)
-        self._setup_scenario()
-
-    def _setup_scene(self):
-        """Load assets onto the stage."""
-        # Load assets - prims are automatically added to the stage
-        self._scenario.load_example_assets()
-
-    def _setup_scenario(self):
-        """Initialize the scenario after assets are loaded."""
-        self._scenario.setup()
+    async def _load_scene_async(self) -> None:
+        """Load the scene then enable run/reset controls."""
+        await self._scenario.load()
         self._cspace_trajectory_btn.enabled = True
         self._taskspace_trajectory_btn.enabled = True
         self._hybrid_trajectory_btn.enabled = True
         self._reset_btn.enabled = True
 
-    def _on_reset_btn(self):
-        """Handle Reset button click - resets the scenario."""
-        asyncio.ensure_future(self._reset_scene_async())
-
-    async def _reset_scene_async(self):
-        """Async function to reset the scene without using World."""
-        # Stop timeline
+    def _on_reset_btn(self) -> None:
+        """Handle RESET click - stop the timeline and clear the active trajectory."""
         self._timeline.stop()
-        await omni.kit.app.get_app().next_update_async()
-
-        # Reset scenario
         self._scenario.reset()
-        await omni.kit.app.get_app().next_update_async()
+        for btn in (self._cspace_trajectory_btn, self._taskspace_trajectory_btn, self._hybrid_trajectory_btn):
+            btn.reset()
+            btn.enabled = True
 
-        # UI management
-        self._cspace_trajectory_btn.reset()
-        self._taskspace_trajectory_btn.reset()
-        self._hybrid_trajectory_btn.reset()
-        self._cspace_trajectory_btn.enabled = True
-        self._taskspace_trajectory_btn.enabled = True
-        self._hybrid_trajectory_btn.enabled = True
-
-    def _update_scenario(self, step: float, *args, **kwargs):
-        # Check if physics tensors are valid before updating
-        if self._scenario._articulation is not None:
-            if not self._scenario._articulation.is_physics_tensor_entity_valid():
-                return
-        self._scenario.update(step)
-
-    def _on_run_cspace(self):
+    def _on_run_cspace(self) -> None:
+        """Play the timeline and set up the cspace trajectory."""
         self._timeline.play()
         self._scenario.reset()
         self._taskspace_trajectory_btn.reset()
         self._hybrid_trajectory_btn.reset()
         self._scenario.setup_cspace_trajectory()
 
-    def _on_run_taskspace(self):
+    def _on_run_taskspace(self) -> None:
+        """Play the timeline and set up the taskspace trajectory."""
         self._timeline.play()
         self._scenario.reset()
         self._cspace_trajectory_btn.reset()
         self._hybrid_trajectory_btn.reset()
         self._scenario.setup_taskspace_trajectory()
 
-    def _on_run_hybrid(self):
+    def _on_run_hybrid(self) -> None:
+        """Play the timeline and set up the hybrid trajectory."""
         self._timeline.play()
         self._scenario.reset()
         self._cspace_trajectory_btn.reset()
         self._taskspace_trajectory_btn.reset()
         self._scenario.setup_hybrid_trajectory()
 
-    def _on_stop(self):
+    def _on_stop(self) -> None:
+        """Pause the timeline when a STOP button is clicked."""
         self._timeline.pause()
 
-    def _reset_extension(self):
-        self._on_init()
-        self._reset_ui()
+    # ------------------------------------------------------------ per-tick
 
-    def _reset_ui(self):
-        self._cspace_trajectory_btn.reset()
-        self._taskspace_trajectory_btn.reset()
-        self._hybrid_trajectory_btn.reset()
-        self._cspace_trajectory_btn.enabled = False
-        self._taskspace_trajectory_btn.enabled = False
-        self._hybrid_trajectory_btn.enabled = False
+    def _update_scenario(self, step: float, *args: Any, **kwargs: Any) -> None:
+        """Per-physics-step callback wired into the StateButtons."""
+        if self._scenario is not None:
+            self._scenario.step(step)
+
+    # ------------------------------------------------------------- internals
+
+    def _reset_widgets(self) -> None:
+        """Disable trajectory/run/reset controls."""
+        for btn in (self._cspace_trajectory_btn, self._taskspace_trajectory_btn, self._hybrid_trajectory_btn):
+            btn.reset()
+            btn.enabled = False
         self._reset_btn.enabled = False

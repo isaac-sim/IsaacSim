@@ -13,13 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""RMPflow extension for cuMotion robot motion planning with Isaac Sim integration."""
+
 import asyncio
 import gc
+from typing import Any
 
 import carb.eventdispatcher
 import omni
-import omni.kit.commands
-import omni.physics.core
 import omni.timeline
 import omni.ui as ui
 import omni.usd
@@ -27,36 +28,22 @@ from isaacsim.gui.components.element_wrappers import ScrollingWindow
 from isaacsim.gui.components.menu import MenuItemDescription
 from omni.kit.menu.utils import add_menu_items, remove_menu_items
 
-from .global_variables import EXTENSION_DESCRIPTION, EXTENSION_TITLE
+from .global_variables import EXTENSION_TITLE
 from .ui_builder import UIBuilder
-
-"""
-This file serves as a basic template for the standard boilerplate operations
-that make a UI-based extension appear on the toolbar.
-
-This implementation is meant to cover most use-cases without modification.
-Various callbacks are hooked up to a separate class UIBuilder in .ui_builder.py
-Most users will be able to make their desired UI extension by interacting solely with
-UIBuilder.
-
-This class sets up standard useful callback functions in UIBuilder:
-    on_menu_callback: Called when extension is opened
-    on_timeline_event: Called when timeline is stopped, paused, or played
-    on_physics_step: Called on every physics step
-    on_stage_event: Called when stage is opened or closed
-    cleanup: Called when resources such as physics subscriptions should be cleaned up
-    build_ui: User function that creates the UI they want.
-"""
 
 
 class Extension(omni.ext.IExt):
-    def on_startup(self, ext_id: str):
-        """Initialize extension and UI elements"""
+    """Isaac Sim extension providing the RMPflow + cuMotion example with interactive UI."""
 
+    def on_startup(self, ext_id: str) -> None:
+        """Initialize the extension and register UI elements.
+
+        Args:
+            ext_id: The extension ID.
+        """
         self.ext_id = ext_id
         self._usd_context = omni.usd.get_context()
 
-        # Build Window
         self._window = ScrollingWindow(
             title=EXTENSION_TITLE, width=600, height=500, visible=False, dockPreference=ui.DockPreference.LEFT_BOTTOM
         )
@@ -70,24 +57,16 @@ class Extension(omni.ext.IExt):
             description=f"Add {EXTENSION_TITLE} Extension to UI toolbar",
         )
         # Use shorter name for menu item, register under parent "cuMotion Examples" menu
-        menu_item_name = "RMPflow"
         self._menu_items = [
-            MenuItemDescription(name=menu_item_name, onclick_action=(ext_id, f"CreateUIExtension:{EXTENSION_TITLE}"))
+            MenuItemDescription(name="RMPflow", onclick_action=(ext_id, f"CreateUIExtension:{EXTENSION_TITLE}"))
         ]
-
         add_menu_items(self._menu_items, "cuMotion Examples")
 
-        # Filled in with User Functions
         self.ui_builder = UIBuilder()
-
-        # Events
-        self._usd_context = omni.usd.get_context()
-        self._physics_simulation_interface = omni.physics.core.get_physics_simulation_interface()
-        self._physics_subscription = None
         self._timeline = omni.timeline.get_timeline_interface()
 
-    def on_shutdown(self):
-        self._models = {}
+    def on_shutdown(self) -> None:
+        """Clean up the extension and deregister UI elements."""
         remove_menu_items(self._menu_items, "cuMotion Examples")
 
         action_registry = omni.kit.actions.core.get_action_registry()
@@ -98,94 +77,58 @@ class Extension(omni.ext.IExt):
         self.ui_builder.cleanup()
         gc.collect()
 
-    def _on_window(self, visible):
+    def _on_window(self, visible: bool) -> None:
         if self._window.visible:
-            # Subscribe to Stage and Timeline Events
             self._usd_context = omni.usd.get_context()
-            self._stage_event_sub_opened = carb.eventdispatcher.get_eventdispatcher().observe_event(
+            ed = carb.eventdispatcher.get_eventdispatcher()
+            self._stage_event_sub_opened = ed.observe_event(
                 event_name=self._usd_context.stage_event_name(omni.usd.StageEventType.OPENED),
                 on_event=self._on_stage_opened,
                 observer_name="cumotion_rmp_flow._on_stage_opened",
             )
-            self._stage_event_sub_closed = carb.eventdispatcher.get_eventdispatcher().observe_event(
+            self._stage_event_sub_closed = ed.observe_event(
                 event_name=self._usd_context.stage_event_name(omni.usd.StageEventType.CLOSED),
                 on_event=self._on_stage_closed,
                 observer_name="cumotion_rmp_flow._on_stage_closed",
             )
-            self._timeline_event_sub_play = carb.eventdispatcher.get_eventdispatcher().observe_event(
-                event_name=omni.timeline.GLOBAL_EVENT_PLAY,
-                on_event=self._on_timeline_play,
-                observer_name="cumotion_rmp_flow._on_timeline_play",
-            )
-            self._timeline_event_sub_stop = carb.eventdispatcher.get_eventdispatcher().observe_event(
+            self._timeline_event_sub_stop = ed.observe_event(
                 event_name=omni.timeline.GLOBAL_EVENT_STOP,
                 on_event=self._on_timeline_stop,
                 observer_name="cumotion_rmp_flow._on_timeline_stop",
             )
-
             self._build_ui()
         else:
             self._usd_context = None
             self._stage_event_sub_opened = None
             self._stage_event_sub_closed = None
-            self._timeline_event_sub_play = None
             self._timeline_event_sub_stop = None
             self.ui_builder.cleanup()
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
         with self._window.frame:
             with ui.VStack(spacing=5, height=0):
-                self._build_extension_ui()
+                self.ui_builder.build_ui()
 
-        async def dock_window():
+        async def dock_window() -> None:
             await omni.kit.app.get_app().next_update_async()
-
-            def dock(space, name, location, pos=0.5):
-                window = omni.ui.Workspace.get_window(name)
-                if window and space:
-                    window.dock_in(space, location, pos)
-                return window
-
             tgt = ui.Workspace.get_window("Viewport")
-            dock(tgt, EXTENSION_TITLE, omni.ui.DockPosition.LEFT, 0.33)
+            window = omni.ui.Workspace.get_window(EXTENSION_TITLE)
+            if window and tgt:
+                window.dock_in(tgt, omni.ui.DockPosition.LEFT, 0.33)
             await omni.kit.app.get_app().next_update_async()
 
         self._task = asyncio.ensure_future(dock_window())
 
-    #################################################################
-    # Functions below this point call user functions
-    #################################################################
-
-    def _menu_callback(self):
+    def _menu_callback(self) -> None:
         self._window.visible = not self._window.visible
-        self.ui_builder.on_menu_callback()
 
-    def _on_timeline_play(self, event):
-        """Timeline play event callback."""
-        if not self._physics_subscription:
-            self._physics_subscription = self._physics_simulation_interface.subscribe_physics_on_step_events(
-                pre_step=False, order=0, on_update=self._on_physics_step
-            )
-
-    def _on_timeline_stop(self, event):
-        """Timeline stop event callback."""
-        self._physics_subscription = None
+    def _on_timeline_stop(self, event: Any) -> None:
         self.ui_builder.on_timeline_event(event)
 
-    def _on_physics_step(self, step, context):
-        self.ui_builder.on_physics_step(step)
+    def _on_stage_opened(self, event: Any) -> None:
+        self.ui_builder.on_stage_changed(event)
 
-    def _on_stage_opened(self, event):
-        """Stage opened event callback."""
-        self._physics_subscription = None
-        self.ui_builder.cleanup()
-        self.ui_builder.on_stage_event(event)
-
-    def _on_stage_closed(self, event):
-        """Stage closed event callback."""
-        self._physics_subscription = None
-        self.ui_builder.cleanup()
-
-    def _build_extension_ui(self):
-        # Call user function for building UI
-        self.ui_builder.build_ui()
+    def _on_stage_closed(self, event: Any) -> None:
+        self.ui_builder.on_stage_changed(event)
+        # Encourage release of any prim wrappers we just dropped.
+        gc.collect()

@@ -1,0 +1,16 @@
+include "pose.fbs";
+include "math_types.fbs";
+include "tensor.fbs";
+
+namespace isaac;
+
+// Describes a pose with a covariance matrix.
+table PoseWithCovariance {
+  // The pose.
+  pose: Pose (id: 0);
+
+  // The covariance matrix of the pose.
+  covariance: Tensor (id: 1);
+}
+
+root_type PoseWithCovariance;

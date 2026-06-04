@@ -1,0 +1,6 @@
+{
+    "categoryDefinitions": {
+        "$description": "Example OmniGraph nodes for tutorials and IPC patterns",
+        "isaacExamples": "Example nodes demonstrating custom OmniGraph integration"
+    }
+}

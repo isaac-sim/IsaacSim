@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,8 @@ project_ext(ext)
 project_ext_plugin(ext, "isaacsim.ros2.nodes.plugin")
 
 add_files("impl", "plugins")
+add_files("impl", "library")
+add_files("impl", "cuda")
 add_files("ogn", ogn.nodes_path)
 
 filter { "system:linux", "platforms:x86_64" }
@@ -47,8 +49,10 @@ includedirs {
     "%{root}/_build/target-deps/usd_ext_physics/%{cfg.buildcfg}/include",
     extsbuild_dir .. "/omni.syntheticdata/include",
     extsbuild_dir .. "/usdrt.scenegraph/include",
-    "%{root}/_build/target-deps/omni-isaacsim-schema/%{platform}/%{config}/include",
+    "%{root}/source/extensions/isaacsim.robot.schema/include",
+    "%{root}/_build/target-deps/generic_model_output/%{platform}/%{config}/include",
     "%{root}/source/extensions/isaacsim.ros2.nodes/include",
+    "%{root}/_build/target-deps/generic_model_output/%{platform}/%{cfg.buildcfg}/include",
 }
 
 -- Add PhysX includes (needed for PxActor.h and other PhysX headers)
@@ -62,9 +66,8 @@ libdirs {
     "%{root}/_build/target-deps/usd/%{cfg.buildcfg}/lib",
     "%{root}/_build/target-deps/usd_ext_physics/%{cfg.buildcfg}/lib",
     extsbuild_dir .. "/omni.usd.core/bin",
-    "%{root}/_build/target-deps/omni-isaacsim-schema/%{platform}/%{config}/lib",
 }
-links { "isaacSensorSchema", "physxSchema", "omni.usd" }
+links { "physxSchema", "omni.usd" }
 
 extra_usd_libs = { "usdGeom", "usdPhysics", "ts" }
 
@@ -75,7 +78,7 @@ add_usd(extra_usd_libs)
 -- Generate the OGN project (this handles all the .ogn files)
 project_ext_ogn(ext, ogn)
 
--- Python Bindings for the plugin (minimal, if needed)
+-- Python Bindings for the plugin
 project_ext_bindings {
     ext = ext,
     project_name = ogn.python_project,
@@ -83,6 +86,7 @@ project_ext_bindings {
     src = ogn.bindings_path,
     target_subdir = ogn.bindings_target_path,
 }
+dependson { "isaacsim.ros2.nodes.plugin" }
 add_files("bindings", "bindings/*.*")
 add_files("python", "python/*.py")
 add_files("impl", "cuda")
@@ -92,6 +96,16 @@ add_files("python/tests", "python/tests/*.py")
 includedirs {
     "%{root}/source/extensions/isaacsim.ros2.nodes/include",
 }
+
+libdirs {
+    ext.bin_dir,
+}
+links { "isaacsim.ros2.nodes.plugin" }
+filter { "system:windows" }
+    linkoptions { "/DELAYLOAD:isaacsim.ros2.nodes.plugin.dll" }
+    links { "delayimp" }
+filter {}
+
 
 -- Copy/link necessary files for packaging
 repo_build.prebuild_copy {

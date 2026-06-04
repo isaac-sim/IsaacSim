@@ -1,8 +1,8 @@
 [package]
-version = "1.1.2"
+version = "1.2.3"
 category = "Utility"
 title = "VS Code integration"
-description = "VS Code version of Omniverse's script editor"
+description = "VS Code launcher and menu integration for Isaac Sim"
 keywords = ["isaac", "python", "vscode", "editor"]
 changelog = "docs/CHANGELOG.md"
 readme = "docs/Overview.md"
@@ -11,6 +11,7 @@ icon = "data/icon.png"
 writeTarget.kit = true
 
 [dependencies]
+"isaacsim.code_editor.python_server" = {}
 "isaacsim.core.deprecation_manager" = {}
 "omni.kit.notification_manager" = { optional = true }
 "omni.kit.uiapp" = { optional = true }
@@ -18,14 +19,5 @@ writeTarget.kit = true
 [[python.module]]
 name = "isaacsim.code_editor.vscode"
 
-[settings]
-# IP address where the extension server will listen for connections.
-exts."isaacsim.code_editor.vscode".host = "127.0.0.1"
-# Port number where the extension server will listen for connections.
-exts."isaacsim.code_editor.vscode".port = 8226
-# Whether to publish incoming carb logging messages.
-# Warning: enabling this feature may cause the application to freeze in certain circumstances.
-exts."isaacsim.code_editor.vscode".carb_logs = false
-
 [documentation]
-pages = ["docs/Overview.md","docs/SETTINGS.md", "docs/CHANGELOG.md"]
+pages = ["docs/Overview.md",  "docs/CHANGELOG.md"]

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Tests for sensor icon viewport functionality."""
+
 from pathlib import Path
 
 import carb.settings
@@ -21,7 +24,7 @@ import omni.kit.ui_test as ui_test
 import omni.usd
 from omni.kit.viewport.utility import get_active_viewport, get_active_viewport_window
 from omni.ui.tests.test_base import OmniUiTest
-from pxr import Gf, Sdf, Usd
+from pxr import Gf, Sdf
 
 from ..impl.manipulator import SHOW_TITLE_PATH
 from ..impl.scene import VISIBLE_SETTING, SensorIcon
@@ -33,7 +36,8 @@ TEST_OBJECT_PRIM_PATH = "/test_obj"
 
 
 # -- TRANSITION FOR SUPPORTING BOTH VP1 AND VP2
-def is_viewport_legacy():
+def is_viewport_legacy() -> bool:
+    """Check if the active viewport is a legacy viewport."""
     viewport_api = get_active_viewport()
     return hasattr(viewport_api, "legacy_window")
 
@@ -42,7 +46,10 @@ def is_viewport_legacy():
 
 
 class TestSensorIcon(OmniUiTest):
-    async def setUp(self):
+    """Test suite for sensor icon functionality."""
+
+    async def setUp(self) -> None:
+        """Set up test fixtures before each test."""
         await super().setUp()
         usd_context = omni.usd.get_context()
         await usd_context.new_stage_async()
@@ -58,20 +65,28 @@ class TestSensorIcon(OmniUiTest):
         self._settings.set(VISIBLE_SETTING, True)
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Tear down test fixtures after each test."""
         usd_context = omni.usd.get_context()
         await usd_context.close_stage_async()
         self._icon_scene.clear()
         self._icon_scene.destroy()
         await super().tearDown()
 
-    async def _dock_viewport(self, width=1200, height=900, block_device=False):
-        """Utility function to dock viewport window and focus on turntable panel."""
+    async def _dock_viewport(self, width: int = 1200, height: int = 900, block_device: bool = False) -> None:
+        """Utility function to dock viewport window and focus on turntable panel.
+
+        Args:
+            width: Width of the viewport window.
+            height: Height of the viewport window.
+            block_device: Whether to block input devices.
+        """
         viewport = get_active_viewport_window()
         await self.docked_test_window(window=viewport, width=width, height=height, block_devices=block_device)
         await ui_test.wait_n_updates()
 
-    async def test_sensoricon_default(self):
+    async def test_sensoricon_default(self) -> None:
+        """Test default sensor icon creation and manipulation."""
         create_test_object()
         self._settings.set(SHOW_TITLE_PATH, True)
         await ui_test.human_delay()
@@ -97,7 +112,7 @@ class TestSensorIcon(OmniUiTest):
         sensor_item = model._icons.get(sdf_path)
         self.assertFalse(sensor_item.visible)
 
-        def click_fn(*_):
+        def click_fn(*_: object) -> None:
             pass
 
         self._icon_scene.set_icon_click_fn(TEST_OBJECT_PRIM_PATH, click_fn)
@@ -108,7 +123,8 @@ class TestSensorIcon(OmniUiTest):
         self._icon_scene.destroy()
         await ui_test.wait_n_updates(30)
 
-    async def test_sensoricon_saved_stage(self):
+    async def test_sensoricon_saved_stage(self) -> None:
+        """Test sensor icon persistence across stage saves."""
         create_test_object()
         self._settings.set(SHOW_TITLE_PATH, True)
         await ui_test.human_delay()
@@ -129,7 +145,7 @@ class TestSensorIcon(OmniUiTest):
         retrieved_path = new_model.get_icon_url(TEST_OBJECT_PRIM_PATH)
         self.assertEqual(retrieved_path, str(path))
 
-    async def test_sensoricon_path_types(self):
+    async def test_sensoricon_path_types(self) -> None:
         """Tests handling of str and Sdf.Path for prim_path arguments."""
         create_test_object()
         self._settings.set(SHOW_TITLE_PATH, True)
@@ -177,7 +193,7 @@ class TestSensorIcon(OmniUiTest):
         self.assertTrue(model.get_item(prim_path_sdf).visible)
 
         # Test set_icon_click_fn - unused
-        def click_fn_1(*_):
+        def click_fn_1(*_: object) -> None:
             pass
 
         self._icon_scene.set_icon_click_fn(prim_path_str, click_fn_1)
@@ -209,7 +225,7 @@ class TestSensorIcon(OmniUiTest):
         self.assertEqual(model.get_icon_url(prim_path_sdf), "")
         self.assertIsNone(model.get_item(prim_path_str))
 
-    async def test_sensoricon_usd_listening(self):
+    async def test_sensoricon_usd_listening(self) -> None:
         """Tests USD listening and icon visibility."""
         create_test_object()
         self._settings.set(SHOW_TITLE_PATH, True)
@@ -241,7 +257,12 @@ class TestSensorIcon(OmniUiTest):
         self.assertTrue(model.get_item(TEST_OBJECT_PRIM_PATH).visible)
 
 
-def create_test_object(prim_path=TEST_OBJECT_PRIM_PATH, prim_type="Generic", attrs=None):
+def create_test_object(
+    prim_path: str | Sdf.Path = TEST_OBJECT_PRIM_PATH,
+    prim_type: str = "IsaacContactSensor",
+    attrs: dict[str, object] | None = None,
+) -> None:
+    """Create a test object prim with an icon position attribute."""
     kwargs = {"prim_type": prim_type, "prim_path": prim_path}
     if attrs:
         kwargs["attributes"] = attrs

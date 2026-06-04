@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,10 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Base test case for ROS 2 integration tests."""
+
 import asyncio
 import threading
 
-import carb
 import omni
 from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.core.simulation_manager import SimulationManager
@@ -36,7 +37,7 @@ class ROS2TestCase(TimedAsyncTestCase):
     It also provides helper methods for creating and managing ROS2 resources with automatic cleanup.
     """
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test timing before each test method."""
         await super().setUp()
         self._timeline = omni.timeline.get_timeline_interface()
@@ -63,10 +64,10 @@ class ROS2TestCase(TimedAsyncTestCase):
 
             status, frames = await ViewportManager.wait_for_viewport_async()
             self.assertTrue(status, f"Viewport not ready after {frames} frames")
-        except:
+        except Exception:
             pass
 
-    def create_node(self, node_name):
+    def create_node(self, node_name: str) -> object:
         """Create a ROS2 node and track it for automatic cleanup.
 
         Args:
@@ -81,7 +82,7 @@ class ROS2TestCase(TimedAsyncTestCase):
         self._ros2_nodes.append(node)
         return node
 
-    def create_publisher(self, node, msg_type, topic_name, qos_profile=10):
+    def create_publisher(self, node: object, msg_type: type, topic_name: str, qos_profile: int = 10) -> object:
         """Create a ROS2 publisher and track it for automatic cleanup.
 
         Args:
@@ -97,7 +98,9 @@ class ROS2TestCase(TimedAsyncTestCase):
         self._ros2_publishers.append((node, publisher))
         return publisher
 
-    def create_subscription(self, node, msg_type, topic_name, callback, qos_profile=10):
+    def create_subscription(
+        self, node: object, msg_type: type, topic_name: str, callback: object, qos_profile: int = 10
+    ) -> object:
         """Create a ROS2 subscription and track it for automatic cleanup.
 
         When the node has a background executor (via start_async_spinning), a
@@ -119,7 +122,7 @@ class ROS2TestCase(TimedAsyncTestCase):
         self._ros2_subscribers.append((node, subscription))
         return subscription
 
-    def destroy_subscription(self, node, subscription):
+    def destroy_subscription(self, node: object, subscription: object) -> None:
         """Manually destroy a subscription and remove it from tracking.
 
         Args:
@@ -134,7 +137,7 @@ class ROS2TestCase(TimedAsyncTestCase):
         except Exception as e:
             print(f"Warning: Failed to destroy subscription: {e}")
 
-    def destroy_publisher(self, node, publisher):
+    def destroy_publisher(self, node: object, publisher: object) -> None:
         """Manually destroy a publisher and remove it from tracking.
 
         Args:
@@ -149,7 +152,7 @@ class ROS2TestCase(TimedAsyncTestCase):
         except Exception as e:
             print(f"Warning: Failed to destroy publisher: {e}")
 
-    def start_async_spinning(self, node):
+    def start_async_spinning(self, node: object) -> None:
         """Start a background executor that continuously spins the node.
 
         Callbacks on this node will fire automatically in a background thread,
@@ -175,7 +178,7 @@ class ROS2TestCase(TimedAsyncTestCase):
         thread.start()
         self._ros2_executors[node] = (executor, thread)
 
-    def stop_async_spinning(self, node):
+    def stop_async_spinning(self, node: object) -> None:
         """Stop the background executor for a node.
 
         Args:
@@ -189,8 +192,12 @@ class ROS2TestCase(TimedAsyncTestCase):
         thread.join(timeout=5.0)
 
     async def simulate_until_condition(
-        self, condition_func, max_frames=180, frames_per_step=1, per_frame_callback=None
-    ):
+        self,
+        condition_func: object,
+        max_frames: int = 180,
+        frames_per_step: int = 1,
+        per_frame_callback: object | None = None,
+    ) -> bool:
         """Simulate until condition is met or maximum frames reached.
 
         This method runs simulation in steps until a specified condition function
@@ -215,7 +222,100 @@ class ROS2TestCase(TimedAsyncTestCase):
                 return True
         return False
 
-    async def tearDown(self):
+    async def wait_for_publishers_on_topic(
+        self,
+        node: object,
+        topic_name: str,
+        count: int = 1,
+        timeout_sec: float = 10.0,
+        per_frame_callback: object | None = None,
+    ) -> None:
+        """Wait until a node discovers the expected number of publishers on a topic.
+
+        Uses wall-clock time rather than frame count because tests run with no
+        rate limiter, so frames can be extremely fast on some platforms.  Must be
+        called *after* ``timeline.play()`` so the OmniGraph ROS 2 publisher node
+        has evaluated and created its DDS endpoint.
+
+        Args:
+            node: The rclpy node used for discovery queries.
+            topic_name: Fully-qualified topic name to check.
+            count: Minimum number of publishers to wait for.
+            timeout_sec: Maximum wall-clock seconds to wait.
+            per_frame_callback: Optional callable invoked every frame (e.g. rclpy spin).
+        """
+        import time as _time
+
+        deadline = _time.monotonic() + timeout_sec
+        while _time.monotonic() < deadline:
+            await omni.kit.app.get_app().next_update_async()
+            if per_frame_callback is not None:
+                per_frame_callback()
+            if node.count_publishers(topic_name) >= count:
+                return
+        found = node.count_publishers(topic_name)
+        self.fail(
+            f"Timed out ({timeout_sec}s) waiting for {count} publisher(s) on topic "
+            f"'{topic_name}' (last seen {found})"
+        )
+
+    async def wait_for_subscribers_on_topic(
+        self,
+        publisher: object,
+        count: int = 1,
+        timeout_sec: float = 10.0,
+        per_frame_callback: object | None = None,
+    ) -> None:
+        """Wait until a publisher discovers the expected number of matching subscribers.
+
+        Uses wall-clock time rather than frame count because tests run with no
+        rate limiter, so frames can be extremely fast on some platforms.  Must be
+        called *after* ``timeline.play()`` so the OmniGraph ROS 2 subscriber node
+        has evaluated and created its DDS endpoint.
+
+        When the subscription count is already at or above *count* on entry
+        (e.g. after a timeline stop / play cycle) the method first waits for
+        the count to drop below *count* — indicating the old endpoint was
+        torn down — before waiting for it to reach *count* again.
+
+        Args:
+            publisher: The rclpy publisher to query.
+            count: Minimum number of subscribers to wait for.
+            timeout_sec: Maximum wall-clock seconds to wait.
+            per_frame_callback: Optional callable invoked every frame (e.g. rclpy spin).
+        """
+        import time as _time
+
+        deadline = _time.monotonic() + timeout_sec
+
+        if publisher.get_subscription_count() >= count:
+            cycle_deadline = min(_time.monotonic() + 1.0, deadline)
+            while _time.monotonic() < cycle_deadline:
+                await omni.kit.app.get_app().next_update_async()
+                if per_frame_callback is not None:
+                    per_frame_callback()
+                if publisher.get_subscription_count() < count:
+                    break
+
+        while _time.monotonic() < deadline:
+            await omni.kit.app.get_app().next_update_async()
+            if per_frame_callback is not None:
+                per_frame_callback()
+            if publisher.get_subscription_count() >= count:
+                stable_until = min(_time.monotonic() + 0.25, deadline)
+                while _time.monotonic() < stable_until:
+                    await omni.kit.app.get_app().next_update_async()
+                    if per_frame_callback is not None:
+                        per_frame_callback()
+                return
+        found = publisher.get_subscription_count()
+        self.fail(
+            f"Timed out ({timeout_sec}s) waiting for {count} subscriber(s) on topic "
+            f"'{publisher.topic_name}' (last seen {found})"
+        )
+
+    async def tearDown(self) -> None:
+        """Tear down test fixtures."""
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:

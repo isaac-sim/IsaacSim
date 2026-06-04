@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,9 +18,6 @@
 // clang-format on
 
 #include "isaacsim/core/includes/UsdUtilities.h"
-
-#include <carb/Framework.h>
-#include <carb/Types.h>
 
 #include <isaacsim/ros2/core/Ros2Node.h>
 #include <omni/fabric/FabricUSD.h>

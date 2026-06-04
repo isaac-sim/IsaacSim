@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,6 @@
 
 """Tests for Nova Carter goal-driven navigation with path planning functionality."""
 
-
 import carb
 import carb.tokens
 import isaacsim.core.experimental.utils.app as app_utils
@@ -29,6 +28,7 @@ import omni.kit.test
 import omni.timeline
 import usdrt.Sdf
 from isaacsim.core.experimental.utils.app import get_extension_path
+from isaacsim.core.experimental.utils.stage import open_stage_async
 from isaacsim.core.experimental.utils.transform import quaternion_to_euler_angles
 from isaacsim.core.rendering_manager import RenderingManager
 from isaacsim.core.simulation_manager import SimulationManager
@@ -37,7 +37,6 @@ from pxr import Gf, PhysicsSchemaTools
 
 from .robot_helpers import (
     init_robot_sim,
-    open_stage_async,
     setup_robot_og,
 )
 
@@ -47,7 +46,7 @@ class TestDriveGoalCarterv2(omni.kit.test.AsyncTestCase):
     """Tests for Nova Carter goal-driven navigation with path planning."""
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment with Nova Carter and navigation graph."""
         self._timeline = omni.timeline.get_timeline_interface()
 
@@ -60,7 +59,7 @@ class TestDriveGoalCarterv2(omni.kit.test.AsyncTestCase):
 
         # add in carter (from nucleus)
         self.usd_path = self._assets_root_path + "/Isaac/Robots/NVIDIA/NovaCarter/nova_carter.usd"
-        (result, error) = await open_stage_async(self.usd_path)
+        result, error = await open_stage_async(self.usd_path)
         PhysicsSchemaTools.addGroundPlane(
             omni.usd.get_context().get_stage(), "/groundPlane", "Z", 1500, Gf.Vec3f(0, 0, 0), Gf.Vec3f(0.5)
         )
@@ -86,7 +85,7 @@ class TestDriveGoalCarterv2(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         # setup omnigraph
         self.graph_path = "/ActionGraph"
-        (graph, _) = setup_robot_og(
+        graph, _ = setup_robot_og(
             self.graph_path, "joint_wheel_left", "joint_wheel_right", "/nova_carter/chassis_link", 0.14, 0.4132
         )
 
@@ -146,8 +145,6 @@ class TestDriveGoalCarterv2(omni.kit.test.AsyncTestCase):
             },
         )
 
-        pass
-
     # After running each test
     async def tearDown(self):
         """Clean up test environment and stop timeline."""
@@ -156,7 +153,6 @@ class TestDriveGoalCarterv2(omni.kit.test.AsyncTestCase):
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
-        pass
 
     # Actual test, notice it is "async" function, so "await" can be used if needed
     async def test_quintic_planner(self):
@@ -184,7 +180,6 @@ class TestDriveGoalCarterv2(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
 
         print("quintic passed")
-        pass
 
     async def test_check_goal_2d(self):
         """Test 2D goal checking detects when robot reaches target."""
@@ -229,8 +224,6 @@ class TestDriveGoalCarterv2(omni.kit.test.AsyncTestCase):
 
         print("check goal passed")
 
-        pass
-
     async def test_stanley_control_pid(self):
         """Test Stanley control provides valid steering commands."""
         # Start Simulation and wait
@@ -254,5 +247,3 @@ class TestDriveGoalCarterv2(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
 
         print("stanley passed")
-
-        pass

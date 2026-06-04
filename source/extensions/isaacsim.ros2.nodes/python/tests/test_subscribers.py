@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,45 +13,58 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for ROS 2 subscriber OmniGraph nodes."""
 
 import random
 import time
 
-import carb
 import numpy as np
 import omni.graph.core as og
 import omni.kit.commands
 import omni.kit.test
 import omni.kit.usd
-from isaacsim.core.api.objects import DynamicCuboid
-from isaacsim.core.utils.stage import open_stage_async
-from isaacsim.core.utils.xforms import get_world_pose
+from isaacsim.core.experimental.objects import Cube
+from isaacsim.core.experimental.prims import RigidPrim
+from isaacsim.core.experimental.utils import stage as stage_utils
+from isaacsim.core.experimental.utils import xform as xform_utils
+from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 from pxr import Gf, Sdf, UsdGeom, UsdPhysics
-
-from .common import ROS2TestCase
 
 
 class TestRos2Subscribers(ROS2TestCase):
+    """Test suite for ros2 subscribers."""
+
+    MAX_COUNT = 100
+    # Queue-size ranges sampled randomly per test.  Kept well below MAX_COUNT
+    # so there is always a clean prefix of dropped messages to validate the
+    # ring-buffer semantics of the OG subscribe node.
+    SMALL_QUEUE_RANGE = (1, 10)
+    LARGE_QUEUE_RANGE = (15, 25)
+
     async def setUp(self):
+        """Set up test fixtures."""
         await super().setUp()
 
         await omni.usd.get_context().new_stage_async()
 
         self.sub_data = []
         self.prev_seq = 0
-        self.MAX_COUNT = 100
-        self.MAX_OFFSET = int(self.MAX_COUNT * 0.75)  # 75% of the total count
         self.queue_size = 10
+        self.sub_node_time_attribute_path = None
 
         await omni.kit.app.get_app().next_update_async()
-        self.sub_node_time_attribute_path = None
-        pass
 
     async def tearDown(self):
-
+        """Tear down test fixtures."""
         await super().tearDown()
 
     def spin(self):
+        """Sample the OG subscribe node's sequence attribute into ``sub_data``.
+
+        Used as the per-frame callback of :meth:`simulate_until_condition` so
+        each incoming message bumps a counter that the assertion can compare
+        against the expected tail of the published sequence.
+        """
         if self.sub_node_time_attribute_path is None:
             return
         seq = og.Controller.get(og.Controller.attribute(self.sub_node_time_attribute_path))
@@ -62,457 +75,303 @@ class TestRos2Subscribers(ROS2TestCase):
             self.sub_data.append(int(seq))
             self.prev_seq = seq
 
-    def reset_queue_size(self, path, queue_size):
-        self.sub_data = []
-        self.prev_seq = 0
-        og.Controller.set(og.Controller.attribute(path), queue_size)
-        self.queue_size = queue_size
-        self.expected_data = [self.MAX_COUNT - self.queue_size + i for i in range(self.queue_size)]
-
-    def choose_queue_size(self):
-        queue_size = random.randint(1, self.MAX_COUNT - self.MAX_OFFSET)
+    def _choose_queue_size(self, queue_range):
+        """Pick a random queue size inside the given inclusive range."""
+        lo, hi = queue_range
+        queue_size = random.randint(lo, hi)
         print("Choosing queue size of", queue_size)
         return queue_size
 
-    async def test_joint_state_subscriber_queue(self):
+    async def _run_queue_test(
+        self,
+        *,
+        node_name: str,
+        ros_topic: str,
+        msg_type,
+        subscribe_node_name: str,
+        subscribe_node_type: str,
+        time_output_attr: str,
+        publish_fn,
+        queue_size: int,
+    ):
+        """Shared body for every ``*_subscriber_queue`` test.
 
-        import rclpy
+        Exercises exactly one timeline cycle: build the graph with the
+        requested ``queue_size``, play, wait for DDS discovery, publish
+        ``MAX_COUNT - 1`` messages carrying a monotonically increasing
+        sequence number, then assert that the OG subscribe node produced
+        the last ``queue_size`` sequence numbers in order.
+
+        Keeping each test method to a single timeline cycle avoids the DDS
+        discovery stale-match issues that show up when the OG subscribe
+        endpoint is torn down and recreated inside the same method.
+        Multi-size coverage is achieved by having separate ``_small`` and
+        ``_large`` test methods rather than two runs in one method.
+
+        Args:
+            node_name: rclpy node name used for the test-side publisher.
+            ros_topic: ROS 2 topic shared by the OG subscriber and the
+                rclpy publisher.
+            msg_type: rclpy message class used for the publisher.
+            subscribe_node_name: Short OG node name (e.g.
+                ``"SubscribeJointState"``).
+            subscribe_node_type: Fully-qualified OG node type (e.g.
+                ``"isaacsim.ros2.bridge.ROS2SubscribeJointState"``).
+            time_output_attr: Name of the OG output attribute whose value
+                carries the per-message sequence number.
+            publish_fn: Callable ``(publisher, seq_count) -> None`` that
+                publishes a single message carrying ``seq_count`` in the
+                corresponding field.
+            queue_size: Value to set on ``inputs:queueSize`` before play.
+        """
+        node = self.create_node(node_name)
+        test_pub = self.create_publisher(node, msg_type, ros_topic, self.MAX_COUNT)
+
+        graph_path = "/ActionGraph"
+        self.sub_node_time_attribute_path = f"{graph_path}/{subscribe_node_name}.outputs:{time_output_attr}"
+        sub_node_queue_attribute_path = f"{graph_path}/{subscribe_node_name}.inputs:queueSize"
+
+        try:
+            og.Controller.edit(
+                {"graph_path": graph_path, "evaluator_name": "execution"},
+                {
+                    og.Controller.Keys.CREATE_NODES: [
+                        ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
+                        (subscribe_node_name, subscribe_node_type),
+                    ],
+                    og.Controller.Keys.SET_VALUES: [
+                        (f"{subscribe_node_name}.inputs:topicName", ros_topic),
+                    ],
+                    og.Controller.Keys.CONNECT: [
+                        ("OnPlaybackTick.outputs:tick", f"{subscribe_node_name}.inputs:execIn"),
+                    ],
+                },
+            )
+        except Exception as e:
+            print(e)
+
+        og.Controller.set(og.Controller.attribute(sub_node_queue_attribute_path), queue_size)
+        self.queue_size = queue_size
+        self.sub_data = []
+        self.prev_seq = 0
+        expected_data = [self.MAX_COUNT - queue_size + i for i in range(queue_size)]
+
+        self._timeline.play()
+        await self.wait_for_subscribers_on_topic(test_pub)
+
+        for count in range(1, self.MAX_COUNT):
+            publish_fn(test_pub, count)
+            time.sleep(0.005)
+
+        condition_met = await self.simulate_until_condition(
+            lambda: len(self.sub_data) >= queue_size,
+            per_frame_callback=self.spin,
+        )
+
+        self._timeline.stop()
+
+        self.assertTrue(
+            condition_met,
+            msg=(
+                f"{subscribe_node_name} queue test timeout.\n"
+                f"  Expected: {expected_data}\n"
+                f"  Actual:   {self.sub_data}\n"
+                f"  Queue Size: {queue_size}\n"
+                f"  MAX_COUNT: {self.MAX_COUNT}"
+            ),
+        )
+
+        self.assertEqual(
+            self.sub_data,
+            expected_data,
+            msg=(
+                f"{subscribe_node_name} queue test mismatch.\n"
+                f"  Expected: {expected_data}\n"
+                f"  Actual:   {self.sub_data}\n"
+                f"  Queue Size: {queue_size}\n"
+                f"  MAX_COUNT: {self.MAX_COUNT}"
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # JointState
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _publish_joint_state(publisher, count: int) -> None:
         from builtin_interfaces.msg import Time
         from sensor_msgs.msg import JointState
 
-        self._stage = omni.usd.get_context().get_stage()
+        msg = JointState()
+        msg.header.stamp = Time(sec=count)
+        msg.name = ["test1", "test2"]
+        msg.position = [0.0, 0.0]
+        publisher.publish(msg)
 
-        node = self.create_node("isaac_sim_test_joint_state_sub_queue")
-        ros_topic = "joint_sub"
-        test_pub = self.create_publisher(node, JointState, ros_topic, 1)
+    async def test_joint_state_subscriber_queue_small(self):
+        """JointState subscriber buffers the last N messages (small N)."""
+        from sensor_msgs.msg import JointState
 
-        self.graph_path = "/ActionGraph"
-
-        # We are using timestamp to store message sequence
-        self.sub_node_time_attribute_path = self.graph_path + "/SubscribeJointState.outputs:timeStamp"
-        sub_node_queue_attribute_path = self.graph_path + "/SubscribeJointState.inputs:queueSize"
-
-        try:
-            og.Controller.edit(
-                {"graph_path": self.graph_path, "evaluator_name": "execution"},
-                {
-                    og.Controller.Keys.CREATE_NODES: [
-                        ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
-                        ("SubscribeJointState", "isaacsim.ros2.bridge.ROS2SubscribeJointState"),
-                    ],
-                    og.Controller.Keys.SET_VALUES: [
-                        (
-                            "SubscribeJointState.inputs:topicName",
-                            ros_topic,
-                        ),
-                    ],
-                    og.Controller.Keys.CONNECT: [
-                        ("OnPlaybackTick.outputs:tick", "SubscribeJointState.inputs:execIn"),
-                    ],
-                },
-            )
-        except Exception as e:
-            print(e)
-
-        # Set Queue Size in subscriber OG node and reset test variables
-
-        self.reset_queue_size(sub_node_queue_attribute_path, queue_size=self.choose_queue_size())
-
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-
-        def publish_data():
-            # We are using timestamp to store message sequence
-
-            for count in range(1, self.MAX_COUNT):
-                msg = JointState()
-                time_obj = Time()
-                time_obj.sec = count
-                msg.header.stamp = time_obj
-                msg.name = ["test1", "test2"]
-                msg.position = [0.0, 0.0]
-                test_pub.publish(msg)
-                time.sleep(0.02)
-
-        publish_data()
-
-        # Wait until we receive enough data or timeout
-        condition_met = await self.simulate_until_condition(
-            lambda: len(self.sub_data) >= self.queue_size,
-            per_frame_callback=self.spin,
+        await self._run_queue_test(
+            node_name="isaac_sim_test_joint_state_sub_queue_small",
+            ros_topic="joint_sub_small",
+            msg_type=JointState,
+            subscribe_node_name="SubscribeJointState",
+            subscribe_node_type="isaacsim.ros2.bridge.ROS2SubscribeJointState",
+            time_output_attr="timeStamp",
+            publish_fn=self._publish_joint_state,
+            queue_size=self._choose_queue_size(self.SMALL_QUEUE_RANGE),
         )
 
-        self._timeline.stop()
+    async def test_joint_state_subscriber_queue_large(self):
+        """JointState subscriber buffers the last N messages (large N)."""
+        from sensor_msgs.msg import JointState
 
-        self.assertTrue(
-            condition_met,
-            msg=f"Joint State Subscriber Queue Test Timeout: Failed to receive data within time limit.\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
+        await self._run_queue_test(
+            node_name="isaac_sim_test_joint_state_sub_queue_large",
+            ros_topic="joint_sub_large",
+            msg_type=JointState,
+            subscribe_node_name="SubscribeJointState",
+            subscribe_node_type="isaacsim.ros2.bridge.ROS2SubscribeJointState",
+            time_output_attr="timeStamp",
+            publish_fn=self._publish_joint_state,
+            queue_size=self._choose_queue_size(self.LARGE_QUEUE_RANGE),
         )
 
-        self.assertTrue(
-            self.sub_data == self.expected_data,
-            msg=f"Joint State Subscriber Queue Test Failed:\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
-        )
+    # ------------------------------------------------------------------
+    # Clock
+    # ------------------------------------------------------------------
 
-        ## Change queue size to random value
-        self.reset_queue_size(sub_node_queue_attribute_path, queue_size=self.choose_queue_size())
-
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-
-        publish_data()
-
-        # Wait until we receive enough data or timeout
-        condition_met = await self.simulate_until_condition(
-            lambda: len(self.sub_data) >= self.queue_size,
-            per_frame_callback=self.spin,
-        )
-
-        self._timeline.stop()
-
-        self.assertTrue(
-            condition_met,
-            msg=f"Joint State Subscriber Queue Test (Second Run) Timeout: Failed to receive data within time limit.\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
-        )
-
-        self.assertTrue(
-            self.sub_data == self.expected_data,
-            msg=f"Joint State Subscriber Queue Test (Second Run) Failed:\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
-        )
-
-        pass
-
-    async def test_clock_subscriber_queue(self):
-
-        import rclpy
+    @staticmethod
+    def _publish_clock(publisher, count: int) -> None:
         from builtin_interfaces.msg import Time
         from rosgraph_msgs.msg import Clock
 
-        self._stage = omni.usd.get_context().get_stage()
+        msg = Clock()
+        msg.clock = Time(sec=count)
+        publisher.publish(msg)
 
-        node = self.create_node("isaac_sim_test_clock_sub_queue")
-        ros_topic = "clock_sub"
-        test_pub = self.create_publisher(node, Clock, ros_topic, 1)
+    async def test_clock_subscriber_queue_small(self):
+        """Clock subscriber buffers the last N messages (small N)."""
+        from rosgraph_msgs.msg import Clock
 
-        self.graph_path = "/ActionGraph"
-
-        # We are using timestamp to store message sequence
-        self.sub_node_time_attribute_path = self.graph_path + "/SubscribeClock.outputs:timeStamp"
-        sub_node_queue_attribute_path = self.graph_path + "/SubscribeClock.inputs:queueSize"
-
-        try:
-            og.Controller.edit(
-                {"graph_path": self.graph_path, "evaluator_name": "execution"},
-                {
-                    og.Controller.Keys.CREATE_NODES: [
-                        ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
-                        ("SubscribeClock", "isaacsim.ros2.bridge.ROS2SubscribeClock"),
-                    ],
-                    og.Controller.Keys.SET_VALUES: [
-                        (
-                            "SubscribeClock.inputs:topicName",
-                            ros_topic,
-                        ),
-                    ],
-                    og.Controller.Keys.CONNECT: [
-                        ("OnPlaybackTick.outputs:tick", "SubscribeClock.inputs:execIn"),
-                    ],
-                },
-            )
-        except Exception as e:
-            print(e)
-
-        # Set random Queue Size in subscriber OG node and reset test variables
-
-        self.reset_queue_size(sub_node_queue_attribute_path, queue_size=self.choose_queue_size())
-
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-
-        def publish_data():
-            # We are using timestamp to store message sequence
-            for count in range(1, self.MAX_COUNT):
-                msg = Clock()
-                time_obj = Time()
-                time_obj.sec = count
-                msg.clock = time_obj
-                test_pub.publish(msg)
-                time.sleep(0.02)
-
-        publish_data()
-
-        # Wait until we receive enough data or timeout
-        condition_met = await self.simulate_until_condition(
-            lambda: len(self.sub_data) >= self.queue_size,
-            per_frame_callback=self.spin,
+        await self._run_queue_test(
+            node_name="isaac_sim_test_clock_sub_queue_small",
+            ros_topic="clock_sub_small",
+            msg_type=Clock,
+            subscribe_node_name="SubscribeClock",
+            subscribe_node_type="isaacsim.ros2.bridge.ROS2SubscribeClock",
+            time_output_attr="timeStamp",
+            publish_fn=self._publish_clock,
+            queue_size=self._choose_queue_size(self.SMALL_QUEUE_RANGE),
         )
 
-        self._timeline.stop()
+    async def test_clock_subscriber_queue_large(self):
+        """Clock subscriber buffers the last N messages (large N)."""
+        from rosgraph_msgs.msg import Clock
 
-        self.assertTrue(
-            condition_met,
-            msg=f"Clock Subscriber Queue Test Timeout: Failed to receive data within time limit.\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
+        await self._run_queue_test(
+            node_name="isaac_sim_test_clock_sub_queue_large",
+            ros_topic="clock_sub_large",
+            msg_type=Clock,
+            subscribe_node_name="SubscribeClock",
+            subscribe_node_type="isaacsim.ros2.bridge.ROS2SubscribeClock",
+            time_output_attr="timeStamp",
+            publish_fn=self._publish_clock,
+            queue_size=self._choose_queue_size(self.LARGE_QUEUE_RANGE),
         )
 
-        self.assertTrue(
-            self.sub_data == self.expected_data,
-            msg=f"Clock Subscriber Queue Test Failed:\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
-        )
+    # ------------------------------------------------------------------
+    # Twist
+    # ------------------------------------------------------------------
 
-        ## Change queue size to random value
-        self.reset_queue_size(sub_node_queue_attribute_path, queue_size=self.choose_queue_size())
-
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-
-        publish_data()
-
-        # Wait until we receive enough data or timeout
-        condition_met = await self.simulate_until_condition(
-            lambda: len(self.sub_data) >= self.queue_size,
-            per_frame_callback=self.spin,
-        )
-
-        self._timeline.stop()
-
-        self.assertTrue(
-            condition_met,
-            msg=f"Clock Subscriber Queue Test (Second Run) Timeout: Failed to receive data within time limit.\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
-        )
-
-        self.assertTrue(
-            self.sub_data == self.expected_data,
-            msg=f"Clock Subscriber Queue Test (Second Run) Failed:\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
-        )
-
-        pass
-
-    async def test_twist_subscriber_queue(self):
-
-        import rclpy
+    @staticmethod
+    def _publish_twist(publisher, count: int) -> None:
         from geometry_msgs.msg import Twist
 
-        self._stage = omni.usd.get_context().get_stage()
+        msg = Twist()
+        msg.linear.x = float(count)
+        publisher.publish(msg)
 
-        node = self.create_node("isaac_sim_test_twist_sub_queue")
-        ros_topic = "twist_sub"
-        test_pub = self.create_publisher(node, Twist, ros_topic, 1)
+    async def test_twist_subscriber_queue_small(self):
+        """Twist subscriber buffers the last N messages (small N)."""
+        from geometry_msgs.msg import Twist
 
-        self.graph_path = "/ActionGraph"
-
-        # We are using timestamp to store message sequence
-        self.sub_node_time_attribute_path = self.graph_path + "/SubscribeTwist.outputs:linearVelocity"
-        sub_node_queue_attribute_path = self.graph_path + "/SubscribeTwist.inputs:queueSize"
-
-        try:
-            og.Controller.edit(
-                {"graph_path": self.graph_path, "evaluator_name": "execution"},
-                {
-                    og.Controller.Keys.CREATE_NODES: [
-                        ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
-                        ("SubscribeTwist", "isaacsim.ros2.bridge.ROS2SubscribeTwist"),
-                    ],
-                    og.Controller.Keys.SET_VALUES: [
-                        (
-                            "SubscribeTwist.inputs:topicName",
-                            ros_topic,
-                        ),
-                    ],
-                    og.Controller.Keys.CONNECT: [
-                        ("OnPlaybackTick.outputs:tick", "SubscribeTwist.inputs:execIn"),
-                    ],
-                },
-            )
-        except Exception as e:
-            print(e)
-
-        # Set random Queue Size in subscriber OG node and reset test variables
-
-        self.reset_queue_size(sub_node_queue_attribute_path, queue_size=self.choose_queue_size())
-
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-
-        def publish_data():
-            # We are using linear.x to store message sequence
-            for count in range(1, self.MAX_COUNT):
-                msg = Twist()
-                msg.linear.x = float(count)
-                test_pub.publish(msg)
-                time.sleep(0.02)
-
-        publish_data()
-
-        # Wait until we receive enough data or timeout
-        condition_met = await self.simulate_until_condition(
-            lambda: len(self.sub_data) >= self.queue_size,
-            per_frame_callback=self.spin,
+        await self._run_queue_test(
+            node_name="isaac_sim_test_twist_sub_queue_small",
+            ros_topic="twist_sub_small",
+            msg_type=Twist,
+            subscribe_node_name="SubscribeTwist",
+            subscribe_node_type="isaacsim.ros2.bridge.ROS2SubscribeTwist",
+            time_output_attr="linearVelocity",
+            publish_fn=self._publish_twist,
+            queue_size=self._choose_queue_size(self.SMALL_QUEUE_RANGE),
         )
 
-        self._timeline.stop()
+    async def test_twist_subscriber_queue_large(self):
+        """Twist subscriber buffers the last N messages (large N)."""
+        from geometry_msgs.msg import Twist
 
-        self.assertTrue(
-            condition_met,
-            msg=f"Twist Subscriber Queue Test Timeout: Failed to receive data within time limit.\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
+        await self._run_queue_test(
+            node_name="isaac_sim_test_twist_sub_queue_large",
+            ros_topic="twist_sub_large",
+            msg_type=Twist,
+            subscribe_node_name="SubscribeTwist",
+            subscribe_node_type="isaacsim.ros2.bridge.ROS2SubscribeTwist",
+            time_output_attr="linearVelocity",
+            publish_fn=self._publish_twist,
+            queue_size=self._choose_queue_size(self.LARGE_QUEUE_RANGE),
         )
 
-        self.assertTrue(
-            self.sub_data == self.expected_data,
-            msg=f"Twist Subscriber Queue Test Failed:\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
-        )
+    # ------------------------------------------------------------------
+    # AckermannDriveStamped
+    # ------------------------------------------------------------------
 
-        ## Change queue size to random value
-        self.reset_queue_size(sub_node_queue_attribute_path, queue_size=self.choose_queue_size())
-
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-
-        publish_data()
-
-        # Wait until we receive enough data or timeout
-        condition_met = await self.simulate_until_condition(
-            lambda: len(self.sub_data) >= self.queue_size,
-            per_frame_callback=self.spin,
-        )
-
-        self._timeline.stop()
-
-        self.assertTrue(
-            condition_met,
-            msg=f"Twist Subscriber Queue Test (Second Run) Timeout: Failed to receive data within time limit.\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
-        )
-
-        self.assertTrue(
-            self.sub_data == self.expected_data,
-            msg=f"Twist Subscriber Queue Test (Second Run) Failed:\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
-        )
-
-        pass
-
-    async def test_ackermann_subscriber_queue(self):
-
-        import rclpy
+    @staticmethod
+    def _publish_ackermann(publisher, count: int) -> None:
         from ackermann_msgs.msg import AckermannDriveStamped
         from builtin_interfaces.msg import Time
 
-        self._stage = omni.usd.get_context().get_stage()
+        msg = AckermannDriveStamped()
+        msg.header.stamp = Time(sec=count)
+        publisher.publish(msg)
 
-        node = self.create_node("isaac_sim_test_AckermannDrive_sub_queue")
-        ros_topic = "ackermann_sub"
-        test_pub = self.create_publisher(node, AckermannDriveStamped, ros_topic, 1)
+    async def test_ackermann_subscriber_queue_small(self):
+        """Ackermann subscriber buffers the last N messages (small N)."""
+        from ackermann_msgs.msg import AckermannDriveStamped
 
-        self.graph_path = "/ActionGraph"
-
-        # We are using timestamp to store message sequence
-        self.sub_node_time_attribute_path = self.graph_path + "/SubscribeAckermannDrive.outputs:timeStamp"
-        sub_node_queue_attribute_path = self.graph_path + "/SubscribeAckermannDrive.inputs:queueSize"
-
-        try:
-            og.Controller.edit(
-                {"graph_path": self.graph_path, "evaluator_name": "execution"},
-                {
-                    og.Controller.Keys.CREATE_NODES: [
-                        ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
-                        ("SubscribeAckermannDrive", "isaacsim.ros2.bridge.ROS2SubscribeAckermannDrive"),
-                    ],
-                    og.Controller.Keys.SET_VALUES: [
-                        (
-                            "SubscribeAckermannDrive.inputs:topicName",
-                            ros_topic,
-                        ),
-                    ],
-                    og.Controller.Keys.CONNECT: [
-                        ("OnPlaybackTick.outputs:tick", "SubscribeAckermannDrive.inputs:execIn"),
-                    ],
-                },
-            )
-        except Exception as e:
-            print(e)
-
-        # Set random Queue Size in subscriber OG node and reset test variables
-
-        self.reset_queue_size(sub_node_queue_attribute_path, queue_size=self.choose_queue_size())
-
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-
-        def publish_data():
-            # We are using linear.x to store message sequence
-            for count in range(1, self.MAX_COUNT):
-                msg = AckermannDriveStamped()
-                time_obj = Time()
-                time_obj.sec = count
-                msg.header.stamp = time_obj
-                test_pub.publish(msg)
-                time.sleep(0.02)
-
-        publish_data()
-
-        # Wait until we receive enough data or timeout
-        condition_met = await self.simulate_until_condition(
-            lambda: len(self.sub_data) >= self.queue_size,
-            per_frame_callback=self.spin,
+        await self._run_queue_test(
+            node_name="isaac_sim_test_ackermann_sub_queue_small",
+            ros_topic="ackermann_sub_small",
+            msg_type=AckermannDriveStamped,
+            subscribe_node_name="SubscribeAckermannDrive",
+            subscribe_node_type="isaacsim.ros2.bridge.ROS2SubscribeAckermannDrive",
+            time_output_attr="timeStamp",
+            publish_fn=self._publish_ackermann,
+            queue_size=self._choose_queue_size(self.SMALL_QUEUE_RANGE),
         )
 
-        self._timeline.stop()
+    async def test_ackermann_subscriber_queue_large(self):
+        """Ackermann subscriber buffers the last N messages (large N)."""
+        from ackermann_msgs.msg import AckermannDriveStamped
 
-        self.assertTrue(
-            condition_met,
-            msg=f"Ackermann Subscriber Queue Test Timeout: Failed to receive data within time limit.\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
+        await self._run_queue_test(
+            node_name="isaac_sim_test_ackermann_sub_queue_large",
+            ros_topic="ackermann_sub_large",
+            msg_type=AckermannDriveStamped,
+            subscribe_node_name="SubscribeAckermannDrive",
+            subscribe_node_type="isaacsim.ros2.bridge.ROS2SubscribeAckermannDrive",
+            time_output_attr="timeStamp",
+            publish_fn=self._publish_ackermann,
+            queue_size=self._choose_queue_size(self.LARGE_QUEUE_RANGE),
         )
 
-        self.assertTrue(
-            self.sub_data == self.expected_data,
-            msg=f"Ackermann Subscriber Queue Test Failed:\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
-        )
-
-        ## Change queue size to random value
-        self.reset_queue_size(sub_node_queue_attribute_path, queue_size=self.choose_queue_size())
-
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-
-        publish_data()
-
-        # Wait until we receive enough data or timeout
-        condition_met = await self.simulate_until_condition(
-            lambda: len(self.sub_data) >= self.queue_size,
-            per_frame_callback=self.spin,
-        )
-
-        self._timeline.stop()
-
-        self.assertTrue(
-            condition_met,
-            msg=f"Ackermann Subscriber Queue Test (Second Run) Timeout: Failed to receive data within time limit.\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
-        )
-
-        self.assertTrue(
-            self.sub_data == self.expected_data,
-            msg=f"Ackermann Subscriber Queue Test (Second Run) Failed:\n  Expected: {self.expected_data}\n  Actual: {self.sub_data}\n  Queue Size: {self.queue_size}\n  MAX_COUNT: {self.MAX_COUNT}",
-        )
-
-        pass
+    # ------------------------------------------------------------------
+    # Transform tree
+    # ------------------------------------------------------------------
 
     async def test_transform_tree_subscriber(self):
-
-        import rclpy
+        """Test transform tree subscriber."""
         from geometry_msgs.msg import TransformStamped
         from tf2_msgs.msg import TFMessage
 
@@ -521,7 +380,7 @@ class TestRos2Subscribers(ROS2TestCase):
         # Create a node to subscribe to TFs
         node = self.create_node("isaac_sim_test_transform_tree_sub_queue")
         ros_topic = "tf_sub"
-        test_pub = self.create_publisher(node, TFMessage, ros_topic, 1)
+        test_pub = self.create_publisher(node, TFMessage, ros_topic, self.MAX_COUNT)
 
         self.graph_path = "/ActionGraph"
 
@@ -552,12 +411,14 @@ class TestRos2Subscribers(ROS2TestCase):
         scene.CreateGravityDirectionAttr().Set(Gf.Vec3f(0.0, 0.0, -1.0))
         scene.CreateGravityMagnitudeAttr().Set(9.81)
 
-        cube = DynamicCuboid(prim_path="/World/cube", position=np.array([0, 0, 5]))
+        Cube("/World/cube", positions=np.array([[0, 0, 5]]))
+        RigidPrim("/World/cube")
 
         self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
+        # Wait for DDS discovery to match publisher and the OG subscribe
+        # endpoint; otherwise the first publish below can race and get
+        # dropped before the subscriber is ready.
+        await self.wait_for_subscribers_on_topic(test_pub)
 
         for i in range(10):
             msg = TransformStamped()
@@ -585,23 +446,29 @@ class TestRos2Subscribers(ROS2TestCase):
 
             test_pub.publish(tf_msg)
 
-            time.sleep(0.02)
+            time.sleep(0.005)
 
             # Wait until pose condition is met or timeout
             def pose_condition():
-                x, r = get_world_pose("/World/cube")
+                _prim = self._stage.GetPrimAtPath("/World/cube")
+                _pos_wp, _rot_wp = xform_utils.get_world_pose(_prim)
+                x = _pos_wp.numpy().flatten()
+                r = _rot_wp.numpy().flatten()
                 pos_match = np.linalg.norm(x - pos) < 1e-5
                 rot_match = np.linalg.norm(r - rot) < 1e-5 or np.linalg.norm(r + rot) < 1e-5
                 return pos_match and rot_match
 
-            condition_met = await self.simulate_until_condition(pose_condition, per_frame_callback=self.spin)
+            condition_met = await self.simulate_until_condition(pose_condition)
 
             self.assertTrue(
                 condition_met,
                 msg=f"Transform tree test failed for iteration {i}: Pose condition not met within time limit",
             )
 
-            x, r = get_world_pose("/World/cube")
+            _prim = self._stage.GetPrimAtPath("/World/cube")
+            _pos_wp, _rot_wp = xform_utils.get_world_pose(_prim)
+            x = _pos_wp.numpy().flatten()
+            r = _rot_wp.numpy().flatten()
 
             # NOTE : a quaterion q and -q represent the same rotation
             self.assertTrue(np.linalg.norm(x - pos) < 1e-5)
@@ -609,24 +476,21 @@ class TestRos2Subscribers(ROS2TestCase):
 
         self._timeline.stop()
 
-        pass
-
     async def test_transform_tree_subscriber_nova_carter(self):
-
-        import rclpy
+        """Test transform tree subscriber nova carter."""
         from geometry_msgs.msg import TransformStamped
         from tf2_msgs.msg import TFMessage
 
         # Load our Nova Carter ROS stage
         stage_path = "/Isaac/Robots/NVIDIA/NovaCarter/nova_carter.usd"
-        await open_stage_async(self._assets_root_path + stage_path)
+        await stage_utils.open_stage_async(self._assets_root_path + stage_path)
 
         self._stage = omni.usd.get_context().get_stage()
 
         # Create a node to subscribe to TFs
         node = self.create_node("isaac_sim_test_transform_tree_sub_nova_carter")
         ros_topic = "tf_sub"
-        test_pub = self.create_publisher(node, TFMessage, ros_topic, 1)
+        test_pub = self.create_publisher(node, TFMessage, ros_topic, self.MAX_COUNT)
 
         self.graph_path = "/ActionGraph"
 
@@ -655,11 +519,12 @@ class TestRos2Subscribers(ROS2TestCase):
             print(e)
 
         self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
-        await omni.kit.app.get_app().next_update_async()
+        # Wait for DDS discovery to match publisher and the OG subscribe
+        # endpoint; otherwise the first publish below can race and get
+        # dropped before the subscriber is ready.
+        await self.wait_for_subscribers_on_topic(test_pub)
 
-        for i in range(10):
+        for i in range(5):
             msg = TransformStamped()
             msg.header.stamp = node.get_clock().now().to_msg()
             msg.child_frame_id = "base_link"
@@ -685,28 +550,32 @@ class TestRos2Subscribers(ROS2TestCase):
 
             test_pub.publish(tf_msg)
 
-            time.sleep(0.02)
+            time.sleep(0.005)
 
             # Wait until pose condition is met or timeout
             def pose_condition():
-                x, r = get_world_pose("/nova_carter/chassis_link")
+                _prim = self._stage.GetPrimAtPath("/nova_carter/chassis_link")
+                _pos_wp, _rot_wp = xform_utils.get_world_pose(_prim)
+                x = _pos_wp.numpy().flatten()
+                r = _rot_wp.numpy().flatten()
                 pos_match = np.linalg.norm(x - pos) < 1e-5
                 rot_match = np.linalg.norm(r - rot) < 1e-5 or np.linalg.norm(r + rot) < 1e-5
                 return pos_match and rot_match
 
-            condition_met = await self.simulate_until_condition(pose_condition, per_frame_callback=self.spin)
+            condition_met = await self.simulate_until_condition(pose_condition, max_frames=60)
 
             self.assertTrue(
                 condition_met,
                 msg=f"Nova Carter transform tree test failed for iteration {i}: Pose condition not met within time limit",
             )
 
-            x, r = get_world_pose("/nova_carter/chassis_link")
+            _prim = self._stage.GetPrimAtPath("/nova_carter/chassis_link")
+            _pos_wp, _rot_wp = xform_utils.get_world_pose(_prim)
+            x = _pos_wp.numpy().flatten()
+            r = _rot_wp.numpy().flatten()
 
             # NOTE : a quaterion q and -q represent the same rotation
             self.assertTrue(np.linalg.norm(x - pos) < 1e-5)
             self.assertTrue(np.linalg.norm(r - rot) < 1e-5 or np.linalg.norm(r + rot) < 1e-5)
 
         self._timeline.stop()
-
-        pass

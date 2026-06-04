@@ -1,5 +1,61 @@
 # Changelog
 
+## [3.10.0] - 2026-05-14
+### Added
+- After `run_asset_transformer_profile` finishes (and `run_multi_physics_conversion` is enabled), `MJCFImporter.import_mjcf()` now post-processes `<output_dir>/payloads/Physics/physx.usda` to combine over-constrained joints (multiple single-axis joints sharing the same body pair) into a single PhysX D6 joint
+- The redundant single-axis joints are removed from the PhysX variant. All edits are confined to the PhysX overlay layer; the MuJoCo/Newton variants keep the original per-DOF joint authoring intact
+- `MJCFImporterConfig.fix_base` is now a tri-state `bool | None`. `True` adds a world-to-root fixed joint (existing behavior), `False` removes any existing world-to-root fixed joint so the robot becomes floating-base, and the new default `None` leaves the source asset's base authoring untouched.
+
+### Changed
+- `MJCFImporter.import_mjcf()` has tighter checks around mjcf xml file names.
+- Only adds `MassAPI` when the user sets a non-default density on the links; otherwise links with no mass will not have a `MassAPI` applied.
+
+## [3.9.0] - 2026-05-07
+### Changed
+- Imported MJCF mimic joints are now expressed exclusively through `NewtonMimicAPI` (via `newton:mimicJoint`, `newton:mimicCoef0`, `newton:mimicCoef1`). The transformer-driven authoring of the equivalent `PhysxMimicJointAPI` has been removed; the runtime consumes the Newton mimic schema directly.
+- Imported MJCF articulation roots no longer carry `PhysxArticulationAPI`. Self-collision is authored via `NewtonArticulationRootAPI` (`newton:selfCollisionEnabled`) on top of the standard `UsdPhysics.ArticulationRootAPI`.
+
+## [3.8.0] - 2026-04-29
+### Changed
+- Updated mujoco-usd-converter to 0.2.0
+
+## [3.7.0] - 2026-04-22
+### Changed
+- `MJCFImporter.import_mjcf()` now writes all intermediate artifacts (usdex layers, temp stage) to a system temp directory via `tempfile.mkdtemp()` in non-debug mode, instead of the source MJCF directory. This avoids `PermissionError` when importing MJCF assets from read-only locations (packman cache, mounted volumes, installed extension data). In `debug_mode`, intermediates are still written next to the final USD output for inspection.
+- Intermediate-artifact cleanup is now wrapped in a `try/finally` so the scratch directory is removed even if an exception is raised mid-conversion.
+
+### Fixed
+- With `run_asset_transformer=False`, `import_mjcf()` no longer crashes trying to write to a non-existent output directory. The intermediate stage is now only materialized when the transformer needs it, and the final USD is written directly to the output directory (which is created via `os.makedirs(..., exist_ok=True)`).
+
+## [3.6.0] - 2026-04-22
+- Added configs to set default joint dynamics, density, and fix robot
+- Added configs to run asset transformer, multi-physics conversion
+- Added robot name into the debug folder path to avoid duplication
+
+## [3.5.1] - 2026-04-21
+### Changed
+- Add deprecation notice to `commands_api.md` for `MJCFCreateImportConfig` and `MJCFCreateAsset` Kit commands
+
+## [3.5.0] - 2026-04-14
+### Changed
+- Replace Kit extension manager lookup for default profile path with `isaacsim.asset.transformer.rules.DEFAULT_PROFILE_PATH`
+- Remove unused `self._extension_path` from extension entrypoint
+- Gate `extension.py` import in `__init__.py` so the package can be imported outside Kit
+
+## [3.4.0] - 2026-04-08
+### Changed
+- Improve Python API documentation (`config/python_api.md` and/or module docstrings).
+
+## [3.3.0] - 2026-03-31
+### Changed
+- Added `omni.usd.schema.mujoco` dependency for mujoco schema support
+- Added `omni.hydra.usdrt_delegate` test dependency
+- Removed docstring tests
+
+## [3.2.1] - 2026-03-21
+### Fixed
+- Fixed test teardown to stop the timeline and flush run-loop frames before the next stage is created, preventing a SIGSEGV crash in `UsdStage::~UsdStage`
+
 ## [3.2.0] - 2026-03-04
 ### Changed
 - Added scene import option for the MJCF importer

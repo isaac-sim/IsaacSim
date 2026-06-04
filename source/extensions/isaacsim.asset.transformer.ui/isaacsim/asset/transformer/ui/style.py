@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,9 +25,6 @@ from .constants import (
     DISABLED_BACKGROUND_COLOR,
     DISABLED_TEXT_COLOR,
     EXECUTE_ACCENT_COLOR,
-    EXECUTE_BUTTON_BACKGROUND,
-    EXECUTE_BUTTON_HOVER_BACKGROUND,
-    EXECUTE_BUTTON_PRESSED_BACKGROUND,
     HEADER_BACKGROUND_COLOR,
     HEADER_FONT,
     HEADER_FONT_SIZE,

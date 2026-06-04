@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""ROS 2 simulation control services and action servers."""
+
 import asyncio
 import os
 import threading
 
 import carb
-import isaacsim.core.utils.prims as prim_utils
-import isaacsim.core.utils.stage as stage_utils
+import isaacsim.core.experimental.utils.prim as prim_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
 import nest_asyncio
 import numpy as np
 import omni
@@ -33,9 +35,11 @@ from isaacsim.storage.native import (
     resolve_asset_path_async,
 )
 from pxr import Sdf
+from pxr import Usd as PxrUsd
+from pxr import UsdGeom
 from usdrt import Usd
 
-from .entity_utils import create_empty_entity_state, get_entity_state, get_filtered_entities
+from .entity_utils import create_empty_entity_state, get_entity_state, get_filtered_entities, resolve_source_path
 
 # Service prefix constant
 SERVICE_PREFIX = ""  # Prefix for all ROS2 services (empty by default)
@@ -52,12 +56,15 @@ SERVICE_TYPES = [
     ("simulation_interfaces.srv", "DeleteEntity", "delete_entity"),
     ("simulation_interfaces.srv", "GetEntityInfo", "get_entity_info"),
     ("simulation_interfaces.srv", "SpawnEntity", "spawn_entity"),
+    ("simulation_interfaces.srv", "SpawnEntities", "spawn_entities"),
     ("simulation_interfaces.srv", "ResetSimulation", "reset_simulation"),
     ("simulation_interfaces.srv", "StepSimulation", "step_simulation"),
     ("simulation_interfaces.srv", "GetEntityState", "get_entity_state"),
     ("simulation_interfaces.srv", "GetEntitiesStates", "get_entities_states"),
     ("simulation_interfaces.srv", "SetEntityState", "set_entity_state"),
+    ("simulation_interfaces.srv", "GetEntityBounds", "get_entity_bounds"),
     ("simulation_interfaces.srv", "GetSimulatorFeatures", "get_simulator_features"),
+    ("simulation_interfaces.srv", "GetSpawnables", "get_spawnables"),
     ("simulation_interfaces.srv", "LoadWorld", "load_world"),
     ("simulation_interfaces.srv", "UnloadWorld", "unload_world"),
     ("simulation_interfaces.srv", "GetCurrentWorld", "get_current_world"),
@@ -70,11 +77,11 @@ ACTION_TYPES = [
 
 
 # Define the Singleton decorator
-def Singleton(class_):
-
+def Singleton(class_: type) -> callable:  # noqa: N802 - decorator named after the pattern it implements
+    """Decorate a class to implement the singleton pattern."""
     instances = {}
 
-    def getinstance(*args, **kwargs):
+    def getinstance(*args: object, **kwargs: object) -> object:
         if class_ not in instances:
             instances[class_] = class_(*args, **kwargs)
         return instances[class_]
@@ -88,14 +95,13 @@ class ROS2ServiceManager:
 
     This class is a singleton to ensure there's only one ROS2 node running
     that handles all simulation control services.
+
+    Sets up the initial state for managing ROS2 services and action servers
+    for Isaac Sim simulation control.
     """
 
-    def __init__(self):
-        """Initialize the ROS2ServiceManager.
-
-        Sets up the initial state for managing ROS2 services and action servers
-        for Isaac Sim simulation control.
-        """
+    def __init__(self) -> None:
+        """Initialize the ROS2 service manager."""
         self.node_name = "isaac_sim_control"
         self.node = None
         self.services = {}
@@ -107,7 +113,7 @@ class ROS2ServiceManager:
         # Single callback group for parallel execution of both services and actions
         self.callback_group = None
 
-    def initialize(self):
+    def initialize(self) -> None:
         """Initialize the ROS2 node for simulation control services.
 
         Creates a ROS2 node and starts a separate thread for spinning the node.
@@ -116,8 +122,8 @@ class ROS2ServiceManager:
 
         Raises:
             ImportError: If ROS2 Python libraries are not available.
-        """
 
+        """
         if self.is_initialized:
             return
 
@@ -125,7 +131,6 @@ class ROS2ServiceManager:
             import rclpy
             from rclpy.callback_groups import ReentrantCallbackGroup
             from rclpy.executors import MultiThreadedExecutor
-            from rclpy.node import Node
 
             # Initialize ROS2 if it's not already initialized
             try:
@@ -163,7 +168,7 @@ class ROS2ServiceManager:
             carb.log_error(f"Error initializing ROS2 ServiceManager: {e}")
             self.is_initialized = False
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Shutdown the ROS2 node and clean up resources.
 
         Stops the spinning thread, destroys all registered services and action servers,
@@ -206,16 +211,17 @@ class ROS2ServiceManager:
         self.is_initialized = False
         carb.log_info("ROS2 ServiceManager shutdown completed")
 
-    def register_service(self, service_name, service_type, callback):
-        """Register a new ROS2 service
+    def register_service(self, service_name: str, service_type: object, callback: callable) -> bool:
+        """Register a new ROS2 service.
 
         Args:
-            service_name (str): Name of the service
+            service_name: Name of the service
             service_type: ROS2 service type
             callback: Async callback function to handle service requests
 
         Returns:
             bool: True if registration was successful, False otherwise
+
         """
         if not self.is_initialized:
             carb.log_error("Cannot register service: ROS2 ServiceManager not initialized")
@@ -237,7 +243,7 @@ class ROS2ServiceManager:
             carb.log_error(f"Failed to register service '{service_name}': {e}")
             return False
 
-    def unregister_service(self, service_name, remove_from_dict=True):
+    def unregister_service(self, service_name: str, remove_from_dict: bool = True) -> bool:
         """Unregister a ROS2 service.
 
         Cleanly destroys a ROS2 service and optionally removes it from the internal
@@ -245,8 +251,8 @@ class ROS2ServiceManager:
         for service cleanup operations.
 
         Args:
-            service_name (str): Name of the service to unregister.
-            remove_from_dict (bool): Whether to remove the service from the internal services
+            service_name: Name of the service to unregister.
+            remove_from_dict: Whether to remove the service from the internal services
                 dictionary. Set to False when iterating over services during bulk
                 cleanup operations like shutdown to avoid modifying dictionary during
                 iteration. Defaults to True for individual service cleanup.
@@ -269,6 +275,7 @@ class ROS2ServiceManager:
             >>> for name in service_manager.services:
             ...     service_manager.unregister_service(name, remove_from_dict=False)
             >>> service_manager.services.clear()
+
         """
         if not self.is_initialized or service_name not in self.services:
             return False
@@ -286,12 +293,17 @@ class ROS2ServiceManager:
             return False
 
     def register_action_server(
-        self, action_name, action_type, execute_callback, goal_callback=None, cancel_callback=None
-    ):
-        """Register a new ROS2 action server
+        self,
+        action_name: str,
+        action_type: object,
+        execute_callback: callable,
+        goal_callback: callable = None,
+        cancel_callback: callable = None,
+    ) -> bool:
+        """Register a new ROS2 action server.
 
         Args:
-            action_name (str): Name of the action
+            action_name: Name of the action
             action_type: ROS2 action type
             execute_callback: Async callback function to handle action execution
             goal_callback: Callback to accept/reject goals (optional)
@@ -299,6 +311,7 @@ class ROS2ServiceManager:
 
         Returns:
             bool: True if registration was successful, False otherwise
+
         """
         if not self.is_initialized:
             carb.log_error("Cannot register action server: ROS2 ServiceManager not initialized")
@@ -309,7 +322,6 @@ class ROS2ServiceManager:
             return False
 
         try:
-            import rclpy
             from rclpy.action import ActionServer
 
             # Create the action server with callback group for parallel execution
@@ -331,17 +343,18 @@ class ROS2ServiceManager:
             carb.log_error(f"Failed to register action server '{action_name}': {e}")
             return False
 
-    def _wrap_async_callback(self, async_callback):
-        """Wrap any async callback to work with ROS2 services and actions
+    def _wrap_async_callback(self, async_callback: callable) -> callable:
+        """Wrap any async callback to work with ROS2 services and actions.
 
         Args:
             async_callback: Async callback function
 
         Returns:
-            function: Wrapped callback that handles the event loop
+            callable: Wrapped callback that handles the event loop
+
         """
 
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: object, **kwargs: object) -> object:
             if not self.loop:
                 self.loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(self.loop)
@@ -350,7 +363,7 @@ class ROS2ServiceManager:
 
         return wrapper
 
-    def unregister_action_server(self, action_name, remove_from_dict=True):
+    def unregister_action_server(self, action_name: str, remove_from_dict: bool = True) -> bool:
         """Unregister a ROS2 action server.
 
         Cleanly destroys a ROS2 action server and optionally removes it from the internal
@@ -358,8 +371,8 @@ class ROS2ServiceManager:
         for action server cleanup operations.
 
         Args:
-            action_name (str): Name of the action server to unregister.
-            remove_from_dict (bool): Whether to remove the action server from the internal
+            action_name: Name of the action server to unregister.
+            remove_from_dict: Whether to remove the action server from the internal
                 action_servers dictionary. Set to False when iterating over action servers
                 during bulk cleanup operations like shutdown to avoid modifying dictionary
                 during iteration. Defaults to True for individual action server cleanup.
@@ -382,6 +395,7 @@ class ROS2ServiceManager:
             >>> for name in service_manager.action_servers:
             ...     service_manager.unregister_action_server(name, remove_from_dict=False)
             >>> service_manager.action_servers.clear()
+
         """
         if not self.is_initialized or action_name not in self.action_servers:
             return False
@@ -398,14 +412,12 @@ class ROS2ServiceManager:
             carb.log_error(f"Failed to unregister action server '{action_name}': {e}")
             return False
 
-    def _spin(self):
+    def _spin(self) -> None:
         """Spin the ROS2 executor in a separate thread.
 
         This method runs the multithreaded executor which enables parallel
         callback execution. The executor will run until shutdown() is called.
         """
-        import rclpy
-
         try:
             self.executor.spin()
         except KeyboardInterrupt:
@@ -417,13 +429,20 @@ class ROS2ServiceManager:
 
 
 class SimulationControl:
+    """Controller for Isaac Sim simulation via ROS2 services.
 
-    def _import_interfaces(self, interface_types, interface_kind):
+    Sets up the timeline interface, ROS2 service manager, and imports
+    all available simulation interface service and action types.
+    Services are registered automatically during initialization.
+    """
+
+    def _import_interfaces(self, interface_types: list, interface_kind: str) -> None:
         """Import ROS2 interfaces with graceful fallback.
 
         Args:
             interface_types: List of tuples (module_name, class_name, endpoint_name)
             interface_kind: String describing interface type ("service" or "action")
+
         """
         for module_name, class_name, endpoint_name in interface_types:
             try:
@@ -433,17 +452,15 @@ class SimulationControl:
                 setattr(self, f"{class_name}_{interface_kind}_name", endpoint_name)
                 carb.log_info(f"Successfully imported {interface_kind} {class_name}")
             except (ImportError, AttributeError) as e:
-                carb.log_error(f"Failed to import {interface_kind} {class_name}: {e}")
+                carb.log_warn(
+                    f"{interface_kind.capitalize()} {class_name} not available in this "
+                    f"simulation_interfaces release; skipping registration ({e})"
+                )
                 setattr(self, class_name, None)
                 setattr(self, f"{class_name}_{interface_kind}_name", None)
 
-    def __init__(self):
-        """Initialize the SimulationControl instance.
-
-        Sets up the timeline interface, ROS2 service manager, and imports
-        all available simulation interface service and action types.
-        Services are registered automatically during initialization.
-        """
+    def __init__(self) -> None:
+        """Initialize the simulation control with ROS2 services and actions."""
         self.timeline = omni.timeline.get_timeline_interface()
         self.service_manager = ROS2ServiceManager()
         self.is_initialized = False
@@ -455,12 +472,13 @@ class SimulationControl:
         # Initialize and register services
         self._initialize_ros2_services()
 
-    def _register_service_if_available(self, service_class_name, handler):
+    def _register_service_if_available(self, service_class_name: str, handler: callable) -> None:
         """Register a service if its type is available.
 
         Args:
-            service_class_name (str): Name of the service class attribute (e.g., 'GetSimulationState').
+            service_class_name: Name of the service class attribute (e.g., 'GetSimulationState').
             handler: The handler function for the service.
+
         """
         if hasattr(self, service_class_name):
             service_class = getattr(self, service_class_name)
@@ -468,18 +486,26 @@ class SimulationControl:
                 service_name = getattr(self, f"{service_class_name}_service_name")
                 self.service_manager.register_service(f"{SERVICE_PREFIX}{service_name}", service_class, handler)
             else:
-                carb.log_error(f"{service_class_name} service type not available")
+                carb.log_warn(
+                    f"{service_class_name} service type not available in this "
+                    "simulation_interfaces release; skipping registration"
+                )
 
     def _register_action_server_if_available(
-        self, action_class_name, execute_handler, goal_callback=None, cancel_callback=None
-    ):
+        self,
+        action_class_name: str,
+        execute_handler: callable,
+        goal_callback: callable = None,
+        cancel_callback: callable = None,
+    ) -> None:
         """Register an action server if its type is available.
 
         Args:
-            action_class_name (str): Name of the action class attribute (e.g., 'SimulateSteps').
+            action_class_name: Name of the action class attribute (e.g., 'SimulateSteps').
             execute_handler: The execute callback function for the action server.
             goal_callback: Callback to accept/reject goals (optional).
             cancel_callback: Callback to handle cancellation (optional).
+
         """
         if hasattr(self, action_class_name):
             action_class = getattr(self, action_class_name)
@@ -493,9 +519,12 @@ class SimulationControl:
                     cancel_callback=cancel_callback,
                 )
             else:
-                carb.log_error(f"{action_class_name} action type not available")
+                carb.log_warn(
+                    f"{action_class_name} action type not available in this "
+                    "simulation_interfaces release; skipping registration"
+                )
 
-    def _initialize_ros2_services(self):
+    def _initialize_ros2_services(self) -> None:
         """Initialize ROS2 services for simulation control.
 
         Registers all available simulation interface services and action servers
@@ -504,11 +533,9 @@ class SimulationControl:
 
         Raises:
             ImportError: If required ROS2 message types cannot be imported.
+
         """
         try:
-            # Import ROS2 message and service types
-            from simulation_interfaces.msg import Result, SimulationState
-
             # Initialize the ROS2 service manager
             self.service_manager.initialize()
 
@@ -523,12 +550,15 @@ class SimulationControl:
             self._register_service_if_available("DeleteEntity", self._handle_delete_entity)
             self._register_service_if_available("GetEntityInfo", self._handle_get_entity_info)
             self._register_service_if_available("SpawnEntity", self._handle_spawn_entity)
+            self._register_service_if_available("SpawnEntities", self._handle_spawn_entities)
             self._register_service_if_available("ResetSimulation", self._handle_reset_simulation)
             self._register_service_if_available("StepSimulation", self._handle_step_simulation)
             self._register_service_if_available("GetEntityState", self._handle_get_entity_state)
             self._register_service_if_available("GetEntitiesStates", self._handle_get_entities_states)
             self._register_service_if_available("SetEntityState", self._handle_set_entity_state)
+            self._register_service_if_available("GetEntityBounds", self._handle_get_entity_bounds)
             self._register_service_if_available("GetSimulatorFeatures", self._handle_get_simulator_features)
+            self._register_service_if_available("GetSpawnables", self._handle_get_spawnables)
             self._register_service_if_available("LoadWorld", self._handle_load_world)
             self._register_service_if_available("UnloadWorld", self._handle_unload_world)
             self._register_service_if_available("GetCurrentWorld", self._handle_get_current_world)
@@ -552,8 +582,17 @@ class SimulationControl:
             carb.log_error(f"Error initializing ROS2 services: {e}")
             self.is_initialized = False
 
-    async def _handle_get_simulation_state(self, request, response):
-        """Handle simulation state query request"""
+    async def _handle_get_simulation_state(self, request: object, response: object) -> object:
+        """Handle simulation state query request.
+
+        Args:
+            request: GetSimulationState request.
+            response: GetSimulationState response.
+
+        Returns:
+            object: Completed GetSimulationState response.
+
+        """
         try:
             from simulation_interfaces.msg import Result, SimulationState
 
@@ -576,8 +615,17 @@ class SimulationControl:
 
         return response
 
-    async def _handle_set_simulation_state(self, request, response):
-        """Handle request to set simulation state"""
+    async def _handle_set_simulation_state(self, request: object, response: object) -> object:
+        """Handle request to set simulation state.
+
+        Args:
+            request: SetSimulationState request with target state.
+            response: SetSimulationState response.
+
+        Returns:
+            object: Completed SetSimulationState response.
+
+        """
         try:
             from simulation_interfaces.msg import Result, SimulationState
 
@@ -616,8 +664,8 @@ class SimulationControl:
 
         return response
 
-    async def _handle_get_entities(self, request, response):
-        """Handle GetEntities service request
+    async def _handle_get_entities(self, request: object, response: object) -> object:
+        """Handle GetEntities service request.
 
         This service returns a list of entities (prims) in the simulation,
         optionally filtered by name using the partial prim path.
@@ -627,9 +675,9 @@ class SimulationControl:
             response: GetEntities response with entities list and result
 
         Returns:
-            response: Completed GetEntities response
-        """
+            object: Completed GetEntities response
 
+        """
         try:
             from simulation_interfaces.msg import Result
 
@@ -639,7 +687,7 @@ class SimulationControl:
             response.result.error_message = ""
 
             # Get usdrt stage for traversing
-            usdrt_stage = stage_utils.get_current_stage(fabric=True)
+            usdrt_stage = stage_utils.get_current_stage(backend="fabric")
             if not usdrt_stage:
                 response.result.result = Result.RESULT_OPERATION_FAILED
                 response.result.error_message = "usdrt Stage not available for traversing"
@@ -668,8 +716,8 @@ class SimulationControl:
 
         return response
 
-    async def _handle_delete_entity(self, request, response):
-        """Handle DeleteEntity service request
+    async def _handle_delete_entity(self, request: object, response: object) -> object:
+        """Handle DeleteEntity service request.
 
         This service deletes a specified entity (prim) from the simulation if it exists
         and is not protected from deletion.
@@ -679,29 +727,29 @@ class SimulationControl:
             response: DeleteEntity response with result status
 
         Returns:
-            response: Completed DeleteEntity response
+            object: Completed DeleteEntity response
+
         """
         try:
             from simulation_interfaces.msg import Result
 
             # First check if the entity exists
-            if not prim_utils.is_prim_path_valid(request.entity):
+            prim = prim_utils.get_prim_at_path(request.entity)
+            if not prim.IsValid():
                 response.result = Result(
                     result=Result.RESULT_NOT_FOUND,
                     error_message=f"Entity '{request.entity}' does not exist",
                 )
                 return response
 
-            # Check if prim can be deleted
-            if prim_utils.is_prim_no_delete(request.entity):
+            if prim.GetMetadata("no_delete"):
                 response.result = Result(
                     result=Result.RESULT_OPERATION_FAILED,
                     error_message=f"Entity '{request.entity}' is protected and cannot be deleted",
                 )
                 return response
 
-            # Delete the prim - Note: delete_prim returns True if prim was protected, False if successfully deleted
-            if not prim_utils.delete_prim(request.entity):
+            if stage_utils.delete_prim(request.entity):
                 response.result = Result(result=Result.RESULT_OK, error_message="")
                 carb.log_info(f"Successfully deleted entity: {request.entity}")
             else:
@@ -716,8 +764,8 @@ class SimulationControl:
 
         return response
 
-    async def _handle_get_entity_info(self, request, response):
-        """Handle GetEntityInfo service request
+    async def _handle_get_entity_info(self, request: object, response: object) -> object:
+        """Handle GetEntityInfo service request.
 
         This service provides detailed information about a specific entity in the simulation.
         Currently, all entities are classified as OBJECT category this is a placeholder for future use.
@@ -727,13 +775,13 @@ class SimulationControl:
             response: GetEntityInfo response with entity information
 
         Returns:
-            response: Completed GetEntityInfo response
-        """
+            object: Completed GetEntityInfo response
 
+        """
         try:
             from simulation_interfaces.msg import EntityCategory, EntityInfo, Result
 
-            if not prim_utils.is_prim_path_valid(request.entity):
+            if not prim_utils.get_prim_at_path(request.entity).IsValid():
                 response.result = Result(
                     result=Result.RESULT_NOT_FOUND, error_message=f"Entity '{request.entity}' does not exist"
                 )
@@ -754,197 +802,417 @@ class SimulationControl:
 
         return response
 
-    async def _handle_spawn_entity(self, request, response):
-        """Handle SpawnEntity service request
+    async def _handle_spawn_entity(self, request: object, response: object) -> object:
+        """Handle SpawnEntity service request.
 
-        This service spawns a new entity in the simulation.
-        If URI is provided, it loads the valid USD file as a reference in the given prim path.
-        If URI is not provided, a Xform will be created in the given prim path.
-        Any spawned prims using this service will be tracked.
+        Deprecated in favour of SpawnEntities but kept for backwards compatibility.
+        Delegates to _spawn_single_entity_core.
 
         Args:
             request: SpawnEntity request with entity name, URI, and initial pose
             response: SpawnEntity response with result status
 
         Returns:
-            response: Completed SpawnEntity response
-        """
+            object: Completed SpawnEntity response
 
+        """
         try:
             from simulation_interfaces.msg import Result
 
-            # Path validation and resolution
-            path_to_load = None
-            if request.uri:
-                # Validate USD format
-                if not is_valid_usd_file(request.uri, []):
-                    response.result.result = response.UNSUPPORTED_FORMAT
-                    response.result.error_message = f"Unsupported format. Only USD files (.usd, .usda, .usdc, .usdz) are supported. Got: {request.uri}"
-                    return response
+            result_code, error_msg, entity_name = await self._spawn_single_entity_core(
+                request.name,
+                request.allow_renaming,
+                request.uri,
+                getattr(request, "resource_string", ""),
+                getattr(request, "entity_namespace", ""),
+                request.initial_pose,
+            )
 
-                # Use the new utility function to resolve the asset path
-                path_to_load = await resolve_asset_path_async(request.uri)
-
-                # Use the path that exists, or report error if neither exists
-                if not path_to_load:
-                    response.result.result = response.RESOURCE_PARSE_ERROR
-                    response.result.error_message = (
-                        f"Could not find path '{request.uri}' or default asset root based path"
-                    )
-                    return response
-            # Get regular stage for prim operations
-            stage = stage_utils.get_current_stage()
-            if not stage:
-                response.result.result = Result.RESULT_OPERATION_FAILED
-                response.result.error_message = "Stage not available"
-                return response
-
-            # Check name validity and try to get default prim name from URI if possible
-            entity_name = request.name
-
-            # If name is empty, try to get default prim name from URI if possible
-            if not entity_name and path_to_load:
-                try:
-                    # Try to open the stage and get its default prim
-                    temp_stage = Usd.Stage.Open(path_to_load)
-                    if temp_stage:
-                        default_prim = temp_stage.GetDefaultPrim()
-                        if default_prim:
-                            # Use the default prim name
-                            default_prim_name = default_prim.GetName()
-                            entity_name = f"{default_prim_name}"
-                            carb.log_info(f"Using default prim name from USD: {entity_name}")
-                except Exception as e:
-                    carb.log_warn(f"Could not extract default prim name from USD: {e}")
-
-            # Check if name is still empty
-            if not entity_name:
-                if not request.allow_renaming:
-                    response.result.result = response.NAME_INVALID
-                    response.result.error_message = (
-                        "Entity name is empty, no default prim found, and allow_renaming is false"
-                    )
-                    return response
-                # Generate a unique name by counting existing spawned entities
-                spawned_count = 0
-                # Get usdrt stage for traversing to count spawned entities
-                usdrt_stage = stage_utils.get_current_stage(fabric=True)
-                if usdrt_stage:
-                    for prim in usdrt_stage.Traverse():
-                        if prim.HasAttribute("simulationInterfacesSpawned"):
-                            attr = prim.GetAttribute("simulationInterfacesSpawned")
-                            if attr and attr.Get():
-                                spawned_count += 1
-                else:
-                    carb.log_warn("usdrt stage not available for counting spawned entities, using 0 as count")
-                entity_name = f"SpawnedEntity_{spawned_count}"
-            elif not entity_name.startswith("/"):
-                # Name provided
-                # The stage will handle the proper path creation based on where this is added
-                entity_name = f"/{entity_name}"
-                carb.log_info(f"Using entity name as is: /{entity_name}")
-
-            # Check if name already exists
-            if stage.GetPrimAtPath(entity_name):
-                if not request.allow_renaming:
-                    response.result.result = response.NAME_NOT_UNIQUE
-                    response.result.error_message = f"Entity '{entity_name}' already exists and allow_renaming is false"
-                    return response
-                # Generate a unique name
-                base_name = entity_name
-                suffix = 1
-                while stage.GetPrimAtPath(f"{base_name}_{suffix}"):
-                    suffix += 1
-                entity_name = f"{base_name}_{suffix}"
-
-            # Extract initial pose
-            position = [0, 0, 0]
-            orientation = [0, 0, 0, 1]  # w, x, y, z (quaternion)
-
-            if hasattr(request, "initial_pose") and hasattr(request.initial_pose, "pose"):
-                if hasattr(request.initial_pose.pose, "position"):
-                    position = [
-                        request.initial_pose.pose.position.x,
-                        request.initial_pose.pose.position.y,
-                        request.initial_pose.pose.position.z,
-                    ]
-
-                if hasattr(request.initial_pose.pose, "orientation"):
-                    orientation = [
-                        request.initial_pose.pose.orientation.w,
-                        request.initial_pose.pose.orientation.x,
-                        request.initial_pose.pose.orientation.y,
-                        request.initial_pose.pose.orientation.z,
-                    ]
-
-            # Create the entity based on URI or create a new Xform
-            if path_to_load:
-                # Load USD file as reference
-                try:
-                    # Create a reference using the validated path
-                    prim = stage.DefinePrim(entity_name)
-                    prim.GetReferences().AddReference(path_to_load)
-
-                    try:
-                        # Create XformPrim wrapper for the spawned entity
-                        xform_prim = XformPrim(entity_name, reset_xform_op_properties=True)
-
-                        # Set position and orientation
-                        xform_prim.set_world_poses(positions=position, orientations=orientation)
-
-                        carb.log_info(f"Set transform for {entity_name}")
-
-                    except Exception as e:
-                        carb.log_error(f"Error setting transform for {entity_name}: {e}")
-
-                    carb.log_info(
-                        f"Successfully spawned entity from URI: {entity_name} with reference to {path_to_load}"
-                    )
-                except Exception as e:
-                    response.result.result = response.RESOURCE_PARSE_ERROR
-                    response.result.error_message = f"Failed to parse or load USD file: {e}"
-                    return response
-            else:
-                # Create a new Xform prim
-                stage.DefinePrim(entity_name, "Xform")
-
-                # Use XformPrim to set the transform
-                xform_prim = XformPrim(entity_name, reset_xform_op_properties=True)
-
-                xform_prim.set_world_poses(positions=position, orientations=orientation)
-
-                carb.log_info(f"Successfully spawned empty Xform entity: {entity_name}")
-
-            # Track the spawned entities by adding an attribute to mark it as spawned via this service
-            prim = stage.GetPrimAtPath(entity_name)
-            attr1 = prim.CreateAttribute("simulationInterfacesSpawned", Sdf.ValueTypeNames.Bool, custom=True)
-            attr1.Set(True)
-
-            # Add namespace attribute if specified in the request
-            if hasattr(request, "entity_namespace") and request.entity_namespace:
-                try:
-                    # Create and set the namespace attribute
-                    attr = prim.CreateAttribute("isaac:namespace", Sdf.ValueTypeNames.String, custom=True)
-                    result = attr.Set(request.entity_namespace)
-                except Exception as e:
-                    carb.log_error(f"Error setting namespace attribute: {e}")
-
-            await omni.kit.app.get_app().next_update_async()
-
-            # Set the response
-            response.entity_name = entity_name
-            response.result.result = Result.RESULT_OK
-            response.result.error_message = ""
+            response.result.result = result_code
+            response.result.error_message = error_msg
+            if result_code == Result.RESULT_OK:
+                response.entity_name = entity_name
 
         except Exception as e:
+            from simulation_interfaces.msg import Result
+
             response.result.result = Result.RESULT_OPERATION_FAILED
             response.result.error_message = f"Error spawning entity: {e}"
             carb.log_error(f"Error in SpawnEntity service handler: {e}")
 
         return response
 
-    async def _handle_reset_simulation(self, request, response):
-        """Handle ResetSimulation service request
+    async def _spawn_single_entity_core(
+        self,
+        name: str,
+        allow_renaming: bool,
+        uri: str,
+        resource_string: str,
+        entity_namespace: str,
+        initial_pose: object,
+    ) -> tuple:
+        """Spawn a single entity and return (result_code, error_message, entity_name).
+
+        Shared spawn logic used by both SpawnEntity and SpawnEntities handlers.
+
+        Args:
+            name: Desired entity name.
+            allow_renaming: Whether to allow auto-renaming when name conflicts.
+            uri: URI of the USD asset to load. Empty string creates an empty Xform.
+            resource_string: Inline resource string (not supported by Isaac Sim, ignored).
+            entity_namespace: Optional namespace to attach to the spawned entity.
+            initial_pose: geometry_msgs/PoseStamped specifying the initial pose.
+
+        Returns:
+            tuple: (result_code, error_message, entity_name).
+                   result_code is Result.RESULT_OK (1) on success, or a service-specific
+                   error code (from SpawnResult) / Result error code on failure.
+
+        """
+        from simulation_interfaces.msg import Result, SpawnResult
+
+        # Validate and resolve URI when provided
+        path_to_load = None
+        if uri:
+            if not is_valid_usd_file(uri, []):
+                return (
+                    SpawnResult.UNSUPPORTED_FORMAT,
+                    f"Unsupported format. Only USD files (.usd, .usda, .usdc, .usdz) are supported. Got: {uri}",
+                    "",
+                )
+            path_to_load = await resolve_asset_path_async(uri)
+            if not path_to_load:
+                return (
+                    SpawnResult.RESOURCE_PARSE_ERROR,
+                    f"Could not find path '{uri}' or default asset root based path",
+                    "",
+                )
+
+        stage = stage_utils.get_current_stage()
+        if not stage:
+            return (Result.RESULT_OPERATION_FAILED, "Stage not available", "")
+
+        # Determine entity name, optionally reading USD default prim
+        entity_name = name
+        if not entity_name and path_to_load:
+            try:
+                temp_stage = Usd.Stage.Open(path_to_load)
+                if temp_stage:
+                    default_prim = temp_stage.GetDefaultPrim()
+                    if default_prim:
+                        entity_name = default_prim.GetName()
+                        carb.log_info(f"Using default prim name from USD: {entity_name}")
+            except Exception as e:
+                carb.log_warn(f"Could not extract default prim name from USD: {e}")
+
+        if not entity_name:
+            if not allow_renaming:
+                return (
+                    SpawnResult.NAME_INVALID,
+                    "Entity name is empty, no default prim found, and allow_renaming is false",
+                    "",
+                )
+            spawned_count = 0
+            usdrt_stage = stage_utils.get_current_stage(backend="fabric")
+            if usdrt_stage:
+                for prim in usdrt_stage.Traverse():
+                    if prim.HasAttribute("simulationInterfacesSpawned"):
+                        attr = prim.GetAttribute("simulationInterfacesSpawned")
+                        if attr and attr.Get():
+                            spawned_count += 1
+            else:
+                carb.log_warn("usdrt stage not available for counting spawned entities, using 0 as count")
+            entity_name = f"SpawnedEntity_{spawned_count}"
+        elif not entity_name.startswith("/"):
+            entity_name = f"/{entity_name}"
+            carb.log_info(f"Using entity name as is: {entity_name}")
+
+        # Enforce name uniqueness
+        if prim_utils.get_prim_at_path(entity_name).IsValid():
+            if not allow_renaming:
+                return (
+                    SpawnResult.NAME_NOT_UNIQUE,
+                    f"Entity '{entity_name}' already exists and allow_renaming is false",
+                    "",
+                )
+            base_name = entity_name
+            suffix = 1
+            while prim_utils.get_prim_at_path(f"{base_name}_{suffix}").IsValid():
+                suffix += 1
+            entity_name = f"{base_name}_{suffix}"
+
+        # Extract initial pose
+        position = [0, 0, 0]
+        orientation = [0, 0, 0, 1]  # w, x, y, z
+        if hasattr(initial_pose, "pose"):
+            if hasattr(initial_pose.pose, "position"):
+                position = [
+                    initial_pose.pose.position.x,
+                    initial_pose.pose.position.y,
+                    initial_pose.pose.position.z,
+                ]
+            if hasattr(initial_pose.pose, "orientation"):
+                orientation = [
+                    initial_pose.pose.orientation.w,
+                    initial_pose.pose.orientation.x,
+                    initial_pose.pose.orientation.y,
+                    initial_pose.pose.orientation.z,
+                ]
+
+        # Create the entity from URI reference or as an empty Xform
+        if path_to_load:
+            try:
+                prim = stage.DefinePrim(entity_name)
+                prim.GetReferences().AddReference(path_to_load)
+                try:
+                    xform_prim = XformPrim(entity_name, reset_xform_op_properties=True)
+                    xform_prim.set_world_poses(positions=position, orientations=orientation)
+                    carb.log_info(f"Set transform for {entity_name}")
+                except Exception as e:
+                    carb.log_error(f"Error setting transform for {entity_name}: {e}")
+                carb.log_info(f"Successfully spawned entity from URI: {entity_name} with reference to {path_to_load}")
+            except Exception as e:
+                return (SpawnResult.RESOURCE_PARSE_ERROR, f"Failed to parse or load USD file: {e}", "")
+        else:
+            stage.DefinePrim(entity_name, "Xform")
+            xform_prim = XformPrim(entity_name, reset_xform_op_properties=True)
+            xform_prim.set_world_poses(positions=position, orientations=orientation)
+            carb.log_info(f"Successfully spawned empty Xform entity: {entity_name}")
+
+        # Mark the prim as simulation-interfaces-spawned for reset tracking
+        prim = prim_utils.get_prim_at_path(entity_name)
+        attr1 = prim.CreateAttribute("simulationInterfacesSpawned", Sdf.ValueTypeNames.Bool, custom=True)
+        attr1.Set(True)
+
+        if entity_namespace:
+            try:
+                attr = prim.CreateAttribute("isaac:namespace", Sdf.ValueTypeNames.String, custom=True)
+                attr.Set(entity_namespace)
+            except Exception as e:
+                carb.log_error(f"Error setting namespace attribute: {e}")
+
+        await omni.kit.app.get_app().next_update_async()
+        return (Result.RESULT_OK, "", entity_name)
+
+    async def _handle_spawn_entities(self, request: object, response: object) -> object:
+        """Handle SpawnEntities service request.
+
+        Spawns multiple entities in a single call. Each request in spawn_requests is
+        processed independently using the SpawnEntity.msg format, which carries the
+        resource as an entity_resource (Resource) field instead of flat uri/resource_string
+        fields. Individual failures are reported per-entry in the results list.
+
+        Available in simulation_interfaces >= 1.4.0 (humble) and >= 1.5.0 (jazzy).
+
+        Args:
+            request: SpawnEntities request with list of SpawnEntity msg spawn requests.
+            response: SpawnEntities response with aggregate result and per-entity SpawnResult list.
+
+        Returns:
+            object: Completed SpawnEntities response.
+
+        """
+        try:
+            from simulation_interfaces.msg import Result, SpawnResult
+
+            response.results = []
+            any_failed = False
+
+            for spawn_req in request.spawn_requests:
+                uri = spawn_req.entity_resource.uri if hasattr(spawn_req, "entity_resource") else ""
+                resource_string = (
+                    spawn_req.entity_resource.resource_string if hasattr(spawn_req, "entity_resource") else ""
+                )
+
+                try:
+                    result_code, error_msg, entity_name = await self._spawn_single_entity_core(
+                        spawn_req.name,
+                        spawn_req.allow_renaming,
+                        uri,
+                        resource_string,
+                        getattr(spawn_req, "entity_namespace", ""),
+                        spawn_req.initial_pose,
+                    )
+                except Exception as inner_e:
+                    result_code = Result.RESULT_OPERATION_FAILED
+                    error_msg = f"Unexpected error spawning entity: {inner_e}"
+                    entity_name = ""
+                    carb.log_error(f"Error spawning entity '{spawn_req.name}': {inner_e}")
+
+                spawn_result = SpawnResult()
+                spawn_result.result.result = result_code
+                spawn_result.result.error_message = error_msg
+                spawn_result.entity_name = entity_name
+                response.results.append(spawn_result)
+
+                if result_code != Result.RESULT_OK:
+                    any_failed = True
+
+            if any_failed:
+                from simulation_interfaces.srv import SpawnEntities
+
+                response.result.result = SpawnEntities.Response.ENTITIES_SPAWN_FAILED
+                response.result.error_message = "One or more entity spawns failed; check individual results"
+            else:
+                response.result.result = Result.RESULT_OK
+                response.result.error_message = ""
+
+        except Exception as e:
+            from simulation_interfaces.msg import Result
+
+            response.result.result = Result.RESULT_OPERATION_FAILED
+            response.result.error_message = f"Error in SpawnEntities service: {e}"
+            carb.log_error(f"Error in SpawnEntities service handler: {e}")
+
+        return response
+
+    async def _handle_get_entity_bounds(self, request: object, response: object) -> object:
+        """Handle GetEntityBounds service request.
+
+        Computes the axis-aligned world bounding box for an entity using
+        UsdGeom.BBoxCache and returns it as a TYPE_BOX Bounds message with
+        [min_corner, max_corner] points.
+
+        Args:
+            request: GetEntityBounds request with entity name.
+            response: GetEntityBounds response with Bounds and result.
+
+        Returns:
+            object: Completed GetEntityBounds response.
+
+        """
+        try:
+            from geometry_msgs.msg import Vector3
+            from simulation_interfaces.msg import Bounds, Result
+
+            # prim_utils.get_prim_at_path returns a pxr.Usd.Prim, compatible with BBoxCache
+            prim = prim_utils.get_prim_at_path(request.entity)
+            if not prim.IsValid():
+                response.result = Result(
+                    result=Result.RESULT_NOT_FOUND,
+                    error_message=f"Entity '{request.entity}' does not exist",
+                )
+                return response
+
+            bbox_cache = UsdGeom.BBoxCache(
+                time=PxrUsd.TimeCode.Default(),
+                includedPurposes=[UsdGeom.Tokens.default_],
+                useExtentsHint=True,
+            )
+            # ComputeAlignedRange() returns a Gf.Range3d with GetMin()/GetMax()
+            aligned_range = bbox_cache.ComputeWorldBound(prim).ComputeAlignedRange()
+            min_pt = aligned_range.GetMin()
+            max_pt = aligned_range.GetMax()
+
+            bounds = Bounds()
+            bounds.type = Bounds.TYPE_BOX
+            bounds.points = [
+                Vector3(x=float(min_pt[0]), y=float(min_pt[1]), z=float(min_pt[2])),
+                Vector3(x=float(max_pt[0]), y=float(max_pt[1]), z=float(max_pt[2])),
+            ]
+
+            response.bounds = bounds
+            response.result = Result(result=Result.RESULT_OK, error_message="")
+            carb.log_info(f"Successfully retrieved bounds for entity: {request.entity}")
+
+        except Exception as e:
+            from simulation_interfaces.msg import Result
+
+            response.result = Result(
+                result=Result.RESULT_OPERATION_FAILED,
+                error_message=f"Error getting entity bounds: {e}",
+            )
+            carb.log_error(f"Error in GetEntityBounds service handler: {e}")
+
+        return response
+
+    async def _handle_get_spawnables(self, request: object, response: object) -> object:
+        """Handle GetSpawnables service request.
+
+        Returns a list of USD assets available for spawning, discovered by searching
+        the Isaac Sim assets root (Robots and Props directories) and any caller-supplied
+        additional sources. Each result is a Spawnable with uri, description, and empty bounds.
+
+        Args:
+            request: GetSpawnables request with optional additional source paths.
+            response: GetSpawnables response with list of Spawnable objects.
+
+        Returns:
+            object: Completed GetSpawnables response.
+
+        """
+        try:
+            from simulation_interfaces.msg import Bounds, Result, Spawnable
+
+            response.result = Result()
+            response.spawnables = []
+
+            try:
+                assets_root_path = await get_assets_root_path_async()
+            except Exception as e:
+                assets_root_path = None
+                carb.log_error(f"{e}")
+
+            # Default search paths (only if assets_root_path is available)
+            default_paths = []
+            if assets_root_path is not None:
+                default_paths = [
+                    assets_root_path + "/Isaac/Samples/ROS2/Robots",
+                ]
+
+            if not default_paths and not request.sources:
+                response.result.result = Result.RESULT_OPERATION_FAILED
+                response.result.error_message = "No asset sources available"
+                return response
+
+            usd_files = set()
+
+            # 1. Search default paths with depth=2
+            for path in default_paths:
+                try:
+                    found = await find_filtered_files_async(
+                        path, None, False, filepath_excludes=[".thumbs"], max_depth=2
+                    )
+                    usd_files.update(found)
+                except Exception as e:
+                    carb.log_warn(f"Error searching default spawnables path {path}: {e}")
+
+            # 2. Search additional sources with unlimited depth
+            if request.sources:
+                for src in request.sources:
+                    resolved = resolve_source_path(src, assets_root_path)
+                    try:
+                        found = await find_filtered_files_async(
+                            resolved, None, False, filepath_excludes=[".thumbs"], max_depth=None
+                        )
+                        usd_files.update(found)
+                    except Exception as e:
+                        carb.log_warn(f"Error searching spawnables source {resolved}: {e}")
+
+            empty_bounds = Bounds()
+            empty_bounds.type = Bounds.TYPE_EMPTY
+            for uri in usd_files:
+                spawnable = Spawnable()
+                spawnable.uri = uri
+                spawnable.description = os.path.splitext(os.path.basename(uri))[0]
+                spawnable.spawn_bounds = empty_bounds
+                response.spawnables.append(spawnable)
+
+            response.result.result = Result.RESULT_OK
+            response.result.error_message = f"Found {len(response.spawnables)} default ROS 2 assets"
+            carb.log_info(f"GetSpawnables found {len(response.spawnables)} default ROS 2 assets")
+
+        except Exception as e:
+            from simulation_interfaces.msg import Result
+
+            response.result.result = Result.RESULT_OPERATION_FAILED
+            response.result.error_message = f"Error in GetSpawnables service: {e}"
+            carb.log_error(f"Error in GetSpawnables service handler: {e}")
+
+        return response
+
+    async def _handle_reset_simulation(self, request: object, response: object) -> object:
+        """Handle ResetSimulation service request.
 
         This service resets the simulation environment to its initial state.
         Any dynamically spawned entities will be de-spawned after simulation is reset.
@@ -954,9 +1222,9 @@ class SimulationControl:
             response: ResetSimulation response with result status
 
         Returns:
-            response: Completed ResetSimulation response
-        """
+            object: Completed ResetSimulation response
 
+        """
         try:
             from simulation_interfaces.msg import Result
 
@@ -967,7 +1235,7 @@ class SimulationControl:
             carb.log_info("Resetting simulation with SCOPE_DEFAULT (full reset)")
 
             # Get usdrt stage for traversing to find spawned entities
-            usdrt_stage = stage_utils.get_current_stage(fabric=True)
+            usdrt_stage = stage_utils.get_current_stage(backend="fabric")
             if not usdrt_stage:
                 response.result.result = Result.RESULT_OPERATION_FAILED
                 response.result.error_message = "usdrt Stage not available for traversing"
@@ -995,7 +1263,7 @@ class SimulationControl:
 
             # Delete the spawned entities
             for entity_path in spawned_entities:
-                prim_utils.delete_prim(entity_path)
+                stage_utils.delete_prim(entity_path)
                 carb.log_info(f"Removed spawned entity: {entity_path}")
 
             await omni.kit.app.get_app().next_update_async()
@@ -1011,8 +1279,8 @@ class SimulationControl:
 
         return response
 
-    async def _handle_step_simulation(self, request, response):
-        """Handle StepSimulation service request
+    async def _handle_step_simulation(self, request: object, response: object) -> object:
+        """Handle StepSimulation service request.
 
         This service steps the simulation forward by a specific number of frames,
         and then returns to a paused state. The simulation must be paused before
@@ -1025,9 +1293,9 @@ class SimulationControl:
             response: StepSimulation response with result
 
         Returns:
-            response: Completed StepSimulation response
-        """
+            object: Completed StepSimulation response
 
+        """
         try:
             from simulation_interfaces.msg import Result
 
@@ -1086,8 +1354,8 @@ class SimulationControl:
 
         return response
 
-    async def _handle_get_entity_state(self, request, response):
-        """Handle GetEntityState service request
+    async def _handle_get_entity_state(self, request: object, response: object) -> object:
+        """Handle GetEntityState service request.
 
         This service retrieves the state (pose, twist, acceleration) of a specific entity.
         If the entity has a rigid body API, only the pose is returned (REQ 6).
@@ -1098,9 +1366,9 @@ class SimulationControl:
             response: GetEntityState response with state information
 
         Returns:
-            response: Completed GetEntityState response
-        """
+            object: Completed GetEntityState response
 
+        """
         try:
             from simulation_interfaces.msg import Result
 
@@ -1126,8 +1394,8 @@ class SimulationControl:
 
         return response
 
-    async def _handle_get_entities_states(self, request, response):
-        """Handle GetEntitiesStates service request
+    async def _handle_get_entities_states(self, request: object, response: object) -> object:
+        """Handle GetEntitiesStates service request.
 
         This service retrieves the states (pose, twist, acceleration) of multiple entities
         in the simulation, filtered by name using the partial prim path.
@@ -1138,9 +1406,9 @@ class SimulationControl:
             response: GetEntitiesStates response with entities and their states
 
         Returns:
-            response: Completed GetEntitiesStates response
-        """
+            object: Completed GetEntitiesStates response
 
+        """
         try:
             from simulation_interfaces.msg import Result
 
@@ -1149,7 +1417,7 @@ class SimulationControl:
             response.states = []
 
             # Get usdrt stage for traversing
-            usdrt_stage = stage_utils.get_current_stage(fabric=True)
+            usdrt_stage = stage_utils.get_current_stage(backend="fabric")
             if not usdrt_stage:
                 response.result = Result(
                     result=Result.RESULT_OPERATION_FAILED, error_message="usdrt Stage not available for traversing"
@@ -1193,8 +1461,8 @@ class SimulationControl:
 
         return response
 
-    async def _handle_set_entity_state(self, request, response):
-        """Handle SetEntityState service request
+    async def _handle_set_entity_state(self, request: object, response: object) -> object:
+        """Handle SetEntityState service request.
 
         This service sets the state (pose, twist) of a specific entity in the simulation.
         It updates the position, orientation, and velocities (if applicable) of the specified prim.
@@ -1205,15 +1473,21 @@ class SimulationControl:
             response: SetEntityState response with result status
 
         Returns:
-            response: Completed SetEntityState response
-        """
+            object: Completed SetEntityState response
 
+        """
         try:
 
             from simulation_interfaces.msg import Result
 
+            stage = stage_utils.get_current_stage()
+            if not stage:
+                response.result = Result(result=Result.RESULT_OPERATION_FAILED, error_message="Stage not available")
+                return response
+
             # Check if the entity exists
-            if not prim_utils.is_prim_path_valid(request.entity):
+            prim = prim_utils.get_prim_at_path(request.entity)
+            if not prim.IsValid():
                 response.result = Result(
                     result=Result.RESULT_NOT_FOUND, error_message=f"Entity '{request.entity}' does not exist"
                 )
@@ -1227,19 +1501,6 @@ class SimulationControl:
             angular_velocity = entity_state.twist.angular
 
             try:
-                # Get regular stage for prim operations
-                stage = stage_utils.get_current_stage()
-                if not stage:
-                    response.result = Result(result=Result.RESULT_OPERATION_FAILED, error_message="Stage not available")
-                    return response
-
-                prim = stage.GetPrimAtPath(request.entity)
-                if not prim:
-                    response.result = Result(
-                        result=Result.RESULT_NOT_FOUND, error_message=f"Entity '{request.entity}' not found in stage"
-                    )
-                    return response
-
                 # Check for PhysicsRigidBodyAPI
                 applied_apis = prim.GetAppliedSchemas()
                 has_rigid_body = "PhysicsRigidBodyAPI" in applied_apis
@@ -1342,8 +1603,8 @@ class SimulationControl:
 
         return response
 
-    async def _handle_simulate_steps_action(self, goal_handle):
-        """Handle SimulateSteps action request
+    async def _handle_simulate_steps_action(self, goal_handle: object) -> object:
+        """Handle SimulateSteps action request.
 
         This action steps the simulation forward by a specific number of frames,
         and then returns to a paused state. The simulation must be paused before
@@ -1354,9 +1615,9 @@ class SimulationControl:
                          to publish feedback and set result
 
         Returns:
-            result: Result message for the SimulateSteps action
-        """
+            object: Result message for the SimulateSteps action
 
+        """
         try:
             from simulation_interfaces.action import SimulateSteps
             from simulation_interfaces.msg import Result
@@ -1447,7 +1708,7 @@ class SimulationControl:
 
         return result_msg
 
-    def _handle_simulate_steps_cancel_callback(self, goal_handle):
+    def _handle_simulate_steps_cancel_callback(self, goal_handle: object) -> object:
         """Handle cancellation requests for SimulateSteps action.
 
         This callback is invoked when a client requests to cancel the SimulateSteps action.
@@ -1457,7 +1718,8 @@ class SimulationControl:
             goal_handle: ROS2 action goal handle for the cancellation request.
 
         Returns:
-            rclpy.action.CancelResponse: Response indicating if cancellation is accepted.
+            object: Response indicating if cancellation is accepted.
+
         """
         try:
             from rclpy.action import CancelResponse
@@ -1483,7 +1745,7 @@ class SimulationControl:
 
             return CancelResponse.ACCEPT
 
-    async def _handle_load_world(self, request, response):
+    async def _handle_load_world(self, request: object, response: object) -> object:
         """Handle LoadWorld service request.
 
         This service loads a world or environment file into the simulation,
@@ -1495,7 +1757,8 @@ class SimulationControl:
             response: LoadWorld response with result status and world info.
 
         Returns:
-            response: Completed LoadWorld response.
+            object: Completed LoadWorld response.
+
         """
         try:
             from simulation_interfaces.msg import Result, WorldResource
@@ -1532,7 +1795,7 @@ class SimulationControl:
                 await omni.kit.app.get_app().next_update_async()
 
                 carb.log_info(f"Loading world from USD file: {path_to_load}")
-                (success, error) = await stage_utils.open_stage_async(path_to_load)
+                success, error = await stage_utils.open_stage_async(path_to_load)
                 if not success:
                     response.result.result = response.RESOURCE_PARSE_ERROR
                     response.result.error_message = f"Failed to load world: {error}"
@@ -1545,7 +1808,7 @@ class SimulationControl:
             await omni.kit.app.get_app().next_update_async()
             await omni.kit.app.get_app().next_update_async()
 
-            stage = stage_utils.get_current_stage(fabric=True)
+            stage = stage_utils.get_current_stage(backend="fabric")
             if not stage:
                 response.result.result = Result.RESULT_OPERATION_FAILED
                 response.result.error_message = "Failed to get loaded stage"
@@ -1570,7 +1833,7 @@ class SimulationControl:
 
         return response
 
-    async def _handle_unload_world(self, request, response):
+    async def _handle_unload_world(self, request: object, response: object) -> object:
         """Handle UnloadWorld service request.
 
         This service unloads the current world from the simulation,
@@ -1582,7 +1845,8 @@ class SimulationControl:
             response: UnloadWorld response with result status
 
         Returns:
-            response: Completed UnloadWorld response
+            object: Completed UnloadWorld response
+
         """
         try:
             from simulation_interfaces.msg import Result
@@ -1598,7 +1862,7 @@ class SimulationControl:
                 )
                 return response
 
-            usdrt_stage = stage_utils.get_current_stage(fabric=True)
+            usdrt_stage = stage_utils.get_current_stage(backend="fabric")
             if not usdrt_stage:
                 carb.log_warn("No stage currently loaded")
                 response.result.result = response.NO_WORLD_LOADED
@@ -1627,7 +1891,7 @@ class SimulationControl:
 
         return response
 
-    async def _handle_get_current_world(self, request, response):
+    async def _handle_get_current_world(self, request: object, response: object) -> object:
         """Handle GetCurrentWorld service request.
 
         This service returns information about the currently loaded world,
@@ -1638,7 +1902,8 @@ class SimulationControl:
             response: GetCurrentWorld response with world information.
 
         Returns:
-            response: Completed GetCurrentWorld response.
+            object: Completed GetCurrentWorld response.
+
         """
         try:
 
@@ -1682,7 +1947,7 @@ class SimulationControl:
 
         return response
 
-    async def _handle_get_available_worlds(self, request, response):
+    async def _handle_get_available_worlds(self, request: object, response: object) -> object:
         """Handle GetAvailableWorlds service request.
 
         This service returns a list of available world files that can be loaded into the simulation.
@@ -1693,7 +1958,8 @@ class SimulationControl:
             response: GetAvailableWorlds response with list of available worlds.
 
         Returns:
-            response: Completed GetAvailableWorlds response.
+            object: Completed GetAvailableWorlds response.
+
         """
         try:
             from simulation_interfaces.msg import Result, TagsFilter, WorldResource
@@ -1712,7 +1978,7 @@ class SimulationControl:
             if assets_root_path is None:
                 # Only continue if continue_on_error=True AND additional_sources exist
                 if not (request.continue_on_error and request.additional_sources):
-                    response.result.result = 101  # DEFAULT_SOURCES_FAILED
+                    response.result.result = Result.RESULT_OPERATION_FAILED
                     response.result.error_message = "Default assets root path not accessible"
                     return response
 
@@ -1762,17 +2028,21 @@ class SimulationControl:
 
             # 2. Search additional sources with unlimited depth
             if request.additional_sources:
-                for path in request.additional_sources:
+                for src in request.additional_sources:
+                    # Skip Nucleus-relative resolution for offline paths to avoid mangling local paths.
+                    resolved = src if request.offline_only else resolve_source_path(src, assets_root_path)
 
-                    if request.offline_only and not is_local_path(path):
+                    if request.offline_only and not is_local_path(resolved):
                         continue
 
                     try:
-                        found_files = await find_filtered_files_async(path, filter_patterns, match_all, max_depth=None)
+                        found_files = await find_filtered_files_async(
+                            resolved, filter_patterns, match_all, max_depth=None
+                        )
                         usd_files.update(found_files)
 
                     except Exception as e:
-                        carb.log_warn(f"Error searching additional source {path}: {e}")
+                        carb.log_warn(f"Error searching additional source {resolved}: {e}")
                         if not request.continue_on_error:
                             raise
 
@@ -1798,8 +2068,8 @@ class SimulationControl:
 
         return response
 
-    async def _handle_get_simulator_features(self, request, response):
-        """Handle GetSimulatorFeatures service request
+    async def _handle_get_simulator_features(self, request: object, response: object) -> object:
+        """Handle GetSimulatorFeatures service request.
 
         This service lists the subset of services and actions supported by Isaac Sim
         from simulation_interfaces, including brief descriptions of workflows for each interface.
@@ -1809,32 +2079,51 @@ class SimulationControl:
             response: GetSimulatorFeatures response with list of supported features
 
         Returns:
-            response: Completed GetSimulatorFeatures response
+            object: Completed GetSimulatorFeatures response
+
         """
         try:
             from simulation_interfaces.msg import SimulatorFeatures
 
-            # Define the features supported by our implementation
-            features = [
-                SimulatorFeatures.SPAWNING,  # Supports SpawnEntity
-                SimulatorFeatures.DELETING,  # Supports DeleteEntity
-                SimulatorFeatures.ENTITY_STATE_GETTING,  # Supports GetEntityState
-                SimulatorFeatures.ENTITY_STATE_SETTING,  # Supports SetEntityState
-                SimulatorFeatures.ENTITY_INFO_GETTING,  # Supports GetEntityInfo
-                SimulatorFeatures.SIMULATION_RESET,  # Supports ResetSimulation
-                SimulatorFeatures.SIMULATION_RESET_SPAWNED,  # Supports SCOPE_SPAWNED reset
-                SimulatorFeatures.SIMULATION_STATE_GETTING,  # Supports GetSimulationState
-                SimulatorFeatures.SIMULATION_STATE_SETTING,  # Supports SetSimulationState
-                SimulatorFeatures.SIMULATION_STATE_PAUSE,  # Supports pausing simulation
-                SimulatorFeatures.STEP_SIMULATION_SINGLE,  # Supports single stepping
-                SimulatorFeatures.STEP_SIMULATION_MULTIPLE,  # Supports multi-stepping
-                SimulatorFeatures.STEP_SIMULATION_ACTION,  # Supports SimulateSteps action
-                SimulatorFeatures.WORLD_LOADING,  # Supports LoadWorld
-                SimulatorFeatures.WORLD_TAGS,  # Supports world tags and tag filtering
-                SimulatorFeatures.WORLD_UNLOADING,  # Supports UnloadWorld
-                SimulatorFeatures.WORLD_INFO_GETTING,  # Supports GetCurrentWorld
-                SimulatorFeatures.AVAILABLE_WORLDS,  # Supports GetAvailableWorlds interface
+            # Resolve via getattr so older simulation_interfaces releases
+            # advertise the subset they define instead of crashing on a
+            # missing constant.
+            feature_names = [
+                "SPAWNING",
+                "DELETING",
+                "ENTITY_BOUNDS",
+                "ENTITY_BOUNDS_BOX",
+                "ENTITY_STATE_GETTING",
+                "ENTITY_STATE_SETTING",
+                "ENTITY_INFO_GETTING",
+                "SPAWNABLES",
+                "SIMULATION_RESET",
+                "SIMULATION_RESET_SPAWNED",
+                "SIMULATION_STATE_GETTING",
+                "SIMULATION_STATE_SETTING",
+                "SIMULATION_STATE_PAUSE",
+                "STEP_SIMULATION_SINGLE",
+                "STEP_SIMULATION_MULTIPLE",
+                "STEP_SIMULATION_ACTION",
+                "WORLD_LOADING",
+                "WORLD_TAGS",
+                "WORLD_UNLOADING",
+                "WORLD_INFO_GETTING",
+                "AVAILABLE_WORLDS",
+                "SPAWNING_ENTITIES",
             ]
+            features = []
+            unavailable = []
+            for name in feature_names:
+                if hasattr(SimulatorFeatures, name):
+                    features.append(getattr(SimulatorFeatures, name))
+                else:
+                    unavailable.append(name)
+            if unavailable:
+                carb.log_warn(
+                    "SimulatorFeatures constants not present in this simulation_interfaces "
+                    f"release; omitting from response: {', '.join(unavailable)}"
+                )
 
             # Set the features in the response
             response.features.features = features
@@ -1853,7 +2142,7 @@ class SimulationControl:
 
         return response
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Shutdown the simulation control services.
 
         Cleanly shuts down the ROS2 service manager and all registered
@@ -1864,12 +2153,13 @@ class SimulationControl:
 
 
 class Extension(omni.ext.IExt):
+    """Extension that starts and stops the ROS 2 simulation control services."""
 
-    def on_startup(self, ext_id):
-
+    def on_startup(self, ext_id: str) -> None:
+        """Initialize the extension."""
         self.sim_control = SimulationControl()
 
-    def on_shutdown(self):
-
+    def on_shutdown(self) -> None:
+        """Clean up resources when the extension shuts down."""
         if self.sim_control:
             self.sim_control.shutdown()

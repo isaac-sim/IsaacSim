@@ -15,7 +15,6 @@
 
 """Triangulates mesh faces into triangle index arrays for collision approximation in robot motion generation."""
 
-
 from typing import List
 
 import numpy as np

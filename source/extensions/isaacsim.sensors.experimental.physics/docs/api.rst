@@ -1,22 +1,19 @@
-API
-===
-
 Python API
-----------
+==========
 
 .. Summary
 
 .. currentmodule:: isaacsim.sensors.experimental.physics
 
-.. rubric:: *Commands*
+.. rubric:: *Authoring (USD prim)*
 .. autosummary::
     :nosignatures:
 
-    IsaacSensorExperimentalCreatePrim
-    IsaacSensorExperimentalCreateContactSensor
-    IsaacSensorExperimentalCreateImuSensor
+    Contact
+    IMU
+    Raycast
 
-.. rubric:: *Sensors*
+.. rubric:: *Sensors (runtime)*
 .. autosummary::
     :nosignatures:
 
@@ -24,36 +21,34 @@ Python API
     EffortSensorReading
     EffortSensor
     IMUSensor
+    JointStateSensorReading
+    JointStateSensor
+    RaycastSensor
 
 |
 
 .. API
 
-Commands
-^^^^^^^^
+Authoring
+^^^^^^^^^
 
-.. autoclass:: isaacsim.sensors.experimental.physics.IsaacSensorExperimentalCreatePrim
+.. autoclass:: isaacsim.sensors.experimental.physics.Contact
     :members:
     :undoc-members:
     :inherited-members:
     :show-inheritance:
-    :exclude-members: do, undo
 
-.. autoclass:: isaacsim.sensors.experimental.physics.IsaacSensorExperimentalCreateContactSensor
+.. autoclass:: isaacsim.sensors.experimental.physics.IMU
     :members:
     :undoc-members:
     :inherited-members:
     :show-inheritance:
-    :exclude-members: do, undo
 
-.. autoclass:: isaacsim.sensors.experimental.physics.IsaacSensorExperimentalCreateImuSensor
+.. autoclass:: isaacsim.sensors.experimental.physics.Raycast
     :members:
     :undoc-members:
     :inherited-members:
     :show-inheritance:
-    :exclude-members: do, undo
-
-|
 
 Sensors
 ^^^^^^^
@@ -77,6 +72,24 @@ Sensors
     :show-inheritance:
 
 .. autoclass:: isaacsim.sensors.experimental.physics.IMUSensor
+    :members:
+    :undoc-members:
+    :inherited-members:
+    :show-inheritance:
+
+.. autoclass:: isaacsim.sensors.experimental.physics.JointStateSensorReading
+    :members:
+    :undoc-members:
+    :inherited-members:
+    :show-inheritance:
+
+.. autoclass:: isaacsim.sensors.experimental.physics.JointStateSensor
+    :members:
+    :undoc-members:
+    :inherited-members:
+    :show-inheritance:
+
+.. autoclass:: isaacsim.sensors.experimental.physics.RaycastSensor
     :members:
     :undoc-members:
     :inherited-members:

@@ -1,0 +1,57 @@
+[isaacsim-asset-isolated]
+# pyproject.toml
+pyproject.version = "1.0.0"
+pyproject.description = "Isaac Sim isolated modules for asset import, export and management"
+pyproject.keywords = ["nvidia", "omniverse", "isaacsim", "asset", "import", "export", "management"]
+pyproject.dependencies.all = [
+    "isaacsim-robot-schema==1.0.0",
+    "usd-exchange>=2.2.2",
+    "urdf-usd-converter==0.1.2",
+    "mujoco==3.8.0",
+    "newton-usd-schemas==0.2.0",
+    "mujoco-usd-converter==0.2.0",
+]
+# inventory (relative to the build config)
+inventory.includes.all = [
+    [ "exts/isaacsim.asset.exporter.urdf/isaacsim/asset/exporter/urdf/*", "./asset/exporter/urdf" ],
+    [ "exts/isaacsim.asset.importer.mjcf/isaacsim/asset/importer/mjcf/*", "./asset/importer/mjcf" ],
+    [ "exts/isaacsim.asset.importer.urdf/isaacsim/asset/importer/urdf/*", "./asset/importer/urdf" ],
+    [ "exts/isaacsim.asset.importer.utils/isaacsim/asset/importer/utils/*", "./asset/importer/utils" ],
+    [ "exts/isaacsim.asset.transformer/isaacsim/asset/transformer/*", "./asset/transformer" ],
+    [ "exts/isaacsim.asset.transformer.rules/isaacsim/asset/transformer/rules/*", "./asset/transformer/rules" ],
+    [ "exts/isaacsim.asset.transformer.rules/data/isaacsim_structure.json", "./asset/transformer/rules/data" ],
+]
+inventory.excludes.all = [
+    "exts/isaacsim.asset.exporter.urdf/isaacsim/asset/exporter/urdf/tests",
+    "exts/isaacsim.asset.importer.mjcf/isaacsim/asset/importer/mjcf/tests",
+    "exts/isaacsim.asset.importer.urdf/isaacsim/asset/importer/urdf/tests",
+    "exts/isaacsim.asset.importer.utils/isaacsim/asset/importer/utils/tests",
+    "exts/isaacsim.asset.transformer/isaacsim/asset/transformer/tests",
+    "exts/isaacsim.asset.transformer.rules/isaacsim/asset/transformer/rules/tests",
+]
+# wheel specifications
+wheel.platforms = {"linux-x86_64" = "any", "windows-x86_64" = "any", "linux-aarch64" = "any"}
+wheel.python = "py3"
+
+[isaacsim-robot-schema]
+# pyproject.toml
+pyproject.version = "1.0.0"
+pyproject.description = "Isaac Sim USD robot schema helpers and applied schema utilities"
+pyproject.keywords = ["nvidia", "isaac", "sim", "usd", "robot", "schema"]
+pyproject.dependencies.all = [
+    "usd-exchange>=2.2.2",
+]
+pyproject.optional-dependencies.all = [
+    { "ik" = ["numpy>=1.24"] },
+]
+# inventory (relative to the build config)
+inventory.includes.all = [
+    [ "exts/isaacsim.robot.schema/usd/schema/isaac/robot_schema/*", "../usd/schema/isaac/robot_schema" ],
+    [ "exts/isaacsim.robot.schema/usd/schema/isaac/__init__.py", "../usd/schema/isaac" ],
+]
+inventory.excludes.all = [
+    "exts/isaacsim.robot.schema/usd/schema/isaac/robot_schema/premake5.lua",
+]
+# wheel specifications
+wheel.platforms = {"linux-x86_64" = "any", "windows-x86_64" = "any", "linux-aarch64" = "any"}
+wheel.python = "py3"

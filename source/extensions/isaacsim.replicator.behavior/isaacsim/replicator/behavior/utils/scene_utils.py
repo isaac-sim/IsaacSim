@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Utility functions for USD scene manipulation used by behavior scripts."""
+
+from __future__ import annotations
+
 import carb
 import carb.settings
 import omni.kit.app
@@ -24,22 +28,47 @@ from pxr import Gf, PhysxSchema, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 
 
 def get_world_location(prim: Usd.Prim, xform_cache: UsdGeom.XformCache | None = None) -> Gf.Vec3d:
-    """Get the absolute location of the prim."""
+    """Get the absolute location of the prim.
+
+    Args:
+        prim: The USD prim to get the location of.
+        xform_cache: Optional transform cache for performance.
+
+    Returns:
+        The world-space location of the prim.
+    """
     if xform_cache is None:
         xform_cache = UsdGeom.XformCache()
     return xform_cache.GetLocalToWorldTransform(prim).ExtractTranslation()
 
 
 def get_world_rotation(prim: Usd.Prim, xform_cache: UsdGeom.XformCache | None = None) -> Gf.Rotation:
-    """Get the absolute rotation of the prim."""
+    """Get the absolute rotation of the prim.
+
+    Args:
+        prim: The USD prim to get the rotation of.
+        xform_cache: Optional transform cache for performance.
+
+    Returns:
+        The world-space rotation of the prim.
+    """
     if xform_cache is None:
         xform_cache = UsdGeom.XformCache()
     # Wrap the matrix in a Gf.Transform to avoid any scale or shear issues
     return Gf.Transform(xform_cache.GetLocalToWorldTransform(prim)).GetRotation()
 
 
-def get_rotation_op_and_value(prim: Usd.Prim) -> tuple[str, Gf.Quatf | Gf.Quatd | Gf.Rotation | Gf.Vec3d | Gf.Vec3f]:
-    """Get the rotation of the prim, creating an xformOp:orient if it doesn't exist."""
+def get_rotation_op_and_value(
+    prim: Usd.Prim,
+) -> tuple[str, float | Gf.Quatf | Gf.Quatd | Gf.Rotation | Gf.Vec3d | Gf.Vec3f]:
+    """Get the rotation of the prim, creating an xformOp:orient if it doesn't exist.
+
+    Args:
+        prim: The USD prim to get the rotation from.
+
+    Returns:
+        A tuple of the rotation op name and the rotation value.
+    """
     xformable = UsdGeom.Xformable(prim)
     xform_ops = xformable.GetOrderedXformOps()
 
@@ -61,9 +90,17 @@ def get_rotation_op_and_value(prim: Usd.Prim) -> tuple[str, Gf.Quatf | Gf.Quatd 
 
 
 def set_rotation_op_and_value(
-    prim: Usd.Prim, rotation_op: str, rotation_val: Gf.Rotation | Gf.Quatf | Gf.Quatd | Gf.Vec3d | Gf.Vec3f
+    prim: Usd.Prim,
+    rotation_op: str,
+    rotation_val: float | Gf.Rotation | Gf.Quatf | Gf.Quatd | Gf.Vec3d | Gf.Vec3f,
 ) -> None:
-    """Set the rotation of the prim, the ops should already exist."""
+    """Set the rotation of the prim, the ops should already exist.
+
+    Args:
+        prim: The USD prim to set the rotation on.
+        rotation_op: The name of the rotation xformOp.
+        rotation_val: The rotation value to set.
+    """
     xformable = UsdGeom.Xformable(prim)
     xform_ops = xformable.GetOrderedXformOps()
 
@@ -80,7 +117,12 @@ def set_rotation_op_and_value(
 
 
 def set_rotation_with_ops(prim: Usd.Prim, rotation: Gf.Rotation) -> None:
-    """Set the rotation using the first valid op from orient, rotate, transform, if none found create new orient op."""
+    """Set the rotation using the first valid op from orient, rotate, transform, if none found create new orient op.
+
+    Args:
+        prim: The USD prim to set the rotation on.
+        rotation: The rotation to apply.
+    """
     xformable = UsdGeom.Xformable(prim)
     xform_ops = xformable.GetOrderedXformOps()
 
@@ -98,7 +140,11 @@ def set_rotation_with_ops(prim: Usd.Prim, rotation: Gf.Rotation) -> None:
 
         elif op_name.startswith("xformOp:rotate"):
             rotation_order = op_name[len("xformOp:rotate") :]
-            rotation_decomp = decompose_rotation(rotation, rotation_order)
+            try:
+                rotation_decomp = decompose_rotation(rotation, rotation_order)
+            except ValueError as error:
+                carb.log_warn(f"[{prim.GetPath()}] {error}")
+                return
             op.Set(rotation_decomp)
             return
 
@@ -113,11 +159,29 @@ def set_rotation_with_ops(prim: Usd.Prim, rotation: Gf.Rotation) -> None:
     orient_op.Set(Gf.Quatd(rotation.GetQuat()))
 
 
-def decompose_rotation(rotation: Gf.Rotation, rotation_order: str) -> Gf.Vec3f:
-    """Helper function to decompose Gf.Rotation based on rotation order."""
-    if rotation_order == "XYZ":
+def decompose_rotation(rotation: Gf.Rotation, rotation_order: str) -> float | Gf.Vec3f:
+    """Helper function to decompose Gf.Rotation based on rotation order.
+
+    Args:
+        rotation: The rotation to decompose.
+        rotation_order: The rotation order string, such as "XYZ", "ZYX", "X", "Y", or "Z".
+
+    Returns:
+        The decomposed rotation as euler angles or a single-axis angle.
+
+    Raises:
+        ValueError: If the rotation order is not supported.
+    """
+    if rotation_order in ("XYZ", "X", "Y", "Z"):
         rotation_decomp = rotation.Decompose(Gf.Vec3d.ZAxis(), Gf.Vec3d.YAxis(), Gf.Vec3d.XAxis())
-        return Gf.Vec3f(rotation_decomp[2], rotation_decomp[1], rotation_decomp[0])
+        rotation_vec = Gf.Vec3f(rotation_decomp[2], rotation_decomp[1], rotation_decomp[0])
+        if rotation_order == "X":
+            return rotation_vec[0]
+        if rotation_order == "Y":
+            return rotation_vec[1]
+        if rotation_order == "Z":
+            return rotation_vec[2]
+        return rotation_vec
     elif rotation_order == "XZY":
         rotation_decomp = rotation.Decompose(Gf.Vec3d.YAxis(), Gf.Vec3d.ZAxis(), Gf.Vec3d.XAxis())
         return Gf.Vec3f(rotation_decomp[2], rotation_decomp[0], rotation_decomp[1])
@@ -133,12 +197,23 @@ def decompose_rotation(rotation: Gf.Rotation, rotation_order: str) -> Gf.Vec3f:
     elif rotation_order == "ZYX":
         rotation_decomp = rotation.Decompose(Gf.Vec3d.XAxis(), Gf.Vec3d.YAxis(), Gf.Vec3d.ZAxis())
         return Gf.Vec3f(rotation_decomp[0], rotation_decomp[1], rotation_decomp[2])
+    raise ValueError(f"Unsupported rotation_order: {rotation_order!r}")
 
 
 def calculate_look_at_rotation(
     eye: Gf.Vec3d, target_location: Gf.Vec3d, up_axis: Gf.Vec3d, epsilon: float = 1e-5
 ) -> Gf.Rotation:
-    """Calculates a look-at rotation matrix from 'eye' to 'target_location' and adjusts for collinearity if needed."""
+    """Calculate a look-at rotation matrix from 'eye' to 'target_location' and adjusts for collinearity if needed.
+
+    Args:
+        eye: The position of the observer.
+        target_location: The position to look at.
+        up_axis: The up direction vector.
+        epsilon: Small threshold for collinearity detection.
+
+    Returns:
+        The look-at rotation.
+    """
     # Check for collinearity between direction and up axis, and adjust if needed to avoid undefined rotations.
     direction = target_location - eye
     cross_product = direction.GetCross(up_axis)
@@ -163,7 +238,12 @@ def calculate_look_at_rotation(
 
 
 def set_location(prim: Usd.Prim, location: Gf.Vec3d) -> None:
-    """Set the location of the prim, handling translate xformOps."""
+    """Set the location of the prim, handling translate xformOps.
+
+    Args:
+        prim: The USD prim to set the location on.
+        location: The location to set.
+    """
     xformable = UsdGeom.Xformable(prim)
 
     # Retrieve existing translate ops and set the value to the first one, or add a new one
@@ -188,7 +268,12 @@ def set_location(prim: Usd.Prim, location: Gf.Vec3d) -> None:
 
 
 def set_orientation(prim: Usd.Prim, orientation: Gf.Quatf | Gf.Quatd) -> None:
-    """Set the orientation of the prim, handling orient xformOps."""
+    """Set the orientation of the prim, handling orient xformOps.
+
+    Args:
+        prim: The USD prim to set the orientation on.
+        orientation: The orientation quaternion to set.
+    """
     xformable = UsdGeom.Xformable(prim)
 
     # Determine precision based on the type of orientation
@@ -237,7 +322,12 @@ def set_orientation(prim: Usd.Prim, orientation: Gf.Quatf | Gf.Quatd) -> None:
 
 
 def set_rotation(prim: Usd.Prim, rotation: Gf.Vec3f | Gf.Vec3d | Gf.Rotation) -> None:
-    """Set the rotation of the prim, handling rotateXYZ xformOps."""
+    """Set the rotation of the prim, handling rotateXYZ xformOps.
+
+    Args:
+        prim: The USD prim to set the rotation on.
+        rotation: The rotation to set.
+    """
     xformable = UsdGeom.Xformable(prim)
 
     # Convert Gf.Rotation to Gf.Vec3f euler angles
@@ -280,7 +370,12 @@ def set_rotation(prim: Usd.Prim, rotation: Gf.Vec3f | Gf.Vec3d | Gf.Rotation) ->
 
 
 def set_scale(prim: Usd.Prim, scale: Gf.Vec3f) -> None:
-    """Set the scale of the prim, handling scale xformOps."""
+    """Set the scale of the prim, handling scale xformOps.
+
+    Args:
+        prim: The USD prim to set the scale on.
+        scale: The scale to set.
+    """
     xformable = UsdGeom.Xformable(prim)
 
     # Retrieve existing scale ops and set the value to the first one, or add a new one
@@ -306,7 +401,12 @@ def set_scale(prim: Usd.Prim, scale: Gf.Vec3f) -> None:
 
 
 def set_transform_matrix(prim: Usd.Prim, transform: Gf.Matrix4d) -> None:
-    """Set the transformation matrix of the prim using a transform op."""
+    """Set the transformation matrix of the prim using a transform op.
+
+    Args:
+        prim: The USD prim to set the transform on.
+        transform: The transformation matrix to set.
+    """
     xformable = UsdGeom.Xformable(prim)
 
     # Retrieve existing transform ops and set the value to the first one, or add a new one
@@ -339,7 +439,16 @@ def set_transform_attributes(
     scale: Gf.Vec3f | None = None,
     transform: Gf.Matrix4d | None = None,
 ) -> None:
-    """Set or update the transform attributes of a prim."""
+    """Set or update the transform attributes of a prim.
+
+    Args:
+        prim: The USD prim to set the transform attributes on.
+        location: Optional location to set.
+        orientation: Optional orientation quaternion to set.
+        rotation: Optional rotation to set.
+        scale: Optional scale to set.
+        transform: Optional full transformation matrix to set.
+    """
     if transform is not None:
         set_transform_matrix(prim, transform)
 
@@ -357,7 +466,16 @@ def set_transform_attributes(
 
 
 def create_asset(stage: Usd.Stage, asset_url: str, prim_path: str) -> Usd.Prim:
-    """Create a new Xform prim with the provided asset URL reference at path with or without colliders."""
+    """Create a new Xform prim with the provided asset URL reference at path with or without colliders.
+
+    Args:
+        stage: The USD stage to create the prim on.
+        asset_url: The URL of the asset to reference.
+        prim_path: The path for the new prim.
+
+    Returns:
+        The created USD prim.
+    """
     prim = stage.DefinePrim(prim_path, "Xform")
     prim.GetReferences().AddReference(asset_url)
     return prim
@@ -366,7 +484,18 @@ def create_asset(stage: Usd.Stage, asset_url: str, prim_path: str) -> Usd.Prim:
 def create_physics_material(
     stage: Usd.Stage, prim_path: str, restitution: float, static_friction: float, dynamic_friction: float
 ) -> UsdShade.Material:
-    """Create a new physics material with the specified friction and restitution properties."""
+    """Create a new physics material with the specified friction and restitution properties.
+
+    Args:
+        stage: The USD stage to create the material on.
+        prim_path: The path for the new material prim.
+        restitution: The restitution coefficient.
+        static_friction: The static friction coefficient.
+        dynamic_friction: The dynamic friction coefficient.
+
+    Returns:
+        The created USD material.
+    """
     material = UsdShade.Material.Define(stage, prim_path)
     physics_material = UsdPhysics.MaterialAPI.Apply(material.GetPrim())
     physics_material.CreateRestitutionAttr().Set(restitution)
@@ -376,7 +505,16 @@ def create_physics_material(
 
 
 def create_mdl_material(mtl_url: str, mtl_name: str, mtl_path: str) -> UsdShade.Material:
-    """Creates an MDL material at the given path with the specified URL and name."""
+    """Create an MDL material at the given path with the specified URL and name.
+
+    Args:
+        mtl_url: The URL of the MDL material.
+        mtl_name: The name of the material.
+        mtl_path: The path for the material prim.
+
+    Returns:
+        The created USD material.
+    """
     omni.kit.commands.execute("CreateMdlMaterialPrim", mtl_url=mtl_url, mtl_name=mtl_name, mtl_path=mtl_path)
     stage = omni.usd.get_context().get_stage()
     mtl_prim = stage.GetPrimAtPath(mtl_path)
@@ -394,7 +532,13 @@ def create_mdl_material(mtl_url: str, mtl_name: str, mtl_path: str) -> UsdShade.
 def add_colliders(
     prim: Usd.Prim, approximation_type: str = "convexHull", physics_scene: UsdPhysics.Scene | None = None
 ) -> None:
-    """Add colliders to the prim and its descendants (without rigid body dynamics the asset will be static)."""
+    """Add colliders to the prim and its descendants (without rigid body dynamics the asset will be static).
+
+    Args:
+        prim: The USD prim to add colliders to.
+        approximation_type: The collision approximation type.
+        physics_scene: Optional physics scene to associate colliders with.
+    """
     for desc_prim in Usd.PrimRange(prim):
         # Add collision properties to all geometry types
         if desc_prim.IsA(UsdGeom.Gprim):
@@ -418,7 +562,12 @@ def add_colliders(
 
 
 def disable_colliders(prim: Usd.Prim, include_descendants: bool = True) -> None:
-    """Disable the colliders of the prim and its descendants."""
+    """Disable the colliders of the prim and its descendants.
+
+    Args:
+        prim: The USD prim to disable colliders on.
+        include_descendants: Whether to include descendant prims.
+    """
     if include_descendants:
         prims = Usd.PrimRange(prim)
     else:
@@ -436,7 +585,15 @@ def add_rigid_body_dynamics(
     angular_damping: float | None = None,
     linear_damping: float | None = None,
 ) -> None:
-    """Add rigid body dynamics properties to the prim if it has colliders."""
+    """Add rigid body dynamics properties to the prim if it has colliders.
+
+    Args:
+        prim: The USD prim to add rigid body dynamics to.
+        physics_scene: Optional physics scene to associate the rigid body with.
+        disable_gravity: Whether to disable gravity for this body.
+        angular_damping: Optional angular damping coefficient.
+        linear_damping: Optional linear damping coefficient.
+    """
     # Physics
     if not prim.HasAPI(UsdPhysics.RigidBodyAPI):
         rigid_body_api = UsdPhysics.RigidBodyAPI.Apply(prim)
@@ -459,7 +616,12 @@ def add_rigid_body_dynamics(
 
 
 def disable_rigid_body_dynamics(prim: Usd.Prim, include_descendants: bool = True) -> None:
-    """Disable the rigid body dynamics properties of the prim and its descendants."""
+    """Disable the rigid body dynamics properties of the prim and its descendants.
+
+    Args:
+        prim: The USD prim to disable rigid body dynamics on.
+        include_descendants: Whether to include descendant prims.
+    """
     if include_descendants:
         prims = Usd.PrimRange(prim)
     else:
@@ -481,7 +643,22 @@ def create_collision_walls(
     bbox_cache: UsdGeom.BBoxCache | None = None,
     visible: bool = False,
 ) -> list[Usd.Prim]:
-    """Create collision walls around the top surface of the prim with the given height and thickness."""
+    """Create collision walls around the top surface of the prim with the given height and thickness.
+
+    Args:
+        stage: The USD stage to create walls on.
+        prim: The USD prim to create walls around.
+        prim_path: The base path for the wall prims.
+        height: The height of the walls.
+        thickness: The thickness of the walls.
+        physics_scene: Optional physics scene to associate walls with.
+        physics_material: Optional physics material for the walls.
+        bbox_cache: Optional bounding box cache for performance.
+        visible: Whether the walls should be visible.
+
+    Returns:
+        List of created wall prims.
+    """
     # Init BBoxCache and XformCache if not provided
     if bbox_cache is None:
         bbox_cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), includedPurposes=[UsdGeom.Tokens.default_])
@@ -552,7 +729,13 @@ def create_collision_walls(
 
 
 async def run_simulation_async(sim_steps: int, physx_dt: float, render: bool = True) -> None:
-    """Run the simulation for the specified number of steps. Optionally render the simulation by advancing the app."""
+    """Run the simulation for the specified number of steps. Optionally render the simulation by advancing the app.
+
+    Args:
+        sim_steps: Number of simulation steps to run.
+        physx_dt: Physics time step duration.
+        render: Whether to render each simulation step.
+    """
     physx_sim_interface = omni.physx.get_physx_simulation_interface()
     for _ in range(sim_steps):
         physx_sim_interface.simulate(physx_dt, 0)
@@ -570,7 +753,17 @@ async def apply_forces_and_simulate_async(
     physx_dt: float,
     render: bool = True,
 ) -> None:
-    """Apply forces to assets at the specified positions, and simulate for the given number of steps."""
+    """Apply forces to assets at the specified positions, and simulate for the given number of steps.
+
+    Args:
+        stage_id: The stage identifier.
+        body_ids: List of body identifiers to apply forces to.
+        forces: List of force vectors to apply.
+        positions: List of positions where forces are applied.
+        sim_steps: Number of simulation steps to run.
+        physx_dt: Physics time step duration.
+        render: Whether to render each simulation step.
+    """
     physx_sim_interface = omni.physx.get_physx_simulation_interface()
 
     # Apply the forces
@@ -585,12 +778,12 @@ async def apply_forces_and_simulate_async(
             await omni.kit.app.get_app().next_update_async()
 
 
-def disable_simulation_reset_on_stop():
+def disable_simulation_reset_on_stop() -> None:
     """Disable the simulation reset on stop setting. Needed to preserve the simulation state after play+stop."""
     carb.settings.get_settings().set(omni.physx.bindings._physx.SETTING_RESET_ON_STOP, False)
 
 
-def reset_simulation_and_enable_reset_on_stop():
+def reset_simulation_and_enable_reset_on_stop() -> None:
     """Reset the simulation and enable the simulation reset on stop setting. Needed to reset the simulation state after play+stop."""
     if carb.settings.get_settings().get(omni.physx.bindings._physx.SETTING_RESET_ON_STOP):
         carb.log_warn(
