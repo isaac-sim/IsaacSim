@@ -19,21 +19,24 @@ import pathlib
 
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.robot_motion.cumotion as cu_mg
-import numpy as np
 import omni.kit.test
-import warp as wp
 
 
 class TestConfigurationLoader(omni.kit.test.AsyncTestCase):
     """Test suite for robot configuration loading."""
 
-    async def setUp(self):
-        pass
+    async def setUp(self) -> None:
+        """Sets up the test environment before each test method runs."""
 
-    async def tearDown(self):
-        pass
+    async def tearDown(self) -> None:
+        """Cleans up the test environment after each test method completes."""
 
-    async def test_load_franka(self):
+    async def test_load_franka(self) -> None:
+        """Tests loading Franka robot configurations through different methods.
+
+        Verifies that loading a Franka robot from supported packages and from a file path
+        produces equivalent configurations with matching controlled joint names.
+        """
         # load franka from supported packages:
         franka_from_supported = cu_mg.load_cumotion_supported_robot("franka")
         self.assertIsNotNone(franka_from_supported)

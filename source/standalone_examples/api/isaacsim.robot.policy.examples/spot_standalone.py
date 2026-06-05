@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Demonstrate Spot robot simulation with policy control."""
 
 from isaacsim import SimulationApp
 
@@ -45,6 +47,7 @@ print(f"Using device: {args.device}")
 
 # initialize robot on first step, run robot advance
 def on_physics_step(step_size, context) -> None:
+    """Handle physics step for Spot initialization, reset, and control."""
     global first_step
     global reset_needed
     if first_step:
@@ -109,7 +112,7 @@ while simulation_app.is_running():
         elif i == 200:
             i = 0
             if args.test is True:
-                print("Reached: ", spot.robot.get_world_pose()[0])
+                print("Reached: ", spot.robot.get_world_poses()[0])
                 break
         i += 1
     else:

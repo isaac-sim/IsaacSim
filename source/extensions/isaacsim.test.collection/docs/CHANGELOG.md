@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.6.7] - 2026-05-21
+### Fixed
+- Make Leatherback `test_cameras` resilient to multitick-rendering publisher-discovery latency by extending `wait_for_publishers_on_topic` timeout and draining additional frames before sampling pixels.
+
+## [2.6.6] - 2026-05-18
+### Fixed
+- Improve Leatherback ROS2 test reliability by using ROS2TestCase helpers and waiting for ROS publishers, subscribers, and camera data.
+
+## [2.6.5] - 2026-05-01
+### Fixed
+- Fix test failures caused by timeline stopping and playing in the robot helpers
+
+## [2.6.4] - 2026-04-03
+### Changed
+- Adapt rotation test helpers to new `[roll, pitch, yaw]` euler angle input convention
+
+## [2.6.3] - 2026-03-26
+### Changed
+- Update the test dependencies to use the new experimental wheeled robots extension
+
+## [2.6.2] - 2026-03-22
+### Fixed
+- Fix carb.log_error call passing multiple arguments instead of a single formatted string
+
+## [2.6.1] - 2026-03-18
+### Changed
+- Update the test dependencies, as the core experimental extensions already depend on the `omni.kit.material.library`
+
+## [2.6.0] - 2026-03-12
+### Changed
+- Add test for environment golden images
+
 ## [2.5.1] - 2026-03-07
 ### Fixed
 - Add `omni.kit.material.library` as a test dependency so `CreateAndBindMdlMaterialFromLibrary` is available for material tests

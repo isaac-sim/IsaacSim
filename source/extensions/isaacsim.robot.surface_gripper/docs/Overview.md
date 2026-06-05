@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.robot.surface_gripper extension provides functionality for creating and controlling surface-based grippers in Isaac Sim, including suction grippers and distance-based grippers. Surface grippers can attach to and manipulate objects through contact detection rather than traditional mechanical clamping, making them suitable for handling a wide variety of objects with different shapes and materials.
@@ -15,22 +11,25 @@ align: center
 
 ## Key Components
 
-### [CreateSurfaceGripper](isaacsim.robot.surface_gripper/isaacsim.robot.surface_gripper.CreateSurfaceGripper) Command
+### {func}`create_surface_gripper <isaacsim.robot.surface_gripper.create_surface_gripper>`
 
-The [CreateSurfaceGripper](isaacsim.robot.surface_gripper/isaacsim.robot.surface_gripper.CreateSurfaceGripper) command creates a complete surface gripper setup including the necessary action graph nodes and prims. This command integrates with the **omni.kit.commands** system to provide undo/redo functionality.
+The {func}`create_surface_gripper <isaacsim.robot.surface_gripper.create_surface_gripper>` function creates a Surface Gripper prim under a given parent path. It automatically picks a unique prim name (e.g. ``SurfaceGripper``, ``SurfaceGripper_01``).
 
 ```python
-result, prim = omni.kit.commands.execute(
-    "CreateSurfaceGripper",
-    prim_path="/SurfaceGripper",
-)
+import omni.usd
+from isaacsim.robot.surface_gripper import create_surface_gripper
+
+stage = omni.usd.get_context().get_stage()
+gripper_prim = create_surface_gripper(stage, "/World/ee_link")
 ```
 
-The command automatically handles the creation of all required components, including action graph nodes that manage the gripper's behavior and state transitions.
+```{deprecated} 3.6.0
+The ``CreateSurfaceGripper`` Kit command is deprecated. Use ``create_surface_gripper(stage, prim_path)`` directly instead.
+```
 
-### [GripperView](isaacsim.robot.surface_gripper/isaacsim.robot.surface_gripper.GripperView)
+### {class}`GripperView <isaacsim.robot.surface_gripper.GripperView>`
 
-The [GripperView](isaacsim.robot.surface_gripper/isaacsim.robot.surface_gripper.GripperView) class provides batch operations for managing multiple surface grippers simultaneously. It inherits from XformPrim and supports regex-based path matching to control collections of grippers efficiently.
+The {class}`GripperView <isaacsim.robot.surface_gripper.GripperView>` class provides batch operations for managing multiple surface grippers simultaneously. It inherits from XformPrim and supports regex-based path matching to control collections of grippers efficiently.
 
 ```python
 gripper_view = GripperView(
@@ -56,7 +55,7 @@ Surface grippers operate through contact detection and force-based attachment. W
 
 ### Batch Operations
 
-The extension provides efficient batch operations for controlling multiple grippers simultaneously. Both [GripperView](isaacsim.robot.surface_gripper/isaacsim.robot.surface_gripper.GripperView) and SurfaceGripperInterface support batch methods that process multiple gripper paths in parallel, improving performance in multi-robot scenarios.
+The extension provides efficient batch operations for controlling multiple grippers simultaneously. Both {class}`GripperView <isaacsim.robot.surface_gripper.GripperView>` and SurfaceGripperInterface support batch methods that process multiple gripper paths in parallel, improving performance in multi-robot scenarios.
 
 ### State Management
 

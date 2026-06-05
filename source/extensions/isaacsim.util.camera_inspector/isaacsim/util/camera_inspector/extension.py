@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,20 +15,25 @@
 
 """Extension module for the isaacsim.util.camera_inspector that provides a Camera Inspector window for examining and interacting with cameras in the scene."""
 
+from __future__ import annotations
 
 import asyncio
 import gc
 import weakref
+from collections.abc import Callable
+from typing import Any, Final
 
 import carb
+import isaacsim.core.experimental.utils.prim as prim_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
+import isaacsim.core.experimental.utils.transform as transform_utils
+import numpy as np
 import omni
 import omni.kit.commands
-import omni.timeline
 import omni.ui as ui
 import omni.usd
-from isaacsim.core.utils.prims import is_prim_path_valid
-from isaacsim.core.utils.stage import get_current_stage
-from isaacsim.core.utils.viewports import create_viewport_for_camera
+from isaacsim.core.experimental.objects import Camera
+from isaacsim.core.rendering_manager import ViewportManager
 from isaacsim.gui.components.element_wrappers import TextBlock
 from isaacsim.gui.components.menu import make_menu_item_description
 from isaacsim.gui.components.style import COLOR_W, COLOR_X, COLOR_Y, COLOR_Z
@@ -39,13 +44,22 @@ from isaacsim.gui.components.ui_utils import (
     get_style,
     setup_ui_headers,
 )
-from isaacsim.sensors.camera import get_all_camera_objects
 from omni.kit.menu.utils import MenuItemDescription, add_menu_items, remove_menu_items
-from omni.kit.viewport.window import get_viewport_window_instances
+from omni.kit.viewport.window import ViewportWindow, get_viewport_window_instances
 from omni.kit.window.property.templates import LABEL_WIDTH
 
-EXTENSION_NAME = "Camera Inspector"
-SUPPORTED_AXES = ["world", "usd", "ros"]
+EXTENSION_NAME: Final[str] = "Camera Inspector"
+SUPPORTED_AXES: Final[list[str]] = ["world", "usd", "ros"]
+
+# 3x3 rotation sub-matrices derived from the USD camera convention homogeneous transforms.
+# USD camera convention: +Y up, -Z forward (OpenGL/computer-graphics).
+# World camera convention: +Z up, +X forward (robotics).
+# ROS camera convention:   +Y down, +Z forward (computer vision).
+#
+# Both transforms are applied on the right of the USD rotation matrix:
+#   R_target = R_usd @ _USD_TO_<target>
+_USD_TO_WORLD_ROT: np.ndarray = np.array([[0, -1, 0], [0, 0, 1], [-1, 0, 0]], dtype=np.float32)
+_USD_TO_ROS_ROT: np.ndarray = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]], dtype=np.float32)
 
 
 class Extension(omni.ext.IExt):
@@ -74,7 +88,6 @@ class Extension(omni.ext.IExt):
         Args:
             ext_id: The extension identifier.
         """
-
         # Events
         self._usd_context = omni.usd.get_context()
 
@@ -89,7 +102,7 @@ class Extension(omni.ext.IExt):
         self._window.set_visibility_changed_fn(self._on_window)
 
         # UI
-        self._task_ui_elements = dict()
+        self._task_ui_elements: dict[str, Any] = {}
 
         self._ext_id = ext_id
         menu_items = [
@@ -97,8 +110,8 @@ class Extension(omni.ext.IExt):
         ]
         self._menu_items = [MenuItemDescription(name="Sensors", sub_menu=menu_items)]
         add_menu_items(self._menu_items, "Tools")
-        self._all_cameras = []
-        self._all_viewports = []
+        self._all_cameras: list[Camera] = []
+        self._all_viewports: list[ViewportWindow] = []
 
         self.colors = {"X": COLOR_X, "Y": COLOR_Y, "Z": COLOR_Z, "W": COLOR_W}
 
@@ -119,7 +132,7 @@ class Extension(omni.ext.IExt):
         self._camera_state_subscriber = None
         gc.collect()
 
-    def _on_window(self, visible):
+    def _on_window(self, visible: bool) -> None:
         """Handle window visibility changes.
 
         When the window becomes visible, subscribes to stage events and builds the UI.
@@ -135,6 +148,7 @@ class Extension(omni.ext.IExt):
             self._build_ui()
         else:
             self._usd_context = None
+            self._camera_state_subscriber = None
 
     def _menu_callback(self):
         """Toggle the window visibility when the menu item is clicked."""
@@ -170,13 +184,13 @@ class Extension(omni.ext.IExt):
     # Callbacks
     ##################################
 
-    def _on_refresh(self, width=None):
+    def _on_refresh(self, width: object = None) -> None:
         """Get all cameras in the scene and add them to the camera manager.
 
         Args:
             width: Optional width parameter for refresh operation.
         """
-        self._all_cameras = get_all_camera_objects()
+        self._all_cameras = self._get_all_camera_objects()
         self._all_viewports = list(get_viewport_window_instances())
 
         self._update_camera_dropdown()
@@ -193,7 +207,7 @@ class Extension(omni.ext.IExt):
                     observer_name="CameraInspectorExtension._on_refresh._update_camera_stats_ui",
                 )
 
-    def _on_camera_changed_event(self, option):
+    def _on_camera_changed_event(self, option: int) -> None:
         """Handle camera selection changes from the dropdown.
 
         Updates the selected camera based on the dropdown selection and refreshes the camera statistics display.
@@ -205,12 +219,12 @@ class Extension(omni.ext.IExt):
         if option < len(self._all_cameras):
             self._selected_camera = self._all_cameras[option]
         else:
-            err = f"Selected option {option} not available; available cameras: {[camera.name for camera in self._all_cameras]}"
+            err = f"Selected option {option} not available; available cameras: {[camera.paths[0] for camera in self._all_cameras]}"
             carb.log_warn(err)
 
         self._update_camera_stats_ui()
 
-    def _on_viewport_changed_event(self, option):
+    def _on_viewport_changed_event(self, option: int) -> None:
         """Handle viewport selection changes from the dropdown.
 
         Updates the selected viewport based on the dropdown selection.
@@ -228,7 +242,7 @@ class Extension(omni.ext.IExt):
             err = f"Selected option {option} not available; available cameras: {[viewport.name for viewport in self._all_viewports]}"
             raise ValueError(err)
 
-    def _on_axis_changed_event(self, option):
+    def _on_axis_changed_event(self, option: int) -> None:
         """Handle axis selection changes for both world and local coordinate systems.
 
         Updates the selected axis for world and local camera coordinate systems and refreshes the camera statistics display.
@@ -250,8 +264,8 @@ class Extension(omni.ext.IExt):
         Creates a new viewport window configured to display the view from the currently selected camera.
         """
         if self._selected_camera is not None:
-            create_viewport_for_camera(
-                viewport_name=self._selected_camera.prim_path, camera_prim_path=self._selected_camera.prim_path
+            ViewportManager.create_viewport_window(
+                title=self._selected_camera.paths[0], camera=self._selected_camera.paths[0]
             )
 
             self._on_refresh()
@@ -263,7 +277,7 @@ class Extension(omni.ext.IExt):
         if self._selected_camera is not None and self._selected_viewport is not None:
             omni.kit.commands.execute(
                 "SetViewportCamera",
-                camera_path=self._selected_camera.prim_path,
+                camera_path=self._selected_camera.paths[0],
                 viewport_api=self._selected_viewport.viewport_api,
             )
         else:
@@ -296,13 +310,13 @@ class Extension(omni.ext.IExt):
         )
         with self._frame:
             with ui.VStack(style=get_style(), spacing=5, height=0):
-                dict = {
+                btn_config = {
                     "label": "Get all cameras",
                     "text": "Refresh",
                     "tooltip": "Finds all cameras in the scene and adds them to the camera manager.",
                     "on_clicked_fn": self._on_refresh,
                 }
-                self._task_ui_elements["refresh_btn"] = btn_builder(**dict)
+                self._task_ui_elements["refresh_btn"] = btn_builder(**btn_config)
 
                 # self._task_ui_elements["refresh_btn"].enabled = True
                 # self._frame.visible = True
@@ -328,7 +342,7 @@ class Extension(omni.ext.IExt):
                     dropdown_fn=self._on_camera_changed_event,
                 )
 
-                self._camera_axes_builder_config = {
+                self._camera_axes_builder_config: dict[str, Any] = {
                     "label": "World Camera Axis",
                     "default_val": 0,
                     "items": SUPPORTED_AXES,
@@ -355,11 +369,11 @@ class Extension(omni.ext.IExt):
 
     def _build_camera_viewport_dropdown(
         self,
-        button_text,
-        label_text,
-        button_fn=None,
-        dropdown_fn=None,
-    ):
+        button_text: str,
+        label_text: str,
+        button_fn: Callable[[], None] | None = None,
+        dropdown_fn: Callable[[int], None] | None = None,
+    ) -> None:
         """Builds a combined UI element with a dropdown and button for camera-viewport operations.
 
         Args:
@@ -387,19 +401,20 @@ class Extension(omni.ext.IExt):
             add_line_rect_flourish(draw_line=False)
 
             def on_clicked_wrapper(model, val):
-                dropdown_fn(model.get_item_value_model().as_int)
+                if dropdown_fn is not None:
+                    dropdown_fn(model.get_item_value_model().as_int)
 
             self._task_ui_elements[f"Combo {label_text}"].add_item_changed_fn(on_clicked_wrapper)
 
     def _build_single_dropdown(
         self,
-        label="",
-        default_val=0,
-        items=[],
-        tooltip="",
-        on_clicked_fn=None,
-        add_line=False,
-        label_width=LABEL_WIDTH,
+        label: str = "",
+        default_val: int = 0,
+        items: list = [],
+        tooltip: str = "",
+        on_clicked_fn: Callable[[int], None] | None = None,
+        add_line: bool = False,
+        label_width: int = LABEL_WIDTH,
     ):
         """Builds a single dropdown UI element with label.
 
@@ -421,14 +436,15 @@ class Extension(omni.ext.IExt):
             add_line_rect_flourish(add_line)
 
             def on_clicked_wrapper(model, val):
-                on_clicked_fn(model.get_item_value_model().as_int)
+                if on_clicked_fn is not None:
+                    on_clicked_fn(model.get_item_value_model().as_int)
 
             if on_clicked_fn is not None:
                 combo_box.add_item_changed_fn(on_clicked_wrapper)
 
         return combo_box
 
-    def _build_pos_quat_display(self, label="World"):
+    def _build_pos_quat_display(self, label: str = "World"):
         """Builds position and quaternion display UI elements for camera transform visualization.
 
         Args:
@@ -473,6 +489,7 @@ class Extension(omni.ext.IExt):
     ##################################
     # UI Updaters
     ##################################
+
     def _update_camera_dropdown(self):
         """Updates the camera dropdown with the current list of available cameras in the scene."""
         # Remove all old camera names
@@ -481,7 +498,7 @@ class Extension(omni.ext.IExt):
 
         # add all cameras to the dropdown
         for camera in self._all_cameras:
-            self._task_ui_elements["Combo Camera"].append_child_item(None, ui.SimpleStringModel(camera.name))
+            self._task_ui_elements["Combo Camera"].append_child_item(None, ui.SimpleStringModel(camera.paths[0]))
 
     def _update_viewport_dropdown(self):
         """Updates the viewport dropdown with the current list of available viewport windows."""
@@ -493,24 +510,24 @@ class Extension(omni.ext.IExt):
         for viewport in self._all_viewports:
             self._task_ui_elements["Combo Viewport"].append_child_item(None, ui.SimpleStringModel(viewport.name))
 
-    def _update_camera_stats_ui(self, e: carb.events.IEvent = None):
+    def _update_camera_stats_ui(self, e: carb.events.IEvent = None) -> None:
         """Updates the camera statistics UI with current transform data from the selected camera.
 
         Args:
             e: Event object from the global update event dispatcher.
         """
         # if camera prim path has been updated, set self._selected_camera to None
-        if get_current_stage() is None:
+        if stage_utils.get_current_stage(backend="usd") is None:
             return
 
-        if self._selected_camera and not is_prim_path_valid(self._selected_camera.prim_path):
+        if self._selected_camera and not prim_utils.get_prim_at_path(self._selected_camera.paths[0]).IsValid():
             self._selected_camera = None
             self._on_refresh()
 
         # Update the camera translation and rotation
         if self._selected_camera is not None:
-            world_pos, world_quat = self._selected_camera.get_world_pose(camera_axes=self._selected_axis_world)
-            local_pos, local_quat = self._selected_camera.get_local_pose(camera_axes=self._selected_axis_local)
+            world_pos, world_quat = self._get_camera_pose(self._selected_camera, "world", self._selected_axis_world)
+            local_pos, local_quat = self._get_camera_pose(self._selected_camera, "local", self._selected_axis_local)
 
             for i in range(3):
                 self._task_ui_elements["World Camera Position"][i].set_value(float(world_pos[i]))
@@ -533,3 +550,40 @@ class Extension(omni.ext.IExt):
             self._task_ui_elements["CameraTextField"].set_text(
                 "# No camera selected. Please use dropdown to select a camera."
             )
+
+    def _get_all_camera_objects(self, root_prim: str = "/") -> list[Camera]:
+        """Retrieve Camera objects for each camera in the scene.
+
+        Args:
+            root_prim: Root prim where the world exists.
+
+        Returns:
+            A list of Camera objects
+        """
+        predicate = lambda prim, _: prim.GetPrimTypeInfo().GetTypeName() == "Camera"
+        camera_prims = prim_utils.get_all_matching_child_prims(root_prim, predicate=predicate)
+        return [Camera(prim_utils.get_prim_path(prim)) for prim in camera_prims]
+
+    def _get_camera_pose(
+        self, camera: Camera, frame: str = "world", camera_axes: str = "usd"
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return the camera pose with orientation expressed in the requested axes convention.
+
+        Args:
+            camera: Camera object whose pose should be queried.
+            frame: Frame of the pose to query.
+            camera_axes: Target convention.
+
+        Returns:
+            Tuple (position, orientation) in the requested camera axes convention.
+        """
+        positions, orientations = camera.get_local_poses() if frame == "local" else camera.get_world_poses()
+        position = positions.numpy()[0].astype(np.float32)
+        orientation = orientations.numpy()[0].astype(np.float32)
+        if camera_axes == "world":
+            R = transform_utils.quaternion_to_rotation_matrix(orientation).numpy() @ _USD_TO_WORLD_ROT
+            orientation = transform_utils.rotation_matrix_to_quaternion(R).numpy()
+        elif camera_axes == "ros":
+            R = transform_utils.quaternion_to_rotation_matrix(orientation).numpy() @ _USD_TO_ROS_ROT
+            orientation = transform_utils.rotation_matrix_to_quaternion(R).numpy()
+        return position, orientation

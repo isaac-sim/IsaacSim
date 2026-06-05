@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test for visual material preview surface."""
 
 from typing import Literal
 
@@ -33,6 +35,7 @@ from pxr import UsdShade
 
 
 async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"], **kwargs) -> None:
+    """Populate stage."""
     # create new stage
     stage = await stage_utils.create_new_stage_async()
     # define prims
@@ -44,22 +47,26 @@ async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"
 
 
 class TestPreviewSurface(omni.kit.test.AsyncTestCase):
+    """Test preview surface."""
+
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
     @parametrize(backends=["usd"], prim_class=PreviewSurfaceMaterial, populate_stage_func=populate_stage)
     async def test_len(self, prim, num_prims, device, backend):
+        """Test len."""
         self.assertEqual(len(prim), num_prims, f"Invalid len ({num_prims} prims)")
 
     @parametrize(backends=["usd"], prim_class=PreviewSurfaceMaterial, populate_stage_func=populate_stage)
     async def test_properties_and_getters(self, prim, num_prims, device, backend):
+        """Test properties and getters."""
         # test cases (properties)
         # - materials
         self.assertEqual(len(prim.materials), num_prims, f"Invalid materials len ({num_prims} prims)")
@@ -72,6 +79,7 @@ class TestPreviewSurface(omni.kit.test.AsyncTestCase):
 
     @parametrize(backends=["usd"], prim_class=PreviewSurfaceMaterial, populate_stage_func=populate_stage)
     async def test_input_values(self, prim, num_prims, device, backend):
+        """Test input values."""
         cases = {
             "diffuseColor": lambda count: draw_sample(
                 shape=(count, 3), dtype=wp.float32, low=-0.1, high=1.1

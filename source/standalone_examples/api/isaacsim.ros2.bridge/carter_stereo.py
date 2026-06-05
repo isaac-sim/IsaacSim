@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Demonstrate Carter robot stereo camera setup with ROS 2."""
+
 import argparse
 
 from isaacsim import SimulationApp
@@ -24,10 +26,12 @@ args, unknown = parser.parse_known_args()
 # Example ROS2 bridge sample showing manual control over messages
 simulation_app = SimulationApp({"renderer": "RealTimePathTracing", "headless": False})
 import carb
+import isaacsim.core.experimental.utils.app as app_utils
 import omni
 import omni.graph.core as og
-from isaacsim.core.api import SimulationContext
-from isaacsim.core.utils.extensions import enable_extension
+from isaacsim.core.experimental.utils.app import enable_extension
+from isaacsim.core.experimental.utils.stage import is_stage_loading
+from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.storage.native import get_assets_root_path
 
 # enable ROS2 bridge extension
@@ -50,13 +54,13 @@ simulation_app.update()
 simulation_app.update()
 
 print("Loading stage...")
-from isaacsim.core.utils.stage import is_stage_loading
+from isaacsim.core.experimental.utils.stage import is_stage_loading
 
 while is_stage_loading():
     simulation_app.update()
 print("Loading Complete")
 
-simulation_context = SimulationContext(stage_units_in_meters=1.0)
+SimulationManager.setup_simulation(dt=1.0 / 60.0, device="cpu")
 
 ros_cameras_graph_path = "/World/Nova_Carter_ROS/front_hawk"
 
@@ -66,13 +70,13 @@ og.Controller.set(og.Controller.attribute(ros_cameras_graph_path + "/left_camera
 # Enabling rgb image publishers for right camera. Cameras will automatically publish images each frame
 og.Controller.set(og.Controller.attribute(ros_cameras_graph_path + "/right_camera_render_product.inputs:enabled"), True)
 
-simulation_context.play()
-simulation_context.step()
+app_utils.play()
+simulation_app.update()
 
 
 # Simulate for one second to warm up sim and let everything settle
 for frame in range(60):
-    simulation_context.step()
+    simulation_app.update()
 
 
 # Create a ROS publisher to publish message to spin robot in place
@@ -90,7 +94,7 @@ publisher = node.create_publisher(Twist, "cmd_vel", 10)
 frame = 0
 while simulation_app.is_running():
     # Run with a fixed step size
-    simulation_context.step(render=True)
+    simulation_app.update()
 
     # Publish the ROS Twist message every 2 frames
     if frame % 2 == 0:
@@ -98,10 +102,10 @@ while simulation_app.is_running():
         message.angular.z = 0.5  # spin in place
         publisher.publish(message)
 
-    if args.test and frame > 120:
+    if args.test and frame > 10:
         break
     frame = frame + 1
 node.destroy_node()
 rclpy.shutdown()
-simulation_context.stop()
+app_utils.stop()
 simulation_app.close()

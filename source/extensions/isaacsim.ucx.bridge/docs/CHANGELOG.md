@@ -1,4 +1,8 @@
 # Changelog
+## [1.2.2] - 2026-05-14
+### Changed
+- Add return type annotations to extension lifecycle methods and update docstring style to satisfy ruff lint rules.
+
 ## [1.2.1] - 2026-03-02
 ### Changed
 - Add Overview.md, public python_api.md and update docstrings

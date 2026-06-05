@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Global variables for the trajectory optimizer example extension."""
+
 EXTENSION_TITLE = "cuMotion Trajectory Optimizer Example"
 
 EXTENSION_DESCRIPTION = (

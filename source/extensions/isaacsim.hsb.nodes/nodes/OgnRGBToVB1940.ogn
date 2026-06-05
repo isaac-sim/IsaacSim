@@ -1,0 +1,84 @@
+{
+    "RGBToVB1940": {
+        "version": 1,
+        "icon": "icons/isaac-sim.svg",
+        "description": "Convert RGB(A) to VB1940 CSI frame",
+        "categoryDefinitions": "config/CategoryDefinition.json",
+        "categories": "internal",
+        "metadata": {
+            "uiName": "RGB to VB1940"
+        },
+        "inputs": {
+            "execIn": {
+                "type": "execution",
+                "description": "Execution trigger"
+            },
+            "data": {
+                "type": "uchar[]",
+                "description": "Input RGB(A) array data (optional, use dataPtr if available)",
+                "memoryType": "cpu",
+                "default": [],
+                "optional": true
+            },
+            "width": {
+                "type": "uint",
+                "description": "Image width in pixels",
+                "default": 0
+            },
+            "height": {
+                "type": "uint",
+                "description": "Image height in pixels",
+                "default": 0
+            },
+            "encoding": {
+                "type": "token",
+                "description": "Input encoding (rgb8 or rgba8)",
+                "metadata": {
+                    "allowedTokens": {
+                        "Type_RGB8": "rgb8",
+                        "Type_RGBA8": "rgba8"
+                    }
+                },
+                "default": "rgb8"
+            },
+            "outputMode": {
+                "type": "token",
+                "description": "Output format: vb1940_csi_coe (3p4b RAW10 for COE/AGX Thor) or vb1940_csi_linux (4p5b RAW10 for RoCE/linux_vb1940_player)",
+                "metadata": {
+                    "allowedTokens": {
+                        "vb1940_csi_coe": "vb1940_csi_coe",
+                        "vb1940_csi_linux": "vb1940_csi_linux"
+                    }
+                },
+                "default": "vb1940_csi_linux"
+            },
+            "dataPtr": {
+                "type": "uint64",
+                "description": "Pointer to raw image data (GPU or CPU)",
+                "default": 0
+            },
+            "cudaDeviceIndex": {
+                "type": "int",
+                "description": "CUDA device index (-1 for CPU)",
+                "default": -1
+            },
+            "bufferSize": {
+                "type": "uint",
+                "description": "Size in bytes of buffer (0 for texture)",
+                "default": 0
+            }
+        },
+        "outputs": {
+            "execOut": {
+                "type": "execution",
+                "description": "Execution output"
+            },
+            "data": {
+                "type": "uchar[]",
+                "description": "Output VB1940 CSI frame array",
+                "memoryType": "cpu",
+                "default": []
+            }
+        }
+    }
+}

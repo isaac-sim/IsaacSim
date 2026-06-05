@@ -1,19 +1,22 @@
-API
-===
+Python API
+==========
 
 .. warning::
 
     **The API featured in this extension is experimental and subject to change without deprecation cycles.**
     Although we will try to maintain backward compatibility in the event of a change, it may not always be possible.
 
-Python API
-----------
-
 .. Summary
 
 The following table summarizes the available materials.
 
 .. currentmodule:: isaacsim.core.experimental.materials
+
+.. rubric:: non-visual materials
+.. autosummary::
+    :nosignatures:
+
+    NonVisualMaterial
 
 .. rubric:: physics materials
 .. autosummary::
@@ -39,10 +42,19 @@ The following table summarizes the available materials.
 .. https://docs.omniverse.nvidia.com/materials-and-rendering/latest/materials_templates.html
 
 Materials
-^^^^^^^^^
+---------
+
+Non-Visual Materials
+^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: isaacsim.core.experimental.materials.NonVisualMaterial
+    :members:
+    :undoc-members:
+    :inherited-members:
+    :show-inheritance:
 
 Physics Materials
-"""""""""""""""""
+^^^^^^^^^^^^^^^^^
 
 .. autoclass:: isaacsim.core.experimental.materials.PhysicsMaterial
     :members:
@@ -69,7 +81,7 @@ Physics Materials
     :show-inheritance:
 
 Visual Materials
-""""""""""""""""
+^^^^^^^^^^^^^^^^
 
 .. autoclass:: isaacsim.core.experimental.materials.OmniGlassMaterial
     :members:

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Utility functions for creating ROS 2 OmniGraph shortcuts."""
 
 from pathlib import Path
 
@@ -20,7 +21,7 @@ import omni.graph.core as og
 import omni.ui as ui
 import omni.usd
 import OmniGraphSchema
-from isaacsim.core.utils.stage import get_next_free_path
+from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.gui.components.callbacks import on_docs_link_clicked, on_open_IDE_clicked
 from isaacsim.gui.components.style import get_style
 from isaacsim.gui.components.ui_utils import dropdown_builder
@@ -32,19 +33,42 @@ from pxr import Sdf
 
 
 class Ros2ClockGraph(MenuHelperWindow):
-    def __init__(self):
+    """A UI window for creating ROS2 Clock OmniGraph.
+
+    This class provides a dialog interface that allows users to configure and generate an OmniGraph for publishing
+    ROS2 clock messages. The graph includes nodes for reading simulation time and publishing it to the ROS2 ``/clock``
+    topic. The graph is triggered on playback tick and can be configured with a custom graph path.
+
+    The generated graph includes the following nodes:
+
+    - ``OnPlaybackTick``: Triggers execution on each simulation tick.
+    - ``ReadSimTime``: Reads the current simulation time.
+    - ``PublishClock``: Publishes the time to the ROS2 ``/clock`` topic.
+    - ``Context``: Provides the ROS2 context for communication.
+
+    The UI provides fields for specifying the graph path and includes buttons to access documentation and view the
+    Python script used for graph generation.
+    """
+
+    def __init__(self) -> None:
+        """Initialize the ROS2 clock graph window."""
         super().__init__("ROS2 Clock Graph", width=300, height=150)
         self._og_path = "/Graph/ROS_Clock"
 
         # build UI
         self._build_ui()
 
-    def make_graph(self):
+    def make_graph(self) -> None:
+        """Create and configures an OmniGraph for ROS2 clock publishing.
+
+        Stops the timeline and constructs a graph containing nodes for playback tick, simulation time reading,
+        clock publishing, and ROS2 context. The graph is set up to publish simulation time as ROS2 clock messages.
+        """
         self._timeline = omni.timeline.get_timeline_interface()
         self._timeline.stop()
 
         keys = og.Controller.Keys
-        (graph, nodes, _, _) = og.Controller.edit(
+        graph, nodes, _, _ = og.Controller.edit(
             {"graph_path": self._og_path, "evaluator_name": "execution"},
             {
                 keys.CREATE_NODES: [
@@ -64,7 +88,12 @@ class Ros2ClockGraph(MenuHelperWindow):
             },
         )
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
+        """Construct the UI elements for the ROS2 clock graph configuration window.
+
+        Creates input fields for graph path, OK and Cancel buttons, and documentation links for the ROS2 clock
+        graph generation interface.
+        """
         default_og_path = "/Graph/ROS_Clock"
         og_path_def = ParamWidget.FieldDef(
             name="og_path", label="Graph Path", type=ui.StringField, default=default_og_path
@@ -104,7 +133,12 @@ class Ros2ClockGraph(MenuHelperWindow):
 
         return
 
-    def _on_ok(self):
+    def _on_ok(self) -> None:
+        """Handle the OK button click event.
+
+        Validates user inputs, creates the ROS2 clock graph if parameters are valid, and closes the window.
+        Displays a warning notification if parameter validation fails.
+        """
         self._og_path = self.og_path_input.get_value()
 
         param_check = self._check_params()
@@ -114,10 +148,22 @@ class Ros2ClockGraph(MenuHelperWindow):
         else:
             post_notification("Parameter check failed", status=NotificationStatus.WARNING)
 
-    def _on_cancel(self):
+    def _on_cancel(self) -> None:
+        """Handle the Cancel button click event.
+
+        Closes the ROS2 clock graph configuration window without creating a graph.
+        """
         self.visible = False
 
-    def _check_params(self):
+    def _check_params(self) -> bool:
+        """Validate the graph path parameter.
+
+        Checks if a graph already exists at the specified path and displays a warning if it does.
+
+        Returns:
+            False if a graph already exists at the specified path, True otherwise.
+
+        """
         stage = omni.usd.get_context().get_stage()
         og_prim = stage.GetPrimAtPath(self._og_path)
         if og_prim.IsValid() and og_prim.IsA(OmniGraphSchema.OmniGraph):
@@ -131,7 +177,29 @@ class Ros2ClockGraph(MenuHelperWindow):
 
 
 class Ros2GenericPubGraph(MenuHelperWindow):
-    def __init__(self):
+    """A UI window for creating ROS2 generic publisher graphs in Isaac Sim.
+
+    This window provides a user interface to generate OmniGraph graphs that publish various message types to ROS2 topics.
+    Users can select from predefined publisher templates including:
+
+    - Float32 publisher that publishes the real-time factor (RTF)
+    - Bool publisher with a constant boolean value
+    - Int64 publisher with a constant integer value
+    - String publisher with a constant string message
+
+    The window allows users to specify the graph path and choose the type of publisher to create. Each template creates
+    a complete graph with the necessary nodes including tick, context, and publisher nodes, automatically configured
+    with appropriate connections.
+
+    The generated graphs use the ``isaacsim.ros2.bridge.ROS2Publisher`` node to publish messages of the selected type.
+    For the RTF publisher, the graph includes an ``isaacsim.core.nodes.IsaacRealTimeFactor`` node that computes the
+    real-time factor during simulation.
+
+    The UI includes buttons to access the Python script used for graph generation and links to relevant documentation.
+    """
+
+    def __init__(self) -> None:
+        """Initialize the ROS2 generic publisher graph window."""
         super().__init__("ROS2 Generic Publisher Graph", width=350, height=180)
         self._og_path = "/Graph/ROS_GenericPub"
         self._dropdown_model = None
@@ -145,12 +213,17 @@ class Ros2GenericPubGraph(MenuHelperWindow):
         # build UI
         self._build_ui()
 
-    def make_rtf_graph(self):
+    def make_rtf_graph(self) -> None:
+        """Create a ROS2 publisher graph that publishes the real-time factor (RTF) as a Float32 message.
+
+        The graph includes nodes for playback tick, generic publisher configured for Float32 messages, RTF computation,
+        and ROS2 context.
+        """
         self._timeline = omni.timeline.get_timeline_interface()
         self._timeline.stop()
 
         keys = og.Controller.Keys
-        (graph, nodes, _, _) = og.Controller.edit(
+        graph, nodes, _, _ = og.Controller.edit(
             {"graph_path": self._og_path, "evaluator_name": "execution"},
             {
                 keys.CREATE_NODES: [
@@ -177,12 +250,17 @@ class Ros2GenericPubGraph(MenuHelperWindow):
             og.Controller.attribute(self._og_path + "/GenericPublisher.inputs:data"),
         )
 
-    def make_bool_graph(self):
+    def make_bool_graph(self) -> None:
+        """Create a ROS2 publisher graph that publishes a boolean value.
+
+        The graph includes nodes for playback tick, generic publisher configured for Bool messages, a constant boolean
+        value, and ROS2 context.
+        """
         self._timeline = omni.timeline.get_timeline_interface()
         self._timeline.stop()
 
         keys = og.Controller.Keys
-        (graph, nodes, _, _) = og.Controller.edit(
+        graph, nodes, _, _ = og.Controller.edit(
             {"graph_path": self._og_path, "evaluator_name": "execution"},
             {
                 keys.CREATE_NODES: [
@@ -210,12 +288,17 @@ class Ros2GenericPubGraph(MenuHelperWindow):
             og.Controller.attribute(self._og_path + "/GenericPublisher.inputs:data"),
         )
 
-    def make_int64_graph(self):
+    def make_int64_graph(self) -> None:
+        """Create a ROS2 publisher graph that publishes an Int64 value.
+
+        The graph includes nodes for playback tick, generic publisher configured for Int64 messages, a constant integer
+        value set to 42, and ROS2 context.
+        """
         self._timeline = omni.timeline.get_timeline_interface()
         self._timeline.stop()
 
         keys = og.Controller.Keys
-        (graph, nodes, _, _) = og.Controller.edit(
+        graph, nodes, _, _ = og.Controller.edit(
             {"graph_path": self._og_path, "evaluator_name": "execution"},
             {
                 keys.CREATE_NODES: [
@@ -243,12 +326,17 @@ class Ros2GenericPubGraph(MenuHelperWindow):
             og.Controller.attribute(self._og_path + "/GenericPublisher.inputs:data"),
         )
 
-    def make_string_graph(self):
+    def make_string_graph(self) -> None:
+        """Create a ROS2 publisher graph that publishes a string message.
+
+        The graph includes nodes for playback tick, generic publisher configured for String messages, a constant string
+        value, and ROS2 context.
+        """
         self._timeline = omni.timeline.get_timeline_interface()
         self._timeline.stop()
 
         keys = og.Controller.Keys
-        (graph, nodes, _, _) = og.Controller.edit(
+        graph, nodes, _, _ = og.Controller.edit(
             {"graph_path": self._og_path, "evaluator_name": "execution"},
             {
                 keys.CREATE_NODES: [
@@ -276,7 +364,12 @@ class Ros2GenericPubGraph(MenuHelperWindow):
             og.Controller.attribute(self._og_path + "/GenericPublisher.inputs:data"),
         )
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
+        """Build the UI for the ROS2 Generic Publisher Graph window.
+
+        The UI includes a graph path input field, a dropdown menu for selecting the publisher type, OK and Cancel
+        buttons, and links to documentation and Python script.
+        """
         default_og_path = "/Graph/ROS_GenericPub"
         og_path_def = ParamWidget.FieldDef(
             name="og_path", label="Graph Path", type=ui.StringField, default=default_og_path
@@ -321,7 +414,11 @@ class Ros2GenericPubGraph(MenuHelperWindow):
                             )
         return
 
-    def _on_ok(self):
+    def _on_ok(self) -> None:
+        """Handle the OK button click event.
+
+        Validates parameters, creates the selected publisher graph, and closes the window if validation succeeds.
+        """
         self._og_path = self.og_path_input.get_value()
 
         param_check = self._check_params()
@@ -332,10 +429,22 @@ class Ros2GenericPubGraph(MenuHelperWindow):
         else:
             post_notification("Parameter check failed", status=NotificationStatus.WARNING)
 
-    def _on_cancel(self):
+    def _on_cancel(self) -> None:
+        """Handle the Cancel button click event.
+
+        Closes the window without creating a graph.
+        """
         self.visible = False
 
-    def _check_params(self):
+    def _check_params(self) -> bool:
+        """Validate the graph parameters.
+
+        Checks if a graph already exists at the specified path. If it does, displays a warning notification.
+
+        Returns:
+            True if parameters are valid, False otherwise.
+
+        """
         stage = omni.usd.get_context().get_stage()
         og_prim = stage.GetPrimAtPath(self._og_path)
         if og_prim.IsValid() and og_prim.IsA(OmniGraphSchema.OmniGraph):
@@ -349,7 +458,33 @@ class Ros2GenericPubGraph(MenuHelperWindow):
 
 
 class Ros2JointStatesGraph(MenuHelperWindow):
-    def __init__(self):
+    """A UI window for generating OmniGraph graphs that publish and subscribe to ROS 2 joint state messages.
+
+    This class provides a graphical interface to create OmniGraph configurations for ROS 2 joint state communication.
+    It supports creating publisher nodes to send joint states, subscriber nodes to receive joint commands, and optional
+    articulation controller nodes to apply received commands to robots in the scene.
+
+    The generated graph can be created as a new standalone graph or added to an existing OmniGraph. When configured as a
+    subscriber with robot movement enabled, it automatically connects the received joint commands to an articulation
+    controller node that moves the robot accordingly.
+
+    The UI allows users to specify:
+
+    - Graph path where the nodes will be created
+    - ROS 2 node namespace for topic organization
+    - Articulation root path of the target robot
+    - Publisher topic name for sending joint states
+    - Subscriber topic name for receiving joint commands
+    - Whether to add nodes to an existing graph
+    - Whether to create publisher and/or subscriber nodes
+    - Whether the subscriber should control robot movement
+
+    The window provides links to documentation and the Python script used for graph generation, enabling users to
+    understand and customize the generated OmniGraph configurations.
+    """
+
+    def __init__(self) -> None:
+        """Initialize the ROS2 joint states graph window."""
         super().__init__("ROS2 Joint States Graph", width=450, height=350)
         self._og_path = "/Graph/ROS_JointStates"
         self._node_namespace = ""
@@ -364,7 +499,14 @@ class Ros2JointStatesGraph(MenuHelperWindow):
         # build UI
         self._build_ui()
 
-    def make_graph(self):
+    def make_graph(self) -> None:
+        """Create or modifies the ROS2 joint states action graph with publisher and subscriber nodes.
+
+        This method stops the timeline, then creates a new graph or modifies an existing one by adding ROS2 nodes for
+        publishing and subscribing to joint states. When publishing is enabled, it adds a joint state publisher node.
+        When subscribing is enabled, it adds a joint state subscriber node and optionally an articulation controller
+        node to move the robot based on received joint commands.
+        """
         self._timeline = omni.timeline.get_timeline_interface()
         self._timeline.stop()
 
@@ -372,8 +514,8 @@ class Ros2JointStatesGraph(MenuHelperWindow):
 
         # if starting from a new graph, start it with just a tick,context, and sim_time node, the rest is the same for adding to exsiting graph
         if not self._add_to_existing_graph:
-            self._og_path = get_next_free_path(self._og_path, "")
-            (graph_handle, nodes, _, _) = og.Controller.edit(
+            self._og_path = stage_utils.generate_next_free_path(self._og_path, prepend_default_prim=False)
+            graph_handle, nodes, _, _ = og.Controller.edit(
                 {"graph_path": self._og_path, "evaluator_name": "execution"},
                 {
                     keys.CREATE_NODES: [
@@ -409,17 +551,17 @@ class Ros2JointStatesGraph(MenuHelperWindow):
                 sim_time_node = node_path
             elif node_type == "isaacsim.ros2.bridge.ROS2PublishJointState":
                 # if there already exist a js pub node, add a new one with a different name
-                js_pub_node_path = get_next_free_path(node_path, "")
+                js_pub_node_path = stage_utils.generate_next_free_path(node_path, prepend_default_prim=False)
                 js_pub_node_name = Path(js_pub_node_path).name
             elif node_type == "isaacsim.ros2.bridge.ROS2SubscribeJointState":
                 # if there already exist a js sub node, add a new one with a different name
-                js_sub_node_path = get_next_free_path(node_path, "")
+                js_sub_node_path = stage_utils.generate_next_free_path(node_path, prepend_default_prim=False)
                 js_sub_node_name = Path(js_sub_node_path).name
             elif node_type == "isaacsim.core.nodes.IsaacArticulationController":
                 msg = "already has an articulation controller node, CREATING A NEW ARTICULATION NODE"
                 print(msg)
                 post_notification(msg, status=NotificationStatus.WARNING)
-                art_node = get_next_free_path(node_path, "")
+                art_node = stage_utils.generate_next_free_path(node_path, prepend_default_prim=False)
                 art_node_name = Path(art_node).name
 
         if self._publisher:
@@ -513,8 +655,13 @@ class Ros2JointStatesGraph(MenuHelperWindow):
                     },
                 )
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
+        """Construct the user interface for the ROS2 Joint States Graph window.
 
+        This method creates UI elements including graph path input, node namespace input, articulation root prim
+        selector, publisher/subscriber checkboxes, topic input fields, and control buttons. It also adds links to the
+        python script and documentation.
+        """
         og_path_def = ParamWidget.FieldDef(
             name="og_path", label="Graph Path", type=ui.StringField, default=self._og_path
         )
@@ -583,7 +730,12 @@ class Ros2JointStatesGraph(MenuHelperWindow):
                             )
         return
 
-    def _on_ok(self):
+    def _on_ok(self) -> None:
+        """Handle the OK button click event.
+
+        This method retrieves values from UI widgets, validates parameters, and creates the graph if validation
+        passes. The window is hidden on success, or a warning notification is displayed on failure.
+        """
         self._og_path = self.og_path_input.get_value()
         self._node_namespace = self.node_namespace_input.get_value()
         self._art_root_path = self.art_root_input.get_value()
@@ -597,10 +749,23 @@ class Ros2JointStatesGraph(MenuHelperWindow):
         else:
             post_notification("Parameter check failed", status=NotificationStatus.WARNING)
 
-    def _on_cancel(self):
+    def _on_cancel(self) -> None:
+        """Handle the Cancel button click event.
+
+        This method hides the window without creating or modifying the graph.
+        """
         self.visible = False
 
-    def _check_params(self):
+    def _check_params(self) -> bool:
+        """Validate the graph parameters.
+
+        When adding to an existing graph, this method verifies that the specified graph path exists and is a valid
+        OmniGraph. If validation fails, a warning notification is posted.
+
+        Returns:
+            True if all parameters are valid, False otherwise.
+
+        """
         stage = omni.usd.get_context().get_stage()
 
         if self._add_to_existing_graph:
@@ -615,21 +780,60 @@ class Ros2JointStatesGraph(MenuHelperWindow):
 
         return True
 
-    def _on_use_existing_graph(self, check_state):
+    def _on_use_existing_graph(self, check_state: bool) -> None:
+        """Handle the checkbox state change for adding to an existing graph.
+
+        Args:
+            check_state: Whether to add to an existing graph.
+
+        """
         self._add_to_existing_graph = check_state
 
-    def _on_pub_graph(self, check_state):
+    def _on_pub_graph(self, check_state: bool) -> None:
+        """Handle the checkbox state change for enabling the publisher.
+
+        Args:
+            check_state: Whether to enable the publisher.
+
+        """
         self._publisher = check_state
 
-    def _on_sub_graph(self, check_state):
+    def _on_sub_graph(self, check_state: bool) -> None:
+        """Handle the checkbox state change for enabling the subscriber.
+
+        Args:
+            check_state: Whether to enable the subscriber.
+
+        """
         self._subscriber = check_state
 
-    def _on_sub_move_robot(self, check_state):
+    def _on_sub_move_robot(self, check_state: bool) -> None:
+        """Handle the checkbox state change for enabling robot movement from subscriber.
+
+        Args:
+            check_state: Whether to enable robot movement from subscriber.
+
+        """
         self._sub_move_robot = check_state
 
 
 class Ros2TfPubGraph(MenuHelperWindow):
-    def __init__(self):
+    """A UI window for creating ROS2 transform (TF) publisher graphs.
+
+    This class provides an interface for setting up OmniGraph graphs that publish coordinate frame transformations
+    to ROS2. It enables users to configure TF publication by selecting target and parent prims, specifying graph
+    paths, and optionally adding nodes to existing graphs. The window supports both creating new graphs with the
+    necessary ROS2 context, timing, and TF publisher nodes, and extending existing graphs with additional TF
+    publication capabilities.
+
+    The generated graph publishes transform data between coordinate frames, allowing ROS2 nodes to track the
+    spatial relationships between different parts of a robot or scene. Users can choose to append target prims to
+    an existing TF publisher node (when multiple transforms share the same parent frame) or create separate
+    publisher nodes for different transform hierarchies.
+    """
+
+    def __init__(self) -> None:
+        """Initialize the ROS2 TF publisher graph window."""
         super().__init__("ROS2 TF Publisher Graph", width=450, height=450)
         self._og_path = "/Graph/ROS_TF"
         self._node_namespace = ""
@@ -644,15 +848,21 @@ class Ros2TfPubGraph(MenuHelperWindow):
         # build UI
         self._build_ui()
 
-    def make_graph(self):
+    def make_graph(self) -> None:
+        """Create or modifies an OmniGraph to publish ROS2 transform trees.
+
+        Generates a new graph with tick, context, and simulation time nodes if starting from scratch, or adds
+        transform tree publisher nodes to an existing graph. Configures connections between nodes based on the
+        graph structure and user preferences.
+        """
         self._timeline = omni.timeline.get_timeline_interface()
         self._timeline.stop()
 
         keys = og.Controller.Keys
         # if starting from a new graph, start it with just a tick,context, and sim_time node, the rest is the same for adding to exsiting graph
         if not self._add_to_existing_graph:
-            self._og_path = get_next_free_path(self._og_path, "")
-            (graph_handle, nodes, _, _) = og.Controller.edit(
+            self._og_path = stage_utils.generate_next_free_path(self._og_path, prepend_default_prim=False)
+            graph_handle, nodes, _, _ = og.Controller.edit(
                 {"graph_path": self._og_path, "evaluator_name": "execution"},
                 {
                     keys.CREATE_NODES: [
@@ -692,7 +902,7 @@ class Ros2TfPubGraph(MenuHelperWindow):
 
                 else:
                     # get ready to add a new tf node
-                    tf_pub_node = get_next_free_path(node_path, "")
+                    tf_pub_node = stage_utils.generate_next_free_path(node_path, prepend_default_prim=False)
                     tf_pub_name = Path(tf_pub_node).name
 
         if self._has_existing_node and self._add_to_existing_node:
@@ -701,33 +911,45 @@ class Ros2TfPubGraph(MenuHelperWindow):
             existing_targets.append(Sdf.Path(self._target_prim))
             # must use this controller edit function, not og.controller.attribute().set() for some reason
             og.Controller.edit(
-                graph_handle, {keys.SET_VALUES: [(self._og_path + "/PublisherTF.inputs:targetPrims", existing_targets)]}
+                graph_handle, {keys.SET_VALUES: [(tf_pub_node + ".inputs:targetPrims", existing_targets)]}
             )
 
         else:
             ## if need to create a new tf node
+            compute_tf_name = "Compute" + tf_pub_name
             og.Controller.edit(
                 graph_handle,
                 {
                     keys.CREATE_NODES: [
+                        (compute_tf_name, "isaacsim.core.nodes.IsaacComputeTransformTree"),
                         (tf_pub_name, "isaacsim.ros2.bridge.ROS2PublishTransformTree"),
                     ],
                     keys.SET_VALUES: [
-                        (tf_pub_name + ".inputs:parentPrim", self._parent_prim),
-                        (tf_pub_name + ".inputs:targetPrims", self._target_prim),
+                        (compute_tf_name + ".inputs:parentPrim", self._parent_prim),
+                        (compute_tf_name + ".inputs:targetPrims", self._target_prim),
                         (tf_pub_name + ".inputs:topicName", self._pub_topic),
                         (tf_pub_name + ".inputs:nodeNamespace", self._node_namespace),
                     ],
                     keys.CONNECT: [
-                        (tick_node + ".outputs:tick", tf_pub_name + ".inputs:execIn"),
+                        (tick_node + ".outputs:tick", compute_tf_name + ".inputs:execIn"),
+                        (compute_tf_name + ".outputs:execOut", tf_pub_name + ".inputs:execIn"),
+                        (compute_tf_name + ".outputs:parentFrames", tf_pub_name + ".inputs:parentFrames"),
+                        (compute_tf_name + ".outputs:childFrames", tf_pub_name + ".inputs:childFrames"),
+                        (compute_tf_name + ".outputs:translations", tf_pub_name + ".inputs:translations"),
+                        (compute_tf_name + ".outputs:orientations", tf_pub_name + ".inputs:orientations"),
                         (sim_time_node + ".outputs:simulationTime", tf_pub_name + ".inputs:timeStamp"),
                         (context_node + ".outputs:context", tf_pub_name + ".inputs:context"),
                     ],
                 },
             )
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
+        """Construct the UI elements for the ROS2 TF Publisher Graph window.
 
+        Creates input fields for graph path, node namespace, node path, target prim, parent prim, and publisher
+        topic. Includes checkboxes for existing graph and node options, along with action buttons and
+        documentation links.
+        """
         og_path_def = ParamWidget.FieldDef(
             name="og_path", label="Graph Path", type=ui.StringField, default=self._og_path
         )
@@ -791,7 +1013,13 @@ class Ros2TfPubGraph(MenuHelperWindow):
                             )
         return
 
-    def _on_ok(self):
+    def _on_ok(self) -> None:
+        """Handle the OK button click event.
+
+        Retrieves values from all input fields, validates parameters through _check_params, and generates the
+        graph if validation passes. Closes the window on success or displays a warning notification if parameter
+        check fails.
+        """
         self._og_path = self.og_path_input.get_value()
         self._node_namespace = self.node_namespace_input.get_value()
         self._existing_node_path = self.node_path_input.get_value()
@@ -806,11 +1034,29 @@ class Ros2TfPubGraph(MenuHelperWindow):
         else:
             post_notification("Parameter check failed", status=NotificationStatus.WARNING)
 
-    def _on_cancel(self):
+    def _on_cancel(self) -> None:
+        """Handle the Cancel button click event.
+
+        Closes the window without generating or modifying any graph.
+        """
         self.visible = False
 
-    def _check_params(self):
+    def _check_params(self) -> bool:
+        """Validate the user-provided parameters before graph creation.
+
+        Verifies that the specified graph path exists when adding to an existing graph, and that the node path
+        exists and is a valid OmniGraph node when adding to an existing node. Also ensures that adding to an
+        existing node requires adding to an existing graph.
+
+        Returns:
+            True if all parameter checks pass, False otherwise.
+
+        """
         stage = omni.usd.get_context().get_stage()
+
+        if not self._target_prim:
+            post_notification("Target prim is required", status=NotificationStatus.WARNING)
+            return False
 
         if self._add_to_existing_graph:
             # make sure the "existing" graph exist
@@ -839,15 +1085,45 @@ class Ros2TfPubGraph(MenuHelperWindow):
 
         return True
 
-    def _on_use_existing_graph(self, check_state):
+    def _on_use_existing_graph(self, check_state: bool) -> None:
+        """Update the state when the existing graph checkbox is toggled.
+
+        Args:
+            check_state: Whether the checkbox is checked.
+
+        """
         self._add_to_existing_graph = check_state
 
-    def _on_use_existing_node(self, check_state):
+    def _on_use_existing_node(self, check_state: bool) -> None:
+        """Update the state when the existing node checkbox is toggled.
+
+        Args:
+            check_state: Whether the checkbox is checked.
+
+        """
         self._add_to_existing_node = check_state
 
 
 class Ros2OdometryGraph(MenuHelperWindow):
-    def __init__(self):
+    """A UI window for creating ROS2 odometry computation and publishing graphs.
+
+    This class provides an interactive interface to generate OmniGraph action graphs that compute and publish robot
+    odometry data, including position, orientation, linear velocity, and angular velocity. The generated graph can
+    optionally publish transform trees for the robot and odometry frames.
+
+    The graph creates nodes for:
+
+    - Computing odometry from an articulated robot's chassis
+    - Publishing odometry messages to a ROS2 topic
+    - Publishing transforms between world, odom, and robot frames
+    - Optionally publishing the robot's complete transform tree
+
+    The UI allows users to specify the robot's articulation root prim, chassis link prim, namespace, and whether to add
+    the odometry nodes to an existing graph or create a new one.
+    """
+
+    def __init__(self) -> None:
+        """Initialize the ROS2 odometry graph window."""
         super().__init__("ROS2 Odometry Graph", width=450, height=350)
         self._og_path = "/Graph/ROS_Odometry"
         self._node_namespace = ""
@@ -862,15 +1138,20 @@ class Ros2OdometryGraph(MenuHelperWindow):
         # build UI
         self._build_ui()
 
-    def make_graph(self):
+    def make_graph(self) -> None:
+        """Create or extends an OmniGraph for ROS2 odometry publishing.
+
+        Sets up nodes for computing odometry from an articulated robot, publishing odometry messages, and publishing
+        transform trees between world, odom, and robot frames. If configured, also publishes the robot's internal TF tree.
+        """
         self._timeline = omni.timeline.get_timeline_interface()
         self._timeline.stop()
 
         keys = og.Controller.Keys
         # if starting from a new graph, start it with just a tick,context, and sim_time node, the rest is the same for adding to exsiting graph
         if not self._add_to_existing_graph:
-            self._og_path = get_next_free_path(self._og_path, "")
-            (graph_handle, nodes, _, _) = og.Controller.edit(
+            self._og_path = stage_utils.generate_next_free_path(self._og_path, prepend_default_prim=False)
+            graph_handle, nodes, _, _ = og.Controller.edit(
                 {"graph_path": self._og_path, "evaluator_name": "execution"},
                 {
                     keys.CREATE_NODES: [
@@ -909,20 +1190,24 @@ class Ros2OdometryGraph(MenuHelperWindow):
                 sim_time_node = node_path
             elif node_type == "isaacsim.ros2.bridge.ROS2PublishOdometry":
                 # get ready to add a new odom publisher nodes
-                odom_pub_node = get_next_free_path(node_path, "")
+                odom_pub_node = stage_utils.generate_next_free_path(node_path, prepend_default_prim=False)
                 odom_pub_name = Path(odom_pub_node).name
             elif node_type == "isaacsim.core.nodes.IsaacComputeOdometry":
                 # get ready to add a new odom compute nodes
-                odom_compute_node = get_next_free_path(node_path, "")
+                odom_compute_node = stage_utils.generate_next_free_path(node_path, prepend_default_prim=False)
                 odom_compute_name = Path(odom_compute_node).name
             elif node_type == "isaacsim.ros2.bridge.ROS2PublishRawTransformTree":
                 # get ready to add two new raw tf publisher nodes
-                tf_world2odom_node = get_next_free_path(self._og_path + "/" + tf_world2odom_name, "")
-                tf_odom2robot_node = get_next_free_path(self._og_path + "/" + tf_odom2robot_name, "")
+                tf_world2odom_node = stage_utils.generate_next_free_path(
+                    self._og_path + "/" + tf_world2odom_name, prepend_default_prim=False
+                )
+                tf_odom2robot_node = stage_utils.generate_next_free_path(
+                    self._og_path + "/" + tf_odom2robot_name, prepend_default_prim=False
+                )
                 tf_world2odom_name = Path(tf_world2odom_node).name
                 tf_odom2robot_name = Path(tf_odom2robot_node).name
             elif node_type == "isaacsim.ros2.bridge.ROS2PublishTransformTree":
-                tf_robot_node = get_next_free_path(node_path, "")
+                tf_robot_node = stage_utils.generate_next_free_path(node_path, prepend_default_prim=False)
                 tf_robot_name = Path(tf_robot_node).name
 
         # add odometry related nodes and connections:
@@ -1002,20 +1287,27 @@ class Ros2OdometryGraph(MenuHelperWindow):
 
         # if user also wanted to publish TF tree of the robot
         if self._tf_robot_pub:
+            compute_tf_robot_name = "Compute" + tf_robot_name
             og.Controller.edit(
                 graph_handle,
                 {
                     keys.CREATE_NODES: [
+                        (compute_tf_robot_name, "isaacsim.core.nodes.IsaacComputeTransformTree"),
                         (tf_robot_name, "isaacsim.ros2.bridge.ROS2PublishTransformTree"),
                     ],
                     keys.SET_VALUES: [
-                        (tf_robot_name + ".inputs:parentPrim", self._chassis_prim),
-                        (tf_robot_name + ".inputs:targetPrims", self._art_root_prim),
+                        (compute_tf_robot_name + ".inputs:parentPrim", self._chassis_prim),
+                        (compute_tf_robot_name + ".inputs:targetPrims", self._art_root_prim),
                         (tf_robot_name + ".inputs:topicName", self._tf_pub_topic),
                         (tf_robot_name + ".inputs:nodeNamespace", self._node_namespace),
                     ],
                     keys.CONNECT: [
-                        (tick_node + ".outputs:tick", tf_robot_name + ".inputs:execIn"),
+                        (tick_node + ".outputs:tick", compute_tf_robot_name + ".inputs:execIn"),
+                        (compute_tf_robot_name + ".outputs:execOut", tf_robot_name + ".inputs:execIn"),
+                        (compute_tf_robot_name + ".outputs:parentFrames", tf_robot_name + ".inputs:parentFrames"),
+                        (compute_tf_robot_name + ".outputs:childFrames", tf_robot_name + ".inputs:childFrames"),
+                        (compute_tf_robot_name + ".outputs:translations", tf_robot_name + ".inputs:translations"),
+                        (compute_tf_robot_name + ".outputs:orientations", tf_robot_name + ".inputs:orientations"),
                         (sim_time_node + ".outputs:simulationTime", tf_robot_name + ".inputs:timeStamp"),
                         (context_node + ".outputs:context", tf_robot_name + ".inputs:context"),
                     ],
@@ -1033,8 +1325,12 @@ class Ros2OdometryGraph(MenuHelperWindow):
                     og.Controller.attribute(self._og_path + "/" + tf_robot_name + ".inputs:timeStamp"),
                 )
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
+        """Build the user interface for configuring the ROS2 odometry graph.
 
+        Creates input fields for graph path, node namespace, articulation root, and chassis link selection. Includes
+        checkboxes for adding to an existing graph and publishing robot TF, along with OK and Cancel buttons.
+        """
         og_path_def = ParamWidget.FieldDef(
             name="og_path", label="Graph Path", type=ui.StringField, default=self._og_path
         )
@@ -1089,7 +1385,11 @@ class Ros2OdometryGraph(MenuHelperWindow):
                             )
         return
 
-    def _on_ok(self):
+    def _on_ok(self) -> None:
+        """Handle the OK button click.
+
+        Validates user input parameters, generates the odometry graph if validation passes, and closes the dialog.
+        """
         self._og_path = self.og_path_input.get_value()
         self._node_namespace = self.node_namespace_input.get_value()
         self._art_root_prim = self.art_root_input.get_value()
@@ -1103,11 +1403,25 @@ class Ros2OdometryGraph(MenuHelperWindow):
         else:
             post_notification("Parameter check failed", status=NotificationStatus.WARNING)
 
-    def _on_cancel(self):
+    def _on_cancel(self) -> None:
+        """Handle the Cancel button click.
+
+        Closes the dialog without generating a graph.
+        """
         self.visible = False
 
-    def _check_params(self):
+    def _check_params(self) -> bool:
+        """Validate the user-provided parameters.
+
+        Returns:
+            True if all parameters are valid, False otherwise.
+
+        """
         stage = omni.usd.get_context().get_stage()
+
+        if not self._art_root_prim:
+            post_notification("Robot Articulation Root prim is required", status=NotificationStatus.WARNING)
+            return False
 
         if self._add_to_existing_graph:
             # make sure the "existing" graph exist
@@ -1121,8 +1435,20 @@ class Ros2OdometryGraph(MenuHelperWindow):
 
         return True
 
-    def _on_use_existing_graph(self, check_state):
+    def _on_use_existing_graph(self, check_state: bool) -> None:
+        """Handle the checkbox state change for adding to an existing graph.
+
+        Args:
+            check_state: Whether the checkbox is checked.
+
+        """
         self._add_to_existing_graph = check_state
 
-    def _on_publish_robot_tf(self, check_state):
+    def _on_publish_robot_tf(self, check_state: bool) -> None:
+        """Handle the checkbox state change for publishing robot TF.
+
+        Args:
+            check_state: Whether the checkbox is checked.
+
+        """
         self._tf_robot_pub = check_state

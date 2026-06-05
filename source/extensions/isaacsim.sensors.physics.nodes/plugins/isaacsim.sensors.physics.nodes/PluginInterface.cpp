@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,15 +15,11 @@
 
 #define CARB_EXPORTS
 
-// clang-format off
-#include <pch/UsdPCH.h>
-// clang-format on
 
 #include <carb/Framework.h>
 #include <carb/PluginUtils.h>
 
 #include <isaacsim/sensors/physics/nodes/IPhysicsSensorNodes.h>
-#include <omni/graph/core/NodeTypeRegistrar.h>
 #include <omni/graph/core/ogn/Registration.h>
 
 const struct carb::PluginImplDesc g_kPluginDesc = { "isaacsim.sensors.physics.nodes.plugin",

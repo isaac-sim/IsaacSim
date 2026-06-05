@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Recorder for application update frametime and FPS metrics."""
 
 import time
@@ -36,7 +37,7 @@ class AppFrametimeRecorder(MeasurementDataRecorder):
         context: Input context for the recorder.
     """
 
-    def __init__(self, context: InputContext | None = None):
+    def __init__(self, context: InputContext | None = None) -> None:
         self.context = context
         self._samples: list[float] = []
         self._last_timestamp_ns: int = 0
@@ -46,7 +47,7 @@ class AppFrametimeRecorder(MeasurementDataRecorder):
         self._subscription = None
         self._phase: str | None = None
 
-    def start_collecting(self):
+    def start_collecting(self) -> None:
         """Start collecting app frametime data.
 
         Example:
@@ -71,7 +72,7 @@ class AppFrametimeRecorder(MeasurementDataRecorder):
         )
         logger.info("AppFrametimeRecorder: Started collecting")
 
-    def stop_collecting(self):
+    def stop_collecting(self) -> None:
         """Stop collecting app frametime data.
 
         Example:
@@ -121,7 +122,7 @@ class AppFrametimeRecorder(MeasurementDataRecorder):
         """
         return self._samples
 
-    def _on_app_update(self, event: Any):
+    def _on_app_update(self, event: Any) -> None:
         """Callback for app update events.
 
         Args:
@@ -154,7 +155,7 @@ class AppFrametimeRecorder(MeasurementDataRecorder):
             logger.warning("AppFrametimeRecorder: No samples collected")
             return MeasurementData()
 
-        stats = Stats.from_samples(self._samples)
+        stats = Stats.from_samples(self._samples, trim_outliers=False)
         measurements_out = [
             measurements.SingleMeasurement(name="Mean App_Update Frametime", value=stats.mean, unit="ms"),
             measurements.SingleMeasurement(name="Stdev App_Update Frametime", value=stats.stdev, unit="ms"),

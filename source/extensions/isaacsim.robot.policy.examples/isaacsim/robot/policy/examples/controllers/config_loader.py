@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,6 @@
 
 """Utilities for loading and parsing robot policy environment configuration files."""
 
-
 import fnmatch
 import io
 import sys
@@ -27,8 +26,8 @@ import yaml
 
 
 def parse_env_config(env_config_path: str = "env.yaml") -> dict[str, Any]:
-    """
-    Loads and parses an environment configuration YAML file with custom handling for Python tuples
+    """Loads and parses an environment configuration YAML file with custom handling for Python tuples.
+
     and unknown tags. Uses a safe YAML loader that ignores unknown tags and properly constructs
     Python tuples from YAML sequences.
 
@@ -59,9 +58,9 @@ def parse_env_config(env_config_path: str = "env.yaml") -> dict[str, Any]:
 
 def get_robot_joint_properties(
     data: dict[str, Any], joint_names: list[str]
-) -> tuple[list[float], list[float], list[float], list[float], list[float], list[float]]:
-    """
-    Extracts and processes robot joint properties from environment configuration.
+) -> tuple[list[float], list[float], list[float], list[float], list[float], list[float], list[float]]:
+    """Extracts and processes robot joint properties from environment configuration.
+
     Handles both scalar and per-joint property specifications, with pattern matching
     for joint names. Provides default values for missing properties.
 
@@ -70,14 +69,19 @@ def get_robot_joint_properties(
         joint_names: Ordered list of joint names to extract properties for
 
     Returns:
-        A tuple containing ordered lists of joint properties (effort_limits, velocity_limits, stiffness, damping,
-        default_pos, default_vel) where effort_limits are maximum torque/force limits, velocity_limits are maximum
-        velocity limits, stiffness are position control stiffness gains, damping are velocity control damping gains,
-        default_pos are initial/default joint positions, and default_vel are initial/default joint velocities.
+        A tuple containing ordered lists of joint properties:
+        - effort_limits: Maximum torque/force limits for each joint
+        - velocity_limits: Maximum velocity limits for each joint
+        - stiffness: Position control stiffness gains
+        - damping: Velocity control damping gains
+        - armature: Joint armature (rotor inertia)
+        - default_pos: Initial/default joint positions
+        - default_vel: Initial/default joint velocities
     """
     actuator_data = data.get("scene").get("robot").get("actuators")
     stiffness = {}
     damping = {}
+    armature = {}
     effort_limits = {}
     velocity_limits = {}
     default_pos = {}
@@ -93,6 +97,7 @@ def get_robot_joint_properties(
         velocity_limit = actuator_config.get("velocity_limit")
         joint_stiffness = actuator_config.get("stiffness")
         joint_damping = actuator_config.get("damping")
+        joint_armature = actuator_config.get("armature")
 
         if isinstance(effort_limit, (float, int)) or effort_limit is None:
             if effort_limit is None or effort_limit == float("inf"):
@@ -134,6 +139,16 @@ def get_robot_joint_properties(
         else:
             carb.log_error(f"Failed to parse damping, expected float, int, or dict, got: {type(joint_damping)}")
 
+        if isinstance(joint_armature, (float, int)) or joint_armature is None:
+            if joint_armature is None:
+                joint_armature = 0
+            for names in joint_names_expr:
+                armature[names] = float(joint_armature)
+        elif isinstance(joint_armature, dict):
+            armature.update(joint_armature)
+        else:
+            carb.log_error(f"Failed to parse armature, expected float, int, or dict, got: {type(joint_armature)}")
+
     # parse default joint position
     init_joint_pos = data.get("scene").get("robot").get("init_state").get("joint_pos")
     if isinstance(init_joint_pos, (float, int)):
@@ -160,6 +175,7 @@ def get_robot_joint_properties(
 
     stiffness_inorder = []
     damping_inorder = []
+    armature_inorder = []
     effort_limits_inorder = []
     velocity_limits_inorder = []
     default_pos_inorder = []
@@ -178,6 +194,11 @@ def get_robot_joint_properties(
                 else:
                     damping_inorder.append(0)
                     carb.log_warn(f"{joint} damping not found, setting to 0")
+                if pattern in armature:
+                    armature_inorder.append(armature[pattern])
+                else:
+                    armature_inorder.append(0)
+                    carb.log_warn(f"{joint} armature not found, setting to 0")
                 if pattern in effort_limits:
                     effort_limits_inorder.append(effort_limits[pattern])
                 else:
@@ -215,14 +236,15 @@ def get_robot_joint_properties(
         velocity_limits_inorder,
         stiffness_inorder,
         damping_inorder,
+        armature_inorder,
         default_pos_inorder,
         default_vel_inorder,
     )
 
 
 def get_articulation_props(data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Retrieves articulation properties from the robot spawn configuration.
+    """Retrieves articulation properties from the robot spawn configuration.
+
     These properties define the physical characteristics and simulation
     parameters for the robot's articulated joints and links.
 
@@ -236,8 +258,8 @@ def get_articulation_props(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_physics_properties(data: dict[str, Any]) -> tuple[int, float, int]:
-    """
-    Extracts simulation timing parameters from the environment configuration.
+    """Extracts simulation timing parameters from the environment configuration.
+
     These parameters control the simulation's temporal resolution and rendering.
 
     Args:
@@ -252,8 +274,8 @@ def get_physics_properties(data: dict[str, Any]) -> tuple[int, float, int]:
 
 
 def get_observations(data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Retrieves policy observation specifications from the configuration.
+    """Retrieves policy observation specifications from the configuration.
+
     These define what state information is provided to the policy
     for decision making.
 
@@ -267,8 +289,8 @@ def get_observations(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_action(data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Retrieves policy action specifications from the configuration.
+    """Retrieves policy action specifications from the configuration.
+
     These define the control interface and action space available
     to the policy for controlling the robot.
 
@@ -282,8 +304,8 @@ def get_action(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_physx_settings(data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Retrieves PhysX simulation engine configuration parameters.
+    """Retrieves PhysX simulation engine configuration parameters.
+
     These settings control physics simulation quality, stability,
     and performance characteristics.
 

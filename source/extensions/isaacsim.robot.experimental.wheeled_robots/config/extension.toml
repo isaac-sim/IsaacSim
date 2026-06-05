@@ -1,11 +1,11 @@
 [package]
-version = "0.2.3"
+version = "0.2.9"
 category = "Simulation"
 title = "Wheeled Robots (Experimental)"
 description = "This extension provides wheeled robot utilities"
 keywords = ["isaac", "wheeled", "mobile", "controller", "differential", "holonomic", "ackermann"]
 changelog = "docs/CHANGELOG.md"
-readme = "docs/README.md"
+readme = "docs/Overview.md"
 preview_image = "data/preview.png"
 icon = "data/icon.png"
 writeTarget.kit = true
@@ -23,14 +23,16 @@ name = "isaacsim.robot.experimental.wheeled_robots"
 [[python.module]]
 name = "isaacsim.robot.experimental.wheeled_robots.tests"
 
+[fswatcher.patterns]
+include = ["*.py"]
+
 [[test]]
 dependencies = [
+    "isaacsim.core.experimental.objects",
+    "isaacsim.storage.native",
     "isaacsim.test.utils",
 ]
 stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
     '*omni.syntheticdata.scripts.extension*stageFrameHistoryCount*',
 ]
-
-[fswatcher.patterns]
-include = ["*.py"]

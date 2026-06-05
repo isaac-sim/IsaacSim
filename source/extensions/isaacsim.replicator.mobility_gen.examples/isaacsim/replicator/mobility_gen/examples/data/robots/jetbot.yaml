@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+asset_path: /Isaac/Robots/NVIDIA/Jetbot/jetbot.usd
+physics_dt: 0.005
+z_offset: 0.1
+
+chase_camera:
+  base_path: chassis
+  x_offset: -0.5
+  z_offset: 0.5
+  tilt_angle: 60.0
+
+occupancy_map:
+  radius: 0.25
+  collision_radius: 0.25
+  z_min: 0.05
+  z_max: 0.5
+  cell_size: 0.05
+
+control:
+  keyboard_linear_velocity_gain: 0.25
+  keyboard_angular_velocity_gain: 1.0
+  gamepad_linear_velocity_gain: 0.25
+  gamepad_angular_velocity_gain: 1.0
+
+random_action:
+  linear_velocity_range: [-0.3, 0.25]
+  angular_velocity_range: [-0.75, 0.75]
+  linear_acceleration_std: 1.0
+  angular_acceleration_std: 5.0
+  grid_pose_sampler_grid_size: 5.0
+
+path_following:
+  speed: 0.25
+  angular_gain: 1.0
+  stop_distance_threshold: 0.5
+  forward_angle_threshold: 0.7853981633974483
+  target_point_offset_m: 1.0
+
+wheel:
+  dof_names:
+    - left_wheel_joint
+    - right_wheel_joint
+  base_m: 0.1125
+  radius_m: 0.03
+  chassis_subpath: chassis
+
+sensor_rig:
+  sensors:
+    - name: front_hawk
+      type: camera
+      sensor_prim_path: chassis/rgb_camera/front_hawk
+      width_px: 1920
+      height_px: 1200

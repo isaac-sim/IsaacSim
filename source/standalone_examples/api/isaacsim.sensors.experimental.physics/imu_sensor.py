@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,24 +13,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Demonstrate experimental IMU sensor usage."""
+
 from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
 
+import argparse
 import sys
 
 import carb
+import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
-from isaacsim.core.api import World
-from isaacsim.core.prims import Articulation
-from isaacsim.core.utils.stage import add_reference_to_stage
-from isaacsim.core.utils.types import ArticulationActions
-from isaacsim.robot.wheeled_robots.controllers.differential_controller import DifferentialController
-from isaacsim.sensors.experimental.physics import IMUSensor
+from isaacsim.core.experimental.objects import DistantLight, GroundPlane
+from isaacsim.core.experimental.prims import Articulation
+from isaacsim.core.simulation_manager import SimulationManager
+from isaacsim.robot.experimental.wheeled_robots.controllers import DifferentialController
+from isaacsim.sensors.experimental.physics import IMU, IMUSensor
 from isaacsim.storage.native import get_assets_root_path
 
-my_world = World(stage_units_in_meters=1.0)
-my_world.scene.add_default_ground_plane()
+parser = argparse.ArgumentParser()
+parser.add_argument("--test", default=False, action="store_true", help="Run in test mode")
+args, unknown = parser.parse_known_args()
+
+stage_utils.set_stage_units(meters_per_unit=1.0)
+GroundPlane("/World/GroundPlane")
+DistantLight("/World/DistantLight").set_intensities(1000)
 
 assets_root_path = get_assets_root_path()
 if assets_root_path is None:
@@ -39,61 +48,58 @@ if assets_root_path is None:
     sys.exit()
 
 asset_path = assets_root_path + "/Isaac/Robots/NVIDIA/NovaCarter/nova_carter.usd"
-add_reference_to_stage(usd_path=asset_path, prim_path="/World/Carter")
+stage_utils.add_reference_to_stage(usd_path=asset_path, path="/World/Carter")
 
-my_carter = my_world.scene.add(Articulation("/World/Carter", name="my_carter", positions=np.array([[0, 0.0, 0.5]])))
+my_carter = Articulation("/World/Carter", positions=np.array([[0, 0.0, 0.5]]))
 wheel_dof_names = ["joint_wheel_left", "joint_wheel_right"]
 
-my_controller = DifferentialController(name="simple_control", wheel_radius=0.04295, wheel_base=0.4132)
+my_controller = DifferentialController(wheel_radius=0.04295, wheel_base=0.4132)
 
 
-imu_sensor = my_world.scene.add(
-    IMUSensor(
-        prim_path="/World/Carter/caster_wheel_left/imu_sensor",
-        name="imu",
-        frequency=60,
-        translation=np.array([0, 0, 0]),
+imu_sensor = IMUSensor(
+    IMU.create(
+        "/World/Carter/caster_wheel_left/imu_sensor",
+        translations=np.array([[0.0, 0.0, 0.0]]),
     )
 )
-my_world.reset()
+
+SimulationManager.setup_simulation(dt=1.0 / 60.0, device="cpu")
+app_utils.play()
+app_utils.update_app(steps=2)
+
 i = 0
 reset_needed = False
 while simulation_app.is_running():
-    my_world.step(render=True)
-    if my_world.is_stopped() and not reset_needed:
+    simulation_app.update()
+    if not app_utils.is_playing() and not reset_needed:
         reset_needed = True
-    if my_world.is_playing():
-        wheel_dof_indices = [my_carter.get_dof_index(wheel_dof_names[i]) for i in range(len(wheel_dof_names))]
+    if app_utils.is_playing():
+        wheel_dof_indices = my_carter.get_dof_indices(wheel_dof_names)
         if reset_needed:
-            my_world.reset()
-            my_controller.reset()
+            app_utils.stop()
+            app_utils.update_app(steps=5)
+            app_utils.play()
+            app_utils.update_app(steps=5)
             reset_needed = False
-        print(imu_sensor.get_current_frame())
-        actions = ArticulationActions()
+        print(imu_sensor.get_data())
         if i >= 0 and i < 1000:
             # forward
-            # convert from ArticulationAction to ArticulationActions
-            actions.joint_velocities = np.expand_dims(my_controller.forward(command=[0.05, 0]).joint_velocities, axis=0)
-
+            wheel_velocities = my_controller.forward([0.05, 0])
         elif i >= 1000 and i < 1265:
             # rotate
-            # convert from ArticulationAction to ArticulationActions
-            actions.joint_velocities = np.expand_dims(
-                my_controller.forward(command=[0.0, np.pi / 12]).joint_velocities, axis=0
-            )
+            wheel_velocities = my_controller.forward([0.0, np.pi / 12])
         elif i >= 1265 and i < 2000:
             # forward
-            # convert from ArticulationAction to ArticulationActions
-            actions.joint_velocities = np.expand_dims(my_controller.forward(command=[0.05, 0]).joint_velocities, axis=0)
+            wheel_velocities = my_controller.forward([0.05, 0])
         elif i == 2000:
             i = 0
+            if args.test:
+                break
         i += 1
-        joint_actions = ArticulationActions()
-        joint_actions.joint_velocities = np.zeros([1, my_carter.num_dof])
-        if actions.joint_velocities is not None:
-            for j in range(len(wheel_dof_indices)):
-                joint_actions.joint_velocities[0, wheel_dof_indices[j]] = actions.joint_velocities[0, j]
-
-        my_carter.apply_action(joint_actions)
+        # Apply wheel velocities via DOF velocity targets
+        velocity_targets = np.zeros(my_carter.num_dofs)
+        for j, dof_idx in enumerate(wheel_dof_indices.numpy()):
+            velocity_targets[dof_idx] = wheel_velocities[j]
+        my_carter.set_dof_velocity_targets(velocity_targets)
 
 simulation_app.close()

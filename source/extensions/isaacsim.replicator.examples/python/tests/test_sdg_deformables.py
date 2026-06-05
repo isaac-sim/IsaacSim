@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
+import tempfile
+
 import carb.settings
 import omni.kit
 import omni.usd
@@ -23,7 +26,7 @@ from isaacsim.test.utils.image_comparison import compare_images_in_directories
 
 class TestSDGDeformables(omni.kit.test.AsyncTestCase):
 
-    MEAN_DIFF_TOLERANCE = 25
+    RGB_MEAN_DIFF_TOLERANCE = 5
 
     async def setUp(self):
         await omni.kit.app.get_app().next_update_async()
@@ -43,7 +46,6 @@ class TestSDGDeformables(omni.kit.test.AsyncTestCase):
         SimulationManager.set_physics_sim_device(self.original_physics_sim_device)
 
     async def test_sdg_snippet_deformables(self):
-        import asyncio
         import os
         import random
 
@@ -57,6 +59,9 @@ class TestSDGDeformables(omni.kit.test.AsyncTestCase):
         from isaacsim.core.simulation_manager import SimulationManager
         from isaacsim.storage.native import get_assets_root_path_async
         from pxr import Gf, Sdf, Usd, UsdShade
+
+        out_dir = tempfile.mkdtemp(prefix="test_deformable_drop_")
+        print(f"Output directory: {out_dir}")
 
         TRIGGER_HEIGHT = 0.15  # Capture when lowest vertex falls below this (m)
         BASE_DROP_HEIGHT = 0.2  # Starting height for first asset (m)
@@ -159,9 +164,8 @@ class TestSDGDeformables(omni.kit.test.AsyncTestCase):
             camera = rep.functional.create.camera(position=(1, 1, 1), look_at=(0, 0, 0), parent="/World", name="Camera")
             render_product = rep.create.render_product(camera, (720, 480))
             render_product.hydra_texture.set_updates_enabled(False)
-            output_dir = os.path.join(os.getcwd(), "_out_deformable_drop")
             backend = rep.backends.get("DiskBackend")
-            backend.initialize(output_dir=output_dir)
+            backend.initialize(output_dir=out_dir)
             writer = rep.writers.get("BasicWriter")
             writer.initialize(
                 backend=backend, rgb=True, semantic_segmentation=True, colorize_semantic_segmentation=True
@@ -225,7 +229,7 @@ class TestSDGDeformables(omni.kit.test.AsyncTestCase):
                     break
 
             # Pause the simulation and clean up resources
-            print(f"[SDG] Simulation complete. {len(triggered)} frames saved to {output_dir}")
+            print(f"[SDG] Simulation complete. {len(triggered)} frames saved to {out_dir}")
             timeline.pause()
             await rep.orchestrator.wait_until_complete_async()
             writer.detach()
@@ -235,15 +239,14 @@ class TestSDGDeformables(omni.kit.test.AsyncTestCase):
 
         # Test setup
         test_assets_config = [
-            ("banana", 1, "/Isaac/Props/YCB/Axis_Aligned/011_banana.usd", 500_000, 0.45),
-            ("large_marker", 1, "/Isaac/Props/YCB/Axis_Aligned/040_large_marker.usd", 9_000_000, 0.5),
+            ("banana", 2, "/Isaac/Props/YCB/Axis_Aligned/011_banana.usd", 500_000, 0.45),
+            ("large_marker", 2, "/Isaac/Props/YCB/Axis_Aligned/040_large_marker.usd", 9_000_000, 0.5),
         ]
         await run_example_async(test_assets_config)
         num_assets = sum(count for _, count, _, _, _ in test_assets_config)
         expected_pngs = num_assets * 2  # 2 assets * 2 (rgb+segmentation annotators)
         expected_json = num_assets * 1  # 2 assets * 1 (segmentation annotator)
         golden_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data", "golden", "_out_deformable_drop")
-        out_dir = os.path.join(os.getcwd(), "_out_deformable_drop")
         all_data_written = validate_folder_contents(
             path=out_dir,
             recursive=True,
@@ -254,10 +257,39 @@ class TestSDGDeformables(omni.kit.test.AsyncTestCase):
         result = compare_images_in_directories(
             golden_dir=golden_dir,
             test_dir=out_dir,
-            path_pattern=r"\.png$",
+            path_pattern=r"rgb_.*\.png$",
             allclose_rtol=None,
             allclose_atol=None,
-            mean_tolerance=self.MEAN_DIFF_TOLERANCE,
+            mean_tolerance=self.RGB_MEAN_DIFF_TOLERANCE,
             print_all_stats=False,
         )
-        self.assertTrue(result["all_passed"], f"Image comparison failed for output directory: {out_dir}")
+        self.assertTrue(result["all_passed"], f"RGB image comparison failed for output directory: {out_dir}")
+
+        golden_label_files = sorted(
+            file_name
+            for file_name in os.listdir(golden_dir)
+            if file_name.startswith("semantic_segmentation_labels_") and file_name.endswith(".json")
+        )
+        out_label_files = sorted(
+            file_name
+            for file_name in os.listdir(out_dir)
+            if file_name.startswith("semantic_segmentation_labels_") and file_name.endswith(".json")
+        )
+        self.assertEqual(
+            out_label_files, golden_label_files, f"Semantic segmentation label files mismatch for {out_dir}"
+        )
+
+        for file_name in golden_label_files:
+            with open(os.path.join(golden_dir, file_name), encoding="utf-8") as golden_file:
+                golden_labels = json.load(golden_file)
+            with open(os.path.join(out_dir, file_name), encoding="utf-8") as out_file:
+                out_labels = json.load(out_file)
+
+            golden_label_values = sorted(json.dumps(label, sort_keys=True) for label in golden_labels.values())
+            out_label_values = sorted(json.dumps(label, sort_keys=True) for label in out_labels.values())
+
+            self.assertEqual(
+                out_label_values,
+                golden_label_values,
+                f"Semantic segmentation label comparison failed for {os.path.join(out_dir, file_name)}",
+            )

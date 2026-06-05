@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,16 +13,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// clang-format off
-#include <pch/UsdPCH.h>
-// clang-format on
-
 #include <carb/Types.h>
 
+#include <flatbuffers/flatbuffers.h>
 #include <isaacsim/core/includes/Math.h>
 #include <isaacsim/ucx/nodes/UcxPublishOdometryNodeBase.h>
 
 #include <OgnUCXPublishOdometryDatabase.h>
+#include <odometry_generated.h>
 
 using isaacsim::core::includes::math::operator*; // NOLINT(misc-unused-using-decls)
 
@@ -32,10 +30,7 @@ using isaacsim::core::includes::math::operator*; // NOLINT(misc-unused-using-dec
  * @details
  * This node takes position, orientation, and velocity inputs and publishes odometry data
  * (pose and velocities relative to starting position) over UCX using tagged communication.
- * The odometry includes:
- * - Relative position and orientation (from starting pose)
- * - Body-frame linear and angular velocities
- * - Body-frame linear and angular accelerations
+ * Messages are serialized as FlatBuffers Odometry messages.
  */
 class OgnUCXPublishOdometry : public UCXPublishOdometryNodeBase<OgnUCXPublishOdometryDatabase>
 {
@@ -68,7 +63,6 @@ public:
         const uint64_t tag = db.inputs.tag();
         const uint32_t timeoutMs = db.inputs.timeoutMs();
 
-        // Get the per-instance state and call the instance method
         auto& state = db.template perInstanceState<OgnUCXPublishOdometry>();
         return state.computeImpl(db, port, tag, timeoutMs);
     }
@@ -196,63 +190,59 @@ protected:
     /**
      * @brief Generate message from odometry data.
      * @details
-     * Serializes odometry data into message format.
-     *
-     * Message format:
-     * - timestamp (double, 8 bytes)
-     * - position (3 doubles, 24 bytes) - relative position in body frame
-     * - orientation (4 doubles, 32 bytes) - relative quaternion (w, x, y, z)
-     * - linear_velocity (3 doubles, 24 bytes) - body frame
-     * - angular_velocity (3 doubles, 24 bytes) - body frame
-     * - linear_acceleration (3 doubles, 24 bytes) - body frame
-     * - angular_acceleration (3 doubles, 24 bytes) - body frame
+     * Serializes odometry data as a FlatBuffers Odometry message. Position and orientation
+     * are encoded in a PoseWithCovariance table (covariance omitted). Linear and angular
+     * velocities are encoded in a TwistWithCovariance table (covariance omitted).
+     * All tensors use float32 with shape [N].
      *
      * @param[in] data Odometry data to serialize
-     * @return std::vector<uint8_t> Serialized message data
+     * @return std::vector<uint8_t> Serialized FlatBuffers message
      */
     std::vector<uint8_t> generateMessage(const isaacsim::ucx::nodes::OdometryData& data) override
     {
-        // Calculate message size
-        const size_t messageSize = sizeof(double) + // timestamp
-                                   sizeof(double) * 3 + // position
-                                   sizeof(double) * 4 + // orientation (quaternion)
-                                   sizeof(double) * 3 + // linear_velocity
-                                   sizeof(double) * 3 + // angular_velocity
-                                   sizeof(double) * 3 + // linear_acceleration
-                                   sizeof(double) * 3; // angular_acceleration
+        flatbuffers::FlatBufferBuilder builder;
 
-        std::vector<uint8_t> messageData(messageSize);
-        size_t offset = 0;
+        auto makeTensorF32 = [&](const double* values, size_t count)
+        {
+            std::vector<float> f32(count);
+            for (size_t i = 0; i < count; ++i)
+            {
+                f32[i] = static_cast<float>(values[i]);
+            }
+            auto data_fb = builder.CreateVector(reinterpret_cast<const uint8_t*>(f32.data()), count * sizeof(float));
+            std::vector<int64_t> shape = { static_cast<int64_t>(count) };
+            auto shape_fb = builder.CreateVector(shape);
+            isaac::DLDataType dtype(isaac::DLDataTypeCode_kDLFloat, 32, 1);
+            isaac::DLDevice device(isaac::DLDeviceType_kDLCPU, 0);
+            std::vector<int64_t> strides = { 1 };
+            auto strides_fb = builder.CreateVector(strides);
+            return isaac::CreateTensor(builder, data_fb, shape_fb, &dtype, &device, 1, strides_fb);
+        };
 
-        // Write timestamp
-        std::memcpy(messageData.data() + offset, &data.timestamp, sizeof(double));
-        offset += sizeof(double);
+        // Pose: position (x, y, z) and orientation (w, x, y, z)
+        auto position_fb = makeTensorF32(data.position.data(), 3);
+        auto orientation_fb = makeTensorF32(data.orientation.data(), 4);
+        auto pose_fb = isaac::CreatePose(builder, position_fb, orientation_fb);
+        auto pose_cov_fb = isaac::CreatePoseWithCovariance(builder, pose_fb);
 
-        // Write relative position
-        std::memcpy(messageData.data() + offset, data.position.data(), sizeof(double) * 3);
-        offset += sizeof(double) * 3;
+        // Twist: linear velocity (x, y, z) and angular velocity (x, y, z)
+        auto linear_fb = makeTensorF32(data.linearVelocity.data(), 3);
+        auto angular_fb = makeTensorF32(data.angularVelocity.data(), 3);
+        auto twist_fb = isaac::CreateTwist(builder, linear_fb, angular_fb);
+        auto twist_cov_fb = isaac::CreateTwistWithCovariance(builder, twist_fb);
 
-        // Write relative orientation (w, x, y, z)
-        std::memcpy(messageData.data() + offset, data.orientation.data(), sizeof(double) * 4);
-        offset += sizeof(double) * 4;
+        // Header
+        const int64_t time_ns = static_cast<int64_t>(data.timestamp * 1e9);
+        auto frame_id_fb = builder.CreateString("");
+        auto stamp_fb = isaac::CreateTime(builder, time_ns, 0);
+        auto header_fb = isaac::CreateHeader(builder, stamp_fb, frame_id_fb);
 
-        // Write linear velocity (body frame)
-        std::memcpy(messageData.data() + offset, data.linearVelocity.data(), sizeof(double) * 3);
-        offset += sizeof(double) * 3;
+        auto odometry_fb = isaac::CreateOdometry(builder, header_fb, pose_cov_fb, twist_cov_fb);
+        builder.Finish(odometry_fb);
 
-        // Write angular velocity (body frame)
-        std::memcpy(messageData.data() + offset, data.angularVelocity.data(), sizeof(double) * 3);
-        offset += sizeof(double) * 3;
-
-        // Write linear acceleration (body frame)
-        std::memcpy(messageData.data() + offset, data.linearAcceleration.data(), sizeof(double) * 3);
-        offset += sizeof(double) * 3;
-
-        // Write angular acceleration (body frame)
-        std::memcpy(messageData.data() + offset, data.angularAcceleration.data(), sizeof(double) * 3);
-        offset += sizeof(double) * 3;
-
-        return messageData;
+        uint8_t const* bufPtr = builder.GetBufferPointer();
+        size_t bufSize = builder.GetSize();
+        return std::vector<uint8_t>(bufPtr, bufPtr + bufSize);
     }
 
 private:

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test for prim."""
+
 import isaacsim.core.experimental.utils.backend as backend_utils
 import isaacsim.core.experimental.utils.foundation as foundation_utils
 import isaacsim.core.experimental.utils.prim as prim_utils
@@ -25,19 +27,22 @@ from pxr import Sdf, Usd, UsdGeom, UsdLux, UsdPhysics
 
 
 class TestPrim(omni.kit.test.AsyncTestCase):
+    """Test prim."""
+
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
         # create new stage
         await stage_utils.create_new_stage_async()
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
     async def test_prim_variants(self):
+        """Test prim variants."""
         assets_root_path = await get_assets_root_path_async(skip_check=True)
         prim = stage_utils.add_reference_to_stage(
             usd_path=assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd",
@@ -59,6 +64,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
         self.assertEqual(prim_utils.get_prim_variants(prim), ground_truth, "Wrong authored variants")
 
     async def test_prim_and_path(self):
+        """Test prim and path."""
         usd_prim = stage_utils.define_prim("/World/A", "Cube")
         with backend_utils.use_backend("usdrt"):
             usdrt_prim = stage_utils.define_prim("/World/B", "Cube")
@@ -82,7 +88,8 @@ class TestPrim(omni.kit.test.AsyncTestCase):
         self.assertFalse(prim_utils.get_prim_at_path("/World/C").IsValid())
 
     async def test_find_matching_prim_paths(self):
-        stage_utils.define_prim(f"/World/A")
+        """Test find matching prim paths."""
+        stage_utils.define_prim("/World/A")
         for i in range(2):
             stage_utils.define_prim(f"/World/A{i}")
             stage_utils.define_prim(f"/World/A{i}/B")
@@ -138,6 +145,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
                 self.assertEqual(prim_utils.find_matching_prim_paths(".*C.*", traverse=True), match)
 
     async def test_get_all_matching_child_prims(self):
+        """Test get all matching child prims."""
         stage_utils.define_prim("/World")
         stage_utils.define_prim("/World/A0", "Sphere")
         for i in range(3):
@@ -190,6 +198,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
         )
 
     async def test_get_first_matching_child_prim(self):
+        """Test get first matching child prim."""
         stage_utils.define_prim("/World")
         stage_utils.define_prim("/World/A")
         for i in range(5):
@@ -219,6 +228,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
         self.assertEqual(prim_utils.get_prim_path(child), "/World/A")
 
     async def test_get_first_matching_parent_prim(self):
+        """Test get first matching parent prim."""
         stage_utils.define_prim("/World")
         stage_utils.define_prim("/World/Cube", "Cube")
         stage_utils.define_prim("/World/Cube/Sphere", "Sphere")
@@ -250,6 +260,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
         )
 
     async def test_has_api(self):
+        """Test has api."""
         prim = stage_utils.define_prim("/World/A", "Cube")
         UsdPhysics.RigidBodyAPI.Apply(prim)
         UsdLux.LightAPI.Apply(prim)
@@ -276,6 +287,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
         self.assertRaises(ValueError, prim_utils.has_api, "/World/A", "UnexistingAPI", test="unknown")
 
     async def test_attributes(self):
+        """Test attributes."""
         stage_utils.define_prim(path := "/World/A", "Xform")
         for i, format_ in enumerate([str, Sdf.ValueTypeNames, usdrt.Sdf.ValueTypeNames]):
             for j, value_type_name in enumerate(foundation_utils.get_value_type_names(format=format_)):
@@ -290,6 +302,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
                             prim_utils.create_prim_attribute(path, name=name, type_name=value_type_name, exist_ok=False)
 
     async def test_is_prim_non_root_articulation_link(self):
+        """Test is prim non root articulation link."""
         assets_root_path = await get_assets_root_path_async(skip_check=True)
         stage_utils.add_reference_to_stage(
             usd_path=assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd",
@@ -308,6 +321,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
                 self.assertFalse(prim_utils.is_prim_non_root_articulation_link("/franka/rootJoint"))
 
     async def test_get_prim_attribute_value(self):
+        """Test get prim attribute value."""
         # create a Cube prim (has scalar 'size' attribute)
         prim = stage_utils.define_prim("/World/Cube", "Cube")
         # create custom vector attribute to test vector-to-list conversion
@@ -330,6 +344,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
             prim_utils.get_prim_attribute_value("/World/Cube", "nonexistent_attr")
 
     async def test_get_prim_attribute_names(self):
+        """Test get prim attribute names."""
         for backend in ["usd", "usdrt", "fabric"]:
             with backend_utils.use_backend(backend):
                 prim_type = "Xform" if backend == "usdrt" else "Cube"

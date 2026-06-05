@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The **omni.pip.cloud** extension provides pre-bundled Python packages specifically designed for cloud computing environments. This extension ensures essential cloud-related Python dependencies are available to other extensions without requiring individual package installations.

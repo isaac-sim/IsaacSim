@@ -1,4 +1,29 @@
 # Changelog
+
+## [1.5.0] - 2026-05-04
+### Added
+- RTX Radar menu reorganized into vendor submenus driven by `SUPPORTED_RADAR_CONFIGS`; Generic RTX Radar moved under `NVIDIA`; Texas Instruments IWRL6432AOP added
+- RTX Acoustic menu (`Create > Sensors > RTX Acoustic`) with a generic NVIDIA entry; auto-populates per-vendor entries from `SUPPORTED_ACOUSTIC_CONFIGS`
+
+### Changed
+- Lidar/Radar/Acoustic menu actions now pass a default variant from `SUPPORTED_*_CONFIGS` so multi-variant-set USDs (e.g. SICK `Product` × `Profile`) materialize a valid prim from a single click
+
+## [1.4.1] - 2026-04-24
+### Removed
+- Remove the `omni.isaac.ml_archive` test dependency
+
+## [1.4.0] - 2026-04-21
+### Changed
+- Migrated Lidar creation from `IsaacSensorCreateRtxLidar` Kit command to `Lidar.create()` from `isaacsim.sensors.experimental.rtx`
+- Migrated Radar creation from `IsaacSensorCreateRtxRadar` Kit command to `Radar()` from `isaacsim.sensors.experimental.rtx`
+- Replaced `isaacsim.sensors.rtx` dependency with `isaacsim.sensors.experimental.rtx`
+- Replaced `isaacsim.core.utils.stage` with `isaacsim.core.experimental.utils.stage`
+- Updated tests to use experimental API imports
+
+## [1.3.1] - 2026-04-01
+### Changed
+- Update actions_api.md file
+
 ## [1.3.0] - 2026-03-04
 ### Changed
 - Added Overview.md and python_api.md and updated docstrings

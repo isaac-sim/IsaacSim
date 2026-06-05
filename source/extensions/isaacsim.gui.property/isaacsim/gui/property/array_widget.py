@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,15 +15,14 @@
 
 """Property widgets for array-type USD attributes."""
 
-
 import omni
 import omni.ui as ui
 from omni.kit.property.usd.usd_attribute_model import UsdAttributeModel
 from omni.kit.property.usd.usd_property_widget import UsdPropertiesWidget, UsdPropertyUiEntry
 from omni.kit.property.usd.usd_property_widget_builder import UsdPropertiesWidgetBuilder
 from omni.kit.property.usd.widgets import ICON_PATH
-from omni.kit.window.property.templates import HORIZONTAL_SPACING, LABEL_HEIGHT, LABEL_WIDTH
-from pxr import Gf, Sdf, Tf, Usd
+from omni.kit.window.property.templates import HORIZONTAL_SPACING, LABEL_HEIGHT
+from pxr import Sdf, Tf, Usd
 
 REMOVE_BUTTON_STYLE = style = {"image_url": str(ICON_PATH.joinpath("remove.svg")), "margin": 0, "padding": 0}
 ADD_BUTTON_STYLE = style = {"image_url": str(ICON_PATH.joinpath("plus.svg")), "margin": 1, "padding": 0}
@@ -52,7 +51,17 @@ class _BaseMultiField:
         default: Default value to use when creating new items or initializing empty fields.
     """
 
-    def __init__(self, model, index, count, frame, button_style, callback, field_type, default):
+    def __init__(
+        self,
+        model: object,
+        index: object,
+        count: int,
+        frame: object,
+        button_style: dict,
+        callback: str,
+        field_type: type,
+        default: object,
+    ) -> None:
         self._model = model
         self._index = index
         self._frame = frame
@@ -74,7 +83,7 @@ class _BaseMultiField:
                 )
             )
 
-    def get_field_value(self, index: int):
+    def get_field_value(self, index: int) -> object:
         """Return the value of the field at the given index.
 
         Args:
@@ -85,17 +94,17 @@ class _BaseMultiField:
         """
         raise NotImplementedError
 
-    def remove(self):
+    def remove(self) -> None:
         """Removes the field item from the model and rebuilds the frame."""
         self._model.remove_item(self._index)
         self._frame.rebuild()
 
-    def append(self):
+    def append(self) -> None:
         """Adds the current field value as a new item to the model and rebuilds the frame."""
         self._model.add_item(self.get_tuple())
         self._frame.rebuild()
 
-    def get_tuple(self):
+    def get_tuple(self) -> object:
         """Current field value as a tuple or single value.
 
         Returns:
@@ -129,7 +138,9 @@ class _CustomMultiIntField(_BaseMultiField):
         callback: The callback method name to execute when the button is clicked.
     """
 
-    def __init__(self, model, index, count, frame, button_style, callback):
+    def __init__(
+        self, model: object, index: object, count: int, frame: object, button_style: dict, callback: str
+    ) -> None:
         super().__init__(model, index, count, frame, button_style, callback, ui.MultiIntField, 0)
 
     def get_field_value(self, index: int) -> int:
@@ -142,6 +153,65 @@ class _CustomMultiIntField(_BaseMultiField):
             The integer value at the given index.
         """
         return self._field.get_item_value_model(self._field.get_item_children()[index]).get_value_as_int()
+
+
+class _CustomStringField:
+    """A single-string input field widget for USD ``string[]``/``token[]`` array editing.
+
+    Unlike :class:`_BaseMultiField`, this class does not extend the multi-component base
+    because :class:`omni.ui.StringField` is a single-value field with a different
+    constructor signature and a value-model API (``add_value_changed_fn`` and
+    ``get_value_as_string``) rather than the item-model API used by
+    :class:`omni.ui.MultiIntField` and :class:`omni.ui.MultiFloatField`.
+
+    Args:
+        model: The USD array attribute model that manages the underlying data.
+        index: The index of the array item being edited, or ``None`` for new items.
+        frame: The UI frame that contains this widget and handles rebuilding.
+        button_style: The style dictionary for the add/remove button appearance.
+        callback: The callback method name to execute when the button is clicked
+            (``"remove"`` or ``"append"``).
+        default: Default value used when creating new items. Defaults to ``""``.
+    """
+
+    def __init__(
+        self,
+        model: object,
+        index: object,
+        frame: object,
+        button_style: dict,
+        callback: str,
+        default: str = "",
+    ) -> None:
+        self._model = model
+        self._index = index
+        self._frame = frame
+
+        initial = self._model.get_item(self._index) if index is not None else default
+        self._field = ui.StringField().model
+        self._field.set_value("" if initial is None else str(initial))
+
+        ui.Spacer(width=2)
+        ui.Button(style=button_style, width=16, clicked_fn=getattr(self, callback))
+
+        if self._index is not None:
+            self._field.add_value_changed_fn(
+                lambda m, list_model=self._model, index=self._index: list_model.set_item(index, m.get_value_as_string())
+            )
+
+    def get_value(self) -> str:
+        """Return the current string value of the field."""
+        return self._field.get_value_as_string()
+
+    def remove(self) -> None:
+        """Remove this item from the model and rebuild the frame."""
+        self._model.remove_item(self._index)
+        self._frame.rebuild()
+
+    def append(self) -> None:
+        """Append the current field value as a new item to the model and rebuild the frame."""
+        self._model.add_item(self.get_value())
+        self._frame.rebuild()
 
 
 class _CustomMultiFloatField(_BaseMultiField):
@@ -161,7 +231,9 @@ class _CustomMultiFloatField(_BaseMultiField):
         callback: Name of the callback method to invoke when the button is clicked (e.g., 'remove' or 'append').
     """
 
-    def __init__(self, model, index, count, frame, button_style, callback):
+    def __init__(
+        self, model: object, index: object, count: int, frame: object, button_style: dict, callback: str
+    ) -> None:
         super().__init__(model, index, count, frame, button_style, callback, ui.MultiFloatField, 0.0)
 
     def get_field_value(self, index: int) -> float:
@@ -183,9 +255,9 @@ class _ArrayBaseItem:
     elements within USD array attributes. It creates appropriate input fields based on the array type
     and manages the interaction between the UI and the underlying data model.
 
-    The class supports various USD array types including integer arrays, float arrays, and vector
-    arrays of different dimensions (Vec2, Vec3, Vec4). It automatically determines the appropriate
-    UI field type and count based on the provided type information.
+    The class supports various USD array types including integer arrays, float arrays, vector
+    arrays of different dimensions (Vec2, Vec3, Vec4), and string/token arrays. It automatically
+    determines the appropriate UI field type and count based on the provided type information.
 
     Args:
         type_name: The USD type information specifying the array element type.
@@ -196,19 +268,19 @@ class _ArrayBaseItem:
             structure changes.
     """
 
-    def __init__(self, type_name, model, index=None, frame=None):
+    def __init__(self, type_name: object, model: object, index: object = None, frame: object = None) -> None:
         self._value = None
         self._type_name = type_name
         self._model = model
         self._index = index
         self._frame = frame
 
-    def create_list_item(self, button_style, callback):
+    def create_list_item(self, button_style: dict, callback: str) -> None:
         """Creates a list item UI element based on the array type.
 
-        Creates an appropriate input field (int or float, single or multi-field) with an action button based on the
-        array type name. The UI is built within a horizontal stack and includes the appropriate field type for
-        editing array elements.
+        Creates an appropriate input field (int, float, or string, single or multi-field) with an action button
+        based on the array type name. The UI is built within a horizontal stack and includes the appropriate field
+        type for editing array elements.
 
         Args:
             button_style: Style configuration for the action button.
@@ -231,6 +303,10 @@ class _ArrayBaseItem:
                 _CustomMultiIntField(self._model, self._index, 4, self._frame, button_style, callback)
             elif self._type_name == Tf.Type.FindByName("VtArray<GfVec4f>"):
                 _CustomMultiFloatField(self._model, self._index, 4, self._frame, button_style, callback)
+            elif self._type_name == Tf.Type.FindByName("VtArray<string>"):
+                _CustomStringField(self._model, self._index, self._frame, button_style, callback)
+            elif self._type_name == Tf.Type.FindByName("VtArray<TfToken>"):
+                _CustomStringField(self._model, self._index, self._frame, button_style, callback)
 
 
 class _ArrayWidgetBuilder:
@@ -241,8 +317,8 @@ class _ArrayWidgetBuilder:
     window allows users to modify, add, and remove individual array elements with appropriate input
     fields based on the array's data type.
 
-    Supports various USD array types including int[], float[], and vector arrays (int2[], float2[],
-    int3[], float3[], int4[], float4[]).
+    Supports various USD array types including int[], float[], vector arrays (int2[], float2[],
+    int3[], float3[], int4[], float4[]), and string[]/token[].
 
     Args:
         stage: The USD stage containing the attribute.
@@ -251,7 +327,7 @@ class _ArrayWidgetBuilder:
         model: The UsdArrayAttributeModel that manages the attribute data.
     """
 
-    def __init__(self, stage, attr_name, type_name, model):
+    def __init__(self, stage: object, attr_name: str, type_name: object, model: object) -> None:
         self._model = model
         self._stage = stage
         self._attr_name = attr_name
@@ -262,7 +338,7 @@ class _ArrayWidgetBuilder:
         self._length_label = ui.Label(str(self._model.get_length()), **label_kwargs)
         ui.Button("Edit", clicked_fn=self._create_edit_window)
 
-    def _create_edit_window(self):
+    def _create_edit_window(self) -> None:
         """Creates and displays the array editing window.
 
         Opens a new window with controls for editing array elements, including scrollable list of
@@ -276,7 +352,7 @@ class _ArrayWidgetBuilder:
             with ui.VStack():
                 frame = ui.Frame()
 
-                def rebuild():
+                def rebuild() -> None:
                     with ui.ScrollingFrame():
                         with ui.VStack():
                             for i in range(self._model.get_length()):
@@ -291,8 +367,6 @@ class _ArrayWidgetBuilder:
                 mod = _ArrayBaseItem(self._type_name, self._model, None, frame)
                 mod.create_list_item(ADD_BUTTON_STYLE, "append")
                 ui.Spacer(height=10)
-
-    pass
 
 
 class _UsdArrayAttributeModel(UsdAttributeModel):
@@ -318,7 +392,7 @@ class _UsdArrayAttributeModel(UsdAttributeModel):
         self._update_value()
         return len(self._value)
 
-    def get_value(self):
+    def get_value(self) -> object:
         """Current value of the USD array attribute.
 
         Returns:
@@ -326,7 +400,7 @@ class _UsdArrayAttributeModel(UsdAttributeModel):
         """
         return self._value
 
-    def get_item(self, index: int):
+    def get_item(self, index: int) -> object:
         """Retrieves an item from the USD array attribute at the specified index.
 
         Args:
@@ -337,7 +411,7 @@ class _UsdArrayAttributeModel(UsdAttributeModel):
         """
         return self._value[index]
 
-    def set_item(self, index: int, item):
+    def set_item(self, index: int, item: object) -> None:
         """Updates an item in the USD array attribute at the specified index.
 
         Args:
@@ -348,7 +422,7 @@ class _UsdArrayAttributeModel(UsdAttributeModel):
         new_list[index] = item
         self.set_value(new_list)
 
-    def add_item(self, item):
+    def add_item(self, item: object) -> None:
         """Appends a new item to the end of the USD array attribute.
 
         Args:
@@ -358,7 +432,7 @@ class _UsdArrayAttributeModel(UsdAttributeModel):
         new_list.append(item)
         self.set_value(new_list)
 
-    def remove_item(self, index: int):
+    def remove_item(self, index: int) -> None:
         """Removes an item from the USD array attribute at the specified index.
 
         Args:
@@ -383,6 +457,7 @@ class ArrayPropertiesWidget(UsdPropertiesWidget):
     - ``int2[]``, ``float2[]``: Arrays of 2D vectors
     - ``int3[]``, ``float3[]``: Arrays of 3D vectors
     - ``int4[]``, ``float4[]``: Arrays of 4D vectors
+    - ``string[]``, ``token[]``: Arrays of strings or tokens
 
     When an array attribute is detected, the widget displays the attribute name, type, and current array length,
     along with an "Edit" button. Clicking this button opens a dedicated editing window where users can:
@@ -418,7 +493,7 @@ class ArrayPropertiesWidget(UsdPropertiesWidget):
 
         return True
 
-    def _filter_props_to_build(self, props):
+    def _filter_props_to_build(self, props: list) -> list:
         """Filters properties to include only array-based USD attributes.
 
         Args:
@@ -434,11 +509,22 @@ class ArrayPropertiesWidget(UsdPropertiesWidget):
             if isinstance(prop, Usd.Attribute)
             and any(
                 prop.GetTypeName() == item
-                for item in ["int[]", "float[]", "int2[]", "float2[]", "int3[]", "float3[]", "int4[]", "float4[]"]
+                for item in [
+                    "int[]",
+                    "float[]",
+                    "int2[]",
+                    "float2[]",
+                    "int3[]",
+                    "float3[]",
+                    "int4[]",
+                    "float4[]",
+                    "string[]",
+                    "token[]",
+                ]
             )
         ]
 
-    def build_property_item(self, stage: Usd.Stage, ui_prop: UsdPropertyUiEntry, prim_paths: list[Sdf.Path]):
+    def build_property_item(self, stage: Usd.Stage, ui_prop: UsdPropertyUiEntry, prim_paths: list[Sdf.Path]) -> None:
         """Build the UI for a single array property.
 
         Args:
@@ -458,14 +544,14 @@ class ArrayPropertiesWidget(UsdPropertiesWidget):
     @classmethod
     def _array_builder(
         cls,
-        stage,
-        attr_name,
-        type_name,
-        metadata,
+        stage: object,
+        attr_name: str,
+        type_name: object,
+        metadata: dict,
         prim_paths: list[Sdf.Path],
-        additional_label_kwargs=None,
-        additional_widget_kwargs=None,
-    ):
+        additional_label_kwargs: object = None,
+        additional_widget_kwargs: object = None,
+    ) -> _UsdArrayAttributeModel:
         """Creates an array widget builder for USD array attributes.
 
         Args:

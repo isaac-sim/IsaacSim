@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,8 +16,6 @@
 #pragma once
 
 #include <carb/Interface.h>
-
-#include <cstdint>
 
 namespace isaacsim
 {
@@ -58,7 +56,7 @@ struct EffortSensorReading
  */
 struct IEffortSensor
 {
-    CARB_PLUGIN_INTERFACE("isaacsim::sensors::experimental::physics::IEffortSensor", 1, 0);
+    CARB_PLUGIN_INTERFACE("isaacsim::sensors::experimental::physics::IEffortSensor", 2, 0);
 
     /**
      * @brief Shut down the manager, destroying all sensors and freeing resources.
@@ -69,23 +67,25 @@ struct IEffortSensor
      * @brief Create an effort sensor for the given joint prim.
      * @details Parses the joint path to find the parent articulation root,
      * creates an IArticulationDataView, and resolves the DOF index for the joint.
+     * If a sensor already exists for this prim path the call succeeds without
+     * creating a duplicate.
      * @param jointPrimPath USD path to the joint prim (e.g., "/Robot/Arm/RevoluteJoint").
-     * @return Unique sensor ID (>= 0), or -1 on failure.
+     * @return true on success (sensor created or already exists), false on failure.
      */
-    virtual int64_t createSensor(const char* jointPrimPath) = 0;
+    virtual bool createSensor(const char* jointPrimPath) = 0;
 
     /**
      * @brief Remove a sensor and free its resources.
-     * @param sensorId ID returned by createSensor().
+     * @param jointPrimPath USD path used when the sensor was created.
      */
-    virtual void removeSensor(int64_t sensorId) = 0;
+    virtual void removeSensor(const char* jointPrimPath) = 0;
 
     /**
      * @brief Get the latest reading for a sensor.
-     * @param sensorId ID returned by createSensor().
+     * @param jointPrimPath USD path used when the sensor was created.
      * @return Sensor reading. isValid is false if sensor is disabled or not found.
      */
-    virtual EffortSensorReading getSensorReading(int64_t sensorId) = 0;
+    virtual EffortSensorReading getSensorReading(const char* jointPrimPath) = 0;
 };
 
 } // namespace physics

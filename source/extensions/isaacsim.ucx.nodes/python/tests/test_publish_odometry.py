@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import struct
+"""Test UCX odometry publishing node functionality."""
 
-import isaacsim.core.experimental.utils.app as app_utils
 import numpy as np
 import omni.graph.core as og
 import omni.kit.app
@@ -24,16 +23,17 @@ import omni.kit.test
 import omni.kit.usd
 import ucxx._lib.libucxx as ucx_api
 import usdrt.Sdf
+from isaacsim.ucx.nodes.messages.isaac import Odometry
 from ucxx._lib.arr import Array
 
-from .common import UCXTestCase
+from .common import UCXTestCase, _read_tensor_f32
 
 # Test configuration constants
 CONNECTION_WAIT_FRAMES = 60  # Frames to wait for node listener to initialize
 CONNECTION_ESTABLISH_FRAMES = 20  # Additional frames for connection to establish
 
 
-async def add_cube(path, size, offset):
+async def add_cube(path: str, size: float, offset: list) -> object:
     """Create a cube using experimental API.
 
     Args:
@@ -63,47 +63,35 @@ async def add_cube(path, size, offset):
     return cube
 
 
-def unpack_odometry_message(buffer):
-    """Unpack a UCX odometry message.
-
-    Message format:
-    - timestamp (double, 8 bytes)
-    - position (3 doubles, 24 bytes) - relative position in body frame
-    - orientation (4 doubles, 32 bytes) - relative quaternion (w, x, y, z)
-    - linear_velocity (3 doubles, 24 bytes) - body frame
-    - angular_velocity (3 doubles, 24 bytes) - body frame
-    - linear_acceleration (3 doubles, 24 bytes) - body frame
-    - angular_acceleration (3 doubles, 24 bytes) - body frame
-    Total: 160 bytes
+def unpack_odometry_message(buffer: object) -> tuple:
+    """Unpack a UCX odometry FlatBuffers message.
 
     Args:
-        buffer: Buffer containing the packed odometry message.
+        buffer: Buffer containing the FlatBuffers-encoded odometry message.
 
     Returns:
         Tuple of (timestamp, position, orientation, linear_velocity, angular_velocity,
                 linear_acceleration, angular_acceleration).
+        position is [x, y, z], orientation is [w, x, y, z], velocities are [x, y, z].
+        linear_acceleration and angular_acceleration are always (0, 0, 0) as they are
+        not encoded in the Odometry schema.
     """
-    offset = 0
-    timestamp = struct.unpack("<d", buffer[offset : offset + 8].tobytes())[0]
-    offset += 8
+    buf = bytearray(buffer.tobytes())
+    msg = Odometry.Odometry.GetRootAs(buf, 0)
 
-    position = struct.unpack("<3d", buffer[offset : offset + 24].tobytes())
-    offset += 24
+    timestamp = msg.Header().Stamp().TimeNs() / 1e9
 
-    orientation = struct.unpack("<4d", buffer[offset : offset + 32].tobytes())
-    offset += 32
+    pose = msg.Pose().Pose()
+    position = _read_tensor_f32(pose.Position())
+    orientation = _read_tensor_f32(pose.Orientation())
 
-    linear_velocity = struct.unpack("<3d", buffer[offset : offset + 24].tobytes())
-    offset += 24
+    twist = msg.Twist().Twist()
+    linear_velocity = _read_tensor_f32(twist.Linear())
+    angular_velocity = _read_tensor_f32(twist.Angular())
 
-    angular_velocity = struct.unpack("<3d", buffer[offset : offset + 24].tobytes())
-    offset += 24
-
-    linear_acceleration = struct.unpack("<3d", buffer[offset : offset + 24].tobytes())
-    offset += 24
-
-    angular_acceleration = struct.unpack("<3d", buffer[offset : offset + 24].tobytes())
-    offset += 24
+    # Acceleration is not in the Odometry schema
+    linear_acceleration = (0.0, 0.0, 0.0)
+    angular_acceleration = (0.0, 0.0, 0.0)
 
     return (
         timestamp,
@@ -117,16 +105,17 @@ def unpack_odometry_message(buffer):
 
 
 class TestUCXPublishOdometry(UCXTestCase):
-    """Test UCX odometry publishing"""
+    """Test UCX odometry publishing."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Set up a new stage for odometry publishing tests."""
         await super().setUp()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
         self.CUBE_SCALE = 0.5
 
-    async def setup_ucx_client_with_listener(self):
+    async def setup_ucx_client_with_listener(self) -> None:
         """Setup UCX client to connect to the OmniGraph node's listener.
 
         The OmniGraph nodes create their own internal listeners automatically.
@@ -144,7 +133,7 @@ class TestUCXPublishOdometry(UCXTestCase):
         for _ in range(CONNECTION_ESTABLISH_FRAMES):
             await omni.kit.app.get_app().next_update_async()
 
-    async def receive_odometry_message(self, tag=7, timeout_frames=1000, retry_count=3):
+    async def receive_odometry_message(self, tag: int = 7, timeout_frames: int = 1000, retry_count: int = 3) -> tuple:
         """Receive and unpack an odometry message from the client endpoint.
 
         Args:
@@ -165,7 +154,7 @@ class TestUCXPublishOdometry(UCXTestCase):
 
         for attempt in range(retry_count):
             try:
-                max_buffer_size = 512
+                max_buffer_size = 1024
                 buffer = np.empty(max_buffer_size, dtype=np.uint8)
 
                 # Receive using the endpoint
@@ -201,9 +190,8 @@ class TestUCXPublishOdometry(UCXTestCase):
             "This may indicate a connection issue or the node is not publishing."
         )
 
-    async def test_odometry_input_mode(self):
-        """Test odometry publishing with direct inputs (ROS2-aligned mode)"""
-
+    async def test_odometry_input_mode(self) -> None:
+        """Test odometry publishing with direct inputs (ROS2-aligned mode)."""
         # Create graph with input-based odometry node
         try:
             og.Controller.edit(
@@ -246,7 +234,7 @@ class TestUCXPublishOdometry(UCXTestCase):
         print(f"Received odometry (input mode):")
         print(f"  Timestamp: {timestamp}")
         print(f"  Position: {position}")
-        print(f"  Orientation (WXYZ): {orientation}")
+        print(f"  Orientation (w,x,y,z): {orientation}")
         print(f"  Linear velocity: {lin_vel}")
         print(f"  Angular velocity: {ang_vel}")
 
@@ -260,9 +248,8 @@ class TestUCXPublishOdometry(UCXTestCase):
         self.assertAlmostEqual(position[1], 0.0, places=2)
         self.assertAlmostEqual(position[2], 0.0, places=2)
 
-    async def test_odometry_with_cube(self):
-        """Test odometry publishing with a dynamic cube (input mode)"""
-
+    async def test_odometry_with_cube(self) -> None:
+        """Test odometry publishing with a dynamic cube (input mode)."""
         # Create a dynamic cube with physics enabled
         await add_cube("/World/Cube", 1.0, (0, 0, 1.0))
 
@@ -316,7 +303,7 @@ class TestUCXPublishOdometry(UCXTestCase):
         print(f"Received odometry from cube:")
         print(f"  Timestamp: {timestamp}")
         print(f"  Relative Position: {position}")
-        print(f"  Orientation (WXYZ): {orientation}")
+        print(f"  Orientation (w,x,y,z): {orientation}")
 
         # Verify we got valid data
         self.assertGreater(timestamp, 0.0, "Timestamp should be positive")
@@ -328,9 +315,8 @@ class TestUCXPublishOdometry(UCXTestCase):
         self.assertIsNotNone(position)
         self.assertEqual(len(position), 3, "Position should be a 3D vector")
 
-    async def test_odometry_multiple_messages(self):
-        """Test receiving multiple odometry messages over time"""
-
+    async def test_odometry_multiple_messages(self) -> None:
+        """Test receiving multiple odometry messages over time."""
         # Create simple test setup
         try:
             og.Controller.edit(

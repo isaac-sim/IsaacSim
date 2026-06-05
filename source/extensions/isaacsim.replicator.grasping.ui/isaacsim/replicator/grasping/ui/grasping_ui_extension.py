@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 """Extension that provides a user interface for grasping functionality within Isaac Sim."""
-
 
 import omni.ext
 from omni.kit.menu.utils import MenuHelperExtensionFull
@@ -36,7 +34,7 @@ class GraspingUIExtension(omni.ext.IExt, MenuHelperExtensionFull):
     MENU_GROUP = "Tools/Replicator"
     """Menu group path where the grasping window appears in the interface."""
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize the Grasping extension UI.
 
         Sets up the menu item and window for the Grasping tool in the Tools/Replicator menu group.
@@ -51,7 +49,7 @@ class GraspingUIExtension(omni.ext.IExt, MenuHelperExtensionFull):
             self.MENU_GROUP,
         )
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up the Grasping extension UI.
 
         Removes the menu item and closes any open Grasping windows.

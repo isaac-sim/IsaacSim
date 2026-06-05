@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.14.6] - 2026-05-19
+### Added
+- Add `scroll_to_widget` helper (and `MenuUITestCase.scroll_to_widget`) that locates the enclosing `ui.ScrollingFrame` for a widget and scrolls it into view, used to click widgets pushed off-screen by dynamic sibling content.
+
+
+## [0.14.5] - 2026-05-18
+### Changed
+- `compare_images_in_directories` prints the golden and test directory paths in its header and the full file paths on each failure to make per-image failures unambiguous.
+
+## [0.14.4] - 2026-05-12
+### Changed
+- `compare_usd_files` articulation check will check if the asset contains newton articulation root api or physx articulation root api and test the attributes accordingly
+
+## [0.14.3] - 2026-04-28
+### Fixed
+- `menu_click_with_retry` waits for the requested menu path to resolve before clicking, absorbing the async menubar rebuild that ran after a prior test's window destruction (fixes flaky `ui.Menu item failed to become show`).
+
+## [0.14.2] - 2026-04-13
+### Added
+- Add `omni.kit.viewport.window` as a dependency
+
+## [0.14.1] - 2026-04-08
+### Added
+- Add `_apply_novaluetype_numeric_patch` coverage workaround giving `numpy._globals._NoValueType` `__int__`, `__float__`, and `__index__` methods so `int()`/`float()` calls inside osqp/scipy do not crash under coverage
+
+## [0.14.0] - 2026-03-31
+### Added
+- Add `usd_utils` module with `compare_usd_files` for loading and comparing articulation properties across USD files
+- Add `compare_articulation_properties` for pairwise comparison of articulation member values
+- Add `isaacsim.core.experimental.prims` as a dependency
+
+## [0.13.0] - 2026-03-27
+### Added
+- Add `button_utils` module with `get_widget_screen_center`, `deferred_click`, `deferred_click_widget`, and `discover_template_buttons` for UI button discovery and deferred click automation
+- Add `viewport_utils` module with `project_world_to_screen` for world-to-screen coordinate projection
+- Add `capture_frame_sequence_async` to `image_capture` for capturing multi-frame sequences in app, viewport, or replicator modes
+- Add `navigate_menu_visual` to `menu_utils` for visual menu navigation via mouse emulation
+- Add `_poll_async` helper to `menu_utils` to consolidate frame-polling patterns
+- Add `layout_utils` module with `ensure_dock_height`, `ensure_window_visible`, `close_windows`, and `reset_to_default_layout` for layout and dock management
+- Add `stage_utils` module with `poll_until`, `wait_for_prim`, and `wait_for_stage_prims` for stage polling during UI automation
+
+### Changed
+- Add type annotations throughout all modules
+
+## [0.12.0] - 2026-03-25
+### Added
+- Add `capture_app_screenshot_async` to `image_capture` for full-application swapchain screenshots (headless and windowed)
+- Add `capture_viewport_screenshot_async` to `image_capture` for viewport-only screenshots via replicator annotators
+- Add `save_annotator_data` to `image_io` to dispatch and save any annotator output (array, dict, or PNG) to disk
+- Add `list_menu_paths` to `menu_utils` to enumerate all live menubar paths up to a configurable depth
+- Add `perform_widget_action` to `menu_utils` combining widget find-with-retry and action dispatch in a single call
+
 ## [0.11.1] - 2026-03-07
 ### Fixed
 - Add `omni.kit.material.library` as a dependency

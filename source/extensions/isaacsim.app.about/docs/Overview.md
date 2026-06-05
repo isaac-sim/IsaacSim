@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The Isaac Sim About Window extension provides an About dialog that displays application information and system details. This dialog shows the Isaac Sim application name and version, Kit SDK version, client library version, and a comprehensive list of all currently loaded plugins.

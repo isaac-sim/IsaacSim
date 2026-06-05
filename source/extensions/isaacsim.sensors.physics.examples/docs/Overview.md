@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.sensors.physics.examples extension provides interactive example demonstrations for Isaac Sim physics-based sensors, including contact sensors and IMU sensors. The extension creates dedicated UI windows that allow users to explore sensor functionality through hands-on scenarios and real-time visualization of sensor data.

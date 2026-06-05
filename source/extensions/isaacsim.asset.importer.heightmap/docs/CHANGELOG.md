@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.3.3] - 2026-05-18
+### Changed
+- Size the heightmap ground plane from the generated occupancy map's world-space bounds (via `UsdGeom.BBoxCache`) instead of the raw image dimensions, and create it after the heightmap instances so it always fully covers the geometry.
+
+### Added
+- Added unit tests to capture edge cases.
+
+## [2.3.2] - 2026-05-10
+### Fixed
+- Show the Heightmap Importer file picker after the Load Image button creates it, unblocking PNG selection from the UI (6083539)
+- Raise `ValueError` for non-PIL heightmap inputs before modifying the stage, and propagate image processing failures instead of silently returning an empty heightmap (6132964)
+
+## [2.3.1] - 2026-04-22
+### Fixed
+- Fix heightmap importer crashing on grayscale images (PIL modes `L`, `I`, `F`) that produce 2D numpy arrays
+- Fix `SetDefaultPrim` failing when `/World` prim does not exist; now creates it automatically
+
+## [2.3.0] - 2026-04-08
+### Changed
+- Improve Python API documentation (`config/python_api.md` and/or module docstrings).
+
 ## [2.2.1] - 2026-02-23
 ### Changed
 - Add isaacsim.core.experimental.objects dependency, remove omni.physics.physx dependency for groundplane creation

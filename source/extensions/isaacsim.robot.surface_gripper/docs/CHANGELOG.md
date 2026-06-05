@@ -1,4 +1,38 @@
 # Changelog
+
+## [3.6.1] - 2026-05-21
+### Fixed
+- `SurfaceGripperComponent` now defaults the joint forward axis to ``X`` everywhere (cache initialization, per-joint parse fallback, and `_getJointForwardAxis` out-of-range fallback) to match the ``isaac:forwardAxis`` schema default. The header docstring is updated accordingly. Previously the three C++ fallbacks returned ``Z`` while the schema default was ``X``, producing inconsistent behavior on attachments whose joint was missing the attribute.
+
+## [3.6.0] - 2026-04-21
+### Added
+- Add `create_surface_gripper` public Python API as a direct replacement for the Kit command
+
+### Deprecated
+- Deprecate `CreateSurfaceGripper` Kit command in favor of `create_surface_gripper()`
+
+### Changed
+- Clean up `__init__.py` exports to only expose public API
+
+## [3.5.0] - 2026-04-20
+### Added
+- `SurfaceGripper` OG node (`OgnSurfaceGripper`) gains explicit `Open` and `Close` execution-input pins alongside the existing `Toggle` pin. The OGN node version is bumped from 2 to 3.
+
+### Changed
+- `OgnSurfaceGripper.compute` now dispatches on the firing execution-state of each pin (`db.inputs.<pin> == omni.graph.core.ExecutionAttributeState.ENABLED`) rather than on truthiness, with `Close` taking precedence over `Open` and `Open` over `Toggle` when multiple pins fire in the same tick. Existing graphs that only wire `Toggle` retain their prior behaviour, but graphs that drive `Open` or `Close` now force the requested state unconditionally instead of relying on the toggle fallthrough.
+
+## [3.4.3] - 2026-03-26
+### Changed
+- Moved Python binding module to `bindings/` subdirectory
+
+## [3.4.2] - 2026-03-18
+### Changed
+- Update path of `isaacsim.core.utils` header file that has been relocated
+
+## [3.4.1] - 2026-03-05
+### Removed
+- Remove unused and deprecated extension dependencies
+
 ## [3.4.0] - 2026-03-04
 ### Changed
 - Added Overview.md, python_api.md and updated docstrings

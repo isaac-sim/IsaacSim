@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Common utilities for grasping tests."""
+
 
 def check_grasp_pose_generation_dependencies() -> bool:
     """Check if grasp sampler dependencies are met, used to skip tests if not.
@@ -21,7 +23,7 @@ def check_grasp_pose_generation_dependencies() -> bool:
         True if the dependencies are installed, False otherwise.
     """
     try:
-        import rtree
+        import rtree  # noqa: F401
     except Exception as e:
         print(f"Could not import 'rtree': {e}.")
         return False

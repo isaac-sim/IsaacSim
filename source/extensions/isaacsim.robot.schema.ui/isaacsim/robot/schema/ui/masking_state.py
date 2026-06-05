@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """State management for robot masking (deactivation of joints and links)."""
 
 from __future__ import annotations
@@ -283,7 +284,10 @@ class MaskingState:
 
         Returns:
             False if the prim is a backward joint locked by an active link
-            bypass (no change); True if now deactivated, False if now active.
+            bypass (no change); True if now deactivated, False if now active
+            (either because the prim was already masked and was un-masked, or
+            because the underlying USD mask operation was rejected by the
+            backend — in the latter case the in-memory set is NOT mutated).
         """
         if self.is_bypass_controlled(original_path):
             return False
@@ -297,9 +301,11 @@ class MaskingState:
             self._bypassed_paths.discard(original_path)
             result = False
         else:
-            self._do_mask(original_path)
-            self._deactivated_paths.add(original_path)
-            result = True
+            if self._do_mask(original_path):
+                self._deactivated_paths.add(original_path)
+                result = True
+            else:
+                result = False
         self._notify_changed()
         return result
 
@@ -307,6 +313,8 @@ class MaskingState:
         """Apply deactivation state without notifying subscribers.
 
         Skips bypass-controlled joints (those locked by an active link bypass).
+        The in-memory deactivated set is only mutated to record activation when
+        the backend mask operation reports success.
 
         Args:
             original_path: Original stage prim path string.
@@ -316,8 +324,8 @@ class MaskingState:
             return
         if deactivated:
             if original_path not in self._deactivated_paths:
-                self._do_mask(original_path)
-                self._deactivated_paths.add(original_path)
+                if self._do_mask(original_path):
+                    self._deactivated_paths.add(original_path)
         else:
             if original_path in self._deactivated_paths:
                 if original_path in self._bypassed_paths:
@@ -360,31 +368,54 @@ class MaskingState:
         Returns:
             False if the prim is a backward joint locked by an active link
             bypass (no change); True if now bypassed, False if now unbypassed.
+            The returned value tracks the actual masking state, never an
+            aspirational one:
+
+            * If the backend rejects ``bypass_prim``, the in-memory sets are
+              left untouched and the call returns False (still unbypassed).
+            * If the backend rejects ``unbypass_prim``, the in-memory sets
+              are left untouched and the call returns True (still bypassed).
         """
         if self.is_bypass_controlled(original_path):
             return False
         if original_path in self._bypassed_paths:
-            self._do_unbypass(original_path)
-            self._discard_bypass_joint(original_path)
-            self._deactivated_paths.discard(original_path)
-            self._bypassed_paths.discard(original_path)
-            result = False
+            success, _ = self._do_unbypass(original_path)
+            if success:
+                self._discard_bypass_joint(original_path)
+                self._deactivated_paths.discard(original_path)
+                self._bypassed_paths.discard(original_path)
+                result = False
+            else:
+                # Unbypass rejected by backend; USD opinions are unchanged so
+                # leave the in-memory sets unchanged too -- otherwise we would
+                # re-introduce the same in-memory/USD divergence on the
+                # opposite direction that this fix set out to remove.
+                result = True
         else:
             # If already masked, unmask first so bypass starts clean
-            if original_path in self._deactivated_paths:
+            was_masked = original_path in self._deactivated_paths
+            if was_masked:
                 self._do_unmask(original_path)
                 self._deactivated_paths.discard(original_path)
-            result_data = self._do_bypass(original_path)
-            self._deactivated_paths.add(original_path)
-            self._bypassed_paths.add(original_path)
-            if result_data:
-                joint_path, prev_state = result_data
-                self._bypass_deactivated_joints[original_path] = (joint_path, prev_state)
-                if prev_state == "enabled":
-                    # Only newly deactivated joints need to be added
-                    self._deactivated_paths.add(joint_path)
-                # "masked" and "bypassed": joint already in deactivated/bypassed paths
-            result = True
+            success, joint_info = self._do_bypass(original_path)
+            if success:
+                self._deactivated_paths.add(original_path)
+                self._bypassed_paths.add(original_path)
+                if joint_info:
+                    joint_path, prev_state = joint_info
+                    self._bypass_deactivated_joints[original_path] = (joint_path, prev_state)
+                    if prev_state == "enabled":
+                        # Only newly deactivated joints need to be added
+                        self._deactivated_paths.add(joint_path)
+                    # "masked" and "bypassed": joint already in deactivated/bypassed paths
+                result = True
+            else:
+                # Bypass rejected by backend; do NOT pollute the in-memory sets.
+                # If we pre-emptively unmasked above, restore the prior mask so
+                # the user-visible state matches the pre-toggle situation.
+                if was_masked and self._do_mask(original_path):
+                    self._deactivated_paths.add(original_path)
+                result = False
         self._notify_changed()
         return result
 
@@ -392,6 +423,8 @@ class MaskingState:
         """Apply bypass state without notifying subscribers.
 
         Skips bypass-controlled joints (those locked by an active link bypass).
+        The in-memory bypass set is only mutated to record activation when the
+        backend bypass operation reports success.
 
         Args:
             original_path: Original stage prim path string.
@@ -401,23 +434,33 @@ class MaskingState:
             return
         if bypassed:
             if original_path not in self._bypassed_paths:
-                if original_path in self._deactivated_paths:
+                was_masked = original_path in self._deactivated_paths
+                if was_masked:
                     self._do_unmask(original_path)
                     self._deactivated_paths.discard(original_path)
-                result_data = self._do_bypass(original_path)
-                self._deactivated_paths.add(original_path)
-                self._bypassed_paths.add(original_path)
-                if result_data:
-                    joint_path, prev_state = result_data
-                    self._bypass_deactivated_joints[original_path] = (joint_path, prev_state)
-                    if prev_state == "enabled":
-                        self._deactivated_paths.add(joint_path)
+                success, joint_info = self._do_bypass(original_path)
+                if success:
+                    self._deactivated_paths.add(original_path)
+                    self._bypassed_paths.add(original_path)
+                    if joint_info:
+                        joint_path, prev_state = joint_info
+                        self._bypass_deactivated_joints[original_path] = (joint_path, prev_state)
+                        if prev_state == "enabled":
+                            self._deactivated_paths.add(joint_path)
+                else:
+                    # Restore prior mask on failure so the pre-call state is
+                    # preserved (matches toggle_bypassed semantics).
+                    if was_masked and self._do_mask(original_path):
+                        self._deactivated_paths.add(original_path)
         else:
             if original_path in self._bypassed_paths:
-                self._do_unbypass(original_path)
-                self._discard_bypass_joint(original_path)
-                self._deactivated_paths.discard(original_path)
-                self._bypassed_paths.discard(original_path)
+                success, _ = self._do_unbypass(original_path)
+                if success:
+                    self._discard_bypass_joint(original_path)
+                    self._deactivated_paths.discard(original_path)
+                    self._bypassed_paths.discard(original_path)
+                # On failure leave the in-memory sets unchanged so they keep
+                # tracking the actual USD state (mirrors ``toggle_bypassed``).
 
     def set_bypassed(self, original_path: str, bypassed: bool) -> None:
         """Set bypass state explicitly for a single prim.
@@ -468,24 +511,30 @@ class MaskingState:
             original_path: Original stage prim path string.
 
         Returns:
-            True if now anchored, False if now unanchored.
+            True if now anchored, False if now unanchored. Also returns False
+            — leaving in-memory state untouched — when the backend rejects the
+            anchor operation (e.g. the prim is not a link or has no
+            ``RigidBodyAPI``). The returned value tracks the actual anchor
+            state, never an aspirational one.
         """
         if original_path in self._anchored_paths:
             self._do_unanchor(original_path)
             self._anchored_paths.discard(original_path)
             result = False
         else:
-            self._do_anchor(original_path)
-            self._anchored_paths.add(original_path)
-            result = True
+            if self._do_anchor(original_path):
+                self._anchored_paths.add(original_path)
+                result = True
+            else:
+                result = False
         self._notify_changed()
         return result
 
     def _set_anchored_impl(self, original_path: str, anchored: bool) -> None:
         if anchored:
             if original_path not in self._anchored_paths:
-                self._do_anchor(original_path)
-                self._anchored_paths.add(original_path)
+                if self._do_anchor(original_path):
+                    self._anchored_paths.add(original_path)
         else:
             if original_path in self._anchored_paths:
                 self._do_unanchor(original_path)
@@ -543,65 +592,130 @@ class MaskingState:
 
     # -- internal ---------------------------------------------------------
 
-    def _do_mask(self, path: str) -> None:
+    def _do_mask(self, path: str) -> bool:
+        """Call mask operation; returns True iff the backend reported success.
+
+        When no operations backend is configured, returns ``True`` so the
+        state machine can be exercised standalone (e.g. in unit tests).
+        """
         if self._operations:
             try:
-                self._operations.mask_prim(path)
+                return bool(self._operations.mask_prim(path))
             except Exception as exc:
                 carb.log_error(f"Failed to mask prim at {path}: {exc}\n{traceback.format_exc()}")
+                return False
+        return True
 
-    def _do_unmask(self, path: str) -> None:
+    def _do_unmask(self, path: str) -> bool:
+        """Call unmask operation; returns True iff the backend reported success.
+
+        When no operations backend is configured, returns ``True``.
+        """
         if self._operations:
             try:
-                self._operations.unmask_prim(path)
+                return bool(self._operations.unmask_prim(path))
             except Exception as exc:
                 carb.log_error(f"Failed to unmask prim at {path}: {exc}\n{traceback.format_exc()}")
+                return False
+        return True
 
-    def _do_bypass(self, path: str) -> tuple[str, str] | None:
-        """Call bypass operation; returns (joint_path, prev_state) for link bypass.
+    def _do_bypass(self, path: str) -> tuple[bool, tuple[str, str] | None]:
+        """Call bypass operation.
 
         Args:
             path: Original stage prim path string.
 
         Returns:
-            ``(backward_joint_path, prev_state)`` for a link bypass, or ``None``.
+            ``(success, joint_info)`` where ``success`` is True iff USD masking
+            opinions were written, and ``joint_info`` is
+            ``(backward_joint_path, prev_state)`` for a link bypass that
+            disabled a backward joint or ``None`` otherwise. When no operations
+            backend is configured, returns ``(True, None)``.
         """
         if self._operations:
             try:
-                return self._operations.bypass_prim(path)
+                result = self._operations.bypass_prim(path)
             except Exception as exc:
                 carb.log_error(f"Failed to bypass prim at {path}: {exc}\n{traceback.format_exc()}")
-        return None
+                return (False, None)
+            return self._normalize_bypass_result(result)
+        return (True, None)
 
-    def _do_unbypass(self, path: str) -> tuple[str, str] | None:
-        """Call unbypass operation; returns (joint_path, prev_state) for link unbypass.
+    def _do_unbypass(self, path: str) -> tuple[bool, tuple[str, str] | None]:
+        """Call unbypass operation.
 
         Args:
             path: Original stage prim path string.
 
         Returns:
-            ``(backward_joint_path, prev_state)`` for a link unbypass, or ``None``.
+            ``(success, joint_info)`` where ``joint_info`` is
+            ``(backward_joint_path, prev_state)`` for a link unbypass or
+            ``None``. When no operations backend is configured, returns
+            ``(True, None)``.
         """
         if self._operations:
             try:
-                return self._operations.unbypass_prim(path)
+                result = self._operations.unbypass_prim(path)
             except Exception as exc:
                 carb.log_error(f"Failed to unbypass prim at {path}: {exc}\n{traceback.format_exc()}")
-        return None
+                return (False, None)
+            return self._normalize_bypass_result(result)
+        return (True, None)
 
-    def _do_anchor(self, path: str) -> None:
+    def _do_anchor(self, path: str) -> bool:
+        """Call anchor operation; returns True iff the backend reported success.
+
+        When no operations backend is configured, returns ``True``.
+        """
         if self._operations:
             try:
-                self._operations.anchor_link(path)
+                return bool(self._operations.anchor_link(path))
             except Exception as exc:
                 carb.log_error(f"Failed to anchor link at {path}: {exc}\n{traceback.format_exc()}")
+                return False
+        return True
 
-    def _do_unanchor(self, path: str) -> None:
+    def _do_unanchor(self, path: str) -> bool:
+        """Call unanchor operation; returns True iff the backend reported success.
+
+        When no operations backend is configured, returns ``True``.
+        """
         if self._operations:
             try:
-                self._operations.unanchor_link(path)
+                return bool(self._operations.unanchor_link(path))
             except Exception as exc:
                 carb.log_error(f"Failed to unanchor link at {path}: {exc}\n{traceback.format_exc()}")
+                return False
+        return True
+
+    @staticmethod
+    def _normalize_bypass_result(result: Any) -> tuple[bool, tuple[str, str] | None]:
+        """Normalize a backend bypass/unbypass return value.
+
+        Backends MUST return ``(success: bool, joint_info: tuple[str, str] | None)``.
+        Any other shape (including a bare ``None`` or a bare joint tuple) is
+        treated as failure and produces a warning; the previous "bare ``None``
+        implies success" contract was the source of the silent-success defect.
+
+        Args:
+            result: Raw value from ``bypass_prim``/``unbypass_prim``.
+
+        Returns:
+            ``(success, joint_info)`` with ``success`` being a plain bool and
+            ``joint_info`` being either ``None`` or a 2-tuple of strings.
+        """
+        if isinstance(result, tuple) and len(result) == 2 and isinstance(result[0], bool):
+            success, joint_info = result
+            if joint_info is None:
+                return (bool(success), None)
+            if isinstance(joint_info, tuple) and len(joint_info) == 2:
+                return (bool(success), (str(joint_info[0]), str(joint_info[1])))
+            return (bool(success), None)
+        carb.log_warn(
+            f"masking_ops backend returned unsupported value {result!r}; treating as failure. "
+            "Backends must return (success: bool, joint_info: tuple[str, str] | None)."
+        )
+        return (False, None)
 
     def _discard_bypass_joint(self, link_path: str) -> None:
         """Restore backward joint UI state when a link is unbypassed.

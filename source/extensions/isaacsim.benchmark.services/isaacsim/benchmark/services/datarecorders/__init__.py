@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +17,6 @@
 
 """Data recorders for capturing various performance and system metrics during Isaac Sim benchmark execution."""
 
-
 from .app_frametime import AppFrametimeRecorder
 from .cpu_continuous import CPUContinuousRecorder
 from .gpu_frametime import GPUFrametimeRecorder
@@ -25,6 +24,7 @@ from .hardware import HardwareSpecRecorder
 from .interface import InputContext, MeasurementData, MeasurementDataRecorder, MeasurementDataRecorderRegistry
 from .memory import MemoryRecorder
 from .physics_frametime import PhysicsFrametimeRecorder
+from .physics_step_interval import PhysicsStepIntervalRecorder
 from .render_frametime import RenderFrametimeRecorder
 from .runtime import RuntimeRecorder
 from .stats_utils import Stats
@@ -38,6 +38,7 @@ __all__ = [
     # Frametime recorders
     "AppFrametimeRecorder",
     "PhysicsFrametimeRecorder",
+    "PhysicsStepIntervalRecorder",
     "GPUFrametimeRecorder",
     "RenderFrametimeRecorder",
     # System recorders

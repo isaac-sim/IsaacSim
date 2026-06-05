@@ -1,9 +1,10 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
+#
 # http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
@@ -16,14 +17,51 @@
 
 from __future__ import annotations
 
-import json
 import logging
 
 from pxr import Usd, UsdGeom, UsdPhysics
 
-from . import importer_utils, stage_utils
+from . import importer_utils
+
+__all__ = [
+    "clean_mesh_operation",
+    "generate_mesh_uv_normals_operation",
+    "merge_meshes_operation",
+    "merge_mesh",
+]
 
 _logger = logging.getLogger(__name__)
+
+try:
+    from omni.scene.optimizer.core import ExecutionContext, SceneOptimizerCore
+
+    _HAS_SCENE_OPTIMIZER = True
+except ImportError:
+    _HAS_SCENE_OPTIMIZER = False
+
+
+def _create_optimizer_context(stage: Usd.Stage) -> tuple:
+    """Create a Scene Optimizer execution context bound to *stage*.
+
+    Args:
+        stage: USD stage to operate on.
+
+    Returns:
+        Tuple of ``(SceneOptimizerCore, ExecutionContext)``.
+
+    Raises:
+        RuntimeError: If ``omni.scene.optimizer.core`` is not available.
+    """
+    if not _HAS_SCENE_OPTIMIZER:
+        raise RuntimeError("omni.scene.optimizer.core is not installed")
+
+    context = ExecutionContext()
+    context.set_stage(stage)
+    context.generateReport = 0
+    context.captureStats = 0
+
+    core = SceneOptimizerCore.getInstance()
+    return core, context
 
 
 def clean_mesh_operation(stage: Usd.Stage) -> None:
@@ -33,34 +71,25 @@ def clean_mesh_operation(stage: Usd.Stage) -> None:
         stage: USD stage for executing clean operations.
     """
     try:
-        import omni.kit.commands
-        import omni.scene.optimizer.core
-
-        clean_config = {
-            "operation": "meshCleanup",
-            "paths": [],
-            "mergeVertices": True,
-            "tolerance": 0.0,
-            "mergeBoundaries": True,
-            "mergeNeighbors": True,
-            "contractDegenerateEdges": True,
-            "removeDegenerateFaces": True,
-            "removeIsolatedVertices": True,
-            "removeDuplicateFaces": True,
-            "makeManifold": True,
-        }
-
-        args = {"jsonFile": json.dumps([clean_config])}
-        context = omni.scene.optimizer.core.ExecutionContext()
-        context.usdStageId = stage_utils.get_stage_id(stage)
-        context.generateReport = 0
-        context.captureStats = 0
-
-        omni.kit.commands.execute("SceneOptimizerJsonParser", context=context, args=args)
-
-    except ImportError:
-        _logger.error("omni.kit.commands and omni.scene.optimizer.core are not installed")
+        core, context = _create_optimizer_context(stage)
+    except RuntimeError:
+        _logger.error("omni.scene.optimizer.core is not installed")
         return
+
+    clean_config = {
+        "paths": [],
+        "mergeVertices": True,
+        "tolerance": 0.0,
+        "mergeBoundaries": True,
+        "mergeNeighbors": True,
+        "contractDegenerateEdges": True,
+        "removeDegenerateFaces": True,
+        "removeIsolatedVertices": True,
+        "removeDuplicateFaces": True,
+        "makeManifold": True,
+    }
+
+    core.executeOperation("meshCleanup", context, clean_config)
 
 
 def generate_mesh_uv_normals_operation(stage: Usd.Stage) -> None:
@@ -70,43 +99,30 @@ def generate_mesh_uv_normals_operation(stage: Usd.Stage) -> None:
         stage: USD stage for executing generate operations.
     """
     try:
-        import omni.kit.commands
-        import omni.scene.optimizer.core
-
-        generate_normal_config = {
-            "operation": "generateNormals",
-            "paths": [],  # default to all meshes
-            "binding": 0,
-            "replaceExisting": True,
-            "weightMode": 0,
-            "sharpnessAngle": 60.0,
-            "gpuThreshold": 500000,
-        }
-
-        generate_uv_config = {
-            "operation": "generateProjectionUVs",
-            "paths": [],  # default to all meshes
-            "projectionType": 4,  # cube projection (default)
-            "useWorldSpaceScales": True,
-            "scaleFactor": 0.01,  # scale factor meters
-            "overwriteExisting": True,
-        }
-
-        generate_normal_args = {"jsonFile": json.dumps([generate_normal_config])}
-        generate_uv_args = {"jsonFile": json.dumps([generate_uv_config])}
-        context = omni.scene.optimizer.core.ExecutionContext()
-        context.usdStageId = stage_utils.get_stage_id(stage)
-        context.generateReport = 0
-        context.captureStats = 0
-
-        omni.kit.commands.execute(
-            "SceneOptimizerJsonParser", context=context, args=generate_normal_args
-        )  # crashes in 109
-        omni.kit.commands.execute("SceneOptimizerJsonParser", context=context, args=generate_uv_args)
-
-    except ImportError:
-        _logger.error("omni.kit.commands and omni.scene.optimizer.core are not installed")
+        core, context = _create_optimizer_context(stage)
+    except RuntimeError:
+        _logger.error("omni.scene.optimizer.core is not installed")
         return
+
+    generate_normal_config = {
+        "paths": [],
+        "binding": 0,
+        "replaceExisting": True,
+        "weightMode": 0,
+        "sharpnessAngle": 60.0,
+        "gpuThreshold": 500000,
+    }
+
+    generate_uv_config = {
+        "paths": [],
+        "projectionType": 4,
+        "useWorldSpaceScales": True,
+        "scaleFactor": 0.01,
+        "overwriteExisting": True,
+    }
+
+    core.executeOperation("generateNormals", context, generate_normal_config)
+    core.executeOperation("generateProjectionUVs", context, generate_uv_config)
 
 
 def merge_meshes_operation(stage: Usd.Stage) -> int:
@@ -183,38 +199,29 @@ def merge_mesh(stage: Usd.Stage, meshes: list[str]) -> None:
         >>> stage_utils.use_stage(stage)
         >>> merge_mesh(stage, ["/World/meshA", "/World/meshB"])  # doctest: +SKIP
     """
-    try:
-        import omni.kit.commands
-        import omni.scene.optimizer.core
-
-        if not meshes:
-            return
-
-        merge_config = {
-            "operation": "merge",
-            "meshPrimPaths": list(meshes),
-            "considerMaterials": False,
-            "materialAlbedoAsVertexColors": False,
-            "originalGeomOption": 1,
-            "mergePoint": 0,
-            "rootPath": meshes[0],
-            "considerAllAttributes": True,
-            "allowSingleMeshes": False,
-            "spatialMode": 0,
-            "spatialThreshold": 10.0,
-            "spatialMaxSize": 0.0,
-            "spatialVertexCount": 10000,
-            "spatialDebug": True,
-        }
-
-        args = {"jsonFile": json.dumps([merge_config])}
-        context = omni.scene.optimizer.core.ExecutionContext()
-        context.usdStageId = stage_utils.get_stage_id(stage)
-        context.generateReport = 0
-        context.captureStats = 0
-
-        omni.kit.commands.execute("SceneOptimizerJsonParser", context=context, args=args)
-
-    except ImportError:
-        _logger.error("omni.kit.commands and omni.scene.optimizer.core are not installed")
+    if not meshes:
         return
+
+    try:
+        core, context = _create_optimizer_context(stage)
+    except RuntimeError:
+        _logger.error("omni.scene.optimizer.core is not installed")
+        return
+
+    merge_config = {
+        "meshPrimPaths": list(meshes),
+        "considerMaterials": False,
+        "materialAlbedoAsVertexColors": False,
+        "originalGeomOption": 1,
+        "mergePoint": 0,
+        "rootPath": meshes[0],
+        "considerAllAttributes": True,
+        "allowSingleMeshes": False,
+        "spatialMode": 0,
+        "spatialThreshold": 10.0,
+        "spatialMaxSize": 0.0,
+        "spatialVertexCount": 10000,
+        "spatialDebug": True,
+    }
+
+    core.executeOperation("merge", context, merge_config)

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,6 @@
 
 """Test module for physics simulation behavior and USD integration in Isaac Sim."""
 
-
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
@@ -24,7 +23,6 @@ import omni.timeline
 from isaacsim.core.experimental.objects import Cube
 from isaacsim.core.experimental.prims import GeomPrim, RigidPrim, XformPrim
 from isaacsim.core.experimental.utils.app import get_extension_path
-from isaacsim.core.experimental.utils.prim import get_prim_at_path
 from isaacsim.storage.native import get_assets_root_path_async
 from pxr import Gf, Sdf, UsdGeom, UsdPhysics
 
@@ -49,7 +47,6 @@ class TestPhysics(omni.kit.test.AsyncTestCase):
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
-        pass
 
     async def test_usd_updates(self):
         """Test that physics updates propagate to USD when enabled."""
@@ -76,11 +73,9 @@ class TestPhysics(omni.kit.test.AsyncTestCase):
         position = positions.numpy()[0]
         self.assertAlmostEqual(position[2], 25.0, 0)
         carb.settings.get_settings().set_int("physics/updateToUsd", True)
-        pass
 
     async def test_rigid_body(self):
         """Test rigid body physics equations of motion under gravity."""
-
         dt = 1.0 / self._physics_rate
 
         # add scene
@@ -126,7 +121,6 @@ class TestPhysics(omni.kit.test.AsyncTestCase):
             self.assertAlmostEqual(p_1[2], p_expected, 0)
             time_elapsed += dt
         omni.timeline.get_timeline_interface().stop()
-        pass
 
     async def test_reparenting(self):
         """Test that prim reparenting works during simulation."""
@@ -246,7 +240,7 @@ class TestPhysics(omni.kit.test.AsyncTestCase):
         timeline = omni.timeline.get_timeline_interface()
         extension_path = get_extension_path("isaacsim.test.collection")
         usd_path = extension_path + "/data/tests/articulation_drives_opposite.usd"
-        (result, error) = await stage_utils.open_stage_async(usd_path)
+        result, error = await stage_utils.open_stage_async(usd_path)
         # Make sure the stage loaded
         self.assertTrue(result)
 
@@ -269,7 +263,7 @@ class TestPhysics(omni.kit.test.AsyncTestCase):
         self.assertGreater(xpos_1, 2)
         self.assertGreater(xpos_2, 2)
 
-    async def test_delete(self):
+    async def test_delete(self) -> None:
         """Test deleting articulations during simulation does not crash."""
         self._timeline = omni.timeline.get_timeline_interface()
         self._assets_root_path = await get_assets_root_path_async()

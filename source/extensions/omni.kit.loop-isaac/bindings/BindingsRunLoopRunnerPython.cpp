@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -94,17 +94,6 @@ PYBIND11_MODULE(_loop, m)
                     :obj:`double`: The time step size in seconds.
 
                 )pbdoc",
-             py::arg("name") = "")
-        .def("set_next_simulation_time", wrapInterfaceFunction(&IRunLoopRunnerImpl::setNextSimulationTime),
-             R"pbdoc(
-                Sets the next simulation time to be picked up by the run loop.
-
-                Args:
-                    time (:obj:`double`): The simulation time value in seconds. Use negative value to reset to frame-based time.
-
-                    name (:obj:`str`): The name of the run loop. If name is an empty string, all active run loops are set.
-
-                )pbdoc",
-             py::arg("time") = 0.0, py::arg("name") = "");
+             py::arg("name") = "");
 }
 }

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,12 +12,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import omni.asset_validator.core as av_core
+
+"""Material validation rules for Isaac Sim assets."""
+
+from collections.abc import Iterator
+
 from omni.asset_validator.core import registerRule
 from pxr import Usd, UsdShade
 
+from .util import DedupBaseRuleChecker
 
-def traverse_without_references_payloads(prim):
+
+def traverse_without_references_payloads(prim: "Usd.Prim") -> Iterator:
     """Recursively traverse prim hierarchy excluding references and payloads.
 
     Args:
@@ -25,6 +31,10 @@ def traverse_without_references_payloads(prim):
 
     Yields:
         USD prims in the hierarchy that don't have references or payloads.
+
+    Returns:
+        Iterator over the same prims as yielded (depth-first, children with
+        authored references or payloads skipped).
     """
     yield prim
 
@@ -38,14 +48,14 @@ def traverse_without_references_payloads(prim):
 
 
 @registerRule("IsaacSim.SimReadyAssetRules")
-class NoNestedMaterials(av_core.BaseRuleChecker):
+class NoNestedMaterials(DedupBaseRuleChecker):
     """Validates that materials don't contain nested materials.
 
     This rule checks that UsdShade.Material prims don't have child prims that are also
     materials, which can cause unexpected rendering behavior.
     """
 
-    def CheckPrim(self, prim: Usd.Prim) -> None:
+    def CheckPrim(self, prim: Usd.Prim) -> None:  # noqa: N802
         """Check if a material prim contains nested materials.
 
         Args:
@@ -63,14 +73,14 @@ class NoNestedMaterials(av_core.BaseRuleChecker):
 
 
 @registerRule("IsaacSim.SimReadyAssetRules")
-class MaterialsOnTopLevelOnly(av_core.BaseRuleChecker):
+class MaterialsOnTopLevelOnly(DedupBaseRuleChecker):
     """Validates that materials are only defined in the top-level Looks prim.
 
     This rule checks that all UsdShade.Material prims are direct children of the
     top-level Looks prim, following USD best practices for material organization.
     """
 
-    def CheckStage(self, stage: Usd.Stage) -> None:
+    def CheckStage(self, stage: Usd.Stage) -> None:  # noqa: N802
         """Check if all materials are properly organized in the Looks prim.
 
         Args:

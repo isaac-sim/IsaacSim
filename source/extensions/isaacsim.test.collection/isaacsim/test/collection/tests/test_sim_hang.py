@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,6 @@
 
 """Tests for various hang and crash bugs in Isaac Sim simulation."""
 
-
 import asyncio
 
 import carb
@@ -26,10 +25,9 @@ import omni.kit.test
 import omni.timeline
 from isaacsim.core.experimental.objects import Cube
 from isaacsim.core.experimental.prims import GeomPrim, RigidPrim
+from isaacsim.core.experimental.utils.stage import open_stage_async
 from isaacsim.storage.native import get_assets_root_path_async
 from pxr import Usd, UsdPhysics
-
-from .robot_helpers import open_stage_async
 
 
 def create_fixed_cuboid(stage: Usd.Stage, prim_path: str, position: list, scale: list):
@@ -69,8 +67,6 @@ class TestHangBugs(omni.kit.test.AsyncTestCase):
 
         await app_utils.update_app_async()
 
-        pass
-
     # After running each test
     async def tearDown(self):
         """Clean up test environment and stop timeline."""
@@ -79,7 +75,6 @@ class TestHangBugs(omni.kit.test.AsyncTestCase):
             print("tearDown, assets still loading, waiting to finish...")
             await asyncio.sleep(1.0)
         await app_utils.update_app_async()
-        pass
 
     async def test_prim_visibility_bug(self):
         """Test that making prim invisible and deleting it does not crash."""
@@ -92,7 +87,7 @@ class TestHangBugs(omni.kit.test.AsyncTestCase):
         #     Set it to be invisible
         #     Delete it
 
-        from pxr import Gf, UsdGeom
+        from pxr import UsdGeom
 
         self._timeline = omni.timeline.get_timeline_interface()
         stage = omni.usd.get_context().get_stage()
@@ -118,7 +113,6 @@ class TestHangBugs(omni.kit.test.AsyncTestCase):
 
     async def test_segfault_bug(self):
         """Test that recreating cuboids with different scales does not segfault."""
-
         # Bug Report:
         #     A strange combination of events has to take place.
 
@@ -167,7 +161,7 @@ class TestHangBugs(omni.kit.test.AsyncTestCase):
         usd_path += "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd"
 
         for i in range(100):
-            (result, error) = await open_stage_async(usd_path)
+            result, error = await open_stage_async(usd_path)
             await app_utils.update_app_async()
             self.assertTrue(result)
 

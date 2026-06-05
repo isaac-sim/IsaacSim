@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Benchmark Nova Carter robot with ROS2 bridge performance."""
 
 import argparse
 
@@ -45,7 +47,7 @@ parser.add_argument(
     "--async-render-handshake", action="store_true", help="Run with async rendering and handshake enabled"
 )
 parser.add_argument(
-    "--async-render-warmup-frames", type=int, default=15, help="Number of frames to warmup the render thread"
+    "--tick-rate", type=float, default=0.0, help="Tick rate for camera sensors (Hz). 0.0 means default rate."
 )
 
 args, unknown = parser.parse_known_args()
@@ -60,15 +62,16 @@ gpu_frametime = args.gpu_frametime
 headless = args.non_headless
 viewport_updates = args.viewport_updates
 async_render_handshake = args.async_render_handshake
-async_render_warmup_frames = args.async_render_warmup_frames
+tick_rate = args.tick_rate
 
-async_render_handshake_args = []
+extra_args = []
 if async_render_handshake:
     async_render_handshake_args = [
         "--/app/asyncRendering=true",
         "--/app/omni.usd/asyncHandshake=true",
         "--/omni/replicator/asyncRendering=true",
     ]
+    extra_args.extend(async_render_handshake_args)
 
 import numpy as np
 from isaacsim import SimulationApp
@@ -78,7 +81,7 @@ simulation_app = SimulationApp(
         "headless": headless,
         "max_gpu_count": n_gpu,
         "disable_viewport_updates": viewport_updates,
-        "extra_args": async_render_handshake_args,
+        "extra_args": extra_args,
     }
 )
 
@@ -91,7 +94,7 @@ from isaacsim.core.experimental.utils.stage import get_current_stage
 from isaacsim.core.utils.extensions import enable_extension
 from isaacsim.core.utils.viewports import set_camera_view
 from isaacsim.robot.wheeled_robots.robots import WheeledRobot
-from pxr import Usd
+from pxr import Usd, UsdGeom
 
 enable_extension("isaacsim.benchmark.services")
 
@@ -118,6 +121,7 @@ benchmark = BaseIsaacBenchmark(
 
 # Generate Twist message
 def move_cmd_msg(x, y, z, ax, ay, az):
+    """Generate a Twist message with the given linear and angular velocities."""
     msg = Twist()
     msg.linear.x = x
     msg.linear.y = y
@@ -141,6 +145,7 @@ rclpy.init()
 node = rclpy.create_node("cmd_vel_publisher")
 cmd_vel_pub = node.create_publisher(Twist, "cmd_vel", 1)
 
+# TODO: May eventually want to use a different rig when using multi-tick rendering?
 robot_path = "/Isaac/Samples/ROS2/Robots/Nova_Carter_ROS.usd"
 scene_path = "/Isaac/Environments/Simple_Warehouse/full_warehouse.usd"
 
@@ -204,6 +209,15 @@ for i in range(n_robot):
 
     robots.append(current_robot)
 
+if tick_rate > 0:
+    for robot_idx in range(n_robot):
+        robot_prim_path = "/Robots/Robot_" + str(robot_idx)
+        robot_prim = stage.GetPrimAtPath(robot_prim_path)
+        for prim in Usd.PrimRange(robot_prim):
+            if prim.IsA(UsdGeom.Camera):
+                prim.ApplyAPI("OmniSensorAPI")
+                prim.GetAttribute("omni:sensor:tickRate").Set(tick_rate)
+
 # Set this to true so that we always publish regardless of subscribers
 carb.settings.get_settings().set_bool("/exts/isaacsim.ros2.bridge/publish_without_verification", True)
 
@@ -220,16 +234,9 @@ for robot in robots:
 omni.kit.app.get_app().update()
 omni.kit.app.get_app().update()
 
-# If we are doing async render testing, it looks like we need to warmup the render thread.
-# Otherwise, the first few frames are very long and will throw off the benchmark.
-if async_render_handshake:
-    print(f"Warming up render thread for {async_render_warmup_frames} frames...")
-    for _ in range(1, async_render_warmup_frames):
-        omni.kit.app.get_app().update()
-
 benchmark.store_measurements()
 # perform benchmark
-benchmark.set_phase("benchmark")
+benchmark.set_phase("benchmark", warmup_frames=15)
 
 for _ in range(1, n_frames):
     omni.kit.app.get_app().update()

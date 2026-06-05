@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,15 +15,11 @@
 
 """UI components for the gain tuner frame widget interface."""
 
+from collections.abc import Callable
 
-from functools import partial
-from typing import Callable, List, Optional, Tuple, Union
-
-import numpy as np
 import omni.ui as ui
 from isaacsim.gui.components.element_wrappers import CollapsableFrame
 from isaacsim.gui.components.ui_utils import get_style, on_copy_to_clipboard
-from isaacsim.gui.components.widgets import DynamicComboBoxModel
 
 from .style import get_style as get_custom_style
 
@@ -43,13 +39,13 @@ class CustomCollapsableFrame(CollapsableFrame):
             the frame header, and other arguments passed to the parent CollapsableFrame.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: object, **kwargs: object) -> None:
         self._show_copy_button = kwargs.get("show_copy_button", False)
         kwargs.pop("show_copy_button", None)
         self._copy_content = None
         super().__init__(*args, **kwargs)
 
-    def set_copy_content(self, copy_content: any):
+    def set_copy_content(self, copy_content: any) -> None:
         """Sets the content to be copied when the copy button is clicked.
 
         Args:
@@ -57,7 +53,7 @@ class CustomCollapsableFrame(CollapsableFrame):
         """
         self._copy_content = copy_content
 
-    def _build_header(self, collapsed: bool, title: str):
+    def _build_header(self, collapsed: bool, title: str) -> None:
         """Builds the header UI for the collapsable frame.
 
         Creates a horizontal stack containing a triangle indicator, title label, and optional copy button.

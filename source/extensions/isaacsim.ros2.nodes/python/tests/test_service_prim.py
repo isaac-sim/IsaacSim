@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,27 +13,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for ROS 2 service prim OmniGraph nodes."""
+
 import json
 
 import numpy as np
 import omni.graph.core as og
 import omni.kit.test
 import omni.usd
-from isaacsim.core.utils.stage import create_new_stage_async
+from isaacsim.core.experimental.utils import stage as stage_utils
+from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 from pxr import Sdf
-
-from .common import ROS2TestCase
 
 
 class TestRos2ServicePrim(ROS2TestCase):
+    """Test suite for ros2 service prim."""
+
     async def setUp(self):
+        """Set up test fixtures."""
         await super().setUp()
-        await create_new_stage_async()
+        await stage_utils.create_new_stage_async()
 
     async def tearDown(self):
+        """Tear down test fixtures."""
         await super().tearDown()
 
     def createAttributes(self, prim_path):
+        """Handle createAttributes operation."""
+
         def rand(size, dtype="float", as_list=False):
             # list
             if as_list:
@@ -167,6 +174,7 @@ class TestRos2ServicePrim(ROS2TestCase):
         return attributes
 
     def checkValues(self, a, b):
+        """Handle checkValues operation."""
         a = json.loads(a)
         b = json.loads(b)
         try:
@@ -176,6 +184,7 @@ class TestRos2ServicePrim(ROS2TestCase):
 
     # ----------------------------------------------------------------------
     async def test_service_get_prims(self):
+        """Test service get prims."""
         try:
             import isaac_ros2_messages.srv
         except ImportError as e:
@@ -185,7 +194,7 @@ class TestRos2ServicePrim(ROS2TestCase):
         import rclpy
 
         # define graph
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
@@ -228,6 +237,7 @@ class TestRos2ServicePrim(ROS2TestCase):
 
     # ----------------------------------------------------------------------
     async def test_service_get_prim_attributes(self):
+        """Test service get prim attributes."""
         try:
             import isaac_ros2_messages.srv
         except ImportError as e:
@@ -237,7 +247,7 @@ class TestRos2ServicePrim(ROS2TestCase):
         import rclpy
 
         # define graph
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
@@ -279,6 +289,7 @@ class TestRos2ServicePrim(ROS2TestCase):
 
     # ----------------------------------------------------------------------
     async def test_service_get_set_prim_attribute(self):
+        """Test service get set prim attribute."""
         try:
             import isaac_ros2_messages.srv
         except ImportError as e:
@@ -288,7 +299,7 @@ class TestRos2ServicePrim(ROS2TestCase):
         import rclpy
 
         # define graph
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [

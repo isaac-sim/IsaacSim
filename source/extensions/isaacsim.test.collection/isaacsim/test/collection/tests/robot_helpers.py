@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,10 +19,9 @@ import omni.graph.core as og
 import omni.kit.app
 import usdrt.Sdf
 from isaacsim.core.experimental.prims import Articulation
-from isaacsim.core.experimental.utils.stage import open_stage_async
 
 
-async def init_robot_sim(art_path: str, graph_path: str = "/ActionGraph"):
+async def init_robot_sim(art_path: str, graph_path: str = "/ActionGraph") -> None:
     """Initialize robot simulation by resetting pose and velocities.
 
     Creates an articulation at the given path, resets its position, orientation,
@@ -75,7 +74,7 @@ def setup_robot_og(
         and odom_node is the odometry computation node.
     """
     keys = og.Controller.Keys
-    (graph, nodes, _, _) = og.Controller.edit(
+    graph, nodes, _, _ = og.Controller.edit(
         {"graph_path": graph_path, "evaluator_name": "execution"},
         {
             keys.CREATE_NODES: [

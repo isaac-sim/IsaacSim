@@ -1,0 +1,89 @@
+#usda 1.0
+(
+    "Minimal PhysX schema fallback for isaacsim.asset.importer.utils."
+    "Only loaded when omni.usd.schema.physx is not available."
+)
+
+class "PhysxJointAPI" (
+    customData = {
+        string userDocBrief = "PhysX joint extended parameters."
+    }
+)
+{
+    float physxJoint:armature = 0 (
+        displayName = "Armature"
+    )
+    float physxJoint:jointFriction = 0 (
+        displayName = "Joint Friction"
+    )
+    float physxJoint:maxJointVelocity = 1000000 (
+        displayName = "Maximum Joint Velocity"
+    )
+}
+
+class "PhysicsJointStateAPI" (
+    customData = {
+        string userDocBrief = "Allows reading and modifying position and velocity of a specific articulation joint axis."
+    }
+)
+{
+    float state:__INSTANCE_NAME__:physics:position = 0 (
+        displayName = "Position"
+    )
+    float state:__INSTANCE_NAME__:physics:velocity = 0 (
+        displayName = "Velocity"
+    )
+}
+
+class "PhysxArticulationAPI" (
+    customData = {
+        string userDocBrief = "PhysX articulation extended parameters."
+    }
+)
+{
+    bool physxArticulation:articulationEnabled = 1 (
+        displayName = "Articulation Enabled"
+    )
+    bool physxArticulation:enabledSelfCollisions = 1 (
+        displayName = "Self Collisions Enabled"
+    )
+    float physxArticulation:sleepThreshold = 0.00005 (
+        displayName = "Sleep Threshold"
+    )
+    int physxArticulation:solverPositionIterationCount = 32 (
+        displayName = "Solver Position Iteration Count"
+    )
+    int physxArticulation:solverVelocityIterationCount = 1 (
+        displayName = "Solver Velocity Iteration Count"
+    )
+    float physxArticulation:stabilizationThreshold = 0.00001 (
+        displayName = "Stabilization Threshold"
+    )
+}
+
+class "PhysxMimicJointAPI" (
+    customData = {
+        string userDocBrief = "Applied to a Physics Joint that must be part of an articulation."
+    }
+)
+{
+    float physxMimicJoint:__INSTANCE_NAME__:dampingRatio = 0 (
+        displayName = "Damping Ratio"
+    )
+    float physxMimicJoint:__INSTANCE_NAME__:gearing = 1 (
+        displayName = "Gearing"
+    )
+    float physxMimicJoint:__INSTANCE_NAME__:naturalFrequency = 0 (
+        displayName = "Natural Frequency"
+    )
+    float physxMimicJoint:__INSTANCE_NAME__:offset = 0 (
+        displayName = "Offset"
+    )
+    rel physxMimicJoint:__INSTANCE_NAME__:referenceJoint (
+        displayName = "Reference Joint"
+    )
+    uniform token physxMimicJoint:__INSTANCE_NAME__:referenceJointAxis = "rotX" (
+        allowedTokens = ["rotX", "rotY", "rotZ"]
+        displayName = "Reference Joint Axis"
+    )
+}

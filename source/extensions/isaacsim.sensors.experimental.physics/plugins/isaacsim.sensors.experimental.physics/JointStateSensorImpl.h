@@ -18,6 +18,7 @@
 #include <isaacsim/sensors/experimental/physics/IJointStateSensor.h>
 
 #include <memory>
+#include <string>
 
 namespace isaacsim::sensors::experimental::physics
 {
@@ -37,9 +38,9 @@ public:
     JointStateSensorImpl& operator=(const JointStateSensorImpl&) = delete;
 
     void shutdown() override;
-    int64_t createSensor(const char* articulationRootPath) override;
-    void removeSensor(int64_t sensorId) override;
-    JointStateSensorReading getSensorReading(int64_t sensorId) override;
+    bool createSensor(const char* articulationRootPath) override;
+    void removeSensor(const char* articulationRootPath) override;
+    JointStateSensorReading getSensorReading(const char* articulationRootPath) override;
 
 private:
     struct ImplData;
@@ -62,7 +63,7 @@ private:
     /// Recreate articulation views after reader generation change.
     void _recreateSensorViews();
     /// Update one sensor's positions/velocities/efforts from its articulation view.
-    static void _processSensor(ImplData& impl, int64_t sensorId, double simTime);
+    static void _processSensor(ImplData& impl, const std::string& articulationRootPath, double simTime);
 };
 
 } // namespace isaacsim::sensors::experimental::physics

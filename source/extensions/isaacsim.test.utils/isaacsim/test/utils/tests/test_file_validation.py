@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,12 +15,12 @@
 
 """Test suite for file validation utilities."""
 
+from __future__ import annotations
 
 import os
 import tempfile
 from pathlib import Path
 
-import omni.kit.app
 from isaacsim.test.utils.file_validation import get_folder_file_summary, validate_file_list, validate_folder_contents
 from isaacsim.test.utils.timed_async_test import TimedAsyncTestCase
 
@@ -28,12 +28,12 @@ from isaacsim.test.utils.timed_async_test import TimedAsyncTestCase
 class TestFileValidation(TimedAsyncTestCase):
     """Test suite for file validation utilities."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures."""
         await super().setUp()
         self.test_dir = tempfile.mkdtemp()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test fixtures."""
         # Clean up temporary files
         import shutil
@@ -71,7 +71,7 @@ class TestFileValidation(TimedAsyncTestCase):
         return file_paths
 
     # Tests for validate_folder_contents function
-    async def test_validate_folder_contents_basic(self):
+    async def test_validate_folder_contents_basic(self) -> None:
         """Test basic folder validation functionality."""
         # Create test files
         self.create_test_files(
@@ -93,13 +93,13 @@ class TestFileValidation(TimedAsyncTestCase):
         result = validate_folder_contents(self.test_dir, {"png": 2, "json": 2})
         self.assertFalse(result, "Should fail with incorrect JSON count")
 
-    async def test_validate_folder_contents_nonexistent_directory(self):
+    async def test_validate_folder_contents_nonexistent_directory(self) -> None:
         """Test validation with nonexistent directory."""
         nonexistent_path = os.path.join(self.test_dir, "nonexistent")
         result = validate_folder_contents(nonexistent_path, {"png": 1})
         self.assertFalse(result, "Should fail for nonexistent directory")
 
-    async def test_validate_folder_contents_empty_directory(self):
+    async def test_validate_folder_contents_empty_directory(self) -> None:
         """Test validation with empty directory."""
         empty_dir = os.path.join(self.test_dir, "empty")
         os.makedirs(empty_dir)
@@ -110,7 +110,7 @@ class TestFileValidation(TimedAsyncTestCase):
         result = validate_folder_contents(empty_dir, {"png": 1})
         self.assertFalse(result, "Should fail when expecting files in empty directory")
 
-    async def test_validate_folder_contents_recursive(self):
+    async def test_validate_folder_contents_recursive(self) -> None:
         """Test recursive directory traversal."""
         # Create nested structure
         self.create_test_files(
@@ -132,7 +132,7 @@ class TestFileValidation(TimedAsyncTestCase):
         result = validate_folder_contents(self.test_dir, {"txt": 1, "png": 1, "json": 1}, recursive=True)
         self.assertTrue(result, "Should find all files recursively")
 
-    async def test_validate_folder_contents_empty_files(self):
+    async def test_validate_folder_contents_empty_files(self) -> None:
         """Test empty file detection."""
         # Create files with different sizes
         self.create_test_files(
@@ -151,7 +151,7 @@ class TestFileValidation(TimedAsyncTestCase):
         result = validate_folder_contents(self.test_dir, {"txt": 3}, fail_on_empty_files=True)
         self.assertFalse(result, "Should fail when empty file detected")
 
-    async def test_validate_folder_contents_min_file_size(self):
+    async def test_validate_folder_contents_min_file_size(self) -> None:
         """Test minimum file size validation."""
         self.create_test_files(
             {
@@ -169,7 +169,7 @@ class TestFileValidation(TimedAsyncTestCase):
         result = validate_folder_contents(self.test_dir, {"txt": 3}, min_file_size_bytes=50)
         self.assertFalse(result, "Should fail with min size 50")
 
-    async def test_validate_folder_contents_exact_match_false(self):
+    async def test_validate_folder_contents_exact_match_false(self) -> None:
         """Test non-exact matching (at least the specified counts)."""
         self.create_test_files(
             {
@@ -188,7 +188,7 @@ class TestFileValidation(TimedAsyncTestCase):
         result = validate_folder_contents(self.test_dir, {"png": 5}, exact_match=False)
         self.assertFalse(result, "Should fail with fewer than 5 PNG files")
 
-    async def test_validate_folder_contents_allowed_extensions(self):
+    async def test_validate_folder_contents_allowed_extensions(self) -> None:
         """Test allowed extra extensions filtering."""
         self.create_test_files(
             {
@@ -211,7 +211,7 @@ class TestFileValidation(TimedAsyncTestCase):
         result = validate_folder_contents(self.test_dir, {"png": 1, "json": 1}, allowed_extra_extensions=None)
         self.assertTrue(result, "Should pass with None (any extensions allowed)")
 
-    async def test_validate_folder_contents_case_insensitive(self):
+    async def test_validate_folder_contents_case_insensitive(self) -> None:
         """Test case-insensitive extension matching."""
         self.create_test_files(
             {
@@ -226,7 +226,7 @@ class TestFileValidation(TimedAsyncTestCase):
         self.assertTrue(result, "Should match extensions case-insensitively")
 
     # Tests for get_folder_file_summary function
-    async def test_get_folder_file_summary_basic(self):
+    async def test_get_folder_file_summary_basic(self) -> None:
         """Test basic folder summary functionality."""
         self.create_test_files(
             {
@@ -244,7 +244,7 @@ class TestFileValidation(TimedAsyncTestCase):
         self.assertEqual(summary["extension_counts"]["json"], 1, "Should count JSON files")
         self.assertNotIn("", summary["extension_counts"], "Should not include files without extensions")
 
-    async def test_get_folder_file_summary_with_file_sizes(self):
+    async def test_get_folder_file_summary_with_file_sizes(self) -> None:
         """Test folder summary with file size details."""
         files = self.create_test_files(
             {
@@ -264,7 +264,7 @@ class TestFileValidation(TimedAsyncTestCase):
             self.assertIn("size_bytes", file_detail)
             self.assertGreater(file_detail["size_bytes"], 0)
 
-    async def test_get_folder_file_summary_recursive(self):
+    async def test_get_folder_file_summary_recursive(self) -> None:
         """Test recursive folder summary."""
         self.create_test_files(
             {
@@ -285,7 +285,7 @@ class TestFileValidation(TimedAsyncTestCase):
         self.assertEqual(summary["extension_counts"]["png"], 1)
         self.assertEqual(summary["extension_counts"]["json"], 1)
 
-    async def test_get_folder_file_summary_nonexistent(self):
+    async def test_get_folder_file_summary_nonexistent(self) -> None:
         """Test folder summary for nonexistent directory."""
         nonexistent = os.path.join(self.test_dir, "nonexistent")
         summary = get_folder_file_summary(nonexistent)
@@ -294,7 +294,7 @@ class TestFileValidation(TimedAsyncTestCase):
         self.assertEqual(summary["extension_counts"], {})
 
     # Tests for validate_file_list function
-    async def test_validate_file_list_basic(self):
+    async def test_validate_file_list_basic(self) -> None:
         """Test basic file list validation."""
         file_paths = self.create_test_files(
             {
@@ -318,7 +318,7 @@ class TestFileValidation(TimedAsyncTestCase):
         self.assertEqual(len(result["missing_files"]), 1, "Should report 1 missing file")
         self.assertIn(missing_file, result["missing_files"])
 
-    async def test_validate_file_list_empty_files(self):
+    async def test_validate_file_list_empty_files(self) -> None:
         """Test file list validation with empty files."""
         file_paths = self.create_test_files(
             {
@@ -338,7 +338,7 @@ class TestFileValidation(TimedAsyncTestCase):
         self.assertFalse(result["passed"], "Should fail with empty file check")
         self.assertEqual(len(result["empty_files"]), 1, "Should report 1 empty file")
 
-    async def test_validate_file_list_min_size(self):
+    async def test_validate_file_list_min_size(self) -> None:
         """Test file list validation with minimum size requirement."""
         file_paths = self.create_test_files(
             {
@@ -358,7 +358,7 @@ class TestFileValidation(TimedAsyncTestCase):
         self.assertFalse(result["passed"], "Should fail with min size 10")
         self.assertEqual(len(result["undersized_files"]), 1, "Should report 1 undersized file")
 
-    async def test_validate_file_list_directories_as_files(self):
+    async def test_validate_file_list_directories_as_files(self) -> None:
         """Test that directories are treated as missing files."""
         # Create a directory
         subdir = os.path.join(self.test_dir, "subdir")
@@ -368,7 +368,7 @@ class TestFileValidation(TimedAsyncTestCase):
         self.assertFalse(result["passed"], "Should fail when directory passed as file")
         self.assertEqual(len(result["missing_files"]), 1, "Should report directory as missing file")
 
-    async def test_validate_file_list_path_types(self):
+    async def test_validate_file_list_path_types(self) -> None:
         """Test file list validation with different path types."""
         file_paths = self.create_test_files(
             {
@@ -386,7 +386,7 @@ class TestFileValidation(TimedAsyncTestCase):
         result = validate_file_list([Path(file_path)])
         self.assertTrue(result["passed"], "Should work with Path objects")
 
-    async def test_validate_file_list_complex_scenario(self):
+    async def test_validate_file_list_complex_scenario(self) -> None:
         """Test file list validation with multiple criteria."""
         file_paths = self.create_test_files(
             {
@@ -406,7 +406,7 @@ class TestFileValidation(TimedAsyncTestCase):
         self.assertEqual(len(result["empty_files"]), 1, "Should report empty file")
         self.assertEqual(len(result["undersized_files"]), 2, "Should report 2 undersized files (empty and tiny)")
 
-    async def test_edge_cases(self):
+    async def test_edge_cases(self) -> None:
         """Test various edge cases."""
         # Test with files without extensions
         self.create_test_files(

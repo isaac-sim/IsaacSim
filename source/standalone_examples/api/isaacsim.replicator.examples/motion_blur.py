@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Demonstrate motion blur capture with configurable delta times and render modes."""
 
 from isaacsim import SimulationApp
 
@@ -224,6 +226,7 @@ def run_motion_blur_example(
 
 
 def run_motion_blur_examples(num_frames, delta_times, samples_per_pixel, motion_blur_subsamples):
+    """Run motion blur examples across all delta time and render mode combinations."""
     print(
         f"[MotionBlur] Running with delta_times={delta_times}, samples_per_pixel={samples_per_pixel}, motion_blur_subsamples={motion_blur_subsamples}"
     )
@@ -248,5 +251,46 @@ run_motion_blur_examples(
     samples_per_pixel=samples_per_pixel,
     motion_blur_subsamples=motion_blur_subsamples,
 )
+
+# <start-motion-blur-test>
+import sys
+
+from isaacsim.core.utils.extensions import enable_extension
+
+enable_extension("isaacsim.test.utils")
+from isaacsim.test.utils.file_validation import validate_folder_contents
+
+test_parser = argparse.ArgumentParser()
+test_parser.add_argument(
+    "--test",
+    action="store_true",
+    help="Validate captured output files against expected counts and exit.",
+)
+test_args, _ = test_parser.parse_known_args()
+
+if test_args.test:
+    # Each run_motion_blur_example call produces one output dir with NUM_FRAMES rgb pngs.
+    # Mirror the iteration in run_motion_blur_examples to reconstruct the expected dir names.
+    expected_out_dirs = []
+    for dt in delta_times:
+        dt_str = "None" if dt is None else f"{dt:.4f}"
+        expected_out_dirs.append(os.path.join(os.getcwd(), f"_out_motion_blur_func_dt_{dt_str}_rt"))
+        for sub in motion_blur_subsamples:
+            for spp in samples_per_pixel:
+                expected_out_dirs.append(
+                    os.path.join(os.getcwd(), f"_out_motion_blur_func_dt_{dt_str}_pt_subsamples_{sub}_spp_{spp}")
+                )
+
+    for out_dir in expected_out_dirs:
+        if not validate_folder_contents(
+            path=out_dir,
+            recursive=True,
+            expected_counts={"png": NUM_FRAMES},
+            fail_on_empty_files=True,
+        ):
+            print(f"[SDG][Test][FAIL] Output validation failed for {out_dir}")
+            sys.exit(1)
+        print(f"[SDG][Test][PASS] Output validation succeeded for {out_dir}")
+# <end-motion-blur-test>
 
 simulation_app.close()

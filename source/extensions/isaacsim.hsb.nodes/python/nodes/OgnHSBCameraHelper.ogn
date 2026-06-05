@@ -1,0 +1,77 @@
+{
+    "HSBCameraHelper": {
+        "version": 1,
+        "icon": "icons/isaac-sim.svg",
+        "description": "Helper node to read RGB data from a render product for HSB publishing",
+        "language": "Python",
+        "categoryDefinitions": "config/CategoryDefinition.json",
+        "categories": "internal",
+        "metadata": {
+            "uiName": "HSB Camera Helper"
+        },
+        "inputs": {
+            "execIn": {
+                "type": "execution",
+                "description": "Triggering this causes the sensor pipeline to be generated"
+            },
+            "ipAddress": {
+                "type": "string",
+                "description": "HSB target IP address",
+                "default": "127.0.0.1"
+            },
+            "dataPlaneType": {
+                "type": "token",
+                "description": "HSB data plane: coe (Camera-over-Ethernet) or linux (RoCE/UDP). Use coe for COE players.",
+                "metadata": {
+                    "allowedTokens": {
+                        "coe": "coe",
+                        "linux": "linux"
+                    }
+                },
+                "default": "coe"
+            },
+            "dataPlaneId": {
+                "type": "uint",
+                "description": "HSB data plane ID",
+                "default": 0
+            },
+            "sensorId": {
+                "type": "uint",
+                "description": "HSB sensor ID",
+                "default": 0
+            },
+            "renderProductPath": {
+                "type": "token",
+                "description": "Path of the render product used for capturing data"
+            },
+            "resetSimulationTimeOnStop": {
+                "type": "bool",
+                "description": "If True the simulation time will reset when stop is pressed, False means time increases monotonically. This setting is ignored if useSystemTime is enabled.",
+                "uiName": "Reset Simulation Time On Stop",
+                "default": true
+            },
+            "useSystemTime": {
+                "type": "bool",
+                "description": "If True, system timestamp will be included in messages. If False, simulation timestamp will be included in messages",
+                "default": false
+            },
+            "type": {
+                "type": "token",
+                "description": "Sensor type: vb1940_csi_coe (3p4b COE/AGX Thor) or vb1940_csi_linux (4p5b RoCE/linux_vb1940_player)",
+                "metadata": {
+                    "allowedTokens": {
+                        "vb1940_csi_coe": "vb1940_csi_coe",
+                        "vb1940_csi_linux": "vb1940_csi_linux"
+                    }
+                },
+                "default": "vb1940_csi_coe"
+            }
+        },
+        "outputs": {
+            "execOut": {
+                "type": "execution",
+                "description": "The output execution port"
+            }
+        }
+    }
+}

@@ -13,7 +13,7 @@ packages = [
     "oauthlib==3.2.2",              # SWIPAT filed under: https://nvbugs/3433846 # Used by: (dependency of requests-oauthlib)
     "requests-oauthlib==1.3.1",     # SWIPAT filed under: https://nvbugs/3433849 # Used by: (none found)
     "isodate==0.6.1",               # SWIPAT filed under: https://nvbugs/5326903 # Used by: (dependency of azure-storage-blob)
-    "cryptography==46.0.5",         # SWIPAT filed under: https://nvbugs/5326914 # Used by: (dependency of azure-identity, azure-storage-blob, msal)
+    "cryptography==46.0.7",         # SWIPAT filed under: https://nvbugs/5326914 # Used by: (dependency of azure-identity, azure-storage-blob, msal)
     "azure-core==1.38.0",           # SWIPAT filed under: https://nvbugs/5326927 # Used by: (dependency of azure-identity, azure-storage-blob)
     "msal==1.35.1",                 # SWIPAT filed under: https://nvbugs/5326933 # Used by: (dependency of azure-identity, msal-extensions)
     "msal-extensions==1.3.1",       # SWIPAT filed under: https://nvbugs/5326943 # Used by: (dependency of azure-identity)

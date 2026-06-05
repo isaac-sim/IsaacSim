@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,6 @@
 
 """Tests for Carter v1 robot simulation functionality including loading, movement, acceleration, braking, and circular motion."""
 
-
 import carb
 import carb.tokens
 import isaacsim.core.experimental.utils.app as app_utils
@@ -30,11 +29,11 @@ import omni.kit.test
 import omni.timeline
 from isaacsim.core.experimental.prims import Articulation
 from isaacsim.core.experimental.utils.app import get_extension_path
+from isaacsim.core.experimental.utils.stage import open_stage_async
 from isaacsim.storage.native import get_assets_root_path_async
 
 from .robot_helpers import (
     init_robot_sim,
-    open_stage_async,
     setup_robot_og,
 )
 
@@ -63,7 +62,7 @@ class TestCarterv1(omni.kit.test.AsyncTestCase):
     """Tests for the Carter v1 robot simulation."""
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment with Carter v1 robot."""
         self._timeline = omni.timeline.get_timeline_interface()
 
@@ -84,7 +83,7 @@ class TestCarterv1(omni.kit.test.AsyncTestCase):
 
         # add in carter (from nucleus)
         self.usd_path = self._assets_root_path + "/Isaac/Robots/NVIDIA/Carter/carter_v1_physx_lidar.usd"
-        (result, error) = await open_stage_async(self.usd_path)
+        result, error = await open_stage_async(self.usd_path)
 
         # Make sure the stage loaded
         self.assertTrue(result)
@@ -97,8 +96,6 @@ class TestCarterv1(omni.kit.test.AsyncTestCase):
         self.graph_path = "/ActionGraph"
         graph, self.odom_node = setup_robot_og(self.graph_path, "left_wheel", "right_wheel", "/carter", 0.24, 0.56)
 
-        pass
-
     # After running each test
     async def tearDown(self):
         """Clean up test environment and stop timeline."""
@@ -107,11 +104,9 @@ class TestCarterv1(omni.kit.test.AsyncTestCase):
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
-        pass
 
     async def test_loading(self):
         """Test that the Carter v1 robot loads and can move forward."""
-
         stage_utils.delete_prim("/ActionGraph")
         # Start Simulation and wait
         self._timeline.play()
@@ -136,12 +131,9 @@ class TestCarterv1(omni.kit.test.AsyncTestCase):
         print("Diff is ", delta)
         self.assertTrue(delta > 0.02)
 
-        pass
-
     # general, slowly building up speed testcase
     async def test_accel(self):
         """Test acceleration behavior with gradually increasing velocities."""
-
         odom_velocity = og.Controller.attribute("outputs:linearVelocity", self.odom_node)
         odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)
 
@@ -168,12 +160,9 @@ class TestCarterv1(omni.kit.test.AsyncTestCase):
 
         self._timeline.stop()
 
-        pass
-
     # braking from different init speeds
     async def test_brake(self):
         """Test braking behavior from various initial velocities."""
-
         odom_velocity = og.Controller.attribute("outputs:linearVelocity", self.odom_node)
         odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)
 
@@ -204,7 +193,6 @@ class TestCarterv1(omni.kit.test.AsyncTestCase):
 
             self._timeline.stop()
             await omni.kit.app.get_app().next_update_async()
-        pass
 
     async def test_spin(self):
         """Test spinning behavior at different angular velocities."""
@@ -230,8 +218,6 @@ class TestCarterv1(omni.kit.test.AsyncTestCase):
             self.assertAlmostEqual(curr_ang_vel, angular_velocity, delta=2e-1)
 
         # self._timeline.stop()
-
-        pass
 
     # go in circle
     async def test_circle(self):
@@ -260,5 +246,3 @@ class TestCarterv1(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(og.DataView.get(odom_ang_vel)[2], angular_velocity, delta=5e-2)
 
         await omni.kit.app.get_app().next_update_async()
-
-        pass

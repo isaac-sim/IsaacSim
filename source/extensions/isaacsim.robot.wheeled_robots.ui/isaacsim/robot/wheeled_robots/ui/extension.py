@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 """Extension for Isaac Sim wheeled robots user interface components and differential drive controller configuration."""
 
+from __future__ import annotations
 
 import gc
 
@@ -33,16 +33,12 @@ class Extension(omni.ext.IExt, MenuHelperExtensionFull):
     that opens a window for configuring differential drive controllers for wheeled robots.
     """
 
-    def on_startup(self, ext_id: str):
-        """Called when the extension starts up.
-
-        Creates menu entry for the Differential Controller window under Tools/Robotics/OmniGraph Controllers.
+    def on_startup(self, ext_id: str) -> None:
+        """Initialize the extension when it is loaded.
 
         Args:
             ext_id: The extension identifier.
         """
-
-        # Create menu using MenuHelperExtensionFull
         self.menu_startup(
             lambda: DifferentialControllerWindow(),
             "Differential Controller",
@@ -50,10 +46,7 @@ class Extension(omni.ext.IExt, MenuHelperExtensionFull):
             "Tools/Robotics/OmniGraph Controllers",
         )
 
-    def on_shutdown(self):
-        """Called when the extension shuts down.
-
-        Cleans up menu entries and performs garbage collection.
-        """
+    def on_shutdown(self) -> None:
+        """Clean up resources when the extension is unloaded."""
         self.menu_shutdown()
         gc.collect()

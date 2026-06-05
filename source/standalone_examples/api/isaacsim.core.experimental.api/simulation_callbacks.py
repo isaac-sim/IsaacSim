@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import annotations
+"""Demonstrate physics and rendering callbacks using the experimental API.
 
-"""
 This example demonstrates how to register and use physics and rendering callbacks using the Isaac Sim core
 (experimental) API.
 
@@ -33,10 +32,13 @@ The source code is organized into 4 main sections:
 4. Example logic.
 """
 
-# 1. --------------------------------------------------------------------
+from __future__ import annotations
 
 # Parse any command-line arguments specific to the standalone application (only known arguments).
 import argparse
+
+# 1. --------------------------------------------------------------------
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--test", default=False, action="store_true", help="Run in test mode")

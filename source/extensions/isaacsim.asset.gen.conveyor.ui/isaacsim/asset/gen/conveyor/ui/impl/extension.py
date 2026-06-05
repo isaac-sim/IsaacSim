@@ -1,4 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+"""Conveyor builder UI extension for Isaac Sim."""
+
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,19 +14,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""UI extension for creating and managing conveyor belt assets in Isaac Sim."""
+
+
 import gc
 import weakref
 
 import carb
 import omni.ext
 import omni.kit.actions
-import omni.kit.commands
 import omni.ui as ui
+from isaacsim.asset.gen.conveyor import create_conveyor_belt
 from isaacsim.asset.gen.conveyor.bindings._isaacsim_asset_gen_conveyor import acquire_interface as _acquire
 from isaacsim.asset.gen.conveyor.bindings._isaacsim_asset_gen_conveyor import release_interface as _release
 from omni.kit.menu.utils import MenuItemDescription, add_menu_items, remove_menu_items
 from omni.kit.window.preferences import register_page, unregister_page
-from pxr import Gf, Sdf, UsdGeom
 
 from .conveyor_builder_widget import ConveyorBuilderWidget
 from .preferences import ConveyorBuilderPreferences
@@ -33,18 +38,22 @@ from .style import UI_STYLES
 EXTENSION_NAME = "Conveyor Utility"
 
 
-def make_menu_item_description(ext_id: str, name: str, onclick_fun, action_name: str = "") -> None:
-    """Easily replace the onclick_fn with onclick_action when creating a menu description
+def make_menu_item_description(
+    ext_id: str, name: str, onclick_fun: object, action_name: str = ""
+) -> MenuItemDescription:
+    """Easily replace the onclick_fn with onclick_action when creating a menu description.
 
     Args:
-        ext_id (str): The extension you are adding the menu item to.
-        name (str): Name of the menu item displayed in UI.
-        onclick_fun (Function): The function to run when clicking the menu item.
-        action_name (str): name for the action, in case ext_id+name don't make a unique string
+        ext_id: The extension you are adding the menu item to.
+        name: Name of the menu item displayed in UI.
+        onclick_fun: The function to run when clicking the menu item.
+        action_name: Name for the action, in case ext_id+name don't make a unique string.
+
+    Returns:
+        A ``MenuItemDescription`` configured with the registered action.
 
     Note:
         ext_id + name + action_name must concatenate to a unique identifier.
-
     """
     action_unique = f'{ext_id.replace(" ", "_")}{name.replace(" ", "_")}{action_name.replace(" ", "_")}'
     action_registry = omni.kit.actions.core.get_action_registry()
@@ -54,13 +63,34 @@ def make_menu_item_description(ext_id: str, name: str, onclick_fun, action_name:
 
 
 class Extension(omni.ext.IExt):
-    def __init___(self):
+    """UI extension for creating and managing conveyor belt assets in Isaac Sim.
+
+    This extension provides a user interface for building conveyor belt systems through a dedicated Conveyor Builder
+    window and menu integration. It enables users to create conveyor belts with customizable parameters and
+    manage conveyor-related preferences. The extension integrates with Isaac Sim's Create and Tools menus to
+    provide easy access to conveyor creation functionality.
+
+    The extension includes:
+    - A Conveyor Builder window with interactive controls for configuring conveyor properties
+    - Menu items in the Create > Isaac Sim > Warehouse Items submenu for quick conveyor creation
+    - A Tools menu item for accessing the full Conveyor Track Builder interface
+    - Integration with the preferences system for conveyor-related settings
+    - Support for custom material files and styling
+    """
+
+    def __init___(self) -> None:
+        """Initialize the extension."""
         try:
             super().__init__()
-        except:
-            carb.log.error(f"Error loading {EXTENSION_NAME}")
+        except Exception:
+            carb.log_error(f"Error loading {EXTENSION_NAME}")
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
+        """Initialize the extension when it is loaded.
+
+        Args:
+            ext_id: Extension identifier provided by the extension manager.
+        """
         self.widget = None
         menu_items = [
             MenuItemDescription(
@@ -86,7 +116,7 @@ class Extension(omni.ext.IExt):
         )
         self._window.visible = False
         self._window.set_visibility_changed_fn(self.on_visibility_changed)
-        self.mdl_file = None
+        self._style_loaded = False
         self._hooks = []
 
         manager = omni.kit.app.get_app().get_extension_manager()
@@ -100,35 +130,43 @@ class Extension(omni.ext.IExt):
             )
         )
 
-    def _register_preferences(self):
+    def _register_preferences(self) -> None:
+        """Register the Conveyor Builder page in Kit preferences."""
         self._conveyor_preferences = register_page(ConveyorBuilderPreferences())
 
-    def _unregister_preferences(self):
+    def _unregister_preferences(self) -> None:
+        """Remove the Conveyor Builder preferences page if it was registered."""
         if self._conveyor_preferences:
             unregister_page(self._conveyor_preferences)
             self._conveyor_preferences = None
 
-    def create_ui(self):
+    def create_ui(self) -> None:
+        """Create the conveyor builder UI window and widget."""
         ext_path = omni.kit.app.get_app().get_extension_manager().get_extension_path(self.ext_id)
 
         self.ext_path = ext_path + "/omni/isaac/conveyor"
-        if not self.mdl_file:
-            self.mdl_file = ext_path + "/data/GhostVolumetric.mdl"
+        if not self._style_loaded:
             theme = "NvidiaDark"
-
             self._style = UI_STYLES[theme]
-            for i in [a for a in self._style.keys() if "{}" in self._style[a].get("image_url", "")]:
+            for i in [a for a in self._style if "{}" in self._style[a].get("image_url", "")]:
                 self._style[i]["image_url"] = self._style[i]["image_url"].format(self.ext_path)
+            self._style_loaded = True
 
         with self._window.frame:
-            self.widget = ConveyorBuilderWidget(mdl_file=self.mdl_file, style=self._style)
+            self.widget = ConveyorBuilderWidget(style=self._style)
             self._window.visible = True
 
-    def on_visibility_changed(self, value):
+    def on_visibility_changed(self, value: bool) -> None:
+        """Handle window visibility change and shut down widget when hidden.
+
+        Args:
+            value: ``True`` when the window is shown, ``False`` when hidden.
+        """
         if not value:
             self.widget.shutdown()
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
+        """Clean up resources when the extension is unloaded."""
         remove_menu_items(self._menu_items, "Create")
         remove_menu_items(self._menu_items_2, "Tools")
         if self.widget:
@@ -137,5 +175,22 @@ class Extension(omni.ext.IExt):
         self.__interface = None
         gc.collect()
 
-    def _add_conveyor(self, *args, **kwargs):
-        _, prim = omni.kit.commands.execute("CreateConveyorBelt")
+    def _add_conveyor(self, *args: object, **kwargs: object) -> None:
+        """Create a conveyor belt prim using the create_conveyor_belt API.
+
+        Args:
+            *args: Unused positional arguments (Kit callback compatibility).
+            **kwargs: Unused keyword arguments (Kit callback compatibility).
+        """
+        stage = omni.usd.get_context().get_stage()
+        selection = omni.usd.get_context().get_selection()
+        selected_paths = selection.get_selected_prim_paths()
+        if selected_paths:
+            conveyor_prim = stage.GetPrimAtPath(selected_paths[0])
+        else:
+            default_prim = stage.GetDefaultPrim()
+            if default_prim and default_prim.IsValid():
+                conveyor_prim = default_prim
+            else:
+                conveyor_prim = stage.GetPrimAtPath("/")
+        create_conveyor_belt(stage, conveyor_prim)

@@ -14,6 +14,7 @@ packages = [
     "fastrlock==0.8.3",     # SWIPAT filed under: https://nvbugs/5621677 # Used by: isaacsim.ucx.core
     "cuda-bindings==12.9.2",
     "cuda-pathfinder==1.1.0",
+    "flatbuffers==22.12.06", # Used by: isaacsim.ucx.nodes (tests)
 ]
 
 target = "../_build/target-deps/pip_ucx_prebundle"

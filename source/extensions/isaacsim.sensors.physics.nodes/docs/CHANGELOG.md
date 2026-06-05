@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.5.2] - 2026-04-30
+### Changed
+- Migrated OGN test fixture (`AntConfig`) and OGN tests to the new `isaacsim.sensors.experimental.physics` 3.0.0 API: call `Contact.create()` / `IMU.create()` (the authoring classes) directly instead of the removed runtime `XSensor.create()` class methods, and use plural `translations` numpy arrays.
+
+## [1.5.1] - 2026-04-21
+### Changed
+- Replaced `omni.kit.commands` sensor creation in OGN tests with `ContactSensor.create()` class method
+
+## [1.5.0] - 2026-04-17
+### Added
+- Add Isaac Read Raycast Sensor OmniGraph node
+
+## [1.4.1] - 2026-04-09
+### Removed
+- Remove the `omni.isaac.ml_archive` dependency
+
+## [1.4.0] - 2026-03-20
+### Changed
+- Update OmniGraph nodes to use prim path based sensor API instead of integer sensor IDs
+
 ## [1.3.0] - 2026-03-05
 ### Added
 - Add Isaac Read Joint State node that reads full joint state (names, positions, velocities, efforts, DOF types, stage units) from an articulation prim

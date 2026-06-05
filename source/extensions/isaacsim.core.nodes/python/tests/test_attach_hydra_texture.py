@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,7 +28,7 @@ import omni.replicator.core as rep
 import omni.timeline
 import omni.usd
 from isaacsim.test.utils.image_comparison import compare_arrays_within_tolerances
-from pxr import Gf, Usd, UsdGeom, UsdRender
+from pxr import Gf, UsdGeom, UsdRender
 
 
 class TestAttachHydraTexture(ogts.OmniGraphTestCase):
@@ -78,7 +78,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
         render_product_path = await self._create_render_product(self._camera_path)
 
         # Create the action graph with our node
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
@@ -113,7 +113,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
         render_product_path = await self._create_render_product(self._camera_path)
 
         # Create the action graph with render vars
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
@@ -153,7 +153,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
         render_product_path = await self._create_render_product(self._camera_path)
 
         # Create the action graph with node disabled
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
@@ -184,7 +184,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
     async def test_attach_hydra_texture_invalid_prim(self):
         """Test error handling for invalid render product prim."""
         # Create the action graph with invalid prim path
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
@@ -219,7 +219,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
         await omni.kit.app.get_app().next_update_async()
 
         # Create the action graph with non-RenderProduct prim
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
@@ -249,7 +249,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
     async def test_attach_hydra_texture_no_prim_specified(self):
         """Test error handling when no render product prim is specified."""
         # Create the action graph without specifying the prim
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [
@@ -341,7 +341,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
         await omni.kit.app.get_app().next_update_async()
 
         # Create ActionGraph with OnPlaybackTick -> IsaacAttachHydraTexture
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [

@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 isaacsim.test.collection provides a comprehensive testing framework for Isaac Sim that validates robot simulations, physics behavior, and various subsystems. This extension contains integration tests that are not tied to specific extensions but rather test cross-system functionality and core Isaac Sim capabilities.

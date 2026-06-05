@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for ROS 2 clock publisher OmniGraph node."""
 
-import carb
 import omni.graph.core as og
 
 # Import extension python module we are testing with absolute import path, as if we are external user (other extension)
@@ -25,27 +25,31 @@ import omni.kit.commands
 #   For most things refer to unittest docs: https://docs.python.org/3/library/unittest.html
 import omni.kit.test
 import omni.kit.usd
-from isaacsim.core.utils.physics import simulate_async
+from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 
-from .common import ROS2TestCase, get_qos_profile
+from .common import get_qos_profile, simulate_async
 
 
 class TestRos2NodeCommands(ROS2TestCase):
+    """Test suite for ros2 node commands."""
+
     async def setUp(self):
+        """Set up test fixtures."""
         await super().setUp()
         self._stage = omni.usd.get_context().get_stage()
 
     async def tearDown(self):
-
+        """Tear down test fixtures."""
         self._stage = None
         await super().tearDown()
 
     async def test_sim_clock(self):
+        """Test sim clock."""
         import rclpy
         from rosgraph_msgs.msg import Clock
 
         keys = og.Controller.Keys
-        (graph, nodes, _, _) = og.Controller.edit(
+        graph, nodes, _, _ = og.Controller.edit(
             {"graph_path": "/controller_graph", "evaluator_name": "execution"},
             {
                 keys.CREATE_NODES: [
@@ -73,18 +77,61 @@ class TestRos2NodeCommands(ROS2TestCase):
 
         self._timeline.play()
 
-        await simulate_async(2.1, callback=spin)
+        await self.simulate_until_condition(lambda: self._time_sec > 2.0, max_frames=150, per_frame_callback=spin)
         self._timeline.stop()
         self.assertGreater(self._time_sec, 2.0)
         spin()
         pass
 
-    async def test_sim_clock_manual(self):
+    async def test_sim_clock_physics_step(self):
+        """Test sim clock published from an OnPhysicsStep-driven on-demand graph."""
         import rclpy
         from rosgraph_msgs.msg import Clock
 
         keys = og.Controller.Keys
-        (graph, nodes, _, _) = og.Controller.edit(
+        graph, nodes, _, _ = og.Controller.edit(
+            {
+                "graph_path": "/physics_step_clock_graph",
+                "pipeline_stage": og.GraphPipelineStage.GRAPH_PIPELINE_STAGE_ONDEMAND,
+            },
+            {
+                keys.CREATE_NODES: [
+                    ("OnPhysicsStep", "isaacsim.core.nodes.OnPhysicsStep"),
+                    ("IsaacClock", "isaacsim.core.nodes.IsaacReadSimulationTime"),
+                    ("RosPublisher", "isaacsim.ros2.bridge.ROS2PublishClock"),
+                ],
+                keys.CONNECT: [
+                    ("OnPhysicsStep.outputs:step", "RosPublisher.inputs:execIn"),
+                    ("IsaacClock.outputs:simulationTime", "RosPublisher.inputs:timeStamp"),
+                ],
+            },
+        )
+
+        self._time_sec = 0
+
+        def clock_callback(data):
+            self._time_sec = data.clock.sec + data.clock.nanosec / 1.0e9
+
+        node = self.create_node("test_sim_clock_physics_step")
+        clock_sub = self.create_subscription(node, Clock, "clock", clock_callback, get_qos_profile())
+
+        def spin():
+            rclpy.spin_once(node, timeout_sec=0.01)
+
+        self._timeline.play()
+
+        await simulate_async(2.1, callback=spin)
+        self._timeline.stop()
+        self.assertGreater(self._time_sec, 2.0)
+        spin()
+
+    async def test_sim_clock_manual(self):
+        """Test sim clock manual."""
+        import rclpy
+        from rosgraph_msgs.msg import Clock
+
+        keys = og.Controller.Keys
+        graph, nodes, _, _ = og.Controller.edit(
             {"graph_path": "/controller_graph", "evaluator_name": "execution"},
             {
                 keys.CREATE_NODES: [
@@ -111,18 +158,18 @@ class TestRos2NodeCommands(ROS2TestCase):
         def spin():
             rclpy.spin_once(node, timeout_sec=0.01)
 
-        await simulate_async(0.1, callback=spin)
+        await self.simulate_until_condition(lambda: False, max_frames=10, per_frame_callback=spin)
         self._timeline.play()
 
         await omni.kit.app.get_app().next_update_async()
         self.assertEqual(self._time_sec, 0.0)
         og.Controller.attribute("/controller_graph/Impulse.state:enableImpulse").set(True)
         # after first step we need to wait for ros node to initialize
-        await simulate_async(0.1, callback=spin)
+        await self.simulate_until_condition(lambda: False, max_frames=10, per_frame_callback=spin)
 
         og.Controller.attribute("/controller_graph/Impulse.state:enableImpulse").set(True)
         # wait for message
-        await simulate_async(0.1, callback=spin)
+        await self.simulate_until_condition(lambda: self._time_sec > 0.0, max_frames=30, per_frame_callback=spin)
         self.assertGreater(self._time_sec, 0.0)
 
         self._timeline.stop()
@@ -130,13 +177,14 @@ class TestRos2NodeCommands(ROS2TestCase):
         pass
 
     async def test_system_clock(self):
+        """Test system clock."""
         import time
 
         import rclpy
         from rosgraph_msgs.msg import Clock
 
         keys = og.Controller.Keys
-        (graph, nodes, _, _) = og.Controller.edit(
+        graph, nodes, _, _ = og.Controller.edit(
             {"graph_path": "/controller_graph", "evaluator_name": "execution"},
             {
                 keys.CREATE_NODES: [
@@ -163,7 +211,7 @@ class TestRos2NodeCommands(ROS2TestCase):
 
         self._timeline.play()
 
-        await simulate_async(0.1, callback=spin)
+        await self.simulate_until_condition(lambda: self._time_sec > 0, max_frames=30, per_frame_callback=spin)
         self.assertAlmostEqual(self._time_sec, time.time(), delta=0.5)
         self._timeline.stop()
         spin()

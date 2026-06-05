@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test UCX camera helper node functionality."""
 
 import time
 
@@ -28,15 +30,20 @@ import ucxx._lib.libucxx as ucx_api
 import usdrt.Sdf
 from isaacsim.core.experimental.objects import Cube
 from isaacsim.core.rendering_manager import ViewportManager
-from isaacsim.ucx.nodes.tests.common import UCXTestCase, find_available_port, unpack_image_message
-from pxr import Sdf
+from isaacsim.ucx.nodes.tests.common import (
+    UCXTestCase,
+    find_available_port,
+    get_image_pixel_data_size,
+    unpack_image_message,
+)
 from ucxx._lib.arr import Array
 
 
 class TestUCXCamera(UCXTestCase):
-    """Test UCX Camera Helper node"""
+    """Test UCX Camera Helper node."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Set up test stage, assets, and viewport."""
         await super().setUp()
 
         # Get assets root path
@@ -55,7 +62,7 @@ class TestUCXCamera(UCXTestCase):
         viewport_api.set_texture_resolution((1280, 720))
         await omni.kit.app.get_app().next_update_async()
 
-    async def setup_ucx_client_with_listener(self, port):
+    async def setup_ucx_client_with_listener(self, port: int) -> None:
         """Setup UCX client.
 
         Args:
@@ -66,13 +73,46 @@ class TestUCXCamera(UCXTestCase):
 
         self.create_ucx_client(port)
 
-    async def receive_image_message(self, tag=10, timeout_frames=1000, retry_count=15):
+    async def _await_request(self, request: object, timeout_frames: int) -> bool:
+        """Wait for a ucxx request to complete, ticking the app between checks.
+
+        Args:
+            request: The pending ``tag_recv`` request.
+            timeout_frames: Maximum number of frames to wait.
+
+        Returns:
+            True if the request completed within ``timeout_frames``.
+        """
+        for _ in range(timeout_frames):
+            if request.completed:
+                return True
+            time.sleep(0.001)
+            await omni.kit.app.get_app().next_update_async()
+        return bool(request.completed)
+
+    async def receive_image_message(self, tag: int = 10, timeout_frames: int = 1000, retry_count: int = 15) -> tuple:
         """Receive and unpack an image message.
+
+        Transparently handles both transport modes of the ``UCXCameraHelper`` /
+        ``UCXPublishImage`` publisher:
+
+        * ``sendCudaBuffer=False`` (CPU path): a single tagged message carries
+          the Image FlatBuffer with pixel bytes embedded.
+        * ``sendCudaBuffer=True`` (GPU-direct, the default for the camera
+          helper): the publisher first sends a metadata-only FlatBuffer with
+          an empty ``data`` vector, then sends the raw pixel buffer on the
+          same tag. UCX preserves per-tag FIFO order so a second ``tag_recv``
+          pulls the pixels deterministically. The mode is detected from the
+          FlatBuffer itself: when the embedded ubyte vector is empty but
+          ``Tensor.shape[0]`` reports a non-zero size, this method posts a
+          follow-up recv for that many bytes.
 
         Args:
             tag: UCX tag to receive on.
             timeout_frames: Maximum number of frames to wait per retry.
-            retry_count: Number of times to retry receiving if data is invalid (default 15).
+            retry_count: Number of times to retry receiving the metadata
+                message if it does not arrive or fails to parse as a valid
+                FlatBuffer (default 15).
 
         Returns:
             Tuple of (timestamp, width, height, encoding, step, image_data).
@@ -91,13 +131,7 @@ class TestUCXCamera(UCXTestCase):
 
             request = self.client_endpoint.tag_recv(Array(buffer), tag=ucx_api.UCXXTag(tag))
 
-            for _ in range(timeout_frames):
-                if request.completed:
-                    break
-                time.sleep(0.001)
-                await omni.kit.app.get_app().next_update_async()
-
-            if not request.completed:
+            if not await self._await_request(request, timeout_frames):
                 if retry < retry_count - 1:
                     await app_utils.update_app_async(steps=60)
                     continue
@@ -107,7 +141,7 @@ class TestUCXCamera(UCXTestCase):
             request.check_error()
 
             try:
-                return unpack_image_message(buffer)
+                timestamp, width, height, encoding, step, image_data = unpack_image_message(buffer)
             except ValueError:
                 # Invalid data received, might be timing issue - retry after waiting
                 if retry < retry_count - 1:
@@ -116,9 +150,27 @@ class TestUCXCamera(UCXTestCase):
                 else:
                     raise
 
+            # GPU-direct two-message protocol: the metadata FB carries an empty
+            # pixel vector but records the expected size in Tensor.shape[0].
+            # Pull the follow-up raw pixel buffer from the same tag.
+            expected_size = get_image_pixel_data_size(buffer)
+            if len(image_data) == 0 and expected_size > 0:
+                pixel_buffer = np.zeros(expected_size, dtype=np.uint8)
+                pixel_request = self.client_endpoint.tag_recv(Array(pixel_buffer), tag=ucx_api.UCXXTag(tag))
+                if not await self._await_request(pixel_request, timeout_frames):
+                    self.fail(
+                        f"Received image metadata on tag {tag} but the {expected_size}-byte "
+                        f"pixel buffer did not arrive within {timeout_frames} frames"
+                    )
+                pixel_request.check_error()
+                image_data = bytes(pixel_buffer[:expected_size])
+                step = expected_size // height if height > 0 else 0
+
+            return timestamp, width, height, encoding, step, image_data
+
         self.fail("Failed to receive valid image message after all retries")
 
-    async def test_camera_rgb(self):
+    async def test_camera_rgb(self) -> None:
         """Test RGB camera publishing from render product."""
         scene_path = "/Isaac/Environments/Grid/default_environment.usd"
         await stage_utils.open_stage_async(self._assets_root_path + scene_path)
@@ -178,7 +230,7 @@ class TestUCXCamera(UCXTestCase):
         # Verify timestamp is reasonable (simulation time)
         self.assertGreater(timestamp, 0.0)
 
-    async def test_camera_system_time(self):
+    async def test_camera_system_time(self) -> None:
         """Test camera publishing with system time."""
         scene_path = "/Isaac/Environments/Grid/default_environment.usd"
         await stage_utils.open_stage_async(self._assets_root_path + scene_path)
@@ -238,6 +290,8 @@ class TestUCXCamera(UCXTestCase):
         self.assertEqual(width, 800)
         self.assertEqual(height, 600)
         self.assertEqual(encoding, "rgb8")
+        self.assertEqual(step, 800 * 3)  # RGB = 3 channels
+        self.assertEqual(len(image_data), height * step)
 
         # Verify timestamp is system time (within reasonable range)
         # The image may have been generated slightly before we captured system_time
@@ -247,7 +301,7 @@ class TestUCXCamera(UCXTestCase):
             time_diff, 5.0, f"Timestamp {timestamp} too far from system time {system_time} (diff: {time_diff}s)"
         )
 
-    async def test_camera_frame_skip(self):
+    async def test_camera_frame_skip(self) -> None:
         """Test camera publishing with frame skip."""
         scene_path = "/Isaac/Environments/Grid/default_environment.usd"
         await stage_utils.open_stage_async(self._assets_root_path + scene_path)
@@ -300,8 +354,10 @@ class TestUCXCamera(UCXTestCase):
         self.assertEqual(width, 640)
         self.assertEqual(height, 480)
         self.assertEqual(encoding, "rgb8")
+        self.assertEqual(step, 640 * 3)  # RGB = 3 channels
+        self.assertEqual(len(image_data), height * step)
 
-    async def test_camera_multiple_resolutions(self):
+    async def test_camera_multiple_resolutions(self) -> None:
         """Test camera publishing with different resolutions."""
         scene_path = "/Isaac/Environments/Grid/default_environment.usd"
         await stage_utils.open_stage_async(self._assets_root_path + scene_path)

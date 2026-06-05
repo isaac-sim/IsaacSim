@@ -1,0 +1,3 @@
+# snippet path relative to docs/isaacsim/snippets, allowed platform(s)
+omniverse_usd/open_usd/working_with_multiple_layers.py,linux-x86_64
+replicator_tutorials/tutorial_replicator_teleop/sdg_teleop_replay_script_editor.py,linux-x86_64

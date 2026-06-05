@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Provides trigger functionality for reinforcement learning frame events in domain randomization workflows."""
-
 
 from omni.replicator.core.utils import ReplicatorWrapper, create_node
 
@@ -32,7 +31,7 @@ def on_rl_frame(num_envs: int):
     Returns:
         The OmniGraph node for RL frame triggers.
     """
-    node = create_node("isaacsim.replicator.experimental.domain_randomization.OgnOnRLFrame")
+    node = create_node("isaacsim.replicator.domain_randomization.OgnOnRLFrame")
     node.get_attribute("inputs:num_envs").set(num_envs)
 
     initialize_context(num_envs, node)

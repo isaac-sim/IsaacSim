@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,7 @@
 #include <isaacsim/sensors/experimental/physics/IEffortSensor.h>
 
 #include <memory>
+#include <string>
 
 namespace isaacsim
 {
@@ -28,6 +29,9 @@ namespace experimental
 namespace physics
 {
 
+/**
+ * @brief Implementation of the IEffortSensor interface for physics-based effort sensing.
+ */
 class EffortSensorImpl : public IEffortSensor
 {
 public:
@@ -35,9 +39,9 @@ public:
     ~EffortSensorImpl();
 
     void shutdown() override;
-    int64_t createSensor(const char* jointPrimPath) override;
-    void removeSensor(int64_t sensorId) override;
-    EffortSensorReading getSensorReading(int64_t sensorId) override;
+    bool createSensor(const char* jointPrimPath) override;
+    void removeSensor(const char* jointPrimPath) override;
+    EffortSensorReading getSensorReading(const char* jointPrimPath) override;
 
 private:
     struct ImplData;
@@ -51,7 +55,7 @@ private:
     void _unsubscribeFromPhysicsStepEvents();
     void _stepSensors(float dt);
     void _recreateSensorViews();
-    static void _processSensor(ImplData& impl, int64_t sensorId, float dt, double simTime);
+    static void _processSensor(ImplData& impl, const std::string& jointPrimPath, float dt, double simTime);
 };
 
 } // namespace physics

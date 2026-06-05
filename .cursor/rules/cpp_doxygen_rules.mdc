@@ -1,0 +1,147 @@
+---
+description: C++ docstring generation rules
+globs: *.cpp, *.h
+---
+# C++ Doxygen Documentation Style Rules
+
+These rules define the standard Doxygen documentation style for C++ code.
+
+
+## Best Practices
+1. Use complete sentences ending with periods
+2. Be concise but descriptive in @brief tags
+3. Provide detailed explanations in @details when necessary
+4. Document all parameters, even if their purpose seems obvious
+5. Document exceptions that may be thrown
+6. Include units for numerical parameters/returns where applicable
+7. Use @note for important additional information
+8. Use @warning for potential pitfalls or dangerous usage
+9. Keep documentation up to date with code changes
+10. Use consistent terminology throughout documentation
+
+## Code Preservation
+1. Do not change any code style when adding documentation
+2. Never modify or refactor the code when adding documentation
+3. Never add additional code when adding documentation
+4. Never remove any existing code when adding documentation
+5. Do not fix any code issues when adding documentation
+6. Documentation should describe the code as-is, not as it could/should be
+7. Keep all existing code structure, formatting, and logic intact
+8. Focus solely on adding descriptive comments and documentation
+
+## Formatting Guidelines
+1. Use proper grammar and punctuation
+2. Align asterisks in multi-line comments
+3. Use empty lines to separate logical sections in detailed descriptions
+4. Maintain consistent indentation
+5. Break long lines at 100 characters
+6. Use markdown formatting in detailed descriptions when helpful
+
+## Special Tags Reference
+- @brief - Short description
+- @details - Detailed description
+- @param - Parameter description
+- @tparam - Template parameter description
+- @return - Return value description
+- @throws - Exception description
+- @pre - Precondition
+- @post - Postcondition
+- @note - Additional notes
+- @warning - Warnings
+- @see - References to other elements
+- @since - Version information
+- @deprecated - Deprecation notice 
+
+## Class Documentation
+Classes should be documented with a comprehensive header:
+```cpp
+/**
+ * @class ClassName
+ * @brief Brief description of the class
+ * @details 
+ * Detailed description of the class, its purpose, and any important notes.
+ * Multiple paragraphs are allowed.
+ * 
+ * @note Important notes about the class
+ * @warning Any warnings about class usage
+ */
+```
+
+## Function Documentation
+Functions should be documented with parameters, return values, and exceptions:
+```cpp
+/**
+ * @brief Brief description of what the function does
+ * @details 
+ * Detailed description of the function's behavior
+ * 
+ * @param[in] paramName Description of input parameter
+ * @param[out] paramName Description of output parameter
+ * @param[in,out] paramName Description of parameter that's both input and output
+ * 
+ * @return Description of return value
+ * 
+ * @throws ExceptionType Description of when/why exception is thrown
+ * 
+ * @pre Preconditions that must be met
+ * @post Postconditions that are guaranteed
+ * 
+ * @note Any additional notes
+ * @warning Any warnings about function usage
+ */
+```
+
+## Member Variable Documentation
+Member variables should be documented concisely:
+```cpp
+/**
+ * @brief Brief description of the member variable
+ * @details Detailed description if necessary
+ */
+```
+
+## Enum Documentation
+Enums should be documented with descriptions for both the enum and its values:
+```cpp
+/**
+ * @brief Brief description of the enum
+ * @details Detailed description of the enum's purpose
+ */
+enum class EnumName {
+    /**
+     * @brief Description of first enum value
+     */
+    VALUE_ONE,
+    
+    /**
+     * @brief Description of second enum value
+     */
+    VALUE_TWO
+};
+```
+
+## Template Parameter Documentation
+Template parameters should be documented:
+```cpp
+/**
+ * @brief Brief description of the template class/function
+ * 
+ * @tparam T Description of template parameter T
+ * @tparam N Description of template parameter N
+ */
+```
+
+## Groups and Modules
+Use groups to organize related elements:
+```cpp
+/**
+ * @defgroup group_name Group Title
+ * @{
+ */
+
+// ... documented elements ...
+
+/**
+ * @}
+ */
+```

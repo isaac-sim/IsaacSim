@@ -1,0 +1,73 @@
+{
+    "isaacsim.sensors.physics.IsaacReadRaycastSensor": {
+        "version": 1,
+        "icon": "icons/isaac-sim.svg",
+        "description": "Node that reads out physics raycast sensor depths, hit positions, hit normals, and optionally hit prim paths",
+        "language": "cpp",
+        "categoryDefinitions": "config/CategoryDefinition.json",
+        "categories": "isaacPhysicsSensor",
+        "metadata": {
+            "uiName": "Isaac Read Physics Raycast Sensor Node"
+        },
+        "inputs": {
+            "execIn": {
+                "type": "execution",
+                "description": "The input execution port"
+            },
+            "raycastSensorPrim": {
+                "type": "target",
+                "description": "USD prim reference to the IsaacRaycastSensor prim",
+                "metadata": {
+                    "uiName": "Physics Raycast Sensor Prim"
+                }
+            }
+        },
+        "outputs": {
+            "execOut": {
+                "type": "execution",
+                "description": "Output execution triggers when sensor has data"
+            },
+            "sensorTime": {
+                "type": "float",
+                "description": "Sensor reading timestamp",
+                "metadata": {
+                    "uiName": "Sensor Time"
+                },
+                "default": 0.0
+            },
+            "depths": {
+                "type": "float[]",
+                "description": "Per-ray depth in stage length units (maxRange on miss)"
+            },
+            "hitPositions": {
+                "type": "float[]",
+                "description": "Per-ray hit positions as flat array [x,y,z, x,y,z, ...] (3*N floats, frame per outputFrameOfReference)"
+            },
+            "hitNormals": {
+                "type": "float[]",
+                "description": "Per-ray surface normals as flat array [x,y,z, x,y,z, ...] (3*N floats, same frame)"
+            },
+            "hitPrimPaths": {
+                "type": "token[]",
+                "description": "Per-ray hit prim USD paths (empty strings unless reportHitPrimPaths is true)"
+            },
+            "numRays": {
+                "type": "uint",
+                "description": "Number of rays in the sensor",
+                "default": 0
+            },
+            "beamOrigins": {
+                "type": "pointf[3][]",
+                "description": "Per-ray world-space origins for debug draw visualization",
+                "memoryType": "cpu",
+                "default": []
+            },
+            "beamEndPoints": {
+                "type": "pointf[3][]",
+                "description": "Per-ray world-space hit endpoints (or max-range endpoints on miss) for debug draw",
+                "memoryType": "cpu",
+                "default": []
+            }
+        }
+    }
+}

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,17 +13,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Utility functions for entity management in ROS 2 simulation control."""
+
+import os
 import re
 
 import carb
-import isaacsim.core.utils.prims as prim_utils
+import isaacsim.core.experimental.utils.prim as prim_utils
 from geometry_msgs.msg import Accel, Point, Pose, Quaternion, Twist, Vector3
 from isaacsim.core.experimental.prims import RigidPrim, XformPrim
+from isaacsim.storage.native import is_local_path
 from simulation_interfaces.msg import EntityState, Result
 from std_msgs.msg import Header
 
 
-def get_filtered_entities(usdrt_stage, filter_pattern=None):
+def resolve_source_path(src: str, assets_root_path: str | None) -> str:
+    """Resolve a user-supplied source path to a full URI.
+
+    Paths that look local (e.g. ``/Isaac/...``) but don't exist on the
+    local filesystem are treated as Nucleus-relative and prefixed with
+    *assets_root_path*.  Already-absolute Nucleus URIs and real local
+    paths are returned unchanged.
+    """
+    if assets_root_path and is_local_path(src) and not os.path.exists(src):
+        return assets_root_path + src if src.startswith("/") else assets_root_path + "/" + src
+    return src
+
+
+def get_filtered_entities(usdrt_stage: object, filter_pattern: str | None = None) -> tuple[list[str], str]:
     """Get filtered entities based on regex pattern.
 
     This function retrieves all prim paths from the usdrt stage for efficient traversing and optionally filters them using a regular expression pattern.
@@ -38,6 +55,7 @@ def get_filtered_entities(usdrt_stage, filter_pattern=None):
 
     Raises:
         Exception: If regex compilation fails.
+
     """
     # Check if usdrt stage is available
     if not usdrt_stage:
@@ -63,7 +81,7 @@ def get_filtered_entities(usdrt_stage, filter_pattern=None):
     return filtered_paths, ""
 
 
-async def get_entity_state(entity_path):
+async def get_entity_state(entity_path: str) -> tuple[object | None, str, int]:
     """Get state for a single entity.
 
     This function retrieves the complete state information for a specified entity,
@@ -80,12 +98,12 @@ async def get_entity_state(entity_path):
 
     Raises:
         Exception: If entity state retrieval fails due to invalid paths or physics errors.
+
     """
     # Check if entity exists
-    if not prim_utils.is_prim_path_valid(entity_path):
-        return None, f"Entity '{entity_path}' does not exist", Result.RESULT_NOT_FOUND
-    # Get the prim
     prim = prim_utils.get_prim_at_path(entity_path)
+    if not prim.IsValid():
+        return None, f"Entity '{entity_path}' does not exist", Result.RESULT_NOT_FOUND
 
     # Instance Proxy prims are currently not supported
     if prim.IsInstanceProxy():
@@ -204,7 +222,7 @@ async def get_entity_state(entity_path):
     return entity_state, "", Result.RESULT_OK
 
 
-def create_empty_entity_state():
+def create_empty_entity_state() -> object:
     """Create an empty entity state with default values.
 
     This function creates a new EntityState object with all fields initialized
@@ -214,6 +232,7 @@ def create_empty_entity_state():
     Returns:
         Empty entity state object with default values.
         An EntityState object with all fields set to safe default values.
+
     """
     from geometry_msgs.msg import Accel, Point, Pose, Quaternion, Twist, Vector3
     from std_msgs.msg import Header

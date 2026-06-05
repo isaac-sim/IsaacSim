@@ -1,5 +1,5 @@
 {
-    "OgnWritePhysicsRigidPrimView": {
+    "isaacsim.replicator.domain_randomization.OgnWritePhysicsRigidPrimView": {
         "version": 1,
         "language": "python",
         "categories": {

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -159,11 +159,11 @@ def run_example(num_frames: int, resolution: tuple[int, int], use_warp: bool, en
     depth_annot_1.attach(rp)
     depth_annot_2.attach(rp)
 
-    # Create a red cube and randomize its rotation every capture frame using a replicator randomizer graph
+    # Create a red cube and randomize its rotation on a custom event sent before each capture step
     red_cube = rep.functional.create.cube(position=(0, 0, 0.71))
     rep.functional.create.material(mdl="OmniPBR.mdl", bind_prims=[red_cube], diffuse_color_constant=(1, 0, 0))
 
-    with rep.trigger.on_frame():
+    with rep.trigger.on_custom_event(event_name="randomize_red_cube"):
         red_cube_node = rep.get.prim_at_path(red_cube.GetPath())
         with red_cube_node:
             rep.randomizer.rotation()
@@ -176,6 +176,7 @@ def run_example(num_frames: int, resolution: tuple[int, int], use_warp: bool, en
     capture_start = time.time()
     for frame_idx in range(num_frames):
         print(f"  Capturing frame {frame_idx + 1}/{num_frames}")
+        rep.utils.send_og_event(event_name="randomize_red_cube")
         rep.orchestrator.step(rt_subframes=32)
 
         # Get the data from the annotators

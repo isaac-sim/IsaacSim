@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Isaac Sim Occupancy Map extension that provides core functionality for generating 2D and 3D occupancy maps from USD stages."""
+
 import omni.ext
 
 from ..bindings import _omap
@@ -28,7 +31,7 @@ class Extension(omni.ext.IExt):
     to provide a complete occupancy map generation workflow.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Called when the extension is enabled.
 
         Acquires the occupancy map interface which provides access to the C++ backend
@@ -39,7 +42,7 @@ class Extension(omni.ext.IExt):
         """
         self._interface = _omap.acquire_omap_interface()
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Called when the extension is disabled.
 
         Releases the occupancy map interface and cleans up any resources.

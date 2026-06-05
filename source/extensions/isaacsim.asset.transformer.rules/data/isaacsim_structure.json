@@ -34,6 +34,13 @@
       "enabled": true
     },
     {
+      "name": "Apply Joint State APIs",
+      "type": "isaacsim.asset.transformer.rules.isaac_sim.joint_state_api.JointStateAPIRule",
+      "destination": "payloads",
+      "params": {},
+      "enabled": true
+    },
+    {
       "name": "Route Isaac Robot Schemas",
       "type": "isaacsim.asset.transformer.rules.core.schemas.SchemaRoutingRule",
       "destination": "payloads",
@@ -231,6 +238,20 @@
       "enabled": true
     },
     {
+      "name": "Make Robot Relationship Lists Non-Explicit",
+      "type": "isaacsim.asset.transformer.rules.isaac_sim.make_lists_non_explicit.MakeListsNonExplicitRule",
+      "destination": "payloads",
+      "params": {
+        "metadata_names": [],
+        "property_names": [
+          "isaac:physics:robotLinks",
+          "isaac:physics:robotJoints"
+        ],
+        "list_op_type": "prepend"
+      },
+      "enabled": true
+    },
+    {
       "name": "Generate Interface",
       "type": "isaacsim.asset.transformer.rules.structure.interface.InterfaceConnectionRule",
       "destination": "",
@@ -297,7 +318,7 @@
         ],
         "clear_properties": false
       },
-      "enabled": true
+      "enabled": false
     }
   ],
   "interface_asset_name": null,

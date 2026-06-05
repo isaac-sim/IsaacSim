@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +15,9 @@
 
 """Tests for custom replicator randomizer implementations using mathematical distribution algorithms and OmniGraph nodes."""
 
-
 import omni.kit
 import omni.usd
-from isaacsim.core.utils.stage import create_new_stage_async
+from isaacsim.core.experimental.utils.stage import create_new_stage_async
 
 
 class TestOgnCustomReplicatorRandomizer(omni.kit.test.AsyncTestCase):

@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Compute bounding volumes for primitive geometry.
 
 This module is intended for primitive shapes only. For mesh bounds, ensure meshes
@@ -21,7 +22,7 @@ are cleaned and triangulated before computing bounds.
 import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.transform as transform_utils
 import numpy as np
-from pxr import Gf, Usd, UsdGeom
+from pxr import Usd, UsdGeom
 
 from .bounding_geometries import AABB, OBB
 

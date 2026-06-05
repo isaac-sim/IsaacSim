@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,11 +12,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Plugin registration helpers for robot schema modules."""
 
+import logging
 import os
 
 from pxr import Plug
+
+logger = logging.getLogger(__name__)
 
 
 def _register_plugin_path(path: str) -> None:
@@ -24,9 +28,8 @@ def _register_plugin_path(path: str) -> None:
 
     Args:
         path: Directory path containing a plugInfo.json file.
+
     """
-    # Check if plugins at this path are already registered to avoid duplicate registration
-    # which can occur when the module is reloaded
     pluginfo_path = os.path.join(path, "plugInfo.json")
     if not os.path.exists(pluginfo_path):
         return
@@ -35,13 +38,11 @@ def _register_plugin_path(path: str) -> None:
         import json
 
         with open(pluginfo_path) as f:
-            # Strip comment lines (lines starting with #) for JSON parsing
             lines = f.readlines()
             json_lines = [line for line in lines if not line.strip().startswith("#")]
             json_content = "".join(json_lines)
             data = json.loads(json_content)
 
-        # Get plugin names that would be registered
         plugin_names_to_register = set()
         if "Plugins" in data:
             for plugin_info in data["Plugins"]:
@@ -51,38 +52,32 @@ def _register_plugin_path(path: str) -> None:
         if not plugin_names_to_register:
             return
 
-        # Check if these plugins are already registered
         registry = Plug.Registry()
         all_plugins = registry.GetAllPlugins()
         registered_plugin_names = {plugin.name for plugin in all_plugins}
 
-        # If all plugins are already registered, skip to avoid re-registration errors
         if plugin_names_to_register.issubset(registered_plugin_names):
             return
 
     except Exception:
-        # If we can't check registration status, proceed with registration attempt
         pass
 
-    # Attempt registration
     result = Plug.Registry().RegisterPlugins(path)
     if not result:
-        import carb
-
-        carb.log_error(f"No plugins found at path {path}")
+        logger.error(f"No plugins found at path {path}")
 
 
-def _register_plugins(ext_path: str):
+def _register_plugins(ext_path: str) -> None:
     """Register robot schema plugin resources for an extension path.
 
     Args:
         ext_path: Extension root path to scan for plugin resources.
+
     """
     _register_plugin_path(os.path.join(ext_path, "usd", "schema", "isaac", "robot_schema"))
 
-    plugin_path = os.path.join(ext_path, "plugins", "plugins")
-    _register_plugin_path(os.path.join(plugin_path, "isaacSensorSchema", "resources"))
-    _register_plugin_path(os.path.join(plugin_path, "rangeSensorSchema", "resources"))
+    _register_plugin_path(os.path.join(ext_path, "usd", "schema", "isaac", "sensor_schema"))
+    _register_plugin_path(os.path.join(ext_path, "usd", "schema", "isaac", "range_sensor_schema"))
 
 
 # carb.tokens.get_tokens_interface().resolve("${isaacsim.robot.schema}") can not be resolved by sphinx
@@ -90,4 +85,4 @@ ext_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.pa
 _register_plugins(ext_path)
 
 
-from . import robot_schema  # type: ignore[attr-defined]
+from . import robot_schema as robot_schema  # type: ignore[attr-defined]

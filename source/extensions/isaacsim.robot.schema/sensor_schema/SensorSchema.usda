@@ -1,0 +1,170 @@
+#usda 1.0
+(
+	subLayers = [
+    @usdGeom/schema.usda@
+	]
+)
+
+over "GLOBAL" (
+	customData = {
+	string libraryName = "isaacSensorSchema"
+	string libraryPath = "./"
+	string libraryPrefix = "IsaacSensor"
+	bool skipCodeGeneration = true
+	}
+)
+{
+
+}
+class "IsaacBaseSensor" (
+	  inherits = </Xformable>
+)
+{
+	bool enabled = true (doc = """Set to True to enable this sensor, False to Disable""")
+}
+
+class "IsaacRtxLidarSensorAPI" (
+	  inherits = </APISchemaBase>
+	  customData = {
+        token apiSchemaType = "singleApply"
+      }
+)
+{
+}
+
+class "IsaacRtxRadarSensorAPI" (
+	  inherits = </APISchemaBase>
+	  customData = {
+        token apiSchemaType = "singleApply"
+      }
+)
+{
+}
+
+
+class IsaacContactSensor "IsaacContactSensor" (
+	  inherits = </IsaacBaseSensor>
+
+)
+{
+	float2 threshold = (0.01, 100000.0) (doc = """Min, Max force that is detected by this sensor, units in (kg) * (stage length unit) / (second)^2""")
+	float radius = -1 (doc = """Radius of the contact sensor, unit in stage length unit""")
+	float4 color = (1,1,1,1) (doc = """Color of the contact sensor sphere, R, G, B, A""")
+	float sensorPeriod = 0.0025 (doc = """DEPRECATED since isaacsim.robot.schema 6.2.0. Only used by the deprecated isaacsim.sensors.physx extension. Time between each sensor measurement, unit in simulator seconds""")
+}
+
+
+class IsaacImuSensor "IsaacImuSensor" (
+	  inherits = </IsaacBaseSensor>
+)
+{
+	float sensorPeriod = 0.01(doc = """DEPRECATED since isaacsim.robot.schema 6.2.0. Only used by the deprecated isaacsim.sensors.physx extension. Time between each sensor measurement, unit in simulator seconds""")
+	int linearAccelerationFilterWidth = 1 (doc = """Number of linear acceleration measurements used in the rolling average""")
+	int angularVelocityFilterWidth = 1 (doc = """Number of angular velocity measurements used in the rolling average""")
+	int orientationFilterWidth = 1 (doc = """Number of orientation measurements used in the rolling average""")
+}
+
+
+class IsaacLightBeamSensor "IsaacLightBeamSensor" (
+	  inherits = </IsaacBaseSensor>
+	  doc = """DEPRECATED since isaacsim.robot.schema 6.2.0.
+	  Used only by the deprecated isaacsim.sensors.physx extension.
+	  Use IsaacRaycastSensor with isaacsim.sensors.experimental.physics instead."""
+)
+{
+	int numRays = 1 (doc = """Number of rays for the light curtain, default 1""")
+	float curtainLength = 0 (doc = """Total length of the light curtain""")
+	float3 forwardAxis = (1, 0, 0) (doc = """Direction to shoot the light beam in [AxisX, AxisY, AxisZ]""")
+	float3 curtainAxis = (0, 0, 1) (doc = """Direction to expand the light curtain in [AxisX, AxisY, AxisZ]""")
+	float minRange = 0.4   (doc = """Minimum range for sensor to detect a hit""")
+	float maxRange = 100.0 (doc = """Maximum range for sensor to detect a hit""")
+}
+
+
+class IsaacRaycastSensor "IsaacRaycastSensor" (
+	  inherits = </IsaacBaseSensor>
+	  doc = """A physics-raycast-based sensor with explicit per-ray origin offsets,
+	  direction vectors, and time offsets relative to a parent prim.
+
+	  The numRays attribute is the authoritative ray count. The per-ray arrays
+	  (rayOrigins, rayDirections, rayTimeOffsets) must each have exactly numRays
+	  elements; if any array length does not match numRays the sensor is disabled
+	  with an error. If rayTimeOffsets is empty, all rays default to time offset
+	  0.0.
+
+	  Origins and directions are specified in the sensor prim's local coordinate
+	  frame. At each evaluation the sensor's world transform is computed from the
+	  current rigid-body pose, optionally extrapolated forward using
+	  linear/angular velocity when a non-zero rayTimeOffset is specified. Each
+	  ray's local origin/direction is then transformed into world space for the
+	  raycast.
+
+	  The implementation uses engine-dispatch raycasting: PhysX C++ for the
+	  default engine, omni.physics.core Python fallback for Newton.
+
+	  All attributes are read once when the sensor is first evaluated after
+	  simulation starts. Changing attribute values while the simulation is
+	  playing has no effect; stop and restart the simulation to pick up
+	  changes."""
+)
+{
+	uint numRays = 1 (
+		doc = """Number of rays cast by this sensor. This is the authoritative ray
+		count; rayOrigins and rayDirections must each have exactly this many
+		elements. Read once at simulation start; runtime changes have no effect."""
+	)
+
+	float minRange = 0.4 (
+		doc = """Minimum range for sensor to detect a hit, in stage length units.
+		Rays start at (origin + direction * minRange). Read once at simulation
+		start; runtime changes have no effect."""
+	)
+
+	float maxRange = 100.0 (
+		doc = """Maximum range for sensor to detect a hit, in stage length units.
+		Read once at simulation start; runtime changes have no effect."""
+	)
+
+	float3[] rayOrigins = [] (
+		doc = """Per-ray origin translations in the sensor's local coordinate frame.
+		Each element (x, y, z) is an offset from the sensor prim's local origin for
+		the corresponding ray. Must have exactly numRays elements. Read once at
+		simulation start; runtime changes have no effect."""
+	)
+
+	float3[] rayDirections = [] (
+		doc = """Per-ray cast direction vectors in the sensor's local coordinate frame.
+		Each element (dx, dy, dz) specifies the direction for the corresponding ray.
+		Vectors need not be unit length; they are normalized before use. Must have
+		exactly numRays elements. Read once at simulation start; runtime changes
+		have no effect."""
+	)
+
+	float[] rayTimeOffsets = [] (
+		doc = """Per-ray time offsets in seconds, relative to the current simulation time.
+		For each ray, the sensor prim's world transform is extrapolated to
+		(currentTime + rayTimeOffsets[i]) using the rigid body's linear and angular
+		velocity before computing the ray's world-space origin and direction. This
+		models sensors with sequential or staggered firing patterns (e.g. a spinning
+		lidar where different azimuths see the scene at different instants within a
+		frame). A value of 0.0 means the ray uses the transform at the current
+		simulation time. If empty, all rays default to offset 0.0. When non-empty,
+		must have exactly numRays elements. Read once at simulation start; runtime
+		changes have no effect."""
+	)
+
+	token outputFrameOfReference = "SENSOR" (
+		allowedTokens = ["SENSOR", "WORLD"]
+		doc = """Coordinate frame for hit positions and hit normals in the sensor
+		reading. 'SENSOR' returns results in the sensor prim's local frame; 'WORLD'
+		returns results in world coordinates. Read once at simulation start; runtime
+		changes have no effect."""
+	)
+
+	bool reportHitPrimPaths = false (
+		doc = """When true, the sensor reading includes the USD prim path of each hit
+		surface. Resolving prim paths from physics shapes has a per-ray cost; set to
+		true only when needed. Read once at simulation start; runtime changes have
+		no effect."""
+	)
+}

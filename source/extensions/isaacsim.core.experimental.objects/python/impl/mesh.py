@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,18 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""High level wrapper for creating/encapsulating USD Mesh (points that are connected into edges and faces) prims."""
+
 from __future__ import annotations
 
 from typing import Literal
 
 import isaacsim.core.experimental.utils.ops as ops_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
+import matplotlib.colors
 import numpy as np
 import omni.kit.commands
 import warp as wp
 from isaacsim.core.experimental.prims import XformPrim
 from isaacsim.core.experimental.prims.impl.prim import _MSG_PRIM_NOT_VALID
-from pxr import Usd, UsdGeom, Vt
+from pxr import Gf, Usd, UsdGeom, Vt
 
 
 class Mesh(XformPrim):
@@ -42,6 +45,10 @@ class Mesh(XformPrim):
             Can include regular expressions for matching multiple prims.
         primitives: Primitives to be created (shape ``(N,)``). If not defined, an empty mesh is created.
             Primitives are used only for *creating* operations. For *wrapping* operations, primitives are ignored.
+            If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).
+        colors: Normalized RGB display colors (shape ``(N, 3)``) or case-insensitive string representations.
+            Supported string representations include hex codes and X11/CSS4 color names without spaces,
+            as well as any other format supported by Matplotlib. Alpha channel is ignored for string representations.
             If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).
         positions: Positions in the world frame (shape ``(N, 3)``).
             If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).
@@ -66,22 +73,22 @@ class Mesh(XformPrim):
         >>> from isaacsim.core.experimental.objects import Mesh
         >>>
         >>> # given an empty USD stage with the /World Xform prim,
-        >>> # create Plane meshes at paths: /World/prim_0, /World/prim_1, and /World/prim_2
+        >>> # create red Plane meshes at paths: /World/prim_0, /World/prim_1, and /World/prim_2
         >>> paths = ["/World/prim_0", "/World/prim_1", "/World/prim_2"]
-        >>> prims = Mesh(paths, primitives="Plane")  # doctest: +NO_CHECK
+        >>> prims = Mesh(paths, primitives="Plane", colors="red")  # doctest: +NO_CHECK
 
     Example (create mesh from external package: trimesh):
 
     .. code-block:: python
 
         >>> from isaacsim.core.experimental.objects import Mesh
-        >>> import trimeshx  # doctest: +SKIP
+        >>> import trimesh  # doctest: +SKIP
         >>>
         >>> # icosahedron mesh (20 faces)
         >>> mesh = trimesh.creation.icosahedron()  # doctest: +SKIP
         >>>
-        >>> # create an USD Mesh from the icosahedron defined by trimesh
-        >>> mesh_prim = Mesh("/World/icosahedron")  # doctest: +SKIP
+        >>> # create a yellow USD Mesh from the icosahedron defined by trimesh
+        >>> mesh_prim = Mesh("/World/icosahedron", colors=(1.0, 1.0, 0.0))  # doctest: +SKIP
         >>> mesh_prim.set_points([mesh.vertices])  # doctest: +SKIP
         >>> mesh_prim.set_face_specs(
         ...    vertex_indices=[mesh.faces.flatten()],
@@ -100,6 +107,7 @@ class Mesh(XformPrim):
             | list[Literal["Cone", "Cube", "Cylinder", "Disk", "Plane", "Sphere", "Torus"]]
             | None
         ) = None,
+        colors: str | list | np.ndarray | wp.array | None = None,
         # XformPrim
         positions: list | np.ndarray | wp.array | None = None,
         translations: list | np.ndarray | wp.array | None = None,
@@ -161,6 +169,9 @@ class Mesh(XformPrim):
             scales=scales,
             reset_xform_op_properties=reset_xform_op_properties,
         )
+        # initialize instance from arguments
+        if colors is not None:
+            self.set_display_colors(colors)
 
     """
     Properties.
@@ -168,10 +179,10 @@ class Mesh(XformPrim):
 
     @property
     def geoms(self) -> list[UsdGeom.Mesh]:
-        """USD Mesh encapsulated by the wrapper.
+        """USD Mesh prims encapsulated by the wrapper.
 
         Returns:
-            List of USD Mesh.
+            List of USD Mesh prims.
 
         Example:
 
@@ -295,6 +306,48 @@ class Mesh(XformPrim):
     """
     Methods.
     """
+
+    def set_display_colors(
+        self,
+        colors: str | list | np.ndarray | wp.array,
+        *,
+        indices: int | list | np.ndarray | wp.array | None = None,
+    ) -> None:
+        """Set the display colors of the prims.
+
+        Backends: :guilabel:`usd`.
+
+        Args:
+            colors: Normalized RGB display colors (shape ``(N, 3)``) or case-insensitive string representations.
+                Supported string representations include hex codes and X11/CSS4 color names without spaces,
+                as well as any other format supported by Matplotlib. Alpha channel is ignored for string representations.
+                If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).
+            indices: Indices of prims to process (shape ``(N,)``). If not defined, all wrapped prims are processed.
+
+        Raises:
+            AssertionError: Wrapped prims are not valid.
+            ValueError: Invalid string representation format for the colors.
+
+        Example:
+
+        .. code-block:: python
+
+            >>> # set same colors (red) for all prims
+            >>> prims.set_display_colors([1.0, 0.0, 0.0])
+            >>>
+            >>> # set only the color (green) for the second prim
+            >>> prims.set_display_colors("#00ff00", indices=[1])
+        """
+        assert self.valid, _MSG_PRIM_NOT_VALID
+        # USD API
+        indices = ops_utils.resolve_indices(indices, count=len(self), device="cpu")
+        if isinstance(colors, str):
+            colors = matplotlib.colors.to_rgb(colors)
+        elif isinstance(colors, (list, tuple)):
+            colors = [matplotlib.colors.to_rgb(color) if isinstance(color, str) else color for color in colors]
+        colors = ops_utils.broadcast_to(colors, shape=(indices.shape[0], 3), dtype=wp.float32, device="cpu").numpy()
+        for i, index in enumerate(indices.numpy()):
+            self.geoms[index].GetDisplayColorAttr().Set([Gf.Vec3f(*colors[i].tolist())])
 
     def set_points(
         self, points: list[list | np.ndarray | wp.array], *, indices: int | list | np.ndarray | wp.array | None = None

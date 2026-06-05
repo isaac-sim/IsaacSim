@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import annotations
+"""Demonstrate differential IK control of a Franka Panda robot using Warp.
 
-from typing import Any
-
-"""
 This example demonstrates how to control the Franka Panda's arm DOFs (via differential Inverse Kinematics (IK))
 to follow a randomly positioned sphere in 3D space using Warp.
 
@@ -32,10 +29,14 @@ The source code is organized into 4 main sections:
 4. Example logic.
 """
 
-# 1. --------------------------------------------------------------------
+from __future__ import annotations
 
 # Parse any command-line arguments specific to the standalone application (only known arguments).
 import argparse
+from typing import Any
+
+# 1. --------------------------------------------------------------------
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--device", type=str, choices=["cpu", "cuda"], default="cpu", help="Simulation device")
@@ -81,6 +82,7 @@ def _sample_random_position_kernel(center: wp.array2d(dtype=Any), scale: float, 
 
 
 def sample_random_position(*, center: wp.array, scale: float, seed: int) -> wp.array:
+    """Sample a random position within a scaled range around a center point."""
     out = wp.zeros_like(center)
     wp.launch(kernel=_sample_random_position_kernel, dim=center.shape[0], inputs=[center, scale, seed], outputs=[out])
     return out
@@ -93,6 +95,7 @@ def _add_kernel(a: wp.array2d(dtype=Any), b: wp.array2d(dtype=Any), out: wp.arra
 
 
 def add(a: wp.array, b: wp.array) -> wp.array:
+    """Perform element-wise addition of two Warp arrays."""
     out = wp.zeros_like(a)
     wp.launch(kernel=_add_kernel, dim=a.shape, inputs=[a, b], outputs=[out], device=a.device)
     return out
@@ -146,6 +149,7 @@ def differential_inverse_kinematics(
     method: str = "damped-least-squares",
     method_cfg: dict[str, float] = {"scale": 1.0, "damping": 0.05, "min_singular_value": 1e-5},
 ) -> wp.array:
+    """Compute delta DOF positions via differential inverse kinematics."""
     batch_size = jacobian_end_effector.shape[0]
     device = jacobian_end_effector.device
     scale = method_cfg.get("scale", 1.0)

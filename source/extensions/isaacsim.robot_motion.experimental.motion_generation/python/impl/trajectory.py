@@ -15,7 +15,6 @@
 
 """Interface for defining continuous-time robot trajectories in Isaac Sim with abstract methods for duration and state retrieval."""
 
-
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -36,7 +35,6 @@ class Trajectory(ABC):
         Returns:
             Duration of the trajectory in seconds.
         """
-        pass
 
     @abstractmethod
     def get_target_state(self, time: float) -> Optional[RobotState]:
@@ -62,4 +60,3 @@ class Trajectory(ABC):
             >>> if target is None:
             ...     raise RuntimeError("No target available")
         """
-        pass

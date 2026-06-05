@@ -2,6 +2,11 @@
 
 ## rangeSensorSchema
 
+> **Deprecated since 6.2.0**: The rangeSensorSchema (RangeSensor, Lidar, Generic) is deprecated.
+> Used only by the deprecated `isaacsim.sensors.physx` extension.
+> Use `IsaacRaycastSensor` from the `isaacSensorSchema` plugin with
+> `isaacsim.sensors.experimental.physics` or `isaacsim.sensors.experimental.rtx` instead.
+
 ### RangeSensor
 
 #### enabled
@@ -47,57 +52,6 @@
   Set to true to get semantic information of sensor hit locations
 
 
-### UltrasonicArray
-
-#### numBins
-  Number of bins that emitters in this array outputs
-
-#### useBRDF
-  Use angle of emitter/receiver relative to normal to compute intensity response
-
-#### useUSSMaterialsForBRDF
-  Use Ultrasonic materials for BRDF calculation
-
-#### useDistAttenuation
-  Use simplified Beer-Lambert model, negative exponential attenuation
-
-#### attenuationAlpha
-  Single attenuation parameter for simplified Beer-Lambert model
-
-#### horizontalFov
-  Horizontal Field of View in degrees
-
-#### verticalFov
-  Vertical Field of View in degrees
-
-#### horizontalResolution
-  Degrees in between rays for horizontal axis
-
-#### verticalResolution
-  Degrees in between rays for vertical axis
-
-
-### UltrasonicEmitter
-
-#### perRayIntensity
-  The base value that is attenuated based on distance from sensor and angle of reflection
-
-#### yawOffset
-  Offset along yaw axis to account for sensor having a different forward direction
-
-#### adjacencyList
-  List of emitter ids for adjacent emitters, used to compute indirects when receiving. Zero indexed and must match the order in the array
-
-
-### UltrasonicFiringGroup
-
-#### emitterModes
-  List of (emitter id, firing mode) pairs for each sensor in this group to emit from. emitter id is zero indexed and must match the order in the array
-
-#### receiverModes
-  List of (receiver id, firing mode) pairs to record envelopes for. Receiver id is zero indexed and must match the order in the array
-
-
 ### Generic
 
 #### samplingRate
@@ -105,22 +59,6 @@
 
 #### streaming
   Streaming lidar point data. Default to true
-
-
-### UltrasonicMaterialAPI
-Defines Ultrasonic (USS) material properties.
-
-#### uss:perceptualRoughness
-  Perceptual Roughness. Unitless.
-
-#### uss:reflectance
-  Reflectance. Unitless.
-
-#### uss:metallic
-  Metallic. Unitless.
-
-#### uss:base_color
-  Base Color. Unitless.
 
 
 ## isaacSensorSchema
@@ -169,6 +107,10 @@ Defines Ultrasonic (USS) material properties.
 
 ### IsaacLightBeamSensor
 
+> **Deprecated since 6.2.0**: IsaacLightBeamSensor is deprecated.
+> Used only by the deprecated `isaacsim.sensors.physx` extension.
+> Use `IsaacRaycastSensor` with `isaacsim.sensors.experimental.physics` instead.
+
 #### numRays
   Number of rays for the light curtain, default 1
 
@@ -186,6 +128,33 @@ Defines Ultrasonic (USS) material properties.
 
 #### maxRange
   Maximum range for sensor to detect a hit
+
+
+### IsaacRaycastSensor
+
+#### numRays
+  Number of rays cast by this sensor (unsigned int, authoritative count)
+
+#### minRange
+  Minimum range for sensor to detect a hit, in stage length units
+
+#### maxRange
+  Maximum range for sensor to detect a hit, in stage length units
+
+#### rayOrigins
+  Per-ray origin translations in the sensor's local coordinate frame
+
+#### rayDirections
+  Per-ray cast direction vectors in the sensor's local coordinate frame
+
+#### rayTimeOffsets
+  Per-ray time offsets in seconds, relative to the current simulation time
+
+#### outputFrameOfReference
+  Coordinate frame for hit positions and hit normals ('SENSOR' or 'WORLD')
+
+#### reportHitPrimPaths
+  When true, the sensor reading includes the USD prim path of each hit surface
 
 
 ## robot_schema

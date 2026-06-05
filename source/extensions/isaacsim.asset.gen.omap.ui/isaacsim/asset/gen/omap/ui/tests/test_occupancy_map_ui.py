@@ -1,4 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+"""Tests for the occupancy map generator UI extension."""
+
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +14,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+from __future__ import annotations
+
 import os
 import tempfile
 
@@ -22,27 +27,51 @@ from isaacsim.asset.gen.omap.ui.extension import ROS_FREE_THRESHOLD, ROS_OCCUPIE
 
 
 class _StringModel:
-    """Minimal stand-in for a ui.StringField model."""
+    """Minimal stand-in for a ui.StringField model.
 
-    def __init__(self, value=""):
+    Args:
+        value: Initial string value.
+    """
+
+    def __init__(self, value: str = "") -> None:
         self.as_string = value
 
-    def set_value(self, value):
+    def set_value(self, value: str) -> None:
+        """Update the stored string value.
+
+        Args:
+            value: New value assigned to ``as_string``.
+        """
         self.as_string = value
 
 
 class _ItemValueModel:
-    def __init__(self, index):
+    """Minimal stand-in for a ComboBox item value model.
+
+    Args:
+        index: Integer index exposed as ``as_int``.
+    """
+
+    def __init__(self, index: int) -> None:
         self.as_int = index
 
 
 class _DropdownModel:
-    """Minimal stand-in for a dropdown (ComboBox) model."""
+    """Minimal stand-in for a dropdown (ComboBox) model.
 
-    def __init__(self, index=0):
+    Args:
+        index: Initial selected index.
+    """
+
+    def __init__(self, index: int = 0) -> None:
         self._index = index
 
-    def get_item_value_model(self):
+    def get_item_value_model(self) -> _ItemValueModel:
+        """Return a value model for the current selection index.
+
+        Returns:
+            An ``_ItemValueModel`` wrapping ``_index``.
+        """
         return _ItemValueModel(self._index)
 
 
@@ -53,18 +82,17 @@ class TestOccupancyMapUI(omni.kit.test.AsyncTestCase):
     the occupancy map generation interface.
     """
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Sets up the test environment.
 
         Preloads materials and waits for UI to stabilize before running tests.
         """
         await ui_test.human_delay()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Cleans up after each test."""
-        pass
 
-    async def testLoading(self):
+    async def test_loading(self) -> None:
         """Tests that the Occupancy Map UI can be loaded from the menu.
 
         Creates a new stage and navigates through the Tools > Robotics > Occupancy Map
@@ -76,7 +104,7 @@ class TestOccupancyMapUI(omni.kit.test.AsyncTestCase):
         await menu_widget.find_menu("Robotics").click()
         await menu_widget.find_menu("Occupancy Map").click()
 
-    async def testSaveYamlNoData(self):
+    async def test_save_yaml_no_data(self) -> None:
         """Tests that save_yaml handles the case where no YAML has been generated yet.
 
         Verifies that calling save_yaml before any map generation completes
@@ -91,7 +119,7 @@ class TestOccupancyMapUI(omni.kit.test.AsyncTestCase):
         finally:
             window.destroy()
 
-    async def testSaveYamlWritesFile(self):
+    async def test_save_yaml_writes_file(self) -> None:
         """Tests that save_yaml writes the YAML content to the specified file.
 
         Verifies that the file is created at the correct path and contains
@@ -107,12 +135,12 @@ class TestOccupancyMapUI(omni.kit.test.AsyncTestCase):
                 window.save_yaml("test_map", tmpdir)
                 save_path = os.path.join(tmpdir, "test_map.yaml")
                 self.assertTrue(os.path.exists(save_path))
-                with open(save_path, "r") as f:
+                with open(save_path) as f:
                     self.assertEqual(f.read(), expected_yaml)
         finally:
             window.destroy()
 
-    async def testSaveYamlAppendsExtension(self):
+    async def test_save_yaml_appends_extension(self) -> None:
         """Tests that save_yaml automatically appends the .yaml extension when omitted.
 
         Verifies that a filename without an extension gets .yaml appended.
@@ -129,7 +157,7 @@ class TestOccupancyMapUI(omni.kit.test.AsyncTestCase):
         finally:
             window.destroy()
 
-    async def testSaveYamlPreservesExistingExtension(self):
+    async def test_save_yaml_preserves_existing_extension(self) -> None:
         """Tests that save_yaml does not double-append .yaml when the extension is already present.
 
         Verifies that filenames already ending in .yaml or .yml are not modified.
@@ -149,8 +177,14 @@ class TestOccupancyMapUI(omni.kit.test.AsyncTestCase):
         finally:
             window.destroy()
 
-    def _setup_update_yaml_models(self, window, stem, config_type_index=0):
-        """Injects the minimal model mocks needed for _update_yaml into a window instance."""
+    def _setup_update_yaml_models(self, window: OccupancyMapWindow, stem: str, config_type_index: int = 0) -> None:
+        """Injects the minimal model mocks needed for _update_yaml into a window instance.
+
+        Args:
+            window: The OccupancyMapWindow instance to configure.
+            stem: The image filename stem to set.
+            config_type_index: Index for the config type dropdown.
+        """
         window._map_bottom_left = [1.0, 2.0]
         window._map_scale = 0.05
         window._map_scale_to_meters = 1.0
@@ -158,7 +192,7 @@ class TestOccupancyMapUI(omni.kit.test.AsyncTestCase):
         window._models["config_type"] = _DropdownModel(config_type_index)
         window._models["config_data"] = _StringModel()
 
-    async def testUpdateYamlNoMapData(self):
+    async def test_update_yaml_no_map_data(self) -> None:
         """Tests that _update_yaml warns and does nothing when no map has been generated yet."""
         await omni.usd.get_context().new_stage_async()
         window = OccupancyMapWindow()
@@ -169,7 +203,7 @@ class TestOccupancyMapUI(omni.kit.test.AsyncTestCase):
         finally:
             window.destroy()
 
-    async def testUpdateYamlEmptyStem(self):
+    async def test_update_yaml_empty_stem(self) -> None:
         """Tests that _update_yaml warns and does nothing when the image filename field is empty."""
         await omni.usd.get_context().new_stage_async()
         window = OccupancyMapWindow()
@@ -185,7 +219,7 @@ class TestOccupancyMapUI(omni.kit.test.AsyncTestCase):
         finally:
             window.destroy()
 
-    async def testUpdateYamlAppendsPng(self):
+    async def test_update_yaml_appends_png(self) -> None:
         """Tests that _update_yaml always appends .png to the stem in the YAML image field."""
         await omni.usd.get_context().new_stage_async()
         window = OccupancyMapWindow()
@@ -198,7 +232,7 @@ class TestOccupancyMapUI(omni.kit.test.AsyncTestCase):
         finally:
             window.destroy()
 
-    async def testUpdateYamlContent(self):
+    async def test_update_yaml_content(self) -> None:
         """Tests that _update_yaml builds the full correct ROS YAML content."""
         await omni.usd.get_context().new_stage_async()
         window = OccupancyMapWindow()
@@ -217,7 +251,7 @@ class TestOccupancyMapUI(omni.kit.test.AsyncTestCase):
         finally:
             window.destroy()
 
-    async def testUpdateYamlUpdatesConfigDataInRosMode(self):
+    async def test_update_yaml_updates_config_data_in_ros_mode(self) -> None:
         """Tests that _update_yaml updates the config_data field when Coordinate Type is ROS YAML (index 0)."""
         await omni.usd.get_context().new_stage_async()
         window = OccupancyMapWindow()
@@ -230,7 +264,7 @@ class TestOccupancyMapUI(omni.kit.test.AsyncTestCase):
         finally:
             window.destroy()
 
-    async def testUpdateYamlSkipsConfigDataInCoordinatesMode(self):
+    async def test_update_yaml_skips_config_data_in_coordinates_mode(self) -> None:
         """Tests that _update_yaml does not touch config_data when Coordinate Type is Coordinates (index 1)."""
         await omni.usd.get_context().new_stage_async()
         window = OccupancyMapWindow()

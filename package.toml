@@ -75,6 +75,7 @@ files_exclude = [
     ["extsbuild/**"],
     ["tests/tests-internal*"],
     ["tests/tests-docker*"],
+    ["tests/tests-external*"], # internal tests only
     ["dockertests/**"],
     ["tests-external/**"],
     ["exts/omni.isaac.core_archive/pip_prebundle/bin/**"],
@@ -93,22 +94,29 @@ files_exclude = [
 ]
 
 [isaac-sim-standalone.linux-x86_64]
-files = [
-    ["../../docs/isaac-sim/latest/py/**", "docs/py/"] # linux ext api docs
-]
 files_strip = [
     ["**/*.so"],
 ]
 
 files_strip_exclude = [
     ["extscache/omni.kit.pip_archive*/pip_prebundle/**"],
-    ["exts/omni.isaac.ml_archive/pip_prebundle/**"],
+    ["extsDeprecated/omni.isaac.ml_archive/pip_prebundle/**"],
     ["exts/isaacsim.pip.newton/pip_prebundle/**"],
+    ["exts/isaacsim.ucx.core/pip_prebundle/**"],
+    ["exts/isaacsim.ucx.core/bin/libuc*"],
+    ["exts/isaacsim.ucx.core/bin/librmm.so*"],
+    ["exts/isaacsim.ucx.core/bin/librapids_logger.so*"],
+    ["exts/isaacsim.ucx.core/bin/ucx/**"],
     ["exts/omni.isaac.core_archive/pip_prebundle/**"],
     ["exts/omni.pip.cloud/pip_prebundle/**"],
     ["exts/omni.pip.compute/pip_prebundle/**"],
     ["kit/exts/omni.kit.pip_archive/pip_prebundle/**"],
     ["extscache/omni.kit.livestream.*/**"],
+]
+
+[isaac-sim-standalone.linux-x86_64.release]
+files = [
+    ["../../docs/isaac-sim/latest/py/**", "docs/py/"] # linux ext api docs
 ]
 
 [isaac-sim-standalone.linux-aarch64]
@@ -118,8 +126,13 @@ files_strip = [
 
 files_strip_exclude = [
     ["extscache/omni.kit.pip_archive*/pip_prebundle/**"],
-    ["exts/omni.isaac.ml_archive/pip_prebundle/**"],
+    ["extsDeprecated/omni.isaac.ml_archive/pip_prebundle/**"],
     ["exts/isaacsim.pip.newton/pip_prebundle/**"],
+    ["exts/isaacsim.ucx.core/pip_prebundle/**"],
+    ["exts/isaacsim.ucx.core/bin/libuc*"],
+    ["exts/isaacsim.ucx.core/bin/librmm.so*"],
+    ["exts/isaacsim.ucx.core/bin/librapids_logger.so*"],
+    ["exts/isaacsim.ucx.core/bin/ucx/**"],
     ["exts/omni.isaac.core_archive/pip_prebundle/**"],
     ["exts/omni.pip.cloud/pip_prebundle/**"],
     ["exts/omni.pip.compute/pip_prebundle/**"],

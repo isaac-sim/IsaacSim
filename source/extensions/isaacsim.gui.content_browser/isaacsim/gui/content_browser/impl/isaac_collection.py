@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,9 @@
 
 """Isaac Sim content browser collection implementation for browsing Isaac Sim asset folders."""
 
-
-import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, List, Optional
+from typing import Optional
 
 import carb.settings
 import omni.client
@@ -30,10 +28,12 @@ from omni.kit.window.filepicker import AddNewItem, CollectionItem
 CURRENT_PATH = Path(__file__).parent.absolute()
 ICON_PATH = CURRENT_PATH.parent.parent.parent.parent.joinpath("icons/")
 SETTING_FOLDER = "/exts/isaacsim.gui.content_browser/folders"
+SETTING_ASSET_ROOT = "/persistent/isaac/asset_root/default"
 
 
 class IsaacConnectionItem(NucleusItem):
     """An item for an Isaac connection.
+
     Sub-classed from :obj:`NucleusItem`.
 
     Args:
@@ -41,7 +41,7 @@ class IsaacConnectionItem(NucleusItem):
         path: Path of the item.
     """
 
-    def __init__(self, name: str, path: str):
+    def __init__(self, name: str, path: str) -> None:
         access = omni.client.AccessFlags.READ
         fields = FileBrowserItemFields(name, datetime.now(), 0, access)
         super().__init__(path, fields, is_folder=True)
@@ -61,12 +61,14 @@ class IsaacCollection(CollectionItem):
     asynchronously from the application settings and displayed as browsable items in the file browser.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        settings = carb.settings.get_settings()
+        self._asset_root = settings.get_as_string(SETTING_ASSET_ROOT).rstrip("/")
+
         protocol = ""
-        default_asset_root = carb.settings.get_settings().get_as_string("/persistent/isaac/asset_root/default")
-        if default_asset_root.startswith("omniverse://"):
+        if self._asset_root.startswith("omniverse://"):
             protocol = "omniverse"
-        elif default_asset_root.startswith("https://"):
+        elif self._asset_root.startswith("https://"):
             protocol = "https"
         super().__init__(
             identifier="Isaac Sim",
@@ -77,7 +79,7 @@ class IsaacCollection(CollectionItem):
             populated=False,
             order=5,
         )
-        self._folders = carb.settings.get_settings().get(SETTING_FOLDER)
+        self._folders = settings.get(SETTING_FOLDER)
 
     def create_add_new_item(self) -> Optional[AddNewItem]:
         """Creates an "Add New Connection" item for the Isaac Sim collection.
@@ -101,16 +103,23 @@ class IsaacCollection(CollectionItem):
         """
         return IsaacConnectionItem(name, path)
 
-    async def populate_children_async(self) -> Any:
+    def _resolve_path(self, path: str) -> str:
+        """Resolve a path, prepending the asset root if it is a relative suffix."""
+        if path.startswith(("http://", "https://", "omniverse://")):
+            return path
+        return self._asset_root + path
+
+    async def populate_children_async(self) -> None:
         """Populates the Isaac Sim collection with configured folder connections.
 
         Adds child items for each folder configured in the Isaac Sim asset root settings,
-        extracting the folder name from the URL path.
+        extracting the folder name from the URL path. Relative paths are resolved against
+        ``persistent.isaac.asset_root.default``.
         """
         if self._folders:
             for folder in self._folders:
-                # Extract the last part of the URL path
-                parts = folder.rstrip("/").split("/")
+                url = self._resolve_path(folder)
+                parts = url.rstrip("/").split("/")
                 if parts:
                     name = parts[-1]
-                    self.add_path(name, folder)
+                    self.add_path(name, url)

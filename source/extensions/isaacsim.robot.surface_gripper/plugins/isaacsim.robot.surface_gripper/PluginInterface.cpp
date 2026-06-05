@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 #ifdef _WIN32
 #    pragma warning(push)
 #    pragma warning(disable : 4996)
@@ -20,7 +21,6 @@
 
 // clang-format off
 #include <pch/UsdPCH.h>
-#include <pxr/usd/usd/inherits.h>
 #include <omni/usd/UtilsIncludes.h>
 
 #include "isaacsim/robot/surface_gripper/SurfaceGripperComponent.h"
@@ -38,11 +38,8 @@
 #include <omni/fabric/usd/PathConversion.h>
 #include <omni/graph/core/ogn/Registration.h>
 #include <omni/kit/IStageUpdate.h>
-#include <omni/physics/tensors/IRigidBodyView.h>
-#include <omni/physics/tensors/IRigidContactView.h>
 #include <omni/physics/tensors/ISimulationView.h>
 #include <omni/physics/tensors/TensorApi.h>
-#include <omni/physics/tensors/TensorDesc.h>
 #include <omni/physx/IPhysx.h>
 #include <omni/physx/IPhysxSceneQuery.h>
 #include <omni/usd/UsdContext.h>
@@ -303,7 +300,7 @@ void onPlay()
         return;
     }
     // CARB_LOG_WARN("Stage exists");
-    g_simulationView = g_tensorApi->createSimulationView(g_stageID);
+    g_simulationView = g_tensorApi->createSimulationView(g_stageID, nullptr);
 
     PXR_NS::UsdStageCache& cache = PXR_NS::UsdUtilsStageCache::Get();
     omni::fabric::UsdStageId stageId = { static_cast<uint64_t>(cache.GetId(g_stage).ToLongInt()) };

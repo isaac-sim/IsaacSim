@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// clang-format off
-#include <pch/UsdPCH.h>
-// clang-format on
 
 #include <isaacsim/core/includes/BaseResetNode.h>
 #include <nlohmann/json.hpp>
@@ -26,11 +23,11 @@
 
 namespace
 {
-constexpr int kNumPolicyInputs = 8;
+constexpr int g_kNumPolicyInputs = 8;
 
 // Per-node semaphore keyed by prim path, prevents cascading callbacks
 // when applying a preset that modifies all individual QoS policy inputs.
-std::unordered_map<std::string, int> s_presetSemaphores;
+std::unordered_map<std::string, int> g_sPresetSemaphores;
 } // namespace
 
 class OgnROS2QoSProfile : public isaacsim::core::includes::BaseResetNode
@@ -42,20 +39,20 @@ public:
         state.m_nodeObj = nodeObj;
 
         std::string primPath = nodeObj.iNode->getPrimPath(nodeObj);
-        s_presetSemaphores[primPath] = 0;
+        g_sPresetSemaphores[primPath] = 0;
 
         AttributeObj createProfileAttr = nodeObj.iNode->getAttribute(nodeObj, "inputs:createProfile");
-        createProfileAttr.iAttribute->registerValueChangedCallback(createProfileAttr, onCreateProfileChanged, true);
+        createProfileAttr.iAttribute->registerValueChangedCallback(createProfileAttr, _onCreateProfileChanged, true);
 
         const char* policyAttrs[] = { "inputs:history",  "inputs:depth",    "inputs:reliability", "inputs:durability",
                                       "inputs:deadline", "inputs:lifespan", "inputs:liveliness",  "inputs:leaseDuration" };
         for (const auto& attrName : policyAttrs)
         {
             AttributeObj attr = nodeObj.iNode->getAttribute(nodeObj, attrName);
-            attr.iAttribute->registerValueChangedCallback(attr, onQoSPolicyChanged, true);
+            attr.iAttribute->registerValueChangedCallback(attr, _onQoSPolicyChanged, true);
         }
 
-        applyPreset(nodeObj);
+        _applyPreset(nodeObj);
     }
 
     static bool compute(OgnROS2QoSProfileDatabase& db)
@@ -84,17 +81,17 @@ public:
     {
         auto& state = OgnROS2QoSProfileDatabase::sPerInstanceState<OgnROS2QoSProfile>(nodeObj, instanceId);
         std::string primPath = nodeObj.iNode->getPrimPath(nodeObj);
-        s_presetSemaphores.erase(primPath);
+        g_sPresetSemaphores.erase(primPath);
         state.reset();
     }
 
-    virtual void reset()
+    void reset() override
     {
         m_firstFrame = true;
     }
 
 private:
-    static void setTokenAttr(const NodeObj& nodeObj, GraphContextObj& context, const char* attrName, const char* value)
+    static void _setTokenAttr(const NodeObj& nodeObj, GraphContextObj& context, const char* attrName, const char* value)
     {
         AttributeObj attr = nodeObj.iNode->getAttribute(nodeObj, attrName);
         auto handle = attr.iAttribute->getAttributeDataHandle(attr, kAccordingToContextIndex);
@@ -106,7 +103,7 @@ private:
         }
     }
 
-    static void setUint64Attr(const NodeObj& nodeObj, GraphContextObj& context, const char* attrName, uint64_t value)
+    static void _setUint64Attr(const NodeObj& nodeObj, GraphContextObj& context, const char* attrName, uint64_t value)
     {
         AttributeObj attr = nodeObj.iNode->getAttribute(nodeObj, attrName);
         auto handle = attr.iAttribute->getAttributeDataHandle(attr, kAccordingToContextIndex);
@@ -117,7 +114,7 @@ private:
         }
     }
 
-    static void setDoubleAttr(const NodeObj& nodeObj, GraphContextObj& context, const char* attrName, double value)
+    static void _setDoubleAttr(const NodeObj& nodeObj, GraphContextObj& context, const char* attrName, double value)
     {
         AttributeObj attr = nodeObj.iNode->getAttribute(nodeObj, attrName);
         auto handle = attr.iAttribute->getAttributeDataHandle(attr, kAccordingToContextIndex);
@@ -128,24 +125,24 @@ private:
         }
     }
 
-    static void setTimeDefaults(const NodeObj& nodeObj, GraphContextObj& context)
+    static void _setTimeDefaults(const NodeObj& nodeObj, GraphContextObj& context)
     {
-        setDoubleAttr(nodeObj, context, "inputs:deadline", 0.0);
-        setDoubleAttr(nodeObj, context, "inputs:lifespan", 0.0);
-        setDoubleAttr(nodeObj, context, "inputs:leaseDuration", 0.0);
+        _setDoubleAttr(nodeObj, context, "inputs:deadline", 0.0);
+        _setDoubleAttr(nodeObj, context, "inputs:lifespan", 0.0);
+        _setDoubleAttr(nodeObj, context, "inputs:leaseDuration", 0.0);
     }
 
-    static void applyDefaultProfile(const NodeObj& nodeObj, GraphContextObj& context)
+    static void _applyDefaultProfile(const NodeObj& nodeObj, GraphContextObj& context)
     {
-        setTokenAttr(nodeObj, context, "inputs:history", "keepLast");
-        setUint64Attr(nodeObj, context, "inputs:depth", 10);
-        setTokenAttr(nodeObj, context, "inputs:reliability", "reliable");
-        setTokenAttr(nodeObj, context, "inputs:durability", "volatile");
-        setTokenAttr(nodeObj, context, "inputs:liveliness", "systemDefault");
-        setTimeDefaults(nodeObj, context);
+        _setTokenAttr(nodeObj, context, "inputs:history", "keepLast");
+        _setUint64Attr(nodeObj, context, "inputs:depth", 10);
+        _setTokenAttr(nodeObj, context, "inputs:reliability", "reliable");
+        _setTokenAttr(nodeObj, context, "inputs:durability", "volatile");
+        _setTokenAttr(nodeObj, context, "inputs:liveliness", "systemDefault");
+        _setTimeDefaults(nodeObj, context);
     }
 
-    static std::string readTokenAttr(const NodeObj& nodeObj, GraphContextObj& context, const char* attrName)
+    static std::string _readTokenAttr(const NodeObj& nodeObj, GraphContextObj& context, const char* attrName)
     {
         AttributeObj attr = nodeObj.iNode->getAttribute(nodeObj, attrName);
         ConstAttributeDataHandle handle = attr.iAttribute->getConstAttributeDataHandle(attr, kAccordingToContextIndex);
@@ -157,12 +154,12 @@ private:
         return {};
     }
 
-    static void applyPreset(const NodeObj& nodeObj)
+    static void _applyPreset(const NodeObj& nodeObj)
     {
         GraphObj graphObj = nodeObj.iNode->getGraph(nodeObj);
         GraphContextObj context = graphObj.iGraph->getDefaultGraphContext(graphObj);
 
-        std::string profileValue = readTokenAttr(nodeObj, context, "inputs:createProfile");
+        std::string profileValue = _readTokenAttr(nodeObj, context, "inputs:createProfile");
 
         if (profileValue == "Custom")
         {
@@ -170,45 +167,45 @@ private:
         }
 
         std::string primPath = nodeObj.iNode->getPrimPath(nodeObj);
-        s_presetSemaphores[primPath] = kNumPolicyInputs;
+        g_sPresetSemaphores[primPath] = g_kNumPolicyInputs;
 
         if (profileValue == "Default for publishers/subscribers" || profileValue == "Services")
         {
-            applyDefaultProfile(nodeObj, context);
+            _applyDefaultProfile(nodeObj, context);
         }
         else if (profileValue == "System Default")
         {
-            setTokenAttr(nodeObj, context, "inputs:history", "systemDefault");
-            setUint64Attr(nodeObj, context, "inputs:depth", 0);
-            setTokenAttr(nodeObj, context, "inputs:reliability", "systemDefault");
-            setTokenAttr(nodeObj, context, "inputs:durability", "systemDefault");
-            setTokenAttr(nodeObj, context, "inputs:liveliness", "systemDefault");
-            setTimeDefaults(nodeObj, context);
+            _setTokenAttr(nodeObj, context, "inputs:history", "systemDefault");
+            _setUint64Attr(nodeObj, context, "inputs:depth", 0);
+            _setTokenAttr(nodeObj, context, "inputs:reliability", "systemDefault");
+            _setTokenAttr(nodeObj, context, "inputs:durability", "systemDefault");
+            _setTokenAttr(nodeObj, context, "inputs:liveliness", "systemDefault");
+            _setTimeDefaults(nodeObj, context);
         }
         else if (profileValue == "Sensor Data")
         {
-            setTokenAttr(nodeObj, context, "inputs:history", "keepLast");
-            setUint64Attr(nodeObj, context, "inputs:depth", 5);
-            setTokenAttr(nodeObj, context, "inputs:reliability", "bestEffort");
-            setTokenAttr(nodeObj, context, "inputs:durability", "volatile");
-            setTokenAttr(nodeObj, context, "inputs:liveliness", "systemDefault");
-            setTimeDefaults(nodeObj, context);
+            _setTokenAttr(nodeObj, context, "inputs:history", "keepLast");
+            _setUint64Attr(nodeObj, context, "inputs:depth", 5);
+            _setTokenAttr(nodeObj, context, "inputs:reliability", "bestEffort");
+            _setTokenAttr(nodeObj, context, "inputs:durability", "volatile");
+            _setTokenAttr(nodeObj, context, "inputs:liveliness", "systemDefault");
+            _setTimeDefaults(nodeObj, context);
         }
     }
 
-    static void onCreateProfileChanged(AttributeObj const& attrObj, void const* userData)
+    static void _onCreateProfileChanged(AttributeObj const& attrObj, void const* userData)
     {
         NodeObj nodeObj = attrObj.iAttribute->getNode(attrObj);
-        applyPreset(nodeObj);
+        _applyPreset(nodeObj);
     }
 
-    static void onQoSPolicyChanged(AttributeObj const& attrObj, void const* userData)
+    static void _onQoSPolicyChanged(AttributeObj const& attrObj, void const* userData)
     {
         NodeObj nodeObj = attrObj.iAttribute->getNode(attrObj);
         std::string primPath = nodeObj.iNode->getPrimPath(nodeObj);
 
-        auto it = s_presetSemaphores.find(primPath);
-        if (it != s_presetSemaphores.end() && it->second > 0)
+        auto it = g_sPresetSemaphores.find(primPath);
+        if (it != g_sPresetSemaphores.end() && it->second > 0)
         {
             it->second--;
             return;
@@ -216,7 +213,7 @@ private:
 
         GraphObj graphObj = nodeObj.iNode->getGraph(nodeObj);
         GraphContextObj context = graphObj.iGraph->getDefaultGraphContext(graphObj);
-        setTokenAttr(nodeObj, context, "inputs:createProfile", "Custom");
+        _setTokenAttr(nodeObj, context, "inputs:createProfile", "Custom");
     }
 
     bool m_firstFrame = true;

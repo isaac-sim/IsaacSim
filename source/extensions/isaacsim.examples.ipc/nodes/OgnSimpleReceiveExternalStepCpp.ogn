@@ -1,0 +1,35 @@
+{
+    "SimpleReceiveExternalStepCpp": {
+        "version": 1,
+        "icon": "icons/isaac-sim.svg",
+        "description": [
+            "Listens on TCP host:port from uri and receives a little-endian uint32 step value (non-blocking). execOut fires only when a full message arrives."
+        ],
+        "metadata": {
+            "uiName": "Receive External Step (C++)"
+        },
+        "categoryDefinitions": "config/CategoryDefinition.json",
+        "categories": "isaacExamples",
+        "inputs": {
+            "execIn": {
+                "type": "execution",
+                "description": "The input execution port."
+            },
+            "uri": {
+                "type": "string",
+                "description": "TCP bind address as host:port (e.g. 127.0.0.1:9001). The node listens for one client connection.",
+                "default": "127.0.0.1:9001"
+            }
+        },
+        "outputs": {
+            "execOut": {
+                "type": "execution",
+                "description": "Output execution when a step message was received"
+            },
+            "step": {
+                "type": "uint",
+                "description": "Step value from the last received TCP message"
+            }
+        }
+    }
+}

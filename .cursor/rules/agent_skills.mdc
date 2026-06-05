@@ -1,0 +1,14 @@
+---
+description: Pointer to the agent-agnostic skills directory. All SKILL.md workflow guides live under skills/.
+alwaysApply: true
+---
+
+# Agent Skills Location
+
+Skills for this repo live under `skills/` as `SKILL.md` files. Enumerate them with a traversal that includes every nested directory even when search tools would normally skip ignored paths:
+
+```bash
+find skills -type f -name SKILL.md -print
+```
+
+Read the relevant `SKILL.md` when your task overlaps the skill's subject (e.g., `skills/profile-isaac-sim/SKILL.md` for performance work).

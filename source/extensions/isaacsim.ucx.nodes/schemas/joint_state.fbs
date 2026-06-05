@@ -1,0 +1,31 @@
+include "tensor.fbs";
+include "header.fbs";
+
+namespace isaac;
+
+// Describes the state of a set of torque-controlled joints.
+table JointState {
+
+  // Header
+  header: Header (id: 0);
+
+  // Names of the joints.
+  name: [string] (id: 1);
+
+  // Position of each joint (radians or meters).
+  position: Tensor (id: 2);
+
+  // Velocity of each joint (radians/second or meters/second).
+  velocity: Tensor (id: 3);
+
+  // Acceleration of each joint (radians/second^2 or meters/second^2).
+  acceleration: Tensor (id: 4);
+
+  // Actuator effort applied in each joint (Newton meters or Newtons).
+  effort: Tensor (id: 5);
+
+  // Temperature of each joint (Celsius).
+  temperature: Tensor (id: 6);
+}
+
+root_type JointState;

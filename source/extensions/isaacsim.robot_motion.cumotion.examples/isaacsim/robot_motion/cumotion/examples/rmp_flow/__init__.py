@@ -12,4 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Provides RMPflow motion planning examples for robot motion with cuMotion in Isaac Sim."""
+
 from .extension import *
+
+__all__ = ["UIBuilder"]

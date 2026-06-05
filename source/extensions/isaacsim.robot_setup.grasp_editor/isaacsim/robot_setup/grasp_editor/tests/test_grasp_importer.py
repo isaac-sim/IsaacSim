@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,28 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Tests for grasp data importing functionality in the isaacsim.robot_setup.grasp_editor extension.
-"""
-
+"""Tests for grasp data importing functionality in the isaacsim.robot_setup.grasp_editor extension."""
 
 import asyncio
 
+import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
-
-# Import extension python module we are testing with absolute import path, as if we are external user (other extension)
 import omni.kit.test
-from isaacsim.core.prims import SingleXFormPrim
-from isaacsim.core.utils.stage import (
-    add_reference_to_stage,
-    create_new_stage_async,
-    get_current_stage,
-    update_stage_async,
-)
-from isaacsim.core.utils.viewports import set_camera_view
-from isaacsim.robot_setup.grasp_editor import GraspSpec, import_grasps_from_file
+from isaacsim.core.experimental.prims import XformPrim
+from isaacsim.core.rendering_manager import ViewportManager
+from isaacsim.robot_setup.grasp_editor import import_grasps_from_file
 from isaacsim.storage.native import get_assets_root_path_async
-from pxr import Sdf, UsdGeom, UsdLux, UsdPhysics
+from pxr import Sdf, UsdLux, UsdPhysics
 
 
 class TestGraspImporter(omni.kit.test.AsyncTestCase):
@@ -69,35 +60,37 @@ class TestGraspImporter(omni.kit.test.AsyncTestCase):
         extension_path = ext_manager.get_extension_path(ext_id)
         self._grasp_file = extension_path + "/data/robotiq_rubix_grasp.yaml"
 
-        await create_new_stage_async()
-        await update_stage_async()
+        await stage_utils.create_new_stage_async()
+        await app_utils.update_app_async()
         await self._create_light()
 
-        set_camera_view(eye=[1.6, 1.3, 1.0], target=[0, -0.3, 0], camera_prim_path="/OmniverseKit_Persp")
+        ViewportManager.set_camera_view("/OmniverseKit_Persp", eye=[1.6, 1.3, 1.0], target=[0, -0.3, 0])
 
         asset_root_path = await get_assets_root_path_async()
 
         gripper_usd_path = asset_root_path + "/Isaac/Robots/Robotiq/2F-85/Robotiq_2F_85_edit.usd"
         self._gripper_path = "/gripper"
-        add_reference_to_stage(gripper_usd_path, self._gripper_path)
-        self._gripper_xform = SingleXFormPrim(self._gripper_path)
-        self._gripper_xform.set_world_pose(np.array([0.0, 0.2, 0.0]), np.array([0.8, 0.0, 0.2, 0.0]))
+        stage_utils.add_reference_to_stage(gripper_usd_path, self._gripper_path)
+        self._gripper_xform = XformPrim(self._gripper_path, reset_xform_op_properties=True)
+        self._gripper_xform.set_world_poses(np.array([0.0, 0.2, 0.0]), np.array([0.8, 0.0, 0.2, 0.0]))
 
         fixed_joint_path = self._gripper_path + "/FixedJoint"
 
-        stage = get_current_stage()
+        stage = stage_utils.get_current_stage()
         fixed_joint = UsdPhysics.FixedJoint.Define(stage, fixed_joint_path)
         fixed_joint.GetBody1Rel().SetTargets([self._gripper_path + "/Robotiq_2F_85/base_link"])
 
         self._cube_path = "/cube/RubikCube"
-        add_reference_to_stage(asset_root_path + "/Isaac/Props/Rubiks_Cube/rubiks_cube.usd", self._cube_path)
+        stage_utils.add_reference_to_stage(
+            asset_root_path + "/Isaac/Props/Rubiks_Cube/rubiks_cube.usd", self._cube_path
+        )
 
-        self._cube_xform = SingleXFormPrim(self._cube_path)
-        self._cube_xform.set_world_pose(np.array([1.0, 0.0, 0.0]))
+        self._cube_xform = XformPrim(self._cube_path, reset_xform_op_properties=True)
+        self._cube_xform.set_world_poses(np.array([1.0, 0.0, 0.0]))
 
         self._grasp_spec = import_grasps_from_file(self._grasp_file)
 
-    def assertAlmostEqual(self, a, b, msg: str = ""):
+    def assertAlmostEqual(self, a: object, b: object, msg: str = ""):
         """Assert that two arrays are almost equal within a tolerance of 1e-3.
 
         Overrides the standard assertAlmostEqual to support NumPy arrays and iterables,
@@ -118,10 +111,10 @@ class TestGraspImporter(omni.kit.test.AsyncTestCase):
 
         Adds a UsdLux.SphereLight with specified radius and intensity positioned above the scene.
         """
-        sphereLight = UsdLux.SphereLight.Define(get_current_stage(), Sdf.Path("/World/SphereLight"))
+        sphereLight = UsdLux.SphereLight.Define(stage_utils.get_current_stage(), Sdf.Path("/World/SphereLight"))
         sphereLight.CreateRadiusAttr(2)
         sphereLight.CreateIntensityAttr(100000)
-        SingleXFormPrim(str(sphereLight.GetPath().pathString)).set_world_pose([6.5, 0, 12])
+        XformPrim(str(sphereLight.GetPath().pathString), reset_xform_op_properties=True).set_world_poses([6.5, 0, 12])
 
     async def tearDown(self):
         """Clean up the test environment after test execution.
@@ -131,7 +124,7 @@ class TestGraspImporter(omni.kit.test.AsyncTestCase):
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             print("tearDown, assets still loading, waiting to finish...")
             await asyncio.sleep(1.0)
-        await update_stage_async()
+        await app_utils.update_app_async()
 
     async def test_accessors(self):
         """Test the GraspSpec accessor methods for retrieving grasp data.
@@ -166,20 +159,23 @@ class TestGraspImporter(omni.kit.test.AsyncTestCase):
         Verifies that the grasp specification can correctly compute gripper positions and orientations
         based on the cube's rigid body pose for different grasp configurations.
         """
-        rb_trans, rb_quat = self._cube_xform.get_world_pose()
+        rb_trans, rb_quat = self._cube_xform.get_world_poses()
+        rb_trans, rb_quat = rb_trans.numpy(), rb_quat.numpy()
 
         print(f"rb_trans: {rb_trans}, rb_quat: {rb_quat}")
         pos, orient = self._grasp_spec.compute_gripper_pose_from_rigid_body_pose("grasp_0", rb_trans, rb_quat)
-        grasp_xform_0 = SingleXFormPrim("/grasp_0")
-        grasp_xform_0.set_world_pose(pos, orient)
-        self._gripper_xform.set_world_pose(pos, orient)
+        stage_utils.define_prim("/grasp_0")
+        grasp_xform_0 = XformPrim("/grasp_0", reset_xform_op_properties=True)
+        grasp_xform_0.set_world_poses(pos, orient)
+        self._gripper_xform.set_world_poses(pos, orient)
         self.assertAlmostEqual(pos, [0.83907737, -0.03842877, 0.00609728])
-        self.assertAlmostEqual(orient, [-0.56469814, 0.58969032, -0.41637607, 0.40001538])
+        self.assertAlmostEqual(orient, [0.56469814, -0.58969032, 0.41637607, -0.40001538])
 
         pos, orient = self._grasp_spec.compute_gripper_pose_from_rigid_body_pose("grasp_1", rb_trans, rb_quat)
 
-        grasp_xform_1 = SingleXFormPrim("/grasp_1")
-        grasp_xform_1.set_world_pose(pos, orient)
+        stage_utils.define_prim("/grasp_1")
+        grasp_xform_1 = XformPrim("/grasp_1", reset_xform_op_properties=True)
+        grasp_xform_1.set_world_poses(pos, orient)
 
         print(f"pos: {pos}, orient: {orient}")
         self.assertAlmostEqual(pos, [1.07278040e00, 1.38693491e-01, -3.09265733e-04])
@@ -194,7 +190,8 @@ class TestGraspImporter(omni.kit.test.AsyncTestCase):
         Verifies that the grasp specification can correctly compute object positions and orientations
         based on the gripper's pose for different grasp configurations.
         """
-        gripper_trans, gripper_quat = self._gripper_xform.get_world_pose()
+        gripper_trans, gripper_quat = self._gripper_xform.get_world_poses()
+        gripper_trans, gripper_quat = gripper_trans.numpy(), gripper_quat.numpy()
 
         pos, orient = self._grasp_spec.compute_rigid_body_pose_from_gripper_pose("grasp_0", gripper_trans, gripper_quat)
         print(f"pos: {pos}, orient: {orient}")
@@ -203,7 +200,7 @@ class TestGraspImporter(omni.kit.test.AsyncTestCase):
 
         pos, orient = self._grasp_spec.compute_rigid_body_pose_from_gripper_pose("grasp_1", gripper_trans, gripper_quat)
         print(f"pos: {pos}, orient: {orient}")
-        self._cube_xform.set_world_pose(pos, orient)
+        self._cube_xform.set_world_poses(pos, orient)
         self.assertAlmostEqual(pos, [0.07523923, 0.19988537, 0.13737544])
         self.assertAlmostEqual(orient, [-0.00651318, -0.00608179, 0.70804808, -0.70610868])
 

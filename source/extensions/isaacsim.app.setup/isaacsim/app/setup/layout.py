@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,7 +32,7 @@ _EXTENSION_FOLDER_NAME = "isaacsim.app.setup"
 LAYOUTS_PATH = Path(__file__).parent.parent.parent.parent.parent / _EXTENSION_FOLDER_NAME / "layouts"
 
 
-async def load_layout(layout_file: str, keep_windows_open: bool = False):
+async def load_layout(layout_file: str, keep_windows_open: bool = False) -> None:
     """Load a window layout from a JSON file.
 
     Applies a saved window layout configuration with a short delay to avoid
@@ -58,7 +58,7 @@ async def load_layout(layout_file: str, keep_windows_open: bool = False):
     QuickLayout.load_file(layout_file, keep_windows_open)
 
 
-async def dock_windows(update_callback: Callable[[], Awaitable[None]]):
+async def dock_windows(update_callback: Callable[[], Awaitable[None]]) -> None:
     """Configure default window docking order and focus.
 
     Sets up the standard Isaac Sim window arrangement with proper dock order
@@ -105,7 +105,7 @@ async def dock_windows(update_callback: Callable[[], Awaitable[None]]):
         assets.focus()
 
 
-async def setup_property_window(update_callback: Callable[[], Awaitable[None]]):
+async def setup_property_window(update_callback: Callable[[], Awaitable[None]]) -> None:
     """Configure the property window layout scheme.
 
     Sets up the property window with the appropriate delegate layout for

@@ -1,8 +1,5 @@
-API
-===
-
 Python API
-----------
+==========
 
 .. automodule:: isaacsim.asset.gen.conveyor
     :members:

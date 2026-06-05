@@ -1,0 +1,133 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+asset_path: /Isaac/Robots/NVIDIA/NovaCarter/nova_carter.usd
+physics_dt: 0.005
+z_offset: 0.25
+
+chase_camera:
+  base_path: chassis_link
+  x_offset: -1.5
+  z_offset: 0.8
+  tilt_angle: 60.0
+
+occupancy_map:
+  radius: 0.55
+  collision_radius: 0.5
+  z_min: 0.1
+  z_max: 0.62
+  cell_size: 0.05
+
+control:
+  keyboard_linear_velocity_gain: 1.0
+  keyboard_angular_velocity_gain: 1.0
+  gamepad_linear_velocity_gain: 1.0
+  gamepad_angular_velocity_gain: 1.0
+
+random_action:
+  linear_velocity_range: [-0.3, 1.0]
+  angular_velocity_range: [-0.75, 0.75]
+  linear_acceleration_std: 5.0
+  angular_acceleration_std: 5.0
+  grid_pose_sampler_grid_size: 5.0
+
+path_following:
+  speed: 1.0
+  angular_gain: 1.0
+  stop_distance_threshold: 0.5
+  forward_angle_threshold: 0.7853981633974483
+  target_point_offset_m: 1.0
+
+wheel:
+  dof_names:
+    - joint_wheel_left
+    - joint_wheel_right
+  base_m: 0.413
+  radius_m: 0.14
+  chassis_subpath: chassis_link
+
+sensor_rig:
+  sensors:
+    - name: front_hawk_left
+      type: camera
+      sensor_prim_path: chassis_link/sensors/front_hawk/left/camera_left
+      width_px: 960
+      height_px: 600
+
+    - name: front_hawk_right
+      type: camera
+      sensor_prim_path: chassis_link/sensors/front_hawk/right/camera_right
+      width_px: 960
+      height_px: 600
+
+    - name: left_hawk_left
+      type: camera
+      sensor_prim_path: chassis_link/sensors/left_hawk/left/camera_left
+      width_px: 960
+      height_px: 600
+
+    - name: left_hawk_right
+      type: camera
+      sensor_prim_path: chassis_link/sensors/left_hawk/right/camera_right
+      width_px: 960
+      height_px: 600
+
+    - name: right_hawk_left
+      type: camera
+      sensor_prim_path: chassis_link/sensors/right_hawk/left/camera_left
+      width_px: 960
+      height_px: 600
+
+    - name: right_hawk_right
+      type: camera
+      sensor_prim_path: chassis_link/sensors/right_hawk/right/camera_right
+      width_px: 960
+      height_px: 600
+
+    - name: back_hawk_left
+      type: camera
+      sensor_prim_path: chassis_link/sensors/back_hawk/left/camera_left
+      width_px: 960
+      height_px: 600
+
+    - name: back_hawk_right
+      type: camera
+      sensor_prim_path: chassis_link/sensors/back_hawk/right/camera_right
+      width_px: 960
+      height_px: 600
+
+    - name: front_owl
+      type: camera
+      sensor_prim_path: chassis_link/sensors/front_owl/camera
+      width_px: 960
+      height_px: 600
+
+    - name: left_owl
+      type: camera
+      sensor_prim_path: chassis_link/sensors/left_owl/camera
+      width_px: 960
+      height_px: 600
+
+    - name: right_owl
+      type: camera
+      sensor_prim_path: chassis_link/sensors/right_owl/camera
+      width_px: 960
+      height_px: 600
+
+    - name: back_owl
+      type: camera
+      sensor_prim_path: chassis_link/sensors/back_owl/camera
+      width_px: 960
+      height_px: 600

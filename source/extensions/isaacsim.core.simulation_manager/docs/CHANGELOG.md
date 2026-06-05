@@ -1,5 +1,78 @@
 # Changelog
 
+## [1.15.4] - 2026-05-21
+### Changed
+- `PhysicsScene.get_dt()` and `set_dt()` dispatch based on `PhysxSceneAPI` presence on the prim instead of querying the active engine.
+- Remove stale solver APIs (`PhysxSceneAPI`, `MjcSceneAPI`, `NewtonXpbdSceneAPI`) and re-create physics scene wrappers in `SimulationManager._on_engine_switched()` when switching engines.
+- Stop unconditionally applying `PhysxSceneAPI` in C++ `UsdNoticeListener` and `PluginInterface`; the API is now applied by the engine-specific Python wrapper (`PhysxScene`).
+
+## [1.15.3] - 2026-05-19
+### Fixed
+- Raise `RuntimeError` in `PhysicsScene.set_dt()`, `set_enabled_gravity()`, and `set_max_solver_iterations()` when `NewtonSceneAPI` is not applied, matching the `PhysxScene` error-handling pattern.
+
+## [1.15.2] - 2026-05-17
+### Fixed
+- Restore mode-specific `TimeSampleStorage` handling for render-product reference times. In multitick mode, render-product reference times come from `/ExternalSimulationTime` and can be returned as simulation time directly. In non-multitick mode, render-product reference times come from the renderer's Fabric frame time, so samples are keyed with `IStageReaderWriter::getFrameTime()` and `getSimulationTimeAt()` resolves the simulation time through exact-match or adjacent-sample lookup.
+
+## [1.15.1] - 2026-05-15
+### Fixed
+- Route base `PhysicsScene` timestep updates to the active physics engine so PhysX scenes do not author Newton timestep values that can hang playback.
+
+## [1.15.0] - 2026-05-05
+### Removed
+- Removed non-multitick code path.
+
+## [1.14.9] - 2026-05-01
+### Changed
+- Removed redundant `fetch_results()` after `simulate()` in warmup, simulation-view creation, and `SimulationManager.step()`.
+
+## [1.14.8] - 2026-04-27
+### Changed
+- Remove USD-attribute workaround in `onPhysicsStep`; `IPhysicsSimulation::getSimulationTimeStepsPerSecond()` now returns the authoritative value, so read it directly.
+
+## [1.14.7] - 2026-04-21
+### Changed
+- Route Newton simulation view creation through `omni.physics.tensors.create_simulation_view` with `backend="newton"` instead of the Python `isaacsim.physics.newton.tensors` implementation.
+
+## [1.14.6] - 2026-04-21
+### Added
+- Add `"remotesim"` to `get_active_physics_engine()` and `switch_physics_engine()` return/parameter type hints
+- Add `elif engine == "remotesim"` branch in `create_scene()` that returns a lightweight `PhysicsScene` wrapper
+
+## [1.14.5] - 2026-04-20
+### Changed
+- Multi-tick simulation time is now communicated via the `/ExternalSimulationTime` Fabric prim instead.
+
+## [1.14.4] - 2026-04-17
+### Fixed
+- Add missing `@staticmethod` decorator to 5 internal event callbacks (`_on_simulation_registry_event`, `_on_stage_opened`, `_on_stage_closed`, `_on_play`, `_on_stop`)
+- Fix simulation time using stale steps-per-second from physics runtime when the rate is changed between stop/play cycles. Read the authoritative value from the USD `PhysxSceneAPI::timeStepsPerSecond` attribute instead of relying on `IPhysicsSimulation::getSimulationTimeStepsPerSecond()` which can return a cached value from the previous session.
+
+## [1.14.3] - 2026-04-17
+### Changed
+- Update `PhysxScene` to use renamed PhysX attribute `GpuMaxDeformableVolumeContacts`
+
+## [1.14.2] - 2026-04-07
+### Added
+- Add optional multitick support to TimeSampleStorage and PluginInterface. When multitick is enabled, physics time drives rendering time via onPhysicsStep callback.
+
+## [1.14.1] - 2026-04-03
+### Changed
+- Use local `BindingsPythonUtils.h` from `isaacsim.core.includes` instead of `carb/BindingsPythonUtils.h`
+- Refactored stage event subscription to be lazily initialized with null-safety checks for USD context and stage
+
+## [1.14.0] - 2026-04-01
+### Changed
+- When available, use integer time steps per second and step count to compute simulation time in onPhysicsStep callback to eliminate accumulated bias due to floating-point timestep precision
+
+## [1.13.1] - 2026-03-17
+### Fixed
+- Correct "broadcast" to "broadphase" in SimulationManager docstrings (collision broadphase algorithm)
+
+## [1.13.0] - 2026-03-12
+### Changed
+- Added Overview.md, python_api.md and updated docstrings
+
 ## [1.12.0] - 2026-03-12
 ### Changed
 - Remove Newton pip prebundle dependency

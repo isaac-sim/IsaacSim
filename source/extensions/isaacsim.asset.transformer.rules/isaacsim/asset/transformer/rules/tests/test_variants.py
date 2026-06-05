@@ -1,10 +1,12 @@
-# +#+#+#+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
+#
 # http://www.apache.org/licenses/LICENSE-2.0
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -64,12 +66,12 @@ _EXPECTED_DEPENDENCIES = {
 class TestVariantRoutingRule(omni.kit.test.AsyncTestCase):
     """Async tests for the variant routing rule."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Create a temporary directory for test output."""
         self._tmpdir = tempfile.mkdtemp()
         self._success = False
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Remove temporary directories after successful tests."""
         if self._success:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
@@ -82,6 +84,7 @@ class TestVariantRoutingRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             Absolute path to the variant set output directory.
+
         """
         return os.path.join(self._tmpdir, "payloads", sanitize_prim_name(variant_set_name))
 
@@ -94,6 +97,7 @@ class TestVariantRoutingRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             Absolute path to the variant USDA file.
+
         """
         variant_file = f"{sanitize_prim_name(variant_name).lower()}.usda"
         return os.path.join(self._variant_set_dir(variant_set_name), variant_file)
@@ -106,6 +110,7 @@ class TestVariantRoutingRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             List of asset paths referenced by the layer.
+
         """
         layer = Sdf.Layer.FindOrOpen(layer_path)
         self.assertIsNotNone(layer)
@@ -116,6 +121,7 @@ class TestVariantRoutingRule(omni.kit.test.AsyncTestCase):
 
         Args:
             layer_path: Path to the variant layer file.
+
         """
         layer_dir = os.path.dirname(layer_path)
         for asset_path in self._layer_asset_paths(layer_path):
@@ -126,7 +132,7 @@ class TestVariantRoutingRule(omni.kit.test.AsyncTestCase):
             abs_path = os.path.normpath(os.path.join(layer_dir, relative))
             self.assertTrue(os.path.exists(abs_path), f"Missing dependency asset: {abs_path}")
 
-    async def test_get_configuration_parameters(self):
+    async def test_get_configuration_parameters(self) -> None:
         """Verify configuration parameters are exposed by the rule."""
         stage = Usd.Stage.Open(_G1_USD)
         rule = VariantRoutingRule(
@@ -146,7 +152,7 @@ class TestVariantRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertIn("excluded_variants", param_names)
         self._success = True
 
-    async def test_process_rule_creates_variants_and_dependencies(self):
+    async def test_process_rule_creates_variants_and_dependencies(self) -> None:
         """Verify variant files and dependencies are generated."""
         stage = Usd.Stage.Open(_G1_USD)
         rule = VariantRoutingRule(
@@ -183,7 +189,7 @@ class TestVariantRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_no_default_prim_and_logging(self):
+    async def test_process_rule_no_default_prim_and_logging(self) -> None:
         """No-default-prim skip, affected-stages tracking, start/completion log entries."""
         failures = []
 
@@ -233,7 +239,7 @@ class TestVariantRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertEqual(failures, [], "\n".join(failures))
         self._success = True
 
-    async def test_process_rule_options(self):
+    async def test_process_rule_options(self) -> None:
         """variant_sets filter, case_insensitive=False, collect_dependencies=False."""
         stage = Usd.Stage.Open(_G1_USD)
         default_prim = stage.GetDefaultPrim()

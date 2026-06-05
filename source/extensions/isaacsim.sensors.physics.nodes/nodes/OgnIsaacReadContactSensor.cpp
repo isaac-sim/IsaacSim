@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -81,19 +81,19 @@ public:
 
         std::string primPath = omni::fabric::toSdfPath(csPrim[0]).GetString();
 
-        if (state.m_firstFrame || primPath != state.m_primPath || state.m_sensorId < 0)
+        if (state.m_firstFrame || primPath != state.m_primPath || !state.m_sensorCreated)
         {
-            if (state.m_sensorId >= 0)
+            if (state.m_sensorCreated)
             {
-                state.m_contactInterface->removeSensor(state.m_sensorId);
-                state.m_sensorId = -1;
+                state.m_contactInterface->removeSensor(state.m_primPath.c_str());
+                state.m_sensorCreated = false;
             }
 
             state.m_primPath = primPath;
-            state.m_sensorId = state.m_contactInterface->createSensor(primPath.c_str());
+            state.m_sensorCreated = state.m_contactInterface->createSensor(primPath.c_str());
             state.m_firstFrame = false;
 
-            if (state.m_sensorId < 0)
+            if (!state.m_sensorCreated)
             {
                 setDefaultOutputs(db);
                 db.outputs.execOut() = kExecutionAttributeStateDisabled;
@@ -101,7 +101,7 @@ public:
             }
         }
 
-        ContactSensorReading reading = state.m_contactInterface->getSensorReading(state.m_sensorId);
+        ContactSensorReading reading = state.m_contactInterface->getSensorReading(state.m_primPath.c_str());
 
         if (reading.isValid)
         {
@@ -112,15 +112,15 @@ public:
             return true;
         }
 
-        if (state.m_sensorId >= 0)
+        if (state.m_sensorCreated)
         {
-            state.m_contactInterface->removeSensor(state.m_sensorId);
-            state.m_sensorId = -1;
+            state.m_contactInterface->removeSensor(state.m_primPath.c_str());
+            state.m_sensorCreated = false;
         }
-        state.m_sensorId = state.m_contactInterface->createSensor(state.m_primPath.c_str());
-        if (state.m_sensorId >= 0)
+        state.m_sensorCreated = state.m_contactInterface->createSensor(state.m_primPath.c_str());
+        if (state.m_sensorCreated)
         {
-            reading = state.m_contactInterface->getSensorReading(state.m_sensorId);
+            reading = state.m_contactInterface->getSensorReading(state.m_primPath.c_str());
             if (reading.isValid)
             {
                 db.outputs.inContact() = reading.inContact;
@@ -145,10 +145,10 @@ public:
 private:
     void cleanup()
     {
-        if (m_contactInterface && m_sensorId >= 0)
+        if (m_contactInterface && m_sensorCreated)
         {
-            m_contactInterface->removeSensor(m_sensorId);
-            m_sensorId = -1;
+            m_contactInterface->removeSensor(m_primPath.c_str());
+            m_sensorCreated = false;
         }
         m_primPath.clear();
     }
@@ -161,7 +161,7 @@ private:
     }
 
     IContactSensor* m_contactInterface = nullptr;
-    int64_t m_sensorId = -1;
+    bool m_sensorCreated = false;
     std::string m_primPath;
     bool m_firstFrame = true;
 };

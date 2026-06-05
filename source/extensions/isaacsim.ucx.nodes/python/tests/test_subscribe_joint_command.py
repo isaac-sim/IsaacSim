@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,59 +13,101 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import struct
+"""Test UCX joint command subscribing node functionality."""
 
+import flatbuffers
 import isaacsim.core.experimental.utils.app as app_utils
 import numpy as np
 import omni
 import omni.graph.core as og
 import ucxx._lib.libucxx as ucx_api
+from isaacsim.ucx.nodes.messages.isaac import Header, JointCommand, Tensor
+from isaacsim.ucx.nodes.messages.isaac import Time as TimeMsg
 from isaacsim.ucx.nodes.tests.common import UCXTestCase
 from ucxx._lib.arr import Array
 
 
 class TestUCXSubscribeJointCommand(UCXTestCase):
-    """Test UCX joint command subscribing"""
+    """Test UCX joint command subscribing."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Set up a new stage for joint command subscription tests."""
         await super().setUp()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def setup_ucx_client_with_listener(self):
-        """Setup UCX client"""
-        for _ in range(5):
+    async def setup_ucx_client_with_listener(self) -> None:
+        """Setup UCX client."""
+        for _ in range(60):
             await omni.kit.app.get_app().next_update_async()
         self.create_ucx_client(self.port)
+        for _ in range(20):
+            await omni.kit.app.get_app().next_update_async()
 
-    def pack_joint_command_message(self, timestamp, positions, velocities, efforts):
+    def pack_joint_command_message(self, timestamp: float, positions: list, velocities: list, efforts: list) -> bytes:
+        """Pack a joint command FlatBuffers message for UCX.
+
+        Args:
+            timestamp: Timestamp value for the message.
+            positions: List of joint position values.
+            velocities: List of joint velocity values.
+            efforts: List of joint effort values.
+
+        Returns:
+            Packed binary buffer containing the FlatBuffers-encoded joint command message.
         """
-        Pack a joint command message for UCX.
+        builder = flatbuffers.Builder(1024)
 
-        Message format (updated to use doubles):
-        - timestamp (double, 8 bytes)
-        - num_joints (uint32_t, 4 bytes)
-        - For each joint:
-          - position (double, 8 bytes)
-          - velocity (double, 8 bytes)
-          - effort (double, 8 bytes)
+        def build_f32_tensor(values: list) -> int:
+            data_bytes = np.array(values, dtype=np.float32).tobytes()
+            Tensor.TensorStartDataVector(builder, len(data_bytes))
+            for b in reversed(data_bytes):
+                builder.PrependByte(b)
+            data_vec = builder.EndVector()
+
+            Tensor.TensorStartShapeVector(builder, 1)
+            builder.PrependInt64(len(values))
+            shape_vec = builder.EndVector()
+
+            Tensor.TensorStart(builder)
+            Tensor.TensorAddData(builder, data_vec)
+            Tensor.TensorAddShape(builder, shape_vec)
+            return Tensor.TensorEnd(builder)
+
+        pos_tensor = build_f32_tensor(positions)
+        vel_tensor = build_f32_tensor(velocities)
+        eff_tensor = build_f32_tensor(efforts)
+
+        TimeMsg.TimeStart(builder)
+        TimeMsg.TimeAddTimeNs(builder, int(timestamp * 1e9))
+        time_obj = TimeMsg.TimeEnd(builder)
+
+        Header.HeaderStart(builder)
+        Header.HeaderAddStamp(builder, time_obj)
+        header_obj = Header.HeaderEnd(builder)
+
+        JointCommand.JointCommandStart(builder)
+        JointCommand.JointCommandAddHeader(builder, header_obj)
+        JointCommand.JointCommandAddPosition(builder, pos_tensor)
+        JointCommand.JointCommandAddVelocity(builder, vel_tensor)
+        JointCommand.JointCommandAddEffort(builder, eff_tensor)
+        joint_cmd = JointCommand.JointCommandEnd(builder)
+
+        builder.Finish(joint_cmd)
+        return bytes(builder.Output())
+
+    async def send_joint_command(
+        self, timestamp: float, positions: list, velocities: list, efforts: list, tag: int = 3
+    ) -> None:
+        """Send a joint command message via UCX.
+
+        Args:
+            timestamp: Timestamp value for the message.
+            positions: List of joint position values.
+            velocities: List of joint velocity values.
+            efforts: List of joint effort values.
+            tag: UCX tag to send on.
         """
-        num_joints = len(positions)
-        buffer = struct.pack("<d", timestamp)
-        buffer += struct.pack("<I", num_joints)
-
-        # Pack all positions, then all velocities, then all efforts (NOT interleaved)
-        for i in range(num_joints):
-            buffer += struct.pack("<d", positions[i])
-        for i in range(num_joints):
-            buffer += struct.pack("<d", velocities[i])
-        for i in range(num_joints):
-            buffer += struct.pack("<d", efforts[i])
-
-        return buffer
-
-    async def send_joint_command(self, timestamp, positions, velocities, efforts, tag=3):
-        """Send a joint command message via UCX"""
         message = self.pack_joint_command_message(timestamp, positions, velocities, efforts)
         buffer = np.frombuffer(message, dtype=np.uint8)
 
@@ -83,9 +125,8 @@ class TestUCXSubscribeJointCommand(UCXTestCase):
         self.assertTrue(request.completed, "Failed to send joint command message")
         request.check_error()
 
-    async def test_joint_command_basic(self):
-        """Test basic joint command subscription"""
-
+    async def test_joint_command_basic(self) -> None:
+        """Test basic joint command subscription."""
         try:
             og.Controller.edit(
                 {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
@@ -150,9 +191,8 @@ class TestUCXSubscribeJointCommand(UCXTestCase):
             self.assertAlmostEqual(velocities[i], test_velocities[i], places=5)
             self.assertAlmostEqual(efforts[i], test_efforts[i], places=5)
 
-    async def test_joint_command_multiple(self):
-        """Test receiving multiple joint commands"""
-
+    async def test_joint_command_multiple(self) -> None:
+        """Test receiving multiple joint commands."""
         try:
             og.Controller.edit(
                 {"graph_path": "/ActionGraph", "evaluator_name": "execution"},

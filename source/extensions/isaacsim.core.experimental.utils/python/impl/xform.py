@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Functions for performing transform operations on Xformable USD/USDRT prims.
-"""
+"""Functions for performing transform operations on Xformable USD/USDRT prims."""
 
 from __future__ import annotations
 
@@ -253,3 +251,41 @@ def set_world_pose(
             scaling_matrix = usdrt.Gf.Matrix4d().SetIdentity().SetScale(usdrt.Gf.Transform(matrix).GetScale())
             matrix = scaling_matrix * matrix
         fabric_hierarchy.set_world_xform(path, matrix)
+
+
+def get_relative_transform(source_prim: str | Usd.Prim, target_prim: str | Usd.Prim) -> np.ndarray:
+    """Compute the relative transformation matrix from a source prim to a target prim.
+
+    Computes the column-major 4x4 matrix that transforms points from the source prim's
+    local frame into the target prim's local frame.
+
+    Backends: :guilabel:`usd`.
+
+    Args:
+        source_prim: Source prim path or prim instance.
+        target_prim: Target prim path or prim instance.
+
+    Returns:
+        Column-major transformation matrix with shape (4, 4).
+
+    Example:
+
+    .. code-block:: python
+
+        >>> import isaacsim.core.experimental.utils.xform as xform_utils
+        >>> import omni.usd
+        >>>
+        >>> stage = omni.usd.get_context().get_stage()
+        >>> source = stage.GetPrimAtPath("/World/Source")
+        >>> target = stage.GetPrimAtPath("/World/Target")
+        >>> relative_tf = xform_utils.get_relative_transform(source, target)  # doctest: +SKIP
+        >>> relative_tf.shape  # doctest: +SKIP
+        (4, 4)
+    """
+    from . import transform as transform_utils
+
+    source_prim = prim_utils.get_prim_at_path(source_prim)
+    target_prim = prim_utils.get_prim_at_path(target_prim)
+    source_to_world = UsdGeom.Xformable(source_prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+    target_to_world = UsdGeom.Xformable(target_prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+    return transform_utils.compute_relative_transform(source_to_world, target_to_world)

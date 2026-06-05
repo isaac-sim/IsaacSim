@@ -1,0 +1,153 @@
+---
+description: Rules for writing and reviewing extension Overview.md documentation files
+globs: source/extensions/**/docs/Overview.md,source/deprecated/**/docs/Overview.md
+---
+
+# Extension Overview.md Documentation Rules
+
+## Purpose
+
+Every Isaac Sim extension must have a `docs/Overview.md` file that serves as the primary user-facing
+documentation. It is referenced by `readme` in `config/extension.toml` and rendered in the extension
+manager and published documentation site.
+
+## Content Structure
+
+### 1. Opening Paragraph (required)
+
+A concise paragraph immediately after `# Overview` that states:
+- The full extension name (e.g., "The isaacsim.core.simulation_manager extension...")
+- What the extension does in one or two sentences
+- The primary use case or audience
+
+### 2. Key Components Section (required for non-trivial extensions)
+
+Use `## Key Components` or `## Functionality` as the section header.
+
+Document the main public API surface:
+- **Python classes/functions**: List key classes with Sphinx cross-references using
+  `{class}` or `{func}` roles (e.g., `{class}\`ClassName <module.ClassName>\`}`)
+- **C++ plugins**: Mention Carbonite plugin interfaces if the extension has `plugins/` or `bindings/`
+- **Settings/configuration**: Document user-facing settings from `[settings]` in extension.toml
+
+**OmniGraph nodes are NOT documented in Overview.md.** They are auto-generated into each
+extension's `index.rst` by `tools/build_docs.sh`. The Overview may briefly mention that the
+extension provides OmniGraph nodes (e.g., "provides nodes for graph-based robot control") but
+must NOT list individual node names, describe node inputs/outputs, or include `## OmniGraph Nodes`
+sections.
+
+### 3. Code Examples (recommended for API extensions)
+
+Include practical code examples showing typical usage:
+- Use fenced code blocks with `python` language tag
+- Show import paths, object creation, and common method calls
+- Keep examples self-contained and runnable within Isaac Sim
+- One or two examples is sufficient; do not duplicate API reference docs
+
+### 4. Integration Section (optional)
+
+If the extension integrates with other extensions or external systems, briefly describe:
+- Key dependencies and what they provide
+- How this extension fits into the larger Isaac Sim architecture
+- Any required environment setup (e.g., ROS 2 sourcing, GPU requirements)
+
+### 5. Diagrams (optional, encouraged for complex extensions)
+
+Use Mermaid diagrams for:
+- Class hierarchies (`graph TD`)
+- Lifecycle/sequence flows (`sequenceDiagram`)
+- Architecture relationships
+
+Wrap in:
+```markdown
+<div align="center">
+
+```{mermaid}
+...
+```
+
+</div>
+```
+
+## Content Guidelines
+
+### Proportionality
+
+The Overview length should be proportional to the extension's complexity:
+- **Minimal extensions** (pip bundles, icon packs, thin UI wrappers): 5–15 lines is fine
+- **Standard extensions** (single-purpose, moderate API): 30–80 lines
+- **Complex extensions** (large API surface, multiple subsystems): 80–200+ lines
+
+### Accuracy
+
+- Every class and major function mentioned must actually exist in the extension
+- Do not describe planned/future functionality — document what is shipped
+- If the extension has `python/impl/` files beyond `__init__.py` and `extension.py`, the
+  Overview must mention the key classes/functions they provide
+- If the extension has `bindings/` or `plugins/`, the C++ interface should be mentioned
+- Do NOT list individual OGN node names — node documentation is auto-generated in `index.rst`
+
+### What NOT to Include
+
+- API reference details (parameter lists, return types) — that belongs in docstrings and api.rst
+- Changelog information — that belongs in CHANGELOG.md
+- Build instructions — that belongs in repo-level docs
+- Default values for settings — those belong in extension.toml comments
+- Duplicate content from other extension Overviews
+
+### Sphinx/MyST Syntax
+
+- Use `{class}`, `{func}`, `{attr}`, `{mod}` roles for cross-references to Python API
+- Use `{mermaid}` directive for diagrams (not raw SVG or images)
+- Use standard Markdown for headings, lists, code blocks, and emphasis
+- Do not use raw HTML except for `<div align="center">` around diagrams
+- Do not use Markdown tables for data that changes across versions
+
+### Writing Style
+
+- Write in present tense, third person ("The extension provides..." not "This will provide...")
+- Use imperative mood for instructions ("Configure the settings..." not "You should configure...")
+- Be specific: "supports PhysX and Newton engines" not "supports multiple engines"
+- Start class/component descriptions with bold summary sentence
+- Use US English spelling
+
+## Deprecated Extensions
+
+Extensions in `source/deprecated/` **must** include a deprecation notice immediately after the
+`# Overview` heading and before the opening paragraph. Use the MyST `{deprecated}` directive:
+
+```markdown
+# Overview
+
+```{deprecated} 6.0.0
+This extension is deprecated in favor of `replacement.extension.name`.
+```
+
+The rest of the Overview content follows.
+```
+
+### Deprecation Notice Guidelines
+
+- The directive argument is the version when deprecation occurred (e.g., `6.0.0`)
+- The body must name the replacement: a specific extension, a CLI tool, or "the Scene Optimizer", etc.
+- Keep the notice to 1–3 sentences. If migration is non-trivial, add a `## Migration` section after
+  the notice with concrete steps (import replacements, CLI commands, API mapping)
+- Do **not** delete the rest of the Overview content — users on older versions still need it as reference
+- Use past tense for the opening paragraph when describing what the extension did
+  (e.g., "provided" instead of "provides"), or keep present tense if the extension still functions
+  but is no longer recommended
+- The corresponding `[deprecation]` TOML entry is governed by `extension_toml.mdc`
+
+## Validation Checklist
+
+When reviewing or writing an Overview.md:
+
+1. ☐ `# Overview` heading is present at the top of the file
+2. ☐ Opening paragraph names the extension and describes its purpose
+3. ☐ Key public classes/functions are documented (check `python/impl/`, `__init__.py`)
+4. ☐ C++ interfaces are mentioned if `plugins/` or `bindings/` exist
+5. ☐ No individual OGN node listings (nodes are auto-documented in `index.rst`)
+6. ☐ No references to classes/modules that don't exist in the extension
+7. ☐ Content is proportional to extension complexity (not a stub for complex extensions)
+8. ☐ Code examples are valid and use current API
+9. ☐ If in `source/deprecated/`: has `{deprecated}` directive after `# Overview` with replacement named

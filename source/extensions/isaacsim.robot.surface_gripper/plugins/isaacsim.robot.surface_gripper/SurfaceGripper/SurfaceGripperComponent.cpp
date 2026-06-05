@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 #include <pch/UsdPCH.h>
 // clang-format on
 #include "isaacsim/robot/schema/robot_schema.h"
@@ -87,7 +88,9 @@ void SurfaceGripperComponent::onPhysicsStep(double dt)
     // CARB_PROFILE_ZONE(0, "[IsaacSim] SurfaceGripperComponent::onPhysicsStep");
     // Early return if component is not initialized
     if (!m_isInitialized)
+    {
         return;
+    }
 
     // Use SdfChangeBlock to batch USD changes for better performance
     // pxr::SdfChangeBlock changeBlock;
@@ -168,7 +171,9 @@ bool SurfaceGripperComponent::setGripperStatus(GripperStatus status)
     GripperStatus gripperStatus = status;
     if (gripperStatus != GripperStatus::Open && gripperStatus != GripperStatus::Closed &&
         gripperStatus != GripperStatus::Closing)
+    {
         return false;
+    }
     if (gripperStatus != m_status)
     {
 
@@ -295,7 +300,8 @@ void SurfaceGripperComponent::updateAttachmentPoints()
     m_clearanceOffsetsToPersist.reserve(attachmentPaths.size());
     m_grippedObjectsVector.reserve(attachmentPaths.size());
     m_jointSettlingCounters.resize(attachmentPaths.size(), 0);
-    m_jointForwardAxis.resize(attachmentPaths.size(), Axis::Z);
+    // Default to X to match the IsaacRobotSchema default for `isaac:forwardAxis`.
+    m_jointForwardAxis.resize(attachmentPaths.size(), Axis::X);
     m_jointClearanceOffset.resize(attachmentPaths.size(), 0.0f);
     std::vector<std::string> applyApiPaths;
     std::vector<std::string> excludeFromArticulationPaths;
@@ -339,11 +345,20 @@ void SurfaceGripperComponent::updateAttachmentPoints()
             attachmentPrim
                 .GetAttribute(isaacsim::robot::schema::getAttributeName(isaacsim::robot::schema::Attributes::FORWARD_AXIS))
                 .Get(&jointAxisToken);
-            Axis axisEnum = Axis::Z;
+            // Schema default for `isaac:forwardAxis` is "X"; an unset or
+            // unrecognized token falls back to X to match.
+            Axis axisEnum = Axis::X;
             if (!jointAxisToken.IsEmpty())
             {
                 const char c = std::toupper(jointAxisToken.GetText()[0]);
-                axisEnum = (c == 'X') ? Axis::X : (c == 'Y') ? Axis::Y : Axis::Z;
+                if (c == 'Y')
+                {
+                    axisEnum = Axis::Y;
+                }
+                else if (c == 'Z')
+                {
+                    axisEnum = Axis::Z;
+                }
             }
             m_jointForwardAxis[index] = axisEnum;
 
@@ -585,7 +600,9 @@ void SurfaceGripperComponent::findObjectsToGrip()
     // Get physics query interface
     auto physxQuery = carb::getCachedInterface<omni::physx::IPhysxSceneQuery>();
     if (!physxQuery)
+    {
         return;
+    }
 
     // Iterate through each attachment point sequentially using reusable buffers
     m_apIndicesToActivate.clear();
@@ -653,9 +670,11 @@ void SurfaceGripperComponent::_processAttachmentForGrip(size_t attachmentIndex,
     {
         pxr::GfVec3f rayStart = worldPos + direction * static_cast<float>(clearanceOffset);
 
-        carb::Float3 _rayStart{ static_cast<float>(rayStart[0]), static_cast<float>(rayStart[1]),
+        carb::Float3 _rayStart{ static_cast<float>(rayStart[0]),
+                                static_cast<float>(rayStart[1]), // NOLINT(readability-identifier-naming)
                                 static_cast<float>(rayStart[2]) };
-        carb::Float3 _rayDir{ static_cast<float>(direction[0]), static_cast<float>(direction[1]),
+        carb::Float3 _rayDir{ static_cast<float>(direction[0]),
+                              static_cast<float>(direction[1]), // NOLINT(readability-identifier-naming)
                               static_cast<float>(direction[2]) };
 
         omni::physx::RaycastHit result;
@@ -761,7 +780,7 @@ void SurfaceGripperComponent::releaseAllObjects()
     for (size_t i = 0; i < m_attachmentPaths.size(); ++i)
     {
         // Immediate release used for non-physics-step flows (e.g., onStop)
-        physx::PxJoint* px_joint = _getCachedJoint(i);
+        physx::PxJoint* px_joint = _getCachedJoint(i); // NOLINT(readability-identifier-naming)
         if (px_joint)
         {
             px_joint->setConstraintFlag(physx::PxConstraintFlag::eDISABLE_CONSTRAINT, true);
@@ -858,8 +877,11 @@ void SurfaceGripperComponent::_queueWriteAttachmentPointBatch(
 Axis SurfaceGripperComponent::_getJointForwardAxis(size_t attachmentIndex) const
 {
     if (attachmentIndex < m_jointForwardAxis.size())
+    {
         return m_jointForwardAxis[attachmentIndex];
-    return Axis::Z;
+    }
+    // Match the IsaacRobotSchema default for `isaac:forwardAxis`.
+    return Axis::X;
 }
 
 physx::PxTransform SurfaceGripperComponent::_computeJointWorldTransform(physx::PxJoint* joint,
@@ -907,7 +929,9 @@ const std::vector<std::string>& SurfaceGripperComponent::getGrippedObjects() con
 physx::PxJoint* SurfaceGripperComponent::_getCachedJoint(size_t attachmentIndex) const
 {
     if (attachmentIndex < m_attachmentJoints.size())
+    {
         return m_attachmentJoints[attachmentIndex];
+    }
     return nullptr;
 }
 

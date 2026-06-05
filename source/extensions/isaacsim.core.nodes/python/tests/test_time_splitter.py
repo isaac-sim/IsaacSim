@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,12 +20,12 @@ import omni.kit.test
 
 class TestTimeSplitter(ogts.OmniGraphTestCase):
     async def setUp(self):
-        """Set up  test environment, to be torn down when done"""
+        """Set up  test environment, to be torn down when done."""
         await omni.usd.get_context().new_stage_async()
 
     # ----------------------------------------------------------------------
     async def tearDown(self):
-        """Get rid of temporary data used by the test"""
+        """Get rid of temporary data used by the test."""
         # await omni.kit.stage_templates.new_stage_async()
 
     # ----------------------------------------------------------------------
@@ -47,7 +47,7 @@ class TestTimeSplitter(ogts.OmniGraphTestCase):
                 graph_count = graph_count + 1
                 controller = og.Controller()
                 keys = controller.Keys
-                (graph, (const, time_splitter), _, _) = controller.edit(
+                graph, (const, time_splitter), _, _ = controller.edit(
                     f"/World/Graph{graph_count}",
                     {
                         keys.CREATE_NODES: [

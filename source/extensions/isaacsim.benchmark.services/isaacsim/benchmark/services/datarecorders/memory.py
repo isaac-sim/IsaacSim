@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,19 +12,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Recorder for system and GPU memory usage statistics."""
 
 import os
 import platform
-from pathlib import Path
-from typing import TYPE_CHECKING
 
-import omni.client
-import omni.stats
 import psutil
 
+from .. import utils
 from ..metrics import measurements
-from .interface import InputContext, MeasurementData, MeasurementDataRecorder, MeasurementDataRecorderRegistry
+from .interface import MeasurementData, MeasurementDataRecorder, MeasurementDataRecorderRegistry
+
+logger = utils.set_up_logging(__name__)
 
 
 @MeasurementDataRecorderRegistry.register("memory")
@@ -106,8 +106,8 @@ class MemoryRecorder(MeasurementDataRecorder):
             from omni.hydra.engine.stats import get_mem_stats
 
             memStat_nodes = get_mem_stats(memStat_detail)
-        except:
-            pass
+        except Exception as exc:
+            logger.debug("MemoryRecorder: Failed to query Hydra memory stats: %s", exc)
 
         # Sort nodes in descending order based on time if requested
         if memStat_nodes is not None:
@@ -126,7 +126,7 @@ class MemoryRecorder(MeasurementDataRecorder):
             if len(devices) > 0:
                 device = devices[0]
                 dedicated_gpu_memory = round(device["usage"] / 1073741824, 3)  # bytes to GB
-        except:
-            pass
+        except Exception as exc:
+            logger.debug("MemoryRecorder: Failed to query Hydra device info: %s", exc)
 
         return rss, vms, uss, pb, tracked_gpu_memory, dedicated_gpu_memory

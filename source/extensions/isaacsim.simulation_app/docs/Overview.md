@@ -1,16 +1,12 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.simulation_app extension provides Python classes for launching and controlling Omniverse applications from Python code. This extension enables developers to programmatically start Isaac Sim applications, manage their lifecycle, and interact with the underlying Omniverse framework through Python scripts.
 
 ## Key Components
 
-### [SimulationApp](isaacsim.simulation_app/isaacsim.simulation_app.SimulationApp)
+### {class}`SimulationApp <isaacsim.simulation_app.SimulationApp>`
 
-**[SimulationApp](isaacsim.simulation_app/isaacsim.simulation_app.SimulationApp) is the primary helper class for launching fully-featured Isaac Sim applications.** It handles the complex initialization process of Omniverse Toolkit, which must be running before other Omniverse modules can be imported.
+**{class}`SimulationApp <isaacsim.simulation_app.SimulationApp>` is the primary helper class for launching fully-featured Isaac Sim applications.** It handles the complex initialization process of Omniverse Toolkit, which must be running before other Omniverse modules can be imported.
 
 The class provides comprehensive configuration through launch dictionaries and experience file paths. It automatically loads one of several default experience files if none is specified, following a priority order from most specific (omni.isaac.sim.python.kit) to most general (isaacsim.exp.base.kit).
 
@@ -29,7 +25,7 @@ simulation_app.close()
 
 #### Application Control
 
-[SimulationApp](isaacsim.simulation_app/isaacsim.simulation_app.SimulationApp) provides several methods for controlling application execution:
+{class}`SimulationApp <isaacsim.simulation_app.SimulationApp>` provides several methods for controlling application execution:
 
 - `update()` advances the simulation by one frame
 - `run_coroutine()` executes asynchronous tasks within Kit's event loop system
@@ -40,9 +36,9 @@ simulation_app.close()
 
 The class tracks application state through `is_running()` and `is_exiting()` methods, allowing scripts to properly handle application lifecycle. The `close()` method supports both graceful shutdown with cleanup and immediate exit modes.
 
-### [AppFramework](isaacsim.simulation_app/isaacsim.simulation_app.AppFramework)
+### {class}`AppFramework <isaacsim.simulation_app.AppFramework>`
 
-**[AppFramework](isaacsim.simulation_app/isaacsim.simulation_app.AppFramework) provides a minimal Omniverse application launcher without default configuration.** This class is designed for cases where developers need complete control over application setup or want to build custom experiences from scratch.
+**{class}`AppFramework <isaacsim.simulation_app.AppFramework>` provides a minimal Omniverse application launcher without default configuration.** This class is designed for cases where developers need complete control over application setup or want to build custom experiences from scratch.
 
 ```python
 from isaacsim.simulation_app import AppFramework
@@ -52,7 +48,7 @@ app_framework.update()
 app_framework.close()
 ```
 
-Unlike [SimulationApp](isaacsim.simulation_app/isaacsim.simulation_app.SimulationApp), [AppFramework](isaacsim.simulation_app/isaacsim.simulation_app.AppFramework) exposes the underlying Carb framework directly through its `framework` property, enabling low-level system access for advanced use cases.
+Unlike {class}`SimulationApp <isaacsim.simulation_app.SimulationApp>`, {class}`AppFramework <isaacsim.simulation_app.AppFramework>` exposes the underlying Carb framework directly through its `framework` property, enabling low-level system access for advanced use cases.
 
 ## Integration
 

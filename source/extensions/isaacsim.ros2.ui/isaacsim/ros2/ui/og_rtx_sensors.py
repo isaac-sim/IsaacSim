@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,16 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""User interface for generating ROS2 camera and RTX lidar sensor OmniGraph action graphs."""
 
 from pathlib import Path
 
 import carb
 import omni.graph.core as og
-import omni.isaac.IsaacSensorSchema as IsaacSensorSchema
 import omni.kit.viewport.utility
 import omni.ui as ui
 import OmniGraphSchema
-from isaacsim.core.utils.stage import get_next_free_path
+from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.gui.components.callbacks import on_docs_link_clicked, on_open_IDE_clicked
 from isaacsim.gui.components.style import get_style
 from isaacsim.gui.components.widgets import ParamWidget, SelectPrimWidget
@@ -33,7 +33,31 @@ from pxr import UsdGeom
 
 
 class Ros2CameraGraph(MenuHelperWindow):
-    def __init__(self):
+    """A UI window for generating ROS2 camera graphs in Isaac Sim.
+
+    This class provides a graphical interface to create or extend OmniGraph action graphs that publish camera data to ROS2 topics. It supports multiple camera output types including RGB, depth, point clouds, semantic segmentation, instance segmentation, and 2D/3D bounding boxes.
+
+    The generated graph can either be created as a new standalone graph or added to an existing graph. It automatically configures the necessary nodes including tick sources, render products, ROS2 contexts, and topic publishers based on user selections.
+
+    Users can configure:
+
+    - Graph path and camera prim selection
+    - ROS2 frame ID and node namespace
+    - Publication of RGB images
+    - Publication of depth images
+    - Publication of depth point clouds
+    - Publication of instance segmentation data
+    - Publication of semantic segmentation data
+    - Publication of 2D tight bounding boxes
+    - Publication of 2D loose bounding boxes
+    - Publication of 3D bounding boxes
+    - Custom topic names for each output type
+
+    The window validates the selected camera prim to ensure it is a valid UsdGeom.Camera before generating the graph. If adding to an existing graph, it verifies the graph contains required nodes such as OnPlaybackTick and ROS2Context.
+    """
+
+    def __init__(self) -> None:
+        """Initialize the ROS2 camera graph window."""
         super().__init__("ROS2 Camera Graph", width=500, height=600)
         # Initialize parameters
         self._og_path = "/Graph/ROS_Camera"
@@ -61,15 +85,22 @@ class Ros2CameraGraph(MenuHelperWindow):
         # Build the UI automatically from here
         self._build_ui()
 
-    def make_graph(self):
+    def make_graph(self) -> None:
+        """Create a ROS2 camera graph in OmniGraph based on the configured parameters.
+
+        If adding to an existing graph, validates and reuses existing nodes (tick, context, render product).
+        Otherwise, creates a new graph with base nodes. Adds publisher nodes for each enabled camera output type
+        (RGB, depth, depth point cloud, instance segmentation, semantic segmentation, 2D/3D bounding boxes) and
+        connects them to the render product and ROS2 context.
+        """
         self._timeline = omni.timeline.get_timeline_interface()
         self._timeline.stop()
 
         keys = og.Controller.Keys
         # if starting from a new graph, start it with just a tick and context, render product and camera info (no sim time), the rest is the same for adding to exsiting graph
         if not self._add_to_existing_graph:
-            self._og_path = get_next_free_path(self._og_path, "")
-            (graph_handle, nodes, _, _) = og.Controller.edit(
+            self._og_path = stage_utils.generate_next_free_path(self._og_path, prepend_default_prim=False)
+            graph_handle, nodes, _, _ = og.Controller.edit(
                 {"graph_path": self._og_path, "evaluator_name": "execution"},
                 {
                     keys.CREATE_NODES: [
@@ -124,7 +155,7 @@ class Ros2CameraGraph(MenuHelperWindow):
         # if the existing graph doesn't already have a render node, or if the existing node does not use the same camera, then create a new render node and connect it to the new camera
         # TODO: so far only support if there's one existing render node. If there are multiple render nodes, it won't check if every node has unique camera prims.
         if render_node is None or render_node.get_attribute("inputs:cameraPrim").get()[0] != self._camera_prim:
-            render_node = get_next_free_path(
+            render_node = stage_utils.generate_next_free_path(
                 self._og_path + "/RenderProduct", ""
             )  # this is actually a string path at this point, not a node prim despite the name. This is so that it's consistent with the others.
             render_node_name = Path(render_node).name
@@ -146,7 +177,7 @@ class Ros2CameraGraph(MenuHelperWindow):
             render_node = render_node_path  # once again set render_node to the actual path, as oppose to the node_prim, just for consistency
 
         if self._rgb_pub:
-            rgb_node = get_next_free_path(self._og_path + "/RGBPublish", "")
+            rgb_node = stage_utils.generate_next_free_path(self._og_path + "/RGBPublish", prepend_default_prim=False)
             rgb_node_name = Path(rgb_node).name
             og.Controller.edit(
                 graph_handle,
@@ -175,7 +206,9 @@ class Ros2CameraGraph(MenuHelperWindow):
                 )
 
         if self._depth_pub:
-            depth_node = get_next_free_path(self._og_path + "/DepthPublish", "")
+            depth_node = stage_utils.generate_next_free_path(
+                self._og_path + "/DepthPublish", prepend_default_prim=False
+            )
             depth_node_name = Path(depth_node).name
             og.Controller.edit(
                 graph_handle,
@@ -203,7 +236,9 @@ class Ros2CameraGraph(MenuHelperWindow):
                 )
 
         if self._depth_pcl_pub:
-            depth_pcl_node = get_next_free_path(self._og_path + "/DepthPclPublish", "")
+            depth_pcl_node = stage_utils.generate_next_free_path(
+                self._og_path + "/DepthPclPublish", prepend_default_prim=False
+            )
             depth_pcl_node_name = Path(depth_pcl_node).name
             og.Controller.edit(
                 graph_handle,
@@ -232,7 +267,9 @@ class Ros2CameraGraph(MenuHelperWindow):
                 )
 
         if self._instance_pub:
-            instance_node = get_next_free_path(self._og_path + "/InstancePublish", "")
+            instance_node = stage_utils.generate_next_free_path(
+                self._og_path + "/InstancePublish", prepend_default_prim=False
+            )
             instance_node_name = Path(instance_node).name
             og.Controller.edit(
                 graph_handle,
@@ -262,7 +299,9 @@ class Ros2CameraGraph(MenuHelperWindow):
                 )
 
         if self._semantic_pub:
-            semantic_node = get_next_free_path(self._og_path + "/SemanticPublish", "")
+            semantic_node = stage_utils.generate_next_free_path(
+                self._og_path + "/SemanticPublish", prepend_default_prim=False
+            )
             semantic_node_name = Path(semantic_node).name
             og.Controller.edit(
                 graph_handle,
@@ -292,7 +331,9 @@ class Ros2CameraGraph(MenuHelperWindow):
                 )
 
         if self._bbox2d_tight_pub:
-            bbox2d_tight_node = get_next_free_path(self._og_path + "/Bbox2dTightPublish", "")
+            bbox2d_tight_node = stage_utils.generate_next_free_path(
+                self._og_path + "/Bbox2dTightPublish", prepend_default_prim=False
+            )
             bbox2d_tight_node_name = Path(bbox2d_tight_node).name
             og.Controller.edit(
                 graph_handle,
@@ -322,7 +363,9 @@ class Ros2CameraGraph(MenuHelperWindow):
                 )
 
         if self._bbox2d_loose_pub:
-            bbox2d_loose_node = get_next_free_path(self._og_path + "/Bbox2dLoosePublish", "")
+            bbox2d_loose_node = stage_utils.generate_next_free_path(
+                self._og_path + "/Bbox2dLoosePublish", prepend_default_prim=False
+            )
             bbox2d_loose_node_name = Path(bbox2d_loose_node).name
             og.Controller.edit(
                 graph_handle,
@@ -352,7 +395,9 @@ class Ros2CameraGraph(MenuHelperWindow):
                 )
 
         if self._bbox3d_pub:
-            bbox3d_node = get_next_free_path(self._og_path + "/Bbox3dPublish", "")
+            bbox3d_node = stage_utils.generate_next_free_path(
+                self._og_path + "/Bbox3dPublish", prepend_default_prim=False
+            )
             bbox3d_node_name = Path(bbox3d_node).name
             og.Controller.edit(
                 graph_handle,
@@ -381,7 +426,14 @@ class Ros2CameraGraph(MenuHelperWindow):
                     og.Controller.attribute(bbox3d_node + ".inputs:context"),
                 )
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
+        """Construct the user interface for configuring the ROS2 camera graph.
+
+        Creates UI elements for graph path, camera prim selection, frame ID, node namespace, and topic
+        configuration. Includes checkboxes to enable/disable publishing for each camera output type (RGB, depth,
+        depth point cloud, instance, semantic, bounding boxes) with corresponding topic name fields. Adds OK/Cancel
+        buttons and documentation links.
+        """
         og_path_def = ParamWidget.FieldDef(
             name="og_path", label="Graph Path", type=ui.StringField, default=self._og_path
         )
@@ -507,7 +559,12 @@ class Ros2CameraGraph(MenuHelperWindow):
 
         return
 
-    def _on_ok(self):
+    def _on_ok(self) -> None:
+        """Handle the OK button click event.
+
+        Retrieves all parameter values from UI widgets, validates them using parameter check, and if validation
+        passes, generates the ROS2 camera graph and closes the window. Otherwise, displays a warning notification.
+        """
         self._og_path = self.og_path_input.get_value()
         self._camera_prim = self.camera_prim_input.get_value()
         self._frame_id = self.frame_id_input.get_value()
@@ -528,7 +585,17 @@ class Ros2CameraGraph(MenuHelperWindow):
         else:
             post_notification("Parameter check failed", status=NotificationStatus.WARNING)
 
-    def _check_params(self):
+    def _check_params(self) -> bool:
+        """Validate the configured parameters before graph creation.
+
+        When adding to an existing graph, verifies the graph path points to a valid OmniGraph prim. Validates that
+        the camera prim path points to a valid UsdGeom.Camera prim. Displays warning notifications for invalid
+        parameters.
+
+        Returns:
+            True if all parameters are valid, False otherwise.
+
+        """
         stage = omni.usd.get_context().get_stage()
 
         if self._add_to_existing_graph:
@@ -550,38 +617,98 @@ class Ros2CameraGraph(MenuHelperWindow):
         post_notification(msg, status=NotificationStatus.WARNING)
         return False
 
-    def _on_cancel(self):
+    def _on_cancel(self) -> None:
+        """Handle the Cancel button click event by closing the window."""
         self.visible = False
 
-    def _on_use_existing_graph(self, check_state):
+    def _on_use_existing_graph(self, check_state: bool) -> None:
+        """Handle the checkbox state change for adding to an existing graph.
+
+        Args:
+            check_state: Whether the checkbox is checked.
+
+        """
         self._add_to_existing_graph = check_state
 
-    def _on_rgb_pub(self, check_state):
+    def _on_rgb_pub(self, check_state: bool) -> None:
+        """Handle the checkbox state change for RGB publishing.
+
+        Args:
+            check_state: Whether the checkbox is checked.
+
+        """
         self._rgb_pub = check_state
 
-    def _on_depth_pub(self, check_state):
+    def _on_depth_pub(self, check_state: bool) -> None:
+        """Handle the checkbox state change for depth publishing.
+
+        Args:
+            check_state: Whether the checkbox is checked.
+
+        """
         self._depth_pub = check_state
 
-    def _on_depth_pcl_pub(self, check_state):
+    def _on_depth_pcl_pub(self, check_state: bool) -> None:
+        """Handle the checkbox state change for depth point cloud publishing.
+
+        Args:
+            check_state: Whether the checkbox is checked.
+
+        """
         self._depth_pcl_pub = check_state
 
-    def _on_instance_pub(self, check_state):
+    def _on_instance_pub(self, check_state: bool) -> None:
+        """Handle the checkbox state change for instance segmentation publishing.
+
+        Args:
+            check_state: Whether the checkbox is checked.
+
+        """
         self._instance_pub = check_state
 
-    def _on_semantic_pub(self, check_state):
+    def _on_semantic_pub(self, check_state: bool) -> None:
+        """Handle the semantic segmentation publishing checkbox state change.
+
+        Args:
+            check_state: The new state of the semantic segmentation checkbox.
+
+        """
         self._semantic_pub = check_state
 
-    def _on_bbox2d_tight_pub(self, check_state):
+    def _on_bbox2d_tight_pub(self, check_state: bool) -> None:
+        """Handle the 2D tight bounding box publishing checkbox state change.
+
+        Args:
+            check_state: The new state of the 2D tight bounding box checkbox.
+
+        """
         self._bbox2d_tight_pub = check_state
 
-    def _on_bbox2d_loose_pub(self, check_state):
+    def _on_bbox2d_loose_pub(self, check_state: bool) -> None:
+        """Handle the 2D loose bounding box publishing checkbox state change.
+
+        Args:
+            check_state: The new state of the 2D loose bounding box checkbox.
+
+        """
         self._bbox2d_loose_pub = check_state
 
-    def _on_bbox3d_pub(self, check_state):
+    def _on_bbox3d_pub(self, check_state: bool) -> None:
+        """Handle the 3D bounding box publishing checkbox state change.
+
+        Args:
+            check_state: The new state of the 3D bounding box checkbox.
+
+        """
         self._bbox3d_pub = check_state
 
 
 class Ros2RtxLidarGraph(MenuHelperWindow):
+    """A UI helper window for generating ROS2 action graphs for RTX lidar sensors.
+
+    This window provides an interface to configure and generate OmniGraph action graphs that publish RTX lidar data to ROS2 topics. It supports both creating new graphs and adding nodes to existing graphs. The generated graph can publish laser scan messages and point cloud messages with configurable metadata fields. Users can select which point cloud metadata to include such as intensity, timestamp, emitter ID, channel ID, material ID, tick ID, hit normal, velocity, object ID, echo ID, and tick state.
+    """
+
     # Point cloud metadata options: (display_name, attribute_name)
     # attribute_name corresponds to the input on ROS2RtxLidarPointCloudConfig node
     METADATA_OPTIONS = [
@@ -597,8 +724,14 @@ class Ros2RtxLidarGraph(MenuHelperWindow):
         ("Echo ID", "EchoId"),
         ("Tick State", "TickState"),
     ]
+    """Point cloud metadata options available for selection.
+    
+    Each tuple contains (display_name, attribute_name) where display_name is shown in the UI and attribute_name
+    corresponds to the input on the ROS2RtxLidarPointCloudConfig node.
+    """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize the ROS2 RTX lidar graph window."""
         super().__init__("ROS2 RTX Lidar Graph", width=400, height=650)
         self._og_path = "/Graph/ROS_LidarRTX"
         self._frame_id = "sim_lidar"
@@ -616,15 +749,19 @@ class Ros2RtxLidarGraph(MenuHelperWindow):
         # build UI
         self._build_ui()
 
-    def make_graph(self):
+    def make_graph(self) -> None:
+        """Create or modifies an action graph for ROS2 RTX Lidar publishing.
+
+        Generates a new graph or extends an existing one to publish RTX Lidar data. The graph includes nodes for laser scan and/or point cloud publishing based on the configured settings. When point cloud metadata options are selected, a configuration node is created to control which metadata fields are included in the published point cloud messages.
+        """
         self._timeline = omni.timeline.get_timeline_interface()
         self._timeline.stop()
 
         keys = og.Controller.Keys
         # if starting from a new graph, start it with just a tick, context, and render product, (no sim time), the rest is the same for adding to exsiting graph
         if not self._add_to_existing_graph:
-            self._og_path = get_next_free_path(self._og_path, "")
-            (graph_handle, nodes, _, _) = og.Controller.edit(
+            self._og_path = stage_utils.generate_next_free_path(self._og_path, prepend_default_prim=False)
+            graph_handle, nodes, _, _ = og.Controller.edit(
                 {"graph_path": self._og_path, "evaluator_name": "execution"},
                 {
                     keys.CREATE_NODES: [
@@ -671,7 +808,7 @@ class Ros2RtxLidarGraph(MenuHelperWindow):
         # if the existing graph doesn't already have a render node, or if the existing node does not use the same camera, then create a new render node and connect it to the new camera
         # TODO: so far only support if there's one existing render node. If there are multiple render nodes, it won't check if every node has unique camera prims.
         if render_node is None or render_node.get_attribute("inputs:cameraPrim").get()[0] != self._lidar_prim:
-            render_node = get_next_free_path(
+            render_node = stage_utils.generate_next_free_path(
                 self._og_path + "/RenderProduct", ""
             )  # this is actually a string path at this point, not a node prim despite the name. This is so that it's consistent with the others.
             render_node_name = Path(render_node).name
@@ -693,7 +830,9 @@ class Ros2RtxLidarGraph(MenuHelperWindow):
             render_node = render_node_path  # once again set render_node to the actual path, as oppose to the node_prim, just for consistency
 
         if self._laser_scan_pub:
-            laser_scan_node = get_next_free_path(self._og_path + "/LaserScanPublish", "")
+            laser_scan_node = stage_utils.generate_next_free_path(
+                self._og_path + "/LaserScanPublish", prepend_default_prim=False
+            )
             laser_scan_node_name = Path(laser_scan_node).name
             og.Controller.edit(
                 graph_handle,
@@ -720,14 +859,18 @@ class Ros2RtxLidarGraph(MenuHelperWindow):
                 )
 
         if self._point_cloud_pub:
-            point_cloud_node = get_next_free_path(self._og_path + "/PointCloudPublish", "")
+            point_cloud_node = stage_utils.generate_next_free_path(
+                self._og_path + "/PointCloudPublish", prepend_default_prim=False
+            )
             point_cloud_node_name = Path(point_cloud_node).name
 
             # Check if any metadata is selected, create config node and connect it
             selected_metadata = [attr for attr, selected in self._metadata_selected.items() if selected]
 
             if selected_metadata:
-                pcl_config_node = get_next_free_path(self._og_path + "/PointCloudConfig", "")
+                pcl_config_node = stage_utils.generate_next_free_path(
+                    self._og_path + "/PointCloudConfig", prepend_default_prim=False
+                )
                 pcl_config_node_name = Path(pcl_config_node).name
 
                 # Create the config node with the selected metadata
@@ -800,7 +943,11 @@ class Ros2RtxLidarGraph(MenuHelperWindow):
                 status=NotificationStatus.WARNING,
             )
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
+        """Build the user interface for the RTX Lidar graph configuration window.
+
+        Creates input fields for graph path, lidar prim selection, frame ID, node namespace, and topic names. Includes checkboxes for enabling laser scan and point cloud publishing, along with a two-column layout for selecting point cloud metadata options.
+        """
         og_path_def = ParamWidget.FieldDef(
             name="og_path", label="Graph Path", type=ui.StringField, default=self._og_path
         )
@@ -902,7 +1049,11 @@ class Ros2RtxLidarGraph(MenuHelperWindow):
 
         return
 
-    def _on_ok(self):
+    def _on_ok(self) -> None:
+        """Handle the OK button click event.
+
+        Collects values from all UI input fields, validates the parameters, and generates the graph if validation passes. Closes the window upon successful graph generation.
+        """
         self._og_path = self.og_path_input.get_value()
         self._lidar_prim = self.lidar_prim_input.get_value()
         self._frame_id = self.frame_id_input.get_value()
@@ -917,10 +1068,22 @@ class Ros2RtxLidarGraph(MenuHelperWindow):
         else:
             post_notification("Parameter check failed", status=NotificationStatus.WARNING)
 
-    def _on_cancel(self):
+    def _on_cancel(self) -> None:
+        """Handle the Cancel button click event.
+
+        Closes the window without generating or modifying the graph.
+        """
         self.visible = False
 
-    def _check_params(self):
+    def _check_params(self) -> bool:
+        """Validate the graph and lidar prim parameters.
+
+        Verifies that the specified graph path exists if adding to an existing graph, and confirms that the lidar prim is a valid RTX lidar (either a Camera with IsaacRtxLidarSensorAPI or an OmniLidar with OmniSensorGenericLidarCoreAPI). Displays warning notifications for any validation failures.
+
+        Returns:
+            True if all parameters are valid, False otherwise.
+
+        """
         stage = omni.usd.get_context().get_stage()
 
         if self._add_to_existing_graph:
@@ -936,24 +1099,46 @@ class Ros2RtxLidarGraph(MenuHelperWindow):
         # check if the lidar prim is valid
         lidar_prim = stage.GetPrimAtPath(self._lidar_prim)
         if lidar_prim.IsValid():
-            if (lidar_prim.IsA(UsdGeom.Camera) and lidar_prim.HasAPI(IsaacSensorSchema.IsaacRtxLidarSensorAPI)) or (
-                lidar_prim.GetTypeName() == "OmniLidar" and lidar_prim.HasAPI("OmniSensorGenericLidarCoreAPI")
-            ):
+            if lidar_prim.GetTypeName() == "OmniLidar" and lidar_prim.HasAPI("OmniSensorGenericLidarCoreAPI"):
                 return True
 
         msg = self._lidar_prim + " is not a valid RTX lidar prim, check the lidar prim"
         post_notification(msg, status=NotificationStatus.WARNING)
         return False
 
-    def _on_use_existing_graph(self, check_state):
+    def _on_use_existing_graph(self, check_state: bool) -> None:
+        """Handle the checkbox state change for using an existing graph.
+
+        Args:
+            check_state: Whether to add nodes to an existing graph instead of creating a new one.
+
+        """
         self._add_to_existing_graph = check_state
 
-    def _on_laser_scan_pub(self, check_state):
+    def _on_laser_scan_pub(self, check_state: bool) -> None:
+        """Handle the checkbox state change for laser scan publishing.
+
+        Args:
+            check_state: Whether to enable laser scan publishing.
+
+        """
         self._laser_scan_pub = check_state
 
-    def _on_point_cloud_pub(self, check_state):
+    def _on_point_cloud_pub(self, check_state: bool) -> None:
+        """Handle the checkbox state change for point cloud publishing.
+
+        Args:
+            check_state: Whether to enable point cloud publishing.
+
+        """
         self._point_cloud_pub = check_state
 
-    def _on_metadata_changed(self, attr_name, check_state):
-        """Handle metadata checkbox state change."""
+    def _on_metadata_changed(self, attr_name: str, check_state: bool) -> None:
+        """Handle metadata checkbox state change.
+
+        Args:
+            attr_name: Name of the metadata attribute being toggled.
+            check_state: Whether the metadata option is enabled.
+
+        """
         self._metadata_selected[attr_name] = check_state

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """A specialized USD property widget for displaying exposed variables from scripted prims."""
-
 
 import re
 
@@ -42,7 +41,7 @@ class ExposedVariablesPropertyWidget(UsdPropertiesWidget):
         collapsed: Whether the widget should start in a collapsed state.
     """
 
-    def __init__(self, title: str, attribute_namespace_filter: list, collapsed: bool = False):
+    def __init__(self, title: str, attribute_namespace_filter: list, collapsed: bool = False) -> None:
         # Set multi_edit=False to handle each prim individually
         super().__init__(title, collapsed, multi_edit=False)
 
@@ -55,8 +54,8 @@ class ExposedVariablesPropertyWidget(UsdPropertiesWidget):
         # Initialize the multiple selection flag
         self._multiple_selection = False
 
-    def on_new_payload(self, payload) -> bool:
-        """Handles new payloads to refresh UI or update models.
+    def on_new_payload(self, payload: list) -> bool:
+        """Handle new payloads to refresh UI or update models.
 
         Args:
             payload: The new payload to be handled by the widget.
@@ -118,7 +117,7 @@ class ExposedVariablesPropertyWidget(UsdPropertiesWidget):
         # Do not create the widget if no valid properties found
         return bool(self._props_to_build)
 
-    def _get_shared_properties_from_selected_prims(self, anchor_prim) -> list:
+    def _get_shared_properties_from_selected_prims(self, anchor_prim: "Usd.Prim") -> list:
         """Override to provide properties for the base class's build_items().
 
         Args:
@@ -130,7 +129,7 @@ class ExposedVariablesPropertyWidget(UsdPropertiesWidget):
         # Return only the filtered UI properties to _customize_props_layout
         return self._props_to_build
 
-    def _customize_props_layout(self, props) -> list:
+    def _customize_props_layout(self, props: list) -> list:
         """Customize the layout by setting display groups and names for properties.
 
         Args:
@@ -179,7 +178,7 @@ class ExposedVariablesPropertyWidget(UsdPropertiesWidget):
         # Return the UI property entries with the updated display groups and names to be built by the widget
         return props
 
-    def _make_capitalized_title(self, namespace_name) -> str:
+    def _make_capitalized_title(self, namespace_name: str) -> str:
         """Convert names to 'Capitalized With Spaces' format.
 
         Args:

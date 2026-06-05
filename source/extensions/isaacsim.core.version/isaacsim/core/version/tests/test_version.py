@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,18 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test for version."""
+
 import omni.kit.test
 from isaacsim.core.version import get_version, parse_version
 
 
 class TestIsaacVersion(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
-        pass
+    """Test isaac version."""
 
-    async def tearDown(self):
-        pass
+    async def setUp(self) -> None:
+        """Set up test environment."""
 
-    async def test_version(self):
+    async def tearDown(self) -> None:
+        """Tear down test environment."""
+
+    async def test_version(self) -> None:
+        """Test version."""
         parsed_version = parse_version("2000.0.0-beta.0+branch.0.hash.local")
         self.assertTrue(parsed_version.core == "2000.0.0")
         self.assertTrue(parsed_version.pretag == "beta")

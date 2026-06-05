@@ -1,3 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Run asset transformer rule profiles against USD stages."""
 
 from __future__ import annotations
@@ -17,19 +32,76 @@ from .utils import make_explicit_relative
 _LOGGER = logging.getLogger(__name__)
 
 
-def _collect_assets(layer: Sdf.Layer, package_root: str) -> None:
+def _collect_source_anchor_dirs(source_path: str) -> list[str]:
+    """Return candidate anchor directories for resolving relative asset paths.
+
+    When the source stage is composed from multiple sublayers, a relative
+    asset path written in a sublayer (e.g. ``../textures/foo.png``) is
+    anchored at THAT sublayer's directory, not at the root layer's. After
+    flattening, the asset path string survives verbatim in the output but
+    the sublayer-anchor information is lost.
+
+    To recover the original anchor without round-tripping every path through
+    USD's resolver one by one, the output remap step tries each candidate
+    anchor in priority order: root layer dir first (most common case), then
+    every sublayer dir present in the source stage's used-layers list.
+
+    Args:
+        source_path: Absolute path to the source root layer.
+
+    Returns:
+        Ordered list of unique anchor directories (root first, then sublayers).
+        Falls back to ``[os.path.dirname(source_path)]`` if the source stage
+        cannot be opened.
+    """
+    root_dir = os.path.dirname(source_path)
+    ordered: list[str] = [root_dir]
+    seen: set[str] = {root_dir}
+    try:
+        # Open the stage without populating: we only want the layer stack.
+        source_stage = Usd.Stage.Open(source_path, load=Usd.Stage.LoadNone)
+    except Exception:  # noqa: BLE001
+        return ordered
+    if source_stage is None:
+        return ordered
+    for layer in source_stage.GetUsedLayers(includeClipLayers=True):
+        layer_real = getattr(layer, "realPath", "") or ""
+        if not layer_real:
+            continue
+        d = os.path.dirname(layer_real)
+        if d and d not in seen:
+            ordered.append(d)
+            seen.add(d)
+    return ordered
+
+
+def _collect_assets(layer: Sdf.Layer, package_root: str, source_layer_path: str | None = None) -> None:
     """Copy external assets to package_root and update layer paths.
 
     Args:
-        layer: The USD layer to process.
+        layer: The USD layer to process. Asset paths are rewritten in place
+            to point at the copied assets, relative to the layer's directory.
         package_root: Destination directory for collected assets.
+        source_layer_path: Original source layer location used to anchor
+            relative asset path resolution. When ``layer`` was produced by
+            exporting a source layer to a different filesystem depth, the
+            relative asset path strings inside it still refer to locations
+            anchored at the source layer's (or its sublayers') directory.
+            Falls back to ``layer.realPath`` when not supplied.
+
     """
     layer_path = layer.realPath
+    # Anchor dependency discovery and relative-path resolution to the source
+    # layer so that paths copied verbatim from the source (e.g. "../foo.png")
+    # resolve to the file the source meant, not whatever happens to sit at
+    # that relative location from the output directory.
+    source_path = source_layer_path or layer_path
+    layer_dir = os.path.dirname(layer_path)
     assets_dir = os.path.join(package_root, "source_assets")
     copied_assets: dict[str, str] = {}
 
-    # Compute all asset dependencies from this layer
-    _, all_assets, _ = UsdUtils.ComputeAllDependencies(layer_path)
+    # Compute all asset dependencies from the source layer
+    _, all_assets, _ = UsdUtils.ComputeAllDependencies(source_path)
 
     for asset_path in all_assets:
         resolved = str(asset_path.GetResolvedPath()) if hasattr(asset_path, "GetResolvedPath") else str(asset_path)
@@ -53,7 +125,10 @@ def _collect_assets(layer: Sdf.Layer, package_root: str) -> None:
             shutil.copy2(resolved, local_path)
             copied_assets[resolved] = local_path
 
-    layer_dir = os.path.dirname(layer_path)
+    # Candidate anchor dirs in priority order (root first, then sublayer dirs).
+    # A relative asset path in the output layer is resolved by trying each
+    # anchor until one produces a path present in ``copied_assets``.
+    candidate_anchor_dirs = _collect_source_anchor_dirs(source_path)
 
     def remap_path(original_path: str) -> str:
         """Remap asset paths to collected local copies.
@@ -62,17 +137,31 @@ def _collect_assets(layer: Sdf.Layer, package_root: str) -> None:
             original_path: Asset path from the layer metadata.
 
         Returns:
-            Updated asset path, or the original path if no copy exists.
+            Updated asset path relative to the output layer, or the original
+            path if it does not correspond to a copied asset.
+
         """
         if not original_path:
             return original_path
-        # Resolve relative paths against the layer directory
+        # Preserve URI-style asset paths (e.g. ``omni://``, ``http://``,
+        # ``file://``). They are not filesystem paths and the source-relative
+        # resolution below would produce nonsense. Note: Windows drive-letter
+        # paths like ``C:\foo`` do NOT contain ``://`` and fall through to the
+        # ``os.path.isabs`` branch, which correctly handles them.
+        if "://" in original_path:
+            return original_path
         if os.path.isabs(original_path):
             resolved = original_path
-        else:
-            resolved = os.path.normpath(os.path.join(layer_dir, original_path))
-        if resolved in copied_assets:
-            return make_explicit_relative(os.path.relpath(copied_assets[resolved], layer_dir))
+            if resolved in copied_assets:
+                return make_explicit_relative(os.path.relpath(copied_assets[resolved], layer_dir))
+            return original_path
+        # Relative path: try each candidate anchor dir in priority order.
+        # Root first (most common); sublayer dirs after, for paths authored
+        # in sublayers that survived flatten with their original strings.
+        for anchor_dir in candidate_anchor_dirs:
+            resolved = os.path.normpath(os.path.join(anchor_dir, original_path))
+            if resolved in copied_assets:
+                return make_explicit_relative(os.path.relpath(copied_assets[resolved], layer_dir))
         return original_path
 
     UsdUtils.ModifyAssetPaths(layer, remap_path)
@@ -86,12 +175,21 @@ def _canonicalize_orient_quats(layer: Sdf.Layer) -> None:
     """Canonicalize every xformOp:orient (Quatd) in the layer for idempotent round-trip.
 
     Near-zero components are clamped to 0 and the sign is normalized (real >= 0).
+
+    Args:
+        layer: The USD layer whose orient quaternions should be canonicalized.
     """
     for prim_spec in layer.rootPrims.values():
         _canonicalize_orient_quats_recursive(prim_spec)
 
 
 def _canonicalize_orient_quats_recursive(prim_spec: Sdf.PrimSpec) -> None:
+    """Canonicalize ``xformOp:orient`` quaternions on *prim_spec* and descendants.
+
+    Args:
+        prim_spec: Root prim spec whose attribute and name-children hierarchy is
+            processed recursively.
+    """
     if "xformOp:orient" in prim_spec.attributes:
         attr = prim_spec.attributes["xformOp:orient"]
         if attr.typeName == Sdf.ValueTypeNames.Quatd and attr.default:
@@ -138,10 +236,11 @@ def Singleton(class_: type[T]) -> Callable[..., T]:  # noqa: N802
             pass
 
         registry = Registry()
-    """
-    instances: dict[type[Any], Any] = {}
 
-    def getinstance(*args: Any, **kwargs: Any) -> T:
+    """
+    instances: dict[type[Any], object] = {}
+
+    def getinstance(*args: object, **kwargs: object) -> T:
         if class_ not in instances:
             instances[class_] = class_(*args, **kwargs)
         return instances[class_]
@@ -171,6 +270,7 @@ class RuleRegistry:
         .. code-block:: python
 
             registry.register(MyRule)
+
         """
         if not issubclass(rule_cls, RuleInterface):
             raise TypeError("rule_cls must subclass RuleInterface")
@@ -191,6 +291,7 @@ class RuleRegistry:
         .. code-block:: python
 
             rule_cls = registry.get("my.module.MyRule")
+
         """
         return self._type_to_cls.get(rule_type)
 
@@ -202,6 +303,7 @@ class RuleRegistry:
         .. code-block:: python
 
             registry.clear()
+
         """
         self._type_to_cls.clear()
 
@@ -216,6 +318,7 @@ class RuleRegistry:
         .. code-block:: python
 
             rules = registry.list_rules()
+
         """
         return dict(self._type_to_cls)
 
@@ -230,6 +333,7 @@ class RuleRegistry:
         .. code-block:: python
 
             types = registry.list_rule_types()
+
         """
         return sorted(self._type_to_cls.keys())
 
@@ -245,6 +349,7 @@ class AssetTransformerManager:
     Args:
         registry: Optional registry instance. Currently ignored in favor of the
             global singleton registry.
+
     """
 
     def __init__(self, registry: RuleRegistry | None = None) -> None:
@@ -254,24 +359,31 @@ class AssetTransformerManager:
     def registry(self) -> RuleRegistry:
         """Return the singleton rule registry.
 
+        Returns:
+            The manager's internal :class:`RuleRegistry` instance.
+
         Example:
 
         .. code-block:: python
 
             registry = manager.registry
+
         """
         return self._registry
 
     def run(
         self,
-        input_stage_path: str,
+        input_stage: str | Usd.Stage,
         profile: RuleProfile,
         package_root: str | None = None,
     ) -> ExecutionReport:
-        """Execute a profile from an input stage path and return an execution report.
+        """Execute a rule profile against a USD stage and return an execution report.
 
         Args:
-            input_stage_path: Path to the source USD stage or layer.
+            input_stage: Path to the source USD stage or layer, or an
+                already-opened :class:`pxr.Usd.Stage`. When a stage object is
+                passed it is used directly and its root layer path is used as
+                the internal ``input_stage``.
             profile: Rule profile specifying ordered rules to run.
             package_root: Destination root directory for outputs.
 
@@ -289,6 +401,14 @@ class AssetTransformerManager:
             manager = AssetTransformerManager()
             report = manager.run("input.usd", profile, package_root="/tmp/package")
         """
+        # Accept either a file path string or an already-opened Usd.Stage.
+        if isinstance(input_stage, str):
+            input_stage_path: str = input_stage
+            stage_obj: Usd.Stage | None = Usd.Stage.Open(input_stage_path)
+        else:
+            stage_obj = input_stage
+            input_stage_path = input_stage.GetRootLayer().realPath
+
         package_root_final = package_root or profile.output_package_root or ""
         report = ExecutionReport(
             profile=profile,
@@ -296,13 +416,14 @@ class AssetTransformerManager:
             package_root=package_root_final,
         )
 
-        source_stage = Usd.Stage.Open(input_stage_path)
+        source_stage = stage_obj
         if source_stage is None:
             report.close()
             raise RuntimeError(f"Failed to open source stage: {input_stage_path}")
         base_name = profile.base_name or "base.usd"
-        # Create flattened copy at destination as base.usda
-        base_usda_path = os.path.join(package_root_final, "payloads", base_name)
+        # Create flattened copy at destination as base.usda. Use forward slashes so the layer
+        # identifier and any downstream relative-path computations are platform-independent.
+        base_usda_path = os.path.join(package_root_final, "payloads", base_name).replace(os.sep, "/")
         os.makedirs(package_root_final, exist_ok=True)
         if profile.flatten_source:
             flattened_layer = source_stage.Flatten()
@@ -315,7 +436,7 @@ class AssetTransformerManager:
         # Collect external assets and update paths in base.usda
         base_layer = Sdf.Layer.FindOrOpen(base_usda_path)
         if base_layer:
-            _collect_assets(base_layer, package_root_final)
+            _collect_assets(base_layer, package_root_final, source_layer_path=input_stage_path)
             _canonicalize_orient_quats(base_layer)
             base_layer.Save()
 
@@ -346,6 +467,7 @@ class AssetTransformerManager:
                         "params": spec.params,
                         "interface_asset_name": profile.interface_asset_name,
                         "input_stage_path": input_stage_path,
+                        "input_stage": stage_obj,
                     },
                 )
 

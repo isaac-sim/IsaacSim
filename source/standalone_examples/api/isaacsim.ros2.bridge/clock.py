@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,18 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Demonstrate ROS 2 clock publishing and subscribing with simulation time."""
+
 import time
 
 from isaacsim import SimulationApp
 
 # Example ROS2 bridge sample showing rclpy and rosclock interaction
 simulation_app = SimulationApp({"renderer": "RealTimePathTracing", "headless": True})
+import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.graph.core as og
-from isaacsim.core.api import SimulationContext
-from isaacsim.core.utils.extensions import enable_extension
+from isaacsim.core.simulation_manager import SimulationManager
 
 # enable ROS2 bridge extension
-enable_extension("isaacsim.ros2.bridge")
+app_utils.enable_extension("isaacsim.ros2.bridge")
 
 simulation_app.update()
 # Note that this is not the system level rclpy, but one compiled for omniverse
@@ -73,10 +76,12 @@ simulation_app.update()
 
 # Define ROS2 callbacks
 def sim_clock_callback(data):
+    """Log the simulation clock time."""
     print("sim time:", data.clock)
 
 
 def manual_clock_callback(data):
+    """Log the manually stepped simulation clock time."""
     print("manual stepped sim time:", data.clock)
 
 
@@ -88,11 +93,11 @@ sim_clock_sub = node.create_subscription(Clock, clock_topic, sim_clock_callback,
 manual_clock_sub = node.create_subscription(Clock, manual_clock_topic, manual_clock_callback, 1)
 
 time.sleep(1.0)
-simulation_context = SimulationContext(physics_dt=1.0 / 60.0, rendering_dt=1.0 / 60.0, stage_units_in_meters=1.0)
-# need to initialize physics getting any articulation..etc
-simulation_context.initialize_physics()
+stage_utils.set_stage_units(meters_per_unit=1.0)
+SimulationManager.setup_simulation(dt=1.0 / 60.0, device="cpu")
 
-simulation_context.play()
+app_utils.play()
+simulation_app.update()
 
 # perform a fixed number of steps with fixed step size
 for frame in range(20):
@@ -100,9 +105,9 @@ for frame in range(20):
     # publish manual clock every 10 frames
     if frame % 10 == 0:
         og.Controller.set(og.Controller.attribute("/ActionGraph/OnImpulseEvent.state:enableImpulse"), True)
-        simulation_context.render()  # This updates rendering/app loop which calls the sim clock
+        simulation_app.update()  # This updates rendering/app loop which calls the sim clock
 
-    simulation_context.step(render=False)  # runs with a non-realtime clock
+    simulation_app.update()  # runs with a non-realtime clock
     rclpy.spin_once(node, timeout_sec=0.0)  # Spin node once
     # This sleep is to make this sample run a bit more deterministically for the subscriber callback
     # In general this sleep is not needed
@@ -123,5 +128,5 @@ for frame in range(20):
 
 # shutdown
 rclpy.shutdown()
-simulation_context.stop()
+app_utils.stop()
 simulation_app.close()

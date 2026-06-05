@@ -27,6 +27,21 @@
   - pd_scale: float
   - solver_cfg: NewtonSolverConfig
 
+- class NewtonStage
+  - def __init__(self, cfg: NewtonConfig | None = None, device: str | None = None)
+  - def init(self)
+  - def on_timeline_event(self, e: omni.timeline.TimelineEventType)
+  - def on_update(self, event: carb.events.IEvent, dt: float)
+  - def step_sim(self, dt: float)
+  - def update_fabric(self)
+  - def on_detach(self)
+  - def on_attach(self, stage_id: int, meters_per_unit: float)
+  - def on_resume(self, currentTime: float)
+  - def on_change(self, path: str)
+  - def update_fabric_attrs(self)
+  - def initialize_newton(self, device: str | None)
+  - def simulate(self, num_substeps: int | None = None, dt: float | None = None)
+
 - class XPBDSolverConfig(NewtonSolverConfig)
   - solver_type: Literal[xpbd]
   - iterations: int
@@ -53,8 +68,6 @@
   - impratio: float
   - use_mujoco_cpu: bool
   - disable_contacts: bool
-  - default_actuator_gear: float | None
-  - actuator_gears: dict[str, float] | None
   - update_data_interval: int
   - save_to_mjcf: str | None
   - ls_parallel: bool

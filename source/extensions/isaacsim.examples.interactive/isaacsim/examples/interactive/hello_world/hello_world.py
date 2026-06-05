@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """A basic Isaac Sim example module that demonstrates fundamental scene setup and lifecycle management."""
-
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 from isaacsim.examples.base.base_sample_experimental import BaseSample
@@ -35,10 +34,10 @@ class HelloWorld(BaseSample):
     methods used in Isaac Sim samples for initialization, loading, resetting, and cleanup operations.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
-    def setup_scene(self):
+    def setup_scene(self) -> None:
         """Set up the scene by adding a ground plane environment for physics simulation."""
         # Add ground plane environment for physics simulation
         ground_plane = stage_utils.add_reference_to_stage(
@@ -46,18 +45,14 @@ class HelloWorld(BaseSample):
             path="/World/ground",
         )
 
-    async def setup_post_load(self):
+    async def setup_post_load(self) -> None:
         """Set up operations to be performed after the world is loaded."""
-        pass
 
-    async def setup_pre_reset(self):
+    async def setup_pre_reset(self) -> None:
         """Set up operations to be performed before the world is reset."""
-        pass
 
-    async def setup_post_reset(self):
+    async def setup_post_reset(self) -> None:
         """Set up operations to be performed after the world is reset."""
-        pass
 
-    def world_cleanup(self):
+    def world_cleanup(self) -> None:
         """Clean up the world and release resources."""
-        pass

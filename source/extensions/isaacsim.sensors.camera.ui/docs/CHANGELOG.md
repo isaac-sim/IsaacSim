@@ -1,4 +1,37 @@
 # Changelog
+
+## [0.7.1] - 2026-05-12
+### Fixed
+- Depth sensor wrappers returned by `_wrap_depth_sensor_cameras` are now stored in `Extension._depth_sensors` instead of being discarded, preventing a create/destroy cycle that corrupted the RTX pipeline and made asset materials invisible.
+
+## [0.7.0] - 2026-05-07
+### Changed
+- Sensor list (vendors, models, depth-sensor flags, USD asset paths) is now sourced from `isaacsim.sensors.experimental.rtx.SUPPORTED_CAMERA_CONFIGS`. `Extension.SENSORS` is built at import time from that registry via `get_camera_metadata`, so adding a new camera vendor/model is a one-place change in the registry. The legacy `Extension.SENSORS` shape (`{vendor: {display_name: {prim_prefix, usd_path, is_depth_sensor}}}`) is preserved for backward compatibility.
+- Default `prim_prefix` for menu-created sensors is now derived from the USD file stem (with hyphens and dots replaced by underscores) rather than per-asset hand-curated values. User-visible effect: prim names placed via the menu change in some cases (e.g. `/RealsenseD455` -> `/rsd455`, `/Femto` -> `/orbbec_femtomega_v1_0`, `/OAK4D` -> `/oak4_d`). Prim names that already matched the stem (e.g. `/Inspector83x`, `/ZED_X`) are unchanged.
+- Menu actions now load camera USDs via `RtxCamera.create()` (experimental) instead of a raw Xform reference. For depth-sensor entries, every Camera in the loaded asset that has a template render product with `OmniSensorDepthSensorSingleViewAPI` is wrapped with `SingleViewDepthCameraSensor`, which copies the template's depth-sensor attributes onto the new render product (matches the prior `SingleViewDepthSensorAsset.initialize()` behavior).
+
+### Added
+- Dependency on `isaacsim.sensors.experimental.rtx` for `SUPPORTED_CAMERA_CONFIGS` / `get_camera_metadata` / `RtxCamera` / `SingleViewDepthCameraSensor`.
+- Dependency on `isaacsim.core.experimental.utils` for stage utilities used to walk loaded assets when wrapping depth sensors.
+
+### Removed
+- Dependency on the deprecated `isaacsim.sensors.camera` extension. The `SingleViewDepthSensorAsset` import is replaced by `RtxCamera.create()` + `SingleViewDepthCameraSensor` from the experimental extension.
+- Implicit dependency on the deprecated `isaacsim.core.utils.stage`: `get_next_free_path` replaced by `isaacsim.core.experimental.utils.stage.generate_next_free_path` (same `prepend_default_prim=True` behavior); `clear_stage` (used by `test_camera_context_menu.py`) replaced by `stage_utils.create_new_stage_async()` to match the rest of the experimental test suite.
+
+## [0.6.0] - 2026-05-04
+### Added
+- Luxonis depth cameras: OAK4-D, OAK4-D Wide, OAK-D Pro PoE, OAK-D Pro W PoE, OAK-D ToF
+- SICK Inspector83x and InspectorP61x 2D cameras
+- SICK safeVisionary2 and Visionary-T Mini, registered as depth sensors
+
+### Changed
+- `test_camera_context_menu_count` derives the expected count from `Extension.SENSORS` instead of a hardcoded sum
+
+## [0.5.1] - 2026-04-21
+### Changed
+- Added multitick rendering test arguments (`supportMultiTickRate`, `perSensorTickTlas`)
+- Updated Overview.md to reference `isaacsim.sensors.experimental.rtx` as the target migration extension
+
 ## [0.5.0] - 2026-03-04
 ### Changed
 - Added Overview.md and python_api.md and updated docstrings

@@ -1,16 +1,12 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.test.docstring extension provides test case base classes for validating Python docstring examples using Python's doctest module. It enables developers to automatically test code examples within docstrings to ensure they execute correctly and produce expected outputs, supporting both standalone unittest environments and Kit's async testing framework.
 
 ## Key Components
 
-### [StandaloneDocTestCase](isaacsim.test.docstring/isaacsim.test.docstring.StandaloneDocTestCase)
+### {class}`StandaloneDocTestCase <isaacsim.test.docstring.StandaloneDocTestCase>`
 
-**[StandaloneDocTestCase](isaacsim.test.docstring/isaacsim.test.docstring.StandaloneDocTestCase)** serves as the base class for standalone test cases that validate docstring examples outside of Kit environments. This class extends Python's unittest.TestCase and provides specialized methods for docstring testing in traditional Python testing scenarios.
+**{class}`StandaloneDocTestCase <isaacsim.test.docstring.StandaloneDocTestCase>`** serves as the base class for standalone test cases that validate docstring examples outside of Kit environments. This class extends Python's unittest.TestCase and provides specialized methods for docstring testing in traditional Python testing scenarios.
 
 The class offers two primary testing methods:
 - `assertDocTest()` - Tests docstring examples for a single class, module member, or function
@@ -31,9 +27,9 @@ class TestDocstrings(StandaloneDocTestCase):
         self.assertDocTest(my_module.some_function)
 ```
 
-### [AsyncDocTestCase](isaacsim.test.docstring/isaacsim.test.docstring.AsyncDocTestCase)
+### {class}`AsyncDocTestCase <isaacsim.test.docstring.AsyncDocTestCase>`
 
-**[AsyncDocTestCase](isaacsim.test.docstring/isaacsim.test.docstring.AsyncDocTestCase)** extends **omni.kit.test.AsyncTestCase** to provide docstring testing capabilities within Kit's async testing environment. This class is specifically designed for testing extension modules and async code examples that require Kit's application context.
+**{class}`AsyncDocTestCase <isaacsim.test.docstring.AsyncDocTestCase>`** extends **omni.kit.test.AsyncTestCase** to provide docstring testing capabilities within Kit's async testing environment. This class is specifically designed for testing extension modules and async code examples that require Kit's application context.
 
 The async version includes an additional `await_update` parameter that allows Kit application updates between docstring tests, ensuring proper execution timing in async environments.
 

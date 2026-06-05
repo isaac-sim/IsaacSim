@@ -12,8 +12,6 @@
   - def cancel_assembly(self)
   - def assemble(self)
   - def finish_assemble(self)
-  - def assemble_rigid_bodies(self, base_path: str, attach_path: str, base_mount_frame: str, attach_mount_frame: str, mask_all_collisions: bool = True, refresh_asset_paths: bool = False) -> AssembledBodies
-  - def create_fixed_joint(self, prim_path: str, target0: str = None, target1: str = None) -> UsdPhysics.FixedJoint
 
 - class AssembledRobot
   - def __init__(self, assembled_robots: AssembledBodies)

@@ -1,4 +1,54 @@
 # Changelog
+
+## [1.11.4] - 2026-05-21
+### Changed
+- Augmentation examples now use custom event-based randomization
+- Renamed augmentation test tolerances to reflect noise vs no-noise comparisons
+
+## [1.11.3] - 2026-05-20
+### Changed
+- Update test_data_augmentation to use different tolerance values for RGB and depth images
+
+## [1.11.2] - 2026-05-18
+### Added
+- Added multiple captures with toggled render product while timeline is running test
+
+## [1.11.1] - 2026-05-05
+### Changed
+- Enable multitick in all tests
+- Update golden images for test_data_augmentation
+- Tests now store results in uniquely-named temp directories to avoid run-to-run test pollution
+
+## [1.11.0] - 2026-04-24
+### Changed
+- Migrated imports from `isaacsim.core.utils` to `isaacsim.core.experimental.utils`
+- Removed `omni.isaac.ml_archive` and `isaacsim.core.experimental.utils` from test dependencies (now transitive via `isaacsim.replicator.writers`)
+- Removed AMR navigation, object-based SDG, cosmos writer, randomizer snippets, and SimReady snippets tests (moved to snippet-level validation)
+
+## [1.10.0] - 2026-04-20
+### Changed
+- Added SDG GeomSubset semantic segmentation test for `perSubsetSegmentation` true/false
+
+## [1.9.5] - 2026-04-18
+### Changed
+- Added return type annotations and `__all__` definitions
+
+## [1.9.4] - 2026-04-15
+### Changed
+- Add new isaacsim.cortex.examples test time dependency
+
+## [1.9.3] - 2026-03-19
+### Changed
+- Amr navigation example test: added None to the default environment list which will use a simple ground plane environment
+
+## [1.9.2] - 2026-03-18
+### Changed
+- SDG deformables test: comparing semantic segmentation labels instead of images
+
+## [1.9.1] - 2026-03-10
+### Changed
+- Added stricter test tolerances for SDG deformables example test
+
 ## [1.9.0] - 2026-03-04
 ### Changed
 - Added Overview.md, python_api.md and updated docstrings

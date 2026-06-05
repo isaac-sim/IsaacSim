@@ -1,0 +1,124 @@
+[package]
+version = "1.1.7"
+category = "Simulation"
+title = "Isaac Sim Physics Sensor Simulation"
+description = "Isaac Sim Physics Sensor Simulation extension provides APIs for physics-based sensors, including Contact Sensor, Effort Sensor, & IMU Sensor."
+keywords = ["isaac", "physics", "robotics"]
+changelog = "docs/CHANGELOG.md"
+readme = "docs/Overview.md"
+preview_image = "data/preview.png"
+icon = "data/icon.png"
+writeTarget.kit = true
+
+[deprecation]
+warning = "Extension deprecated since Isaac Sim 6.0.0 in favor of the Experimental extension: isaacsim.sensors.experimental.physics"
+
+[dependencies]
+"isaacsim.core.api" = {}
+"isaacsim.core.deprecation_manager" = {}
+"isaacsim.core.experimental.objects" = {}
+"isaacsim.core.experimental.prims" = {}
+"isaacsim.core.nodes" = {}
+"isaacsim.core.simulation_manager" = {}
+"isaacsim.robot.schema" = {}
+"isaacsim.storage.native" = {}
+"omni.graph" = {}
+"omni.kit.numpy.common" = {}
+"omni.kit.pip_archive" = {} # pulls in numpy
+"omni.physics" = {}
+"omni.physics.physx" = {}
+"omni.physx" = {}
+"omni.replicator.core" = {}
+"omni.timeline" = {} # Needed for simulation to occur
+"omni.usd" = {} # needed for call to add aov
+"usdrt.scenegraph" = {}
+
+[[python.module]]
+name = "isaacsim.sensors.physics"
+
+[[python.module]]
+name = "isaacsim.sensors.physics.tests"
+public = false
+
+[[native.plugin]]
+path = "bin/*.plugin"
+recursive = false
+
+[[test]]
+name = "startup"
+dependencies = [
+    "omni.isaac.ml_archive",
+]
+args = [
+    "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
+]
+
+[[test]]
+timeout = 900
+dependencies = [
+    "isaacsim.test.utils",
+    "omni.isaac.ml_archive"
+]
+stdoutFailPatterns.exclude = [
+    # This is excluded in at least 3 kit tests.
+    "*Missing call to destroyResourceBindingSignature()*",
+    '*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_sensors_physics_IsaacReadContactSensor: [/TestGraph] Invalid contact sensor prim*',
+    '*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_sensors_physics_IsaacReadEffortSensor: [/TestGraph] OmniGraph Error: Failed to create effort sensor, unable to find prim path*',
+    '*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_sensors_physics_IsaacReadIMU: [/TestGraph] Invalid Imu sensor prim*',
+    '*[Error] [omni.graph.core.plugin] /TestGraph/ReadEffortNode: [/TestGraph] OmniGraph Error: Failed to create effort sensor, unable to find prim path*',
+    '*[Error] [omni.graph.core.plugin] /TestGraph/ReadIMUNode: [/TestGraph] Invalid Imu sensor prim*',
+    '*[Error] [isaacsim.sensors.physics.plugin] Imu Sensor does not exist*',
+    '*[Error] [isaacsim.sensors.physics.plugin] Contact Sensor does not exist*',
+    '*parent prim is missing contact report API*',
+    '*Error processing node attribute `outputs:pointInstanceDataType`: dataType attribute is empty*',
+    '*The NumPy module was reloaded*',
+]
+
+args = [
+    "--enable",
+    "omni.kit.loop-isaac",
+    "--reset-user",
+    "--vulkan",
+    "--/app/asyncRendering=0",
+    "--/app/asyncRenderingLowLatency=0",
+    "--/app/fastShutdown=1",
+    "--/app/file/ignoreUnsavedStage=1",
+    "--/app/hydraEngine/waitIdle=0",
+    "--/app/player/useFixedTimeStepping=false",
+    "--/app/renderer/skipWhileMinimized=0",
+    "--/app/renderer/sleepMsOnFocus=0",
+    "--/app/renderer/sleepMsOutOfFocus=0",
+    "--/app/runLoops/main/manualModeEnabled=true",
+    "--/app/runLoops/main/rateLimitEnabled=false",
+    "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
+    "--/app/settings/persistent=0",
+    "--/app/useFabricSceneDelegate=true",
+    "--/app/viewport/createCameraModelRep=0",
+    "--/crashreporter/skipOldDumpUpload=1",
+    "--/exts/omni.usd/locking/onClose=0",
+    "--/omni/kit/plugin/syncUsdLoads=1",
+    "--/omni/replicator/asyncRendering=0",
+    "--/omnihydra/parallelHydraSprimSync=1",
+    '--/persistent/app/stage/upAxis="Z"',
+    "--/persistent/app/viewport/defaults/tickRate=120",
+    "--/persistent/app/viewport/displayOptions=31951",
+    "--/persistent/omni/replicator/captureOnPlay=1",
+    "--/persistent/omnigraph/updateToUsd=0",
+    "--/persistent/physics/visualizationDisplayJoints=0",
+    "--/persistent/renderer/startupMessageDisplayed=1",
+    "--/persistent/simulation/defaultMetersPerUnit=1.0",
+    "--/persistent/simulation/minFrameRate=15",
+    "--/renderer/multiGpu/autoEnable=0",
+    "--/renderer/multiGpu/enabled=0",
+    "--/rtx-transient/dlssg/enabled=0",
+    "--/rtx-transient/resourcemanager/enableTextureStreaming=1",
+    "--/rtx/descriptorSets=360000",
+    "--/rtx/hydra/enableSemanticSchema=1",
+    "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/materialDb/syncLoads=1",
+    "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/reservedDescriptors=900000",
+]
+
+[documentation]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

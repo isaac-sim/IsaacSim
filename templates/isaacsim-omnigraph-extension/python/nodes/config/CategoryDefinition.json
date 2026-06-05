@@ -1,0 +1,6 @@
+{
+    "categoryDefinitions": {
+        "$description": "Categories for {{extension_name}} Python nodes",
+        "{{python_module_toplevel}}": "Nodes provided by {{extension_name}}"
+    }
+}

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -199,7 +199,7 @@ class UIBuilder:
             ui.Line(width=ui.Fraction(1.0))
             ui.Spacer(width=5)
 
-    def _make_info_display(self, info_text: str):
+    def _make_info_display(self, info_text: str) -> None:
         """Build an info row with icon and wrapped text.
 
         Args:
@@ -217,7 +217,7 @@ class UIBuilder:
                 ui.Spacer()
             ui.Spacer(width=25)
 
-    def _make_info_heading(self, heading_title: str, info_text: str):
+    def _make_info_heading(self, heading_title: str, info_text: str) -> None:
         """Build a heading plus info block.
 
         Args:
@@ -719,7 +719,7 @@ class UIBuilder:
             stage,
         )
 
-    def _unregister_usd_listener(self):
+    def _unregister_usd_listener(self) -> None:
         """Revoke the USD ObjectsChanged notice listener."""
         if self._usd_listener is not None:
             self._usd_listener.Revoke()
@@ -930,7 +930,7 @@ class UIBuilder:
             return
         self._refresh_pending = True
 
-        async def _deferred():
+        async def _deferred() -> None:
             """Run after one frame: clear refresh pending and refresh named poses."""
             import omni.kit.app
 

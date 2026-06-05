@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import struct
+"""Test UCX joint state publishing node functionality."""
+
 import time
 
 import isaacsim.core.experimental.utils.app as app_utils
@@ -27,9 +28,10 @@ import ucxx._lib.libucxx as ucx_api
 import usdrt.Sdf
 from isaacsim.core.experimental.prims import Articulation
 from isaacsim.storage.native import get_assets_root_path
+from isaacsim.ucx.nodes.messages.isaac import JointState
 from ucxx._lib.arr import Array
 
-from .common import UCXTestCase
+from .common import UCXTestCase, _read_tensor_f32
 
 # Test configuration constants
 CONNECTION_WAIT_FRAMES = 60  # Frames to wait for node listener to initialize
@@ -37,54 +39,29 @@ CONNECTION_ESTABLISH_FRAMES = 20  # Additional frames for connection to establis
 RECEIVE_TIMEOUT_FRAMES = 1000  # Maximum frames to wait for a message
 
 
-def unpack_joint_state_message(buffer):
-    """Unpack a UCX joint state message.
-
-    Message format (updated to use doubles):
-    - timestamp (double, 8 bytes)
-    - num_joints (uint32_t, 4 bytes)
-    - For each joint:
-      - position (double, 8 bytes)
-      - velocity (double, 8 bytes)
-      - effort (double, 8 bytes)
+def unpack_joint_state_message(buffer: object) -> tuple:
+    """Unpack a UCX joint state FlatBuffers message.
 
     Args:
-        buffer: Buffer containing the packed joint state message.
+        buffer: Buffer containing the FlatBuffers-encoded joint state message.
 
     Returns:
         Tuple of (timestamp, num_joints, positions, velocities, efforts).
     """
-    offset = 0
-    timestamp = struct.unpack("<d", buffer[offset : offset + 8].tobytes())[0]
-    offset += 8
-
-    num_joints = struct.unpack("<I", buffer[offset : offset + 4].tobytes())[0]
-    offset += 4
-
-    positions = []
-    velocities = []
-    efforts = []
-
-    for i in range(num_joints):
-        position = struct.unpack("<d", buffer[offset : offset + 8].tobytes())[0]
-        offset += 8
-        positions.append(position)
-
-        velocity = struct.unpack("<d", buffer[offset : offset + 8].tobytes())[0]
-        offset += 8
-        velocities.append(velocity)
-
-        effort = struct.unpack("<d", buffer[offset : offset + 8].tobytes())[0]
-        offset += 8
-        efforts.append(effort)
-
+    buf = bytearray(buffer.tobytes())
+    msg = JointState.JointState.GetRootAs(buf, 0)
+    timestamp = msg.Header().Stamp().TimeNs() / 1e9
+    num_joints = int(msg.Position().Shape(0))
+    positions = _read_tensor_f32(msg.Position())
+    velocities = _read_tensor_f32(msg.Velocity())
+    efforts = _read_tensor_f32(msg.Effort())
     return timestamp, num_joints, positions, velocities, efforts
 
 
 class TestUCXPublishJointState(UCXTestCase):
-    """Test UCX joint state publishing"""
+    """Test UCX joint state publishing."""
 
-    async def setup_ucx_client_with_listener(self):
+    async def setup_ucx_client_with_listener(self) -> None:
         """Setup UCX client to connect to the OmniGraph node's listener.
 
         The OmniGraph nodes create their own internal listeners automatically.
@@ -102,7 +79,8 @@ class TestUCXPublishJointState(UCXTestCase):
         for _ in range(CONNECTION_ESTABLISH_FRAMES):
             await omni.kit.app.get_app().next_update_async()
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Set up stage with an articulation and UCX joint state publisher."""
         await super().setUp()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
@@ -126,16 +104,21 @@ class TestUCXPublishJointState(UCXTestCase):
                         ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
                         ("PublishJointState", "isaacsim.ucx.nodes.UCXPublishJointState"),
                         ("ReadSimTime", "isaacsim.core.nodes.IsaacReadSimulationTime"),
+                        ("ReadJointState", "isaacsim.core.nodes.IsaacArticulationState"),
                     ],
                     og.Controller.Keys.SET_VALUES: [
-                        ("PublishJointState.inputs:targetPrim", [usdrt.Sdf.Path("/Articulation")]),
+                        ("ReadJointState.inputs:targetPrim", [usdrt.Sdf.Path("/Articulation")]),
                         ("PublishJointState.inputs:port", self.port),
                         ("PublishJointState.inputs:tag", 1),
                         ("PublishJointState.inputs:timeoutMs", 1000),
                     ],
                     og.Controller.Keys.CONNECT: [
+                        ("OnPlaybackTick.outputs:tick", "ReadJointState.inputs:execIn"),
                         ("OnPlaybackTick.outputs:tick", "PublishJointState.inputs:execIn"),
                         ("ReadSimTime.outputs:simulationTime", "PublishJointState.inputs:timeStamp"),
+                        ("ReadJointState.outputs:jointPositions", "PublishJointState.inputs:jointPositions"),
+                        ("ReadJointState.outputs:jointVelocities", "PublishJointState.inputs:jointVelocities"),
+                        ("ReadJointState.outputs:measuredJointEfforts", "PublishJointState.inputs:jointEfforts"),
                     ],
                 },
             )
@@ -150,7 +133,9 @@ class TestUCXPublishJointState(UCXTestCase):
         # Setup client with proper connection establishment
         await self.setup_ucx_client_with_listener()
 
-    async def receive_joint_state_message(self, tag=1, timeout_frames=RECEIVE_TIMEOUT_FRAMES, retry_count=3):
+    async def receive_joint_state_message(
+        self, tag: int = 1, timeout_frames: int = RECEIVE_TIMEOUT_FRAMES, retry_count: int = 3
+    ) -> tuple:
         """Receive and unpack a joint state message from the client endpoint.
 
         Args:
@@ -204,8 +189,8 @@ class TestUCXPublishJointState(UCXTestCase):
             "This may indicate a connection issue or the node is not publishing."
         )
 
-    async def test_joint_state_publisher(self):
-        """Test that joint state messages are published via UCX"""
+    async def test_joint_state_publisher(self) -> None:
+        """Test that joint state messages are published via UCX."""
         # Receive joint state message
         timestamp, num_joints, positions, velocities, efforts = await self.receive_joint_state_message()
 
@@ -222,8 +207,8 @@ class TestUCXPublishJointState(UCXTestCase):
         self.assertEqual(len(efforts), num_joints)
         self.assertGreater(timestamp, 0.0, "Timestamp should be positive")
 
-    async def test_joint_state_values(self):
-        """Test that joint state values match simulation"""
+    async def test_joint_state_values(self) -> None:
+        """Test that joint state values match simulation."""
         # Simulate to initialize physics
         await app_utils.update_app_async(steps=30)
 

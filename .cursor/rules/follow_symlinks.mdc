@@ -1,0 +1,41 @@
+---
+description: Symlink locations in the repo that tools must follow when searching for files or reading directory contents
+alwaysApply: true
+---
+
+# Follow Symlinks
+
+This repo uses symlinks extensively. File-search and directory-listing operations
+must follow symlinks (`-L` for `find`, `readlink -f`, etc.) or results will be
+incomplete.
+
+## Where symlinks appear
+
+### `_repo/`
+- `_repo/python` -> packman-cached Python interpreter (`~/.cache/packman/chk/python/...`)
+- `_repo/deps/*` -> packman-cached repo tooling (repo_build, repo_test, repo_docs, repo_format, etc.)
+
+### `_build/target-deps/`
+All third-party C++/Python SDK dependencies are symlinks into the packman cache:
+- `cuda`, `physx`, `pybind11`, `python`, `lula`, `cumotion`, `carb_sdk_plugins`,
+  `rtx_plugins`, `omni_client_library`, `nv_ros2_humble`, `nv_ros2_jazzy`, etc.
+
+### `_build/linux-x86_64/release/`
+Build output symlinks that point **back into the source tree**:
+- `apps` -> `source/apps`
+- `tools` -> `source/tools`
+- `python_packages` -> `source/python_packages`
+- `standalone_examples` -> `source/standalone_examples`
+- `kit` -> packman-cached Kit kernel
+
+### `_compiler/`
+- `_compiler/current` -> the active compiler toolchain (e.g. `_compiler/gmake2`)
+
+## Practical guidance
+
+- When searching for source files that live under `_build/.../release/`, follow
+  the symlinks — the actual code is in `source/`.
+- When looking for headers or libraries from third-party dependencies, resolve
+  the symlinks under `_build/target-deps/` into `~/.cache/packman/chk/`.
+- Standard `Glob` and `Grep` calls in Cursor follow symlinks by default, but
+  shell commands like `find` require the `-L` flag.

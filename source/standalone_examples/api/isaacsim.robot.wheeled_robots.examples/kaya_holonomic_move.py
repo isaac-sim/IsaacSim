@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,16 +12,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Uses isaacsim.robot.experimental.wheeled_robots
-# Extension: source/extensions/isaacsim.robot.experimental.wheeled_robots
+
+"""Demonstrate Kaya holonomic movement."""
+
+import argparse
 
 from isaacsim import SimulationApp
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--test", default=False, action="store_true", help="Run in test mode")
+args, _ = parser.parse_known_args()
 
 simulation_app = SimulationApp({"headless": False})
 
 import isaacsim.core.experimental.utils.app as app_utils
-import numpy as np
 from isaacsim.core.experimental.objects import DomeLight
 from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.core.simulation_manager import SimulationManager
@@ -88,6 +92,7 @@ app_utils.update_app(steps=10)
 # -----------------------------------------------------------------------------
 i = 0
 reset_needed = False
+frame_count = 0
 while simulation_app.is_running():
     simulation_app.update()
     if not app_utils.is_playing() and not reset_needed:
@@ -111,6 +116,9 @@ while simulation_app.is_running():
         elif i == 1200:
             i = 0
         i += 1
+    frame_count += 1
+    if args.test and frame_count >= 10:
+        break
 
 app_utils.stop()
 simulation_app.close()

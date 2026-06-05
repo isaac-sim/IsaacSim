@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Provides OmniGraph nodes for ROS 2 communication including publishers, subscribers, and services."""
 
 import os
 
@@ -34,11 +36,12 @@ class ROS2NodesExtension(omni.ext.IExt):
     extension for foundational ROS 2 functionality.
     """
 
-    def on_startup(self, ext_id):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize the ROS 2 nodes extension.
 
         Args:
             ext_id: The extension ID.
+
         """
         ext_manager = omni.kit.app.get_app().get_extension_manager()
         self._extension_path = ext_manager.get_extension_path(ext_id)
@@ -56,7 +59,7 @@ class ROS2NodesExtension(omni.ext.IExt):
 
         carb.log_info("ROS2 Nodes: OmniGraph nodes extension loaded successfully")
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Shutdown the nodes extension.
 
         Clean up registered nodes and release the core interface.
@@ -65,8 +68,8 @@ class ROS2NodesExtension(omni.ext.IExt):
         self.__interface = release_interface(self.__interface)
         carb.log_info("ROS2 Nodes: Extension shutdown complete")
 
-    def register_nodes(self):
-
+    def register_nodes(self) -> None:
+        """Register ROS 2 OmniGraph node writers."""
         # For Simulation and System time. Removed first S char in keys to account for both upper and lower cases.
         TIME_TYPES = [("imulationTime", ""), ("ystemTime", "SystemTime")]
 
@@ -239,56 +242,45 @@ class ROS2NodesExtension(omni.ext.IExt):
                     category=BRIDGE_NAME,
                 )
 
-            # RTX lidar PCL publisher
-            register_node_writer_with_telemetry(
-                name=f"RtxLidar{BRIDGE_PREFIX}{time_type[1]}PublishPointCloud",
-                node_type_id=f"{BRIDGE_NAME}.{BRIDGE_PREFIX}PublishPointCloud",
-                annotators=[
-                    "IsaacExtractRTXSensorPointCloudNoAccumulator",
-                    "PostProcessDispatchIsaacSimulationGate",
-                    omni.syntheticdata.SyntheticData.NodeConnectionTemplate(
-                        f"IsaacReadS{time_type[0]}", attributes_mapping={f"outputs:s{time_type[0]}": "inputs:timeStamp"}
-                    ),
-                ],
-                category=BRIDGE_NAME,
-            )
+            # RTX lidar/radar PCL publisher (direct from GMO)
+            gmo_pcl_annotators = [
+                "IsaacExtractRTXSensorPointCloud",
+                "PostProcessDispatchIsaacSimulationGate",
+                omni.syntheticdata.SyntheticData.NodeConnectionTemplate(
+                    f"IsaacReadS{time_type[0]}", attributes_mapping={f"outputs:s{time_type[0]}": "inputs:timeStamp"}
+                ),
+            ]
+            for name_prefix in ("RtxLidar", "RtxRadar"):
+                register_node_writer_with_telemetry(
+                    name=f"{name_prefix}{BRIDGE_PREFIX}{time_type[1]}PublishPointCloud",
+                    node_type_id=f"{BRIDGE_NAME}.{BRIDGE_PREFIX}PublishPointCloud",
+                    annotators=gmo_pcl_annotators,
+                    category=BRIDGE_NAME,
+                )
 
             register_node_writer_with_telemetry(
                 name=f"RtxLidar{BRIDGE_PREFIX}{time_type[1]}PublishPointCloudBuffer",
                 node_type_id=f"{BRIDGE_NAME}.{BRIDGE_PREFIX}PublishPointCloud",
-                annotators=[
-                    "IsaacCreateRTXLidarScanBuffer",
-                    "PostProcessDispatchIsaacSimulationGate",
-                    omni.syntheticdata.SyntheticData.NodeConnectionTemplate(
-                        f"IsaacReadS{time_type[0]}", attributes_mapping={f"outputs:s{time_type[0]}": "inputs:timeStamp"}
-                    ),
-                ],
+                annotators=gmo_pcl_annotators,
                 category=BRIDGE_NAME,
             )
 
-            # RTX Radar PCL publisher
-            register_node_writer_with_telemetry(
-                name=f"RtxRadar{BRIDGE_PREFIX}{time_type[1]}PublishPointCloud",
-                node_type_id=f"{BRIDGE_NAME}.{BRIDGE_PREFIX}PublishPointCloud",
-                annotators=[
-                    "IsaacExtractRTXSensorPointCloudNoAccumulator",
-                    "PostProcessDispatchIsaacSimulationGate",
-                    omni.syntheticdata.SyntheticData.NodeConnectionTemplate(
-                        f"IsaacReadS{time_type[0]}", attributes_mapping={f"outputs:s{time_type[0]}": "inputs:timeStamp"}
-                    ),
-                ],
-                category=BRIDGE_NAME,
-            )
-
-            # RTX lidar LaserScan publisher
+            # RTX lidar LaserScan publisher (direct from GMO)
             register_node_writer_with_telemetry(
                 name=f"RtxLidar{BRIDGE_PREFIX}{time_type[1]}PublishLaserScan",
                 node_type_id=f"{BRIDGE_NAME}.{BRIDGE_PREFIX}PublishLaserScan",
                 annotators=[
-                    "IsaacComputeRTXLidarFlatScan",
+                    omni.syntheticdata.SyntheticData.NodeConnectionTemplate(
+                        "GenericModelOutputPtr",
+                        attributes_mapping={
+                            "outputs:dataPtr": "inputs:dataPtr",
+                            "outputs:bufferSize": "inputs:bufferSize",
+                        },
+                    ),
                     "PostProcessDispatchIsaacSimulationGate",
                     omni.syntheticdata.SyntheticData.NodeConnectionTemplate(
-                        f"IsaacReadS{time_type[0]}", attributes_mapping={f"outputs:s{time_type[0]}": "inputs:timeStamp"}
+                        f"IsaacReadS{time_type[0]}",
+                        attributes_mapping={f"outputs:s{time_type[0]}": "inputs:timeStamp"},
                     ),
                 ],
                 category=BRIDGE_NAME,
@@ -308,6 +300,7 @@ class ROS2NodesExtension(omni.ext.IExt):
                 category=BRIDGE_NAME,
             )
 
-    def unregister_nodes(self):
+    def unregister_nodes(self) -> None:
+        """Unregister ROS 2 OmniGraph node writers."""
         for writer in rep.WriterRegistry.get_writers(category=BRIDGE_NAME):
             rep.writers.unregister_writer(writer)

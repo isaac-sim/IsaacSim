@@ -1,8 +1,8 @@
 {
     "IsaacCreateRenderProduct": {
-        "version": 2,
+        "version": 3,
         "icon": "icons/isaac-sim.svg",
-        "description": "Isaac Sim node that creates a render product for use with offscreen rendering",
+        "description": "Isaac Sim node that sets up a render product for use with offscreen rendering.",
         "language": "Python",
         "categoryDefinitions": "config/CategoryDefinition.json",
         "categories": "isaacCore",
@@ -32,8 +32,11 @@
                 "type": "bool",
                 "description": "Set to false to disable downstream execution and RP creation",
                 "default": true
+            },
+            "renderProductPrim": {
+                "type": "target",
+                "description": "Existing render product prim to re-use. If not set, a new render product will be created."
             }
-
         },
         "outputs": {
             "renderProductPath": {

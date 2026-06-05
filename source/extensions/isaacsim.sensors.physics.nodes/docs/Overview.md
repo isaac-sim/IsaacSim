@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.sensors.physics.nodes extension provides OmniGraph nodes for reading physics-based sensor data in Isaac Sim. The extension offers four specialized sensor reader nodes that integrate with Isaac Sim's physics simulation to output real-time sensor measurements for robotics applications.
@@ -79,6 +75,10 @@ The IsaacReadJointState node reads full joint state from an articulation: joint 
 Each sensor node maintains internal state through dedicated state classes that inherit from BaseResetNode, providing automatic reset handling when simulation parameters change. The nodes use a compute-based execution model where sensor data is read and output attributes are updated each time the node executes.
 
 All nodes support both latest data mode and historical data access, allowing flexibility in how sensor information is consumed by downstream graph nodes. Sensor initialization occurs during the first compute cycle, with error handling for invalid prim paths or sensor configurations.
+
+## C++ Plugin
+
+The sensor reader nodes are implemented in C++ as a Carbonite plugin (`isaacsim::sensors::physics::nodes::IPhysicsSensorNodes`). The native plugin registers the OGN nodes at startup and provides the compute implementations for reading IMU, contact sensor, effort sensor, and joint state data directly from the physics simulation. Python bindings expose the `IPhysicsSensorNodes` interface through the `_physics_sensor_nodes` module for plugin lifecycle management.
 
 ## Relationships
 

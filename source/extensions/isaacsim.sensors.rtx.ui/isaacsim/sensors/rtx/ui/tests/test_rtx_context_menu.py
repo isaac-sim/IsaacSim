@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,19 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test rtx context menu functionality."""
+
 import carb
 import omni.kit.app
 import omni.kit.ui_test as ui_test
 import omni.usd
-from isaacsim.core.utils.stage import clear_stage
-from isaacsim.sensors.rtx import SUPPORTED_LIDAR_CONFIGS
+from isaacsim.core.experimental.utils.stage import create_new_stage
+from isaacsim.sensors.experimental.rtx import SUPPORTED_LIDAR_CONFIGS
 from isaacsim.test.utils import MenuUITestCase, count_menu_items, get_all_menu_paths
 
 # Known issue: omni.kit.ui_test.select_context_menu has a bug where it cannot correctly
 # click items in certain vendor submenus. The click position appears to be calculated
 # incorrectly for these specific submenus, causing the onclick_fn callback to not be invoked.
 # This affects entire vendor categories (HESAI, Ouster, ZVISION) regardless of offset adjustment.
-# Additionally, SICK/TIM781 has a USD configuration issue where no OmniLidar prim is created.
+# Additionally, SICK/TIM781 and SICK/picoScan100 have a USD configuration issue where no
+# OmniLidar prim is created.
 # These sensors are skipped until the UI test framework bug is resolved.
 KNOWN_UI_TEST_FAILURES = {
     "HESAI/XT32 SD10",
@@ -36,11 +39,15 @@ KNOWN_UI_TEST_FAILURES = {
     "ZVISION/ML30S",
     "ZVISION/MLXS",
     "SICK/TIM781",
+    "SICK/picoScan100",
 }
 
 
 class TestRTXContextMenu(MenuUITestCase):
+    """Test r t x context menu."""
+
     async def setUp(self):
+        """Set up test fixtures."""
         await super().setUp()
         self.carb_settings = carb.settings.get_settings()
         self.carb_settings.set("/rtx/rendermode", "RealTimePathTracing")
@@ -86,7 +93,7 @@ class TestRTXContextMenu(MenuUITestCase):
             full_test_path = "Create/Isaac/Sensors/RTX Lidar/" + test_path
             carb.log_info(f"Testing sensor: {full_test_path}")
 
-            clear_stage()
+            create_new_stage()
             await self.wait_n_frames(2)
 
             await self.get_viewport_context_menu()

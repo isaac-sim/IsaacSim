@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
 
 """Async testing framework with doctest support for validating code examples in docstrings."""
 
+from __future__ import annotations
 
 import doctest
 import sys
@@ -93,7 +94,7 @@ class AsyncDocTestCase(omni.kit.test.AsyncTestCase):
         **kwargs: Additional keyword arguments passed to the parent class.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: object, **kwargs: object):
         super().__init__(*args, **kwargs)
         self._doctest_checker = _doctest.DocTest()
 
@@ -128,8 +129,8 @@ class AsyncDocTestCase(omni.kit.test.AsyncTestCase):
         expr: object,
         msg: str = "",
         flags: int = doctest.NORMALIZE_WHITESPACE | doctest.ELLIPSIS | doctest.FAIL_FAST,
-        order: list[tuple[object, int]] = [],
-        exclude: list[object] = [],
+        order: list[tuple[object, int]] | None = None,
+        exclude: list[object] | None = None,
         stop_on_failure: bool = False,
         await_update: bool = True,
     ):
@@ -156,6 +157,10 @@ class AsyncDocTestCase(omni.kit.test.AsyncTestCase):
             ...
             >>> run_coroutine(task())  # doctest: +NO_CHECK
         """
+        if order is None:
+            order = []
+        if exclude is None:
+            exclude = []
         objects = self._doctest_checker.get_members(expr, order, exclude, {"omni": omni, "isaacsim": isaacsim})
         print(f"class/module members to check: {len(objects)}")
         # test docstrings examples

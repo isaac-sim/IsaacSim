@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,13 @@
 
 """Provides YCBVideoWriter for writing annotator groundtruth data in the YCB Video Dataset format."""
 
-
 import io
 import os
 from typing import Dict, List
 
 import carb
 import numpy as np
-from isaacsim.core.utils.mesh import get_mesh_vertices_relative_to
+from isaacsim.replicator.writers.scripts.utils import get_mesh_vertices_relative_to
 from omni.replicator.core import AnnotatorRegistry, BackendDispatch, Writer, WriterRegistry
 from omni.syntheticdata import SyntheticData
 from PIL import Image
@@ -131,7 +130,8 @@ class YCBVideoWriter(Writer):
         self._create_train_text_file()
 
     def register_pose_annotator(config_data: dict):
-        """Registers the annotators for the specific writer
+        """Register the annotators for the specific writer.
+
         Args:
             config_data: A dictionary containing the configuration data for the current writer.
         """
@@ -199,7 +199,8 @@ class YCBVideoWriter(Writer):
         )
 
     def setup_writer(config_data: dict, writer_config: dict):
-        """Initialize writer and attach render product
+        """Initialize writer and attach render product.
+
         Args:
             config_data: A dictionary containing the general configurations for the script.
             writer_config: A dictionary containing writer-specific configurations.
@@ -273,7 +274,8 @@ class YCBVideoWriter(Writer):
         self._frame_id += 1
 
     def save_mesh_vertices(mesh_prim: UsdGeom.Mesh, coord_prim: Usd.Prim, model_name: str, output_folder: str):
-        """Create points.xyz file representing vertices of the mesh_prim, defined in the frame of the coord_prim. The
+        """Create points.xyz file representing vertices of the mesh_prim, defined in the frame of the coord_prim. The.
+
         points.xyz file will be saved in the output_folder/data/models/model_name/ directory.
 
         Args:
@@ -292,7 +294,7 @@ class YCBVideoWriter(Writer):
         np.savetxt(file_path, points, fmt="%.6f", delimiter=" ", newline="\n")
 
     def _write_rgb(self, data: dict, render_product_path: str, annotator: str):
-        """Saves a RGB image for the YCB Video Dataset.
+        """Save a RGB image for the YCB Video Dataset.
 
         Args:
             data (dict): A dictionary containing the annotator data for the current frame.
@@ -308,7 +310,8 @@ class YCBVideoWriter(Writer):
         self._backend.write_image(file_path, data[annotator])
 
     def _write_distance_to_image_plane(self, data: dict, render_product_path: str, annotator: str):
-        """Saves a depth image for the YCB Video Dataset. Note: Depth images are only for visualization and testing, and
+        """Save a depth image for the YCB Video Dataset. Note: Depth images are only for visualization and testing, and.
+
            would need to be adapted to conform to the exact format used in the YCB Video Dataset.
 
         Args:
@@ -342,7 +345,8 @@ class YCBVideoWriter(Writer):
         self._backend.write_image(file_path, depth_img)
 
     def _write_semantic_segmentation(self, data: dict, render_product_path: str, annotator: str):
-        """Saves a segmentation label image file for the YCB Video Dataset. Segmentation label is saved as a grayscale
+        """Save a segmentation label image file for the YCB Video Dataset. Segmentation label is saved as a grayscale.
+
            image.
 
         Args:
@@ -385,7 +389,8 @@ class YCBVideoWriter(Writer):
         self._backend.write_image(file_path, img)
 
     def _write_bounding_box_data(self, data: dict, render_product_path: str, annotator: str):
-        """Saves a text file describing bounding boxes of semantically-labeled objects in view for the YCB Video
+        """Save a text file describing bounding boxes of semantically-labeled objects in view for the YCB Video.
+
            Dataset. Note: Lines of the bounding box text file consist of a class name and the position of the bounding
            box. The positions of the bounding boxes are represented by the upper-left coordinate, followed by the
            bottom-right coordinate. Coordinates are expressed in pixels, where the origin of the image is the top-left
@@ -419,12 +424,15 @@ class YCBVideoWriter(Writer):
         self._backend.write_blob(file_path, buf.getvalue())
 
     def _write_pose(self, data: dict, render_product_path: str, annotator: str):
-        """Saves a metadata ".mat" file for the YCB Video Dataset, containing:
-           - Class indexes (from a pre-defined mapping) corresponding to each semantically-labeled object in view.
-           - A depth image scaling factor.
-           - The intrinsic matrix of the camera.
-           - Poses from the frame of each semantically-labeled object in view to the world frame, represented as a
-             rotation matrix and a translation.
+        """Save a metadata ".mat" file for the YCB Video Dataset.
+
+        The file contains:
+
+        - Class indexes (from a pre-defined mapping) corresponding to each semantically-labeled object in view.
+        - A depth image scaling factor.
+        - The intrinsic matrix of the camera.
+        - Poses from the frame of each semantically-labeled object in view to the world frame, represented as a
+          rotation matrix and a translation.
            - The center (in pixel coordinates) of each semantically-labeled object in view. Pixel coordinates are
              expressed relative to the top-left corner of the image, with +x to the right and +y down.
 
@@ -487,7 +495,8 @@ class YCBVideoWriter(Writer):
         self._backend.write_blob(file_path, buf.getvalue())
 
     def _create_output_folders(self):
-        """Creates an output directory structure (if necessary), similar to that used in the YCB Video Dataset. Note: A
+        """Create an output directory structure (if necessary), similar to that used in the YCB Video Dataset. Note: A.
+
         single video directory is used to hold all the generated synthetic data, rather than several directories
         (each representing a separate video file, as in the YCB Video Dataset).
         """
@@ -512,7 +521,7 @@ class YCBVideoWriter(Writer):
             os.mkdir(self.vid_dir)
 
     def _create_train_text_file(self):
-        """Creates a text file to specify the set of YCB Video Dataset samples to be used during training of a model.
+        """Create a text file to specify the set of YCB Video Dataset samples to be used during training of a model.
 
         Lines include the video basename corresponding to the video that the sample is from, and the image ID of the
         sample. Training samples are written as if a single video is being used (see the note in
@@ -543,7 +552,7 @@ class YCBVideoWriter(Writer):
         return self._last_frame_is_valid
 
     def is_last_frame_valid(self) -> bool:
-        """Checks if the last frame was valid (training data was present).
+        """Check if the last frame was valid (training data was present).
 
         Returns:
             True if the last frame was valid, False otherwise.

@@ -17,7 +17,6 @@
 
 """Unit tests for the TrajectoryFollower functionality in the motion generation module."""
 
-
 import isaacsim.robot_motion.experimental.motion_generation as mg
 import numpy as np
 import omni.kit.test

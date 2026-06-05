@@ -1,9 +1,10 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
+#
 # http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
@@ -12,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from unittest import mock
+"""Test merge mesh utils functionality."""
 
 import carb
 import omni
@@ -22,32 +23,11 @@ from pxr import Usd, UsdGeom
 
 
 class TestMergeMeshUtils(omni.kit.test.AsyncTestCase):
-    """Test helpers in :mod:`isaacsim.asset.importer.utils.impl.merge_mesh_utils`.
-
-    Example:
-
-    .. code-block:: python
-
-        >>> import omni.kit.test
-        >>> class Example(omni.kit.test.AsyncTestCase):
-        ...     pass
-        ...
-    """
+    """Test helpers in :mod:`isaacsim.asset.importer.utils.impl.merge_mesh_utils`."""
 
     async def test_merge_mesh_reduces_mesh_count(self) -> None:
-        """Merge multiple meshes when Scene Optimizer is available.
-
-        Example:
-
-        .. code-block:: python
-
-            >>> from pxr import Usd, UsdGeom
-            >>> stage = Usd.Stage.CreateInMemory()
-            >>> UsdGeom.Mesh.Define(stage, "/World/A")
-            UsdGeom.Mesh(Usd.Prim(</World/A>))
-        """
+        """Merge multiple meshes when Scene Optimizer is available."""
         try:
-            import omni.kit.commands  # noqa: F401
             import omni.scene.optimizer.core  # noqa: F401
         except ImportError:
             self.skipTest("Scene Optimizer modules are not available")

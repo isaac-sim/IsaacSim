@@ -3,7 +3,7 @@
         "version": 1,
         "icon": "icons/isaac-sim.svg",
         "description": [
-            "This node publishes odometry data (pose and velocities relative to starting position) via UCX communication. Supports two modes: 1) Direct inputs (connect position, orientation, velocities) or 2) Physics reading (provide targetPrim to auto-read from articulation/rigid body)"
+            "This node publishes odometry data (pose and velocities relative to starting position) via UCX communication. Connect position, orientation, and velocity inputs from upstream nodes."
         ],
         "metadata": {
             "uiName": "UCX Publish Odometry"
@@ -35,35 +35,26 @@
                 "type": "uint",
                 "description": "Timeout in milliseconds for UCX send requests. If 0, waits indefinitely.",
                 "uiName": "Timeout (ms)",
-                "default": 1
-            },
-            "targetPrim": {
-                "type": "target",
-                "description": "USD reference to articulation root or rigid body prim. If provided, reads physics data automatically. If not provided, uses position/orientation/velocity inputs.",
-                "optional": true
+                "default": 0
             },
             "position": {
                 "type": "vectord[3]",
-                "description": "Position vector in meters (world frame). Only used if targetPrim is not provided.",
-                "optional": true,
+                "description": "Position vector in meters (world frame).",
                 "default": [0.0, 0.0, 0.0]
             },
             "orientation": {
                 "type": "quatd[4]",
-                "description": "Orientation as a quaternion (IJKR - x,y,z,w). Only used if targetPrim is not provided.",
-                "optional": true,
+                "description": "Orientation as a quaternion (IJKR - x,y,z,w).",
                 "default": [0.0, 0.0, 0.0, 1.0]
             },
             "linearVelocity": {
                 "type": "vectord[3]",
-                "description": "Linear velocity vector in m/s (world frame). Only used if targetPrim is not provided.",
-                "optional": true,
+                "description": "Linear velocity vector in m/s (world frame).",
                 "default": [0.0, 0.0, 0.0]
             },
             "angularVelocity": {
                 "type": "vectord[3]",
-                "description": "Angular velocity vector in rad/s (world frame). Only used if targetPrim is not provided.",
-                "optional": true,
+                "description": "Angular velocity vector in rad/s (world frame).",
                 "default": [0.0, 0.0, 0.0]
             }
         },

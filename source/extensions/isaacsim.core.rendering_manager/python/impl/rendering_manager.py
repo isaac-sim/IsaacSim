@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,20 +13,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Core rendering management APIs for controlling rendering operations and frame updates."""
+
 from __future__ import annotations
 
 import weakref
+from fractions import Fraction
 
 import carb
+import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.app
 import omni.timeline
 import omni.usd
-from pxr import Usd
+from pxr import Sdf, Usd
 
 _SETTING_PLAY_SIMULATION = "/app/player/playSimulations"
 _SETTING_RATE_LIMIT_ENABLED = "/app/runLoops/main/rateLimitEnabled"
 _SETTING_RATE_LIMIT_FREQUENCY = "/app/runLoops/main/rateLimitFrequency"
+_SETTING_FABRIC_DEFAULT_SIM_PERIOD_NUMERATOR = "/app/settings/fabricDefaultSimPeriodNumerator"
+_SETTING_FABRIC_DEFAULT_SIM_PERIOD_DENOMINATOR = "/app/settings/fabricDefaultSimPeriodDenominator"
 
 from enum import Enum
 
@@ -42,18 +48,52 @@ class RenderingManager:
     """Core class that provides APIs for controlling rendering."""
 
     _app = omni.kit.app.get_app()
-    _callbacks = dict()
+    """The Omniverse Kit application instance used for rendering operations."""
+    _callbacks = {}
+    """Dictionary storing registered callback functions mapped by their unique identifiers."""
     _callback_registry = 0
+    """Counter for generating unique identifiers for callback registrations."""
     _carb_settings = carb.settings.get_settings()
+    """Carbonite settings interface for accessing and modifying application configuration."""
     _event_dispatcher = carb.eventdispatcher.get_eventdispatcher()
+    """Carbonite event dispatcher for managing event subscriptions and notifications."""
     _timeline = omni.timeline.get_timeline_interface()
+    """Timeline interface used by :meth:`set_dt` to configure ``set_target_framerate`` and ``set_time_codes_per_second``."""
+    _fabric_time_stage_id = None
+    """Cached stage ID for :meth:`_ensure_fabric_simulation_time` to avoid redundant Fabric writes."""
     try:
-        import omni.kit.loop._loop as kit_loop
+        from omni.kit.loop import _loop as kit_loop
 
         _loop_runner = kit_loop.acquire_loop_interface()
     except Exception as e:
         carb.log_warn(f"Isaac Sim's loop runner not found. Its functionalities will not be used: {e}")
         _loop_runner = None
+
+    @classmethod
+    def _ensure_fabric_simulation_time(cls) -> None:
+        """Seed ``/ExternalSimulationTime`` in Fabric so the multitick renderer can proceed.
+
+        When :obj:`isaacsim.core.simulation_manager` is loaded it maintains this prim with the
+        real physics time on every step. When it is **not** loaded (e.g. rendering-only tests),
+        the prim would be missing and the multitick renderer would stall because it cannot
+        determine the current simulation time. This method creates the prim with ``time=0.0``
+        as a one-time fallback per stage so the viewport can initialise.
+        """
+        try:
+            stage_id = omni.usd.get_context().get_stage_id()
+            if not stage_id or stage_id == cls._fabric_time_stage_id:
+                return
+            fabric_stage = stage_utils.get_current_stage(backend="fabric")
+            prim = fabric_stage.GetPrimAtPath("/ExternalSimulationTime")
+            if prim and prim.HasAttribute("omni:time"):
+                cls._fabric_time_stage_id = stage_id
+                return
+            prim = fabric_stage.DefinePrim("/ExternalSimulationTime", "")
+            attr = prim_utils.create_prim_attribute(prim, name="omni:time", type_name=Sdf.ValueTypeNames.Double)
+            attr.Set(0.0)
+            cls._fabric_time_stage_id = stage_id
+        except Exception:
+            pass
 
     @classmethod
     def render(cls) -> None:
@@ -69,6 +109,7 @@ class RenderingManager:
             >>>
             >>> RenderingManager.render()
         """
+        cls._ensure_fabric_simulation_time()
         play_simulation = cls._carb_settings.get_as_bool(_SETTING_PLAY_SIMULATION)
         if play_simulation:
             cls._carb_settings.set_bool(_SETTING_PLAY_SIMULATION, False)
@@ -82,6 +123,7 @@ class RenderingManager:
 
         This method is the asynchronous version of :py:meth:`render`.
         """
+        cls._ensure_fabric_simulation_time()
         play_simulation = cls._carb_settings.get_as_bool(_SETTING_PLAY_SIMULATION)
         if play_simulation:
             cls._carb_settings.set_bool(_SETTING_PLAY_SIMULATION, False)
@@ -91,10 +133,39 @@ class RenderingManager:
 
     @classmethod
     def set_dt(cls, dt: float) -> None:
-        """Set the rendering dt.
+        """Set the application's coherent dt across the run loop, timeline, and loop runner.
+
+        Sets the following, in order:
+
+        1. **If ``/app/runLoops/main/rateLimitEnabled`` is already true**, writes
+           ``/app/runLoops/main/rateLimitFrequency = 1/dt`` and calls
+           ``timeline.set_target_framerate(1/dt)``. If rate-limit is not already enabled,
+           this step is skipped and the app continues to run unthrottled - this method
+           does not enable rate-limiting on its own.
+        2. Writes ``stage.SetTimeCodesPerSecond(1/dt)`` to the root layer and
+           ``timeline.set_time_codes_per_second(1/dt)``. This is the value the timeline uses
+           as its per-tick ``dt`` whenever ``/app/player/useFixedTimeStepping`` is true (the
+           default in the full Isaac Sim GUI).
+        3. Calls ``loop_runner.set_manual_step_size(dt)`` and ``loop_runner.set_manual_mode(True)``
+           on the Isaac loop runner, so the loop dispatches a fixed ``dt`` instead of the
+           wall-clock measured value (relevant when ``useFixedTimeStepping`` is false, e.g.
+           standalone Python). If the Isaac loop runner is not available, falls back to
+           enabling the carb rate-limit (``rateLimitEnabled = True``) and writing
+           ``rateLimitFrequency`` / ``timeline.set_target_framerate`` regardless of the
+           prior ``rateLimitEnabled`` value.
+        4. Writes the Fabric default simulation-period numerator/denominator carb settings
+           from ``dt``. These are read by Fabric ``SimStageWithHistory`` instances created
+           after this call; existing histories are not updated.
+
+        This does **not** modify the physics scene's ``timeStepsPerSecond`` attribute - use
+        :py:meth:`isaacsim.core.simulation_manager.SimulationManager.setup_simulation` for that.
+        For real-time playback at a chosen rate, call both APIs with the same ``dt``.
 
         Args:
-            dt: Rendering dt.
+            dt: Application dt in seconds (e.g. ``1.0 / 60`` for 60 Hz).
+
+        Raises:
+            ValueError: If ``dt`` is not positive.
 
         Example:
 
@@ -105,7 +176,10 @@ class RenderingManager:
             >>> RenderingManager.set_dt(1 / 120.0)  # 120 Hz
         """
 
-        def _set_rate_limit_frequency(frequency):
+        if dt <= 0:
+            raise ValueError(f"Rendering dt must be positive, got {dt}")
+
+        def _set_rate_limit_frequency(frequency: float) -> None:
             cls._carb_settings.set_bool(_SETTING_RATE_LIMIT_ENABLED, True)
             cls._carb_settings.set_float(_SETTING_RATE_LIMIT_FREQUENCY, frequency)
             cls._timeline.set_target_framerate(frequency)
@@ -127,13 +201,32 @@ class RenderingManager:
         else:
             carb.log_warn(f"Isaac Sim's loop runner not found. Setting a rate limit instead ({frequency} Hz)")
             _set_rate_limit_frequency(frequency)
+        # Kit reads these defaults when creating Fabric SimStageWithHistory instances
+        # (for example graph/fabric caches). Existing histories expose getSimPeriod()
+        # but no setter, so callers must set dt before creating the Fabric-backed stage
+        # and render product that need this period.
+        sim_period = Fraction(dt).limit_denominator(1_000_000_000)
+        cls._carb_settings.set_int(_SETTING_FABRIC_DEFAULT_SIM_PERIOD_NUMERATOR, sim_period.numerator)
+        cls._carb_settings.set_int(_SETTING_FABRIC_DEFAULT_SIM_PERIOD_DENOMINATOR, sim_period.denominator)
 
     @classmethod
     def get_dt(cls) -> float:
-        """Get the rendering dt.
+        """Get the application's currently-configured dt.
+
+        Reads from one of two sources, in priority order:
+
+        1. If ``/app/runLoops/main/rateLimitEnabled`` is true, returns
+           ``1 / /app/runLoops/main/rateLimitFrequency``.
+        2. Otherwise, if the Isaac loop runner is in manual mode, returns its
+           ``manual_step_size``.
+        3. As a final fallback, returns ``1 / /app/runLoops/main/rateLimitFrequency`` even
+           though the rate-limit isn't enabled (the value may not actually be in effect).
+
+        Note that this returns the loop / timeline dt, not the physics scene's ``physics_dt``;
+        for that use :py:meth:`isaacsim.core.simulation_manager.PhysicsScene.get_dt`.
 
         Returns:
-            Rendering dt.
+            Application dt in seconds.
 
         Example:
 
@@ -145,7 +238,7 @@ class RenderingManager:
             0.0166666...
         """
 
-        def _get_rate_limit_dt():
+        def _get_rate_limit_dt() -> float:
             frequency = cls._carb_settings.get_as_float(_SETTING_RATE_LIMIT_FREQUENCY)
             return 1.0 / frequency if frequency else 0.0
 
@@ -170,6 +263,10 @@ class RenderingManager:
 
         Returns:
             The unique identifier of the callback subscription.
+
+        Raises:
+            ValueError: If the rendering event is not supported.
+            RuntimeError: If unable to register the callback.
 
         Example:
 

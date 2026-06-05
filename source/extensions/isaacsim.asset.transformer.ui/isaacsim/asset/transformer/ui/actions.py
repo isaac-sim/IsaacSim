@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -70,17 +70,29 @@ class AssetTransformerAction:
 
     @property
     def name(self) -> str:
-        """Human-readable name of this action."""
+        """Human-readable name of this action.
+
+        Returns:
+            The action name.
+        """
         return self.__name
 
     @property
     def model(self) -> ui.AbstractValueModel:
-        """Boolean value model tracking the enabled state."""
+        """Boolean value model tracking the enabled state.
+
+        Returns:
+            The value model for the enabled state.
+        """
         return self.__model
 
     @property
     def enabled(self) -> bool:
-        """Whether this action is enabled."""
+        """Whether this action is enabled.
+
+        Returns:
+            True if the action is enabled, False otherwise.
+        """
         return self.__model.get_value_as_bool()
 
     @enabled.setter

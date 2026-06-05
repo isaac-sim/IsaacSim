@@ -1,4 +1,33 @@
 # Changelog
+## [1.6.2] - 2026-05-11
+### Added
+- Array Properties widget now supports editing `string[]` and `token[]` USD attributes alongside the existing scalar/vector numeric arrays.
+
+## [1.6.1] - 2026-04-28
+### Added
+- Added `Attachment Point API` to Robot Schema UI menu
+
+## [1.6.0] - 2026-04-20
+### Added
+- New `Tools/Robotics/Joint Inspector` menu opens a dockable window with a searchable robot dropdown scanning `IsaacRobotAPI` prims.
+- `JointInspectorWindowManager` supports multiple concurrent windows via `+ New Inspector` button.
+- Joint table built on `omni.ui.TreeView` with custom model/delegate, `ui.FloatDrag` cells, and Ctrl/Cmd/Shift row selection.
+- Editing a cell on a selected row mirrors the value to every other selected row's matching column.
+- Column catalogue across five groups tagged by backend: `Joint Limits`, `Drives`, `Performance Envelope`, `Joint State`, `MuJoCo Joint`.
+- Per-axis columns collapse to one when every joint authors at most one axis; fan out only for multi-DOF `D6Joint`.
+- Column selection persists across robot switches; unavailable columns dim but stay checkable.
+- Hamburger button opens a categorized popup with `PhysX` / `MuJoCo` backend pills that toggle whole backends on/off.
+- Joint-name filter is a single rounded input with `fnmatch` wildcards over joint name and full path.
+- Robot-picker and columns popups are anchored to host widgets with `WINDOW_FLAGS_NO_MOVE`.
+- Typography uses NVIDIA Sans with centralized `_UI_FONT` / `_FONT_SIZE_*` constants.
+- New shared `style.py` module centralizing layout, colors, widget styles, and a theme-independent `TOOLTIP_STYLE`.
+- `RobotAPIWidget` rewritten with Figma-style layout: editable attribute fields, collapsible changelog, drag-reorderable Robot Joints / Robot Links, `force_update` toggle.
+- New `Save to Robot Layer` button flushes composed `robotLinks`/`robotJoints` via `SaveRobotSchemaToRobotLayer`.
+- Isaac API schemas registered with Kit's `MultiSchemaPropertiesWidget.__known_api_schemas` to prevent Extra Properties duplication.
+
+### Changed
+- Robot-schema widget registrations now use `collapsed_by_default=True`.
+
 ## [1.5.1] - 2026-03-05
 ### Fixed
 - Fixed incorrect type annotation (List to list)

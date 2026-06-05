@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .cylinder import CylinderLight
-from .disk import DiskLight
-from .distant import DistantLight
-from .dome import DomeLight
-from .light import Light
-from .rect import RectLight
-from .sphere import SphereLight
+"""Implementation module for various light types including cylinder, disk, distant, dome, rectangle, and sphere lights."""
+
+from .cylinder import CylinderLight as CylinderLight
+from .disk import DiskLight as DiskLight
+from .distant import DistantLight as DistantLight
+from .dome import DomeLight as DomeLight
+from .light import Light as Light
+from .rect import RectLight as RectLight
+from .sphere import SphereLight as SphereLight

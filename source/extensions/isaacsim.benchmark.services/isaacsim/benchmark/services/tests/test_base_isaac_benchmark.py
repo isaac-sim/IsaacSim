@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Tests for base benchmark services and recorder registration."""
 
 import isaacsim.core.experimental.utils.app as app_utils
@@ -34,35 +35,35 @@ from isaacsim.benchmark.services.metrics.measurements import (
 class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
     """Async tests for base benchmark behavior."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up the async benchmark test."""
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
         await omni.kit.app.get_app().next_update_async()
         await super().setUp(backend_type="LocalLogMetrics")
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Tear down the async benchmark test."""
         await super().tearDown()
 
-    async def test_base_isaac_benchmark(self):
+    async def test_base_isaac_benchmark(self) -> None:
         """Test basic benchmark flow with two phases."""
         self.benchmark_name = "test_base_isaac_benchmark"
-        self.set_phase("loading", False, True)
+        await self.set_phase("loading", False, True)
         await omni.kit.app.get_app().next_update_async()
         await omni.kit.app.get_app().next_update_async()
         await self.store_measurements()
         app_utils.play()
 
-        self.set_phase("benchmark")
+        await self.set_phase("benchmark")
         for _ in range(10):
             await omni.kit.app.get_app().next_update_async()
         await self.store_measurements()
 
-    async def test_store_custom_measurement(self):
+    async def test_store_custom_measurement(self) -> None:
         """Test storing multiple custom measurements across phases."""
         self.benchmark_name = "test_custom_measurements"
-        self.set_phase("loading", False, True)
+        await self.set_phase("loading", False, True)
         await omni.kit.app.get_app().next_update_async()
         await omni.kit.app.get_app().next_update_async()
         await self.store_measurements()
@@ -86,7 +87,7 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
         await self.store_custom_measurement("phase_4", measurement)
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_default_recorders_initialized(self):
+    async def test_default_recorders_initialized(self) -> None:
         """Test that default recorders load correctly."""
         self.benchmark_name = "test_default_recorders"
         await omni.usd.get_context().new_stage_async()
@@ -110,7 +111,7 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
 
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_custom_recorders_selection(self):
+    async def test_custom_recorders_selection(self) -> None:
         """Test selecting a custom subset of recorders."""
         self.benchmark_name = "test_custom_selection"
         await omni.usd.get_context().new_stage_async()
@@ -128,7 +129,7 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
 
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_gpu_frametime_recorder(self):
+    async def test_gpu_frametime_recorder(self) -> None:
         """Test that GPU frametime recorder can be enabled."""
         self.benchmark_name = "test_gpu_frametime"
         await omni.usd.get_context().new_stage_async()
@@ -144,7 +145,7 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
 
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_register_and_use_custom_recorder(self):
+    async def test_register_and_use_custom_recorder(self) -> None:
         """Test registering and using a custom recorder via the plugin system."""
 
         # Define a simple custom recorder
@@ -156,17 +157,16 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
                 context: Input context for the recorder. Defaults to None.
             """
 
-            def __init__(self, context: InputContext | None = None):
+            def __init__(self, context: InputContext | None = None) -> None:
                 self.context = context
                 self._value = 0
 
-            def start_collecting(self):
+            def start_collecting(self) -> None:
                 """Start collecting custom data."""
                 self._value = 42
 
-            def stop_collecting(self):
+            def stop_collecting(self) -> None:
                 """Stop collecting custom data."""
-                pass
 
             def get_data(self) -> MeasurementData:
                 """Return the collected custom measurement.
@@ -190,13 +190,13 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
         self.assertIn("TestCustomRecorder", recorder_names)
 
         # Run phase with the custom recorder
-        self.set_phase("benchmark")
+        await self.set_phase("benchmark")
         await omni.kit.app.get_app().next_update_async()
         await self.store_measurements()
 
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_list_available_recorders(self):
+    async def test_list_available_recorders(self) -> None:
         """Test listing available recorders from the registry."""
         available = MeasurementDataRecorderRegistry.list_available()
 
@@ -214,7 +214,7 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
         for recorder_name in core_recorders:
             self.assertIn(recorder_name, available, f"Recorder {recorder_name} not in registry")
 
-    async def test_recorder_lifecycle(self):
+    async def test_recorder_lifecycle(self) -> None:
         """Test that recorders start and stop correctly during phase transitions."""
         self.benchmark_name = "test_lifecycle"
         await omni.usd.get_context().new_stage_async()
@@ -223,14 +223,14 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
         await super().setUp(backend_type="LocalLogMetrics", recorders=["runtime", "app_frametime"])
 
         # Loading phase - only runtime should start
-        self.set_phase("loading", start_recording_frametime=False, start_recording_runtime=True)
+        await self.set_phase("loading", start_recording_frametime=False, start_recording_runtime=True)
         active_names = [r.__class__.__name__ for r in self._active_recorders]
         self.assertIn("RuntimeRecorder", active_names)
         self.assertNotIn("AppFrametimeRecorder", active_names)
         await self.store_measurements()
 
         # Benchmark phase - both should start
-        self.set_phase("benchmark", start_recording_frametime=True, start_recording_runtime=True)
+        await self.set_phase("benchmark", start_recording_frametime=True, start_recording_runtime=True)
         active_names = [r.__class__.__name__ for r in self._active_recorders]
         self.assertIn("RuntimeRecorder", active_names)
         self.assertIn("AppFrametimeRecorder", active_names)
@@ -241,7 +241,7 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
 
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_recorder_context(self):
+    async def test_recorder_context(self) -> None:
         """Test that recorders have access to InputContext."""
         self.benchmark_name = "test_context"
         await omni.usd.get_context().new_stage_async()
@@ -258,7 +258,7 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
 
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_phase_transitions(self):
+    async def test_phase_transitions(self) -> None:
         """Test multiple phase transitions work correctly."""
         self.benchmark_name = "test_phases"
         await omni.usd.get_context().new_stage_async()
@@ -269,14 +269,14 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
         # Test multiple phase transitions
         phases = ["loading", "warmup", "benchmark", "cooldown"]
         for phase in phases:
-            self.set_phase(phase)
+            await self.set_phase(phase)
             await omni.kit.app.get_app().next_update_async()
             await omni.kit.app.get_app().next_update_async()
             await self.store_measurements()
 
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_stateless_recorders(self):
+    async def test_stateless_recorders(self) -> None:
         """Test stateless recorders (memory, hardware) work correctly."""
         self.benchmark_name = "test_stateless"
         await omni.usd.get_context().new_stage_async()
@@ -288,13 +288,13 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
         self.assertIn("MemoryRecorder", recorder_names)
         self.assertIn("HardwareSpecRecorder", recorder_names)
 
-        self.set_phase("benchmark")
+        await self.set_phase("benchmark")
         await omni.kit.app.get_app().next_update_async()
         await self.store_measurements()
 
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_empty_recorders_list(self):
+    async def test_empty_recorders_list(self) -> None:
         """Test that an empty recorders list uses defaults."""
         self.benchmark_name = "test_empty_list"
         await omni.usd.get_context().new_stage_async()
@@ -309,7 +309,7 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
 
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_report_generation(self):
+    async def test_report_generation(self) -> None:
         """Test that report generation flag works correctly."""
         self.benchmark_name = "test_report"
         await omni.usd.get_context().new_stage_async()
@@ -318,14 +318,14 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
         await super().setUp(backend_type="LocalLogMetrics", report_generation=True)
         self.assertTrue(self.report, "Report generation should be enabled")
 
-        self.set_phase("benchmark")
+        await self.set_phase("benchmark")
         for _ in range(5):
             await omni.kit.app.get_app().next_update_async()
         await self.store_measurements()
 
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_backend_types(self):
+    async def test_backend_types(self) -> None:
         """Test different backend types can be initialized."""
         backend_types = ["LocalLogMetrics", "JSONFileMetrics", "OmniPerfKPIFile"]
 
@@ -336,7 +336,7 @@ class TestBaseIsaacBenchmarkAsync(BaseIsaacBenchmarkAsync):
 
             await super().setUp(backend_type=backend_type, recorders=["runtime"])
 
-            self.set_phase("test")
+            await self.set_phase("test")
             await omni.kit.app.get_app().next_update_async()
             await self.store_measurements()
 

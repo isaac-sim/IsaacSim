@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""High level class for creating and wrapping USD Plane primitive prims centered at the origin."""
 
 from __future__ import annotations
 
@@ -51,7 +53,9 @@ class Plane(Shape):
             If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).
         axes: Axes (plane's axis along which the surface is aligned) (shape ``(N,)``).
             If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).
-        colors: Display colors (shape ``(N, 3)``).
+        colors: Normalized RGB display colors (shape ``(N, 3)``) or case-insensitive string representations.
+            Supported string representations include hex codes and X11/CSS4 color names without spaces,
+            as well as any other format supported by Matplotlib. Alpha channel is ignored for string representations.
             If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).
         positions: Positions in the world frame (shape ``(N, 3)``).
             If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).
@@ -66,6 +70,7 @@ class Plane(Shape):
 
     Raises:
         ValueError: If resulting paths are mixed (existing and non-existing prims) or invalid.
+        ValueError: Invalid string representation format for the colors.
         AssertionError: If wrapped prims are not USD Plane.
         AssertionError: If both positions and translations are specified.
 
@@ -76,9 +81,9 @@ class Plane(Shape):
         >>> from isaacsim.core.experimental.objects import Plane
         >>>
         >>> # given an empty USD stage with the /World Xform prim,
-        >>> # create cyan planes at paths: /World/prim_0, /World/prim_1, and /World/prim_2
+        >>> # create dark cyan planes at paths: /World/prim_0, /World/prim_1, and /World/prim_2
         >>> paths = ["/World/prim_0", "/World/prim_1", "/World/prim_2"]
-        >>> prims = Plane(paths, colors=[0.0, 1.0, 1.0])  # doctest: +NO_CHECK
+        >>> prims = Plane(paths, colors="DarkCyan")  # doctest: +NO_CHECK
     """
 
     def __init__(
@@ -90,7 +95,7 @@ class Plane(Shape):
         lengths: float | list | np.ndarray | wp.array | None = None,
         axes: Literal["X", "Y", "Z"] | list[Literal["X", "Y", "Z"]] | None = None,
         # Shape
-        colors: list | np.ndarray | wp.array | None = None,
+        colors: str | list | np.ndarray | wp.array | None = None,
         # XformPrim
         positions: list | np.ndarray | wp.array | None = None,
         translations: list | np.ndarray | wp.array | None = None,
@@ -160,7 +165,7 @@ class Plane(Shape):
 
     @staticmethod
     def are_of_type(paths: str | Usd.Prim | list[str | Usd.Prim]) -> wp.array:
-        """Check if the prims at the given paths are valid for creating Shape instances of this type.
+        """Check if the prims at the given paths are valid for creating Plane instances of this type.
 
         Backends: :guilabel:`usd`.
 
@@ -172,7 +177,7 @@ class Plane(Shape):
             paths: Prim paths (or prims) to check for.
 
         Returns:
-            Boolean flags indicating if the prims are valid for creating Shape instances.
+            Boolean flags indicating if the prims are valid for creating Plane instances.
 
         Example:
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.1.1] - 2026-04-27
+### Removed
+- Remove the `omni.isaac.ml_archive` dependency
+
+## [5.1.0] - 2026-03-17
+### Changed
+- Updated documentation with AI agent.
+
 ## [5.0.0] - 2025-11-02
 ### Changed
 - Split extension into multiple extensions.

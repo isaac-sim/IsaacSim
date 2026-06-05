@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 """IMU sensor example UI and scene setup."""
 
 import asyncio
@@ -23,15 +22,14 @@ from typing import Any
 import carb
 import carb.eventdispatcher
 import omni
-import omni.kit.commands
 import omni.physics.core
 import omni.ui as ui
 import omni.usd
 from isaacsim.examples.browser import get_instance as get_browser_instance
 from isaacsim.gui.components.ui_utils import LABEL_WIDTH, get_style, setup_ui_headers
-from isaacsim.sensors.experimental.physics import ImuSensorBackend
+from isaacsim.sensors.experimental.physics import IMU, IMUSensor
 from isaacsim.storage.native import get_assets_root_path
-from pxr import Gf, UsdGeom
+from pxr import UsdGeom
 
 EXTENSION_NAME = "IMU Sensor Example"
 
@@ -39,7 +37,7 @@ EXTENSION_NAME = "IMU Sensor Example"
 class Extension(omni.ext.IExt):
     """Extension that hosts the IMU sensor example UI."""
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize the extension and register the example.
 
         Args:
@@ -59,7 +57,7 @@ class Extension(omni.ext.IExt):
             category="Sensors",
         )
 
-    def build_window(self):
+    def build_window(self) -> None:
         """Build the example window entrypoint.
 
         Example:
@@ -68,7 +66,7 @@ class Extension(omni.ext.IExt):
                 extension.build_window()
         """
 
-    def _on_stage_closed(self, event: Any):
+    def _on_stage_closed(self, event: Any) -> None:
         """Handle stage-closed events.
 
         Args:
@@ -76,7 +74,7 @@ class Extension(omni.ext.IExt):
         """
         self.on_closed()
 
-    def build_ui(self):
+    def build_ui(self) -> None:
         """Build the UI controls for the IMU sensor example.
 
         Example:
@@ -97,13 +95,13 @@ class Extension(omni.ext.IExt):
             setup_ui_headers(self._ext_id, __file__, title, doc_link, overview, info_collapsed=False)
             ui.Button("Load Scene", clicked_fn=lambda: self._load_scene())
 
-    def _load_scene(self):
+    def _load_scene(self) -> None:
         """Load the IMU example scene and initialize UI state."""
         if self._window:
             # clear existing window
             self.on_closed()
 
-        self._imu_backend: ImuSensorBackend | None = None
+        self._imu_reader: IMUSensor | None = None
 
         self._timeline = omni.timeline.get_timeline_interface()
         self.sub = omni.physics.core.get_physics_simulation_interface().subscribe_physics_on_step_events(
@@ -173,12 +171,12 @@ class Extension(omni.ext.IExt):
 
         window.visible = True
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up resources when the extension is unloaded."""
         self.on_closed()
         get_browser_instance().deregister_example(name="IMU Sensor", category="Sensors")
 
-    def _on_visibility_changed(self, visible: bool):
+    def _on_visibility_changed(self, visible: bool) -> None:
         """Handle window visibility changes.
 
         Args:
@@ -187,7 +185,7 @@ class Extension(omni.ext.IExt):
         if not visible:
             self.on_closed()
 
-    def on_closed(self):
+    def on_closed(self) -> None:
         """Tear down the example window and subscriptions.
 
         Example:
@@ -202,7 +200,7 @@ class Extension(omni.ext.IExt):
             self._window.destroy()
             self._window = None
 
-    def _on_update(self, dt: float, context: Any):
+    def _on_update(self, dt: float, context: Any) -> None:
         """Update UI values from the IMU sensor reading.
 
         Args:
@@ -210,9 +208,9 @@ class Extension(omni.ext.IExt):
             context: Physics update context.
         """
         if self._timeline.is_playing() and self.sliders:
-            if self._imu_backend is None:
-                self._imu_backend = ImuSensorBackend(self.body_path + "/sensor")
-            reading = self._imu_backend.get_sensor_reading()
+            if self._imu_reader is None:
+                self._imu_reader = IMUSensor(self.body_path + "/sensor")
+            reading = self._imu_reader.get_sensor_reading()
             if reading.is_valid:
                 self.sliders[0].model.set_value(float(reading.linear_acceleration_x) * self.meters_per_unit)  # readings
                 self.sliders[1].model.set_value(float(reading.linear_acceleration_y) * self.meters_per_unit)  # readings
@@ -220,10 +218,10 @@ class Extension(omni.ext.IExt):
                 self.sliders[3].model.set_value(float(reading.angular_velocity_x))  # readings
                 self.sliders[4].model.set_value(float(reading.angular_velocity_y))  # readings
                 self.sliders[5].model.set_value(float(reading.angular_velocity_z))  # readings
-                self.sliders[6].model.set_value(float(reading.orientation[0]))  # readings
-                self.sliders[7].model.set_value(float(reading.orientation[1]))  # readings
-                self.sliders[8].model.set_value(float(reading.orientation[2]))  # readings
-                self.sliders[9].model.set_value(float(reading.orientation[3]))  # readings
+                self.sliders[6].model.set_value(float(reading.orientation_x))  # readings
+                self.sliders[7].model.set_value(float(reading.orientation_y))  # readings
+                self.sliders[8].model.set_value(float(reading.orientation_z))  # readings
+                self.sliders[9].model.set_value(float(reading.orientation_w))  # readings
         else:
             self.sliders[0].model.set_value(0)
             self.sliders[1].model.set_value(0)
@@ -236,13 +234,16 @@ class Extension(omni.ext.IExt):
             self.sliders[8].model.set_value(0)
             self.sliders[9].model.set_value(1)
 
-    async def create_scenario(self):
+    async def create_scenario(self) -> None:
         """Create the IMU example scene and sensor prims.
 
         Example:
             .. code-block:: python
 
                 await extension.create_scenario()
+
+        Returns:
+            None. Exits early if the assets root path cannot be found.
         """
         self._assets_root_path = get_assets_root_path()
         if self._assets_root_path is None:
@@ -257,12 +258,10 @@ class Extension(omni.ext.IExt):
 
         self.meters_per_unit = UsdGeom.GetStageMetersPerUnit(omni.usd.get_context().get_stage())
 
-        result, sensor = omni.kit.commands.execute(
-            "IsaacSensorExperimentalCreateImuSensor",
-            path="/sensor",
-            parent=self.body_path,
-            translation=Gf.Vec3d(0, 0, 0),
-            orientation=Gf.Quatd(1, 0, 0, 0),
+        IMU.create(
+            f"{self.body_path}/sensor",
+            translations=[[0.0, 0.0, 0.0]],
+            orientations=[[1.0, 0.0, 0.0, 0.0]],
         )
 
         self._usd_context = omni.usd.get_context()

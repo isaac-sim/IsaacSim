@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,50 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 """Provides pre-configured robot implementations for mobility generation scenarios in Isaac Sim."""
 
+from __future__ import annotations
 
 import math
-import os
-from typing import List, Tuple, Union
+from abc import abstractmethod
 
 import numpy as np
-import torch
-
-# isaacsim.core.api
-from isaacsim.core.api.robots.robot import Robot as _Robot
-
-# isaacsim.core.prims
-from isaacsim.core.prims import Articulation as _ArticulationView
-from isaacsim.core.prims import SingleXFormPrim as XFormPrim
-from isaacsim.core.utils.prims import get_prim_at_path
-
-# isaacsim.core.utils
-from isaacsim.core.utils.stage import add_reference_to_stage, get_current_stage
-from isaacsim.replicator.mobility_gen.impl.camera import MobilityGenCamera
-from isaacsim.replicator.mobility_gen.impl.common import Buffer, Module
+from isaacsim.core.deprecation_manager import import_module
 
 # isaacsim.replicator.mobility_gen.examples
-from isaacsim.replicator.mobility_gen.impl.robot import ROBOTS, MobilityGenRobot
-from isaacsim.replicator.mobility_gen.impl.types import Pose2d
-from isaacsim.replicator.mobility_gen.impl.utils.global_utils import get_world, join_sdf_paths
-from isaacsim.replicator.mobility_gen.impl.utils.prim_utils import (
-    prim_rotate_x,
-    prim_rotate_y,
-    prim_rotate_z,
-    prim_translate,
+# isaacsim.core.experimental.*
+from isaacsim.core.experimental.prims import Articulation
+from isaacsim.core.experimental.utils.stage import add_reference_to_stage, get_current_stage
+from isaacsim.replicator.experimental.mobility_gen import (
+    ROBOTS,
+    MobilityGenMultiSensorRobot,
+    MobilityGenRobot,
+    Module,
+    Pose2d,
 )
-from isaacsim.replicator.mobility_gen.impl.utils.registry import Registry
-from isaacsim.replicator.mobility_gen.impl.utils.stage_utils import stage_add_camera
-from isaacsim.robot.policy.examples.robots import SpotFlatTerrainPolicy
-
-# isaacsim.robot.policy.examples
-from isaacsim.robot.policy.examples.robots.h1 import H1FlatTerrainPolicy
-from isaacsim.robot.wheeled_robots.controllers.differential_controller import DifferentialController
-
-# isaacsim.robot.wheeled_robots
-from isaacsim.robot.wheeled_robots.robots import WheeledRobot as _WheeledRobot
+from isaacsim.robot.experimental.wheeled_robots import DifferentialController
+from isaacsim.robot.policy.examples.robots import H1FlatTerrainPolicy, SpotFlatTerrainPolicy
 from isaacsim.storage.native import get_assets_root_path
 
 # this package
@@ -83,7 +62,7 @@ class WheeledMobilityGenRobot(MobilityGenRobot):
     """
 
     # Wheeled robot parameters
-    wheel_dof_names: List[str]
+    wheel_dof_names: list[str]
     usd_url: str
     chassis_subpath: str
     wheel_radius: float
@@ -92,20 +71,17 @@ class WheeledMobilityGenRobot(MobilityGenRobot):
     def __init__(
         self,
         prim_path: str,
-        robot: _WheeledRobot,
-        articulation_view: _ArticulationView,
+        articulation: Articulation,
         controller: DifferentialController,
         front_camera: Module | None = None,
-    ):
-        super().__init__(
-            prim_path=prim_path, robot=robot, articulation_view=articulation_view, front_camera=front_camera
-        )
+    ) -> None:
+        super().__init__(prim_path=prim_path, articulation=articulation, front_camera=front_camera)
         self.controller = controller
-        self.robot = robot
+        self._wheel_indices = None  # cached after first physics-ready call
 
     @classmethod
     def build(cls, prim_path: str) -> "WheeledRobot":
-        """Creates and configures a wheeled robot instance with necessary components.
+        """Create and configures a wheeled robot instance with necessary components.
 
         Constructs a wheeled robot by creating the robot prim, articulation view, differential controller,
         and front camera, then adds them to the world scene.
@@ -116,25 +92,19 @@ class WheeledMobilityGenRobot(MobilityGenRobot):
         Returns:
             The configured wheeled robot instance.
         """
+        add_reference_to_stage(usd_path=cls.usd_url, path=prim_path)
+        stage = get_current_stage(backend="usd")
+        stage.Load(prim_path)
+        articulation = Articulation(prim_path)
 
-        world = get_world()
-
-        robot = world.scene.add(
-            _WheeledRobot(prim_path, wheel_dof_names=cls.wheel_dof_names, create_robot=True, usd_path=cls.usd_url)
-        )
-
-        view = _ArticulationView(join_sdf_paths(prim_path, cls.chassis_subpath))
-
-        world.scene.add(view)
-
-        controller = DifferentialController(name="controller", wheel_radius=cls.wheel_radius, wheel_base=cls.wheel_base)
+        controller = DifferentialController(wheel_radius=cls.wheel_radius, wheel_base=cls.wheel_base)
 
         camera = cls.build_front_camera(prim_path)
 
-        return cls(prim_path=prim_path, robot=robot, articulation_view=view, controller=controller, front_camera=camera)
+        return cls(prim_path=prim_path, articulation=articulation, controller=controller, front_camera=camera)
 
-    def write_action(self, step_size: float):
-        """Applies wheel actions to the robot based on current controller commands.
+    def write_action(self, step_size: float) -> None:
+        """Apply wheel actions to the robot based on current controller commands.
 
         Uses the differential controller to convert the stored action into wheel commands
         and applies them to the robot's wheels.
@@ -142,7 +112,12 @@ class WheeledMobilityGenRobot(MobilityGenRobot):
         Args:
             step_size: Time step size for the action application.
         """
-        self.robot.apply_wheel_actions(self.controller.forward(command=self.action.get_value()))
+        if not self.is_physics_ready():
+            return
+        if self._wheel_indices is None:
+            self._wheel_indices = self.articulation.get_joint_indices(self.wheel_dof_names)
+        action = self.controller.forward(command=self.action.get_value())
+        self.articulation.set_dof_velocities(action[np.newaxis], dof_indices=self._wheel_indices)
 
 
 class PolicyMobilityGenRobot(MobilityGenRobot):
@@ -170,26 +145,27 @@ class PolicyMobilityGenRobot(MobilityGenRobot):
     def __init__(
         self,
         prim_path: str,
-        robot: _Robot,
-        articulation_view: _ArticulationView,
-        controller: Union[H1FlatTerrainPolicy, SpotFlatTerrainPolicy],
+        articulation: Articulation,
+        controller: H1FlatTerrainPolicy | SpotFlatTerrainPolicy,
         front_camera: Module | None = None,
-    ):
-        super().__init__(prim_path, robot, articulation_view, front_camera)
+    ) -> None:
+        super().__init__(prim_path, articulation, front_camera)
         self.controller = controller
+        self._controller_initialized = False
 
     @classmethod
-    def build_policy(cls, prim_path: str):
-        """Builds the policy controller for the robot.
+    @abstractmethod
+    def build_policy(cls, prim_path: str) -> H1FlatTerrainPolicy | SpotFlatTerrainPolicy:
+        """Build the policy controller for the robot.
 
         Args:
             prim_path: USD prim path for the robot.
         """
-        raise NotImplementedError
+        ...
 
     @classmethod
-    def build(cls, prim_path: str):
-        """Creates and configures a policy-controlled mobility generation robot instance.
+    def build(cls, prim_path: str) -> PolicyMobilityGenRobot:
+        """Create and configure a policy-controlled mobility generation robot instance.
 
         Args:
             prim_path: USD prim path for the robot.
@@ -197,49 +173,44 @@ class PolicyMobilityGenRobot(MobilityGenRobot):
         Returns:
             The configured robot instance.
         """
-        stage = get_current_stage()
-        world = get_world()
+        add_reference_to_stage(usd_path=cls.usd_url, path=prim_path)
+        stage = get_current_stage(backend="usd")
 
-        add_reference_to_stage(usd_path=cls.usd_url, prim_path=prim_path)
-
-        robot = _Robot(prim_path=prim_path)
-
-        world.scene.add(robot)
-
-        # Articulation
-        view = _ArticulationView(join_sdf_paths(prim_path, cls.articulation_path))
-
-        world.scene.add(view)
-
-        # Controller
         controller = cls.build_policy(prim_path)
 
-        prim = get_prim_at_path(prim_path)
-        prim_translate(prim, (0, 0, cls.z_offset))
+        stage.Load(prim_path)
 
         camera = cls.build_front_camera(prim_path)
 
-        return cls(prim_path=prim_path, robot=robot, articulation_view=view, controller=controller, front_camera=camera)
+        return cls(prim_path=prim_path, articulation=controller.robot, controller=controller, front_camera=camera)
 
-    def write_action(self, step_size: float):
-        """Applies the current action to the robot using the policy controller.
+    def write_action(self, step_size: float) -> None:
+        """Apply the current action to the robot using the policy controller.
 
         Args:
             step_size: Time step size for the action.
         """
+        if not self.is_physics_ready():
+            return
+        if not self._controller_initialized:
+            self.controller.initialize()
+            self._controller_initialized = True
+        torch = import_module("torch")
         action = self.action.get_value()
-        command = np.array([action[0], 0.0, action[1]])
-        command = torch.from_numpy(command)
+        device = torch.device(str(self.controller.robot._device))
+        command = torch.tensor([action[0], 0.0, action[1]], dtype=torch.float32, device=device)
         self.controller.forward(step_size, command)
 
-    def set_pose_2d(self, pose: Pose2d):
-        """Sets the robot's 2D pose and reinitializes the controller.
+    def set_pose_2d(self, pose: Pose2d) -> None:
+        """Set the robot's 2D pose and reinitialize the controller.
 
         Args:
             pose: The 2D pose to set for the robot.
         """
         super().set_pose_2d(pose)
-        self.controller.initialize()
+        if self.is_physics_ready():
+            self.controller.initialize()
+            self._controller_initialized = True
 
 
 @ROBOTS.register()
@@ -312,9 +283,9 @@ class JetbotRobot(WheeledMobilityGenRobot):
     gamepad_angular_velocity_gain: float = 1.0
     """Gain multiplier for angular velocity when using gamepad controls."""
 
-    random_action_linear_velocity_range: Tuple[float, float] = (-0.3, 0.25)
+    random_action_linear_velocity_range: tuple[float, float] = (-0.3, 0.25)
     """Range (min, max) for random linear velocity actions."""
-    random_action_angular_velocity_range: Tuple[float, float] = (-0.75, 0.75)
+    random_action_angular_velocity_range: tuple[float, float] = (-0.75, 0.75)
     """Range (min, max) for random angular velocity actions."""
     random_action_linear_acceleration_std: float = 1.0
     """Standard deviation for random linear acceleration noise."""
@@ -334,7 +305,7 @@ class JetbotRobot(WheeledMobilityGenRobot):
     path_following_target_point_offset_meters: float = 1.0
     """Distance offset for target point selection during path following."""
 
-    wheel_dof_names: List[str] = ["left_wheel_joint", "right_wheel_joint"]
+    wheel_dof_names: list[str] = ["left_wheel_joint", "right_wheel_joint"]
     """Names of the wheel degree-of-freedom joints."""
     usd_url: str = get_assets_root_path() + "/Isaac/Robots/NVIDIA/Jetbot/jetbot.usd"
     """URL path to the USD file containing the robot's 3D model."""
@@ -410,9 +381,9 @@ class CarterRobot(WheeledMobilityGenRobot):
     gamepad_angular_velocity_gain: float = 1.0
     """Gain multiplier for gamepad angular velocity input."""
 
-    random_action_linear_velocity_range: Tuple[float, float] = (-0.3, 1.0)
+    random_action_linear_velocity_range: tuple[float, float] = (-0.3, 1.0)
     """Range of linear velocities for random action generation (min, max)."""
-    random_action_angular_velocity_range: Tuple[float, float] = (-0.75, 0.75)
+    random_action_angular_velocity_range: tuple[float, float] = (-0.75, 0.75)
     """Range of angular velocities for random action generation (min, max)."""
     random_action_linear_acceleration_std: float = 5.0
     """Standard deviation for linear acceleration noise in random actions."""
@@ -432,7 +403,7 @@ class CarterRobot(WheeledMobilityGenRobot):
     path_following_target_point_offset_meters: float = 1.0
     """Offset distance for target point selection in path following."""
 
-    wheel_dof_names: List[str] = ["joint_wheel_left", "joint_wheel_right"]
+    wheel_dof_names: list[str] = ["joint_wheel_left", "joint_wheel_right"]
     """Names of the wheel degree-of-freedom joints."""
     usd_url: str = get_assets_root_path() + "/Isaac/Robots/NVIDIA/NovaCarter/nova_carter.usd"
     """USD file path for the robot asset."""
@@ -497,9 +468,9 @@ class H1Robot(PolicyMobilityGenRobot):
     gamepad_angular_velocity_gain: float = 1.0
     """Multiplier for gamepad input angular velocity commands."""
 
-    random_action_linear_velocity_range: Tuple[float, float] = (-0.3, 1.0)
+    random_action_linear_velocity_range: tuple[float, float] = (-0.3, 1.0)
     """Range (min, max) for random linear velocity actions."""
-    random_action_angular_velocity_range: Tuple[float, float] = (-0.75, 0.75)
+    random_action_angular_velocity_range: tuple[float, float] = (-0.75, 0.75)
     """Range (min, max) for random angular velocity actions."""
     random_action_linear_acceleration_std: float = 5.0
     """Standard deviation for random linear acceleration noise."""
@@ -527,8 +498,8 @@ class H1Robot(PolicyMobilityGenRobot):
     """Vertical offset applied to the robot controller's position."""
 
     @classmethod
-    def build_policy(cls, prim_path: str):
-        """Creates and configures a flat terrain policy for the H1 robot.
+    def build_policy(cls, prim_path: str) -> H1FlatTerrainPolicy:
+        """Create and configure a flat terrain policy for the H1 robot.
 
         Args:
             prim_path: USD prim path where the robot is located.
@@ -595,9 +566,9 @@ class SpotRobot(PolicyMobilityGenRobot):
     gamepad_angular_velocity_gain: float = 1.0
     """Scaling factor for angular velocity commands from gamepad input."""
 
-    random_action_linear_velocity_range: Tuple[float, float] = (-0.3, 1.0)
+    random_action_linear_velocity_range: tuple[float, float] = (-0.3, 1.0)
     """Range (min, max) for random linear velocity commands in meters per second."""
-    random_action_angular_velocity_range: Tuple[float, float] = (-0.75, 0.75)
+    random_action_angular_velocity_range: tuple[float, float] = (-0.75, 0.75)
     """Range (min, max) for random angular velocity commands in radians per second."""
     random_action_linear_acceleration_std: float = 5.0
     """Standard deviation for random linear acceleration noise."""
@@ -626,7 +597,7 @@ class SpotRobot(PolicyMobilityGenRobot):
 
     @classmethod
     def build_policy(cls, prim_path: str) -> SpotFlatTerrainPolicy:
-        """Creates and initializes a SpotFlatTerrainPolicy controller for the Spot robot.
+        """Create and initializes a SpotFlatTerrainPolicy controller for the Spot robot.
 
         Args:
             prim_path: USD prim path where the Spot robot is located in the stage.
@@ -634,4 +605,184 @@ class SpotRobot(PolicyMobilityGenRobot):
         Returns:
             Configured SpotFlatTerrainPolicy instance with the robot's position and z-offset.
         """
+        return SpotFlatTerrainPolicy(prim_path=prim_path, position=np.array([0.0, 0.0, cls.controller_z_offset]))
+
+
+# =========================================================
+#  V2: YAML-driven multi-sensor robots
+# =========================================================
+
+
+class WheeledMultiSensorRobot(MobilityGenMultiSensorRobot):
+    """Wheeled differential-drive robot using YAML config and a multi-sensor rig.
+
+    Concrete subclasses set ``robot_config_path`` to a YAML file (relative to the subclass
+    module file).  The YAML ``wheel`` section provides DOF names, radius, and wheelbase.
+
+    Args:
+        prim_path: USD prim path of the robot root.
+        articulation: Isaac Sim articulation for the robot.
+        controller: Differential drive controller.
+        sensor_rig: Optional pre-built sensor rig module.
+    """
+
+    def __init__(
+        self,
+        prim_path: str,
+        articulation: Articulation,
+        controller: DifferentialController,
+        sensor_rig: Module | None = None,
+    ) -> None:
+        super().__init__(prim_path=prim_path, articulation=articulation, sensor_rig=sensor_rig)
+        self.controller = controller
+        self._wheel_indices = None
+
+    @classmethod
+    def build(cls, prim_path: str) -> "WheeledMultiSensorRobot":
+        """Build the wheeled robot and its sensor rig at *prim_path*.
+
+        Args:
+            prim_path: USD prim path where the robot will be created.
+
+        Returns:
+            Configured :class:`WheeledMultiSensorRobot` instance.
+        """
+        full_url = get_assets_root_path() + cls.usd_url
+        add_reference_to_stage(usd_path=full_url, path=prim_path)
+        stage = get_current_stage(backend="usd")
+        stage.Load(prim_path)
+        articulation = Articulation(prim_path)
+        controller = DifferentialController(wheel_radius=cls.wheel_radius, wheel_base=cls.wheel_base)
+        sensor_rig = cls.build_sensor_rig(prim_path)
+        return cls(prim_path=prim_path, articulation=articulation, controller=controller, sensor_rig=sensor_rig)
+
+    def write_action(self, step_size: float) -> None:
+        """Apply wheel velocities based on the current action.
+
+        Args:
+            step_size: Physics timestep size in seconds.
+        """
+        if not self.is_physics_ready():
+            return
+        if self._wheel_indices is None:
+            self._wheel_indices = self.articulation.get_joint_indices(self.wheel_dof_names)
+        action = self.controller.forward(command=self.action.get_value())
+        self.articulation.set_dof_velocities(action[np.newaxis], dof_indices=self._wheel_indices)
+
+
+class PolicyMultiSensorRobot(MobilityGenMultiSensorRobot):
+    """Policy-driven robot (humanoid/quadruped) using YAML config and a multi-sensor rig.
+
+    Concrete subclasses set ``robot_config_path`` and implement :meth:`build_policy`.
+
+    Args:
+        prim_path: USD prim path of the robot root.
+        articulation: Isaac Sim articulation for the robot.
+        controller: Locomotion policy controller (H1 or Spot).
+        sensor_rig: Optional pre-built sensor rig module.
+    """
+
+    def __init__(
+        self,
+        prim_path: str,
+        articulation: Articulation,
+        controller: H1FlatTerrainPolicy | SpotFlatTerrainPolicy,
+        sensor_rig: Module | None = None,
+    ) -> None:
+        super().__init__(prim_path=prim_path, articulation=articulation, sensor_rig=sensor_rig)
+        self.controller = controller
+        self._controller_initialized = False
+
+    @classmethod
+    @abstractmethod
+    def build_policy(cls, prim_path: str) -> H1FlatTerrainPolicy | SpotFlatTerrainPolicy:
+        """Create the locomotion policy controller for the robot.
+
+        Args:
+            prim_path: USD prim path of the robot.
+        """
+        ...
+
+    @classmethod
+    def build(cls, prim_path: str) -> "PolicyMultiSensorRobot":
+        """Build the policy robot and its sensor rig at *prim_path*.
+
+        Args:
+            prim_path: USD prim path where the robot will be created.
+
+        Returns:
+            Configured :class:`PolicyMultiSensorRobot` instance.
+        """
+        full_url = get_assets_root_path() + cls.usd_url
+        add_reference_to_stage(usd_path=full_url, path=prim_path)
+        stage = get_current_stage(backend="usd")
+        controller = cls.build_policy(prim_path)
+        stage.Load(prim_path)
+        sensor_rig = cls.build_sensor_rig(prim_path)
+        return cls(prim_path=prim_path, articulation=controller.robot, controller=controller, sensor_rig=sensor_rig)
+
+    def write_action(self, step_size: float) -> None:
+        """Apply the current action via the locomotion policy controller.
+
+        Args:
+            step_size: Physics timestep size in seconds.
+        """
+        if not self.is_physics_ready():
+            return
+        if not self._controller_initialized:
+            self.controller.initialize()
+            self._controller_initialized = True
+        torch = import_module("torch")
+        action = self.action.get_value()
+        device = torch.device(str(self.controller.robot._device))
+        command = torch.tensor([action[0], 0.0, action[1]], dtype=torch.float32, device=device)
+        self.controller.forward(step_size, command)
+
+    def set_pose_2d(self, pose: Pose2d) -> None:
+        """Set the robot's 2D pose and reinitialize the policy controller.
+
+        Args:
+            pose: The target 2D pose (x, y, theta).
+        """
+        super().set_pose_2d(pose)
+        if self.is_physics_ready():
+            self.controller.initialize()
+            self._controller_initialized = True
+
+
+@ROBOTS.register()
+class CarterMultiSensorRobot(WheeledMultiSensorRobot):
+    """Nova Carter with full multi-sensor rig (8 Hawk cameras + 4 Owl cameras), driven by YAML config."""
+
+    robot_config_path = "data/robots/carter.yaml"
+
+
+@ROBOTS.register()
+class JetbotMultiSensorRobot(WheeledMultiSensorRobot):
+    """Jetbot with front Hawk camera, driven by YAML config."""
+
+    robot_config_path = "data/robots/jetbot.yaml"
+
+
+@ROBOTS.register()
+class H1MultiSensorRobot(PolicyMultiSensorRobot):
+    """Unitree H1 humanoid with front camera, driven by YAML config."""
+
+    robot_config_path = "data/robots/h1.yaml"
+
+    @classmethod
+    def build_policy(cls, prim_path: str) -> H1FlatTerrainPolicy:
+        """Build and return an H1FlatTerrainPolicy controller at the given prim path."""
+        return H1FlatTerrainPolicy(prim_path=prim_path, position=np.array([0.0, 0.0, cls.controller_z_offset]))
+
+
+@ROBOTS.register()
+class SpotMultiSensorRobot(PolicyMultiSensorRobot):
+    """Boston Dynamics Spot quadruped with front camera, driven by YAML config."""
+
+    robot_config_path = "data/robots/spot.yaml"
+
+    @classmethod
+    def build_policy(cls, prim_path: str) -> SpotFlatTerrainPolicy:
+        """Build and return a SpotFlatTerrainPolicy controller at the given prim path."""
         return SpotFlatTerrainPolicy(prim_path=prim_path, position=np.array([0.0, 0.0, cls.controller_z_offset]))

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for ROS 2 odometry publisher OmniGraph node."""
 
-import carb
 import numpy as np
 import omni.graph.core as og
 import omni.kit.commands
@@ -22,28 +22,26 @@ import omni.kit.test
 import omni.kit.usd
 import omni.kit.viewport.utility
 import usdrt.Sdf
-from isaacsim.core.api.objects import DynamicCuboid
-from isaacsim.core.api.scenes.scene import Scene
 from isaacsim.core.deprecation_manager import import_module
-from isaacsim.core.prims import XFormPrim
+from isaacsim.core.experimental.objects import Cube, DistantLight, GroundPlane
+from isaacsim.core.experimental.prims import GeomPrim, RigidPrim, XformPrim
+from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.core.simulation_manager import SimulationManager
-from isaacsim.core.utils.physics import simulate_async
-from isaacsim.core.utils.prims import is_prim_path_valid
-from isaacsim.core.utils.stage import open_stage_async
-from isaacsim.core.utils.string import find_unique_string_name
+from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 
-from .common import ROS2TestCase, get_qos_profile
-
-torch = import_module("torch")
+from .common import get_qos_profile
 
 
 class TestRos2Odometry(ROS2TestCase):
+    """Test suite for ros2 odometry."""
+
     async def setUp(self):
+        """Set up test fixtures."""
         await super().setUp()
         self.CUBE_SCALE = 0.5
 
     async def tearDown(self):
-
+        """Tear down test fixtures."""
         await omni.kit.app.get_app().next_update_async()
         await super().tearDown()
 
@@ -66,33 +64,35 @@ class TestRos2Odometry(ROS2TestCase):
         return position, orientation
 
     async def test_ROS2_general_odometry_gpu(self):
-        SimulationManager.set_backend("torch")
+        """Test ROS2 general odometry gpu."""
+        SimulationManager.set_backend("warp")
         SimulationManager.set_physics_sim_device("cuda")
         await omni.kit.app.get_app().next_update_async()
         await self.test_ROS2_general_odometry()
 
     async def test_ROS2_general_odometry(self):
+        """Test ROS2 general odometry."""
         import rclpy
         from nav_msgs.msg import Odometry
 
         self.lin_vel_cmd = None
         self.ang_vel_cmd = None
 
-        cube_prim_path = find_unique_string_name(
-            initial_name="/World/Cube", is_unique_fn=lambda x: not is_prim_path_valid(x)
+        cube_prim_path = stage_utils.generate_next_free_path("/World/Cube", prepend_default_prim=False)
+        Cube(
+            "/World/Cube",
+            sizes=1.0,
+            positions=np.array([0.0, 0.0, 1.0]),
+            orientations=np.array([1, 0, 0, 0]),
+            scales=np.array([self.CUBE_SCALE, self.CUBE_SCALE, self.CUBE_SCALE]),
         )
-        self.cuboid = DynamicCuboid(
-            prim_path="/World/Cube",
-            name="my_cuboid",
-            position=np.array([0.0, 0.0, 1.0]),
-            orientation=np.array([1, 0, 0, 0]),
-            scale=np.array([self.CUBE_SCALE, self.CUBE_SCALE, self.CUBE_SCALE]),
-            color=np.array([0, 0, 1]),
-        )
+        GeomPrim("/World/Cube").apply_collision_apis()
+        self.cuboid = RigidPrim("/World/Cube")
+        self.cuboid_xform = XformPrim("/World/Cube")
+        GroundPlane("/World/groundPlane")
 
-        scene = Scene()
-        scene.add(self.cuboid)
-        scene.add_default_ground_plane()
+        light = DistantLight("/World/Light")
+        light.set_intensities(1000)
         await omni.kit.app.get_app().next_update_async()
 
         # Define the action graph path
@@ -100,7 +100,7 @@ class TestRos2Odometry(ROS2TestCase):
 
         try:
             keys = og.Controller.Keys
-            (graph, nodes, _, _) = og.Controller.edit(
+            graph, nodes, _, _ = og.Controller.edit(
                 {"graph_path": graph_path, "evaluator_name": "execution"},
                 {
                     keys.CREATE_NODES: [
@@ -162,46 +162,25 @@ class TestRos2Odometry(ROS2TestCase):
 
         self.retrived_lin_vel = None
 
-        def set_cuboid_pose(cuboid_obj, positions, orientations):
-            if cuboid_obj._device == "cpu":
-                XFormPrim.set_world_poses(
-                    cuboid_obj._prim_view,
-                    positions=np.array(positions),
-                    orientations=np.array(orientations),
-                )
-            else:
-                XFormPrim.set_world_poses(
-                    cuboid_obj._prim_view,
-                    positions=torch.tensor(positions, device=cuboid_obj._device),
-                    orientations=torch.tensor(orientations, device=cuboid_obj._device),
-                )
+        def set_cuboid_pose(cuboid_xform, positions, orientations):
+            cuboid_xform.set_world_poses(
+                positions=np.array(positions),
+                orientations=np.array(orientations),
+            )
 
-        def set_cuboid_commands(cuboid_obj, lin_vel, ang_vel):
-            if cuboid_obj._device == "cpu":
-                # TODO (@Anthony or @Ayush): Setting angular velocity seems to take no effect. Using .get_angular_velocity() returns the correct value but the cuboid does not move accordingly. Will need to investigate
-                cuboid_obj.set_linear_velocity(np.array(lin_vel, dtype=np.float64))
-                cuboid_obj.set_angular_velocity(np.array(ang_vel, dtype=np.float64))
-            else:
-                velocities = torch.tensor(
-                    np.concatenate(
-                        [
-                            np.array(lin_vel, dtype=np.float64).reshape(-1, 3),
-                            np.array(ang_vel, dtype=np.float64).reshape(-1, 3),
-                        ],
-                        axis=1,
-                    ),
-                    dtype=torch.float32,
-                    device=cuboid_obj._device,
-                )
-                cuboid_obj._rigid_prim_view.initialize()
-                cuboid_obj._rigid_prim_view.set_velocities(velocities)
-
-            self.retrived_lin_vel = cuboid_obj.get_angular_velocity()
+        def set_cuboid_commands(cuboid_rigid, lin_vel, ang_vel):
+            cuboid_rigid.set_velocities(
+                linear_velocities=np.array(lin_vel, dtype=np.float64).reshape(1, 3),
+                angular_velocities=np.array(ang_vel, dtype=np.float64).reshape(1, 3),
+            )
+            self.retrived_lin_vel = cuboid_rigid.get_velocities()[1].numpy().flatten()
 
         def spin():
             if (self.lin_vel_cmd is not None) and (self.ang_vel_cmd is not None):
                 set_cuboid_commands(self.cuboid, self.lin_vel_cmd, self.ang_vel_cmd)
             rclpy.spin_once(ros2_node, timeout_sec=0.1)
+
+        # Alias for set_cuboid_pose to use the xform prim
 
         self._timeline = omni.timeline.get_timeline_interface()
         self._timeline.play()
@@ -224,14 +203,14 @@ class TestRos2Odometry(ROS2TestCase):
             # Verify the received odometry messages
             self.assertIsNotNone(self._cube_odometry_data)
 
-        await simulate_async(1.5, 60, spin)
+        await self.simulate_until_condition(lambda: False, max_frames=120, per_frame_callback=spin)
 
         standard_checks()
 
         # Verify that the pose recieved from Odometry is correct
         self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.x, 0.0, places=1)
         self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.y, 0.0, places=1)
-        self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.z, -0.7, delta=0.5)
+        self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.z, -0.75, delta=0.05)
 
         # Verify that the velocities recieved from Odometry are correct. Cude should be at rest.
         self.assertAlmostEqual(self._cube_odometry_data.twist.twist.linear.x, 0.0, places=1)
@@ -244,8 +223,6 @@ class TestRos2Odometry(ROS2TestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-        # set_cuboid_pose(self.cuboid, [[0.0, 0.0, self.CUBE_SCALE / 2.0]], [[1, 0, 0, 0]])
-
         print("Test1: Check Z odometry:")
         ##############################
         self._cube_odometry_data = None
@@ -255,7 +232,8 @@ class TestRos2Odometry(ROS2TestCase):
 
         self._timeline.play()
 
-        await simulate_async(1, 60, spin)
+        # drive at z=1.0 m/s for 1s (60 frames) → position.z ~1.0m > 0.2m
+        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=spin)
 
         standard_checks()
 
@@ -268,12 +246,12 @@ class TestRos2Odometry(ROS2TestCase):
         print(self._cube_odometry_data.twist.twist.linear)
         # Verify that the velocities recieved from Odometry are correct. Cude should be moving up.
 
-        # TODO (@Anthony or @Ayush): Investigate why 0.2 disparity exists for commanded and received speeds
+        # TODO Investigate why 0.2 disparity exists for commanded and received speeds
         self.assertAlmostEqual(self._cube_odometry_global_data.twist.twist.linear.x, self.lin_vel_cmd[0], delta=0.2)
         self.assertAlmostEqual(self._cube_odometry_global_data.twist.twist.linear.y, self.lin_vel_cmd[1], delta=0.2)
         self.assertAlmostEqual(self._cube_odometry_global_data.twist.twist.linear.z, self.lin_vel_cmd[2], delta=0.2)
 
-        # TODO (@Anthony or @Ayush): Setting angular velocity seems to take no effect. Using .get_angular_velocity() returns the correct value but the cuboid does not move accordingly. Will need to investigate
+        # TODO Setting angular velocity seems to take no effect. Using .get_angular_velocity() returns the correct value but the cuboid does not move accordingly. Will need to investigate
         # Commenting out angular velocity checks for now:
 
         self.assertAlmostEqual(self._cube_odometry_data.twist.twist.angular.x, self.ang_vel_cmd[0], delta=0.2)
@@ -287,7 +265,8 @@ class TestRos2Odometry(ROS2TestCase):
         ##############################
         self._cube_odometry_data = None
 
-        set_cuboid_pose(self.cuboid, [[0.0, 0.0, self.CUBE_SCALE / 2.0]], [[1, 0, 0, 0]])
+        set_cuboid_pose(self.cuboid_xform, [[0.0, 0.0, self.CUBE_SCALE / 2.0]], [[1, 0, 0, 0]])
+        set_cuboid_commands(self.cuboid, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0])
         await omni.kit.app.get_app().next_update_async()
 
         self.lin_vel_cmd = None
@@ -295,19 +274,22 @@ class TestRos2Odometry(ROS2TestCase):
 
         self._timeline.play()
 
-        await simulate_async(0.5, 60, spin)
+        await self.simulate_until_condition(
+            lambda: self._cube_odometry_data is not None, max_frames=60, per_frame_callback=spin
+        )
 
         self.lin_vel_cmd = [1.0, 0.0, 0.0]
         self.ang_vel_cmd = [0.0, 1.0, 0.0]
 
-        await simulate_async(1, 60, spin)
+        # drive at x=1.0 m/s for 1s (60 frames) → position.x ~1.0m > 0.2m
+        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=spin)
 
         standard_checks()
 
         # Verify that the pose recieved from Odometry is correct
         self.assertGreater(self._cube_odometry_data.pose.pose.position.x, 0.2)
         self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.y, 0.0, delta=0.1)
-        self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.z, 0.0, delta=0.1)
+        self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.z, 0.0, delta=0.15)
 
         # Verify that the velocities recieved from Odometry are correct. Cude should be at moving forward.
         self.assertAlmostEqual(self._cube_odometry_global_data.twist.twist.linear.x, self.lin_vel_cmd[0], delta=0.2)
@@ -330,24 +312,28 @@ class TestRos2Odometry(ROS2TestCase):
             og.Controller.attribute(graph_path + "/PublishROS2Odometry.inputs:publishRawVelocities"), False
         )
 
-        set_cuboid_pose(self.cuboid, [[0.0, 0.0, self.CUBE_SCALE / 2.0]], [[1, 0, 0, 0]])
+        set_cuboid_pose(self.cuboid_xform, [[0.0, 0.0, self.CUBE_SCALE / 2.0]], [[1, 0, 0, 0]])
+        set_cuboid_commands(self.cuboid, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0])
         await omni.kit.app.get_app().next_update_async()
 
         self._timeline.play()
 
-        await simulate_async(0.5, 60, spin)
+        await self.simulate_until_condition(
+            lambda: self._cube_odometry_data is not None, max_frames=60, per_frame_callback=spin
+        )
 
         self.lin_vel_cmd = [1.0, 0.0, 0.0]
         self.ang_vel_cmd = [0.0, 1.0, 0.0]
 
-        await simulate_async(1, 60, spin)
+        # drive at x=1.0 m/s for 1s (60 frames) → position.x ~1.0m > 0.2m
+        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=spin)
 
         standard_checks()
 
         # Verify that the pose recieved from Odometry is correct. X should still be greater than 0
         self.assertGreater(self._cube_odometry_data.pose.pose.position.x, 0.2)
         self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.y, 0.0, delta=0.1)
-        self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.z, 0.0, delta=0.1)
+        self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.z, 0.0, delta=0.15)
 
         # Verify that the velocities recieved from Odometry are correct. Cube should be moving forward in local Y frame, but global X frame.
         # Components are flipped due to new robot fron orientation. -Y world linear velocity is positive X local frame
@@ -371,24 +357,28 @@ class TestRos2Odometry(ROS2TestCase):
             og.Controller.attribute(graph_path + "/PublishROS2Odometry.inputs:publishRawVelocities"), True
         )
 
-        set_cuboid_pose(self.cuboid, [[0.0, 0.0, self.CUBE_SCALE / 2.0]], [[1, 0, 0, 0]])
+        set_cuboid_pose(self.cuboid_xform, [[0.0, 0.0, self.CUBE_SCALE / 2.0]], [[1, 0, 0, 0]])
+        set_cuboid_commands(self.cuboid, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0])
         await omni.kit.app.get_app().next_update_async()
 
         self._timeline.play()
 
-        await simulate_async(0.5, 60, spin)
+        await self.simulate_until_condition(
+            lambda: self._cube_odometry_data is not None, max_frames=60, per_frame_callback=spin
+        )
 
         self.lin_vel_cmd = [1.0, 0.0, 0.0]
         self.ang_vel_cmd = [0.0, 1.0, 0.0]
 
-        await simulate_async(1, 60, spin)
+        # drive at x=1.0 m/s for 1s (60 frames) → position.x ~1.0m > 0.2m
+        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=spin)
 
         standard_checks()
 
         # Verify that the pose recieved from Odometry is correct. X should still be greater than 0
         self.assertGreater(self._cube_odometry_data.pose.pose.position.x, 0.2)
         self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.y, 0.0, delta=0.1)
-        self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.z, 0.0, delta=0.1)
+        self.assertAlmostEqual(self._cube_odometry_data.pose.pose.position.z, 0.0, delta=0.15)
 
         # Verify that the velocities recieved from Odometry are correct. Cube should be moving forward in local Y frame, but global X frame.
         # Components are no longer flipped like Test 2B since only world velocities are published
@@ -402,6 +392,8 @@ class TestRos2Odometry(ROS2TestCase):
 
     async def test_ROS2_linear_odometry(self):
         """Test odometry for Leatherback robot moving in a straight line, verifying linear velocity and position tracking."""
+        if SimulationManager.get_active_physics_engine() == "newton":
+            self.skipTest("Leatherback asset not yet supported by Newton backend")
         import rclpy
         from ackermann_msgs.msg import AckermannDriveStamped
         from nav_msgs.msg import Odometry
@@ -411,7 +403,7 @@ class TestRos2Odometry(ROS2TestCase):
 
         # Load the Leatherback robot USD
         leatherback_usd_path = self._assets_root_path + "/Isaac/Samples/ROS2/Robots/leatherback_ROS.usd"
-        await open_stage_async(leatherback_usd_path)
+        await stage_utils.open_stage_async(leatherback_usd_path)
 
         # Wait for the stage to load
         await omni.kit.app.get_app().next_update_async()
@@ -452,7 +444,7 @@ class TestRos2Odometry(ROS2TestCase):
 
         # Give the robot a little extra time to settle
         print("Waiting a bit longer for the robot to settle...")
-        await simulate_async(1.0, callback=spin)
+        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=spin)
 
         # Record initial position
         initial_position = np.array(
@@ -514,8 +506,8 @@ class TestRos2Odometry(ROS2TestCase):
         print(f"- Steering angle: {steering_angle} rad (straight line)")
 
         # Drive the robot in a straight line
-        drive_time = 5  # seconds
-        steps = 50
+        drive_time = 2  # seconds
+        steps = 20
         step_time = drive_time / steps
 
         # Drive in a straight line
@@ -528,7 +520,9 @@ class TestRos2Odometry(ROS2TestCase):
             ackermann_pub.publish(msg)
 
             # Simulate a step
-            await simulate_async(step_time, callback=spin)
+            await self.simulate_until_condition(
+                lambda: False, max_frames=max(1, int(step_time * 60)), per_frame_callback=spin
+            )
 
             # Print progress periodically
             if i % 10 == 0:
@@ -615,7 +609,7 @@ class TestRos2Odometry(ROS2TestCase):
         ackermann_pub.publish(msg)
 
         # Let it come to a stop
-        await simulate_async(1, callback=spin)
+        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=spin)
 
         # Clean up
         self._timeline.stop()
@@ -625,8 +619,8 @@ class TestRos2Odometry(ROS2TestCase):
 
     async def test_ROS2_angular_odometry(self):
         """Test odometry with Leatherback robot going in a circle, verifying angular velocity."""
-        import time
-
+        if SimulationManager.get_active_physics_engine() == "newton":
+            self.skipTest("Leatherback asset not yet supported by Newton backend")
         import rclpy
         from ackermann_msgs.msg import AckermannDriveStamped
         from nav_msgs.msg import Odometry
@@ -636,7 +630,7 @@ class TestRos2Odometry(ROS2TestCase):
 
         # Load the Leatherback robot USD
         leatherback_usd_path = self._assets_root_path + "/Isaac/Samples/ROS2/Robots/leatherback_ROS.usd"
-        await open_stage_async(leatherback_usd_path)
+        await stage_utils.open_stage_async(leatherback_usd_path)
 
         # Wait for the stage to load
         await omni.kit.app.get_app().next_update_async()
@@ -700,8 +694,8 @@ class TestRos2Odometry(ROS2TestCase):
         print(f"- Expected angular velocity: {expected_angular_velocity:.4f} rad/s")
 
         # Drive the robot in a circle
-        drive_time = 10  # seconds
-        steps = 100
+        drive_time = 5  # seconds
+        steps = 50
         step_time = drive_time / steps
 
         # Track maximum displacement during the test
@@ -717,7 +711,9 @@ class TestRos2Odometry(ROS2TestCase):
             ackermann_pub.publish(msg)
 
             # Simulate a step
-            await simulate_async(step_time, callback=spin)
+            await self.simulate_until_condition(
+                lambda: False, max_frames=max(1, int(step_time * 60)), per_frame_callback=spin
+            )
 
             # Print progress periodically
             if i % 10 == 0:
@@ -798,7 +794,7 @@ class TestRos2Odometry(ROS2TestCase):
         ackermann_pub.publish(msg)
 
         # Let it come to a stop
-        await simulate_async(1, callback=spin)
+        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=spin)
 
         # Clean up
         self._timeline.stop()

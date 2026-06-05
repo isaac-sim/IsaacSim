@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Isaac Sim core nodes extension providing computational nodes for data processing and annotation in robotics simulations."""
+
 import carb
 import numpy as np
 import omni.ext
@@ -22,7 +24,6 @@ import omni.syntheticdata._syntheticdata as sd
 from isaacsim.core.nodes.scripts.utils import register_annotator_from_node_with_telemetry
 from omni.replicator.core import AnnotatorRegistry
 from omni.syntheticdata import sensors
-from pxr import Sdf, Usd
 
 from ..bindings._isaacsim_core_nodes import acquire_interface, release_interface
 
@@ -32,7 +33,27 @@ from ..bindings._isaacsim_core_nodes import acquire_interface, release_interface
 
 
 class Extension(omni.ext.IExt):
-    def on_startup(self):
+    """The isaacsim.core.nodes extension provides computational nodes for Isaac Sim data processing and annotation.
+
+    This extension registers various annotators and node templates for synthetic data processing, including camera
+    information reading, time utilities, pose data extraction, and image format conversion. The annotators enable
+    data extraction from rendered scenes and provide utilities for robotics simulations, such as converting RGBA
+    images to RGB format, generating point clouds from depth data, and managing simulation gates for controlled
+    data flow.
+
+    The extension automatically registers the following key components:
+
+    - Time-based annotators for simulation and system time tracking
+    - Camera information readers for extracting camera parameters
+    - World pose readers for spatial data
+    - Image conversion utilities (RGBA to RGB)
+    - Depth-to-point-cloud converters
+    - Simulation gates for controlling data flow
+    - Passthrough nodes for image pointer data
+    """
+
+    def on_startup(self) -> None:
+        """Called when the extension is enabled to initialize the interface and register nodes."""
         self.__interface = acquire_interface()
         self.registered_templates = []
         self.registered_annotators = []
@@ -41,18 +62,21 @@ class Extension(omni.ext.IExt):
         except Exception as e:
             carb.log_error(f"Could not register node templates {e}")
 
-        pass
-
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
+        """Called when the extension is disabled to release the interface and unregister nodes."""
         release_interface(self.__interface)
         self.__interface = None
         try:
             self.unregister_nodes()
         except Exception as e:
             carb.log_warn(f"Could not unregister node templates {e}")
-        pass
 
-    def register_nodes(self):
+    def register_nodes(self) -> None:
+        """Register Isaac Sim annotator node templates and simulation gates for synthetic data generation.
+
+        Registers annotators for camera info, time reading, world pose, image conversion, and point cloud
+        generation. Also creates simulation gates for various render variables and annotator types.
+        """
         ## Annotators
         ### Add template to no_op
         annotator_name = "IsaacNoop"
@@ -216,7 +240,8 @@ class Extension(omni.ext.IExt):
         )
         self.registered_annotators.append(annotator_name)
 
-    def unregister_nodes(self):
+    def unregister_nodes(self) -> None:
+        """Unregisters all previously registered node templates and annotators from the synthetic data system."""
         for template in self.registered_templates:
             sensors.get_synthetic_data().unregister_node_template(template)
         for annotator in self.registered_annotators:

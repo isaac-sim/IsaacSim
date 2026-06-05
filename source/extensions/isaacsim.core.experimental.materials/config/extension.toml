@@ -1,11 +1,11 @@
 [package]
-version = "0.5.1"
+version = "0.7.0"
 category = "Simulation"
 title = "Isaac Sim Core (Materials)"
 description = "The Core Materials extension provides a set of APIs to create and/or wrap one or more USD materials in the stage..."
 keywords = ["isaacsim", "core", "materials"]
 changelog = "docs/CHANGELOG.md"
-readme = "docs/README.md"
+readme = "docs/Overview.md"
 preview_image = "data/preview.png"
 icon = "data/icon.png"
 writeTarget.kit = true
@@ -72,8 +72,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 pythonTests.include = ["isaacsim.core.experimental.materials.tests.*"]
@@ -81,3 +83,6 @@ pythonTests.include = ["isaacsim.core.experimental.materials.tests.*"]
 stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
 ]
+
+[documentation]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

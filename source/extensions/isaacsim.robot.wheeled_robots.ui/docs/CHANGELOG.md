@@ -1,4 +1,15 @@
 # Changelog
+
+## [2.3.1] - 2026-04-13
+### Removed
+- Remove the `omni.isaac.ml_archive` dependency
+
+## [2.3.0] - 2026-03-25
+### Changed
+- Migrated to experimental APIs (app_utils, prim_utils, stage_utils) replacing deprecated isaacsim.core.utils
+- Updated dependency from isaacsim.robot.wheeled_robots to isaacsim.robot.wheeled_robots.nodes
+- Converted test file to use SimulationManager, experimental Articulation, and GroundPlane
+
 ## [2.2.0] - 2026-03-04
 ### Changed
 - Added Overview.md, python_api.md and updated docstrings

@@ -13,18 +13,27 @@ template_name = "spatial_sdg_base"
 "omni.behavior.scripting.core" = {}
 "omni.flowusd" = {}
 "omni.replicator.core" = {}
+"omni.kit.widget.settings" = {}
+"omni.physx" = {}
 
 # Action and Event Data Generation Headless Extensions
 #############################################
-"isaacsim.anim.robot.core" = { version = "1.2.2", exact = true }
-"isaacsim.replicator.agent.core" = { version = "1.2.6", exact = true }
-"isaacsim.replicator.caption.core" = { version = "0.7.5", exact = true }
-"isaacsim.replicator.incident.core" = { version = "0.11.7", exact = true }
-"isaacsim.replicator.object.core" = { version = "0.11.8", exact = true }
+"omni.metropolis.schema" = { version = "0.0.3", exact = true }
+"omni.metropolis.utils" = { version = "1.1.2", exact = true }
+"omni.metropolis.pipeline" = { version = "0.0.9", exact = true }
+"isaacsim.anim.robot.schema" = { version = "0.1.1", exact = true }
+"isaacsim.anim.robot.core" = { version = "1.4.2", exact = true }
+"isaacsim.anim.robot.bt_nodes" = { version = "0.1.1", exact = true }
+"isaacsim.replicator.agent.schema" = { version = "0.1.1", exact = true }
+"isaacsim.replicator.agent.core" = { version = "1.6.7", exact = true }
+"isaacsim.replicator.caption.core" = { version = "0.7.10", exact = true }
+"isaacsim.replicator.incident.core" = { version = "0.11.8", exact = true }
+"isaacsim.replicator.object.core" = { version = "0.11.12", exact = true }
 "isaacsim.sensors.rtx.placement" = { version = "0.16.9", exact = true }
 "isaacsim.sensors.rtx.calibration" = { version = "0.3.9", exact = true }
-"omni.metropolis.pipeline" = { version = "0.0.5", exact = true }
-"omni.metropolis.utils" = { version = "1.0.5", exact = true }
+
+# Optional: for benchmark_ira.py and other scripts using isaacsim.benchmark.services
+"isaacsim.benchmark.services" = {}
 
 [settings]
 # to pass tests on Gitlab CI - shader compilation progress bar
@@ -51,4 +60,5 @@ registryCacheFull = "${app}/../extscache"
     "${app}",
     "${app}/../exts",
     "${app}/../extscache",
+    "${app}/../extsDeprecated",
 ]

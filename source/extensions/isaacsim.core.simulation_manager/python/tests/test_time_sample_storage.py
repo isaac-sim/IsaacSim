@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,9 @@
 
 """
 Comprehensive tests for TimeSampleStorage functionality through the SimulationManager interface.
+
 Tests validate monotonic behavior, buffer management, and thread safety.
 """
-
-import asyncio
-import time
 
 import carb
 import omni.kit.app
@@ -30,6 +28,7 @@ from isaacsim.core.simulation_manager import SimulationManager
 
 
 class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
+    """Test time sample storage."""
 
     async def setUp(self):
         """Set up test environment."""
@@ -53,6 +52,7 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
     def _verify_samples_monotonic(self, samples, message="Samples should be monotonic"):
         """
         Manually verify that samples are monotonically increasing in time.
+
         This replaces the removed validateSamplesMonotonic C++ function.
         """
         for i in range(1, len(samples)):
@@ -314,10 +314,12 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
         timeline.play()
         await omni.kit.app.get_app().next_update_async()
 
-        # Get sim period setting to determine number of frames for 1-second test
-        settings = carb.settings.get_settings()
-        sim_period_denom = settings.get("/app/settings/fabricDefaultSimPeriodDenominator") or 60
-        num_frames = sim_period_denom  # Run for 1 second worth of frames
+        # Run enough frames to accumulate a meaningful time range but stay
+        # within the circular buffer capacity so no samples are evicted.
+        physics_fps = 60
+        expected_frame_delta = 1.0 / physics_fps
+        buffer_capacity = SimulationManager._simulation_manager_interface.get_buffer_capacity()
+        num_frames = buffer_capacity - 5
 
         for f in range(num_frames):
             await omni.kit.app.get_app().next_update_async()
@@ -336,9 +338,16 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
             "Latest time {} should be greater than earliest {}".format(latest_seconds, earliest_seconds),
         )
 
-        # Get the sim period denominator from carb settings to calculate expected timing
-        expected_total_delta = num_frames / sim_period_denom  # num_frames / FPS = 1 second
-        expected_sim_total_delta = num_frames / 60.0  # 60 FPS
+        # Verify range matches actual samples
+        samples = SimulationManager._simulation_manager_interface.get_all_samples()
+        self.assertGreater(len(samples), 1, "Should have multiple samples")
+
+        first_sample_time = samples[0].time.to_float()
+        last_sample_time = samples[-1].time.to_float()
+
+        # Derive the expected total delta from the actual number of stored
+        # samples (each consecutive pair is one physics step apart).
+        expected_total_delta = (len(samples) - 1) * expected_frame_delta
 
         # Verify range delta matches expected timing
         time_delta = latest_seconds - earliest_seconds
@@ -346,19 +355,12 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
             time_delta,
             expected_total_delta,
             places=2,
-            msg="Time range {} - {} should span {} seconds for {} FPS".format(
-                earliest_seconds, latest_seconds, expected_total_delta, sim_period_denom
+            msg="Time range {:.4f} - {:.4f} ({} samples) should span {:.4f}s".format(
+                earliest_seconds, latest_seconds, len(samples), expected_total_delta
             ),
         )
 
-        # Verify range matches actual samples
-        samples = SimulationManager._simulation_manager_interface.get_all_samples()
-        first_sample_time = samples[0].time.to_float()
-        last_sample_time = samples[-1].time.to_float()
-
-        # Verify delta between consecutive samples matches sim period
-        expected_frame_delta = 1.0 / sim_period_denom
-        expected_sim_frame_delta = 1.0 / 60.0
+        # Verify delta between consecutive samples matches physics dt
         for i in range(1, len(samples)):
             prev_time = samples[i - 1].time.to_float()
             curr_time = samples[i].time.to_float()
@@ -367,18 +369,17 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
                 actual_delta,
                 expected_frame_delta,
                 places=4,
-                msg=f"Frame {i} delta should be ~{expected_frame_delta:.4f}s (1/{sim_period_denom} FPS), got {actual_delta:.4f}s",
+                msg=f"Frame {i} time delta should be ~{expected_frame_delta:.4f}s (1/{physics_fps}), got {actual_delta:.4f}s",
             )
 
-            # Also check simulation time deltas, these will be different due to physics dt which is 1/60s
             prev_sim_time = samples[i - 1].data.sim_time
             curr_sim_time = samples[i].data.sim_time
             sim_delta = curr_sim_time - prev_sim_time
             self.assertAlmostEqual(
                 sim_delta,
-                expected_sim_frame_delta,
+                expected_frame_delta,
                 places=4,
-                msg=f"Simulation time delta for frame {i} should be ~{expected_sim_frame_delta:.4f}s (1/{60} FPS), got {sim_delta:.4f}s",
+                msg=f"Frame {i} sim_time delta should be ~{expected_frame_delta:.4f}s (1/{physics_fps}), got {sim_delta:.4f}s",
             )
 
         self.assertAlmostEqual(earliest_seconds, first_sample_time, places=6)
@@ -390,9 +391,9 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
         sim_time_delta = last_sample_sim_time - first_sample_sim_time
         self.assertAlmostEqual(
             sim_time_delta,
-            expected_sim_total_delta,
+            expected_total_delta,
             places=2,
-            msg=f"Simulation time should span {expected_sim_total_delta} seconds for {sim_period_denom} FPS",
+            msg=f"Simulation time should span {expected_total_delta:.4f}s ({len(samples)} samples)",
         )
 
     async def test_logging_functionality(self):

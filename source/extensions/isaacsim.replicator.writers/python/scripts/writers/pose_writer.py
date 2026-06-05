@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """A Replicator writer that outputs pose data including 3D bounding box annotations, camera parameters, and optional debug images for object pose estimation tasks."""
-
 
 from functools import partial
 
@@ -33,7 +32,7 @@ __version__ = "0.2.0"
 
 
 class PoseWriter(Writer):
-    """Pose Writer
+    """Pose Writer.
 
     Args:
         output_dir:
@@ -164,7 +163,7 @@ class PoseWriter(Writer):
 
     # Abstract method from Writer to access the annotator data and write to disk
     def write(self, data: dict):
-        """Writes pose data for all render products in the frame.
+        """Write pose data for all render products in the frame.
 
         Args:
             data: Dictionary containing render product data with annotator information.
@@ -209,7 +208,7 @@ class PoseWriter(Writer):
 
     # Process the render product data and store it in the selected format, return the number of objects in the frame
     def _process_frame_data(self, bounding_box_3d_data: dict, camera_params_data: dict) -> int:
-        """Processes frame data and stores it in the selected format.
+        """Process frame data and stores it in the selected format.
 
         Args:
             bounding_box_3d_data: 3D bounding box annotator data containing object information.
@@ -241,7 +240,7 @@ class PoseWriter(Writer):
 
     # Process the bounding box annotator data (extract objects label, location, rotation, visibility, etc.)
     def _process_bounding_boxes(self, bounding_box_3d_data: dict, camera_params: dict) -> list:
-        """Processes 3D bounding box data to extract object pose information.
+        """Process 3D bounding box data to extract object pose information.
 
         Args:
             bounding_box_3d_data: 3D bounding box annotator data containing object information.
@@ -387,7 +386,7 @@ class PoseWriter(Writer):
 
     # Get the camera parameters from the annotator data
     def _process_camera_parameters(self, camera_params) -> dict:
-        """Processes camera parameters from annotator data.
+        """Process camera parameters from annotator data.
 
         Args:
             camera_params: Raw camera parameters from the annotator.
@@ -427,7 +426,7 @@ class PoseWriter(Writer):
 
     # Write the processed data to disk
     def _write_frame_data(self, rgb_data: dict, render_product_subfolder: str = ""):
-        """Writes frame data and RGB image to disk.
+        """Write frame data and RGB image to disk.
 
         Args:
             rgb_data: RGB image data to be written.
@@ -443,7 +442,7 @@ class PoseWriter(Writer):
 
     # Write overlay debug data to disk
     def _write_debug_data(self, rgb_data: dict, render_product_subfolder: str = ""):
-        """Writes debug overlay image with projected keypoints and coordinate axes.
+        """Write debug overlay image with projected keypoints and coordinate axes.
 
         Args:
             rgb_data: RGB image data to overlay debug information on.
@@ -483,7 +482,7 @@ class PoseWriter(Writer):
 
     # Transform a 3D point from world coordinates to camera coordinates
     def _world_point_to_camera_point(self, world_point, view_matrix):
-        """Transforms a 3D point from world coordinates to camera coordinates.
+        """Transform a 3D point from world coordinates to camera coordinates.
 
         Args:
             world_point: 3D point in world coordinates.
@@ -524,7 +523,7 @@ class PoseWriter(Writer):
         origin_local=[0, 0, 0],
         axes_length_perc=0.25,
     ):
-        """Draws local coordinate frame axes of an object projected onto the screen.
+        """Draw local coordinate frame axes of an object projected onto the screen.
 
         Args:
             draw: ImageDraw object for rendering the axes.
@@ -565,7 +564,7 @@ class PoseWriter(Writer):
 
     # Draws the world frame axes at the bottom left corner of the image.
     def _draw_world_frame_axes_bottom_left(self, draw, camera_params, axes_scale=0.03, margin_percentage=0.03):
-        """Draws the world coordinate system axes at the bottom-left corner of the image.
+        """Draw the world coordinate system axes at the bottom-left corner of the image.
 
         Args:
             draw: ImageDraw instance for drawing on the image.
@@ -613,7 +612,7 @@ class PoseWriter(Writer):
 
     # Draw the projected cuboid and its edges
     def _draw_projected_keypoints(self, draw, keypoints, point_size=4, edge_size=2):
-        """Draws the projected cuboid keypoints and edges on the image.
+        """Draw the projected cuboid keypoints and edges on the image.
 
         Args:
             draw: ImageDraw instance for drawing on the image.
@@ -640,6 +639,6 @@ class PoseWriter(Writer):
 
     # Override to clear the writer state
     def detach(self):
-        """Clears the writer state by resetting the frame counter to zero."""
+        """Clear the writer state by resetting the frame counter to zero."""
         super().detach()
         self._frame_id = 0

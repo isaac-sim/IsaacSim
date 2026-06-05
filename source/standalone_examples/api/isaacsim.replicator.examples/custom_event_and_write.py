@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Demonstrate custom event-triggered randomization and data capture."""
 
 from isaacsim import SimulationApp
 
@@ -64,6 +66,7 @@ writer.attach(rp)
 
 
 def run_example():
+    """Run custom event randomization and capture sequence."""
     print(f"Capturing at original positions")
     rep.orchestrator.step(rt_subframes=8)
 
@@ -90,5 +93,36 @@ def run_example():
 
 
 run_example()
+
+# <start-custom-event-and-write-test>
+import argparse
+import sys
+
+from isaacsim.core.utils.extensions import enable_extension
+
+enable_extension("isaacsim.test.utils")
+from isaacsim.test.utils.file_validation import validate_folder_contents
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--test",
+    action="store_true",
+    help="Validate captured output files against expected counts and exit.",
+)
+args, _ = parser.parse_known_args()
+
+if args.test:
+    # 5 captures (initial + 4 events), BasicWriter rgb-only writes 1 png per capture.
+    ok = validate_folder_contents(
+        path=out_dir,
+        recursive=True,
+        expected_counts={"png": 5},
+        fail_on_empty_files=True,
+    )
+    if not ok:
+        print(f"[SDG][Test][FAIL] Output validation failed for {out_dir}")
+        sys.exit(1)
+    print(f"[SDG][Test][PASS] Output validation succeeded for {out_dir}")
+# <end-custom-event-and-write-test>
 
 simulation_app.close()

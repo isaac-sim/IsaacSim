@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,5 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .physics_materials import PhysicsMaterial, RigidBodyMaterial, SurfaceDeformableMaterial, VolumeDeformableMaterial
-from .visual_materials import OmniGlassMaterial, OmniPbrMaterial, PreviewSurfaceMaterial, VisualMaterial
+"""Provide implementations for physics and visual material classes in Isaac Sim."""
+
+from .non_visual_material import NonVisualMaterial as NonVisualMaterial
+from .physics_materials import PhysicsMaterial as PhysicsMaterial
+from .physics_materials import RigidBodyMaterial as RigidBodyMaterial
+from .physics_materials import SurfaceDeformableMaterial as SurfaceDeformableMaterial
+from .physics_materials import VolumeDeformableMaterial as VolumeDeformableMaterial
+from .visual_materials import OmniGlassMaterial as OmniGlassMaterial
+from .visual_materials import OmniPbrMaterial as OmniPbrMaterial
+from .visual_materials import PreviewSurfaceMaterial as PreviewSurfaceMaterial
+from .visual_materials import VisualMaterial as VisualMaterial

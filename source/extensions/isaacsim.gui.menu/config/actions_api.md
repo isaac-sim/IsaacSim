@@ -18,4 +18,7 @@
 | open_isaac_online_guide           | Open Isaac Sim Online Guide         | Open the Isaac Sim online documentation             |
 | open_isaac_scripting_manual       | Open Isaac Sim Scripting Manual     | Open the Isaac Sim Python scripting manual          |
 | open_kit_manual                   | Open Kit Programming Manual         | Open the Kit programming manual                     |
+| open_openusd_reference            | Open OpenUSD Reference Guide        | Open the OpenUSD reference documentation            |
 | open_physics_manual               | Open Physics Programming Manual     | Open the physics programming manual                 |
+| open_warp_documentation           | Open Warp Documentation             | Open the Warp reference documentation               |
+| open_warp_getting_started         | Open Warp Getting Started           | Open the Warp getting started documentation         |

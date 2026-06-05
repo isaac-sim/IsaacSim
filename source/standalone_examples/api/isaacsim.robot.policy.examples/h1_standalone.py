@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Demonstrate H1 humanoid robot simulation with policy control."""
 
 from isaacsim import SimulationApp
 
@@ -40,6 +42,7 @@ parser.add_argument(
     help="Path to the environment url",
 )
 parser.add_argument("--device", type=str, choices=["cpu", "cuda"], default="cpu", help="Simulation device")
+parser.add_argument("--test", default=False, action="store_true", help="Run in test mode")
 
 args, unknown = parser.parse_known_args()
 print(f"Number of robots: {args.num_robots}")
@@ -52,6 +55,7 @@ robots = []
 
 # initialize robot on first step, run robot advance
 def on_physics_step(step_size, context) -> None:
+    """Handle physics step for robot initialization, reset, and control."""
     global first_step
     global reset_needed
     if first_step:
@@ -109,6 +113,8 @@ while simulation_app.is_running():
     simulation_app.update()
 
     if SimulationManager.is_simulating():
+        if args.test and i > 10:
+            break
         if i >= 0 and i < 80:
             # forward
             base_command = torch.tensor([0.5, 0, 0], device=args.device)

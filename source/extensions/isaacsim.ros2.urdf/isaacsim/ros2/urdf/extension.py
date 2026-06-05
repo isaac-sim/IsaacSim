@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+
 """Extension entry point for the ROS 2 URDF UI workflow."""
 
 import typing
@@ -45,6 +47,8 @@ class Extension(omni.ext.IExt):
     def on_startup(self, ext_id: str) -> None:
         """Initialize the extension when it is loaded.
 
+        Registers the import action and adds a menu item to the File menu.
+
         Args:
             ext_id: Extension identifier provided by the extension manager.
         """
@@ -75,7 +79,10 @@ class Extension(omni.ext.IExt):
         action_registry.deregister_all_actions_for_extension(self.ext_id)
 
     def on_shutdown(self) -> None:
-        """Clean up resources when the extension is unloaded."""
+        """Clean up resources when the extension is unloaded.
+
+        Removes menu items, deregisters actions, and shuts down the robot description component.
+        """
         remove_menu_items(self._menu_items, "File")
         self.deregister_actions()
         self.robot_description.shutdown()

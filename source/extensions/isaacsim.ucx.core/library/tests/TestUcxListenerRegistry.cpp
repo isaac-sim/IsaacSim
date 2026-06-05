@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -69,12 +69,12 @@ public:
                                                 const std::vector<int>& isCuda,
                                                 ucxx::Tag tag)
     {
-        std::vector<void*> non_const_buffer;
+        std::vector<void*> nonConstBuffer;
         for (const void* ptr : buffer)
         {
-            non_const_buffer.push_back(const_cast<void*>(ptr));
+            nonConstBuffer.push_back(const_cast<void*>(ptr));
         }
-        return endpoint->tagMultiSend(non_const_buffer, size, isCuda, tag, false);
+        return endpoint->tagMultiSend(nonConstBuffer, size, isCuda, tag, false);
     }
 
     std::shared_ptr<ucxx::Request> tagMultiReceive(ucxx::Tag tag, ucxx::TagMask mask)
@@ -109,8 +109,8 @@ TEST_SUITE("isaacsim.ucx.core.listener_registry_tests")
         CHECK(UCXListenerRegistry::isListenerRegistered(port1));
 
         // Test getting the same listener again using addListener with specific port
-        auto listener1_again = UCXListenerRegistry::addListener(port1);
-        REQUIRE(listener1_again.get() == listener1.get());
+        auto listener1Again = UCXListenerRegistry::addListener(port1);
+        REQUIRE(listener1Again.get() == listener1.get());
 
         // Test creating a second listener with different ephemeral port using addListener
         auto listener2 = UCXListenerRegistry::addListener();
@@ -157,117 +157,115 @@ TEST_SUITE("isaacsim.ucx.core.listener_registry_tests")
         UCXListenerRegistry::shutdown();
         //
         // Create a listener through the registry using addListener for ephemeral port
-        auto registry_listener = UCXListenerRegistry::addListener();
-        REQUIRE(registry_listener.get() != nullptr);
+        auto registryListener = UCXListenerRegistry::addListener();
+        REQUIRE(registryListener.get() != nullptr);
 
-        uint16_t server_port = registry_listener->getPort();
-        CHECK(server_port != 0);
-        CHECK(UCXListenerRegistry::isListenerRegistered(server_port));
+        uint16_t serverPort = registryListener->getPort();
+        CHECK(serverPort != 0);
+        CHECK(UCXListenerRegistry::isListenerRegistered(serverPort));
 
         // Stop progress thread before creating client connection
-        registry_listener->stopProgressThread();
+        registryListener->stopProgressThread();
 
         // Use the SAME worker as the listener (like official UCXX example)
-        auto shared_worker = registry_listener->getWorker();
-        auto client_connection = std::make_unique<TestClient>(shared_worker, "127.0.0.1", server_port);
-        REQUIRE(client_connection.get() != nullptr);
+        auto sharedWorker = registryListener->getWorker();
+        auto clientConnection = std::make_unique<TestClient>(sharedWorker, "127.0.0.1", serverPort);
+        REQUIRE(clientConnection.get() != nullptr);
         //
         // IMPORTANT: Start progress thread again after creating client connection (following official UCXX pattern)
-        registry_listener->startProgressThread();
+        registryListener->startProgressThread();
         //
         // Wait for the registry listener to accept the connection
-        CHECK(registry_listener->waitForConnection(5000));
-        CHECK(registry_listener->isConnected());
+        CHECK(registryListener->waitForConnection(5000));
+        CHECK(registryListener->isConnected());
         //
         // UCXConnection has been removed - use listener's tag methods directly
         //
         // IMPORTANT: Send small wireup messages first to let UCX identify capabilities
         // This is required before sending larger messages (following official UCXX pattern)
-        std::vector<int> wireup_data = { 1, 2, 3 };
-        std::vector<int> wireup_recv(wireup_data.size());
+        std::vector<int> wireupData = { 1, 2, 3 };
+        std::vector<int> wireupRecv(wireupData.size());
 
         std::string errorMsg;
-        auto wireup_send_result = registry_listener->tagSend(
-            wireup_data.data(), wireup_data.size() * sizeof(int), 0, errorMsg, std::optional<uint32_t>{ 5000 });
-        auto wireup_recv_req = client_connection->tagReceive(
-            wireup_recv.data(), wireup_recv.size() * sizeof(int), ucxx::Tag{ 0 }, ucxx::TagMaskFull);
+        auto wireupSendResult = registryListener->tagSend(
+            wireupData.data(), wireupData.size() * sizeof(int), 0, errorMsg, std::optional<uint32_t>{ 5000 });
+        auto wireupRecvReq = clientConnection->tagReceive(
+            wireupRecv.data(), wireupRecv.size() * sizeof(int), ucxx::Tag{ 0 }, ucxx::TagMaskFull);
 
         // Wait for wireup to complete
-        auto start_time = std::chrono::steady_clock::now();
+        auto startTime = std::chrono::steady_clock::now();
         auto timeout = std::chrono::seconds(5);
-        while ((std::chrono::steady_clock::now() - start_time < timeout) && (!wireup_recv_req->isCompleted()))
+        while ((std::chrono::steady_clock::now() - startTime < timeout) && (!wireupRecvReq->isCompleted()))
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-        CHECK(wireup_send_result == UcxSendResult::eSuccess);
-        CHECK(wireup_recv_req->isCompleted());
-        wireup_recv_req->checkError();
+        CHECK(wireupSendResult == UcxSendResult::eSuccess);
+        CHECK(wireupRecvReq->isCompleted());
+        wireupRecvReq->checkError();
         //
         // Test bidirectional communication
         //
         // Scenario 1: Client sends data to server through registry listener
-        std::vector<int> client_send_data = { 10, 20, 30, 40, 50 };
-        std::vector<int> server_recv_data(client_send_data.size());
-        ucxx::Tag test_tag1{ 1 };
+        std::vector<int> clientSendData = { 10, 20, 30, 40, 50 };
+        std::vector<int> serverRecvData(clientSendData.size());
+        ucxx::Tag testTag1{ 1 };
 
         // Initiate send from client
-        std::shared_ptr<ucxx::Request> client_send_request =
-            client_connection->tagSend(client_send_data.data(), client_send_data.size() * sizeof(int), test_tag1);
-        REQUIRE(client_send_request.get() != nullptr);
+        std::shared_ptr<ucxx::Request> clientSendRequest =
+            clientConnection->tagSend(clientSendData.data(), clientSendData.size() * sizeof(int), testTag1);
+        REQUIRE(clientSendRequest.get() != nullptr);
 
         // Initiate receive on server with timeout
         std::string recvErrorMsg;
-        auto server_recv_result =
-            registry_listener->tagReceive(server_recv_data.data(), server_recv_data.size() * sizeof(int), test_tag1,
-                                          ucxx::TagMaskFull, recvErrorMsg, 5000);
-        REQUIRE(server_recv_result == UcxReceiveResult::eSuccess);
+        auto serverRecvResult = registryListener->tagReceive(serverRecvData.data(), serverRecvData.size() * sizeof(int),
+                                                             testTag1, ucxx::TagMaskFull, recvErrorMsg, 5000);
+        REQUIRE(serverRecvResult == UcxReceiveResult::eSuccess);
 
         // Wait for client send to complete
-        start_time = std::chrono::steady_clock::now();
+        startTime = std::chrono::steady_clock::now();
         timeout = std::chrono::seconds(5);
-        while ((std::chrono::steady_clock::now() - start_time < timeout) && (!client_send_request->isCompleted()))
+        while ((std::chrono::steady_clock::now() - startTime < timeout) && (!clientSendRequest->isCompleted()))
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
-        CHECK(client_send_request->isCompleted());
-        client_send_request->checkError();
-        CHECK(server_recv_data == client_send_data);
+        CHECK(clientSendRequest->isCompleted());
+        clientSendRequest->checkError();
+        CHECK(serverRecvData == clientSendData);
 
         // Scenario 2: Server sends data to client through registry listener
-        std::vector<int> server_send_data(100, 0);
-        std::iota(server_send_data.begin(), server_send_data.end(), 100);
-        std::vector<int> client_recv_data(server_send_data.size());
-        ucxx::Tag test_tag2{ 2 };
+        std::vector<int> serverSendData(100, 0);
+        std::iota(serverSendData.begin(), serverSendData.end(), 100);
+        std::vector<int> clientRecvData(serverSendData.size());
+        ucxx::Tag testTag2{ 2 };
 
         // Initiate send from server with timeout
         std::string sendErrorMsg;
-        auto server_send_result =
-            registry_listener->tagSend(server_send_data.data(), server_send_data.size() * sizeof(int), test_tag2,
-                                       sendErrorMsg, std::optional<uint32_t>{ 5000 });
-        REQUIRE(server_send_result == UcxSendResult::eSuccess);
+        auto serverSendResult = registryListener->tagSend(serverSendData.data(), serverSendData.size() * sizeof(int),
+                                                          testTag2, sendErrorMsg, std::optional<uint32_t>{ 5000 });
+        REQUIRE(serverSendResult == UcxSendResult::eSuccess);
 
         // Initiate receive on client
-        std::shared_ptr<ucxx::Request> client_recv_request = client_connection->tagReceive(
-            client_recv_data.data(), client_recv_data.size() * sizeof(int), test_tag2, ucxx::TagMaskFull);
-        REQUIRE(client_recv_request.get() != nullptr);
+        std::shared_ptr<ucxx::Request> clientRecvRequest = clientConnection->tagReceive(
+            clientRecvData.data(), clientRecvData.size() * sizeof(int), testTag2, ucxx::TagMaskFull);
+        REQUIRE(clientRecvRequest.get() != nullptr);
 
         // Wait for client receive to complete
-        start_time = std::chrono::steady_clock::now();
+        startTime = std::chrono::steady_clock::now();
 
-        while ((std::chrono::steady_clock::now() - start_time < timeout) && (!client_recv_request->isCompleted()))
+        while ((std::chrono::steady_clock::now() - startTime < timeout) && (!clientRecvRequest->isCompleted()))
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
-        CHECK(client_recv_request->isCompleted());
-        REQUIRE_NOTHROW(client_recv_request->checkError());
-        CHECK(client_recv_data == server_send_data);
+        CHECK(clientRecvRequest->isCompleted());
+        REQUIRE_NOTHROW(clientRecvRequest->checkError());
+        CHECK(clientRecvData == serverSendData);
 
         // Clean up - stop progress thread before destroying endpoints (following official UCXX shutdown pattern)
-        shared_worker->stopProgressThread();
-        client_connection.reset();
-        registry_listener->shutdown();
+        sharedWorker->stopProgressThread();
+        clientConnection.reset();
+        registryListener->shutdown();
     }
 
     TEST_CASE("UCXListenerRegistry: multi-buffer communication through registry")
@@ -276,84 +274,83 @@ TEST_SUITE("isaacsim.ucx.core.listener_registry_tests")
         UCXListenerRegistry::shutdown();
 
         // Create a listener through the registry using addListener for ephemeral port
-        auto registry_listener = UCXListenerRegistry::addListener();
-        REQUIRE(registry_listener.get() != nullptr);
+        auto registryListener = UCXListenerRegistry::addListener();
+        REQUIRE(registryListener.get() != nullptr);
 
-        uint16_t server_port = registry_listener->getPort();
-        CHECK(server_port != 0);
+        uint16_t serverPort = registryListener->getPort();
+        CHECK(serverPort != 0);
 
         // Stop progress thread before creating client connection
-        registry_listener->stopProgressThread();
+        registryListener->stopProgressThread();
 
         // Use the SAME worker as the listener (like official UCXX example)
-        auto shared_worker = registry_listener->getWorker();
-        auto client_connection = std::make_unique<TestClient>(shared_worker, "127.0.0.1", server_port);
+        auto sharedWorker = registryListener->getWorker();
+        auto clientConnection = std::make_unique<TestClient>(sharedWorker, "127.0.0.1", serverPort);
 
         // IMPORTANT: Start progress thread again after creating client connection (following official UCXX pattern)
-        registry_listener->startProgressThread();
+        registryListener->startProgressThread();
 
         // Wait for connection
-        CHECK(registry_listener->waitForConnection(5000));
+        CHECK(registryListener->waitForConnection(5000));
 
         // UCXConnection has been removed - use listener's tag methods directly
         // IMPORTANT: Send small wireup messages first to let UCX identify capabilities
         // This is required before sending larger messages (following official UCXX pattern)
-        std::vector<int> wireup_data = { 1, 2, 3 };
-        std::vector<int> wireup_recv(wireup_data.size());
+        std::vector<int> wireupData = { 1, 2, 3 };
+        std::vector<int> wireupRecv(wireupData.size());
 
         std::string wireupErrorMsg;
-        auto wireup_send_result = registry_listener->tagSend(
-            wireup_data.data(), wireup_data.size() * sizeof(int), 0, wireupErrorMsg, std::optional<uint32_t>{ 10000 });
-        auto wireup_recv_req = client_connection->tagReceive(
-            wireup_recv.data(), wireup_recv.size() * sizeof(int), ucxx::Tag{ 0 }, ucxx::TagMaskFull);
+        auto wireupSendResult = registryListener->tagSend(
+            wireupData.data(), wireupData.size() * sizeof(int), 0, wireupErrorMsg, std::optional<uint32_t>{ 10000 });
+        auto wireupRecvReq = clientConnection->tagReceive(
+            wireupRecv.data(), wireupRecv.size() * sizeof(int), ucxx::Tag{ 0 }, ucxx::TagMaskFull);
 
         // Wait for wireup to complete
-        auto start_time = std::chrono::steady_clock::now();
+        auto startTime = std::chrono::steady_clock::now();
         auto timeout = std::chrono::seconds(10);
-        while ((std::chrono::steady_clock::now() - start_time < timeout) && (!wireup_recv_req->isCompleted()))
+        while ((std::chrono::steady_clock::now() - startTime < timeout) && (!wireupRecvReq->isCompleted()))
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-        CHECK(wireup_send_result == UcxSendResult::eSuccess);
-        CHECK(wireup_recv_req->isCompleted());
-        wireup_recv_req->checkError();
+        CHECK(wireupSendResult == UcxSendResult::eSuccess);
+        CHECK(wireupRecvReq->isCompleted());
+        wireupRecvReq->checkError();
 
         // Test multi-buffer send from client to server
         std::vector<int> buffer1 = { 1, 2, 3, 4, 5 };
         std::vector<float> buffer2 = { 1.1f, 2.2f, 3.3f };
         std::vector<char> buffer3 = { 'a', 'b', 'c', 'd' };
 
-        std::vector<const void*> send_buffers = { buffer1.data(), buffer2.data(), buffer3.data() };
-        std::vector<size_t> send_sizes = { buffer1.size() * sizeof(int), buffer2.size() * sizeof(float),
-                                           buffer3.size() * sizeof(char) };
-        std::vector<int> is_cuda = { 0, 0, 0 };
-        ucxx::Tag multi_tag{ 3 };
+        std::vector<const void*> sendBuffers = { buffer1.data(), buffer2.data(), buffer3.data() };
+        std::vector<size_t> sendSizes = { buffer1.size() * sizeof(int), buffer2.size() * sizeof(float),
+                                          buffer3.size() * sizeof(char) };
+        std::vector<int> isCuda = { 0, 0, 0 };
+        ucxx::Tag multiTag{ 3 };
         // Send multi-buffer from client
-        std::shared_ptr<ucxx::Request> multi_send_request =
-            client_connection->tagMultiSend(send_buffers, send_sizes, is_cuda, multi_tag);
-        REQUIRE(multi_send_request.get() != nullptr);
+        std::shared_ptr<ucxx::Request> multiSendRequest =
+            clientConnection->tagMultiSend(sendBuffers, sendSizes, isCuda, multiTag);
+        REQUIRE(multiSendRequest.get() != nullptr);
         // Receive multi-buffer on server with timeout
         std::string multiRecvErrorMsg;
-        auto multi_recv_result =
-            registry_listener->tagMultiReceive(multi_tag, ucxx::TagMaskFull, multiRecvErrorMsg, 10000);
-        REQUIRE(multi_recv_result == UcxReceiveResult::eSuccess);
+        auto multiRecvResult = registryListener->tagMultiReceive(multiTag, ucxx::TagMaskFull, multiRecvErrorMsg, 10000);
+        REQUIRE(multiRecvResult == UcxReceiveResult::eSuccess);
         // Wait for client send to complete
-        start_time = std::chrono::steady_clock::now();
+        startTime = std::chrono::steady_clock::now();
         timeout = std::chrono::seconds(10);
-        while ((std::chrono::steady_clock::now() - start_time < timeout) && (!multi_send_request->isCompleted()))
+        while ((std::chrono::steady_clock::now() - startTime < timeout) && (!multiSendRequest->isCompleted()))
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-        CHECK(multi_send_request->isCompleted());
-        multi_send_request->checkError();
+        CHECK(multiSendRequest->isCompleted());
+        multiSendRequest->checkError();
         // TODO(rhua): Verify the multi-buffer receive worked (basic completion check)
         // Note: Detailed buffer content verification would require accessing
         // the received buffers from the multi-recv request, which depends on
         // the specific UCX implementation details
         // Clean up - stop progress thread before destroying endpoints (following official UCXX shutdown pattern)
-        shared_worker->stopProgressThread();
-        client_connection.reset();
-        registry_listener->shutdown();
+        sharedWorker->stopProgressThread();
+        clientConnection.reset();
+        registryListener->shutdown();
     }
 
     TEST_CASE("UCXListenerRegistry: concurrent access and thread safety")
@@ -454,11 +451,11 @@ TEST_SUITE("isaacsim.ucx.core.listener_registry_tests")
         CHECK(listener2.get() != listener1.get());
 
         // Test that addListener can retrieve existing listeners by port
-        auto same_listener1 = UCXListenerRegistry::addListener(port1);
-        CHECK(same_listener1.get() == listener1.get());
+        auto sameListener1 = UCXListenerRegistry::addListener(port1);
+        CHECK(sameListener1.get() == listener1.get());
 
-        auto same_listener2 = UCXListenerRegistry::addListener(port2);
-        CHECK(same_listener2.get() == listener2.get());
+        auto sameListener2 = UCXListenerRegistry::addListener(port2);
+        CHECK(sameListener2.get() == listener2.get());
 
         // Test creating a listener on a specific port with addListener
         auto listener3 = UCXListenerRegistry::addListener(54321);

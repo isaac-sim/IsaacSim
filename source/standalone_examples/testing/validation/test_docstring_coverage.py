@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-This script checks the docstring coverage of Python modules in Isaac Sim extensions.
-It inspects public methods and functions to ensure they have valid docstrings.
+"""Check docstring coverage of Python modules in Isaac Sim extensions.
+
+This script inspects public methods and functions to ensure they have valid docstrings.
 """
 
 from isaacsim import SimulationApp
@@ -29,11 +29,10 @@ import fnmatch
 import importlib
 import inspect
 import json
-import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Tuple
 
 from isaacsim.core.utils.extensions import enable_extension
 
@@ -42,7 +41,7 @@ def is_public_method(name: str) -> bool:
     """Check if a method/function name is public.
 
     Args:
-        param name: Method or function name.
+        name: Method or function name.
 
     Returns:
         True if the method is public (doesn't start with underscore).
@@ -54,8 +53,8 @@ def is_extension_excluded(ext_name: str, exclusion_patterns: List[str]) -> bool:
     """Check if an extension matches any exclusion pattern.
 
     Args:
-        param ext_name: Extension name to check.
-        param exclusion_patterns: List of patterns (supports wildcards).
+        ext_name: Extension name to check.
+        exclusion_patterns: List of patterns (supports wildcards).
 
     Returns:
         True if the extension matches any exclusion pattern.
@@ -70,8 +69,8 @@ def get_function_info(obj: Any, name: str) -> Dict[str, Any]:
     """Get detailed information about a function/method.
 
     Args:
-        param obj: Function or method object.
-        param name: Name of the function/method.
+        obj: Function or method object.
+        name: Name of the function/method.
 
     Returns:
         Dictionary with function details including signature, file, and line number.
@@ -116,8 +115,8 @@ def check_docstring(obj: Any, name: str) -> Tuple[bool, str]:
     """Check if an object has a valid docstring.
 
     Args:
-        param obj: Object to check.
-        param name: Name of the object.
+        obj: Object to check.
+        name: Name of the object.
 
     Returns:
         Tuple of (has_valid_docstring, docstring_or_none).
@@ -134,8 +133,8 @@ def inspect_module(module_name: str, file_path: str) -> Dict[str, Any]:
     """Inspect a module and check for docstrings on public methods.
 
     Args:
-        param module_name: Name of the module to inspect.
-        param file_path: Path to the module file.
+        module_name: Name of the module to inspect.
+        file_path: Path to the module file.
 
     Returns:
         Dictionary containing inspection results.
@@ -219,7 +218,7 @@ def get_extensions_to_check(base_dir: str) -> Dict[str, str]:
     """Get list of extensions to check.
 
     Args:
-        param base_dir: Base directory to search for extensions.
+        base_dir: Base directory to search for extensions.
 
     Returns:
         Dictionary mapping extension names to their extension.toml paths.
@@ -248,7 +247,7 @@ def get_python_modules_from_extension_config(config_path: str) -> List[str]:
     """Parse extension.toml to find Python module names.
 
     Args:
-        param config_path: Path to extension.toml file.
+        config_path: Path to extension.toml file.
 
     Returns:
         List of Python module names defined in the extension.

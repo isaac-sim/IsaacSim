@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,18 +15,20 @@
 
 """Browser model implementation for organizing and managing examples in the Isaac Sim Examples Browser."""
 
-
+import asyncio
 import os
 from typing import List, Optional
 
 import carb.settings
-import omni.kit.commands
-import omni.usd
+import omni.kit.app
 from omni.kit.browser.core import CategoryItem, CollectionItem, DetailItem
-from omni.kit.browser.folder.core import FileSystemFolder, TreeFolderBrowserModel
-from pxr import Sdf, Tf, Usd
+from omni.kit.browser.folder.core import TreeFolderBrowserModel
 
 SETTING_FOLDER = "/exts/isaacsim.examples.browser/folders"
+
+# Folder thumbnail used by ExampleFolderDetailItem. Resolved relative to the extension's data folder.
+_DATA_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "data"))
+FOLDER_THUMBNAIL = os.path.join(_DATA_DIR, "folder.svg")
 
 
 class Example:
@@ -51,7 +53,7 @@ class Example:
         ui_hook: callable = None,
         category: str = "",
         thumbnail: Optional[str] = None,
-    ):
+    ) -> None:
         self.name = name
         self.category = category if category else "General"
         self.execute_entrypoint = execute_entrypoint
@@ -70,10 +72,12 @@ class ExampleCategoryItem(CategoryItem):
         name: The name of the category.
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str) -> None:
         super().__init__(name)
+        # Examples registered directly at this category (excluding descendants).
+        self.examples: List["ExampleDetailItem"] = []
 
-    def add_child(self, child_name: str):
+    def add_child(self, child_name: str) -> "ExampleCategoryItem":
         """Adds a child category item to the current category.
 
         Creates a new child category with the specified name if it doesn't already exist,
@@ -95,6 +99,14 @@ class ExampleCategoryItem(CategoryItem):
 
         return child_category
 
+    def collect_examples(self) -> List["ExampleDetailItem"]:
+        """Returns examples registered at this category and recursively at all descendants."""
+        items = list(self.examples)
+        for child in self.children:
+            if isinstance(child, ExampleCategoryItem):
+                items.extend(child.collect_examples())
+        return items
+
 
 class ExampleDetailItem(DetailItem):
     """A detail item representing an individual example in the Isaac Sim examples browser.
@@ -107,23 +119,46 @@ class ExampleDetailItem(DetailItem):
         example: The Example object containing the example's metadata and execution details.
     """
 
-    def __init__(self, example: Example):
+    def __init__(self, example: Example) -> None:
         super().__init__(example.name, "", example.thumbnail)
         self.example = example
         self.ui_hook = example.ui_hook
 
 
+class ExampleFolderDetailItem(DetailItem):
+    """A detail-view tile that represents a sub-category, like a folder in a file browser.
+
+    When a user double-clicks one of these tiles in the detail view, the model's `execute` method
+    looks up the matching live category by path and changes the tree selection to drill into it.
+
+    Args:
+        category_path: Slash-separated path identifying the sub-category (e.g. ``"ROS2/Navigation"``).
+        name: Display name shown on the tile (typically the leaf segment of the path).
+        thumbnail: Optional path to a folder icon used as the tile thumbnail.
+    """
+
+    def __init__(self, category_path: str, name: str, thumbnail: Optional[str] = None):
+        super().__init__(name, "", thumbnail)
+        self.category_path = category_path
+        # Property delegates iterate selected items and call `item.ui_hook()` to render extra UI; folder
+        # tiles don't contribute UI, but we expose a no-op so the shared delegate path keeps working.
+        self.ui_hook = lambda: None
+
+
 class ExampleBrowserModel(TreeFolderBrowserModel):
-    """Represent asset browser model
+    """Represent asset browser model.
 
     Args:
         *args: Variable length argument list passed to the parent class.
         **kwargs: Additional keyword arguments passed to the parent class.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: object, **kwargs: object) -> None:
         settings = carb.settings.get_settings()
         self._examples = {}
+        # Set by `set_widget()` once the BrowserWidget is constructed; used by `execute()` to drive
+        # tree navigation when a folder tile is double-clicked.
+        self._widget = None
         super().__init__(
             *args,
             setting_folders=SETTING_FOLDER,
@@ -133,7 +168,11 @@ class ExampleBrowserModel(TreeFolderBrowserModel):
             **kwargs,
         )
 
-    def register_example(self, **kwargs):
+    def set_widget(self, widget) -> None:
+        """Register the BrowserWidget so folder tiles can drive tree navigation on double-click."""
+        self._widget = widget
+
+    def register_example(self, **kwargs: object) -> None:
         """Registers a new example in the browser.
 
         Args:
@@ -152,8 +191,8 @@ class ExampleBrowserModel(TreeFolderBrowserModel):
         self.refresh_browser()
         return
 
-    def get_category_items(self, item: CollectionItem) -> List[CategoryItem]:
-        """Override to get list of category items
+    def get_category_items(self, item: CollectionItem) -> list[CategoryItem]:
+        """Override to get list of category items.
 
         Args:
             item: Collection item to get categories for.
@@ -161,71 +200,110 @@ class ExampleBrowserModel(TreeFolderBrowserModel):
         Returns:
             List of category items organized hierarchically.
         """
-        category_items = []
-        for category in self._examples:
-            categories = category.split("/")
+        category_items: List[ExampleCategoryItem] = []
+        for category, examples in self._examples.items():
+            parts = category.split("/")
 
-            if categories[0] not in [c.name for c in category_items]:  # if the category is not already in the list
-                current_category = ExampleCategoryItem(categories[0])
+            current_category = next((c for c in category_items if c.name == parts[0]), None)
+            if current_category is None:
+                current_category = ExampleCategoryItem(parts[0])
                 category_items.append(current_category)
-            else:
-                current_category = category_items[[c.name for c in category_items].index(categories[0])]
 
-            if len(categories) > 1:
-                for i in range(1, len(categories)):
-                    if categories[i] not in [c.name for c in current_category.children]:
-                        child_category = current_category.add_child(categories[i])
-                        current_category = child_category
-                    else:
-                        current_category = current_category.children[
-                            [c.name for c in current_category.children].index(categories[i])
-                        ]
+            for part in parts[1:]:
+                current_category = current_category.add_child(part)
 
+            # Bind the live example list so register/deregister stays reflected without rebuilding.
+            current_category.examples = examples
+
+        # Cache the live tree so `execute()` can resolve folder-tile paths back to current category items.
+        self._category_root = category_items
         self.sort_items(category_items)
         return category_items
 
-    def get_detail_items(self, item: ExampleCategoryItem) -> List[ExampleDetailItem]:
-        """Override to get list of detail items
+    def get_detail_items(self, item: ExampleCategoryItem) -> List[DetailItem]:
+        """Override to get list of detail items.
+
+        Returns the directly-registered examples at ``item``, plus a folder tile per sub-category. This
+        mirrors a typical file-browser detail view: clicking a parent category shows its files (examples)
+        and folders (sub-categories) at one level only, not recursively.
 
         Args:
             item: Category item to get examples for.
 
         Returns:
-            List of example detail items in the category.
+            List of detail items: ``ExampleDetailItem`` for direct examples and ``ExampleFolderDetailItem``
+            for each immediate sub-category.
         """
-        detail_items = []
-
-        def lookup_category_name(item):
-            key_name = item.name
-            while item.parent:
-                key_name = item.parent.name + "/" + key_name
-                item = item.parent
-            return key_name
-
         if item.name == self.SUMMARY_FOLDER_NAME:
-            # List all files in sub folders
-            for category, examples in self._examples.items:
-                detail_items += examples
+            # Summary still shows everything flattened, matching the pre-existing convention.
+            detail_items: List[DetailItem] = [example for examples in self._examples.values() for example in examples]
+        elif isinstance(item, ExampleCategoryItem):
+            detail_items = list(item.examples)
+            parent_path = self._category_path(item)
+            for child in item.children:
+                if isinstance(child, ExampleCategoryItem):
+                    child_path = f"{parent_path}/{child.name}" if parent_path else child.name
+                    detail_items.append(ExampleFolderDetailItem(child_path, child.name, FOLDER_THUMBNAIL))
         else:
-            lookup_name = lookup_category_name(item)
-            if lookup_name in self._examples:
-                detail_items += self._examples[lookup_name]
+            detail_items = []
 
         self.sort_items(detail_items)
         return detail_items
 
-    def execute(self, item: ExampleDetailItem):
-        """Executes the selected example.
+    def execute(self, item: DetailItem) -> None:
+        """Execute a detail item.
+
+        For a regular example tile, runs the example's entrypoint. For a folder tile, navigates the tree
+        to the corresponding sub-category so the user can drill into it.
 
         Args:
-            item: Example detail item to execute.
+            item: The detail item that was activated (typically by a double-click).
         """
-        # Create a Reference or payload of the Props in the stage
-        example = item.example
-        if example.execute_entrypoint:
-            example.execute_entrypoint()
+        if isinstance(item, ExampleFolderDetailItem):
+            target = self._find_category_by_path(item.category_path)
+            if target is not None and self._widget is not None:
+                # Mutating category selection synchronously inside the double-click handler tears down
+                # the very widget tree currently dispatching the event ("Container::destroy was called
+                # during an event or draw"). Defer to the next update so the event chain completes
+                # before the tree gets rebuilt.
+                widget = self._widget
 
-    def deregister_example(self, name: str, category: str):
+                async def _select_next_frame() -> None:
+                    await omni.kit.app.get_app().next_update_async()
+                    widget.category_selection = [target]
+
+                asyncio.ensure_future(_select_next_frame())
+            return
+
+        if isinstance(item, ExampleDetailItem):
+            example = item.example
+            if example.execute_entrypoint:
+                example.execute_entrypoint()
+
+    def _category_path(self, item: "ExampleCategoryItem") -> str:
+        """Reconstruct the slash-separated path for a category by walking its parent chain."""
+        parts: List[str] = []
+        current: Optional[ExampleCategoryItem] = item
+        while current is not None:
+            parts.append(current.name)
+            current = current.parent if isinstance(current.parent, ExampleCategoryItem) else None
+        return "/".join(reversed(parts))
+
+    def _find_category_by_path(self, path: str) -> Optional["ExampleCategoryItem"]:
+        """Look up the live category instance matching ``path`` in the most recently built tree."""
+        roots = getattr(self, "_category_root", None) or self.get_category_items(None)
+        parts = path.split("/")
+        current = next((c for c in roots if c.name == parts[0]), None)
+        for part in parts[1:]:
+            if current is None:
+                return None
+            current = next(
+                (c for c in current.children if isinstance(c, ExampleCategoryItem) and c.name == part),
+                None,
+            )
+        return current
+
+    def deregister_example(self, name: str, category: str) -> None:
         """Removes an example from the browser.
 
         Args:
@@ -238,7 +316,7 @@ class ExampleBrowserModel(TreeFolderBrowserModel):
                 del self._examples[category]
         self.refresh_browser()
 
-    def refresh_browser(self):
+    def refresh_browser(self) -> None:
         """Refreshes the browser display to reflect current examples."""
         collections = self.get_item_children(None)
         if collections:

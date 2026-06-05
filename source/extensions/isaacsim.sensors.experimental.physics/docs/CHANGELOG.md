@@ -1,5 +1,73 @@
 # Changelog
 
+## [3.0.1] - 2026-05-10
+### Fixed
+- Refresh IMU prim-data reader initialization when reading or stepping so IMU data is available after physics-only simulation steps
+- Add physics-only stepping coverage for contact, effort, IMU, joint state, and raycast sensors
+
+## [3.0.0] - 2026-04-30
+### Changed
+- Aligned `IMUSensor`, `ContactSensor`, and `RaycastSensor` with `isaacsim.sensors.experimental.rtx`:
+  - Split authoring (`IMU`/`Contact`/`Raycast`) from runtime. Runtime constructors take a path or authoring instance; `create()` lives only on the authoring classes — replace `IMUSensor.create(path, ...)` with `IMUSensor(IMU.create(path, ...))` (same for `Contact`/`Raycast`).
+  - Constructors take keyword-only `positions`/`translations`/`orientations`/`scales` arrays (`(N, 3)`/`(N, 4)` wxyz) plus `reset_xform_op_properties` (default `True`), instead of singular `Gf` types. Constructor parameter `prim_path` renamed to `path`.
+  - Multi-prim `path`, conflicting `positions`/`translations`, and wrapping an existing prim whose USD type does not match the sensor's `_PRIM_TYPE` now raise `ValueError`. Dropped unused `name` parameter.
+  - Removed `__getattr__` attribute forwarding from the runtime; go through the typed `sensor.imu` / `sensor.contact` / `sensor.raycast` accessor for `paths`, `prims`, `set_visibilities`, `get_world_poses`, etc.
+- Removed `*Backend` classes (`ImuSensorBackend`, `ContactSensorBackend`, `RaycastSensorBackend`, `EffortSensorBackend`, `JointStateSensorBackend`). The runtime sensors now own the C++ Carbonite interface directly and expose both `get_data()` (dict) and `get_sensor_reading()` (raw struct) — replace `XxxSensorBackend(path)` with `XxxSensor(path)`. Renamed `get_current_frame()` → `get_data()`; removed the `get_current_frame` alias, the `prim_path` property, and the no-op `initialize()` method. Removed `ContactSensor.{get,set}_min_threshold` / `_max_threshold` / `_radius` shims (use `sensor.contact.<method>` instead). Added `get_data()` to `EffortSensor` and `JointStateSensor` so all five sensors expose a consistent `get_data()` + `get_sensor_reading()` pair.
+- Hardened the C++ runtime against prim deletion and recreation. `getSensorReading` (and Contact's `getRawContacts`) now invalidate the cached entry when the underlying USD prim has been removed across all five sensors. The `createSensor` early-out tears down the cached entry when the parent rigid body / articulation root no longer matches and refreshes config so attribute changes on a re-authored prim at the same path are picked up.
+
+## [2.7.1] - 2026-04-22
+### Fixed
+- Fix `ContactSensor.__init__` accessing `self._prim` before assignment when applying threshold/radius overrides
+
+## [2.7.0] - 2026-04-22
+### Changed
+- Replaced command classes with `create()` static methods on sensor wrapper classes (`ContactSensor.create()`, `IMUSensor.create()`, `RaycastSensor.create()`) matching the `isaacsim.sensors.experimental.rtx` pattern
+- Removed command classes, standalone factory functions, and `sensor_helpers.py`; sensor prim creation logic is now inlined in each sensor class
+- Removed `commands_api.md`; updated `api.rst` and `Overview.md` to document class-based creation API
+- Refactored backend classes to use shared `_PhysicsSensorBase` lifecycle (lazy interface, ensure/retry, reset, timeline stop), eliminating ~300 lines of duplicated code
+- Extracted `_create_sensor_prim` helper for shared prim creation boilerplate across Contact, IMU, and Raycast sensors
+- Removed deprecated `_SensorStepManager.get_imu_backend()` method
+- Fixed `ContactSensor.__init__` parent validation to walk up the hierarchy and accept both `CollisionAPI` and `RigidBodyAPI` ancestors
+
+## [2.6.0] - 2026-04-22
+### Changed
+- Add update() flush calls in EffortSensorImpl and ImuSensorImpl before reading physics data
+
+## [2.5.0] - 2026-04-21
+### Changed
+- Port ContactSensor to use IPrimDataReader contact API (`enableContactReporting`/`getContactReport`) instead of direct PhysX contact event subscription
+
+## [2.4.0] - 2026-04-17
+### Added
+- Add Raycast Sensor C++ implementation, Python bindings, backend, commands, and examples
+
+## [2.3.4] - 2026-04-15
+### Changed
+- Fix test failure after moving to codeless USD schemas
+
+## [2.3.3] - 2026-04-09
+### Removed
+- Remove the `omni.isaac.ml_archive` dependency
+
+## [2.3.2] - 2026-03-26
+### Changed
+- Moved Python binding module to `bindings/` subdirectory
+
+## [2.3.1] - 2026-03-22
+### Changed
+- Add null guards for deferred prim data reader provider loading in sensor _initializeStage
+
+## [2.3.0] - 2026-03-20
+### Changed
+- Replace int64 sensorID with prim path string for deterministic sensor identity across runs
+- Bump C++ Carbonite interface versions to 2.0 (IImuSensor, IContactSensor, IEffortSensor, IJointStateSensor)
+- createSensor() now returns bool instead of int64; removeSensor/getSensorReading/getRawContacts take prim path instead of sensor ID
+- Internal sensor maps keyed by prim path (std::string) instead of monotonic counter
+
+## [2.2.1] - 2026-03-12
+### Changed
+- Migrate ContactSensor and ImuSensor world-transform reads from computeWorldXformNoCache to IXformDataView (IPrimDataReader)
+
 ## [2.2.0] - 2026-03-05
 ### Added
 - Add joint state sensor that reads all DOF positions, velocities, and efforts per articulation

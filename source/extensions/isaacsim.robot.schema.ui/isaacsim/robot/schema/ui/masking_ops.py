@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """USD operations for robot masking and bypassing.
 
 All opinions are written to a dedicated anonymous in-memory sublayer
@@ -227,55 +228,87 @@ class MaskingOperations:
     # Public API -- bypass / unbypass
     # ------------------------------------------------------------------
 
-    def bypass_prim(self, original_path: str) -> tuple[str, str] | None:
+    def bypass_prim(self, original_path: str) -> tuple[bool, tuple[str, str] | None]:
         """Bypass a joint or link (mask it and reconnect the chain around it).
 
         Args:
             original_path: Original stage prim path string.
 
         Returns:
-            For link bypass, (backward_joint_path, prev_state) where prev_state
-            is "enabled", "masked", or "bypassed"; None for joint bypass or failure.
+            A tuple ``(success, joint_info)``:
+
+            * ``success`` is True iff USD masking opinions were written; False
+              when the stage/prim/layer is unavailable or the prim is not a
+              joint or maskable link.
+            * ``joint_info`` is ``(backward_joint_path, prev_state)`` for a
+              successful link bypass that disabled a backward joint (where
+              ``prev_state`` is ``"enabled"``, ``"masked"``, or ``"bypassed"``),
+              or ``None`` for joint bypass, link bypass with no backward joint,
+              or any failure.
+
+            ``success`` MUST be honored by the caller before recording
+            in-memory state — silent "success without USD effect" is a bug.
         """
         stage = self._get_stage()
         if not stage:
-            return None
+            return (False, None)
         prim = stage.GetPrimAtPath(original_path)
         if not prim or not prim.IsValid():
             carb.log_warn(f"Cannot bypass: prim not found at {original_path}")
-            return None
+            return (False, None)
         masking_layer = self._masking_layer.acquire()
         if not masking_layer:
-            return None
+            return (False, None)
         with Usd.EditContext(stage, masking_layer):
             if is_joint_type(prim):
                 self._bypass_joint(stage, prim)
-                return None
+                return (True, None)
             elif is_maskable_type(prim):
-                return self._bypass_link(stage, prim)
+                return (True, self._bypass_link(stage, prim))
             else:
                 carb.log_warn(f"Cannot bypass: unsupported type at {original_path}")
-                return None
+                return (False, None)
 
-    def unbypass_prim(self, original_path: str) -> tuple[str, str] | None:
+    def unbypass_prim(self, original_path: str) -> tuple[bool, tuple[str, str] | None]:
         """Remove bypass (unmask the element and undo chain reconnection).
 
         Args:
             original_path: Original stage prim path string.
 
         Returns:
-            For link unbypass, (backward_joint_path, prev_state) for UI
-            tracking; None for joint unbypass or failure.
+            A tuple ``(success, joint_info)``:
+
+            * ``success`` is True when the unbypass either ran USD cleanup or
+              had nothing to clean (no masking layer, no prim spec); False
+              only when the stage or live prim is unavailable.
+            * ``joint_info`` is ``(backward_joint_path, prev_state)`` for link
+              unbypass that restored a backward joint, otherwise ``None``.
+
+            A True ``success`` with ``joint_info is None`` is the normal case
+            for joint unbypass; it is distinguishable from failure by
+            ``success`` being True.
+
+        Note on asymmetry with :meth:`bypass_prim`:
+            ``bypass_prim`` uses ``MaskingLayer.acquire()`` (a write attempt
+            that creates the sublayer on demand); if acquisition fails, the
+            requested USD write is impossible and the result is ``(False, None)``.
+            ``unbypass_prim`` uses ``MaskingLayer.get()`` (a read-only lookup);
+            a missing layer means there is no bypass on disk to undo, which
+            is the desired post-condition and is reported as
+            ``(True, None)``. The two ``None`` returns therefore have
+            deliberately different semantics.
         """
         stage = self._get_stage()
         if not stage:
-            return None
+            return (False, None)
         prim = stage.GetPrimAtPath(original_path)
         if not prim or not prim.IsValid():
-            return None
+            return (False, None)
         masking_layer = self._masking_layer.get()
         if not masking_layer:
-            return None
+            # Nothing to undo at the USD layer; treat as success so the caller
+            # can still drop its in-memory tracking.
+            return (True, None)
         result: tuple[str, str] | None = None
         with Usd.EditContext(stage, masking_layer):
             if is_joint_type(prim):
@@ -283,7 +316,7 @@ class MaskingOperations:
             elif is_maskable_type(prim):
                 result = self._unbypass_link(stage, prim, masking_layer)
         self._release_if_empty()
-        return result
+        return (True, result)
 
     def get_masking_layer_id(self) -> str | None:
         """Return the identifier of the masking sublayer, or None if it does not exist.

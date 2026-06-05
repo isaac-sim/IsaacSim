@@ -28,7 +28,7 @@ from omni.kit.app import get_app
 class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
     """Test suite for RmpFlowController with Franka robot."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment before each test."""
         await stage_utils.create_new_stage_async()
         await get_app().next_update_async()
@@ -51,7 +51,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
         self.robot_joint_space = self.cumotion_robot.controlled_joint_names
         self.robot_site_space = self.cumotion_robot.robot_description.tool_frame_names()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after each test."""
         # Stop timeline if running
         if self._timeline.is_playing():
@@ -63,7 +63,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
     # Test initialization
     # ============================================================================
 
-    async def test_rmp_flow_controller_initialization(self):
+    async def test_rmp_flow_controller_initialization(self) -> None:
         """Test that RmpFlowController initializes correctly."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -75,7 +75,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(controller)
         self.assertIsNotNone(controller.get_rmp_flow_config())
 
-    async def test_rmp_flow_controller_with_custom_tool_frame(self):
+    async def test_rmp_flow_controller_with_custom_tool_frame(self) -> None:
         """Test initialization with explicitly specified tool frame."""
         tool_frames = self.cumotion_robot.robot_description.tool_frame_names()
         self.assertGreater(len(tool_frames), 0)
@@ -90,7 +90,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertIsNotNone(controller)
 
-    async def test_rmp_flow_controller_with_default_tool_frame(self):
+    async def test_rmp_flow_controller_with_default_tool_frame(self) -> None:
         """Test initialization with default tool frame (None specified)."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -102,7 +102,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertIsNotNone(controller)
 
-    async def test_rmp_flow_controller_invalid_joint_space(self):
+    async def test_rmp_flow_controller_invalid_joint_space(self) -> None:
         """Test that invalid joint space raises ValueError."""
         # Create a joint space that doesn't contain all controlled joints
         invalid_joint_space = ["joint1", "joint2"]  # Not a superset of controlled joints
@@ -115,7 +115,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
                 robot_site_space=self.robot_site_space,
             )
 
-    async def test_rmp_flow_controller_invalid_tool_frame(self):
+    async def test_rmp_flow_controller_invalid_tool_frame(self) -> None:
         """Test that tool frame not in robot_site_space raises ValueError."""
         invalid_tool_frame = "nonexistent_frame"
 
@@ -128,7 +128,29 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
                 tool_frame=invalid_tool_frame,
             )
 
-    async def test_rmp_flow_controller_with_custom_config_file(self):
+    async def test_rmp_flow_controller_invalid_maximum_substep_size_zero(self) -> None:
+        """Test that maximum_substep_size of zero raises ValueError."""
+        with self.assertRaises(ValueError):
+            cu_mg.RmpFlowController(
+                cumotion_robot=self.cumotion_robot,
+                cumotion_world_interface=self.world_binding.get_world_interface(),
+                robot_joint_space=self.robot_joint_space,
+                robot_site_space=self.robot_site_space,
+                maximum_substep_size=0.0,
+            )
+
+    async def test_rmp_flow_controller_invalid_maximum_substep_size_negative(self) -> None:
+        """Test that a negative maximum_substep_size raises ValueError."""
+        with self.assertRaises(ValueError):
+            cu_mg.RmpFlowController(
+                cumotion_robot=self.cumotion_robot,
+                cumotion_world_interface=self.world_binding.get_world_interface(),
+                robot_joint_space=self.robot_joint_space,
+                robot_site_space=self.robot_site_space,
+                maximum_substep_size=-0.01,
+            )
+
+    async def test_rmp_flow_controller_with_custom_config_file(self) -> None:
         """Test initialization with custom configuration file."""
         # Note: This test assumes a config file exists. If not, it will use defaults.
         controller = cu_mg.RmpFlowController(
@@ -145,7 +167,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
     # Test reset method
     # ============================================================================
 
-    async def test_reset_successful(self):
+    async def test_reset_successful(self) -> None:
         """Test successful controller reset."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -172,7 +194,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertTrue(success)
 
-    async def test_reset_with_missing_joint_state(self):
+    async def test_reset_with_missing_joint_state(self) -> None:
         """Test reset with missing joint state returns False."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -188,7 +210,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertFalse(success)
 
-    async def test_reset_with_partial_joint_state(self):
+    async def test_reset_with_partial_joint_state(self) -> None:
         """Test reset with partial joint state (missing some joints) returns False."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -217,7 +239,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
     # Test forward method
     # ============================================================================
 
-    async def test_forward_before_reset_returns_none(self):
+    async def test_forward_before_reset_returns_none(self) -> None:
         """Test that forward returns None before reset."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -243,7 +265,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertIsNone(desired_state)
 
-    async def test_forward_after_reset(self):
+    async def test_forward_after_reset(self) -> None:
         """Test forward after successful reset."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -278,7 +300,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(desired_state.joints.velocities)
         self.assertEqual(len(desired_state.joints.position_names), len(self.cumotion_robot.controlled_joint_names))
 
-    async def test_forward_with_joint_attractor(self):
+    async def test_forward_with_joint_attractor(self) -> None:
         """Test forward with joint space attractor in setpoint."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -323,7 +345,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertIsNotNone(desired_state)
 
-    async def test_forward_with_position_attractor(self):
+    async def test_forward_with_position_attractor(self) -> None:
         """Test forward with end-effector position attractor in setpoint."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -368,7 +390,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertIsNotNone(desired_state)
 
-    async def test_forward_with_orientation_attractor(self):
+    async def test_forward_with_orientation_attractor(self) -> None:
         """Test forward with end-effector orientation attractor in setpoint."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -413,7 +435,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertIsNotNone(desired_state)
 
-    async def test_forward_with_all_attractors(self):
+    async def test_forward_with_all_attractors(self) -> None:
         """Test forward with joint, position, and orientation attractors."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -467,7 +489,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertIsNotNone(desired_state)
 
-    async def test_forward_time_progression(self):
+    async def test_forward_time_progression(self) -> None:
         """Test forward with time progression."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -512,7 +534,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(positions_2)
         self.assertIsNotNone(positions_3)
 
-    async def test_forward_with_none_setpoint(self):
+    async def test_forward_with_none_setpoint(self) -> None:
         """Test forward with None setpoint (no attractors)."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -546,7 +568,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
     # Test configuration access
     # ============================================================================
 
-    async def test_get_rmp_flow_config(self):
+    async def test_get_rmp_flow_config(self) -> None:
         """Test getting the RMPflow configuration."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -559,7 +581,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(config)
         self.assertIsInstance(config, cumotion.RmpFlowConfig)
 
-    async def test_modify_rmp_flow_config(self):
+    async def test_modify_rmp_flow_config(self) -> None:
         """Test modifying RMPflow configuration parameters."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -586,7 +608,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
     # Test edge cases
     # ============================================================================
 
-    async def test_multiple_forward_calls(self):
+    async def test_multiple_forward_calls(self) -> None:
         """Test multiple consecutive forward calls."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -617,7 +639,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
             desired_state = controller.forward(estimated_state=estimated_state, setpoint_state=None, t=t)
             self.assertIsNotNone(desired_state)
 
-    async def test_forward_with_very_small_time_step(self):
+    async def test_forward_with_very_small_time_step(self) -> None:
         """Test forward with very small time step."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -647,7 +669,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertIsNotNone(desired_state)
 
-    async def test_forward_with_large_time_step(self):
+    async def test_forward_with_large_time_step(self) -> None:
         """Test forward with large time step."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -677,7 +699,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertIsNotNone(desired_state)
 
-    async def test_reset_twice(self):
+    async def test_reset_twice(self) -> None:
         """Test resetting the controller twice."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,
@@ -707,7 +729,7 @@ class TestRmpFlowControllerFranka(omni.kit.test.AsyncTestCase):
         success2 = controller.reset(estimated_state=estimated_state, setpoint_state=None, t=0.5)
         self.assertTrue(success2)
 
-    async def test_forward_with_changing_setpoint(self):
+    async def test_forward_with_changing_setpoint(self) -> None:
         """Test forward with changing setpoint over time."""
         controller = cu_mg.RmpFlowController(
             cumotion_robot=self.cumotion_robot,

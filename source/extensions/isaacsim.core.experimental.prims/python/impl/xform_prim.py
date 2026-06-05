@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""High level wrapper for manipulating ``Xform`` prims and their transformation attributes."""
+
 from __future__ import annotations
 
 import carb
@@ -24,7 +26,6 @@ import numpy as np
 import usdrt
 import usdrt.Gf
 import warp as wp
-from isaacsim.core.simulation_manager import SimulationManager
 from pxr import Gf, Usd, UsdGeom, UsdShade
 
 from . import _fabric, _transform
@@ -107,11 +108,9 @@ class XformPrim(Prim):
                 positions is None or translations is None
             ), "Both 'positions' and 'translations' are specified. Specify only one of them"
             if self._non_root_articulation_link:
-                raise carb.log_warn(
-                    (
-                        "The prim is a non-root link in an articulation. "
-                        "Specified values (positions, translations, orientations and/or scales) will not be set"
-                    )
+                carb.log_warn(
+                    "The prim is a non-root link in an articulation. "
+                    "Specified values (positions, translations, orientations and/or scales) will not be set"
                 )
             else:
                 if positions is not None or orientations is not None:
@@ -322,7 +321,7 @@ class XformPrim(Prim):
         Backends: :guilabel:`usd`.
 
         Args:
-            visual_materials: Visual materials to be applied to the prims (shape ``(N,)``).
+            materials: Visual materials to be applied to the prims (shape ``(N,)``).
                 If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).
             weaker_than_descendants: Boolean flags to indicate whether descendant materials should be overridden (shape ``(N, 1)``).
                 If the input shape is smaller than expected, data will be broadcasted (following NumPy broadcast rules).
@@ -482,7 +481,7 @@ class XformPrim(Prim):
             ):
                 # TODO: should fall back to other backend???
                 carb.log_error(f"Failed to update fabric selection for {fabric_data['attr']}")
-                return
+                return None
             indices = ops_utils.resolve_indices(indices, count=len(self), device=self._device)
             positions = fabric_data["cache"]["positions"]
             orientations = fabric_data["cache"]["orientations"]
@@ -672,7 +671,7 @@ class XformPrim(Prim):
             ):
                 # TODO: should fall back to other backend???
                 carb.log_error(f"Failed to update fabric selection for {fabric_data['attr']}")
-                return
+                return None
             indices = ops_utils.resolve_indices(indices, count=len(self), device=self._device)
             translations = fabric_data["cache"]["translations"]
             orientations = fabric_data["cache"]["orientations"]
@@ -751,14 +750,18 @@ class XformPrim(Prim):
                 prim = self.prims[index]
                 property_names = prim.GetPropertyNames()
                 if translations is not None:
-                    assert (
-                        "xformOp:translate" in property_names
-                    ), f"Undefined 'xformOp:translate' property for {self.paths[index]}. Call '.reset_xform_op_properties()' first"
+                    assert "xformOp:translate" in property_names, (
+                        f"Undefined 'xformOp:translate' property for the {self.paths[index]} prim. "
+                        "Set the 'reset_xform_op_properties' parameter to True when initializing the class, "
+                        "or call '.reset_xform_op_properties()' manually before doing transform operations"
+                    )
                     prim.GetAttribute("xformOp:translate").Set(Gf.Vec3d(*translations[i]))
                 if orientations is not None:
-                    assert (
-                        "xformOp:orient" in property_names
-                    ), f"Undefined 'xformOp:orient' property for {self.paths[index]}. Call '.reset_xform_op_properties()' first"
+                    assert "xformOp:orient" in property_names, (
+                        f"Undefined 'xformOp:orient' property for the {self.paths[index]} prim. "
+                        "Set the 'reset_xform_op_properties' parameter to True when initializing the class, "
+                        "or call '.reset_xform_op_properties()' manually before doing transform operations"
+                    )
                     xform_op = prim.GetAttribute("xformOp:orient")
                     xform_op.Set((Gf.Quatf if xform_op.GetTypeName() == "quatf" else Gf.Quatd)(*orientations[i]))
         # USDRT API (with FSD and IFabricHierarchy)
@@ -856,9 +859,11 @@ class XformPrim(Prim):
             for i, index in enumerate(indices.numpy()):
                 prim = self.prims[index]
                 property_names = prim.GetPropertyNames()
-                assert (
-                    "xformOp:scale" in property_names
-                ), f"Undefined 'xformOp:scale' property for {self.paths[index]}. Call '.reset_xform_op_properties()' first"
+                assert "xformOp:scale" in property_names, (
+                    f"Undefined 'xformOp:scale' property for the {self.paths[index]} prim. "
+                    "Set the 'reset_xform_op_properties' parameter to True when initializing the class, "
+                    "or call '.reset_xform_op_properties()' manually before doing transform operations"
+                )
                 prim.GetAttribute("xformOp:scale").Set(Gf.Vec3d(*scales[0 if broadcast else i]))
         # USDRT API (with FSD and IFabricHierarchy)
         elif backend == "usdrt":
@@ -936,9 +941,11 @@ class XformPrim(Prim):
             for i, index in enumerate(indices.numpy()):
                 prim = self.prims[index]
                 property_names = prim.GetPropertyNames()
-                assert (
-                    "xformOp:scale" in property_names
-                ), f"Undefined 'xformOp:scale' property for {self.paths[index]}. Call '.reset_xform_op_properties()' first"
+                assert "xformOp:scale" in property_names, (
+                    f"Undefined 'xformOp:scale' property for the {self.paths[index]} prim. "
+                    "Set the 'reset_xform_op_properties' parameter to True when initializing the class, "
+                    "or call '.reset_xform_op_properties()' manually before doing transform operations"
+                )
                 scales[i] = np.array(prim.GetAttribute("xformOp:scale").Get(), dtype=np.float32)
             return ops_utils.place(scales, device=self._device)
         # USDRT API (with FSD and IFabricHierarchy)
@@ -963,7 +970,7 @@ class XformPrim(Prim):
             ):
                 # TODO: should fall back to other backend???
                 carb.log_error(f"Failed to update fabric selection for {fabric_data['attr']}")
-                return
+                return None
             indices = ops_utils.resolve_indices(indices, count=len(self), device=self._device)
             scales = fabric_data["cache"]["scales"]
             wp.launch(
@@ -986,7 +993,8 @@ class XformPrim(Prim):
 
         Backends: :guilabel:`usd`.
 
-        It ensures that each prim has only the following transformations in the specified order.
+        USD Xform schema supports a wide range of transformation operation types.
+        This method ensures that each wrapped prim has only the following transformations in the specified order.
         Any other transformation operations are removed, so they are not consumed.
 
         1. ``xformOp:translate`` (double precision)
@@ -1030,6 +1038,10 @@ class XformPrim(Prim):
             # remove specified properties
             for property_name in properties_to_remove:
                 if property_name in property_names:
+                    prim.RemoveProperty(property_name)
+            # remove unused 'unitsResolve' properties (other than 'xformOp:scale:unitsResolve')
+            for property_name in property_names:
+                if property_name.endswith(":unitsResolve") and ":scale:" not in property_name:
                     prim.RemoveProperty(property_name)
             # get/add xformOp
             # - xformOp:translate
@@ -1123,7 +1135,11 @@ class XformPrim(Prim):
     """
 
     def _get_fabric_hierarchy(self) -> usdrt.hierarchy.IFabricHierarchy:
-        """Get the IFabricHierarchy interface."""
+        """Get the IFabricHierarchy interface.
+
+        Returns:
+            The fabric hierarchy interface for accessing world and local transformations.
+        """
         if self._fabric_hierarchy is None:
             self._fabric_stage = stage_utils.get_current_stage(backend="fabric")
             self._fabric_hierarchy = usdrt.hierarchy.IFabricHierarchy().get_fabric_hierarchy(
@@ -1132,7 +1148,14 @@ class XformPrim(Prim):
         return self._fabric_hierarchy
 
     def _ensure_fabric_data(self, key: str) -> dict:
-        """Ensure fabric-related data is initialized."""
+        """Ensure fabric-related data is initialized.
+
+        Args:
+            key: The fabric data key to initialize.
+
+        Returns:
+            Dictionary containing fabric data for the specified key.
+        """
         if self._fabric_view_index_attr is None:
             self._fabric_stage = stage_utils.get_current_stage(backend="fabric")
             # create fabric's view indices attribute

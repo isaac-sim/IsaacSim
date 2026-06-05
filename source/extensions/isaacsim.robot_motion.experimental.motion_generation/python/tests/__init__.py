@@ -15,5 +15,4 @@
 
 """Tests for the robot motion experimental motion generation module."""
 
-
 scan_for_test_modules = True

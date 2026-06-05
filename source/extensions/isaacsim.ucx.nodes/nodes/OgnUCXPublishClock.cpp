@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <flatbuffers/flatbuffers.h>
 #include <isaacsim/ucx/nodes/UcxPublishClockNodeBase.h>
 
 #include <OgnUCXPublishClockDatabase.h>
+#include <time_generated.h>
 
 /**
  * @class OgnUCXPublishClock
@@ -55,25 +57,35 @@ public:
         const uint64_t tag = db.inputs.tag();
         const uint32_t timeoutMs = db.inputs.timeoutMs();
 
-        // Get the per-instance state and call the instance method
         auto& state = db.template perInstanceState<OgnUCXPublishClock>();
-        return state.computeImpl(db, port, tag, timeoutMs);
+        bool success = state.computeImpl(db, port, tag, timeoutMs);
+
+        if (success)
+        {
+            db.outputs.execOut() = kExecutionAttributeStateEnabled;
+        }
+
+        return success;
     }
 
 protected:
     /**
      * @brief Generate message from clock data.
      * @details
-     * Serializes the clock data as a double (8 bytes) in native byte order.
+     * Serializes the clock data as a FlatBuffers Time message (time_ns).
      *
      * @param[in] data Clock data to serialize
      * @return std::vector<uint8_t> Serialized message data
      */
     std::vector<uint8_t> generateMessage(const isaacsim::ucx::nodes::ClockData& data) override
     {
-        std::vector<uint8_t> messageData(sizeof(double));
-        std::memcpy(messageData.data(), &data.timestamp, sizeof(double));
-        return messageData;
+        flatbuffers::FlatBufferBuilder builder;
+        const int64_t time_ns = static_cast<int64_t>(data.timestamp * 1e9);
+        auto time_message = isaac::CreateTime(builder, time_ns, 0);
+        builder.Finish(time_message);
+        const uint8_t* buffer = builder.GetBufferPointer();
+        const size_t size = builder.GetSize();
+        return std::vector<uint8_t>(buffer, buffer + size);
     }
 };
 

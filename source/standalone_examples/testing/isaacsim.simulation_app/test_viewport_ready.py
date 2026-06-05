@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,9 +15,18 @@
 
 """Test to verify that viewport rendering callbacks are triggered on the first frame."""
 
+import argparse
 import sys
 import time
 
+parser = argparse.ArgumentParser(description="Script to test viewport ready")
+parser.add_argument(
+    "--silent",
+    action="store_true",
+    default=False,
+    help="Silent mode (default: False)",
+)
+_ARGS, _ = parser.parse_known_args()
 from isaacsim import SimulationApp
 
 # Create simulation app
@@ -54,20 +63,24 @@ try:
 
     # Check if callback was called on first frame
     if not callback_called:
-        print("[error] Rendering callback was not called on the first frame")
+        if not _ARGS.silent:
+            print("[error] Rendering callback was not called on the first frame")
 
         # Wait for viewport to be ready before exiting to prevent app hang
         max_wait_frames = 100
         for i in range(max_wait_frames):
-            print(f"Waiting for viewport to be ready before exiting... frame {i}")
+            if not _ARGS.silent:
+                print(f"Waiting for viewport to be ready before exiting... frame {i}")
             kit.update()
             time.sleep(0.02)
             if callback_called:
                 break
 
-        sys.exit(1)
+        if not _ARGS.silent:
+            sys.exit(1)
 
-    print("SUCCESS: Rendering callback was called on the first frame")
+    if not _ARGS.silent:
+        print("SUCCESS: Rendering callback was called on the first frame")
 
 finally:
     # Cleanup

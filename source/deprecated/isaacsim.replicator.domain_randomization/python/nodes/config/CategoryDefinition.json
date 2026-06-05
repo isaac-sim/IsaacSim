@@ -1,0 +1,6 @@
+{
+    "categoryDefinitions": {
+        "$description": "Categories for isaacsim.replicator.domain_randomization OGN nodes",
+        "Replicator": "Nodes for domain randomization of physics views"
+    }
+}

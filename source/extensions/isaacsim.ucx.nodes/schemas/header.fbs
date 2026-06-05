@@ -1,0 +1,14 @@
+include "time.fbs";
+
+namespace isaac;
+
+// Header message.
+table Header {
+  // The timestamp of the header.
+  stamp: Time (id: 0);
+
+  // The frame id of the header.
+  frame_id: string (id: 1);
+}
+
+root_type Header;

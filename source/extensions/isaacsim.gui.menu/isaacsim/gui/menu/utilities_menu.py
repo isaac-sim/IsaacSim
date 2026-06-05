@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,13 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Utilities menu layout for Isaac Sim."""
 
 from __future__ import annotations
 
 import omni.kit.actions.core
 import omni.kit.menu.utils
-from omni.kit.menu.utils import LayoutSourceSearch, MenuItemDescription, MenuLayout, refresh_menu_items
+from omni.kit.menu.utils import MenuItemDescription, MenuLayout, refresh_menu_items
 
 from .asset_check import AssetCheck
 
@@ -82,15 +83,11 @@ class UtilitiesMenuExtension:
         """
         return self._asset_check.is_visible() if self._asset_check else False
 
-    def _on_asset_check_visibility_changed(self):
-        """Notify the visibility changed callback.
-
-        Args:
-            _visible: The visibility state of the window.
-        """
+    def _on_asset_check_visibility_changed(self) -> None:
+        """Notify the visibility changed callback."""
         refresh_menu_items("Utilities")
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Remove menu layouts and placeholders.
 
         Example:

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,19 +15,16 @@
 
 """Detail view implementation for the Isaac Sim content browser."""
 
-
 import os
 from collections import namedtuple
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
 
 import omni.client
 import omni.kit.app
 import omni.ui as ui
 from omni.kit.async_engine import run_coroutine
 from omni.kit.helper.file_utils import asset_types
-from omni.kit.widget.filebrowser import FileBrowserItem
 from omni.kit.window.filepicker import DetailFrameController
 from pxr import Usd
 
@@ -45,7 +42,7 @@ class ExtendedFileInfo(DetailFrameController):
     _empty_list_entry = MockListEntry("File info", datetime.now(), "", "", 0)
     """Default MockListEntry used when no file information is available or when file stat operation fails."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             build_fn=self._build_ui_impl,
             selection_changed_fn=self._on_selection_changed_impl,
@@ -56,7 +53,7 @@ class ExtendedFileInfo(DetailFrameController):
         self._resolve_subscription = None
         self._isaac_content_frame = None
 
-    def build_header(self, collapsed: bool, title: str):
+    def build_header(self, collapsed: bool, title: str) -> None:
         """Builds the header. It is used to show the header of the file info.
 
         Args:
@@ -76,21 +73,25 @@ class ExtendedFileInfo(DetailFrameController):
                 "File Information", elided_text=True, tooltip=title, style_type_name_override="DetailFrame.Header.Label"
             )
 
-    def _build_ui_impl(self, selected: List[str] = []):
+    def _build_ui_impl(self, selected: list[str] | None = None) -> None:
         """Builds the UI implementation for the file info widget.
 
         Args:
             selected: List of selected file paths.
         """
+        if selected is None:
+            selected = []
         self._widget = ui.Frame()
         run_coroutine(self._build_ui_async(selected))
 
-    async def _build_ui_async(self, selected: List[str] = []):
+    async def _build_ui_async(self, selected: list[str] | None = None) -> None:
         """Builds the UI asynchronously, retrieving file information and displaying file details.
 
         Args:
             selected: List of selected file paths.
         """
+        if selected is None:
+            selected = []
         entry = None
         if len(selected) == 0:
             self._frame.title = "No files selected"
@@ -154,7 +155,7 @@ class ExtendedFileInfo(DetailFrameController):
                                 else:
                                     ui.Label("No Additional Information")
 
-    def _on_file_change_event(self, result: omni.client.Result, entry: omni.client.ListEntry):
+    def _on_file_change_event(self, result: omni.client.Result, entry: omni.client.ListEntry) -> None:
         """Handles file change events from the file resolver subscription.
 
         Args:
@@ -165,15 +166,17 @@ class ExtendedFileInfo(DetailFrameController):
             # isaac sim content info don't need to be updated on every single file change. only when clicked on.
             pass
 
-    def _on_selection_changed_impl(self, selected: List[str] = []):
+    def _on_selection_changed_impl(self, selected: list[str] | None = None) -> None:
         """Handles selection change events by rebuilding the UI with the new selection.
 
         Args:
             selected: List of selected file paths.
         """
+        if selected is None:
+            selected = []
         self._build_ui_impl(selected)
 
-    def _destroy_impl(self, _):
+    def _destroy_impl(self, _: object) -> None:
         """Cleans up resources when the widget is destroyed."""
         if self._widget:
             self._widget.destroy()

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,11 +12,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 #define CARB_EXPORTS
 
-// clang-format off
-#include <pch/UsdPCH.h>
-// clang-format on
 
 #include <carb/Framework.h>
 #include <carb/PluginUtils.h>
@@ -25,9 +23,7 @@
 #include <isaacsim/ros2/nodes/IRos2Nodes.h>
 #include <omni/fabric/IToken.h>
 #include <omni/graph/core/NodeTypeRegistrar.h>
-#include <omni/graph/core/iComputeGraph.h>
 #include <omni/graph/core/ogn/Registration.h>
-#include <omni/kit/IMinimal.h>
 
 namespace
 {

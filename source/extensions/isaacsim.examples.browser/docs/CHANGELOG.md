@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.1] - 2026-05-13
+### Fixed
+- Fixed nvbug 6130501: Example browser detail panel was empty when clicking a synthetic parent category (e.g. "ROS2") whose examples were only registered under sub-categories.
+- Added the missing `asyncio` and `omni.kit.app` imports in `property_delegate.py`. The dynamic thumbnail-resize callback referenced both but had no imports, raising `NameError` whenever a selected item had a thumbnail.
+
+### Changed
+- Detail view now mirrors a file browser: a category shows its directly-registered examples plus a folder tile for each immediate sub-category. Double-clicking a folder tile drills the tree selection into that sub-category (the selection change is deferred to the next frame so it doesn't tear down the widget tree mid-event).
+- Each `ExampleCategoryItem` now owns its examples directly, removing the previous flat-dict / string-prefix lookup in `get_detail_items`.
+
 ## [0.3.0] - 2026-03-04
 ### Changed
 - Added Overview.md, python_api.md and updated docstrings

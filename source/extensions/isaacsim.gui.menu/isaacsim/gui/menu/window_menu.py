@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,9 +12,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Window menu layout for Isaac Sim."""
+
 import omni.kit.menu.utils
-from omni.kit.menu.utils import LayoutSourceSearch, MenuItemDescription, MenuLayout, add_menu_items
+from omni.kit.menu.utils import MenuItemDescription, MenuLayout, add_menu_items
 
 
 class WindowMenuExtension:
@@ -24,7 +26,7 @@ class WindowMenuExtension:
         ext_id: Extension identifier provided by the extension manager.
     """
 
-    def __init__(self, ext_id: str):
+    def __init__(self, ext_id: str) -> None:
         self.__menu_layout = [
             MenuLayout.Menu(
                 "Window",
@@ -91,7 +93,7 @@ class WindowMenuExtension:
 
         add_menu_items([simulation_setting_window], "Window")
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Remove menu layouts.
 
         Example:

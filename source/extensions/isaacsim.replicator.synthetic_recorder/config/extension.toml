@@ -1,5 +1,5 @@
 [package]
-version = "2.4.0"
+version = "2.4.3"
 category = "SyntheticData"
 title = "Isaac Sim Replicator Synthetic Data Recorder"
 description = "The extension provides a UI to record synthetic data using Replicator writers. By default the UI uses the Replicator BasicWriter, it however also supports custom writers with custom parameters loaded through config files as key-value pairs."
@@ -31,6 +31,7 @@ args = [
 timeout = 900
 dependencies = [
     "isaacsim.test.utils",
+    "omni.kit.viewport.window",
 ]
 stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
@@ -83,8 +84,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 
@@ -93,6 +96,7 @@ name = "test_recorder_outputs"
 timeout = 900
 dependencies = [
     "isaacsim.test.utils",
+    "omni.kit.viewport.window",
 ]
 stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
@@ -148,8 +152,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 
@@ -158,6 +164,7 @@ name = "test_recorder_ui"
 timeout = 900
 dependencies = [
     "isaacsim.test.utils",
+    "omni.kit.viewport.window",
 ]
 stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
@@ -213,8 +220,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 
@@ -223,6 +232,7 @@ name = "test_recorder_timeline"
 timeout = 900
 dependencies = [
     "isaacsim.test.utils",
+    "omni.kit.viewport.window",
 ]
 stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
@@ -278,8 +288,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 

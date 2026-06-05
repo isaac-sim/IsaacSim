@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,13 +15,11 @@
 
 """Test suite for the surface gripper functionality in Isaac Sim."""
 
-
 import os
 
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.app
-import omni.kit.commands
 
 # NOTE:
 #   omni.kit.test - std python's unittest module with additional wrapping to add suport for async/await tests
@@ -31,8 +29,8 @@ import omni.kit.usd
 import omni.physics.tensors
 import omni.timeline
 import omni.usd
-from isaacsim.robot.surface_gripper import GripperView
-from isaacsim.robot.surface_gripper._surface_gripper import GripperStatus
+from isaacsim.robot.surface_gripper import GripperView, create_surface_gripper
+from isaacsim.robot.surface_gripper.bindings._surface_gripper import GripperStatus
 from pxr import Gf, PhysxSchema
 from usd.schema.isaac import robot_schema
 
@@ -513,3 +511,18 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
 
         self.assertEqual(len(gripped_object_list[1]), 1)
         self.assertEqual(gripped_object_list[1][0], "/World/Boxes/Cube_30")
+
+
+class TestCreateSurfaceGripper(omni.kit.test.AsyncTestCase):
+    """Test create_surface_gripper direct Python API."""
+
+    async def test_create_surface_gripper_direct(self) -> None:
+        """Test creating a surface gripper using create_surface_gripper directly."""
+        await omni.usd.get_context().new_stage_async()
+        await omni.kit.app.get_app().next_update_async()
+        stage = omni.usd.get_context().get_stage()
+        prim_path = "/World"
+        gripper_prim = create_surface_gripper(stage, prim_path)
+        self.assertIsNotNone(gripper_prim)
+        self.assertTrue(gripper_prim.IsValid())
+        self.assertEqual(str(gripper_prim.GetPath()), prim_path + "/SurfaceGripper")

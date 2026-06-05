@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""ROS 2 sample scene extension for navigation examples."""
 
 import asyncio
 import os
@@ -28,6 +29,8 @@ from isaacsim.storage.native import get_assets_root_path
 
 
 class Extension(omni.ext.IExt):
+    """Extension providing ROS 2 navigation sample scenes."""
+
     # Example names and categories as class constants for easier maintenance
     NOVA_CARTER_NAME = "Nova Carter"
     NOVA_CARTER_JOINT_STATES_NAME = "Nova Carter Joint States"
@@ -42,8 +45,12 @@ class Extension(omni.ext.IExt):
     ROS2_ISAAC_ROS_CATEGORY = "ROS2/Isaac ROS"
     ROS2_MULTIPLE_ROBOTS_CATEGORY = "ROS2/Navigation/Multiple Robots"
 
-    def on_startup(self, ext_id: str):
-        """Initialize the extension and register all examples."""
+    def on_startup(self, ext_id: str) -> None:
+        """Initialize the extension and register all examples.
+
+        Args:
+            ext_id: The extension identifier.
+        """
         self._ext_id = ext_id
         self._registered_examples = []  # Track registered examples for cleanup
 
@@ -96,8 +103,14 @@ class Extension(omni.ext.IExt):
             category=self.ROS2_MULTIPLE_ROBOTS_CATEGORY,
         )
 
-    def _register_example(self, name: str, file_path: str, category: str):
-        """Register a single example and track it for cleanup."""
+    def _register_example(self, name: str, file_path: str, category: str) -> None:
+        """Register a single example and track it for cleanup.
+
+        Args:
+            name: Display name of the example.
+            file_path: USD file path for the example scene.
+            category: Menu category for the example.
+        """
         get_browser_instance().register_example(
             name=name,
             ui_hook=lambda a=weakref.proxy(self), n=name, f=file_path: a.build_ui(n, f),
@@ -106,9 +119,13 @@ class Extension(omni.ext.IExt):
         # Track the registered example for proper cleanup
         self._registered_examples.append((name, category))
 
-    def build_ui(self, name, file_path):
-        """Build the UI for the example."""
+    def build_ui(self, name: str, file_path: str) -> None:
+        """Build the UI for the example.
 
+        Args:
+            name: Display name for the example.
+            file_path: USD file path for the example scene.
+        """
         # check if ros2 bridge is enabled before proceeding
         extension_enabled = omni.kit.app.get_app().get_extension_manager().is_extension_enabled("isaacsim.ros2.bridge")
         if not extension_enabled:
@@ -129,10 +146,14 @@ class Extension(omni.ext.IExt):
                     "Load Sample Scene", clicked_fn=lambda a=weakref.proxy(self): a._on_environment_setup(file_path)
                 )
 
-    def _on_environment_setup(self, stage_path):
-        """Load the specified USD stage asynchronously."""
+    def _on_environment_setup(self, stage_path: str) -> None:
+        """Load the specified USD stage asynchronously.
 
-        async def load_stage(path):
+        Args:
+            stage_path: Path to the USD stage to load.
+        """
+
+        async def load_stage(path: str) -> None:
             await omni.usd.get_context().open_stage_async(path)
 
         self._assets_root_path = get_assets_root_path()
@@ -143,7 +164,7 @@ class Extension(omni.ext.IExt):
 
         asyncio.ensure_future(load_stage(scenario_path))
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up by deregistering all registered examples."""
         for name, category in self._registered_examples:
             get_browser_instance().deregister_example(name=name, category=category)

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Generate augmented synthetic from a writer"""
+"""Generate augmented synthetic data from a writer."""
 
 from isaacsim import SimulationApp
 
@@ -177,10 +177,10 @@ def run_example(num_frames: int, resolution: tuple[int, int], use_warp: bool, en
     rp = rep.create.render_product(cam, resolution)
     writer.attach(rp)
 
-    # Create a red cube and randomize its rotation every capture frame using a replicator randomizer graph
+    # Create a red cube and randomize its rotation on a custom event sent before each capture step
     red_cube = rep.functional.create.cube(position=(0, 0, 0.71))
     rep.functional.create.material(mdl="OmniPBR.mdl", bind_prims=[red_cube], diffuse_color_constant=(1, 0, 0))
-    with rep.trigger.on_frame():
+    with rep.trigger.on_custom_event(event_name="randomize_red_cube"):
         red_cube_node = rep.get.prim_at_path(red_cube.GetPath())
         with red_cube_node:
             rep.randomizer.rotation()
@@ -188,6 +188,7 @@ def run_example(num_frames: int, resolution: tuple[int, int], use_warp: bool, en
     capture_start = time.time()
     for frame_idx in range(num_frames):
         print(f"  Capturing frame {frame_idx + 1}/{num_frames}")
+        rep.utils.send_og_event(event_name="randomize_red_cube")
         rep.orchestrator.step(rt_subframes=32)
 
     # Wait for the data to be written to disk and release resources

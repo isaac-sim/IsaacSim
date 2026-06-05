@@ -8,16 +8,22 @@ keywords = ["experience", "app", "usd", "isaacsim"] # That makes it browsable in
 
 [dependencies]
 "isaacsim.exp.full" = {}
-"omni.physx.fabric" = {}
+"omni.kit.manipulator.prim.fabric" = {}
+"omni.kit.property.adapter.fabric" = {}
 "omni.physics.physx" = {}
 "omni.physics.stageupdate" = {}
+"omni.physx.fabric" = {}
 "usdrt.scenegraph" = {}
 
 [settings]
+app.enableDeveloperWarnings = false # disable developer warnings to reduce log noise
+app.fabric.selection.enabled = true
 app.name = "Isaac-Sim Fabric"
 app.version = "6.0.0"
 app.vulkan = true                   # Explicitly enable Vulkan
-app.enableDeveloperWarnings = false # disable developer warnings to reduce log noise
+ext."omni.kit.property.usd".enableAdapter = true  # show live Fabric values in the Property window
+exts."omni.kit.manipulator.prim.core".accessor.priority.usd = 3
+exts."omni.kit.manipulator.prim.core".supportfabric = true
 
 [settings.persistent]
 omnigraph.updateToUsd = false

@@ -1,0 +1,6 @@
+{
+    "categoryDefinitions": {
+        "$description": "Categories for RTSP streaming OmniGraph nodes",
+        "isaacRtsp": "Nodes for RTSP camera streaming"
+    }
+}

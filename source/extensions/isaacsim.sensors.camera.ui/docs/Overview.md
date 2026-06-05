@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 This extension provides UI integration for creating camera and depth sensors in Isaac Sim. It adds menu items to the Create menu and context menus that enable users to create various camera and depth sensor prims from multiple vendors including Orbbec, Leopard Imaging, RealSense, Sensing, SICK, and Stereolabs.
@@ -32,4 +28,4 @@ Menu items are dynamically created and organized by vendor, providing a structur
 
 ## Integration
 
-The extension uses **omni.kit.actions.core** to register sensor creation actions and **omni.kit.context_menu** to provide right-click access to sensor creation tools. It integrates with isaacsim.sensors.camera for the underlying sensor implementation and isaacsim.gui.components for UI component support.
+The extension uses **omni.kit.actions.core** to register sensor creation actions and **omni.kit.context_menu** to provide right-click access to sensor creation tools. It currently integrates with the deprecated `isaacsim.sensors.camera` for the underlying sensor implementation (pending migration to `isaacsim.sensors.experimental.rtx`) and `isaacsim.gui.components` for UI component support.

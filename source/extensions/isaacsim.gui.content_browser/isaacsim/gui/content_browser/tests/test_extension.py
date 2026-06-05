@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-The Kit extension system tests for Python has additional wrapping
+"""The Kit extension system tests for Python has additional wrapping.
+
 to make test auto-discoverable add support for async/await tests.
 The easiest way to set up the test class is to have it derive from
 the omni.kit.test.AsyncTestCase class that implements them.
@@ -27,15 +27,17 @@ import omni.kit.test
 
 
 class TestExtension(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
-        """Method called to prepare the test fixture"""
+    """Test suite for the content browser extension."""
+
+    async def setUp(self) -> None:
+        """Method called to prepare the test fixture."""
         super().setUp()
         # ---------------
         # Do custom setUp
         # ---------------
 
-    async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+    async def tearDown(self) -> None:
+        """Method called immediately after the test method has been called."""
         # ------------------
         # Do custom tearDown
         # ------------------
@@ -43,7 +45,8 @@ class TestExtension(omni.kit.test.AsyncTestCase):
 
     # --------------------------------------------------------------------
 
-    async def test_extension(self):
+    async def test_extension(self) -> None:
+        """Test that the extension loads successfully."""
         # Kit extension system test for Python is based on the unittest module.
         # Visit https://docs.python.org/3/library/unittest.html to see the
         # available assert methods to check for and report failures.

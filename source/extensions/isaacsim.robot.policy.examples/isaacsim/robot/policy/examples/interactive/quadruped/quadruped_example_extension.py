@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Extension demonstrating quadruped robot control using a Boston Dynamics Spot with a trained policy."""
-
 
 import os
 
@@ -48,7 +47,7 @@ class QuadrupedExampleExtension(omni.ext.IExt):
     documentation about policy deployment in Isaac Lab.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize the quadruped example extension.
 
         Sets up the UI template with keyboard controls for Boston Dynamics Spot robot movement
@@ -60,8 +59,9 @@ class QuadrupedExampleExtension(omni.ext.IExt):
         self.example_name = "Quadruped"
         self.category = "Policy"
 
-        overview = "This Example shows an Boston Dynamics Spot running a flat terrain policy trained in Isaac Lab"
-        overview += "\n\tKeybord Input:"
+        overview = "This Example shows a Boston Dynamics Spot running a flat terrain policy trained in Isaac Lab. "
+        overview += "Use the Physics Engine menu in the viewport to switch between PhysX and Newton before loading. "
+        overview += "\n\n\tKeyboard Input:"
         overview += "\n\t\tup arrow / numpad 8: Move Forward"
         overview += "\n\t\tdown arrow/ numpad 2: Move Reverse"
         overview += "\n\t\tleft arrow/ numpad 4: Move Left"
@@ -91,7 +91,7 @@ class QuadrupedExampleExtension(omni.ext.IExt):
 
         return
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up the quadruped example extension.
 
         Deregisters the example from the examples browser when the extension shuts down.

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Demonstrate running asynchronous functions using Kit's task engine."""
 
 from __future__ import annotations
 
@@ -55,6 +57,7 @@ from omni.kit.usd.collect import Collector
 
 
 async def populate_stage():
+    """Populate the stage with a Franka robot asynchronously."""
     print("Populating stage asynchronously:")
     print(" - Creating new stage...")
     await stage_utils.create_new_stage_async(template="sunlight")
@@ -70,6 +73,7 @@ async def populate_stage():
 
 
 async def save_stage(collect_dir: str) -> bool:
+    """Save the current stage to a directory asynchronously."""
     print("Saving stage asynchronously:")
     print(" - Collecting a USD file with all of its dependencies...")
     usd_path = stage_utils.get_current_stage().GetRootLayer().identifier

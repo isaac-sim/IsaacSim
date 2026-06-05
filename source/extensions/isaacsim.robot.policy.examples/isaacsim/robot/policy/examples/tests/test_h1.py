@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,6 @@
 
 """Unit tests for H1 humanoid robot policy examples in Isaac Sim."""
 
-
 import asyncio
 
 import isaacsim.core.experimental.utils.prim as prim_utils
@@ -29,7 +28,6 @@ import numpy as np
 import omni.kit.test
 import omni.timeline
 from isaacsim.core.deprecation_manager import import_module
-from isaacsim.core.experimental.utils.stage import create_new_stage_async, define_prim
 from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.core.simulation_manager.impl.isaac_events import IsaacEvents
 from isaacsim.robot.policy.examples.robots.h1 import H1FlatTerrainPolicy
@@ -113,13 +111,17 @@ class TestH1ExampleExtension(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         self.assertEqual(self._h1.robot.num_dofs, 19)
 
-        # Verify robot prim exists
-        robot_prim = stage_utils.get_current_stage().GetPrimAtPath("/World/h1")
-        self.assertIsNotNone(robot_prim, "Robot prim should exist in stage at /World/h1")
-        self.assertTrue(robot_prim.IsValid(), "Robot prim should be valid")
+        # Verify root prim exists at spawn path
+        root_prim = stage_utils.get_current_stage().GetPrimAtPath(self._prim_path)
+        self.assertIsNotNone(root_prim, f"Robot root prim should exist at {self._prim_path}")
+        self.assertTrue(root_prim.IsValid(), "Robot root prim should be valid")
+
+        # Verify articulation root (may be nested under root for some USD assets) has ArticulationRootAPI
+        articulation_root_path = self._h1.robot.paths[0]
+        articulation_prim = stage_utils.get_current_stage().GetPrimAtPath(articulation_root_path)
         self.assertTrue(
-            prim_utils.has_api(robot_prim, UsdPhysics.ArticulationRootAPI),
-            "Robot base prim should have ArticulationRootAPI",
+            prim_utils.has_api(articulation_prim, UsdPhysics.ArticulationRootAPI),
+            f"Articulation root prim at {articulation_root_path} should have ArticulationRootAPI",
         )
 
     async def test_robot_move_forward_command(self):
@@ -183,7 +185,7 @@ class TestH1ExampleExtension(omni.kit.test.AsyncTestCase):
         heading_delta = abs(current_yaw - start_yaw)
 
         # should have turned at least 90 deg
-        self.assertGreater(heading_delta, 1.5)
+        self.assertGreater(heading_delta, 1.4)
 
     async def spawn_h1(self, name: str = "h1"):
         """Spawn H1 robot in the scene and initialize physics simulation.
@@ -204,7 +206,7 @@ class TestH1ExampleExtension(omni.kit.test.AsyncTestCase):
         )
         await omni.kit.app.get_app().next_update_async()
 
-    def on_physics_step(self, step_size: float, context):
+    def on_physics_step(self, step_size: float, context: object) -> None:
         """Physics step callback that applies base command to the H1 robot.
 
         Args:

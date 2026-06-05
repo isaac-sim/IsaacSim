@@ -1,0 +1,112 @@
+{
+    "OgnIsaacExtractRTXSensorPointCloud": {
+        "version": 1,
+        "icon": "icons/isaac-sim.svg",
+        "description": [
+            "Extracts a Cartesian point cloud and auxiliary data from the GenericModelOutput buffer",
+            "produced by RTX Lidar or Radar sensors. Converts spherical coordinates to Cartesian when",
+            "necessary. Outputs are automatically wired based on the data available in the GMO buffer",
+            "(modality, auxType, and filled auxiliary members)."
+        ],
+        "metadata": {
+            "uiName": "Isaac Extract RTX Sensor Point Cloud"
+        },
+        "categoryDefinitions": "config/CategoryDefinition.json",
+        "categories": "isaacRtxSensor",
+        "inputs": {
+            "exec": {
+                "type": "execution",
+                "description": "The input execution port."
+            },
+            "dataPtr": {
+                "type": "uint64",
+                "description": "Pointer to the GenericModelOutput render result.",
+                "uiName": "Data Pointer"
+            },
+            "cudaDeviceIndex": {
+                "type": "int",
+                "description": "Index of the device where the data lives (-1 for host data).",
+                "default": -1
+            }
+        },
+        "outputs": {
+            "exec": {
+                "type": "execution",
+                "description": "Output execution triggers when sensor has data."
+            },
+            "dataPtr": {
+                "type": "uint64",
+                "description": "Pointer to Cartesian point cloud (float3 array).",
+                "uiName": "Point Cloud Data"
+            },
+            "cudaDeviceIndex": {
+                "type": "int",
+                "description": "Index of the device where the output data lives (-1 for host data).",
+                "default": -1
+            },
+            "bufferSize": {
+                "type": "uint64",
+                "description": "Size (in bytes) of the point cloud buffer."
+            },
+            "transform": {
+                "type": "matrixd[4]",
+                "description": "The sensor-to-world transform matrix at the time of capture."
+            },
+            "width": {
+                "type": "uint",
+                "description": "Number of points in the point cloud.",
+                "default": 0
+            },
+            "height": {
+                "type": "uint",
+                "description": "Always 1 (point cloud is a flat buffer).",
+                "default": 1
+            },
+            "azimuthPtr": {"type": "uint64", "description": "Azimuth in rad [-pi,pi].", "uiName": "azimuth"},
+            "azimuthDataType": {"type": "float", "default": 4, "description": "type", "metadata": {"hidden": "true"}},
+            "azimuthBufferSize": {"type": "uint64", "description": "size", "metadata": {"hidden": "true"}},
+            "elevationPtr": {"type": "uint64", "description": "Elevation in rad [-pi/2, pi/2].", "uiName": "elevation"},
+            "elevationDataType": {"type": "float", "default": 4, "description": "type", "metadata": {"hidden": "true"}},
+            "elevationBufferSize": {"type": "uint64", "description": "size", "metadata": {"hidden": "true"}},
+            "distancePtr": {"type": "uint64", "description": "Range in m.", "uiName": "distance"},
+            "distanceDataType": {"type": "float", "default": 4, "description": "type", "metadata": {"hidden": "true"}},
+            "distanceBufferSize": {"type": "uint64", "description": "size", "metadata": {"hidden": "true"}},
+            "intensityPtr": {"type": "uint64", "description": "Intensity [0,1].", "uiName": "intensity", "default": 0},
+            "intensityDataType": {"type": "float", "description": "type", "default": 0, "metadata": {"hidden": "true"}},
+            "intensityBufferSize": {"type": "uint64", "description": "size", "default": 0, "metadata": {"hidden": "true"}},
+            "timestampPtr": {"type": "uint64", "description": "Timestamp in ns.", "uiName": "timestamp", "default": 0},
+            "timestampDataType": {"type": "uint64", "description": "type", "default": 0, "metadata": {"hidden": "true"}},
+            "timestampBufferSize": {"type": "uint64", "description": "size", "metadata": {"hidden": "true"}},
+            "emitterIdPtr": {"type": "uint64", "description": "emitterId", "uiName": "emitterId", "default": 0},
+            "emitterIdDataType": {"type": "uint", "description": "type", "default": 0, "metadata": {"hidden": "true"}},
+            "emitterIdBufferSize": {"type": "uint64", "description": "size", "metadata": {"hidden": "true"}},
+            "channelIdPtr": {"type": "uint64", "description": "channelId", "uiName": "channelId", "default": 0},
+            "channelIdDataType": {"type": "uint", "description": "type", "default": 0, "metadata": {"hidden": "true"}},
+            "channelIdBufferSize": {"type": "uint64", "description": "size", "metadata": {"hidden": "true"}},
+            "materialIdPtr": {"type": "uint64", "description": "materialId at hit location", "uiName": "materialId", "default": 0},
+            "materialIdDataType": {"type": "uint", "description": "type", "default": 0, "metadata": {"hidden": "true"}},
+            "materialIdBufferSize": {"type": "uint64", "description": "size", "metadata": {"hidden": "true"}},
+            "tickIdPtr": {"type": "uint64", "description": "tickId", "uiName": "tickId", "default": 0},
+            "tickIdDataType": {"type": "uint", "description": "type", "default": 0, "metadata": {"hidden": "true"}},
+            "tickIdBufferSize": {"type": "uint64", "description": "size", "metadata": {"hidden": "true"}},
+            "hitNormalPtr": {"type": "uint64", "description": "Normal at hit location", "uiName": "normal", "default": 0},
+            "hitNormalDataType": {"type": "float[3]", "description": "type", "default": [0,0,0], "metadata": {"hidden": "true"}},
+            "hitNormalBufferSize": {"type": "uint64", "description": "size", "metadata": {"hidden": "true"}},
+            "velocityPtr": {"type": "uint64", "description": "Velocity vector at hit point (m/s)", "uiName": "velocity", "default": 0},
+            "velocityDataType": {"type": "float[3]", "description": "type", "default": [0,0,0], "metadata": {"hidden": "true"}},
+            "velocityBufferSize": {"type": "uint64", "description": "size", "metadata": {"hidden": "true"}},
+            "objectIdPtr": {"type": "uint64", "description": "ObjectId for getting usd prim information", "uiName": "objectId", "default": 0},
+            "objectIdDataType": {"type": "uint[]", "description": "type", "default": [0,0,0,0], "metadata": {"hidden": "true"}},
+            "objectIdBufferSize": {"type": "uint64", "description": "size", "metadata": {"hidden": "true"}},
+            "echoIdPtr": {"type": "uint64", "description": "echoId", "uiName": "echoId", "default": 0},
+            "echoIdDataType": {"type": "uchar", "description": "type", "default": 0, "metadata": {"hidden": "true"}},
+            "echoIdBufferSize": {"type": "uint64", "description": "size", "metadata": {"hidden": "true"}},
+            "tickStatePtr": {"type": "uint64", "description": "tickState", "uiName": "tickState", "default": 0},
+            "tickStateDataType": {"type": "uchar", "description": "type", "default": 0, "metadata": {"hidden": "true"}},
+            "tickStateBufferSize": {"type": "uint64", "description": "size", "metadata": {"hidden": "true"}},
+            "radialVelocityMSPtr": {"type": "uint64", "description": "radialVelocityMS", "uiName": "radialVelocityMS", "default": 0},
+            "radialVelocityMSDataType": {"type": "float", "description": "type", "default": 0, "metadata": {"hidden": "true"}},
+            "radialVelocityMSBufferSize": {"type": "uint64", "description": "size", "metadata": {"hidden": "true"}}
+        }
+    }
+}

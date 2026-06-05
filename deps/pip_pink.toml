@@ -1,0 +1,36 @@
+# Target kit 109.x, python 3.12, ABI=1, numpy 2.x
+# PINK and Pinocchio pip prebundle for isaacsim.robot_motion.pink
+#
+# NOTE: pinocchio (pin) only publishes pip wheels for Linux x86_64.
+
+# Linux x86_64
+[[dependency]]
+python = "../_build/target-deps/python"
+packages = [
+    # -- Direct dependencies ------------------------------------------------
+    "pin-pink==4.2.0",                     # SWIPAT filed under: https://nvbugs/6047066 # Used by: isaacsim.robot_motion.pink
+    "pin==4.0.0",                          # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of pin-pink) Pinocchio rigid-body dynamics
+    # -- Transitive dependencies of pin-pink --------------------------------
+    "loop-rate-limiters==1.2.0",           # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of pin-pink)
+    "qpsolvers==4.11.0",                   # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of pin-pink)
+    # -- Pinocchio / cmeel ecosystem ----------------------------------------
+    "cmeel==0.60.1",                       # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of pin, coal, eigenpy, libcoal, libpinocchio, cmeel-*)
+    "cmeel-assimp==6.0.5",                # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of coal, libcoal)
+    "cmeel-boost==1.90.0",                # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of pin, coal, eigenpy, libcoal, libpinocchio)
+    "cmeel-console-bridge==1.0.2.3",      # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of cmeel-urdfdom)
+    "cmeel-octomap==1.10.0",              # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of coal, libcoal)
+    "cmeel-qhull==8.0.2.1",              # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of coal, libcoal)
+    "cmeel-tinyxml2==11.0.0",            # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of cmeel-urdfdom)
+    "cmeel-urdfdom==6.0.0",              # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of pin, libpinocchio)
+    "cmeel-zlib==1.3.2",                 # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of cmeel-assimp)
+    "coal==3.0.3",                        # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of pin)
+    "eigenpy==3.13.0",                    # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of coal)
+    "libcoal==3.0.3",                     # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of coal, libpinocchio)
+    "libpinocchio==4.0.0",               # SWIPAT filed under: https://nvbugs/6047066 # Used by: (dependency of pin)
+]
+target = "../_build/target-deps/isaac_pink_prebundle"
+platforms = ["linux-x86_64"]
+download_only = false
+install_dependencies = false
+append_to_install_folder = true
+gather_licenses_path = "../_build/PACKAGE-LICENSES/PIP-prebundled-LICENSES.txt"

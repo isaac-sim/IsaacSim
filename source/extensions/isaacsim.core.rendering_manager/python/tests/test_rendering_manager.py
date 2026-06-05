@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,17 +25,18 @@ _SETTING_RATE_LIMIT_ENABLED = "/app/runLoops/main/rateLimitEnabled"
 
 class TestRenderingManager(omni.kit.test.AsyncTestCase):
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
         # ---------------
         self._callback_call = [0, 0]
         self._callback_call_stack = []
+        self._fire_order = []
         self._rate_limit_enabled = carb.settings.get_settings().get_as_bool(_SETTING_RATE_LIMIT_ENABLED)
         await stage_utils.create_new_stage_async()
         # ---------------
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         # ------------------
         carb.settings.get_settings().set_bool(_SETTING_RATE_LIMIT_ENABLED, self._rate_limit_enabled)
         stage_utils.close_stage()
@@ -47,6 +48,7 @@ class TestRenderingManager(omni.kit.test.AsyncTestCase):
     def _callback(self, *args, **kwargs):
         self._callback_call[0] += 1
         self._callback_call_stack.append(self._callback_call[:])
+        self._fire_order.append("class")
 
     # --------------------------------------------------------------------
 
@@ -77,42 +79,116 @@ class TestRenderingManager(omni.kit.test.AsyncTestCase):
             )
 
     async def test_callback(self):
+        # NEW_FRAME events are pumped by Hydra's GPU completion check; with the default
+        # rendering pipeline a single render_async() may yield 0, 1, or more NEW_FRAME
+        # dispatches. A strict 1:1 mapping only holds under /app/hydraEngine/waitIdle=true
+        # plus a late /app/updateOrder/checkForHydraRenderComplete (e.g. the
+        # isaacsim.exp.base.zero_delay experience), neither of which is set by the
+        # default test runner. This test therefore asserts the documented
+        # RenderingManager contracts directly, with no dependence on event cadence:
+        #   - register_callback returns monotonically increasing ids
+        #   - registered callbacks fire while subscribed and never after deregistration
+        #   - co-registered callbacks fire on the same NEW_FRAME dispatches, in
+        #     registration order (lockstep)
+        #   - deregister_all_callbacks removes every subscription
+        #   - deregistering a stale id is a safe no-op
+
         def callback(*args, **kwargs):
             self._callback_call[1] += 1
             self._callback_call_stack.append(self._callback_call[:])
+            self._fire_order.append("local")
 
         status, frames = await ViewportManager.wait_for_viewport_async()
         self.assertTrue(status, f"Viewport not ready after {frames} frames")
         self.assertListEqual(self._callback_call, [0, 0])
         await asyncio.sleep(0.5)  # let previous (unregistered) events pass, since we are not waiting idly
-        # test cases
-        # - register local function callback and step rendering
-        local_function_callback_id = RenderingManager.register_callback(RenderingEvent.NEW_FRAME, callback=callback)
-        await RenderingManager.render_async()
-        self.assertEqual(local_function_callback_id, 0)
-        # - register class method callback and step rendering
-        class_method_callback_id = RenderingManager.register_callback(RenderingEvent.NEW_FRAME, callback=self._callback)
-        await RenderingManager.render_async()
-        self.assertEqual(class_method_callback_id, 1)
-        # - step rendering
-        await RenderingManager.render_async()
-        # - deregister local function callback
-        RenderingManager.deregister_callback(local_function_callback_id)
-        await RenderingManager.render_async()
-        # - deregister class method callback
-        RenderingManager.deregister_callback(class_method_callback_id)
-        await RenderingManager.render_async()
-        # - register a new class method callback and step rendering
-        class_method_callback_id = RenderingManager.register_callback(RenderingEvent.NEW_FRAME, callback=self._callback)
-        await RenderingManager.render_async()
-        self.assertEqual(class_method_callback_id, 2)
-        # - deregister all callbacks
+
+        RENDERS_PER_PHASE = 5
+
+        async def run_renders():
+            for _ in range(RENDERS_PER_PHASE):
+                await RenderingManager.render_async()
+
+        def snapshot():
+            return self._callback_call[0], self._callback_call[1], len(self._fire_order)
+
+        # phase A: only the local callback is registered
+        local_id = RenderingManager.register_callback(RenderingEvent.NEW_FRAME, callback=callback)
+        self.assertEqual(local_id, 0)
+        c0, l0, f0 = snapshot()
+        await run_renders()
+        c1, l1, f1 = snapshot()
+        self.assertGreater(l1 - l0, 0, "local callback should have fired in phase A")
+        self.assertEqual(c1, c0, "class callback must not fire before it is registered")
+        self.assertTrue(
+            all(k == "local" for k in self._fire_order[f0:f1]),
+            f"phase A fires must be local-only, got {self._fire_order[f0:f1]}",
+        )
+
+        # phase B: register class on top; both fire in lockstep, in registration order
+        class_id = RenderingManager.register_callback(RenderingEvent.NEW_FRAME, callback=self._callback)
+        self.assertEqual(class_id, 1)
+        c0, l0, f0 = snapshot()
+        await run_renders()
+        c1, l1, f1 = snapshot()
+        self.assertGreater(l1 - l0, 0, "local callback should fire in phase B")
+        self.assertEqual(
+            l1 - l0,
+            c1 - c0,
+            "co-registered callbacks must fire on the same NEW_FRAME dispatches",
+        )
+        phase_b = self._fire_order[f0:f1]
+        self.assertEqual(len(phase_b) % 2, 0, f"phase B fires must be paired, got {phase_b}")
+        for i in range(0, len(phase_b), 2):
+            self.assertEqual(
+                phase_b[i : i + 2],
+                ["local", "class"],
+                f"phase B pair {i // 2} must fire in registration order, got {phase_b[i : i + 2]}",
+            )
+
+        # phase C: deregister local; only class continues to fire
+        RenderingManager.deregister_callback(local_id)
+        c0, l0, f0 = snapshot()
+        await run_renders()
+        c1, l1, f1 = snapshot()
+        self.assertEqual(l1, l0, "deregistered local callback must not fire")
+        self.assertGreater(c1 - c0, 0, "class callback should still fire in phase C")
+        self.assertTrue(
+            all(k == "class" for k in self._fire_order[f0:f1]),
+            f"phase C fires must be class-only, got {self._fire_order[f0:f1]}",
+        )
+
+        # phase D: deregister class as well; no callbacks fire
+        RenderingManager.deregister_callback(class_id)
+        c0, l0, f0 = snapshot()
+        await run_renders()
+        c1, l1, f1 = snapshot()
+        self.assertEqual((c1, l1, f1), (c0, l0, f0), "no callbacks should fire when none are registered")
+
+        # phase E: re-register class; id increments past previously-issued ids
+        class_id_2 = RenderingManager.register_callback(RenderingEvent.NEW_FRAME, callback=self._callback)
+        self.assertEqual(class_id_2, 2)
+        c0, l0, f0 = snapshot()
+        await run_renders()
+        c1, l1, f1 = snapshot()
+        self.assertEqual(l1, l0, "previously-deregistered local callback must remain silent")
+        self.assertGreater(c1 - c0, 0, "re-registered class callback should fire in phase E")
+        self.assertTrue(
+            all(k == "class" for k in self._fire_order[f0:f1]),
+            f"phase E fires must be class-only, got {self._fire_order[f0:f1]}",
+        )
+
+        # phase F: deregister_all_callbacks removes every subscription
         RenderingManager.deregister_all_callbacks()
-        await RenderingManager.render_async()
-        # - deregister the already deregistered callback and check for warning
-        RenderingManager.deregister_callback(local_function_callback_id)
-        RenderingManager.deregister_callback(class_method_callback_id)
-        await RenderingManager.render_async()
-        # check the callback call stack
-        await asyncio.sleep(0.5)  # wait for triggered events to occur, since we are not waiting idly
-        self.assertListEqual(self._callback_call_stack, [[0, 1], [0, 2], [1, 2], [1, 3], [2, 3], [3, 3], [4, 3]])
+        c0, l0, f0 = snapshot()
+        await run_renders()
+        c1, l1, f1 = snapshot()
+        self.assertEqual((c1, l1, f1), (c0, l0, f0), "deregister_all_callbacks should silence all callbacks")
+
+        # phase G: deregistering already-deregistered ids logs a warning but does not raise
+        RenderingManager.deregister_callback(local_id)
+        RenderingManager.deregister_callback(class_id_2)
+        c0, l0, f0 = snapshot()
+        await run_renders()
+        c1, l1, f1 = snapshot()
+        self.assertEqual((c1, l1, f1), (c0, l0, f0), "stale deregister_callback must be a no-op")

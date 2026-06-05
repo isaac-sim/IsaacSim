@@ -1,4 +1,4 @@
-:: SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+:: SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 :: SPDX-License-Identifier: Apache-2.0
 ::
 :: Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,8 +18,11 @@ setlocal
 
 :: Use half of available CPU cores for the warmup not to take all the resources from user's PC during installation
 set /a TASKING_THREAD_CNT = %NUMBER_OF_PROCESSORS% / 2
+set PORTABLE_ROOT=%~dp0portable_root
 call "%~dp0kit\kit.exe"  "%%~dp0apps/isaacsim.exp.base.kit" ^
     --no-window ^
+    --portable-root "%PORTABLE_ROOT%" ^
+    --portable ^
     --/persistent/renderer/startupMessageDisplayed=true ^
     --ext-folder "%~dp0/exts" ^
     --ext-folder "%~dp0/apps" ^
@@ -36,11 +39,16 @@ call "%~dp0kit\kit.exe"  "%%~dp0apps/isaacsim.exp.base.kit" ^
     --/app/quitAfter=1000 ^
     --/app/fastShutdown=true ^
     --/exts/omni.kit.registry.nucleus/registries/0/name=0 ^
+    --/log/flushStandardStreamOutput=1 ^
     --/plugins/carb.tasking.plugin/threadCount=%TASKING_THREAD_CNT% ^
     %*
 if %ERRORLEVEL% neq 0 (echo "Error warming up shader cache.") else (echo "Shader cache is warmed up.")
 
-call "%~dp0python.bat" "%~dp0standalone_examples\api\isaacsim.simulation_app\hello_world.py"
+call "%~dp0python.bat" "%~dp0standalone_examples\testing\isaacsim.simulation_app\test_viewport_ready.py" ^
+    --portable-root "%PORTABLE_ROOT%" ^
+    --/log/flushStandardStreamOutput=1 ^
+    --no-window ^
+    --silent
 if %ERRORLEVEL% neq 0 (echo "Error warming up python app shader cache.") else (echo "Python app shader cache is warmed up.")
 
 :: Always succeed in case kit crashed or hanged

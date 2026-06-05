@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,6 @@ import numpy as np
 import omni.kit.app
 import omni.kit.test
 import omni.usd
-from isaacsim.robot.poser.robot_poser import PoseResult, store_named_pose
 from isaacsim.robot.poser.ui.utils.fk_helpers import (
     build_pose_from_current_joints,
     find_robot_ancestor,
@@ -27,7 +26,7 @@ from isaacsim.robot.poser.ui.utils.fk_helpers import (
     read_joint_limits_native,
     write_transform_to_prim,
 )
-from pxr import Gf, Sdf, UsdGeom, UsdPhysics
+from pxr import Gf, UsdGeom, UsdPhysics
 from usd.schema.isaac import robot_schema
 from usd.schema.isaac.robot_schema import utils as robot_utils
 from usd.schema.isaac.robot_schema.math import Transform

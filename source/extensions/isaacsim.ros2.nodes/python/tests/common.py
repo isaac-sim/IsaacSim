@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,20 +13,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
+
+"""Common test utilities for ROS 2 node tests."""
+
+import math
 
 import numpy as np
 import omni
-from isaacsim.core.api.materials import OmniPBR
-from isaacsim.core.api.objects import VisualCuboid
-from isaacsim.core.utils.stage import add_reference_to_stage, open_stage_async
-from isaacsim.ros2.core.impl.ros2_image_test_utils import create_image, ros2_image_to_buffer
-from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
-from isaacsim.sensors.rtx import apply_nonvisual_material, get_material_id
-from pxr import UsdPhysics
+from isaacsim.core.experimental.materials import NonVisualMaterial
+from isaacsim.core.experimental.objects import Cube
+from isaacsim.core.experimental.utils import stage as stage_utils
+from isaacsim.sensors.experimental.physics import Raycast
+from pxr import Gf, Sdf, UsdPhysics
+
+
+async def simulate_async(seconds, steps_per_sec=60, callback=None):
+    """Run simulation for a given duration asynchronously."""
+    for _ in range(int(seconds * steps_per_sec)):
+        await omni.kit.app.get_app().next_update_async()
+        if callback:
+            callback()
 
 
 def set_translate(prim, new_loc):
+    """Set the translation of a USD prim."""
     from pxr import Gf, UsdGeom
 
     properties = prim.GetPropertyNames()
@@ -49,6 +59,7 @@ def set_translate(prim, new_loc):
 
 
 def set_rotate(prim, rot_mat):
+    """Set the rotation of a USD prim."""
     from pxr import Gf, UsdGeom
 
     properties = prim.GetPropertyNames()
@@ -67,6 +78,7 @@ def set_rotate(prim, rot_mat):
 
 
 async def add_cube(path, size, offset):
+    """Add a physics-enabled cube to the stage."""
     from pxr import UsdGeom, UsdPhysics
 
     stage = omni.usd.get_context().get_stage()
@@ -83,10 +95,60 @@ async def add_cube(path, size, offset):
     return cubeGeom
 
 
+def create_raycast_lidar_sensor(
+    path: str = "/World/Lidar",
+    parent: str | None = None,
+    h_fov: float = 360.0,
+    h_resolution: float = 0.4,
+    v_fov: float = 0.0,
+    v_count: int = 1,
+    min_range: float = 0.4,
+    max_range: float = 100.0,
+    translations: list | None = None,
+) -> str:
+    """Create a physics raycast sensor configured as a horizontal lidar.
+
+    Returns the full prim path of the created sensor.
+    """
+    if translations is None:
+        translations = [[0.0, 0.0, 0.0]]
+    if parent is None:
+        parent = str(Sdf.Path(path).GetParentPath())
+        path = Sdf.Path(path).name
+    h_count = int(h_fov / h_resolution)
+    origins = []
+    directions = []
+    for vi in range(v_count):
+        if v_count > 1:
+            v_angle = math.radians(-v_fov / 2 + v_fov * vi / (v_count - 1))
+        else:
+            v_angle = 0.0
+        for hi in range(h_count):
+            h_angle = math.radians(-h_fov / 2 + h_fov * hi / h_count)
+            dx = math.cos(v_angle) * math.cos(h_angle)
+            dy = math.cos(v_angle) * math.sin(h_angle)
+            dz = math.sin(v_angle)
+            origins.append([0.0, 0.0, 0.0])
+            directions.append([dx, dy, dz])
+
+    raycast = Raycast.create(
+        f"{parent}/{path}",
+        min_range=min_range,
+        max_range=max_range,
+        ray_origins=origins,
+        ray_directions=directions,
+        translations=translations,
+    )
+    return raycast.paths[0]
+
+
 async def add_carter(assets_root_path, prim_path="/Carter"):
+    """Add a Carter robot to the stage."""
     from pxr import Gf, PhysicsSchemaTools
 
-    add_reference_to_stage(assets_root_path + "/Isaac/Robots/NVIDIA/Carter/carter_v1_physx_lidar.usd", prim_path)
+    stage_utils.add_reference_to_stage(
+        assets_root_path + "/Isaac/Robots/NVIDIA/Carter/carter_v1_physx_lidar.usd", prim_path
+    )
     stage = omni.usd.get_context().get_stage()
     PhysicsSchemaTools.addGroundPlane(stage, "/World/groundPlane", "Z", 1500, Gf.Vec3f(0, 0, -0.25), Gf.Vec3f(0.5))
     await omni.kit.app.get_app().next_update_async()
@@ -94,9 +156,10 @@ async def add_carter(assets_root_path, prim_path="/Carter"):
 
 
 async def add_carter_ros(assets_root_path, prim_path="/Carter"):
+    """Add a Carter robot with ROS 2 graphs to the stage."""
     from pxr import Gf, PhysicsSchemaTools
 
-    add_reference_to_stage(assets_root_path + "/Isaac/Samples/ROS2/Robots/Carter_ROS.usd", prim_path)
+    stage_utils.add_reference_to_stage(assets_root_path + "/Isaac/Samples/ROS2/Robots/Carter_ROS.usd", prim_path)
     await omni.kit.app.get_app().next_update_async()
     # Disabling cameras by default
     import omni.graph.core as og
@@ -123,22 +186,79 @@ async def add_carter_ros(assets_root_path, prim_path="/Carter"):
 
 
 async def add_nova_carter_ros(assets_root_path):
-    (result, error) = await open_stage_async(assets_root_path + "/Isaac/Samples/ROS2/Robots/Nova_Carter_ROS.usd")
+    """Add a Nova Carter robot with ROS 2 graphs to the stage."""
+    result, error = await stage_utils.open_stage_async(
+        assets_root_path + "/Isaac/Samples/ROS2/Robots/Nova_Carter_ROS.usd"
+    )
     await omni.kit.app.get_app().next_update_async()
 
 
 async def add_franka(assets_root_path):
-    (result, error) = await open_stage_async(assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd")
+    """Add a Franka robot to the stage."""
+    result, error = await stage_utils.open_stage_async(
+        assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd"
+    )
 
 
 def get_qos_profile(depth: int = 1, history: str = "keep_last"):
+    """Create a ROS 2 QoS profile with the given parameters."""
     from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 
     history_policy = QoSHistoryPolicy.SYSTEM_DEFAULT if history == "system_default" else QoSHistoryPolicy.KEEP_LAST
     return QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, history=history_policy, depth=depth)
 
 
+def swap_joint_bodies(joint_path):
+    """Swap body0 and body1 relationships and local transforms on a USD joint.
+
+    Args:
+        joint_path: USD path of the joint prim.
+    """
+    stage = omni.usd.get_context().get_stage()
+    prim = stage.GetPrimAtPath(joint_path)
+    joint = UsdPhysics.Joint(prim)
+
+    body0_targets = joint.GetBody0Rel().GetTargets()
+    body1_targets = joint.GetBody1Rel().GetTargets()
+    joint.GetBody0Rel().SetTargets(body1_targets)
+    joint.GetBody1Rel().SetTargets(body0_targets)
+
+    pos0_attr = prim.GetAttribute("physics:localPos0")
+    pos1_attr = prim.GetAttribute("physics:localPos1")
+    rot0_attr = prim.GetAttribute("physics:localRot0")
+    rot1_attr = prim.GetAttribute("physics:localRot1")
+
+    pos0 = pos0_attr.Get() if pos0_attr else None
+    pos1 = pos1_attr.Get() if pos1_attr else None
+    rot0 = rot0_attr.Get() if rot0_attr else None
+    rot1 = rot1_attr.Get() if rot1_attr else None
+
+    if pos0 is not None and pos1 is not None:
+        pos0_attr.Set(pos1)
+        pos1_attr.Set(pos0)
+    if rot0 is not None and rot1 is not None:
+        rot0_attr.Set(rot1)
+        rot1_attr.Set(rot0)
+
+
+SIMPLE_ARTICULATION_3J_REVERSED_JOINTS = [
+    "/Articulation/Arm/CenterRevoluteJoint",
+    "/Articulation/DistalPivot/DistalRevoluteJoint",
+]
+
+
+def fix_reversed_joints(joint_paths):
+    """Swap body0/body1 on a list of joints that have reversed parent/child ordering.
+
+    Args:
+        joint_paths: List of USD paths to joints that need body0/body1 swapped.
+    """
+    for path in joint_paths:
+        swap_joint_bodies(path)
+
+
 def set_joint_drive_parameters(joint_path, joint_type, drive_type, target_value, stiffness=None, damping=None):
+    """Set drive parameters for a joint on the stage."""
     stage = omni.usd.get_context().get_stage()
     drive = UsdPhysics.DriveAPI.Get(stage.GetPrimAtPath(joint_path), joint_type)
 
@@ -173,30 +293,31 @@ def set_joint_drive_parameters(joint_path, joint_type, drive_type, target_value,
 def _create_cube_with_material(
     index: int, position: np.ndarray, scale: np.ndarray, color: np.ndarray, material_props: tuple, enable_material: bool
 ) -> dict:
-    """Helper to create a cube with optional material."""
+    """Create a cube with optional material."""
     cube_path = f"/World/cube_{index}"
-    cube = VisualCuboid(
-        prim_path=cube_path,
-        name=f"cube_{index}",
-        position=position,
-        scale=scale,
+    cube = Cube(
+        cube_path,
+        sizes=1.0,
+        positions=position,
+        scales=scale,
     )
 
     cube_info = {}
     if enable_material:
-        material = OmniPBR(
-            prim_path=f"{cube_path}/material",
-            name=f"cube_{index}_material",
-            color=color,
+        nv_material = NonVisualMaterial(
+            f"{cube_path}/nv_material",
+            bases=material_props[0],
+            coatings=material_props[1],
+            attributes=material_props[2],
         )
-        apply_nonvisual_material(material.prim, *material_props)
-        cube.apply_visual_material(material)
-        cube_info = {"material_id": get_material_id(material.prim)}
+        cube.apply_visual_materials(nv_material)
+        cube_info = {"material_id": NonVisualMaterial.encode_material_ids(nv_material).numpy().item()}
 
     return {cube_path: cube_info} if cube_info else {}
 
 
 def create_sarcophagus(enable_nonvisual_material: bool = True):
+    """Create a nested cube structure for testing object detection."""
     # Autogenerate sarcophagus
     dims = [(10, 5, 7), (15, 9, 11), (20, 13, 15), (25, 17, 19)]
     cube_configs = [

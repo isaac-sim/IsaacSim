@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,24 +13,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for ROS 2 object ID map OmniGraph node."""
+
 import json
 from uuid import uuid4
 
-import numpy as np
 import omni
 import omni.kit
 import omni.replicator.core as rep
 import rclpy
-from isaacsim.core.utils.physics import simulate_async
-from isaacsim.sensors.rtx import LidarRtx
+from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
+from isaacsim.sensors.experimental.rtx import parse_stable_id_map_data
 from std_msgs.msg import String
 
-from .common import ROS2TestCase, create_sarcophagus, get_qos_profile
+from .common import create_sarcophagus, get_qos_profile
 
 
 class TestROS2ObjectIdMap(ROS2TestCase):
+    """Test suite for r o s2 object id map."""
 
     async def setUp(self):
+        """Set up test fixtures."""
         await super().setUp()
 
         await omni.usd.get_context().new_stage_async()
@@ -84,6 +87,7 @@ class TestROS2ObjectIdMap(ROS2TestCase):
         self._writer.attach(self._render_product)
 
     async def tearDown(self):
+        """Tear down test fixtures."""
         if self._annotator is not None:
             self._annotator.detach()
         if self._writer is not None:
@@ -91,9 +95,11 @@ class TestROS2ObjectIdMap(ROS2TestCase):
         await super().tearDown()
 
     def spin(self):
+        """Handle spin operation."""
         rclpy.spin_once(self._ros_node, timeout_sec=0.01)
 
     async def test_object_id_map(self):
+        """Test object id map."""
         # Run the timeline to populate data
         self._timeline.play()
         condition_met = await self.simulate_until_condition(
@@ -111,7 +117,7 @@ class TestROS2ObjectIdMap(ROS2TestCase):
         self.assertIsNotNone(self._ros_msg_data)
 
         # Convert the annotator data to a dictionary
-        annotator_data_dict = LidarRtx.decode_stable_id_mapping(self._annotator_data.tobytes())
+        annotator_data_dict = parse_stable_id_map_data(self._annotator_data)
 
         # Resolve the ROS2 message data to a dictionary
         ros_msg_data_dict = json.loads(self._ros_msg_data.data)["id_to_labels"]

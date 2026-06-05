@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Provides utilities for displaying text on the viewport screen using OmniGraph visualization nodes."""
-
 
 import numpy as np
 import omni
@@ -43,8 +42,11 @@ class ScreenPrinter:
         screen_pos_y: float = 95,
         text_size: float = 14.0,
         max_width: int = 0,
-        color: np.array = np.ones(4),
-    ):
+        color: np.ndarray | None = None,
+    ) -> None:
+        if color is None:
+            color = np.ones(4)
+
         self._keys = og.Controller.Keys
         self._controller = og.Controller()
 
@@ -52,7 +54,7 @@ class ScreenPrinter:
             omni.usd.get_context().get_stage(), "/World/PrintActionGraph", False
         )
 
-        (self.graph, self.nodes, _, _) = self._controller.edit(
+        self.graph, self.nodes, _, _ = self._controller.edit(
             {"graph_path": self._graph_path, "evaluator_name": "push"},
             {
                 self._keys.CREATE_NODES: [
@@ -72,7 +74,7 @@ class ScreenPrinter:
 
         self._print_node = self.nodes[1]
 
-    def set_text(self, text: str):
+    def set_text(self, text: str) -> None:
         """Set the text on the screen.
 
         Args:
@@ -80,7 +82,7 @@ class ScreenPrinter:
         """
         self._controller.edit(self.graph, {self._keys.SET_VALUES: (("inputs:text", self._print_node), text)})
 
-    def set_text_position(self, screen_pos_x: float, screen_pos_y: float):
+    def set_text_position(self, screen_pos_x: float, screen_pos_y: float) -> None:
         """Set the x,y position of the text on the screen.
 
         Args:
@@ -93,7 +95,7 @@ class ScreenPrinter:
             self.graph, {self._keys.SET_VALUES: (("inputs:position", self._print_node), [screen_pos_x, screen_pos_y])}
         )
 
-    def set_text_size(self, size: float):
+    def set_text_size(self, size: float) -> None:
         """Set the size of the text.
 
         Args:
@@ -101,7 +103,7 @@ class ScreenPrinter:
         """
         self._controller.edit(self.graph, {self._keys.SET_VALUES: (("inputs:size", self._print_node), size)})
 
-    def set_text_max_width(self, max_width: int):
+    def set_text_max_width(self, max_width: int) -> None:
         """Set the maximum text width (in pixels) before wrap-around.
 
         Args:
@@ -110,7 +112,7 @@ class ScreenPrinter:
         """
         self._controller.edit(self.graph, {self._keys.SET_VALUES: (("inputs:boxWidth", self._print_node), max_width)})
 
-    def set_text_color(self, color4f: np.array):
+    def set_text_color(self, color4f: np.ndarray) -> None:
         """Set the color of the text.
 
         Args:
@@ -119,10 +121,10 @@ class ScreenPrinter:
         """
         self._controller.edit(self.graph, {self._keys.SET_VALUES: (("inputs:textColor", self.nodes[1]), color4f)})
 
-    def clear_text(self):
+    def clear_text(self) -> None:
         """Clear the text from the screen."""
         self.set_text("")
 
-    def exit(self):
-        """Delete OmniGraph used by this ScreenPrinter. After calling exit(), all subsequent function calls will fail."""
+    def exit(self) -> None:
+        """Delete OmniGraph used by this ScreenPrinter. After calling ``exit()``, all subsequent function calls will fail."""
         DeletePrimsCommand([self._graph_path]).do()

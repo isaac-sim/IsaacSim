@@ -13,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""cuMotion world interface for collision checking and motion planning in Isaac Sim environments."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 import cumotion
 import isaacsim.robot_motion.experimental.motion_generation as mg
@@ -29,6 +31,7 @@ from isaacsim.core.experimental.prims import XformPrim
 from .utils import (
     ColliderBatchTransformOutput,
     batch_compute_collider_transforms,
+    compute_collider_transforms_cpu,
     cumotion_to_isaac_sim_pose,
     isaac_sim_to_cumotion_pose,
 )
@@ -93,12 +96,9 @@ class CollisionData:
     been added to the cuMotion world for collision checking.
 
     Args:
-        transform_world_to_object: Transform from world frame to the object frame.
-        cumotion_colliders: List of collision primitives representing this object.
-
-    Attributes:
-        transform_world_to_object: Current transform of the object in world space.
-        cumotion_colliders: List of collision primitives for this object.
+        transform_world_to_object_index: Index into the world-to-object transform array.
+        obstacle_handle_starting_index: Starting index into the obstacle handles array.
+        n_colliders: Number of collision primitives representing this object.
     """
 
     def __init__(
@@ -106,12 +106,46 @@ class CollisionData:
         transform_world_to_object_index: int,
         obstacle_handle_starting_index: int,
         n_colliders: int,
-    ):
+    ) -> None:
         # Store the indices of where the data for this object begins:
         self.transform_world_to_object_index = transform_world_to_object_index
         self.obstacle_handle_starting_index = obstacle_handle_starting_index
         self.n_colliders = n_colliders
         self.obstacle_handle_ending_index = obstacle_handle_starting_index + n_colliders
+
+
+@dataclass
+class _TransformBatchCache:
+    """Pre-allocated warp arrays for hot-path batch transform computation.
+
+    All fields are constant for a given set of prim paths and obstacle geometry.
+    The cache is keyed on ``prim_paths_key``; it is rebuilt whenever the key changes
+    (i.e. a different subset of prims is updated) or when the obstacle structure
+    changes (e.g. a new obstacle is added via ``_extend_collider_data``).
+    """
+
+    prim_paths_key: tuple
+    """Tuple of prim paths that this cache was built for."""
+    transform_world_to_object_indices: np.ndarray
+    """Indices into ``_position_world_to_objects`` for state-array updates, shape (N,)."""
+    positions_obj_to_colliders_wp: wp.array
+    """Object-to-collider position offsets as a warp array, shape (M, 3). Constant."""
+    quaternions_obj_to_colliders_wp: wp.array
+    """Object-to-collider quaternion offsets as a warp array, shape (M, 4). Constant."""
+    collider_to_obj_indices_wp: wp.array
+    """Per-collider index of the parent object, shape (M,). Constant."""
+    positions_obj_to_colliders_np: np.ndarray
+    """Host mirror of ``positions_obj_to_colliders_wp`` for the CPU compute path."""
+    quaternions_obj_to_colliders_np: np.ndarray
+    """Host mirror of ``quaternions_obj_to_colliders_wp`` for the CPU compute path."""
+    collider_to_obj_indices_np: np.ndarray
+    """Host mirror of ``collider_to_obj_indices_wp`` for the CPU compute path."""
+    n_colliders_per_object: list
+    """Number of colliders per object, length N. Constant."""
+    obstacle_handles: list
+    """Flat list of obstacle handles in collider order, length M. Constant."""
+    output: ColliderBatchTransformOutput
+    """Pre-allocated output struct; reused each frame to avoid per-frame warp allocs."""
 
 
 class CumotionWorldInterface(mg.WorldInterface):
@@ -128,8 +162,18 @@ class CumotionWorldInterface(mg.WorldInterface):
             where the quaternion is in the form (w, x, y, z).
         visualize_debug_prims: Whether to create visual debug primitives for collision
             geometry. Defaults to False.
-        visual_debug_prim_rgb: RGB color for debug visualization. Defaults to None (red).
+        visual_debug_enabled_prim_rgb: RGB color for enabled obstacle debug visualization.
+            Defaults to None (red).
+        visual_debug_disabled_prim_rgb: RGB color for disabled obstacle debug visualization.
+            Defaults to None (green).
         visual_debug_prim_alpha: Alpha transparency for debug visualization. Defaults to 0.3.
+        device: Device used by the interface for internally-allocated warp
+            arrays and for the per-frame collider transform composition.
+            Accepts the same values as :func:`wp.get_device` (``None``,
+            ``"cpu"``, ``"cuda"``, ``"cuda:0"``, or a :class:`wp.Device`);
+            ``None`` resolves to warp's current default device. CPU devices
+            run the transform composition in vectorized NumPy on the host;
+            CUDA devices run the Warp kernel path on the GPU.
 
     Attributes:
         world_view: cuMotion world view for collision queries.
@@ -140,8 +184,8 @@ class CumotionWorldInterface(mg.WorldInterface):
 
             world_interface = CumotionWorldInterface(
                 visualize_debug_prims=True,
-                visual_debug_prim_rgb=[0.0, 1.0, 0.0],
-                visual_debug_prim_alpha=0.5
+                visual_debug_enabled_prim_rgb=[0.0, 1.0, 0.0],
+                visual_debug_prim_alpha=0.5,
             )
     """
 
@@ -152,7 +196,9 @@ class CumotionWorldInterface(mg.WorldInterface):
         visual_debug_enabled_prim_rgb: list[float] | None = None,
         visual_debug_disabled_prim_rgb: list[float] | None = None,
         visual_debug_prim_alpha: float = 0.3,
-    ):
+        device: wp.DeviceLike = None,
+    ) -> None:
+        self._device: wp.Device = wp.get_device(device)
 
         self._world: cumotion.World = cumotion.create_world()
         self.__world_view = self._world.add_world_view()
@@ -161,22 +207,33 @@ class CumotionWorldInterface(mg.WorldInterface):
         # which occur to each prim:
         self._prim_path_to_collision_data: dict[str, CollisionData] = {}
 
-        # Transform of the robot Base Frame --> World Frame. It is useful to store
-        # in this way so we don't have to do as much matrix inversion. Assume identity.
-        self._position_base_to_world: wp.array = wp.zeros(
-            shape=[
-                3,
-            ],
-            dtype=wp.float32,
-        )
-        self._quaternion_base_to_world: wp.array = wp.array([1.0, 0.0, 0.0, 0.0], dtype=wp.float32)
-
-        if world_to_robot_base is not None:
-            world_to_robot_base_cumotion = isaac_sim_to_cumotion_pose(world_to_robot_base[0], world_to_robot_base[1])
-            base_to_world_cumotion = world_to_robot_base_cumotion.inverse()
-            self._position_base_to_world, self._quaternion_base_to_world = cumotion_to_isaac_sim_pose(
-                base_to_world_cumotion
+        with wp.ScopedDevice(self._device):
+            # Transform of the robot Base Frame --> World Frame. It is useful to store
+            # in this way so we don't have to do as much matrix inversion. Assume identity.
+            self._position_base_to_world: wp.array = wp.zeros(
+                shape=[
+                    3,
+                ],
+                dtype=wp.float32,
             )
+            self._quaternion_base_to_world: wp.array = wp.array([1.0, 0.0, 0.0, 0.0], dtype=wp.float32)
+            # Host mirrors of the base-to-world transform used by the CPU compute
+            # path. Reset to None whenever the wp.arrays above are reassigned.
+            self._position_base_to_world_np: np.ndarray | None = None
+            self._quaternion_base_to_world_np: np.ndarray | None = None
+
+            if world_to_robot_base is not None:
+                world_to_robot_base_cumotion = isaac_sim_to_cumotion_pose(
+                    world_to_robot_base[0], world_to_robot_base[1]
+                )
+                base_to_world_cumotion = world_to_robot_base_cumotion.inverse()
+                self._position_base_to_world, self._quaternion_base_to_world = cumotion_to_isaac_sim_pose(
+                    base_to_world_cumotion
+                )
+
+        # Memoized output of get_world_to_robot_base_transform; stays valid until
+        # the base-frame pose is updated via _update_world_to_robot_root_transforms.
+        self._cached_world_to_robot_base_transform: tuple[wp.array, wp.array] | None = None
 
         # Storing Transforms from world frame --> object frames.
         self._position_world_to_objects: np.ndarray = np.empty((0, 3))
@@ -190,6 +247,10 @@ class CumotionWorldInterface(mg.WorldInterface):
         self._all_obstacle_handles: list[cumotion.World.ObstacleHandle] = []
         self._all_debug_prim_paths: list[str] = []
         self._n_colliders_in_each_object: np.ndarray = np.empty([0], dtype=np.int32)
+
+        # Cache of pre-allocated warp arrays for _update_prim_world_to_object_transforms.
+        # Set to None when the obstacle structure changes so it is rebuilt on next call.
+        self._transform_batch_cache: _TransformBatchCache | None = None
 
         # if we want to do debug visuals, set those up here:
         # Do we want to draw debug sphere for mesh files?
@@ -222,7 +283,7 @@ class CumotionWorldInterface(mg.WorldInterface):
         self._visual_debug_enabled_prim_material.set_input_values("enable_opacity", [True])
         self._visual_debug_enabled_prim_material.set_input_values("opacity_constant", [visual_debug_prim_alpha])
 
-    def _set_debug_material(self, debug_visual, enabled):
+    def _set_debug_material(self, debug_visual: Any, enabled: bool) -> None:
         """Set the debug material for a visual prim based on enabled state.
 
         Args:
@@ -235,8 +296,8 @@ class CumotionWorldInterface(mg.WorldInterface):
         debug_visual.apply_visual_materials(self._visual_debug_disabled_prim_material)
 
     @property
-    def world_view(self):
-        """Get the world_view associated with the cumotion.World object"""
+    def world_view(self) -> cumotion.WorldView:
+        """Get the world_view associated with the cumotion.World object."""
         return self.__world_view
 
     def add_spheres(
@@ -247,7 +308,17 @@ class CumotionWorldInterface(mg.WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> None:
+        """Add sphere collision obstacles to the cuMotion world.
+
+        Args:
+            prim_paths: USD prim paths for each sphere.
+            radii: Sphere radii.
+            scales: Local scale factors for each sphere.
+            safety_tolerances: Safety margin around each sphere.
+            poses: Tuple of (positions, orientations) arrays.
+            enabled_array: Collision enabled state for each sphere.
+        """
         positions, quaternions = poses
         positions_np = positions.numpy()
         quaternions_np = quaternions.numpy()
@@ -344,7 +415,17 @@ class CumotionWorldInterface(mg.WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> None:
+        """Add cuboid collision obstacles to the cuMotion world.
+
+        Args:
+            prim_paths: USD prim paths for each cube.
+            sizes: Cube side lengths.
+            scales: Local scale factors for each cube.
+            safety_tolerances: Safety margin around each cube.
+            poses: Tuple of (positions, orientations) arrays.
+            enabled_array: Collision enabled state for each cube.
+        """
         positions, quaternions = poses
         positions_np = positions.numpy()
         quaternions_np = quaternions.numpy()
@@ -453,8 +534,22 @@ class CumotionWorldInterface(mg.WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
-        def _to_cumotion_sphere_collider(prim_name, i_sphere, sphere, enabled):
+    ) -> None:
+        """Add triangulated mesh collision obstacles to the cuMotion world using sphere decomposition.
+
+        Args:
+            prim_paths: USD prim paths for each mesh.
+            points: List of vertex position arrays for each mesh.
+            face_vertex_indices: List of triangle index arrays for each mesh.
+            scales: Local scale factors for each mesh.
+            safety_tolerances: Safety margin around each mesh.
+            poses: Tuple of (positions, orientations) arrays.
+            enabled_array: Collision enabled state for each mesh.
+        """
+
+        def _to_cumotion_sphere_collider(
+            prim_name: str, i_sphere: int, sphere: Any, enabled: bool
+        ) -> _CumotionCollider:
             """Convert a collision sphere to a _CumotionCollider object.
 
             Args:
@@ -587,7 +682,19 @@ class CumotionWorldInterface(mg.WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> None:
+        """Add plane collision obstacles to the cuMotion world as thin cuboids.
+
+        Args:
+            prim_paths: USD prim paths for each plane.
+            axes: Plane normal axis for each plane.
+            lengths: Plane lengths.
+            widths: Plane widths.
+            scales: Local scale factors for each plane.
+            safety_tolerances: Safety margin around each plane.
+            poses: Tuple of (positions, orientations) arrays.
+            enabled_array: Collision enabled state for each plane.
+        """
         positions, quaternions = poses
         positions_np = positions.numpy()
         quaternions_np = quaternions.numpy()
@@ -704,7 +811,19 @@ class CumotionWorldInterface(mg.WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> None:
+        """Add capsule collision obstacles to the cuMotion world.
+
+        Args:
+            prim_paths: USD prim paths for each capsule.
+            axes: Capsule axis for each capsule.
+            radii: Capsule radii.
+            lengths: Capsule lengths.
+            scales: Local scale factors for each capsule.
+            safety_tolerances: Safety margin around each capsule.
+            poses: Tuple of (positions, orientations) arrays.
+            enabled_array: Collision enabled state for each capsule.
+        """
         positions, quaternions = poses
         positions_np = positions.numpy()
         quaternions_np = quaternions.numpy()
@@ -845,7 +964,19 @@ class CumotionWorldInterface(mg.WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> None:
+        """Add oriented bounding box collision obstacles to the cuMotion world as cuboids.
+
+        Args:
+            prim_paths: USD prim paths for each oriented bounding box.
+            centers: OBB centers relative to the object frame.
+            rotations: OBB rotation quaternions relative to the object frame.
+            half_side_lengths: Half side lengths of each OBB.
+            scales: Local scale factors for each OBB.
+            safety_tolerances: Safety margin around each OBB.
+            poses: Tuple of (positions, orientations) arrays.
+            enabled_array: Collision enabled state for each OBB.
+        """
         positions, quaternions = poses
         positions_np = positions.numpy()
         quaternions_np = quaternions.numpy()
@@ -957,7 +1088,7 @@ class CumotionWorldInterface(mg.WorldInterface):
             poses=(positions, quaternions),
         )
 
-    def update_obstacle_transforms(self, prim_paths: list[str], poses: tuple[wp.array, wp.array]):
+    def update_obstacle_transforms(self, prim_paths: list[str], poses: tuple[wp.array, wp.array]) -> None:
         """Update the world-to-object transforms for tracked obstacles.
 
         Updates the poses of obstacles that have already been added to the world.
@@ -983,7 +1114,7 @@ class CumotionWorldInterface(mg.WorldInterface):
 
         self._update_prim_world_to_object_transforms(prim_paths, poses)
 
-    def update_obstacle_enables(self, prim_paths: list[str], enabled_array: wp.array):
+    def update_obstacle_enables(self, prim_paths: list[str], enabled_array: wp.array) -> None:
         """Update the enabled/disabled state of tracked obstacles.
 
         Enables or disables collision checking for obstacles that have already been
@@ -1015,20 +1146,26 @@ class CumotionWorldInterface(mg.WorldInterface):
     def get_world_to_robot_base_transform(self) -> tuple[wp.array, wp.array]:
         """Get the transform from world frame to robot base frame.
 
-        Returns the current transform that maps coordinates from the Isaac Sim world
-        frame to the cuMotion robot base frame.
+        Returns the current transform that maps coordinates from the Isaac Sim
+        world frame to the cuMotion robot base frame. The result is memoized:
+        the same ``wp.array`` objects are returned on every call until the
+        base-frame pose is updated via ``update_world_to_robot_root_transforms``.
 
         Returns:
             Tuple of (position, quaternion) as warp arrays where position has shape (3,)
             and quaternion has shape (4,) in (w, x, y, z) format.
         """
-        # Invert the stored pose:
-        transform_base_to_world = isaac_sim_to_cumotion_pose(
-            self._position_base_to_world, self._quaternion_base_to_world
-        )
-        return cumotion_to_isaac_sim_pose(transform_base_to_world.inverse())
+        if self._cached_world_to_robot_base_transform is None:
+            with wp.ScopedDevice(self._device):
+                transform_base_to_world = isaac_sim_to_cumotion_pose(
+                    self._position_base_to_world, self._quaternion_base_to_world
+                )
+                self._cached_world_to_robot_base_transform = cumotion_to_isaac_sim_pose(
+                    transform_base_to_world.inverse()
+                )
+        return self._cached_world_to_robot_base_transform
 
-    def update_world_to_robot_root_transforms(self, poses: tuple[wp.array, wp.array]):
+    def update_world_to_robot_root_transforms(self, poses: tuple[wp.array, wp.array]) -> None:
         """Update the transform from world frame to robot base frame.
 
         cuMotion plans relative to the robot base frame. This method updates the base
@@ -1043,7 +1180,6 @@ class CumotionWorldInterface(mg.WorldInterface):
             ValueError: If positions don't have 3 elements.
             ValueError: If quaternions don't have 4 elements.
         """
-
         positions, quaternions = poses
         if not (positions.shape[0] == quaternions.shape[0] == 1):
             raise ValueError("cuMotion only works with a single robot.")
@@ -1060,17 +1196,107 @@ class CumotionWorldInterface(mg.WorldInterface):
 
         self._update_world_to_robot_root_transforms(poses)
 
+    def _rebuild_transform_cache(
+        self,
+        prim_paths: list[str],
+        collision_data_array: list[CollisionData],
+    ) -> None:
+        """Build (or rebuild) the pre-allocated warp arrays used by the hot path.
+
+        Called whenever ``prim_paths`` changes or the obstacle structure changes.
+        All arrays that are constant for the lifetime of a given ``prim_paths`` set
+        are converted to warp arrays here so that the hot path never needs to do it.
+
+        Args:
+            prim_paths: The ordered list of prim paths being updated.
+            collision_data_array: Pre-resolved CollisionData for each prim path.
+        """
+        n_colliders_per_object = [cd.n_colliders for cd in collision_data_array]
+        total_colliders = sum(n_colliders_per_object)
+
+        # --- Assemble constant object-to-collider arrays from the global backing store ---
+        position_objects_to_colliders = np.empty((total_colliders, 3), dtype=np.float32)
+        quaternion_objects_to_colliders = np.empty((total_colliders, 4), dtype=np.float32)
+        obstacle_handles: list = []
+        collider_offset = 0
+        for cd in collision_data_array:
+            s = cd.obstacle_handle_starting_index
+            e = cd.obstacle_handle_ending_index
+            n = cd.n_colliders
+            position_objects_to_colliders[collider_offset : collider_offset + n, :] = (
+                self._position_objects_to_colliders[s:e, :]
+            )
+            quaternion_objects_to_colliders[collider_offset : collider_offset + n, :] = (
+                self._quaternion_objects_to_colliders[s:e, :]
+            )
+            obstacle_handles.extend(self._all_obstacle_handles[s:e])
+            collider_offset += n
+
+        # --- Build the collider-to-object index mapping ---
+        collider_to_obj_list: list[int] = []
+        for obj_idx, n_col in enumerate(n_colliders_per_object):
+            collider_to_obj_list.extend([obj_idx] * n_col)
+        collider_to_obj_indices_np = np.asarray(collider_to_obj_list, dtype=np.int32)
+
+        # --- Pre-compute world-to-object index array for state updates ---
+        transform_world_to_object_indices = np.array(
+            [cd.transform_world_to_object_index for cd in collision_data_array],
+            dtype=np.int32,
+        )
+
+        # --- Convert constant data to warp arrays (done once per cache build) ---
+        positions_obj_to_colliders_wp = wp.from_numpy(position_objects_to_colliders, dtype=wp.float32)
+        quaternions_obj_to_colliders_wp = wp.from_numpy(quaternion_objects_to_colliders, dtype=wp.float32)
+        collider_to_obj_indices_wp = wp.from_numpy(collider_to_obj_indices_np, dtype=wp.int32)
+
+        # --- Pre-allocate output buffers (reused every frame, never reallocated unless size changes) ---
+        output = ColliderBatchTransformOutput()
+        output.positions_base_to_collider = wp.zeros((total_colliders, 3), dtype=wp.float32)
+        output.quaternions_base_to_collider = wp.zeros((total_colliders, 4), dtype=wp.float32)
+        output.positions_world_to_collider = wp.zeros((total_colliders, 3), dtype=wp.float32)
+        output.quaternions_world_to_collider = wp.zeros((total_colliders, 4), dtype=wp.float32)
+
+        self._transform_batch_cache = _TransformBatchCache(
+            prim_paths_key=tuple(prim_paths),
+            transform_world_to_object_indices=transform_world_to_object_indices,
+            positions_obj_to_colliders_wp=positions_obj_to_colliders_wp,
+            quaternions_obj_to_colliders_wp=quaternions_obj_to_colliders_wp,
+            collider_to_obj_indices_wp=collider_to_obj_indices_wp,
+            positions_obj_to_colliders_np=position_objects_to_colliders,
+            quaternions_obj_to_colliders_np=quaternion_objects_to_colliders,
+            collider_to_obj_indices_np=collider_to_obj_indices_np,
+            n_colliders_per_object=n_colliders_per_object,
+            obstacle_handles=obstacle_handles,
+            output=output,
+        )
+
+    def _get_base_to_world_numpy(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return host-resident copies of the base-to-world transform.
+
+        Memoized and invalidated whenever the base-frame transform is updated
+        via ``_update_world_to_robot_root_transforms``.
+        """
+        if self._position_base_to_world_np is None:
+            self._position_base_to_world_np = np.asarray(self._position_base_to_world.numpy(), dtype=np.float32)
+        if self._quaternion_base_to_world_np is None:
+            self._quaternion_base_to_world_np = np.asarray(self._quaternion_base_to_world.numpy(), dtype=np.float32)
+        return self._position_base_to_world_np, self._quaternion_base_to_world_np
+
     def _update_prim_world_to_object_transforms(
         self,
         prim_paths: list[str],
         poses: tuple[wp.array, wp.array],
-    ):
+    ) -> None:
         """Update world-to-object transforms and recompute all collider poses.
 
         This is an internal method that updates the stored transforms and propagates
         the changes to all colliders. It recomputes collider poses in both base frame
         (for cuMotion collision checking) and world frame (for debug visualization if enabled).
         Input validation should be performed before calling.
+
+        Dispatch is controlled by ``self._device``: CPU devices run the
+        composition in vectorized NumPy on the host; CUDA devices run the
+        Warp kernel path on the GPU.
 
         Args:
             prim_paths: List of prim paths identifying the obstacles to update.
@@ -1080,103 +1306,109 @@ class CumotionWorldInterface(mg.WorldInterface):
         # SAFETY: the input data is validated before calling this function.
         collision_data_array = [self._prim_path_to_collision_data[p] for p in prim_paths]
 
-        # Store the new values of the positions and quaternions:
         positions, quaternions = poses
 
-        positions_np = positions.numpy()
-        quaternions_np = quaternions.numpy()
+        with wp.ScopedDevice(self._device):
+            # Rebuild the cache when the prim_paths key changes or was invalidated.
+            cache_key = tuple(prim_paths)
+            if self._transform_batch_cache is None or self._transform_batch_cache.prim_paths_key != cache_key:
+                self._rebuild_transform_cache(prim_paths, collision_data_array)
+            cache = self._transform_batch_cache
 
-        # Use list comprehensions and preallocated arrays - MUCH faster than np.append/concatenate
-        num_objects = len(collision_data_array)
+            # Mirror the new world-to-object state on the host so that
+            # _update_world_to_robot_root_transforms and the add_* methods can
+            # read it without going back to the device.
+            positions_np = positions.numpy()
+            quaternions_np = quaternions.numpy()
+            self._position_world_to_objects[cache.transform_world_to_object_indices, :] = positions_np
+            self._quaternion_world_to_objects[cache.transform_world_to_object_indices, :] = quaternions_np
 
-        # Preallocate arrays with exact size needed
-        transform_world_to_object_indices = np.zeros(num_objects, dtype=np.int32)
-        n_colliders_per_object = np.zeros(num_objects, dtype=np.int32)
+            if self._device.is_cpu:
+                base_pos_np, base_quat_np = self._get_base_to_world_numpy()
+                (
+                    positions_base_to_colliders_np,
+                    quaternions_base_to_colliders_np,
+                    positions_world_to_colliders_np,
+                    quaternions_world_to_colliders_np,
+                ) = compute_collider_transforms_cpu(
+                    position_base_to_world=base_pos_np,
+                    quaternion_base_to_world=base_quat_np,
+                    positions_world_to_object=positions_np.astype(np.float32, copy=False),
+                    quaternions_world_to_object=quaternions_np.astype(np.float32, copy=False),
+                    positions_object_to_collider=cache.positions_obj_to_colliders_np,
+                    quaternions_object_to_collider=cache.quaternions_obj_to_colliders_np,
+                    collider_to_object_indices=cache.collider_to_obj_indices_np,
+                )
+                if not self._visualize_debug_prims:
+                    positions_world_to_colliders_np = None
+                    quaternions_world_to_colliders_np = None
+            else:
+                # Pass pose inputs through verbatim when they already match the
+                # interface device and dtype; otherwise marshal once via numpy.
+                if positions.device == self._device and positions.dtype == wp.float32:
+                    positions_kernel_input = positions
+                else:
+                    positions_kernel_input = wp.from_numpy(positions_np, dtype=wp.float32)
+                if quaternions.device == self._device and quaternions.dtype == wp.float32:
+                    quaternions_kernel_input = quaternions
+                else:
+                    quaternions_kernel_input = wp.from_numpy(quaternions_np, dtype=wp.float32)
 
-        # Fill arrays using vectorized operations
-        for i, collision_data in enumerate(collision_data_array):
-            transform_world_to_object_indices[i] = collision_data.transform_world_to_object_index
-            n_colliders_per_object[i] = collision_data.n_colliders
+                output_batch: ColliderBatchTransformOutput = batch_compute_collider_transforms(
+                    position_base_to_world=self._position_base_to_world,
+                    quaternion_base_to_world=self._quaternion_base_to_world,
+                    positions_world_to_object=positions_kernel_input,
+                    quaternions_world_to_object=quaternions_kernel_input,
+                    positions_object_to_collider=cache.positions_obj_to_colliders_wp,
+                    quaternions_object_to_collider=cache.quaternions_obj_to_colliders_wp,
+                    num_colliders_per_object=cache.n_colliders_per_object,
+                    collider_to_object_indices=cache.collider_to_obj_indices_wp,
+                    output=cache.output,
+                )
 
-        # Build obstacle handles list using slicing from the global array
-        obstacle_handles = []
-        if self._visualize_debug_prims:
-            debug_prim_names = []
+                positions_base_to_colliders_np = output_batch.positions_base_to_collider.numpy()
+                quaternions_base_to_colliders_np = output_batch.quaternions_base_to_collider.numpy()
+                # Same four-name contract as the CPU branch: world-frame arrays only when
+                # debug visualization is enabled (avoids UnboundLocalError if this block is refactored).
+                if self._visualize_debug_prims:
+                    positions_world_to_colliders_np = output_batch.positions_world_to_collider.numpy()
+                    quaternions_world_to_colliders_np = output_batch.quaternions_world_to_collider.numpy()
+                else:
+                    positions_world_to_colliders_np = None
+                    quaternions_world_to_colliders_np = None
 
-        for collision_data in collision_data_array:
-            start_idx = collision_data.obstacle_handle_starting_index
-            end_idx = collision_data.obstacle_handle_ending_index
-            obstacle_handles.extend(self._all_obstacle_handles[start_idx:end_idx])
-            if self._visualize_debug_prims:
-                debug_prim_names.extend(self._all_debug_prim_paths[start_idx:end_idx])
-
-        # Set the new positions and quaternions into our state:
-        self._position_world_to_objects[transform_world_to_object_indices, :] = positions_np
-        self._quaternion_world_to_objects[transform_world_to_object_indices, :] = quaternions_np
-
-        # Build collider transform arrays by directly slicing from the global arrays
-        total_colliders = int(np.sum(n_colliders_per_object))
-        position_objects_to_colliders = np.empty((total_colliders, 3), dtype=np.float32)
-        quaternion_objects_to_colliders = np.empty((total_colliders, 4), dtype=np.float32)
-
-        collider_offset = 0
-        for collision_data in collision_data_array:
-            start_idx = collision_data.obstacle_handle_starting_index
-            end_idx = collision_data.obstacle_handle_ending_index
-            n = collision_data.n_colliders
-
-            # Copy the transform data for this object's colliders
-            position_objects_to_colliders[collider_offset : collider_offset + n, :] = (
-                self._position_objects_to_colliders[start_idx:end_idx, :]
-            )
-            quaternion_objects_to_colliders[collider_offset : collider_offset + n, :] = (
-                self._quaternion_objects_to_colliders[start_idx:end_idx, :]
-            )
-
-            collider_offset += n
-
-        # batch update all of the transforms (world --> collider frames):
-        output_batch: ColliderBatchTransformOutput = batch_compute_collider_transforms(
-            position_base_to_world=self._position_base_to_world,
-            quaternion_base_to_world=self._quaternion_base_to_world,
-            positions_world_to_object=wp.from_numpy(positions_np, dtype=wp.float32),
-            quaternions_world_to_object=wp.from_numpy(quaternions_np, dtype=wp.float32),
-            positions_object_to_collider=wp.from_numpy(position_objects_to_colliders, dtype=wp.float32),
-            quaternions_object_to_collider=wp.from_numpy(quaternion_objects_to_colliders, dtype=wp.float32),
-            num_colliders_per_object=n_colliders_per_object,
-        )
-
-        positions_base_to_colliders_np = output_batch.positions_base_to_collider.numpy()
-        quaternions_base_to_colliders_np = output_batch.quaternions_base_to_collider.numpy()
-
-        # Write these results to the cumotion colliders:
-        total_colliders = positions_base_to_colliders_np.shape[0]
-        for obstacle_handle, transform_index in zip(obstacle_handles, range(total_colliders)):
-
+        for i, obstacle_handle in enumerate(cache.obstacle_handles):
             pose = cumotion.Pose3(
-                rotation=cumotion.Rotation3(*quaternions_base_to_colliders_np[transform_index, :]),
-                translation=positions_base_to_colliders_np[transform_index, :],
+                rotation=cumotion.Rotation3(
+                    quaternions_base_to_colliders_np[i, 0],
+                    quaternions_base_to_colliders_np[i, 1],
+                    quaternions_base_to_colliders_np[i, 2],
+                    quaternions_base_to_colliders_np[i, 3],
+                ),
+                translation=positions_base_to_colliders_np[i, :],
             )
-
-            # set the base-frame pose:
             self._world.set_pose(obstacle_handle, pose)
 
-        if self._visualize_debug_prims:
-            # write the input world poses to the debug prims:
-            xform_prim = XformPrim(
-                paths=debug_prim_names,
-            )
-
-            # note: we are not supposed to write directly to world poses.
+        if (
+            self._visualize_debug_prims
+            and positions_world_to_colliders_np is not None
+            and quaternions_world_to_colliders_np is not None
+        ):
+            debug_prim_names: list[str] = []
+            for cd in collision_data_array:
+                debug_prim_names.extend(
+                    self._all_debug_prim_paths[cd.obstacle_handle_starting_index : cd.obstacle_handle_ending_index]
+                )
+            xform_prim = XformPrim(paths=debug_prim_names)
             xform_prim.set_local_poses(
-                translations=output_batch.positions_world_to_collider,
-                orientations=output_batch.quaternions_world_to_collider,
+                translations=positions_world_to_colliders_np,
+                orientations=quaternions_world_to_colliders_np,
             )
 
     def _update_world_to_robot_root_transforms(
         self,
         pose: tuple[wp.array, wp.array],
-    ):
+    ) -> None:
         """Update the robot base frame transform and recompute all collider poses.
 
         This is an internal method that updates the base frame transform and propagates
@@ -1188,26 +1420,56 @@ class CumotionWorldInterface(mg.WorldInterface):
         """
         # SAFETY: the input data is validated before calling this function.
 
-        # Store the new values of the positions and quaternions:
-        position, quaternion = pose
-        pose_world_to_base_cumotion = isaac_sim_to_cumotion_pose(position, quaternion)
-        self._position_base_to_world, self._quaternion_base_to_world = cumotion_to_isaac_sim_pose(
-            pose_world_to_base_cumotion.inverse()
-        )
+        with wp.ScopedDevice(self._device):
+            # Store the new values of the positions and quaternions:
+            position, quaternion = pose
+            pose_world_to_base_cumotion = isaac_sim_to_cumotion_pose(position, quaternion)
+            self._position_base_to_world, self._quaternion_base_to_world = cumotion_to_isaac_sim_pose(
+                pose_world_to_base_cumotion.inverse()
+            )
 
-        # batch update all of the transforms (world --> collider frames):
-        output_batch: ColliderBatchTransformOutput = batch_compute_collider_transforms(
-            position_base_to_world=self._position_base_to_world,
-            quaternion_base_to_world=self._quaternion_base_to_world,
-            positions_world_to_object=wp.from_numpy(self._position_world_to_objects, dtype=wp.float32),
-            quaternions_world_to_object=wp.from_numpy(self._quaternion_world_to_objects, dtype=wp.float32),
-            positions_object_to_collider=wp.from_numpy(self._position_objects_to_colliders, dtype=wp.float32),
-            quaternions_object_to_collider=wp.from_numpy(self._quaternion_objects_to_colliders, dtype=wp.float32),
-            num_colliders_per_object=self._n_colliders_in_each_object,
-        )
+            # Base transform changed; invalidate the memoized world<->base tuple
+            # and the host mirrors of the base-frame transform.
+            self._cached_world_to_robot_base_transform = None
+            self._position_base_to_world_np = None
+            self._quaternion_base_to_world_np = None
 
-        positions_base_to_colliders_np = output_batch.positions_base_to_collider.numpy()
-        quaternions_base_to_colliders_np = output_batch.quaternions_base_to_collider.numpy()
+            # batch update all of the transforms (world --> collider frames):
+            if self._device.is_cpu:
+                base_pos_np, base_quat_np = self._get_base_to_world_numpy()
+                collider_to_object_indices = np.repeat(
+                    np.arange(len(self._n_colliders_in_each_object), dtype=np.int32),
+                    self._n_colliders_in_each_object,
+                )
+                (
+                    positions_base_to_colliders_np,
+                    quaternions_base_to_colliders_np,
+                    _positions_world_to_colliders_np,
+                    _quaternions_world_to_colliders_np,
+                ) = compute_collider_transforms_cpu(
+                    position_base_to_world=base_pos_np,
+                    quaternion_base_to_world=base_quat_np,
+                    positions_world_to_object=self._position_world_to_objects.astype(np.float32, copy=False),
+                    quaternions_world_to_object=self._quaternion_world_to_objects.astype(np.float32, copy=False),
+                    positions_object_to_collider=self._position_objects_to_colliders.astype(np.float32, copy=False),
+                    quaternions_object_to_collider=self._quaternion_objects_to_colliders.astype(np.float32, copy=False),
+                    collider_to_object_indices=collider_to_object_indices,
+                )
+            else:
+                output_batch: ColliderBatchTransformOutput = batch_compute_collider_transforms(
+                    position_base_to_world=self._position_base_to_world,
+                    quaternion_base_to_world=self._quaternion_base_to_world,
+                    positions_world_to_object=wp.from_numpy(self._position_world_to_objects, dtype=wp.float32),
+                    quaternions_world_to_object=wp.from_numpy(self._quaternion_world_to_objects, dtype=wp.float32),
+                    positions_object_to_collider=wp.from_numpy(self._position_objects_to_colliders, dtype=wp.float32),
+                    quaternions_object_to_collider=wp.from_numpy(
+                        self._quaternion_objects_to_colliders, dtype=wp.float32
+                    ),
+                    num_colliders_per_object=self._n_colliders_in_each_object,
+                )
+
+                positions_base_to_colliders_np = output_batch.positions_base_to_collider.numpy()
+                quaternions_base_to_colliders_np = output_batch.quaternions_base_to_collider.numpy()
 
         # Write these results to the cumotion colliders:
         for obstacle_handle, transform_index in zip(
@@ -1222,7 +1484,7 @@ class CumotionWorldInterface(mg.WorldInterface):
             # set the base-frame pose:
             self._world.set_pose(obstacle_handle, pose)
 
-    def _update_prim_enabled_value(self, prim_path: str, enabled: bool):
+    def _update_prim_enabled_value(self, prim_path: str, enabled: bool) -> None:
         """Update the enabled state for all colliders associated with a prim.
 
         Args:
@@ -1332,7 +1594,7 @@ class CumotionWorldInterface(mg.WorldInterface):
         Returns:
             CollisionData object containing indices and metadata for the added object.
         """
-        (obstacle_handles, debug_prim_paths, n_colliders) = _vectorize_cumotion_collider_data(cumotion_colliders)
+        obstacle_handles, debug_prim_paths, n_colliders = _vectorize_cumotion_collider_data(cumotion_colliders)
 
         obstacle_handle_starting_index = len(self._all_obstacle_handles)
 
@@ -1340,6 +1602,9 @@ class CumotionWorldInterface(mg.WorldInterface):
         self._all_debug_prim_paths.extend(debug_prim_paths)
 
         self._n_colliders_in_each_object = np.append(self._n_colliders_in_each_object, n_colliders)
+
+        # Invalidate the batch-transform cache: the obstacle structure has changed.
+        self._transform_batch_cache = None
 
         collision_data = CollisionData(
             transform_world_to_object_index=transform_world_to_object_index,

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +15,9 @@
 
 """Interactive tutorials for getting started with Isaac Sim, providing step-by-step guided examples for basic scene setup, physics simulation, and robot integration."""
 
-
 from isaacsim.examples.interactive.getting_started.getting_started import GettingStarted
 from isaacsim.examples.interactive.getting_started.getting_started_extension import GettingStartedExtension
 from isaacsim.examples.interactive.getting_started.start_with_robot import GettingStartedRobot
 from isaacsim.examples.interactive.getting_started.start_with_robot_extension import GettingStartedRobotExtension
 
-__all__ = ["GettingStarted", "GettingStartedRobot"]
+__all__ = ["GettingStarted", "GettingStartedExtension", "GettingStartedRobot", "GettingStartedRobotExtension"]

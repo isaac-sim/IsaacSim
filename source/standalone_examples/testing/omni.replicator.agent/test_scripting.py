@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test applying the scripting API to a USD prim."""
+
 import asyncio
 
 from isaacsim import SimulationApp
@@ -32,7 +35,7 @@ if __name__ == "__main__":
     from pxr import OmniScriptingSchema
 
     async def work():
-
+        """Create a prim and verify the scripting API is applied."""
         # Create new prim and attach python scripting api.
         await omni.usd.get_context().new_stage_async("tmp")
         stage = omni.usd.get_context().get_stage()

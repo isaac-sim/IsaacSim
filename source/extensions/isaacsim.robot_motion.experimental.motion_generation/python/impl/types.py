@@ -17,10 +17,34 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from enum import Enum, auto
+from typing import Literal, TypeAlias
 
 import numpy as np
 import warp as wp
+
+
+class _LazyFieldUnset(Enum):
+    """Lazily-built row slice not yet materialised.
+
+    ``None`` is reserved for a valid materialised state ("no data in this row"), so we
+    use a dedicated enum member instead of ``object()`` for clearer static analysis.
+    """
+
+    UNSET = auto()
+
+
+_UNSET: _LazyFieldUnset = _LazyFieldUnset.UNSET
+
+# Row views that may be absent (``None``), not yet built (``_UNSET``), or materialised.
+# These aliases are quoted (forward references) because ``wp.array`` is a Warp
+# C-extension type whose metaclass does not implement ``__or__``; an unquoted
+# ``wp.array | None`` is a runtime assignment expression (``from __future__ import
+# annotations`` only defers annotations, not assignment values) and would raise
+# ``TypeError`` at import. The string keeps the modern ``|`` syntax for type checkers.
+_LazyOptionalWpArray: TypeAlias = "wp.array | None | _LazyFieldUnset"
+# Index arrays: always ``wp.array`` once built; ``_UNSET`` until first property read.
+_LazyWpIndices: TypeAlias = "wp.array | _LazyFieldUnset"
 
 
 class JointState:
@@ -64,19 +88,29 @@ class JointState:
         self.__data_array = data_array
         self.__valid_array = valid_array
 
-        # Based on the input data matrices, store data of interest independently
-        # for quick retrieval from the user:
-        self.__valid_positions = self.__get_valid_data_in_row(row=0)
-        self.__position_names = self.__valid_array_to_joint_names(row=0)
-        self.__position_indices = self.__valid_array_to_joint_indices(row=0)
+        # Pre-compute which joints are valid per row once, as numpy index arrays.
+        # This avoids repeated valid_array.numpy() + np.where() calls.
+        valid_np = valid_array.numpy()
+        self.__position_valid_idx = np.where(valid_np[0, :].flatten())[0]
+        self.__velocity_valid_idx = np.where(valid_np[1, :].flatten())[0]
+        self.__effort_valid_idx = np.where(valid_np[2, :].flatten())[0]
 
-        self.__valid_velocities = self.__get_valid_data_in_row(row=1)
-        self.__velocity_names = self.__valid_array_to_joint_names(row=1)
-        self.__velocity_indices = self.__valid_array_to_joint_indices(row=1)
+        # Names are cheap (list comprehensions) so we materialise them eagerly.
+        self.__position_names = [self.__robot_joint_space[i] for i in self.__position_valid_idx]
+        self.__velocity_names = [self.__robot_joint_space[i] for i in self.__velocity_valid_idx]
+        self.__effort_names = [self.__robot_joint_space[i] for i in self.__effort_valid_idx]
 
-        self.__valid_efforts = self.__get_valid_data_in_row(row=2)
-        self.__effort_names = self.__valid_array_to_joint_names(row=2)
-        self.__effort_indices = self.__valid_array_to_joint_indices(row=2)
+        # Per-row wp.arrays (data + indices) are built lazily on first property access.
+        # The previous eager construction issued an H2D ``wp.from_numpy`` per row
+        # (six wp.copy calls per JointState), even when the caller never read the
+        # corresponding property — which is the common case for ``efforts`` and for
+        # ``velocities`` returned by RmpFlowController.forward().
+        self.__valid_positions: _LazyOptionalWpArray = _UNSET
+        self.__valid_velocities: _LazyOptionalWpArray = _UNSET
+        self.__valid_efforts: _LazyOptionalWpArray = _UNSET
+        self.__position_indices: _LazyWpIndices = _UNSET
+        self.__velocity_indices: _LazyWpIndices = _UNSET
+        self.__effort_indices: _LazyWpIndices = _UNSET
 
     @classmethod
     def from_name(
@@ -358,6 +392,8 @@ class JointState:
         Returns:
             A 1D warp array of joint indices with valid position data.
         """
+        if self.__position_indices is _UNSET:
+            self.__position_indices = self.__build_indices_array(self.__position_valid_idx)
         return self.__position_indices
 
     @property
@@ -368,6 +404,8 @@ class JointState:
             A 1D warp array containing position values for joints with valid positions.
             Returns None if no positions are valid.
         """
+        if self.__valid_positions is _UNSET:
+            self.__valid_positions = self.__build_data_array(row=0, valid_idx=self.__position_valid_idx)
         return self.__valid_positions
 
     @property
@@ -386,6 +424,8 @@ class JointState:
         Returns:
             A 1D warp array of joint indices with valid velocity data.
         """
+        if self.__velocity_indices is _UNSET:
+            self.__velocity_indices = self.__build_indices_array(self.__velocity_valid_idx)
         return self.__velocity_indices
 
     @property
@@ -396,6 +436,8 @@ class JointState:
             A 1D warp array containing velocity values for joints with valid velocities.
             Returns None if no velocities are valid.
         """
+        if self.__valid_velocities is _UNSET:
+            self.__valid_velocities = self.__build_data_array(row=1, valid_idx=self.__velocity_valid_idx)
         return self.__valid_velocities
 
     @property
@@ -414,6 +456,8 @@ class JointState:
         Returns:
             A 1D warp array containing the indices of joints with valid efforts.
         """
+        if self.__effort_indices is _UNSET:
+            self.__effort_indices = self.__build_indices_array(self.__effort_valid_idx)
         return self.__effort_indices
 
     @property
@@ -424,6 +468,8 @@ class JointState:
             A 1D warp array containing effort values for joints with valid efforts.
             Returns None if no efforts are valid.
         """
+        if self.__valid_efforts is _UNSET:
+            self.__valid_efforts = self.__build_data_array(row=2, valid_idx=self.__effort_valid_idx)
         return self.__valid_efforts
 
     @property
@@ -446,46 +492,54 @@ class JointState:
         """
         return self.__valid_array
 
-    def __valid_array_to_joint_indices(self, row: int) -> wp.array:
-        """Convert valid flags in a row to joint indices.
+    def __build_indices_array(self, valid_idx: np.ndarray) -> wp.array:
+        """Wrap a numpy index array as a CPU wp.array without an H2D copy.
 
-        Args:
-            row: Row index to extract valid joint indices from (0 for positions, 1 for velocities, 2 for efforts).
-
-        Returns:
-            A 1D warp array containing the indices of joints that have valid data in the specified row.
+        ``wp.array(np_data, copy=False, device="cpu")`` references the numpy buffer
+        directly via ``_init_from_ptr`` and skips the ``warp.copy`` call that
+        ``wp.from_numpy`` would otherwise issue. The returned array is read-only in
+        practice — callers that mutate it would alias ``valid_idx`` — but the
+        existing API treats these arrays as immutable views.
         """
-        valid_indices = np.where(self.__valid_array.numpy()[row, :].flatten())[0]
-        return wp.from_numpy(valid_indices, dtype=wp.int32)
+        # ``_init_from_data`` will run ``np.asarray(valid_idx, dtype=np.int32)``
+        # internally, performing the int64->int32 conversion if needed (without
+        # invoking ``wp.copy``).
+        return wp.array(valid_idx, dtype=wp.int32, copy=False, device="cpu")
 
-    def __valid_array_to_joint_names(self, row: int) -> list[str]:
-        """Convert valid flags in a row to joint names.
-
-        Args:
-            row: Row index to extract valid joint names from (0 for positions, 1 for velocities, 2 for efforts).
-
-        Returns:
-            A list of joint names that have valid data in the specified row.
-        """
-        valid_indices = np.where(self.__valid_array.numpy()[row, :].flatten())[0]
-        return [self.__robot_joint_space[i] for i in valid_indices]
-
-    def __get_valid_data_in_row(self, row: int) -> wp.array | None:
-        """Extract valid data values from a specific row.
-
-        Args:
-            row: Row index to extract valid data from (0 for positions, 1 for velocities, 2 for efforts).
-
-        Returns:
-            A 1D warp array containing valid data values from the specified row.
-            Returns None if no valid data exists in the row.
-        """
-        valid_indices = np.where(self.__valid_array.numpy()[row, :].flatten())[0]
-
-        if len(valid_indices) == 0:
+    def __build_data_array(self, row: int, valid_idx: np.ndarray) -> wp.array | None:
+        """Wrap a numpy slice of the data array as a CPU wp.array without an H2D copy."""
+        if len(valid_idx) == 0:
             return None
+        # ``self.__data_array`` is built CPU-resident in ``from_name`` / ``from_index``,
+        # so ``.numpy()`` is a zero-copy view of the underlying buffer. Fancy-indexing
+        # produces a new contiguous numpy array; wrapping it with ``copy=False``
+        # avoids a redundant ``wp.copy`` for the second hop.
+        slice_np = self.__data_array.numpy()[row, valid_idx]
+        return wp.array(slice_np, dtype=wp.float32, copy=False, device="cpu")
 
-        return wp.from_numpy(self.__data_array.numpy()[row, valid_indices], dtype=wp.float32)
+    def _update_data_in_place(self, positions_np: "np.ndarray | None", velocities_np: "np.ndarray | None") -> None:
+        """Update position and velocity data in-place, invalidating cached property values.
+
+        Intended for hot-path use with pre-allocated JointState objects built via the
+        direct constructor. Avoids the full allocation cost of ``from_name()`` — no new
+        ``wp.zeros`` arrays, no validation, no index recomputation. Cached ``positions``
+        / ``velocities`` wp.arrays are invalidated and rebuilt lazily on next access
+        (and skipped entirely when never read).
+
+        Args:
+            positions_np: New position values as a numpy array whose length equals
+                ``len(position_names)``, written into the valid position slots.
+                Pass ``None`` to leave positions unchanged.
+            velocities_np: New velocity values as a numpy array whose length equals
+                ``len(velocity_names)``.  Pass ``None`` to leave velocities unchanged.
+        """
+        data_np = self.__data_array.numpy()
+        if positions_np is not None:
+            data_np[0, self.__position_valid_idx] = positions_np
+            self.__valid_positions = _UNSET
+        if velocities_np is not None:
+            data_np[1, self.__velocity_valid_idx] = velocities_np
+            self.__valid_velocities = _UNSET
 
 
 class SpatialState:
@@ -582,19 +636,36 @@ class SpatialState:
         self.__angular_velocity_data = angular_velocity_data
         self.__valid_array = valid_array
 
-        # Store data of interest independently for quick retrieval from the user:
-        self.__valid_positions = self.__get_valid_data_in_spatial_dimension(dimension="position")
-        self.__position_names = self.__valid_array_to_spatial_names(dimension="position")
-        self.__position_indices = self.__valid_array_to_spatial_indices(dimension="position")
-        self.__valid_orientations = self.__get_valid_data_in_spatial_dimension(dimension="orientation")
-        self.__orientation_names = self.__valid_array_to_spatial_names(dimension="orientation")
-        self.__orientation_indices = self.__valid_array_to_spatial_indices(dimension="orientation")
-        self.__valid_linear_velocities = self.__get_valid_data_in_spatial_dimension(dimension="linear_velocity")
-        self.__linear_velocity_names = self.__valid_array_to_spatial_names(dimension="linear_velocity")
-        self.__linear_velocity_indices = self.__valid_array_to_spatial_indices(dimension="linear_velocity")
-        self.__valid_angular_velocities = self.__get_valid_data_in_spatial_dimension(dimension="angular_velocity")
-        self.__angular_velocity_names = self.__valid_array_to_spatial_names(dimension="angular_velocity")
-        self.__angular_velocity_indices = self.__valid_array_to_spatial_indices(dimension="angular_velocity")
+        # Pre-compute which frames are valid per dimension once. ``valid_array`` is
+        # built CPU-resident inside ``from_name`` / ``from_index`` so ``.numpy()`` is
+        # a zero-copy view; fancy column reads + ``np.where`` then run purely on the
+        # host without any wp.copy traffic.
+        valid_np = valid_array.numpy()
+        self.__position_valid_idx = np.where(valid_np[:, 0].flatten())[0]
+        self.__orientation_valid_idx = np.where(valid_np[:, 1].flatten())[0]
+        self.__linear_velocity_valid_idx = np.where(valid_np[:, 2].flatten())[0]
+        self.__angular_velocity_valid_idx = np.where(valid_np[:, 3].flatten())[0]
+
+        # Names are cheap (list comprehensions) so we materialise them eagerly.
+        self.__position_names = [self.__spatial_space[i] for i in self.__position_valid_idx]
+        self.__orientation_names = [self.__spatial_space[i] for i in self.__orientation_valid_idx]
+        self.__linear_velocity_names = [self.__spatial_space[i] for i in self.__linear_velocity_valid_idx]
+        self.__angular_velocity_names = [self.__spatial_space[i] for i in self.__angular_velocity_valid_idx]
+
+        # Per-dimension wp.arrays (data + indices) are built lazily on first property
+        # access. The previous eager construction issued an H2D ``wp.from_numpy``
+        # per dimension (up to eight wp.copy calls per SpatialState) — wasteful for
+        # benchmark workloads where ``*_indices`` are typically never read and
+        # ``positions`` / ``orientations`` are immediately re-downloaded via
+        # ``.numpy()`` by the consumer.
+        self.__valid_positions: _LazyOptionalWpArray = _UNSET
+        self.__valid_orientations: _LazyOptionalWpArray = _UNSET
+        self.__valid_linear_velocities: _LazyOptionalWpArray = _UNSET
+        self.__valid_angular_velocities: _LazyOptionalWpArray = _UNSET
+        self.__position_indices: _LazyWpIndices = _UNSET
+        self.__orientation_indices: _LazyWpIndices = _UNSET
+        self.__linear_velocity_indices: _LazyWpIndices = _UNSET
+        self.__angular_velocity_indices: _LazyWpIndices = _UNSET
 
     @classmethod
     def from_name(
@@ -905,6 +976,8 @@ class SpatialState:
         Returns:
             A 1D warp array of frame indices that have valid positions.
         """
+        if self.__position_indices is _UNSET:
+            self.__position_indices = self.__build_indices_array(self.__position_valid_idx)
         return self.__position_indices
 
     @property
@@ -915,6 +988,8 @@ class SpatialState:
             A 2D warp array with shape (N, 3) containing position values for frames with valid
             positions. Returns None if no positions are valid.
         """
+        if self.__valid_positions is _UNSET:
+            self.__valid_positions = self.__build_data_array(self.__position_data, self.__position_valid_idx)
         return self.__valid_positions
 
     @property
@@ -933,6 +1008,8 @@ class SpatialState:
         Returns:
             A 1D warp array of frame indices that have valid orientations.
         """
+        if self.__orientation_indices is _UNSET:
+            self.__orientation_indices = self.__build_indices_array(self.__orientation_valid_idx)
         return self.__orientation_indices
 
     @property
@@ -943,6 +1020,8 @@ class SpatialState:
             A 2D warp array with shape (N, 4) containing orientation values (quaternions) for
             frames with valid orientations. Returns None if no orientations are valid.
         """
+        if self.__valid_orientations is _UNSET:
+            self.__valid_orientations = self.__build_data_array(self.__orientation_data, self.__orientation_valid_idx)
         return self.__valid_orientations
 
     @property
@@ -961,6 +1040,8 @@ class SpatialState:
         Returns:
             A 1D Warp array containing the indices of frames with valid linear velocities.
         """
+        if self.__linear_velocity_indices is _UNSET:
+            self.__linear_velocity_indices = self.__build_indices_array(self.__linear_velocity_valid_idx)
         return self.__linear_velocity_indices
 
     @property
@@ -971,6 +1052,10 @@ class SpatialState:
             A 2D Warp array with shape (N, 3) containing linear velocity values for frames
             with valid linear velocities. Returns None if no linear velocities are valid.
         """
+        if self.__valid_linear_velocities is _UNSET:
+            self.__valid_linear_velocities = self.__build_data_array(
+                self.__linear_velocity_data, self.__linear_velocity_valid_idx
+            )
         return self.__valid_linear_velocities
 
     @property
@@ -989,6 +1074,8 @@ class SpatialState:
         Returns:
             A 1D Warp array containing the indices of frames with valid angular velocities.
         """
+        if self.__angular_velocity_indices is _UNSET:
+            self.__angular_velocity_indices = self.__build_indices_array(self.__angular_velocity_valid_idx)
         return self.__angular_velocity_indices
 
     @property
@@ -999,6 +1086,10 @@ class SpatialState:
             A 2D Warp array with shape (N, 3) containing angular velocity values for frames
             with valid angular velocities. Returns None if no angular velocities are valid.
         """
+        if self.__valid_angular_velocities is _UNSET:
+            self.__valid_angular_velocities = self.__build_data_array(
+                self.__angular_velocity_data, self.__angular_velocity_valid_idx
+            )
         return self.__valid_angular_velocities
 
     @property
@@ -1052,88 +1143,28 @@ class SpatialState:
         """
         return self.__valid_array
 
-    def __valid_array_to_spatial_indices(
-        self,
-        dimension: Literal["position", "orientation", "linear_velocity", "angular_velocity"],
-    ) -> wp.array:
-        """Get frame indices for valid entries in the specified spatial dimension.
+    def __build_indices_array(self, valid_idx: np.ndarray) -> wp.array:
+        """Wrap a numpy index array as a CPU wp.array without an H2D copy.
 
-        Args:
-            dimension: The spatial dimension to check for valid entries.
-
-        Returns:
-            A 1D warp array containing indices of frames with valid data for the specified dimension.
+        ``wp.array(np_data, copy=False, device="cpu")`` references the numpy buffer
+        directly via ``_init_from_ptr`` and skips the ``warp.copy`` call that
+        ``wp.from_numpy`` would otherwise issue. The returned array is treated as
+        immutable by the existing API.
         """
-        if dimension == "position":
-            column_index = 0
-        elif dimension == "orientation":
-            column_index = 1
-        elif dimension == "linear_velocity":
-            column_index = 2
-        elif dimension == "angular_velocity":
-            column_index = 3
+        return wp.array(valid_idx, dtype=wp.int32, copy=False, device="cpu")
 
-        valid_indices = np.where(self.__valid_array.numpy()[:, column_index].flatten())[0]
-        return wp.from_numpy(valid_indices, dtype=wp.int32)
+    def __build_data_array(self, data_array: wp.array, valid_idx: np.ndarray) -> wp.array | None:
+        """Wrap a numpy slice of the per-dimension data array as a CPU wp.array without an H2D copy.
 
-    def __valid_array_to_spatial_names(
-        self,
-        dimension: Literal["position", "orientation", "linear_velocity", "angular_velocity"],
-    ) -> list[str]:
-        """Get frame names for valid entries in the specified spatial dimension.
-
-        Args:
-            dimension: The spatial dimension to check for valid entries.
-
-        Returns:
-            A list of frame names with valid data for the specified dimension.
+        ``data_array`` is built CPU-resident in ``from_name`` / ``from_index``, so
+        ``.numpy()`` is a zero-copy view. Fancy-indexing produces a new contiguous
+        numpy array; wrapping it with ``copy=False`` avoids the redundant
+        ``wp.copy`` for the second hop.
         """
-        if dimension == "position":
-            column_index = 0
-        elif dimension == "orientation":
-            column_index = 1
-        elif dimension == "linear_velocity":
-            column_index = 2
-        elif dimension == "angular_velocity":
-            column_index = 3
-
-        valid_indices = np.where(self.__valid_array.numpy()[:, column_index].flatten())[0]
-
-        return [self.__spatial_space[i] for i in valid_indices]
-
-    def __get_valid_data_in_spatial_dimension(
-        self,
-        dimension: Literal["position", "orientation", "linear_velocity", "angular_velocity"],
-    ) -> wp.array | None:
-        """Extract valid data for the specified spatial dimension.
-
-        Args:
-            dimension: The spatial dimension to extract valid data from.
-
-        Returns:
-            A 2D warp array containing valid data for the specified dimension.
-            Returns None if no valid data exists for the dimension.
-        """
-
-        if dimension == "position":
-            column_index = 0
-            data_array = self.__position_data
-        elif dimension == "orientation":
-            column_index = 1
-            data_array = self.__orientation_data
-        elif dimension == "linear_velocity":
-            column_index = 2
-            data_array = self.__linear_velocity_data
-        elif dimension == "angular_velocity":
-            column_index = 3
-            data_array = self.__angular_velocity_data
-
-        valid_indices = np.where(self.__valid_array.numpy()[:, column_index].flatten())[0]
-
-        if len(valid_indices) == 0:
+        if len(valid_idx) == 0:
             return None
-
-        return wp.from_numpy(data_array.numpy()[valid_indices, :], dtype=wp.float32)
+        slice_np = data_array.numpy()[valid_idx, :]
+        return wp.array(slice_np, dtype=wp.float32, copy=False, device="cpu")
 
 
 class RootState:

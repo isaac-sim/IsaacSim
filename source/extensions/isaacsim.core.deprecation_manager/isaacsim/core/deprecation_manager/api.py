@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +13,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Functions for importing Python packages and modules with enhanced error handling and deprecation notices."""
+
+from __future__ import annotations
+
 import importlib
 import sys
 from types import ModuleType
 
 import carb
 import omni.kit.app
+
+
+class _StubModule:
+    """No-op mock module returned during stub generation when a dependency is unavailable.
+
+    Attribute access returns another ``_StubModule``, and calling an instance
+    acts as an identity decorator so that patterns like ``@torch.jit.script``
+    do not crash.
+    """
+
+    def __getattr__(self, _name: str) -> _StubModule:
+        return _StubModule()
+
+    def __call__(self, *args, **kwargs) -> object:  # noqa: ANN002, ANN003
+        if args and callable(args[0]):
+            return args[0]
+        return _StubModule()
 
 
 def import_module(name: str) -> ModuleType:
@@ -32,6 +53,9 @@ def import_module(name: str) -> ModuleType:
     Args:
         name: The name of the package/module to import.
 
+    Returns:
+        The imported module.
+
     Example:
 
     .. code-block:: python
@@ -41,8 +65,9 @@ def import_module(name: str) -> ModuleType:
         >>> numpy = import_module("numpy")
     """
 
-    def exit_app():
-        # test mode
+    def exit_app() -> None:
+        if carb.settings.get_settings().get_as_bool("/app/stubgen/enabled"):
+            return
         if carb.settings.get_settings().get_as_bool("/exts/omni.kit.test/runTestsAndQuit"):
             sys.exit(1)
         omni.kit.app.get_app().shutdown()
@@ -52,6 +77,8 @@ def import_module(name: str) -> ModuleType:
         try:
             return importlib.import_module(name)
         except (ModuleNotFoundError, ImportError) as e:
+            if carb.settings.get_settings().get_as_bool("/app/stubgen/enabled"):
+                return _StubModule()
             msg = """
 ============================================================================
 ========================== IMPLEMENTATION NOTICE ===========================
@@ -81,5 +108,7 @@ For a specific PyTorch version, see: https://pytorch.org/get-started/locally
         try:
             return importlib.import_module(name)
         except (ModuleNotFoundError, ImportError) as e:
+            if carb.settings.get_settings().get_as_bool("/app/stubgen/enabled"):
+                return _StubModule()
             carb.log_error(f"Import error: {str(e)}")
             exit_app()

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Selection set naming UI for the Edit menu."""
 
 __all__ = ["SelectionSetWindow"]
@@ -28,7 +29,7 @@ class SelectionSetWindow:
         callback: Function to call with the new selection set name.
     """
 
-    def __init__(self, callback: Callable[[str], None]):
+    def __init__(self, callback: Callable[[str], None]) -> None:
         self._callback: Callable[[str], None] | None = callback
         window = ui.Window(
             "Selection Set Name",
@@ -93,7 +94,7 @@ class SelectionSetWindow:
         self._window: ui.Window = window
         self._widget: ui.StringField = widget
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Release UI resources for the selection set dialog.
 
         Example:
@@ -105,7 +106,7 @@ class SelectionSetWindow:
         self._callback = None
         del self._window
 
-    def show(self):
+    def show(self) -> None:
         """Show the dialog and reset the input field.
 
         Example:

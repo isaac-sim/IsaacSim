@@ -32,17 +32,17 @@ _UR10E_BASE_USD = os.path.join(_TEST_DATA_DIR, "ur10e", "configuration", "ur10e_
 class TestMaterialsRoutingRule(omni.kit.test.AsyncTestCase):
     """Async tests for MaterialsRoutingRule."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Create a temporary directory for test output."""
         self._tmpdir = tempfile.mkdtemp()
         self._success = False
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Remove temporary directory after successful tests."""
         if self._success:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
 
-    async def test_get_configuration_parameters(self):
+    async def test_get_configuration_parameters(self) -> None:
         """Verify configuration parameters are exposed."""
         stage = Usd.Stage.Open(_UR10E_USD)
         rule = MaterialsRoutingRule(
@@ -63,7 +63,7 @@ class TestMaterialsRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertIn("download_textures", param_names)
         self._success = True
 
-    async def test_process_rule_creates_materials_layer(self):
+    async def test_process_rule_creates_materials_layer(self) -> None:
         """Verify materials layer is created."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_UR10E_USD, temp_asset)
@@ -90,7 +90,7 @@ class TestMaterialsRoutingRule(omni.kit.test.AsyncTestCase):
             self.assertIsNotNone(materials_layer)
         self._success = True
 
-    async def test_process_rule_with_scope(self):
+    async def test_process_rule_with_scope(self) -> None:
         """Verify scope filter is logged."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_UR10E_USD, temp_asset)
@@ -115,7 +115,7 @@ class TestMaterialsRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(any("scope=/ur10e" in msg for msg in log))
         self._success = True
 
-    async def test_process_rule_with_deduplication(self):
+    async def test_process_rule_with_deduplication(self) -> None:
         """Verify deduplication logs are recorded."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_UR10E_BASE_USD, temp_asset)
@@ -148,7 +148,7 @@ class TestMaterialsRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(any("35 bindings updated" in msg for msg in log))
         self._success = True
 
-    async def test_process_rule_without_deduplication(self):
+    async def test_process_rule_without_deduplication(self) -> None:
         """Verify non-deduplicated processing logs are recorded."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_UR10E_BASE_USD, temp_asset)
@@ -182,7 +182,7 @@ class TestMaterialsRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(any("35 bindings updated" in msg for msg in log))
         self._success = True
 
-    async def test_process_rule_affected_stages(self):
+    async def test_process_rule_affected_stages(self) -> None:
         """Verify affected stages are recorded."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_UR10E_USD, temp_asset)
@@ -206,7 +206,7 @@ class TestMaterialsRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertGreaterEqual(len(affected), 0)
         self._success = True
 
-    async def test_process_rule_logs_operations(self):
+    async def test_process_rule_logs_operations(self) -> None:
         """Verify operation log entries are recorded."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_UR10E_BASE_USD, temp_asset)
@@ -231,7 +231,7 @@ class TestMaterialsRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(any("MaterialsRoutingRule completed" in msg for msg in log))
         self._success = True
 
-    async def test_process_rule_collects_mdl_textures(self):
+    async def test_process_rule_collects_mdl_textures(self) -> None:
         """Verify MDL textures are collected and paths remapped."""
         temp_source_dir = os.path.join(self._tmpdir, "source")
         temp_usd_path = os.path.join(temp_source_dir, "materials.usda")
@@ -323,7 +323,7 @@ class TestMaterialsRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_skips_physics_materials(self):
+    async def test_process_rule_skips_physics_materials(self) -> None:
         """Verify materials with PhysicsMaterialAPI are excluded from routing."""
         stage_path = os.path.join(self._tmpdir, "physics_mat_test.usda")
         stage = Usd.Stage.CreateNew(stage_path)

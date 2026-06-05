@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,7 +38,7 @@ _registered_actions = []
 _ext_name = "isaacsim.app.setup"
 
 
-def _load_layout_async(layout_file: str):
+def _load_layout_async(layout_file: str) -> None:
     """Load a layout file asynchronously.
 
     Args:
@@ -47,7 +47,7 @@ def _load_layout_async(layout_file: str):
     asyncio.ensure_future(load_layout(layout_file))
 
 
-def _execute_func_async(func: Callable[[], Any]):
+def _execute_func_async(func: Callable[[], Any]) -> None:
     """Execute an async function.
 
     Args:
@@ -118,7 +118,7 @@ def create_layout_menu_item(
     )
 
 
-def setup_menus(show_ui_docs_callback: Callable[[], None]):
+def setup_menus(show_ui_docs_callback: Callable[[], None]) -> None:
     """Configure application menus including layouts and help items.
 
     Sets up the Help menu with UI documentation link and the Layouts menu
@@ -172,7 +172,7 @@ def setup_menus(show_ui_docs_callback: Callable[[], None]):
         add_menu_items(menu_dict[group], group)
 
 
-def cleanup_menus():
+def cleanup_menus() -> None:
     """Clean up registered menu actions.
 
     Example:

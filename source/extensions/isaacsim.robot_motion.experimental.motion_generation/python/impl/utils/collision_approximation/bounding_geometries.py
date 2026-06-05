@@ -15,7 +15,6 @@
 
 """Provides bounding geometry data structures for collision approximation in robot motion generation."""
 
-
 from dataclasses import dataclass
 
 import numpy as np

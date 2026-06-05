@@ -12,11 +12,11 @@
   - def get_results_output_dir(self) -> str | None
   - def set_overwrite_results_output(self, overwrite: bool)
   - def set_gripper(self, gripper: str | Usd.Prim) -> bool
-  - [property] def gripper_path(self)
-  - [property] def gripper_prim(self)
+  - [property] def gripper_path(self) -> str
+  - [property] def gripper_prim(self) -> Usd.Prim | None
   - def set_object_prim_path(self, path: str)
-  - def get_object_prim_path(self)
-  - def get_object_prim(self)
+  - def get_object_prim_path(self) -> str | None
+  - def get_object_prim(self) -> Usd.Prim | None
   - def create_and_add_grasp_phase(self, name: str, joint_drive_targets: dict[str, float] = None, simulation_steps: int = DEFAULT_NUM_SIMULATION_STEPS, simulation_step_dt: float = DEFAULT_SIMULATION_STEP_DT) -> GraspPhase
   - def remove_grasp_phase_by_name(self, phase_name: str) -> bool
   - def get_grasp_phase_by_name(self, name: str, ignore_case: bool = True) -> GraspPhase | None

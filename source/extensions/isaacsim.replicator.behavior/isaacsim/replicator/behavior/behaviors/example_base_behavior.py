@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Example base behavior that inherits from BaseBehavior."""
+
 import carb
 from isaacsim.replicator.behavior.base_behavior import BaseBehavior
 from pxr import Sdf, Usd
 
 
 class ExampleBaseBehavior(BaseBehavior):
-    """
-    Example randomizer that inherits from `BaseBehavior`.
+    """Example randomizer that inherits from `BaseBehavior`.
+
     It exposes an additional attribute to include the children of the prim in the randomization.
     """
 
@@ -34,35 +36,36 @@ class ExampleBaseBehavior(BaseBehavior):
         },
     ]
 
-    def on_init(self):
+    def on_init(self) -> None:
+        """Initialize the behavior and set up exposed attributes."""
         # Call the base class to setup the exposed attributes
         super().on_init()
 
         # List of the valid prims that to apply the behavior to
         self._valid_prims = []
 
-    def on_destroy(self):
+    def on_destroy(self) -> None:
         """Called when the script is unassigned from a prim."""
         self._reset()
         super().on_destroy()
 
-    def on_play(self):
+    def on_play(self) -> None:
         """Called when `play` is pressed."""
         super().on_play()
         self._setup()
 
-    def on_stop(self):
+    def on_stop(self) -> None:
         """Called when `stop` is pressed."""
         super().on_stop()
         self._reset()
 
-    def _reset(self):
+    def _reset(self) -> None:
         """Reset the randomization."""
         # Set prims back to their initial state
         self._valid_prims = []
 
-    def _setup(self):
-        """Setup the randomizer."""
+    def _setup(self) -> None:
+        """Set up the randomizer."""
         # Read the exposed attribute values
         include_children = self._get_exposed_variable("includeChildren")
 
@@ -76,7 +79,7 @@ class ExampleBaseBehavior(BaseBehavior):
             carb.log_warn(f"[{self.prim_path}] No valid prims found to randomize.")
             return
 
-    def _apply_behavior(self):
+    def _apply_behavior(self) -> None:
         # Apply the behavior for each prim
         for prim in self._valid_prims:
             print(f"[ExampleBaseBehavior][{self.prim_path}] Applying behavior to prim {prim.GetPath()}")

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Benchmark core world operations including cloning, views, and simulation steps."""
+
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -50,6 +53,7 @@ from isaacsim.storage.native import get_assets_root_path
 
 
 def define_environment():
+    """Define the base environment with cubes and robot assets."""
     define_prim(path="/World/env_0", type_name="Xform")
     XformPrim("/World/env_0", positions=np.array([[0.0, 0.0, 0.0]]), reset_xform_op_properties=True)
     cube_1 = VisualCuboid(
@@ -97,6 +101,7 @@ def define_environment():
 
 
 def clone_environments():
+    """Clone the base environment using GridCloner."""
     cloner = GridCloner(spacing=1)
     cloner.define_base_env("/World")
     prim_paths = cloner.generate_paths("/World/env", n_envs)
@@ -104,6 +109,7 @@ def clone_environments():
 
 
 def create_cube_views():
+    """Create geometry and rigid body views for the cloned cubes."""
     # Experimental prims don't need to be added to the scene registry
     visual_cube_view = GeomPrim(paths="/World/env_.*/new_cube_1")
     rigid_cube_view_1 = RigidPrim(paths="/World/env_.*/new_cube_2")
@@ -111,6 +117,7 @@ def create_cube_views():
 
 
 def create_articulation_views():
+    """Create articulation views for the cloned Franka robots."""
     global articulation_view_1
     # Experimental prims don't need to be added to the scene registry
     articulation_view_1 = Articulation(paths="/World/env_.*/Franka_1")

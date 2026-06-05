@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 // #include <carb/filesystem/IFileSystem.h>
 #include <isaacsim/core/includes/Conversions.h>
+#include <isaacsim/core/includes/PhysicsEngine.h>
 #include <isaacsim/core/includes/UsdUtilities.h>
 #include <isaacsim/core/simulation_manager/ISimulationManager.h>
 #include <omni/physics/tensors/IArticulationView.h>
@@ -103,7 +104,7 @@ inline void setTransform(pxr::UsdPrim& prim, pxr::GfVec3f bodyTranslation, pxr::
             CARB_LOG_ERROR("Failed to acquire Tensor Api interface\n");
             return;
         }
-        auto mSimView = mTensorInterface->createSimulationView(long(stageId));
+        auto mSimView = mTensorInterface->createSimulationView(long(stageId), getActivePhysicsEngineName());
         if (mSimView)
         {
             TensorDesc xformTensor;
@@ -179,7 +180,7 @@ inline void setScale(pxr::UsdPrim& prim, pxr::GfVec3f pxBodyScale)
             return;
         }
         uint64_t stageId = pxr::UsdUtilsStageCache::Get().GetId(prim.GetStage()).ToLongInt();
-        if (auto mSimView = mTensorInterface->createSimulationView(long(stageId)))
+        if (auto mSimView = mTensorInterface->createSimulationView(long(stageId), getActivePhysicsEngineName()))
         {
             auto path = prim.GetPath().GetString().c_str();
             auto articulation = mSimView->createArticulationView(path);

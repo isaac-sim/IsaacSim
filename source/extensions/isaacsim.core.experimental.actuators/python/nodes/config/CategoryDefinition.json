@@ -1,0 +1,6 @@
+{
+    "categoryDefinitions": {
+        "$description": "These categories are applied to actuator nodes",
+        "newtonActuators": "Nodes implementing Newton Actuator functionality"
+    }
+}

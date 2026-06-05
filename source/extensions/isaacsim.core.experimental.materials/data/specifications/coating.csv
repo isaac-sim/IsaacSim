@@ -1,0 +1,9 @@
+Name,Index,Description
+"none",0,"Default, unlabeled, or unspecified coating."
+"paint",1,"Painted."
+"clearcoat",2,"Clear-coated."
+"paint_clearcoat",3,"Painted and clear-coated."
+"<reserved>",4,"Unused, reserved for future."
+"<reserved>",5,"Unused, reserved for future."
+"<reserved>",6,"Unused, reserved for future."
+"<reserved>",7,"Unused, reserved for future."

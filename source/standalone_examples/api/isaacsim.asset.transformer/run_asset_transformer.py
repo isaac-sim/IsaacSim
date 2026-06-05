@@ -140,9 +140,9 @@ kit = SimulationApp({"headless": args.headless})
 
 # Now import the rest after SimulationApp is initialized
 import carb
-import omni.kit.app
 from isaacsim.asset.transformer import AssetTransformerManager, RuleProfile
-from isaacsim.core.utils.extensions import enable_extension, get_extension_path_from_name
+from isaacsim.core.experimental.utils.app import enable_extension
+from isaacsim.core.experimental.utils.app import get_extension_path as get_extension_path_from_name
 
 
 def get_rules_extension_path() -> str:
@@ -161,13 +161,12 @@ def get_rules_extension_path() -> str:
 
 
 def get_default_profile_path() -> str:
-    """Get path to the default     return os.path.join(get_rules_extension_path(), "data", "isaacsim_structure.json")
-    .json profile.
+    """Get path to the default .json profile.
 
-        Returns:
+    Returns:
             Absolute path to the default rule profile.
 
-        Raises:
+    Raises:
             RuntimeError: If the rules extension is not found.
     """
     return os.path.join(get_rules_extension_path(), "data", "isaacsim_structure.json")
@@ -230,7 +229,7 @@ def run_asset_transformer(
     # Run the transformer
     manager = AssetTransformerManager()
     report = manager.run(
-        input_stage_path=input_stage_path,
+        input_stage=input_stage_path,
         profile=profile,
         package_root=output_package_root,
     )

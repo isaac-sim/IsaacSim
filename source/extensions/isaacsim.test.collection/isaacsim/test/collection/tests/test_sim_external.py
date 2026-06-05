@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Unit tests for external dependencies and asset conversion functionality."""
-
 
 import os
 
@@ -37,7 +36,6 @@ class TestExternalDependencies(omni.kit.test.AsyncTestCase):
     async def tearDown(self):
         """Clean up test environment."""
         await omni.kit.app.get_app().next_update_async()
-        pass
 
     async def test_asset_converter(self):
         """Test that OBJ files can be converted to USD format."""
@@ -65,6 +63,6 @@ class TestExternalDependencies(omni.kit.test.AsyncTestCase):
         task = instance.create_converter_task(input_obj, output_usd, progress_callback, converter_context)
         success = await task.wait_until_finished()
         if not success:
-            carb.log_error(task.get_status(), task.get_detailed_error())
+            carb.log_error(f"{task.get_status()}, {task.get_error_message()}")
         print("converting done")
         self.assertTrue(os.path.isfile(output_usd))

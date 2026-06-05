@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 """Utilities for physics simulation, grasping operations, and USD manipulation in Isaac Sim replicator grasping workflows."""
-
 
 import os
 
@@ -80,7 +78,7 @@ def get_physics_scene(stage: Usd.Stage, path: str) -> UsdPhysics.Scene | None:
 
 
 def remove_physics_scene(stage: Usd.Stage, physics_scene_path: str) -> bool:
-    """Removes a UsdPhysics.Scene prim at the specified path.
+    """Remove a UsdPhysics.Scene prim at the specified path.
 
     Args:
         stage: The USD stage.
@@ -100,8 +98,8 @@ def remove_physics_scene(stage: Usd.Stage, physics_scene_path: str) -> bool:
 
 def set_rigid_body_simulation_owner(
     prims: list[Usd.Prim] | Usd.Prim, physics_scene_prim: UsdPhysics.Scene, include_descendants: bool = True
-):
-    """Sets the simulationOwner for a prim and all its descendants to the given physics scene.
+) -> list[Usd.Prim]:
+    """Set the simulationOwner for a prim and all its descendants to the given physics scene.
 
     Args:
         prims: The prim or list of prims to set the simulation owner for.
@@ -145,8 +143,8 @@ def set_rigid_body_simulation_owner(
 
 def remove_rigid_body_simulation_owner(
     prims: list[Usd.Prim] | Usd.Prim, physics_scene_prim: UsdPhysics.Scene, include_descendants: bool = True
-):
-    """Removes the simulationOwner for a prim and all its descendants from the given physics scene.
+) -> list[Usd.Prim]:
+    """Remove the simulationOwner for a prim and all its descendants from the given physics scene.
 
     Args:
         prims: The prim or list of prims to remove the simulation owner for.
@@ -274,7 +272,7 @@ def set_joint_drive_parameters(
     return True
 
 
-def set_joint_state(joint_prim: Usd.Prim, position_value: float = 0.0, velocity_value: float = 0.0):
+def set_joint_state(joint_prim: Usd.Prim, position_value: float = 0.0, velocity_value: float = 0.0) -> bool:
     """Set the joint state parameters for a joint. Applies PhysxSchema.JointStateAPI if missing.
 
     Args:
@@ -373,9 +371,31 @@ def get_joint_state(joint_prim: Usd.Prim) -> tuple[float, float]:
     return position, velocity
 
 
+def _disable_scene_auto_updates(physics_scene: UsdPhysics.Scene) -> tuple[Usd.Attribute, str | None, bool]:
+    """Disable automatic updates for a PhysX scene and return its previous update state."""
+    physx_scene_api = PhysxSchema.PhysxSceneAPI.Apply(physics_scene.GetPrim())
+    update_type_attr = physx_scene_api.GetUpdateTypeAttr()
+    original_update_type = update_type_attr.Get() if update_type_attr else None
+    original_update_type_authored = update_type_attr.HasAuthoredValueOpinion() if update_type_attr else False
+
+    update_type_attr = physx_scene_api.CreateUpdateTypeAttr()
+    update_type_attr.Set(PhysxSchema.Tokens.Disabled)
+    return update_type_attr, original_update_type, original_update_type_authored
+
+
+def _restore_scene_auto_updates(
+    update_type_attr: Usd.Attribute, original_update_type: str | None, original_update_type_authored: bool
+) -> None:
+    """Restore a PhysX scene update type captured by `_disable_scene_auto_updates()`."""
+    if original_update_type_authored and original_update_type is not None:
+        update_type_attr.Set(original_update_type)
+    else:
+        update_type_attr.Clear()
+
+
 async def simulate_physics_async(
     num_frames: int, step_dt: float, physics_scene: UsdPhysics.Scene | None = None, render: bool = False
-):
+) -> None:
     """Simulate physics for a fixed number of frames asynchronously.
 
     Args:
@@ -396,18 +416,21 @@ async def simulate_physics_async(
     physx_sim_interface = omni.physx.get_physx_simulation_interface()
 
     if physics_scene:
-        physx_scene_api = PhysxSchema.PhysxSceneAPI.Apply(physics_scene.GetPrim())
-        physx_scene_api.CreateUpdateTypeAttr().Set(PhysxSchema.Tokens.Disabled)
-
-        physics_scene_path = physics_scene.GetPath()
-        scene_int = PhysicsSchemaTools.sdfPathToInt(physics_scene_path)
-        for _ in range(num_frames):
-            physx_sim_interface.simulate_scene(scene_int, step_dt, 0)
+        update_type_attr, original_update_type, original_update_type_authored = _disable_scene_auto_updates(
+            physics_scene
+        )
+        try:
+            physics_scene_path = physics_scene.GetPath()
+            scene_int = PhysicsSchemaTools.sdfPathToInt(physics_scene_path)
+            for _ in range(num_frames):
+                physx_sim_interface.simulate_scene(scene_int, step_dt, 0)
+                physx_sim_interface.fetch_results_scene(scene_int)
+                if render:
+                    await omni.kit.app.get_app().next_update_async()
             physx_sim_interface.fetch_results_scene(scene_int)
-            if render:
-                await omni.kit.app.get_app().next_update_async()
-        physx_sim_interface.fetch_results_scene(scene_int)
-        await omni.kit.app.get_app().next_update_async()
+            await omni.kit.app.get_app().next_update_async()
+        finally:
+            _restore_scene_auto_updates(update_type_attr, original_update_type, original_update_type_authored)
     else:
         for _ in range(num_frames):
             physx_sim_interface.simulate(step_dt, 0)
@@ -427,7 +450,7 @@ async def simulate_physics_with_forces_async(
     physx_dt: float,
     physics_scene: UsdPhysics.Scene | None = None,
     render: bool = True,
-):
+) -> None:
     """Apply forces to assets at specified positions and simulate physics asynchronously.
 
     Can simulate either the default physics context or a specific physics scene.
@@ -467,19 +490,22 @@ async def simulate_physics_with_forces_async(
             f"Simulating physics with forces using scene: '{physics_scene.GetPath()}', steps {sim_steps}, dt {physx_dt}"
         )
         # Ensure the scene isn't updating automatically if we drive it manually
-        physx_scene_api = PhysxSchema.PhysxSceneAPI.Apply(physics_scene.GetPrim())
-        physx_scene_api.CreateUpdateTypeAttr().Set(PhysxSchema.Tokens.Disabled)
-
-        physics_scene_path = physics_scene.GetPath()
-        scene_int = PhysicsSchemaTools.sdfPathToInt(physics_scene_path)
-        for _ in range(sim_steps):
-            physx_interface.simulate_scene(scene_int, physx_dt, 0)
+        update_type_attr, original_update_type, original_update_type_authored = _disable_scene_auto_updates(
+            physics_scene
+        )
+        try:
+            physics_scene_path = physics_scene.GetPath()
+            scene_int = PhysicsSchemaTools.sdfPathToInt(physics_scene_path)
+            for _ in range(sim_steps):
+                physx_interface.simulate_scene(scene_int, physx_dt, 0)
+                physx_interface.fetch_results_scene(scene_int)
+                if render:
+                    await omni.kit.app.get_app().next_update_async()
+            # Fetch results one last time after the loop
             physx_interface.fetch_results_scene(scene_int)
-            if render:
-                await omni.kit.app.get_app().next_update_async()
-        # Fetch results one last time after the loop
-        physx_interface.fetch_results_scene(scene_int)
-        await omni.kit.app.get_app().next_update_async()
+            await omni.kit.app.get_app().next_update_async()
+        finally:
+            _restore_scene_auto_updates(update_type_attr, original_update_type, original_update_type_authored)
     else:
         print(f"Simulating physics with forces using default scene, steps {sim_steps}, dt {physx_dt}")
         for _ in range(sim_steps):
@@ -492,13 +518,13 @@ async def simulate_physics_with_forces_async(
         await omni.kit.app.get_app().next_update_async()
 
 
-def reset_physics_simulation():
-    """Resets the simulation to its initial state."""
+def reset_physics_simulation() -> None:
+    """Reset the simulation to its initial state."""
     physx_interface = omni.physx.get_physx_interface()
     physx_interface.reset_simulation()
 
 
-async def advance_timeline_async(num_frames: int, render: bool = False):
+async def advance_timeline_async(num_frames: int, render: bool = False) -> None:
     """Simulate by advancing the main Omniverse timeline for a fixed number of frames.
 
     Args:
@@ -524,8 +550,8 @@ async def advance_timeline_async(num_frames: int, render: bool = False):
     await omni.kit.app.get_app().next_update_async()
 
 
-def stop_timeline():
-    """Resets the simulation to its initial state and stops the timeline."""
+def stop_timeline() -> None:
+    """Reset the simulation to its initial state and stops the timeline."""
     timeline = omni.timeline.get_timeline_interface()
     timeline.stop()
 
@@ -642,8 +668,8 @@ def get_gripper_joints_info(gripper_prim_path: str) -> list[dict]:
     return joint_info_list
 
 
-def apply_joint_pregrasp_state(joint_path: str, position_value: float):
-    """Applies the pregrasp state to the given joint prim.
+def apply_joint_pregrasp_state(joint_path: str, position_value: float) -> None:
+    """Apply the pregrasp state to the given joint prim.
 
     Args:
         joint_path: The stage path to the joint prim.
@@ -670,8 +696,8 @@ def apply_joint_pregrasp_state(joint_path: str, position_value: float):
         carb.log_warn(f"Failed to apply pregrasp state to joint {joint_path}.")
 
 
-def apply_joint_pregrasp_states(joint_pregrasp_states: dict[str, float]):
-    """Applies the pregrasp states to the given joint prims.
+def apply_joint_pregrasp_states(joint_pregrasp_states: dict[str, float]) -> None:
+    """Apply the pregrasp states to the given joint prims.
 
     Args:
         joint_pregrasp_states: Dictionary mapping joint paths to their position values.
@@ -681,7 +707,7 @@ def apply_joint_pregrasp_states(joint_pregrasp_states: dict[str, float]):
 
 
 def isolate_prims_to_scene(prims_to_isolate: list[Usd.Prim], physics_scene: UsdPhysics.Scene) -> list[Usd.Prim]:
-    """Sets the simulation owner for the given prims (and their descendants) to the specified physics scene.
+    """Set the simulation owner for the given prims (and their descendants) to the specified physics scene.
 
     Args:
         prims_to_isolate: List of prims to set the simulation owner for.
@@ -712,8 +738,8 @@ def isolate_prims_to_scene(prims_to_isolate: list[Usd.Prim], physics_scene: UsdP
     return isolated_rigid_body_prims
 
 
-def clear_isolated_simulation_owners(rigid_body_prims: list[Usd.Prim], physics_scene: UsdPhysics.Scene | None):
-    """Clears the simulation owners for the given rigid body prims from the specified physics scene.
+def clear_isolated_simulation_owners(rigid_body_prims: list[Usd.Prim], physics_scene: UsdPhysics.Scene | None) -> None:
+    """Clear the simulation owners for the given rigid body prims from the specified physics scene.
 
     Args:
         rigid_body_prims: List of rigid body prims to remove from the physics scene.
@@ -792,7 +818,7 @@ def generate_grasp_poses_from_config(
 
 
 def get_gripper_joint_states(gripper_base_path: str) -> dict[str, float] | None:
-    """Retrieves the current position state of all valid joints under a gripper prim.
+    """Retrieve the current position state of all valid joints under a gripper prim.
 
     Args:
         gripper_base_path: The stage path to the base prim of the gripper.
@@ -826,8 +852,10 @@ def get_gripper_joint_states(gripper_base_path: str) -> dict[str, float] | None:
                 state = get_joint_state(joint_prim)
                 if state is not None:
                     position, _ = state
-                    # Use relative path for cleaner output
-                    relative_path = os.path.relpath(joint_path, start=gripper_base_path)
+                    # USD paths are always POSIX (forward-slash). Use a string slice so the
+                    # relative key stays OS-independent; os.path.relpath would inject os.sep
+                    # on Windows and corrupt nested keys (e.g. 'link1\\joint_left').
+                    relative_path = joint_path[len(gripper_base_path) + 1 :]
                     joint_states[relative_path] = position
                 else:
                     carb.log_warn(f"Could not get state for joint {joint_path} for results.")
@@ -842,7 +870,7 @@ def get_gripper_joint_states(gripper_base_path: str) -> dict[str, float] | None:
 
 
 def populate_joint_pregrasp_states_from_current(joint_paths: list[str]) -> dict[str, float]:
-    """Populates a dictionary with current joint positions for the given joint paths.
+    """Populate a dictionary with current joint positions for the given joint paths.
 
     Retrieves the current position for each valid joint prim found at the provided paths
     and returns a dictionary mapping the absolute joint path to its position.
@@ -952,7 +980,7 @@ def read_yaml_config(file_path: str) -> dict | None:
         return None
 
     try:
-        with open(file_path, "r") as f:
+        with open(file_path) as f:
             config_data = yaml.safe_load(f)
         if not isinstance(config_data, dict):
             carb.log_warn(f"Error: Invalid configuration file format in '{file_path}'. Expected a dictionary.")

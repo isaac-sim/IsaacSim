@@ -85,7 +85,6 @@ def _add_sphere_from_prim(
         rt_change_tracker: USDRT change tracker for attribute monitoring.
         collision_api: Collision API which is used to signal that the obstacle is enabled/disabled.
     """
-
     # Track updates on relevant attributes:
     sphere_schema = usdrt.UsdGeom.Sphere(prim)
     rt_change_tracker.TrackAttribute(sphere_schema.GetRadiusAttr().GetName())
@@ -122,7 +121,6 @@ def _add_cube_from_prim(
         rt_change_tracker: USDRT change tracker for attribute monitoring.
         collision_api: Collision API which is used to signal that the obstacle is enabled/disabled.
     """
-
     # Schemas which include attributes we will want to track for updates:
     cube_schema = usdrt.UsdGeom.Cube(prim)
     rt_change_tracker.TrackAttribute(cube_schema.GetSizeAttr().GetName())
@@ -198,7 +196,6 @@ def _add_plane_from_prim(
         rt_change_tracker: USDRT change tracker for attribute monitoring.
         collision_api: Collision API which is used to signal that the obstacle is enabled/disabled.
     """
-
     # useful schemas:
     plane_schema = usdrt.UsdGeom.Plane(prim)
     rt_change_tracker.TrackAttribute(plane_schema.GetAxisAttr().GetName())
@@ -238,7 +235,6 @@ def _add_capsule_from_prim(
         rt_change_tracker: USDRT change tracker for attribute monitoring.
         collision_api: Collision API which is used to signal that the obstacle is enabled/disabled.
     """
-
     # Track relevant attributes:
     capsule_schema = usdrt.UsdGeom.Capsule(prim)
     rt_change_tracker.TrackAttribute(capsule_schema.GetAxisAttr().GetName())
@@ -317,7 +313,6 @@ def _add_mesh_from_prim(
         rt_change_tracker: USDRT change tracker for attribute monitoring.
         collision_api: Collision API which is used to signal that the obstacle is enabled/disabled.
     """
-
     # Track relevant attributes:
     mesh_schema = usdrt.UsdGeom.Mesh(prim)
     rt_change_tracker.TrackAttribute(mesh_schema.GetPointsAttr().GetName())
@@ -361,7 +356,6 @@ def _add_triangulated_mesh_from_prim(
         rt_change_tracker: USDRT change tracker for attribute monitoring.
         collision_api: Collision API which is used to signal that the obstacle is enabled/disabled.
     """
-
     # Track relevant attributes:
     mesh_schema = usdrt.UsdGeom.Mesh(prim)
     rt_change_tracker.TrackAttribute(mesh_schema.GetPointsAttr().GetName())
@@ -414,7 +408,6 @@ def _add_oriented_bounding_box_from_prim(
         rt_change_tracker: USDRT change tracker for attribute monitoring.
         collision_api: Collision API which is used to signal that the obstacle is enabled/disabled.
     """
-
     # TODO: Can we track "extent" or something like that?
 
     # compute the oriented bounding box of the prim:
@@ -887,7 +880,7 @@ class WorldBinding(Generic[TWorldInterface]):
         self._collision_enabled_token: Any = None
         self._initialized = False
 
-    def initialize(self):
+    def initialize(self) -> None:
         """Initialize tracking and populate the planning world from tracked prims.
 
         Raises:
@@ -1026,7 +1019,7 @@ class WorldBinding(Generic[TWorldInterface]):
         self.synchronize_transforms()
         self.synchronize_properties()
 
-    def synchronize_transforms(self):
+    def synchronize_transforms(self) -> None:
         """Synchronize tracked prim transforms into the planning world.
 
         Updates only the world poses of tracked obstacles without checking for property changes.
@@ -1050,7 +1043,7 @@ class WorldBinding(Generic[TWorldInterface]):
         with backend_utils.use_backend("fabric"):
             self._world_interface.update_obstacle_transforms(self._tracked_prims, self._xform.get_world_poses())
 
-    def synchronize_properties(self):
+    def synchronize_properties(self) -> None:
         """Synchronize tracked prim property changes into the planning world.
 
         Uses USDRT change tracking to efficiently detect and update only the properties

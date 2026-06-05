@@ -1,10 +1,12 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
+#
 # http://www.apache.org/licenses/LICENSE-2.0
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -31,17 +33,17 @@ _TEST_USD = os.path.join(_TEST_DATA_DIR, "test_prims", "base.usda")
 class TestPropertyRoutingRule(omni.kit.test.AsyncTestCase):
     """Async tests for PropertyRoutingRule."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Create a temporary directory for test output."""
         self._tmpdir = tempfile.mkdtemp()
         self._success = False
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Remove temporary directory after successful tests."""
         if self._success:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
 
-    async def test_get_configuration_parameters(self):
+    async def test_get_configuration_parameters(self) -> None:
         """Verify configuration parameters are exposed."""
         stage = Usd.Stage.Open(_TEST_USD)
         rule = PropertyRoutingRule(
@@ -63,7 +65,7 @@ class TestPropertyRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertIn("ignore_prim_names", param_names)
         self._success = True
 
-    async def test_process_rule_no_property_patterns_skips(self):
+    async def test_process_rule_no_property_patterns_skips(self) -> None:
         """Verify rule skips when no property patterns are provided."""
         stage = Usd.Stage.Open(_TEST_USD)
         rule = PropertyRoutingRule(
@@ -78,7 +80,7 @@ class TestPropertyRoutingRule(omni.kit.test.AsyncTestCase):
         log = rule.get_operation_log()
         self.assertTrue(any("No property patterns" in msg for msg in log))
 
-    async def test_process_rule_with_scope(self):
+    async def test_process_rule_with_scope(self) -> None:
         """Verify scope filter limits routed properties."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_TEST_USD, temp_asset)
@@ -105,7 +107,7 @@ class TestPropertyRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_logs_completion(self):
+    async def test_process_rule_logs_completion(self) -> None:
         """Verify completion log entries are recorded."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_TEST_USD, temp_asset)
@@ -132,7 +134,7 @@ class TestPropertyRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_with_prim_names(self):
+    async def test_process_rule_with_prim_names(self) -> None:
         """Verify prim name filters route expected properties."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_TEST_USD, temp_asset)
@@ -172,7 +174,7 @@ class TestPropertyRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_with_ignore_prim_names(self):
+    async def test_process_rule_with_ignore_prim_names(self) -> None:
         """Verify ignore prim name filters exclude properties."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_TEST_USD, temp_asset)
@@ -212,7 +214,7 @@ class TestPropertyRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_with_property_patterns(self):
+    async def test_process_rule_with_property_patterns(self) -> None:
         """Verify property name patterns route properties."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_TEST_USD, temp_asset)
@@ -250,7 +252,7 @@ class TestPropertyRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_process_rule_with_ignore_properties(self):
+    async def test_process_rule_with_ignore_properties(self) -> None:
         """Verify ignore property patterns exclude properties."""
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_TEST_USD, temp_asset)

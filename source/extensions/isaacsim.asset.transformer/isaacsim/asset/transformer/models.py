@@ -1,3 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Data models for rule configuration and execution reporting."""
 
 from __future__ import annotations
@@ -18,13 +33,16 @@ class RuleConfigurationParam:
         param_type: Expected Python type for the parameter.
         description: Optional description of the parameter.
         default_value: Default value for the parameter.
+
     """
 
     name: str
     display_name: str
-    param_type: Any
+    param_type: type
     description: str | None = None
-    default_value: Any = None
+    """Optional description of the parameter."""
+    default_value: object | None = None
+    """Default value for the parameter."""
 
 
 @dataclass
@@ -37,13 +55,16 @@ class RuleSpec:
         destination: Optional output path override.
         params: Rule parameter overrides.
         enabled: Whether the rule is active.
+
     """
 
     name: str
     type: str
     destination: str | None = None
+    """Optional output path override."""
     params: dict[str, Any] = field(default_factory=dict)
     enabled: bool = True
+    """Whether the rule is active."""
 
     def to_dict(self) -> dict[str, Any]:
         """Convert this specification to a plain dictionary.
@@ -62,6 +83,7 @@ class RuleSpec:
             ... )
             >>> isinstance(spec.to_dict(), dict)
             True
+
         """
         return asdict(self)
 
@@ -85,6 +107,7 @@ class RuleSpec:
             spec = RuleSpec.from_dict(
                 {"name": "MoveMeshes", "type": "my.rule.Class", "params": {"scope": "/World"}}
             )
+
         """
         name = data.get("name")
         type_ = data.get("type")
@@ -111,15 +134,21 @@ class RuleProfile:
         output_package_root: Optional output root for packages.
         flatten_source: Whether to flatten source stages before rules.
         base_name: Optional base name for generated outputs.
+
     """
 
     profile_name: str
     version: str | None = None
+    """Optional profile version string."""
     rules: list[RuleSpec] = field(default_factory=list)
     interface_asset_name: str | None = None
+    """Optional interface asset identifier."""
     output_package_root: str | None = None
+    """Optional output root for packages."""
     flatten_source: bool = False
+    """Whether to flatten source stages before rules."""
     base_name: str | None = None
+    """Optional base name for generated outputs."""
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize profile to a dictionary.
@@ -132,6 +161,7 @@ class RuleProfile:
         .. code-block:: python
 
             payload = profile.to_dict()
+
         """
         return {
             "profile_name": self.profile_name,
@@ -154,6 +184,7 @@ class RuleProfile:
         .. code-block:: python
 
             json_str = profile.to_json()
+
         """
         return json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"))
 
@@ -175,6 +206,7 @@ class RuleProfile:
         .. code-block:: python
 
             profile = RuleProfile.from_dict({"profile_name": "Default", "rules": []})
+
         """
         profile_name = data.get("profile_name") or ""
         if not profile_name:
@@ -206,6 +238,7 @@ class RuleProfile:
         .. code-block:: python
 
             profile = RuleProfile.from_json('{"profile_name":"Default","rules":[]}')
+
         """
         return RuleProfile.from_dict(json.loads(json_str))
 
@@ -222,6 +255,7 @@ class RuleExecutionResult:
         error: Error message if the rule failed.
         started_at: Start timestamp in ISO format.
         finished_at: Finish timestamp in ISO format.
+
     """
 
     rule: RuleSpec
@@ -229,8 +263,10 @@ class RuleExecutionResult:
     log: list[dict[str, Any]] = field(default_factory=list)
     affected_stages: list[str] = field(default_factory=list)
     error: str | None = None
+    """Error message if the rule failed."""
     started_at: str = field(default_factory=lambda: datetime.utcnow().isoformat(timespec="milliseconds") + "Z")
     finished_at: str | None = None
+    """Finish timestamp in ISO format."""
 
     def close(self) -> None:
         """Mark the result as finished by setting the ``finished_at`` timestamp.
@@ -240,6 +276,7 @@ class RuleExecutionResult:
         .. code-block:: python
 
             result.close()
+
         """
         self.finished_at = datetime.utcnow().isoformat(timespec="milliseconds") + "Z"
 
@@ -257,6 +294,7 @@ class ExecutionReport:
         results: Rule execution results.
         output_stage_path: File path of the final working stage after all rules
             have executed. Callers can use this to load the transformed asset.
+
     """
 
     profile: RuleProfile
@@ -264,8 +302,10 @@ class ExecutionReport:
     package_root: str
     started_at: str = field(default_factory=lambda: datetime.utcnow().isoformat(timespec="milliseconds") + "Z")
     finished_at: str | None = None
+    """Finish timestamp in ISO format."""
     results: list[RuleExecutionResult] = field(default_factory=list)
     output_stage_path: str | None = None
+    """File path of the final working stage after all rules have executed. Callers can use this to load the transformed asset."""
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the report to a dictionary suitable for JSON.
@@ -278,6 +318,7 @@ class ExecutionReport:
         .. code-block:: python
 
             payload = report.to_dict()
+
         """
         return {
             "profile": self.profile.to_dict(),
@@ -300,6 +341,7 @@ class ExecutionReport:
         .. code-block:: python
 
             json_str = report.to_json()
+
         """
         return json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"))
 
@@ -311,5 +353,6 @@ class ExecutionReport:
         .. code-block:: python
 
             report.close()
+
         """
         self.finished_at = datetime.utcnow().isoformat(timespec="milliseconds") + "Z"

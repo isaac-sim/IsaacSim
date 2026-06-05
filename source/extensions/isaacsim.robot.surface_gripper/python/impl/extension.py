@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Surface gripper extension implementation for robotic applications in Isaac Sim."""
-
 
 import gc
 
@@ -34,7 +33,7 @@ class Extension(omni.ext.IExt):
     release of the surface gripper interface during the extension lifecycle.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initializes the Surface Gripper extension.
 
         Args:
@@ -42,7 +41,7 @@ class Extension(omni.ext.IExt):
         """
         self._sg = _surface_gripper.acquire_surface_gripper_interface()
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Cleans up the Surface Gripper extension resources."""
         _surface_gripper.release_surface_gripper_interface(self._sg)
 

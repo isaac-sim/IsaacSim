@@ -161,7 +161,8 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(invalid_ancestors), 0)
 
     async def test_scene_validation_detects_nested_hierarchy_with_scaling(self):
-        """Test detection with multiple levels of hierarchy where scaling
+        """Test detection with multiple levels of hierarchy where scaling.
+
         occurs at an intermediate level (not direct parent).
         """
         # Create a 3-level hierarchy:
@@ -211,6 +212,7 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
 
     async def test_scene_validation_detects_uniform_parent_scaling(self):
         """Test that even uniform parent scaling is detected.
+
         ANY parent scaling (uniform or non-uniform) is invalid.
         """
         # Parent with uniform scaling
@@ -240,7 +242,8 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
         self.assertIn("/World/UniformParent", invalid_ancestors)
 
     async def test_scene_validation_detects_negative_scale_in_parent(self):
-        """Test that negative scaling in parent (mirrored/left-handed coordinate system)
+        """Test that negative scaling in parent (mirrored/left-handed coordinate system).
+
         is detected as invalid.
         """
         # Parent with negative scaling
@@ -314,7 +317,8 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
         self.assertNotIn("/World/ValidParent", invalid_ancestors)
 
     async def test_scene_validation_caches_checked_ancestors(self):
-        """Test that validation efficiently caches checked ancestors when validating
+        """Test that validation efficiently caches checked ancestors when validating.
+
         multiple prims that share ancestors.
         """
         # Create parent with scaling

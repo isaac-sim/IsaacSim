@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,8 +42,7 @@ else:
     if os.path.exists(os.path.dirname(desktop_file_path)):
         with open(desktop_file_path, "w") as file:
             print(f"Writing Isaac Sim icon file to: {desktop_file_path}")
-            file.write(
-                f"""\
+            file.write(f"""\
 [Desktop Entry]
 Version=1.0
 Name=Isaac Sim
@@ -52,8 +51,7 @@ Terminal=false
 Type=Application
 StartupWMClass=IsaacSim
 Exec={exec_path}\
-"""
-            )
+""")
 
     # set trusted flag on the .desktop file via GIO shell
     os.system(f'gio set "{desktop_file_path}" metadata::trusted true')

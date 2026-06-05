@@ -2,53 +2,97 @@
 
 ## Classes
 
-- class IsaacSensorExperimentalCreatePrim(omni.kit.commands.Command)
-  - def __init__(self, path: str = '', parent: str = '', translation: Gf.Vec3d = Gf.Vec3d(0, 0, 0), orientation: Gf.Quatd = Gf.Quatd(1, 0, 0, 0), schema_type: type = IsaacSensorSchema.IsaacBaseSensor)
-  - def do(self) -> object | None
-  - def undo(self)
+- class ContactSensorReading
+  - value: float
+  - time: float
+  - is_valid: bool
+  - [property] def in_contact(self) -> bool
+  - [in_contact.setter] def in_contact(self, value: bool)
 
-- class IsaacSensorExperimentalCreateContactSensor(omni.kit.commands.Command)
-  - def __init__(self, path: str = '/Contact_Sensor', parent: str | None = None, min_threshold: float = 0, max_threshold: float = 100000, color: Gf.Vec4f = Gf.Vec4f(1, 1, 1, 1), radius: float = -1, translation: Gf.Vec3d = Gf.Vec3d(0, 0, 0))
-  - def do(self) -> object | None
-  - def undo(self)
+- class IMURawData
+  - time: float
+  - dt: float
+  - linear_velocity_x: float
+  - linear_velocity_y: float
+  - linear_velocity_z: float
+  - angular_velocity_x: float
+  - angular_velocity_y: float
+  - angular_velocity_z: float
+  - orientation_w: float
+  - orientation_x: float
+  - orientation_y: float
+  - orientation_z: float
 
-- class IsaacSensorExperimentalCreateImuSensor(omni.kit.commands.Command)
-  - def __init__(self, path: str = '/Imu_Sensor', parent: str | None = None, translation: Gf.Vec3d = Gf.Vec3d(0, 0, 0), orientation: Gf.Quatd = Gf.Quatd(1, 0, 0, 0), linear_acceleration_filter_size: int = 1, angular_velocity_filter_size: int = 1, orientation_filter_size: int = 1)
-  - def do(self) -> object | None
-  - def undo(self)
+- class IMUSensorReading
+  - linear_acceleration_x: float
+  - linear_acceleration_y: float
+  - linear_acceleration_z: float
+  - angular_velocity_x: float
+  - angular_velocity_y: float
+  - angular_velocity_z: float
+  - orientation: Quaternion
+  - time: float
+  - is_valid: bool
 
-- class ContactSensor(XformPrim)
-  - def __init__(self, prim_path: str, name: str | None = 'contact_sensor', translation: np.ndarray | None = None, position: np.ndarray | None = None, min_threshold: float | None = None, max_threshold: float | None = None, radius: float | None = None)
-  - [property] def prim_path(self) -> str
-  - def initialize(self, physics_sim_view: Any = None)
-  - def get_current_frame(self) -> dict
-  - def add_raw_contact_data_to_frame(self)
-  - def remove_raw_contact_data_from_frame(self)
-  - def resume(self)
-  - def pause(self)
-  - def is_paused(self) -> bool
-  - def get_radius(self) -> float
+- class Contact(_PhysicsSensorAuthoring)
+  - def __init__(self, path: str)
+  - def get_radius(self) -> float | None
   - def set_radius(self, value: float)
   - def get_min_threshold(self) -> float | None
   - def set_min_threshold(self, value: float)
   - def get_max_threshold(self) -> float | None
   - def set_max_threshold(self, value: float)
 
-- class EffortSensorReading
-  - def __init__(self, is_valid: bool = False, time: float = 0, value: float = 0)
+- class ContactSensor(_PhysicsSensorRuntime)
+  - def __init__(self, path: str | Contact)
+  - [property] def contact(self) -> Contact
+  - def on_physics_step(self, step_dt: float)
+  - def on_timeline_stop(self)
+  - def get_sensor_reading(self) -> ContactSensorReading
+  - def get_raw_data(self) -> list[dict[str, object]]
+  - def get_data(self) -> dict
+  - def add_raw_contact_data_to_frame(self)
+  - def remove_raw_contact_data_from_frame(self)
 
-- class EffortSensor(Articulation)
-  - def __init__(self, prim_path: str, enabled: bool = True)
-  - def initialize_callbacks(self)
+- class EffortSensor(_PhysicsSensorRuntimeBase)
+  - def __init__(self, path: str, enabled: bool = True)
+  - def on_timeline_stop(self)
   - def get_sensor_reading(self) -> EffortSensorReading
+  - def get_data(self) -> dict
   - def update_dof_name(self, dof_name: str)
   - def change_buffer_size(self, new_buffer_size: int)
 
-- class IMUSensor(XformPrim)
-  - def __init__(self, prim_path: str, name: str | None = 'imu_sensor', translation: np.ndarray | None = None, position: np.ndarray | None = None, orientation: np.ndarray | None = None, linear_acceleration_filter_size: int | None = 1, angular_velocity_filter_size: int | None = 1, orientation_filter_size: int | None = 1)
-  - [property] def prim_path(self) -> str
-  - def initialize(self, physics_sim_view: Any = None)
-  - def get_current_frame(self, read_gravity: bool = True) -> dict
-  - def resume(self)
-  - def pause(self)
-  - def is_paused(self) -> bool
+- class EffortSensorReading
+  - def __init__(self, is_valid: bool = False, time: float = 0, value: float = 0)
+
+- class IMU(_PhysicsSensorAuthoring)
+  - def __init__(self, path: str)
+
+- class IMUSensor(_PhysicsSensorRuntime)
+  - [property] def imu(self) -> IMU
+  - def get_sensor_reading(self, read_gravity: bool = True) -> object
+  - def get_data(self, read_gravity: bool = True) -> dict
+
+- class JointStateSensor(_PhysicsSensorRuntimeBase)
+  - def __init__(self, path: str, enabled: bool = True)
+  - def get_sensor_reading(self) -> JointStateSensorReading
+  - def get_data(self) -> dict
+
+- class JointStateSensorReading
+  - def __init__(self, is_valid: bool = False, time: float = 0.0, dof_names: list[str] | None = None, positions: np.ndarray | None = None, velocities: np.ndarray | None = None, efforts: np.ndarray | None = None, dof_types: np.ndarray | None = None, stage_meters_per_unit: float = 0.0)
+
+- class Raycast(_PhysicsSensorAuthoring)
+  - def __init__(self, path: str)
+
+- class RaycastSensor(_PhysicsSensorRuntime)
+  - [property] def raycast(self) -> Raycast
+  - def get_sensor_reading(self) -> object
+  - def get_data(self) -> dict
+
+## Functions
+
+- def get_imu_sensor_interface() -> object | None
+- def get_contact_sensor_interface() -> object | None
+- def get_effort_sensor_interface() -> object | None
+- def get_joint_state_sensor_interface() -> object | None
+- def get_raycast_sensor_interface() -> object | None

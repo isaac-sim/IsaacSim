@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,6 @@
 
 """Test module for verifying Physics API Editor extension startup functionality."""
 
-
 import omni.kit.test
 
 
@@ -34,7 +33,6 @@ class TestStartup(omni.kit.test.AsyncTestCase):
         Waits for the next application update to ensure the environment is ready.
         """
         await omni.kit.app.get_app().next_update_async()
-        pass
 
     # After running each test
     async def tearDown(self):
@@ -43,7 +41,6 @@ class TestStartup(omni.kit.test.AsyncTestCase):
         Waits for the next application update to allow cleanup to complete.
         """
         await omni.kit.app.get_app().next_update_async()
-        pass
 
     # Run for 60 frames and make sure there were no errors loading
     async def test_startup(self):
@@ -58,4 +55,3 @@ class TestStartup(omni.kit.test.AsyncTestCase):
         for frame in range(60):
             await omni.kit.app.get_app().next_update_async()
         window.visible = False
-        pass

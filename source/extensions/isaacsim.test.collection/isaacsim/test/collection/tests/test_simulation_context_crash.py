@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Tests for simulation context crash scenarios to ensure timeline operations don't cause crashes."""
-
 
 import asyncio
 
@@ -41,8 +40,6 @@ class TestSimulationContextCrash(omni.kit.test.AsyncTestCase):
         await stage_utils.create_new_stage_async()
         await app_utils.update_app_async()
 
-        pass
-
     # After running each test
     async def tearDown(self):
         """Clean up test environment and stop timeline."""
@@ -51,7 +48,6 @@ class TestSimulationContextCrash(omni.kit.test.AsyncTestCase):
             print("tearDown, assets still loading, waiting to finish...")
             await asyncio.sleep(1.0)
         await app_utils.update_app_async()
-        pass
 
     async def test_simulation_context_crash(self):
         """Test that stopping timeline after articulation creation does not crash."""

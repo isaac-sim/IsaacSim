@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -87,7 +87,7 @@ public:
         state.reset();
     }
 
-    virtual void reset()
+    void reset() override
     {
         m_subscriber.reset(); // This should be reset before we reset the handle.
         Ros2Node::reset();

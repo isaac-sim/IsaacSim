@@ -15,11 +15,8 @@
 
 """Provides utilities for computing bounding boxes and collision approximations for USD prims."""
 
-
-from isaacsim.core.experimental.objects import Mesh
 from pxr import Usd, UsdGeom
 
-from ._mesh_bounds import compute_obb_mesh, compute_world_aabb_mesh
 from ._primitive_bounds import compute_obb_primitive, compute_world_aabb_primitive
 from .bounding_geometries import AABB, OBB
 

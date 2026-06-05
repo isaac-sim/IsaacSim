@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for rclpy integration."""
 
 import omni.kit.commands
 import omni.kit.test
@@ -23,18 +24,22 @@ from .common import ROS2TestCase
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
 class TestRclpy(ROS2TestCase):
+    """Test suite for rclpy."""
+
     # Before running each test
     async def setUp(self):
+        """Set up test fixtures."""
         await super().setUp()
         await omni.kit.app.get_app().next_update_async()
 
     # After running each test
     async def tearDown(self):
+        """Tear down test fixtures."""
         await omni.kit.app.get_app().next_update_async()
         await super().tearDown()
 
     async def test_rclpy(self):
-        import rclpy
+        """Test rclpy."""
         from std_msgs.msg import String
 
         msg = String()

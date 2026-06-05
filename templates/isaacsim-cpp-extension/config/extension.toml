@@ -1,0 +1,31 @@
+[package]
+version = "{{version}}"
+category = "{{category}}"
+title = "{{title}}"
+description = "{{description}}"
+authors = []
+keywords = ["isaac"]
+changelog = "docs/CHANGELOG.md"
+readme = "docs/Overview.md"
+preview_image = "data/preview.png"
+icon = "data/icon.png"
+writeTarget.kit = true
+writeTarget.platform = true
+
+[dependencies]
+"omni.kit.uiapp" = {}
+
+[[python.module]]
+name = "{{extension_name}}"
+
+[[native.plugin]]
+path = "bin/*.plugin"
+recursive = false
+
+[[test]]
+name = "startup"
+
+[[test]]
+
+[documentation]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

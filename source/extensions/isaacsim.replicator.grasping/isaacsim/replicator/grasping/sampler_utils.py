@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Utility functions for sampling grasp poses and converting between different coordinate and mesh representations."""
-
 
 import numpy as np
 import trimesh
@@ -156,11 +155,12 @@ def usd_mesh_to_trimesh(usd_mesh: UsdGeom.Mesh, apply_scale: bool = True, verbos
     return trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
 
 
-def sample_antipodal(object_mesh: trimesh.Trimesh, **kwargs) -> list[np.ndarray]:
+def sample_antipodal(object_mesh: trimesh.Trimesh, **kwargs: object) -> list[np.ndarray]:
     """Sample antipodal grasp poses for a given mesh.
 
     Args:
         object_mesh: A trimesh.Trimesh object to sample grasp poses from.
+        **kwargs: Additional keyword arguments for configuring the sampling.
 
     Keyword Args:
         num_candidates: Target number of grasp candidates to attempt to sample.

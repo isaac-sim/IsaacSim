@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import os
+import tempfile
 import unittest
 
 import carb.settings
@@ -51,11 +52,10 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
         import omni.replicator.core as rep
         import omni.timeline
         import omni.usd
-        from isaacsim.core.utils.bounds import create_bbox_cache
         from isaacsim.storage.native import get_assets_root_path
         from omni.physx import get_physx_scene_query_interface
         from omni.replicator.core.functional import write_image
-        from pxr import UsdShade
+        from pxr import Usd, UsdGeom, UsdShade
 
         DEFAULT_NUM_CAPTURES = 4  # Number bins to capture
         DEFAULT_BIN_FLIP_FRAMES = 2  # Number of frames to capture for the bin flip scenario
@@ -67,7 +67,7 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
             FLIP_HELPER_PATH = "/World/Ur10Table/pallet_holder"
             PALLET_PRIM_MESH_PATH = "/World/Ur10Table/pallet/Xform/Mesh_015"
 
-            def __init__(self):
+            def __init__(self, output_dir=None):
                 # There are 36 bins in total
                 self._bin_counter = 0
                 self._num_captures = MAX_BINS
@@ -92,7 +92,9 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
 
                 # SDG
                 self._rep_camera = None
-                self._output_dir = os.path.join(os.getcwd(), "_out_palletizing_sdg_demo")
+                self._output_dir = (
+                    output_dir if output_dir is not None else os.path.join(os.getcwd(), "_out_palletizing_sdg_demo")
+                )
                 print(f"[PalletizingSDGDemo] Output directory: {self._output_dir}")
 
             def start(self, num_captures, bin_flip_frames, pallet_frames):
@@ -113,7 +115,7 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
                     print("[PalletizingSDGDemo] Could not find bin, make sure the palletizing demo is loaded..")
                     return False
 
-                bb_cache = create_bbox_cache()
+                bb_cache = UsdGeom.BBoxCache(time=Usd.TimeCode.Default(), includedPurposes=[UsdGeom.Tokens.default_])
                 half_ext = bb_cache.ComputeLocalBound(self._active_bin).GetRange().GetSize() * 0.5
                 self._overlap_extent = carb.Float3(half_ext[0], half_ext[1], half_ext[2] * 1.1)
 
@@ -422,10 +424,10 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
                 self._bin_flip_scenario_done = False
                 return True
 
-        async def run_example_async(num_captures, bin_flip_frames, pallet_frames):
+        async def run_example_async(num_captures, bin_flip_frames, pallet_frames, output_dir=None):
             import random
 
-            from isaacsim.examples.interactive.ur10_palletizing.ur10_palletizing import (
+            from isaacsim.cortex.examples.ur10_palletizing.ur10_palletizing import (
                 BinStacking,
             )
 
@@ -450,7 +452,7 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
                 await omni.kit.app.get_app().next_update_async()
 
             print(f"[PalletizingSDGDemo] Starting SDG pipeline with {num_captures} bins to capture")
-            sdg_demo = PalletizingSDGDemo()
+            sdg_demo = PalletizingSDGDemo(output_dir=output_dir)
             sdg_demo.start(num_captures, bin_flip_frames, pallet_frames)
 
             # Wait until the SDG pipeline demo is finished
@@ -470,10 +472,11 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
         test_num_captures = 2
         test_bin_flip_frames = 2
         test_pallet_frames = 2
-        await run_example_async(test_num_captures, test_bin_flip_frames, test_pallet_frames)
+        out_dir = tempfile.mkdtemp(prefix="test_palletizing_sdg_")
+        print(f"Output directory: {out_dir}")
+        await run_example_async(test_num_captures, test_bin_flip_frames, test_pallet_frames, output_dir=out_dir)
 
         # Validate that all expected files were written to disk
-        out_dir = os.path.join(os.getcwd(), "_out_palletizing_sdg_demo")
 
         # Bin flip scenario happens randomly, but with seed=42, we get 2 flips out of 2 captures
         num_flips = 2

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +14,11 @@
 # limitations under the License.
 
 
+"""Timeline-driven rendering and run loop throttling for Isaac Sim."""
+
+import asyncio
+import sys
+
 import carb
 import carb.eventdispatcher
 import omni.ext
@@ -22,14 +27,34 @@ import omni.timeline
 
 ASYNC_TOGGLE_SETTING = "/exts/isaacsim.core.throttling/enable_async"
 MANUAL_TOGGLE_SETTING = "/exts/isaacsim.core.throttling/enable_manualmode"
+ASYNC_RENDERING_SETTING = "/app/asyncRendering"
+ASYNC_RENDERING_LOW_LATENCY_SETTING = "/app/asyncRenderingLowLatency"
+
+_extension_instance = None
 
 
 class Extension(omni.ext.IExt):
-    def on_startup(self, ext_id):
+    """Coordinate throttling settings with timeline playback state.
+
+    The extension listens for timeline play, stop, and pause events. During playback it hides viewport gizmos,
+    disables eco mode, optionally puts the main Kit loop in manual mode, and defers disabling async rendering
+    until after the play callback returns. When playback stops or pauses, it restores editing-oriented settings
+    and re-enables async rendering after a short frame delay unless Replicator is still capturing.
+    """
+
+    def on_startup(self, ext_id: str) -> None:
+        """Initialize timeline subscriptions and throttling state.
+
+        The extension stores the main loop interface when available, registers timeline event observers, and
+        applies startup async rendering/manual loop settings from the extension configuration.
+
+        Args:
+            ext_id: Enabled extension identifier provided by Kit.
+        """
         # Initialize loop runner
         self._loop_runner = None
         try:
-            import omni.kit.loop._loop as omni_loop
+            from omni.kit.loop import _loop as omni_loop
 
             self._loop_runner = omni_loop.acquire_loop_interface()
         except Exception:
@@ -40,9 +65,15 @@ class Extension(omni.ext.IExt):
         self._waiting_for_async_reenable = False
         self._frame_update_subscription = None
         self._frame_delay = 10  # default 10 frame delay
+        self._disable_async_rendering_task = None
 
         # Enable the developer throttling settings when extension starts
         carb.settings.get_settings().set("/app/show_developer_preference_section", True)
+
+        self._replicator_capture_warning_logged = False
+
+        global _extension_instance
+        _extension_instance = self
 
         self.timeline_event_sub_play = carb.eventdispatcher.get_eventdispatcher().observe_event(
             event_name=omni.timeline.GLOBAL_EVENT_PLAY,
@@ -64,21 +95,38 @@ class Extension(omni.ext.IExt):
 
         if _settings.get(ASYNC_TOGGLE_SETTING):
             # Enable async rendering at startup
-            _settings.set("/app/asyncRendering", True)
-            _settings.set("/app/asyncRenderingLowLatency", True)
+            self._set_async_rendering(True)
 
         if _settings.get(MANUAL_TOGGLE_SETTING):
             self._set_loop_manual_mode(False)
 
-    def _set_loop_manual_mode(self, manual_mode: bool):
+    def _set_loop_manual_mode(self, manual_mode: bool) -> None:
+        """Set the main loop runner's manual mode when the loop interface is available.
+
+        Args:
+            manual_mode: Whether the main run loop should advance manually.
+        """
         if self._loop_runner is not None:
             try:
                 self._loop_runner.set_manual_mode(manual_mode)
             except Exception:
                 pass
 
-    def _on_frame_update(self, event: carb.events.IEvent):
-        """Frame update callback for async toggle frame delay."""
+    def _set_async_rendering(self, enabled: bool) -> None:
+        """Set both async rendering settings to the same state."""
+        _settings = carb.settings.get_settings()
+        _settings.set(ASYNC_RENDERING_SETTING, enabled)
+        _settings.set(ASYNC_RENDERING_LOW_LATENCY_SETTING, enabled)
+
+    def _on_frame_update(self, event: carb.events.IEvent) -> None:
+        """Track update frames before async rendering is re-enabled.
+
+        Re-enabling waits for the configured frame delay and only occurs while the timeline remains stopped or
+        paused. Replicator capture state is checked at the end of the delay so writer frames are not skipped.
+
+        Args:
+            event: Kit update event.
+        """
         if not self._waiting_for_async_reenable:
             return
         self._frame_count += 1
@@ -89,50 +137,119 @@ class Extension(omni.ext.IExt):
             if not timeline.is_playing():
                 # toggle async rendering
                 _settings = carb.settings.get_settings()
-                if _settings.get(ASYNC_TOGGLE_SETTING):
-                    _settings.set("/app/asyncRendering", True)
-                    _settings.set("/app/asyncRenderingLowLatency", True)
+                if _settings.get(ASYNC_TOGGLE_SETTING) and not self._is_replicator_capturing():
+                    self._set_async_rendering(True)
 
-            self._waiting_for_async_reenable = False
-            self._frame_count = 0
+            self._stop_frame_counting()
 
-            # Unsubscribe to save on frame update callback overhead
-            if self._frame_update_subscription is not None:
-                self._frame_update_subscription = None
-
-    def _start_frame_counting(self):
-        """Start counting frames for async rendering delay."""
-        if self._waiting_for_async_reenable:
-            return
-
+    def _start_frame_counting(self) -> None:
+        """Start the delayed async-rendering re-enable window."""
         self._frame_count = 0
         self._waiting_for_async_reenable = True
 
         # Create subscription on-demand to save on overhead
-        self._frame_update_subscription = carb.eventdispatcher.get_eventdispatcher().observe_event(
-            event_name=omni.kit.app.GLOBAL_EVENT_UPDATE,
-            on_event=self._on_frame_update,
-            observer_name="IsaacSimThrottling._on_frame_update",
-        )
+        if self._frame_update_subscription is None:
+            self._frame_update_subscription = carb.eventdispatcher.get_eventdispatcher().observe_event(
+                event_name=omni.kit.app.GLOBAL_EVENT_UPDATE,
+                on_event=self._on_frame_update,
+                observer_name="IsaacSimThrottling._on_frame_update",
+            )
 
-    def _on_play(self, event: carb.eventdispatcher.Event):
-        """Timeline play event callback - disable eco mode and gizmos during runtime."""
+    def _stop_frame_counting(self) -> None:
+        """Stop waiting to re-enable async rendering after pause or stop."""
+        self._waiting_for_async_reenable = False
+        self._frame_count = 0
+        self._frame_update_subscription = None
+
+    def _is_replicator_capturing(self) -> bool:
+        """Return whether Replicator is active with attached annotators.
+
+        Replicator disables async rendering for synchronous captures. If the timeline is paused while Replicator stays
+        started, re-enabling async rendering here can cause writer frames to be skipped.
+
+        Returns:
+            True if Replicator is started and has annotators attached; otherwise False.
+        """
+        rep = sys.modules.get("omni.replicator.core")
+        if rep is None:
+            return False
+
+        try:
+            status = rep.orchestrator.get_status()
+            inactive_statuses = (rep.orchestrator.Status.STOPPED, rep.orchestrator.Status.STOPPING)
+            annotator_registry = getattr(rep, "AnnotatorRegistry", None)
+            if annotator_registry is None:
+                annotators_module = sys.modules.get("omni.replicator.core.scripts.annotators")
+                annotator_registry = getattr(annotators_module, "AnnotatorRegistry", None)
+            return (
+                status not in inactive_statuses
+                and annotator_registry is not None
+                and annotator_registry.has_attached_annotators()
+            )
+        except Exception as exc:
+            if not self._replicator_capture_warning_logged:
+                carb.log_warn(f"Unable to query Replicator capture status for async rendering throttling: {exc}")
+                self._replicator_capture_warning_logged = True
+            return False
+
+    async def _disable_async_rendering_after_update_async(self) -> None:
+        """Disable async rendering one Kit update after timeline play begins if playback is still active."""
+        try:
+            await omni.kit.app.get_app().next_update_async()
+        except asyncio.CancelledError:
+            return
+
+        _settings = carb.settings.get_settings()
+        timeline = omni.timeline.get_timeline_interface()
+        if _settings.get(ASYNC_TOGGLE_SETTING) and timeline.is_playing():
+            self._set_async_rendering(False)
+
+    def _defer_async_rendering_disable(self) -> None:
+        """Schedule one pending task to disable async rendering after the current update."""
+        task = getattr(self, "_disable_async_rendering_task", None)
+        if task is not None and not task.done():
+            return
+
+        self._disable_async_rendering_task = asyncio.ensure_future(self._disable_async_rendering_after_update_async())
+
+    def _cancel_deferred_async_rendering_disable(self) -> None:
+        """Cancel a pending async-rendering disable task from a stale play event."""
+        task = getattr(self, "_disable_async_rendering_task", None)
+        if task is not None and not task.done():
+            task.cancel()
+        self._disable_async_rendering_task = None
+
+    def _on_play(self, event: carb.eventdispatcher.Event) -> None:
+        """Apply playback throttling when the timeline starts.
+
+        Async rendering is disabled on the next update rather than inside the play event callback, which avoids
+        deadlocks with play-on-load startup paths that begin simulation from within the callback. If playback stops
+        before that update, the deferred task leaves async rendering unchanged.
+
+        Args:
+            event: Timeline play event.
+        """
         _settings = carb.settings.get_settings()
         _settings.set("/rtx/ecoMode/enabled", False)
         _settings.set("/exts/omni.kit.hydra_texture/gizmos/enabled", False)
+        self._stop_frame_counting()
 
         if _settings.get(ASYNC_TOGGLE_SETTING):
-            _settings.set("/app/asyncRendering", False)
-            _settings.set("/app/asyncRenderingLowLatency", False)
+            self._defer_async_rendering_disable()
 
         if _settings.get(MANUAL_TOGGLE_SETTING):
             self._set_loop_manual_mode(True)
 
-    def _on_stop(self, event: carb.eventdispatcher.Event):
-        """Timeline stop event callback - enable eco mode and gizmos when stopped."""
+    def _on_stop(self, event: carb.eventdispatcher.Event) -> None:
+        """Restore editing settings and begin async-rendering re-enable delay after stop.
+
+        Args:
+            event: Timeline stop event.
+        """
         _settings = carb.settings.get_settings()
         _settings.set("/rtx/ecoMode/enabled", True)
         _settings.set("/exts/omni.kit.hydra_texture/gizmos/enabled", True)
+        self._cancel_deferred_async_rendering_disable()
 
         if _settings.get(ASYNC_TOGGLE_SETTING):
             # Start frame delay counting to give replicator time to finish
@@ -141,11 +258,16 @@ class Extension(omni.ext.IExt):
         if _settings.get(MANUAL_TOGGLE_SETTING):
             self._set_loop_manual_mode(False)
 
-    def _on_pause(self, event: carb.eventdispatcher.Event):
-        """Timeline pause event callback - enable eco mode and gizmos when paused."""
+    def _on_pause(self, event: carb.eventdispatcher.Event) -> None:
+        """Restore editing settings and begin async-rendering re-enable delay after pause.
+
+        Args:
+            event: Timeline pause event.
+        """
         _settings = carb.settings.get_settings()
         _settings.set("/rtx/ecoMode/enabled", True)
         _settings.set("/exts/omni.kit.hydra_texture/gizmos/enabled", True)
+        self._cancel_deferred_async_rendering_disable()
 
         if _settings.get(ASYNC_TOGGLE_SETTING):
             # Start frame delay counting to give replicator time to finish
@@ -154,13 +276,22 @@ class Extension(omni.ext.IExt):
         if _settings.get(MANUAL_TOGGLE_SETTING):
             self._set_loop_manual_mode(False)
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
+        """Release timeline observers, update subscriptions, and pending async tasks.
+
+        Shutdown also clears frame-delay bookkeeping so reloading the extension starts from a clean state.
+        """
+        global _extension_instance
+        _extension_instance = None
+
         self.timeline_event_sub_play = None
         self.timeline_event_sub_stop = None
         self.timeline_event_sub_pause = None
 
-        if self._frame_update_subscription is not None:
-            self._frame_update_subscription = None
+        self._stop_frame_counting()
+        self._cancel_deferred_async_rendering_disable()
 
-        self._waiting_for_async_reenable = False
-        self._frame_count = 0
+
+def get_instance() -> Extension | None:
+    """Return the active throttling extension instance, if the extension is loaded."""
+    return _extension_instance

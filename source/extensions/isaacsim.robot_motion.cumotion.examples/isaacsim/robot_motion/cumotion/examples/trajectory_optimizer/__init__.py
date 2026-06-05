@@ -12,4 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Isaac Sim extension providing UI interface for cuMotion trajectory optimization examples with robot motion planning capabilities."""
+
 from .extension import *
+
+__all__ = ["UIBuilder"]

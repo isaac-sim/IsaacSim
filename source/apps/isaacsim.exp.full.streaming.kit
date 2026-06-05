@@ -10,6 +10,7 @@ keywords = ["experience", "app", "usd"]
 [dependencies]
 "isaacsim.exp.full" = {}
 "omni.kit.livestream.app" = {}
+"omni.kit.widget.cache_indicator" = { optional = true }
 
 [settings]
 app.name = "Isaac-Sim Streaming"
@@ -34,6 +35,11 @@ drawMouse = false
 [settings.app.livestream]
 allowResize = true
 outDirectory = "${data}"
+
+[settings.app.extensions]
+excluded = [
+    "omni.kit.widget.cache_indicator",
+]
 
 [settings.log.channels]
 # Carb log channel based logging (consistent with other Kit extensions)

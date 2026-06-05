@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
 
 """Test suite for image I/O utilities in Isaac Sim."""
 
+from __future__ import annotations
 
 import io
 import os
@@ -34,12 +35,12 @@ from PIL import Image
 class TestImageIO(TimedAsyncTestCase):
     """Test suite for image I/O utilities."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures."""
         await super().setUp()
         self.test_dir = tempfile.mkdtemp()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test fixtures."""
         # Clean up temporary files
         import shutil
@@ -48,7 +49,7 @@ class TestImageIO(TimedAsyncTestCase):
             shutil.rmtree(self.test_dir)
         await super().tearDown()
 
-    def test_save_rgb_image_basic_functionality(self):
+    def test_save_rgb_image_basic_functionality(self) -> None:
         """Test save_rgb_image with basic functionality and directory creation."""
         # Arrange RGB data and save to disk; verify file path and mode.
         resolution = (480, 320)
@@ -73,7 +74,7 @@ class TestImageIO(TimedAsyncTestCase):
         nested_path = os.path.join(nested_dir, nested_file)
         self.assertTrue(os.path.exists(nested_path))
 
-    def test_save_rgb_image_formats(self):
+    def test_save_rgb_image_formats(self) -> None:
         """Test save_rgb_image with different data types and file formats."""
         # Test PNG/JPG/JPEG writers with 3-channel data.
         resolution = (480, 320)
@@ -105,7 +106,7 @@ class TestImageIO(TimedAsyncTestCase):
             self.assertIn("Cannot save RGBA data", str(context.exception))
             self.assertIn("JPEG format doesn't support transparency", str(context.exception))
 
-    def test_save_rgb_image_file_operations(self):
+    def test_save_rgb_image_file_operations(self) -> None:
         """Test save_rgb_image with existing directories and file overwriting."""
         resolution = (480, 320)
         rgb_data = np.random.randint(0, 255, (resolution[1], resolution[0], 3), dtype=np.uint8)
@@ -139,7 +140,7 @@ class TestImageIO(TimedAsyncTestCase):
         # Verify images are different (black vs white)
         self.assertFalse(np.array_equal(first_array, second_array))
 
-    def test_save_depth_image_grayscale(self):
+    def test_save_depth_image_grayscale(self) -> None:
         """Test save_depth_image with grayscale output."""
         # Test basic float32 depth data normalization
         resolution = (480, 320)
@@ -156,7 +157,7 @@ class TestImageIO(TimedAsyncTestCase):
         self.assertEqual(saved_image.mode, "L")  # Grayscale
         self.assertEqual(saved_image.size, (resolution[0], resolution[1]))
 
-    def test_save_depth_image_without_normalization(self):
+    def test_save_depth_image_without_normalization(self) -> None:
         """Test save_depth_image without normalization."""
         # Test with uint8 data that doesn't need normalization
         resolution = (480, 320)
@@ -180,7 +181,7 @@ class TestImageIO(TimedAsyncTestCase):
         file_path_float = os.path.join(self.test_dir, file_name_float)
         self.assertTrue(os.path.exists(file_path_float))
 
-    def test_save_depth_image_tiff_with_normalize_warning(self):
+    def test_save_depth_image_tiff_with_normalize_warning(self) -> None:
         """Test that TIFF with normalize=True ignores normalize and saves as float32 TIFF."""
         resolution = (480, 320)
         depth_data = np.random.rand(resolution[1], resolution[0]).astype(np.float32) * 10.0
@@ -211,7 +212,7 @@ class TestImageIO(TimedAsyncTestCase):
         is_close = np.allclose(tiff_data, depth_data, rtol=1e-5, atol=1e-5, equal_nan=True)
         self.assertTrue(is_close, "TIFF should contain original float32 data, not normalized")
 
-    def test_read_image_as_array_basic_functionality(self):
+    def test_read_image_as_array_basic_functionality(self) -> None:
         """Test read_image_as_array with basic functionality."""
         # Create a test image first
         resolution = (480, 320)
@@ -230,7 +231,7 @@ class TestImageIO(TimedAsyncTestCase):
         self.assertEqual(read_array.shape[:2], (resolution[1], resolution[0]))  # Height, Width
         self.assertEqual(read_array.shape[2], 4)  # RGBA channels
 
-    def test_read_image_as_array_channel_handling(self):
+    def test_read_image_as_array_channel_handling(self) -> None:
         """Test read_image_as_array with different image types and channel handling."""
         resolution = (480, 320)
 
@@ -269,7 +270,7 @@ class TestImageIO(TimedAsyncTestCase):
             self.assertTrue(np.array_equal(manually_squeezed, test_array_2d))
             self.assertEqual(len(manually_squeezed.shape), 2)
 
-    def test_read_image_as_array_error_handling(self):
+    def test_read_image_as_array_error_handling(self) -> None:
         """Test read_image_as_array error handling."""
         # Test with non-existent file
         non_existent_path = os.path.join(self.test_dir, "non_existent.png")

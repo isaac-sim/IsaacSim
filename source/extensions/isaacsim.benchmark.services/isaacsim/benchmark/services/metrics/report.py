@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,9 +12,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Formatted reporting for benchmark metric phases."""
 
-from .. import utils
+import textwrap
+
 from . import measurements
 
 # List of other "metadata" metrics to be filtered out of each phase
@@ -32,7 +34,7 @@ default_exclusions = [
 class Report:
     """Format benchmark metrics into a human-readable report."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._test_phases: list[measurements.TestPhase] = []
         self._phase_data: list[dict[str, list[str]]] = []
         self._addt_metadata: list[str] = []
@@ -41,7 +43,7 @@ class Report:
         self._cpu_metrics: dict[str, dict[str, str]] = {}
         self._use_section_headers = False  # Set to True for section headers within phases
 
-    def add_metric_phase(self, test_phase: measurements.TestPhase):
+    def add_metric_phase(self, test_phase: measurements.TestPhase) -> None:
         """Add a test phase and pre-format its output lines.
 
         Args:
@@ -74,12 +76,11 @@ class Report:
         """
         logs = []
         phase_name = f"Phase: {test_phase.get_metadata_field('phase')}"
-        logs.append(f"| {phase_name:<{self._report_width}} |")
+        logs.extend(self._boxed_inner_lines(phase_name))
 
         # Categorize measurements for output
         performance_metrics = []
         memory_metrics = []
-        cpu_metrics: list[measurements.SingleMeasurement] = []
         custom_metrics = []
 
         for measurement in test_phase.measurements:
@@ -113,23 +114,23 @@ class Report:
             runtime_metrics = [m for m in performance_metrics if "Runtime" in m.name]
             other_perf = [m for m in performance_metrics if "Runtime" not in m.name]
             for m in runtime_metrics:
-                logs.append(self._format_measurement(m))
+                logs.extend(self._format_measurement(m))
             for m in sorted(other_perf, key=lambda x: x.name):
-                logs.append(self._format_measurement(m))
+                logs.extend(self._format_measurement(m))
 
         # 2. Custom metrics (grouped by prefix)
         if custom_metrics:
             # Sort custom metrics by prefix to group related metrics together
-            def get_metric_prefix(name):
+            def get_metric_prefix(name: str) -> str:
                 return name.split()[0] if " " in name else name
 
             for m in sorted(custom_metrics, key=lambda x: (get_metric_prefix(x.name), x.name)):
-                logs.append(self._format_measurement(m))
+                logs.extend(self._format_measurement(m))
 
         # 3. Memory metrics
         if memory_metrics:
             for m in sorted(memory_metrics, key=lambda x: x.name):
-                logs.append(self._format_measurement(m))
+                logs.extend(self._format_measurement(m))
 
         # 4. CPU metrics (grouped table)
         if self._cpu_metrics:
@@ -146,19 +147,34 @@ class Report:
 
         return logs
 
-    def _format_measurement(self, measurement: measurements.SingleMeasurement) -> str:
-        """Create a formatted line for a measurement.
+    def _wrap_inner(self, text: str) -> list[str]:
+        """Split text into lines that fit the boxed inner width (no truncation)."""
+        if len(text) <= self._report_width:
+            return [text]
+        return textwrap.wrap(
+            text,
+            width=self._report_width,
+            break_long_words=True,
+            break_on_hyphens=False,
+        )
+
+    def _boxed_inner_lines(self, inner: str) -> list[str]:
+        """Full-width bordered lines for inner content, wrapping when needed."""
+        return [f"| {row:<{self._report_width}} |" for row in self._wrap_inner(inner)]
+
+    def _format_measurement(self, measurement: measurements.SingleMeasurement) -> list[str]:
+        """Create formatted bordered lines for a measurement (may wrap).
 
         Args:
             measurement: Measurement object.
 
         Returns:
-            Formatted string containing metric data.
+            One or more bordered lines containing metric data.
         """
-        line = f"{measurement.name}: {measurement.value} {measurement.unit}"
-        return f"| {line:<{self._report_width}} |"
+        line = f"{measurement.name}: {measurement.value} {measurement.unit}".rstrip()
+        return self._boxed_inner_lines(line)
 
-    def _add_metadata(self, measurement: measurements.SingleMeasurement):
+    def _add_metadata(self, measurement: measurements.SingleMeasurement) -> None:
         """Add measurement to the metadata list.
 
         Args:
@@ -168,7 +184,7 @@ class Report:
         if metadata not in self._addt_metadata:
             self._addt_metadata.append(metadata)
 
-    def _process_frametime_metric(self, measurement: measurements.SingleMeasurement):
+    def _process_frametime_metric(self, measurement: measurements.SingleMeasurement) -> None:
         """Add frametime metric data to the frametime table.
 
         Args:
@@ -180,7 +196,7 @@ class Report:
             self._frametime_metrics[frametime] = {}
         self._frametime_metrics[frametime][metric_type] = f"{measurement.value:.2f}"
 
-    def _process_cpu_metric(self, measurement: measurements.SingleMeasurement):
+    def _process_cpu_metric(self, measurement: measurements.SingleMeasurement) -> None:
         """Add CPU usage data to the CPU metrics table.
 
         Args:
@@ -192,7 +208,7 @@ class Report:
             self._cpu_metrics["Process"] = {}
         self._cpu_metrics["Process"][metric_type] = f"{measurement.value:.2f}"
 
-    def print_formatted_lines(self, phase: dict[str, list[str]]):
+    def print_formatted_lines(self, phase: dict[str, list[str]]) -> None:
         """Print formatted metric data for a phase.
 
         Args:
@@ -223,7 +239,7 @@ class Report:
         separator = "|" + "-" * (self._report_width + 2) + "|"
         return separator
 
-    def print_metadata(self):
+    def print_metadata(self) -> None:
         """Print formatted benchmark metadata.
 
         Example:
@@ -234,9 +250,11 @@ class Report:
         """
         for metadata in self._test_phases[0].metadata[:-1]:
             formatted = f"{metadata.name}: {metadata.data}"
-            print(f"| {formatted:<{self._report_width}} |")
+            for boxed in self._boxed_inner_lines(formatted):
+                print(boxed)
         for data in self._addt_metadata:
-            print(f"| {data:<{self._report_width}} |")
+            for boxed in self._boxed_inner_lines(data):
+                print(boxed)
 
     def get_frametime_metrics(self) -> list[str]:
         """Format frametime metric data as a table.
@@ -292,7 +310,7 @@ class Report:
 
         return logs
 
-    def create_report(self):
+    def create_report(self) -> None:
         """Print the full summary report.
 
         Example:

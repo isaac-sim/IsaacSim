@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -1156,26 +1156,20 @@ void Ros2JointStateMessageImpl::writeData(const double& timeStamp,
     createTensorDesc(velocityTensor, jointVelocities, numDofs, omni::physics::tensors::TensorDataType::eFloat32);
     createTensorDesc(effortTensor, jointEfforts, numDofs, omni::physics::tensors::TensorDataType::eFloat32);
     createTensorDesc(dofTypeTensor, dofTypes, numDofs, omni::physics::tensors::TensorDataType::eUint8);
-    bool hasDofStates = true;
-    if (!articulation->getDofPositions(&positionTensor))
+    bool hasPositions = articulation->getDofPositions(&positionTensor);
+    bool hasVelocities = articulation->getDofVelocities(&velocityTensor);
+    bool hasEfforts = articulation->getDofProjectedJointForces(&effortTensor);
+    bool hasDofTypes = articulation->getDofTypes(&dofTypeTensor);
+
+    if (!hasPositions && !hasVelocities)
     {
-        fprintf(stderr, "[Ros2JointStateMessage] Failed to get dof positions\n");
-        hasDofStates = false;
+        fprintf(stderr, "[Ros2JointStateMessage] Failed to get dof positions and velocities\n");
+        return;
     }
-    if (!articulation->getDofVelocities(&velocityTensor))
-    {
-        fprintf(stderr, "[Ros2JointStateMessage] Failed to get dof velocities\n");
-        hasDofStates = false;
-    }
-    if (!articulation->getDofProjectedJointForces(&effortTensor))
-    {
-        fprintf(stderr, "[Ros2JointStateMessage] Failed to get dof efforts\n");
-        hasDofStates = false;
-    }
-    if (!articulation->getDofTypes(&dofTypeTensor))
+    if (!hasDofTypes)
     {
         fprintf(stderr, "[Ros2JointStateMessage] Failed to get dof types\n");
-        hasDofStates = false;
+        return;
     }
 
     // Ensure sequences have enough capacity and reuse allocations where possible
@@ -1186,35 +1180,36 @@ void Ros2JointStateMessageImpl::writeData(const double& timeStamp,
         return;
     }
 
-    if (hasDofStates)
+    for (uint32_t j = 0; j < numDofs; j++)
     {
-        for (uint32_t j = 0; j < numDofs; j++)
+        const char* jointPath = articulation->getUsdDofPath(0, j);
+        if (jointPath)
         {
-            const char* jointPath = articulation->getUsdDofPath(0, j);
-            if (jointPath)
-            {
-                Ros2MessageInterfaceImpl::writeRosString(
-                    isaacsim::core::includes::getName(stage->GetPrimAtPath(pxr::SdfPath(jointPath))),
-                    jointStateMsg->name.data[j]);
-            }
-            if (static_cast<omni::physics::tensors::DofType>(dofTypes[j]) == omni::physics::tensors::DofType::eTranslation)
-            {
-                jointStateMsg->position.data[j] =
-                    isaacsim::core::includes::math::roundNearest(jointPositions[j] * stageUnits, 10000.0); // m
-                jointStateMsg->velocity.data[j] =
-                    isaacsim::core::includes::math::roundNearest(jointVelocities[j] * stageUnits, 10000.0); // m/s
-                jointStateMsg->effort.data[j] =
-                    isaacsim::core::includes::math::roundNearest(jointEfforts[j] * stageUnits, 10000.0); // N
-            }
-            else
-            {
-                jointStateMsg->position.data[j] =
-                    isaacsim::core::includes::math::roundNearest(jointPositions[j], 10000.0); // rad
-                jointStateMsg->velocity.data[j] =
-                    isaacsim::core::includes::math::roundNearest(jointVelocities[j], 10000.0); // rad/s
-                jointStateMsg->effort.data[j] = isaacsim::core::includes::math::roundNearest(
-                    jointEfforts[j] * stageUnits * stageUnits, 10000.0); // N*m
-            }
+            Ros2MessageInterfaceImpl::writeRosString(
+                isaacsim::core::includes::getName(stage->GetPrimAtPath(pxr::SdfPath(jointPath))),
+                jointStateMsg->name.data[j]);
+        }
+        if (static_cast<omni::physics::tensors::DofType>(dofTypes[j]) == omni::physics::tensors::DofType::eTranslation)
+        {
+            jointStateMsg->position.data[j] =
+                hasPositions ? isaacsim::core::includes::math::roundNearest(jointPositions[j] * stageUnits, 10000.0) :
+                               0.0; // m
+            jointStateMsg->velocity.data[j] =
+                hasVelocities ? isaacsim::core::includes::math::roundNearest(jointVelocities[j] * stageUnits, 10000.0) :
+                                0.0; // m/s
+            jointStateMsg->effort.data[j] =
+                hasEfforts ? isaacsim::core::includes::math::roundNearest(jointEfforts[j] * stageUnits, 10000.0) :
+                             0.0; // N
+        }
+        else
+        {
+            jointStateMsg->position.data[j] =
+                hasPositions ? isaacsim::core::includes::math::roundNearest(jointPositions[j], 10000.0) : 0.0; // rad
+            jointStateMsg->velocity.data[j] =
+                hasVelocities ? isaacsim::core::includes::math::roundNearest(jointVelocities[j], 10000.0) : 0.0; // rad/s
+            jointStateMsg->effort.data[j] = hasEfforts ? isaacsim::core::includes::math::roundNearest(
+                                                             jointEfforts[j] * stageUnits * stageUnits, 10000.0) :
+                                                         0.0; // N*m
         }
     }
 }

@@ -17,15 +17,19 @@ keywords = ["experience", "app", "usd", "isaacsim"] # That makes it browsable in
 "isaacsim.asset.importer.mjcf.ui" = {}
 "isaacsim.asset.importer.heightmap" = {}
 "isaacsim.asset.importer.urdf.ui" = {}
+"isaacsim.asset.exporter.urdf.ui" = {}
 "isaacsim.asset.transformer.ui" = {}
 "isaacsim.asset.validation" = {}
+"isaacsim.cortex.examples" = {}
 "isaacsim.examples.extension" = {}
 "isaacsim.examples.interactive" = {}
 "isaacsim.gui.components" = {}
 "isaacsim.examples.browser" = {}
 "isaacsim.replicator.behavior.ui" = {}
+"isaacsim.replicator.episode_recorder.ui" = {}
 "isaacsim.replicator.grasping.ui" = {}
 "isaacsim.replicator.synthetic_recorder" = {}
+"isaacsim.robot.experimental.manipulators.examples" = {}
 "isaacsim.robot.manipulators.examples" = {}
 "isaacsim.robot.manipulators.ui" = {}
 "isaacsim.robot.schema.ui" = {}
@@ -47,11 +51,16 @@ keywords = ["experience", "app", "usd", "isaacsim"] # That makes it browsable in
 "isaacsim.util.physics" = {}
 
 # Additional Kit extensions
+"omni.anim.behavior.bundle" = {}
 "omni.anim.curve.bundle" = {}
+"omni.anim.graph.bundle" = {}
+"omni.anim.navigation.bundle" = {}
+"omni.anim.retarget.bundle" = {}
 "omni.physx.asset_validator" = {}
 "omni.asset_validator.ui" = { order = 2000 }
 "omni.anim.shared.core" = {}
-"omni.behavior.scripting.core" = {}
+"omni.behavior.scripting.bundle" = {}
+"omni.behavior.tree.bundle" = {}
 "omni.graph.bundle.action" = {}
 "omni.graph.visualization.nodes" = {}
 "omni.graph.window.action" = {}
@@ -63,7 +72,6 @@ keywords = ["experience", "app", "usd", "isaacsim"] # That makes it browsable in
 "omni.kit.browser.material" = {}
 "omni.kit.collaboration.channel_manager" = {}
 "omni.kit.context_menu" = {}
-"omni.kit.widget.schema_api" = {}
 "omni.kit.graph.delegate.default" = {}
 "omni.kit.hotkeys.window" = {}
 "omni.kit.manipulator.transform" = {}
@@ -123,11 +131,17 @@ keywords = ["experience", "app", "usd", "isaacsim"] # That makes it browsable in
 "omni.stats" = {}
 "omni.usd.metrics.assembler.physics" = {}
 "omni.usd.schema.scene.visualization" = {}
-"omni.kit.converter.cad" = {order = 200, version = "~209.0"}
+"omni.kit.converter.cad" = {order = 200, version = "~209.4"}
+"omni.kit.converter.gsplat" = {}
+
+[dependencies."filter:platform"."linux-x86_64"]
+"isaacsim.replicator.teleop.ui" = {}
 
 [settings]
 # default internal ros2 bridge distro to use if no ros2 distro is sourced
 exts."isaacsim.ros2.bridge".ros_distro = "system_default"
+# keep Test Runner populated with Isaac tests even if dependency extensions set narrower filters
+exts."omni.kit.test".includeTests = ["*isaac*"]
 # enable async rendering runtime toggle
 exts."isaacsim.core.throttling".enable_async = true
 # enable manual mode runtime toggle
@@ -140,9 +154,9 @@ file.ignoreUnsavedStage = false
 window.title = "Isaac Sim Full"
 vulkan = true                          # Explicitly enable Vulkan
 enableDeveloperWarnings = false        # Disable developer warnings to reduce log noise
-runLoops.main.rateLimitEnabled = true  # Enable rate limiting, simulation runs at specified rendering rate (default 60 hz)
+runLoops.main.rateLimitEnabled = true  # Enable main run-loop rate limit (loop sleeps at end of frame to cap tick rate); paired with rateLimitFrequency (default 60 hz)
 runLoops.main.manualModeEnabled = true # Enable manual mode, dt is fixed at requested rate
-player.useFixedTimeStepping = true     # Disable fixed time stepping, dt is controlled by loop runner
+player.useFixedTimeStepping = true     # Enable fixed time stepping; timeline forces dt = 1/timeCodesPerSecond regardless of measured wall-clock dt
 
 
 # set the default ros bridge to enable on startup

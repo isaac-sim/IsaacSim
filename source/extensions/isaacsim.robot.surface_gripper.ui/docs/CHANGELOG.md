@@ -1,5 +1,21 @@
 # Changelog
 
+## [3.1.4] - 2026-04-21
+### Changed
+- Replace `omni.kit.commands.execute("CreateSurfaceGripper")` call sites with direct `create_surface_gripper()` API
+
+## [3.1.3] - 2026-03-26
+### Changed
+- Updated Python bindings import paths for consistency
+
+## [3.1.2] - 2026-03-06
+### Fixed
+- Revoke existing USD ObjectsChanged listener before registering a new one in build_items to prevent listener leaks on repeated property panel rebuilds
+
+## [3.1.1] - 2026-03-05
+### Removed
+- Remove unused and deprecated extension dependencies
+
 ## [3.1.0] - 2026-03-04
 ### Changed
 - Added Overview.md, python_api.md and updated docstrings

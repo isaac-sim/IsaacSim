@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[project]
+name = "isaacsim-asset-importer-utils"
+version = "1.0.0"
+description = "Shared utility functions for Isaac Sim asset importers"
+requires-python = ">=3.12"
+dependencies = [
+    "usd-exchange>=2.2.2",
+]
+readme = "docs/Overview.md"
+license = "Apache-2.0"
+keywords = ["nvidia", "isaac", "sim", "usd", "asset", "importer", "utils"]
+authors = [
+    {name = "NVIDIA Corporation"},
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.standalone-wheel]
+symlinks = [
+    {link = "isaacsim/asset/importer/utils/__init__.py", target = "python/__init__.py"},
+    {link = "isaacsim/asset/importer/utils/impl", target = "python/impl"},
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "isaacsim.asset.importer.utils",
+    "isaacsim.asset.importer.utils.*",
+]
+exclude = ["isaacsim.asset.importer.utils.tests"]
+
+[tool.setuptools.package-data]
+"isaacsim.asset.importer.utils.impl" = ["schemas/*.usda", "schemas/*.json"]

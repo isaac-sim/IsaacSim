@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.graph.core as og
@@ -25,7 +24,7 @@ from isaacsim.storage.native import get_assets_root_path
 
 class TestRealTimeFactor(ogts.OmniGraphTestCase):
     async def setUp(self):
-        """Set up  test environment, to be torn down when done"""
+        """Set up  test environment, to be torn down when done."""
         await omni.usd.get_context().new_stage_async()
         self._timeline = omni.timeline.get_timeline_interface()
         self._core_nodes = _isaacsim_core_nodes.acquire_interface()
@@ -39,7 +38,7 @@ class TestRealTimeFactor(ogts.OmniGraphTestCase):
 
     # ----------------------------------------------------------------------
     async def tearDown(self):
-        """Get rid of temporary data used by the test"""
+        """Get rid of temporary data used by the test."""
         await omni.kit.stage_templates.new_stage_async()
 
     # ----------------------------------------------------------------------
@@ -47,7 +46,7 @@ class TestRealTimeFactor(ogts.OmniGraphTestCase):
         graph_path = "/ActionGraph"
         nodeName = "isaac_test_node"
 
-        (test_graph, new_nodes, _, _) = og.Controller.edit(
+        test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": graph_path, "evaluator_name": "execution"},
             {
                 og.Controller.Keys.CREATE_NODES: [

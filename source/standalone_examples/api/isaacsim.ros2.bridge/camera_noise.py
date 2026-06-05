@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Demonstrate ROS 2 camera publishing with GPU-based noise augmentation."""
+
+import argparse
 import sys
 
 from isaacsim import SimulationApp
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--test", default=False, action="store_true", help="Run in test mode")
+args, _ = parser.parse_known_args()
 
 CAMERA_STAGE_PATH = "/Camera"
 ROS_CAMERA_GRAPH_PATH = "/ROS_Camera"
@@ -26,22 +33,23 @@ CONFIG = {"renderer": "RealTimePathTracing", "headless": False}
 
 simulation_app = SimulationApp(CONFIG)
 import carb
+import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
 import omni
 import omni.replicator.core as rep
 import warp as wp
-from isaacsim.core.api import SimulationContext
-from isaacsim.core.utils import extensions, stage
-from isaacsim.core.utils.render_product import set_camera_prim_path
+from isaacsim.core.rendering_manager import ViewportManager
+from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.storage.native import get_assets_root_path
 from omni.kit.viewport.utility import get_active_viewport
 from pxr import Gf, Sdf, UsdGeom
 
 # enable ROS bridge extension
-extensions.enable_extension("isaacsim.ros2.bridge")
+app_utils.enable_extension("isaacsim.ros2.bridge")
 
 simulation_app.update()
 
-simulation_context = SimulationContext(stage_units_in_meters=1.0)
+stage_utils.set_stage_units(meters_per_unit=1.0)
 
 # Locate Isaac Sim assets folder to load environment and robot stages
 assets_root_path = get_assets_root_path()
@@ -51,7 +59,7 @@ if assets_root_path is None:
     sys.exit()
 
 # Loading the simple_room environment
-stage.add_reference_to_stage(assets_root_path + BACKGROUND_USD_PATH, BACKGROUND_STAGE_PATH)
+stage_utils.add_reference_to_stage(assets_root_path + BACKGROUND_USD_PATH, BACKGROUND_STAGE_PATH)
 
 # Creating a Camera prim
 camera_prim = UsdGeom.Camera(omni.usd.get_context().get_stage().DefinePrim(CAMERA_STAGE_PATH, "Camera"))
@@ -71,7 +79,7 @@ simulation_app.update()
 
 # grab our render product and directly set the camera prim
 render_product_path = get_active_viewport().get_render_product_path()
-set_camera_prim_path(render_product_path, CAMERA_STAGE_PATH)
+ViewportManager.set_camera(CAMERA_STAGE_PATH)
 
 
 # GPU Noise Kernel for illustrative purposes, input is rgba, outputs rgb
@@ -79,6 +87,7 @@ set_camera_prim_path(render_product_path, CAMERA_STAGE_PATH)
 def image_gaussian_noise_warp(
     data_in: wp.array3d(dtype=wp.uint8), data_out: wp.array3d(dtype=wp.uint8), seed: int, sigma: float = 0.5
 ):
+    """Apply Gaussian noise to an image using warp."""
     i, j = wp.tid()
     dim_i = data_out.shape[0]
     dim_j = data_out.shape[1]
@@ -131,20 +140,23 @@ writer.attach([render_product_path])
 
 simulation_app.update()
 # Need to initialize physics getting any articulation..etc
-simulation_context.initialize_physics()
-simulation_context.play()
+SimulationManager.setup_simulation(dt=1.0 / 60.0, device="cpu")
+app_utils.play()
+simulation_app.update()
 
 frame = 0
 
 while simulation_app.is_running():
     # Run with a fixed step size
-    simulation_context.step(render=True)
+    simulation_app.update()
 
-    if simulation_context.is_playing():
+    if app_utils.is_playing():
         # Rotate camera by 0.5 degree every frame
         xform_api.SetRotate((90, 0, frame / 4.0), UsdGeom.XformCommonAPI.RotationOrderXYZ)
 
         frame = frame + 1
+        if args.test and frame >= 10:
+            break
 
-simulation_context.stop()
+app_utils.stop()
 simulation_app.close()

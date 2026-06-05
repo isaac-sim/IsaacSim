@@ -1,5 +1,5 @@
 [package]
-version = "1.1.0"
+version = "1.2.0"
 category = "SyntheticData"
 title = "Isaac Sim Replicator Behavior Scripts UI"
 description = "UI components for the Replicator Behavior Scripts exntension. It provides the UI Widget for the Property Panel for configuring the exposed variables of the scripts."

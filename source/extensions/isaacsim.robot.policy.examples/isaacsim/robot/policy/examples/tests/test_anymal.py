@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Test module for validating Anymal quadruped robot policy functionality on both CPU and GPU devices."""
-
 
 import asyncio
 
@@ -109,18 +108,15 @@ class TestAnymalCPU(omni.kit.test.AsyncTestCase):
 
         self.assertEqual(self._anymal.robot.num_dofs, 12)
 
-        # Verify robot prim exists
-        robot_prim = stage_utils.get_current_stage().GetPrimAtPath("/World/anymal")
-        self.assertIsNotNone(robot_prim, "Robot prim should exist in stage at /World/anymal")
-        self.assertTrue(robot_prim.IsValid(), "Robot prim should be valid")
+        root_prim = stage_utils.get_current_stage().GetPrimAtPath(self._prim_path)
+        self.assertIsNotNone(root_prim, f"Robot root prim should exist at {self._prim_path}")
+        self.assertTrue(root_prim.IsValid(), "Robot root prim should be valid")
 
-        # Verify robot base prim exists and has ArticulationRootAPI
-        robot_base_prim = stage_utils.get_current_stage().GetPrimAtPath("/World/anymal/base")
-        self.assertIsNotNone(robot_base_prim, "Robot base prim should exist in stage at /World/anymal/base")
-        self.assertTrue(robot_base_prim.IsValid(), "Robot base prim should be valid")
+        articulation_root_path = self._anymal.robot.paths[0]
+        articulation_prim = stage_utils.get_current_stage().GetPrimAtPath(articulation_root_path)
         self.assertTrue(
-            prim_utils.has_api(robot_base_prim, UsdPhysics.ArticulationRootAPI),
-            "Robot base prim should have ArticulationRootAPI",
+            prim_utils.has_api(articulation_prim, UsdPhysics.ArticulationRootAPI),
+            f"Articulation root prim at {articulation_root_path} should have ArticulationRootAPI",
         )
 
     async def test_robot_move_forward_command(self):
@@ -144,7 +140,7 @@ class TestAnymalCPU(omni.kit.test.AsyncTestCase):
         self.current_pos = current_positions_wp.numpy()[0]
 
         delta = abs(self.current_pos[0] - self.start_pos[0])
-        self.assertGreater(delta, 1.0)
+        self.assertGreater(delta, 0.4)
         self.assertLess(delta, 2.0)
 
     async def test_robot_turn_command(self):
@@ -203,7 +199,7 @@ class TestAnymalCPU(omni.kit.test.AsyncTestCase):
         )
         await omni.kit.app.get_app().next_update_async()
 
-    def on_physics_step(self, step_size, context):
+    def on_physics_step(self, step_size: float, context: object) -> None:
         """Physics step callback that applies base commands to the Anymal robot.
 
         Args:

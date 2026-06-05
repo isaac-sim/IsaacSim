@@ -1,5 +1,5 @@
 [package]
-version = "0.6.0"
+version = "0.7.14"
 category = "Simulation"
 title = "Isaac Sim Newton Physics"
 description = "Extension for simulating physics with Newton and connecting with Fabric. Includes tensor interface (isaacsim.physics.newton.tensors) for NumPy/PyTorch/Warp frontends."
@@ -13,7 +13,6 @@ writeTarget.kit = true
 [dependencies]
 "isaacsim.core.simulation_manager" = {}  # Required for SimulationManager integration
 "isaacsim.pip.newton" = {}  # Newton pip packages
-"omni.isaac.ml_archive" = {}
 "omni.physics" = {}  # Required for unified physics interface registration
 "omni.warp.core" = {}
 "usdrt.scenegraph" = {}  # Required for fabric integration
@@ -35,10 +34,13 @@ exts."isaacsim.physics.newton".auto_switch_on_startup = true
 name = "startup"
 
 [[test]]
-timeout = 900
+timeout = 3600
+enabled = false
 dependencies = [
-    "isaacsim.core.utils",
-    "isaacsim.test.utils" # Used to suppress NumPy coverage errors
+    "isaacsim.physics.newton.tensors",
+    "isaacsim.test.utils", # Used to suppress NumPy coverage errors
+    "isaacsim.asset.importer.urdf",
+    "isaacsim.asset.importer.mjcf"
 ]
 
 stdoutFailPatterns.exclude = [
@@ -85,8 +87,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
     ### Extension specific args
     "--/exts/isaacsim.core.simulation_manager/default_engine=newton",

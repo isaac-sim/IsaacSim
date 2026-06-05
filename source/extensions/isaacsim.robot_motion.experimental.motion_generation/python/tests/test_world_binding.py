@@ -17,10 +17,8 @@
 
 """Tests for WorldBinding functionality that synchronizes USD stage objects with planning world interfaces."""
 
-
 import numpy as np
 import omni.kit.test
-import warp as wp
 from isaacsim.core.experimental.objects import (
     Capsule,
     Cone,
@@ -157,6 +155,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
 
     async def test_common_updates(self):
         """Test that the WorldBinding class can correctly update the world interface when the common tokens change.
+
         This includes the world transforms, the collision enabled outputs, and the local-transform which is
         used to track the scales.
         """

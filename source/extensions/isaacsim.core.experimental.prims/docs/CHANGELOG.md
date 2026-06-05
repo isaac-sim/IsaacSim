@@ -1,8 +1,96 @@
 # Changelog
+
+## [1.8.8] - 2026-05-11
+### Fixed
+- Remove unused `unitsResolve` properties (other than `xformOp:scale:unitsResolve`) when resetting the transformation operation attributes of wrapped prims
+
+## [1.8.7] - 2026-05-08
+### Added
+- Tests verifying that `Articulation` link, joint, and DOF names and indices are non-empty before physics initialization and match the post-physics enumeration for both fixed-base (Franka) and floating-base (Spot) assets.
+
+## [1.8.6] - 2026-05-03
+### Fixed
+- Resolve descendant articulation targets to their containing articulation root.
+- Populate `Articulation` metadata from USD when running with the `remotesim` physics backend.
+
+## [1.8.5] - 2026-05-01
+### Fixed
+- Switch to the `remotesim` physics engine when other physics engines are still active, even if `remotesim` is already marked active.
+
+## [1.8.4] - 2026-04-28
+### Changed
+- `Articulation.get_world_poses`, `get_velocities`: skip Warp row-axis fancy-indexing when `indices=None`; column reorder for quaternion xyzw→wxyz still uses the cached index array.
+- `Articulation.get_dof_positions`, `get_dof_velocities`, `get_dof_position_targets`, `get_dof_velocity_targets`: skip Warp fancy-indexing when `indices=None` and `dof_indices=None` (guarded by `data.shape[1] == num_dofs` for heterogeneous safety).
+- Quaternion reorder index array `[6, 3, 4, 5]` cached per device at module level to avoid repeated allocation on `get_world_poses` / `get_coms` / `set_world_poses` / `set_coms`.
+
+## [1.8.3] - 2026-04-24
+### Changed
+- Use `SimulationManager.get_active_physics_engine()` for Newton engine detection in `RigidPrim` and `Articulation` instead of checking for `_newton_stage` attribute on the view object.
+
+## [1.8.2] - 2026-04-24
+### Fixed
+- Removed the obsolete SimState remote-push gate so articulation DOF commands continue writing to SimStateStorage when SimState mode is enabled.
+
+## [1.8.1] - 2026-04-22
+### Added
+- Add `Articulation._deferred_switch_remotesim()` static method that switches to the remotesim engine after PhysX prim query completes
+- Call `_deferred_switch_remotesim()` in `_on_physics_ready` and tear down the PhysX tensor view if the engine was switched
+
+## [1.8.0] - 2026-04-20
+### Added
+- Add ContactPointData struct, contact event type constants (kContactEventFound/Lost/Persist), ContactEventData struct, ContactReportData struct to IPrimDataReader.h
+- Add enableContactReporting() and getContactReport() virtual methods to IPrimDataReader interface
+- Add SdfPathToken.h with sdfPathToToken/tokenToSdfPath helpers for PhysX contact body identifiers
+- Bump CARB_PLUGIN_INTERFACE version to (2, 2)
+
+## [1.7.6] - 2026-04-17
+### Fixed
+- Fix link mass inverse test to not add epsilon to denominator
+
+## [1.7.5] - 2026-04-16
+### Added
+- Add remote simulator support for articulation DOF target writes
+
+## [1.7.4] - 2026-04-13
+### Fixed
+- Fixed `XformPrim.__init__` raising `TypeError` for non-root articulation links (`raise carb.log_warn(...)` replaced with `carb.log_warn(...)`)
+
+## [1.7.3] - 2026-04-06
+### Changed
+- Improve exception message related to xformOp reset status
+
+## [1.7.2] - 2026-03-27
+### Changed
+- Added tests for PhysX tensor-backed world transform path in IPrimDataReader (rigid body positions, quaternion reordering, mixed physics/Fabric prims, tensor vs Fabric consistency)
+
+## [1.7.1] - 2026-03-26
+### Changed
+- Moved Python binding module to `bindings/` subdirectory
+
+## [1.7.0] - 2026-03-20
+### Changed
+- Decouple prim data reader interface from implementation; implementation moved to `isaacsim.core.experimental.primdata`
+- Add lazy provider loading to enable the primdata extension on-the-fly
+- Add configurable provider extension setting
+
+## [1.6.0] - 2026-03-17
+### Added
+- Added a filterless contact API that captures all contacts for prims
+
+## [1.5.0] - 2026-03-12
+### Changed
+- Added Overview.md, python_api.md and updated docstrings
+
+## [1.4.0] - 2026-03-09
+### Added
+- `LinkInfo` struct in `IPrimDataReader.h`: per-link descriptor (path, parentPath) returned by articulation traversal
+- `getArticulationLinks()` on `IArticulationDataView`: enumerates `UsdPhysicsRigidBodyAPI` descendants of an articulation root, returning parent-child link relationships
+- `getPrimFrameName()` on `IXformDataView`: resolves a prim's frame name, checking `isaac:nameOverride` before falling back to prim name; inherited by all three view types
+- `getPrimWorldTransform()` on `IXformDataView`: computes world transform of an arbitrary prim via Fabric, returning position (float[3]) and orientation (float[4], wxyz); inherited by all three view types
+
 ## [1.3.1] - 2026-03-05
 ### Changed
 - Fix api and docs syntax issues
-
 
 ## [1.3.0] - 2026-03-03
 ### Added

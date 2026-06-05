@@ -1,5 +1,5 @@
 {
-    "OgnIntervalFiltering": {
+    "isaacsim.replicator.domain_randomization.OgnIntervalFiltering": {
         "version": 1,
         "language": "python",
         "categories": {

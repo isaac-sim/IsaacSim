@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,4 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .extension import *
+"""USD to URDF exporter API.
+
+Provides :class:`UsdToUrdfConverter` for converting USD articulated robots
+to URDF format. UI components are in ``isaacsim.asset.exporter.urdf.ui``.
+"""
+
+from .converter import UsdToUrdfConverter
+
+try:
+    from .extension import *
+except ImportError:
+    pass
+
+__all__ = ["UsdToUrdfConverter"]

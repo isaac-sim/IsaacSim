@@ -1,7 +1,7 @@
 {
     "SurfaceGripper" :
     {
-        "version": 2,
+        "version": 3,
         "icon": "icons/isaac-sim.svg",
         "description": "Surface Gripper",
         "language": "Python",
@@ -26,6 +26,14 @@
             "Toggle": {
                 "type": "execution",
                 "description": "Toggle the gripper"
+            },
+            "Open": {
+                "type": "execution",
+                "description": "Open the gripper"
+            },
+            "Close": {
+                "type": "execution",
+                "description": "Close the gripper"
             }
         
         },

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,11 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Backend classes for Newton tensor API."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import carb
 import newton
@@ -28,6 +29,40 @@ from .utils import find_matching_paths
 
 if TYPE_CHECKING:
     from ..newton_stage import NewtonStage
+
+
+UNRESOLVED_BODY = -2
+"""Returned by ``_resolve_filter_path_to_body_index`` when a path cannot be
+resolved to any body or world shape."""
+
+
+def _resolve_filter_path_to_body_index(filter_path: str, model: object) -> int:
+    """Resolve a filter prim path to a body index.
+
+    Args:
+        filter_path: The prim path to resolve.
+        model: The Newton model containing body labels and shape data.
+
+    Returns:
+        body index (>=0), -1 for world body shapes (``shape_body == -1``),
+        or :data:`UNRESOLVED_BODY` (-2) if the path cannot be resolved.
+    """
+    if not filter_path or model is None:
+        return UNRESOLVED_BODY
+    body_label = model.body_label  # type: ignore[attr-defined]
+    if filter_path in body_label:
+        return body_label.index(filter_path)
+    candidates = [(i, path) for i, path in enumerate(body_label) if filter_path.startswith(path + "/")]
+    if candidates:
+        best = max(candidates, key=lambda x: len(x[1]))
+        return best[0]
+    shape_body = model.shape_body.numpy() if hasattr(model.shape_body, "numpy") else model.shape_body  # type: ignore[attr-defined]
+    for i, label in enumerate(model.shape_label):  # type: ignore[attr-defined]
+        if label == filter_path or filter_path.startswith(label + "/") or label.startswith(filter_path + "/"):
+            if shape_body[i] == -1:
+                return -1
+    return UNRESOLVED_BODY
+
 
 # Map Newton joint types to omni.physics.tensors.JointType enum
 JointTypeDic = {
@@ -73,9 +108,8 @@ class ArticulationSet:
         meta_types: list[ArticulationMetaType],
         count: int,
         max_dofs: int,
-    ):
+    ) -> None:
         self.newton_stage = newton_stage
-        self.model = newton_stage.model
         self.articulation_indices = articulation_indices
         self.root_body_indices = root_body_indices
         self.dof_position_indices = dof_position_indices
@@ -91,6 +125,11 @@ class ArticulationSet:
         self.q_ik = self.model.joint_q
         self.qd_ik = self.model.joint_qd
         self.q_forces = wp.zeros(self.dof_axis_indices.shape[0], dtype=wp.float32)
+
+    @property
+    def model(self) -> Any:
+        """The Newton model."""
+        return self.newton_stage.model
 
     @property
     def shared_metatype(self) -> ArticulationMetaType:
@@ -168,7 +207,7 @@ class ArticulationMetaType:
         joint_dof_counts: list[int],
         dof_types: list[omni.physics.tensors.DofType],
         fixed_base: bool,
-    ):
+    ) -> None:
         self.link_count = len(link_paths)
         self.joint_count = len(joint_paths)
         self.dof_count = len(dof_paths)
@@ -229,9 +268,8 @@ class RigidBodySet:
         body_indices: wp.array,
         body_paths: list[str],
         body_names: list[str],
-    ):
+    ) -> None:
         self.newton_stage = newton_stage
-        self.model = newton_stage.model
         self.body_indices = body_indices
         self.body_paths = body_paths
         self.prim_paths = body_paths
@@ -239,13 +277,18 @@ class RigidBodySet:
         self.count = len(body_names)
 
         body_indices_list = (
-            self.body_indices.list() if hasattr(self.body_indices, "list") else self.body_indices.tolist()
+            self.body_indices.list() if hasattr(self.body_indices, "list") else self.body_indices.tolist()  # type: ignore[attr-defined]
         )
         self.max_shapes = 0
         for i in range(self.count):
             body_idx = body_indices_list[i]
             shape_ids = self.model.body_shapes[body_idx]
             self.max_shapes = max(self.max_shapes, len(shape_ids))
+
+    @property
+    def model(self) -> Any:
+        """The Newton model."""
+        return self.newton_stage.model
 
 
 class RigidContactSet:
@@ -260,7 +303,11 @@ class RigidContactSet:
         filter_paths: List of lists of filter body paths.
         filter_names: List of lists of filter body names.
         max_filters: Maximum number of filters per sensor.
-        body_sensor_map: Warp array mapping body indices to sensor indices.
+        body_sensor_map: Warp array mapping body indices to sensor indices,
+            length ``body_count + 1`` (last element is the world body slot).
+        world_body_idx: Index used for the world body (ground plane) in the
+            sensor / filter mapping arrays.
+        max_contact_data_count: Maximum contact data buffer size.
     """
 
     def __init__(
@@ -274,9 +321,10 @@ class RigidContactSet:
         filter_names: list[list[str]],
         max_filters: int,
         body_sensor_map: wp.array,
-    ):
+        world_body_idx: int,
+        max_contact_data_count: int = 0,
+    ) -> None:
         self.newton_stage = newton_stage
-        self.model = newton_stage.model
         self.sensor_indices = sensor_indices
         self.sensor_paths = sensor_paths
         self.sensor_names = sensor_names
@@ -287,6 +335,13 @@ class RigidContactSet:
         self.filter_count = max_filters
         self.count = self.sensor_count
         self.body_sensor_map = body_sensor_map
+        self.world_body_idx = world_body_idx
+        self.max_contact_data_count = max_contact_data_count
+
+    @property
+    def model(self) -> Any:
+        """The Newton model."""
+        return self.newton_stage.model
 
 
 class NewtonSimView:
@@ -296,9 +351,8 @@ class NewtonSimView:
         newton_stage: The Newton stage instance.
     """
 
-    def __init__(self, newton_stage: NewtonStage):
+    def __init__(self, newton_stage: NewtonStage) -> None:
         self.newton_stage = newton_stage
-        self.model = newton_stage.model
         self.is_valid_flag = True
         self.device = newton_stage.device
         if hasattr(self.device, "is_cpu") and self.device.is_cpu:
@@ -312,6 +366,11 @@ class NewtonSimView:
         else:
             self.device_ordinal = -1
 
+    @property
+    def model(self) -> Any:
+        """The Newton model."""
+        return self.newton_stage.model
+
     def get_gravity(self, gravity: list[float]) -> bool:
         """Get the simulation gravity vector.
 
@@ -321,19 +380,19 @@ class NewtonSimView:
         Returns:
             True if successful.
         """
-        newton_gravity = self.newton_stage.model.gravity
+        newton_gravity = self.newton_stage.model.gravity  # type: ignore[union-attr, attr-defined]
         gravity[0] = newton_gravity[0]
         gravity[1] = newton_gravity[1]
         gravity[2] = newton_gravity[2]
         return True
 
-    def set_gravity(self, gravity: list[float]):
+    def set_gravity(self, gravity: list[float]) -> None:
         """Set the simulation gravity vector.
 
         Args:
             gravity: Gravity vector as [x, y, z].
         """
-        self.newton_stage.model.gravity = gravity
+        self.newton_stage.model.gravity = gravity  # type: ignore[union-attr, attr-defined]
 
     def update_articulations_kinematic(self) -> bool:
         """Update articulation kinematics.
@@ -343,10 +402,10 @@ class NewtonSimView:
         """
         return True
 
-    def initialize_kinematic_bodies(self):
+    def initialize_kinematic_bodies(self) -> None:
         """Initialize kinematic bodies."""
 
-    def invalidate(self):
+    def invalidate(self) -> None:
         """Invalidate the simulation view."""
         self.is_valid_flag = False
 
@@ -411,7 +470,7 @@ class NewtonSimView:
 
             for filt_pat in sensor_filter_patterns:
                 matched_filter_paths = find_matching_paths(stage, filt_pat)
-
+                # Same as PhysX BaseSimulationView: single filter match → use for all sensors (e.g. ground plane).
                 if len(matched_filter_paths) == 1:
                     filter_paths_per_pattern.append([matched_filter_paths[0]] * len(matched_sensor_paths))
                 elif len(matched_filter_paths) == len(matched_sensor_paths):
@@ -451,8 +510,13 @@ class NewtonSimView:
                     filter_path = filter_paths_per_pattern[filter_pattern_idx][sensor_local_idx]
                     sensor_filter_paths.append(filter_path)
 
-                    if filter_path and filter_path in self.model.body_label:
-                        filter_body_idx = self.model.body_label.index(filter_path)
+                    filter_body_idx = (
+                        _resolve_filter_path_to_body_index(filter_path, self.model) if filter_path else UNRESOLVED_BODY
+                    )
+                    if filter_body_idx == -1:
+                        sensor_filter_indices.append(self.model.body_count)
+                        sensor_filter_names.append("world")
+                    elif filter_body_idx >= 0:
                         sensor_filter_indices.append(filter_body_idx)
                         sensor_filter_names.append(self.model.body_label[filter_body_idx])
                     else:
@@ -468,28 +532,33 @@ class NewtonSimView:
             carb.log_error("No sensors matched")
             return None
 
+        world_body_idx = self.model.body_count
+
         filter_indices = np.ones((num_sensors, num_filters), dtype=int) * -1
-        body_sensor_map = np.ones((self.model.body_count), dtype=int) * -1
+        # Extra slot at index body_count for the world body (shape_body = -1).
+        body_sensor_map = np.ones((world_body_idx + 1), dtype=int) * -1
 
         for i in range(num_sensors):
             body_sensor_map[all_sensor_indices[i]] = i
             for j in range(len(all_filter_indices_per_sensor[i])):
                 filter_indices[i, j] = all_filter_indices_per_sensor[i][j]
 
-        sensor_indices = wp.array(all_sensor_indices, dtype=wp.int32, device=self.device)
-        filter_indices = wp.array(filter_indices, dtype=wp.int32, device=self.device)
-        body_sensor_map = wp.array(body_sensor_map, dtype=wp.int32, device=self.device)
+        sensor_indices = wp.array(all_sensor_indices, dtype=wp.int32, device=self.device)  # type: ignore[var-annotated]
+        filter_indices = wp.array(filter_indices, dtype=wp.int32, device=self.device)  # type: ignore[assignment]
+        body_sensor_map = wp.array(body_sensor_map, dtype=wp.int32, device=self.device)  # type: ignore[assignment]
 
         return RigidContactSet(
             self.newton_stage,
             sensor_indices,
             all_sensor_paths,
             all_sensor_names,
-            filter_indices,
+            filter_indices,  # type: ignore[arg-type]
             all_filter_paths_per_sensor,
             all_filter_names_per_sensor,
             num_filters,
-            body_sensor_map,
+            body_sensor_map,  # type: ignore[arg-type]
+            world_body_idx,
+            max_contact_data_count,
         )
 
     def create_rigid_body_view(self, pattern: str | list[str]) -> RigidBodySet:
@@ -510,7 +579,7 @@ class NewtonSimView:
         body_names = []
         body_paths = []
 
-        all_prim_paths = []
+        all_prim_paths = []  # type: ignore[var-annotated]
         for patt in pattern_list:
             current_size = len(all_prim_paths)
             prim_paths = find_matching_paths(self.newton_stage.usd_stage, patt)
@@ -529,9 +598,9 @@ class NewtonSimView:
             except ValueError:
                 carb.log_warn(f"Rigid body path '{body_path}' not found in Newton model")
 
-        body_indices = wp.array(body_indices, dtype=int, device=self.device)
+        body_indices = wp.array(body_indices, dtype=int, device=self.device)  # type: ignore[assignment]
 
-        return RigidBodySet(self.newton_stage, body_indices, body_paths, body_names)
+        return RigidBodySet(self.newton_stage, body_indices, body_paths, body_names)  # type: ignore[arg-type]
 
     def create_articulation_view(self, pattern: str | list[str]) -> ArticulationSet:
         """Create an articulation view for articulations matching the pattern.
@@ -556,7 +625,7 @@ class NewtonSimView:
                 "initialize_newton() has been called."
             )
 
-        matched_arti_paths = []
+        matched_arti_paths = []  # type: ignore[var-annotated]
         for p in pattern_list:
             current_size = len(matched_arti_paths)
             prim_paths = find_matching_paths(self.newton_stage.usd_stage, p)
@@ -597,7 +666,7 @@ class NewtonSimView:
                 joint_dof_start = 0
                 total_dof_count = 0
                 articulation_dof_types = []
-                articulation_dof_names = []
+                articulation_dof_names = []  # type: ignore[var-annotated]
                 articulation_dof_paths = []
                 articulation_joint_dof_counts = []
                 articulation_joint_types = []
@@ -680,18 +749,18 @@ class NewtonSimView:
                     l_shapes.extend(shape_ids)
                 l_paths = [self.model.body_label[idx] for idx in articulation_link_indices]
                 l_names = [path.rsplit("/", 1)[-1] for path in l_paths]
-                l_indices = dict([(name, idx) for name, idx in zip(l_names, articulation_link_indices)])
+                l_indices = dict(zip(l_names, articulation_link_indices))
                 j_paths = [self.model.joint_label[j] for j in articulation_g_joint_indices]
                 j_names = [path.rsplit("/", 1)[-1] for path in j_paths]
 
-                j_indices = dict([(name, idx) for name, idx in zip(j_names, articulation_joint_indices)])
+                j_indices = dict(zip(j_names, articulation_joint_indices))
 
                 j_types = [JointTypeDic[jt] for jt in articulation_joint_types]
 
                 d_names = [path.rsplit("/", 1)[-1] for path in articulation_dof_paths]
 
                 d_names = [path.rsplit("/", 1)[-1] for path in articulation_dof_paths]
-                d_indices = dict([(name, idx) for name, idx in zip(d_names, range(total_dof_count))])
+                d_indices = dict(zip(d_names, range(total_dof_count)))
 
                 meta_types.append(
                     ArticulationMetaType(
@@ -712,12 +781,12 @@ class NewtonSimView:
 
                 max_dofs = max(max_dofs, total_dof_count)
 
-        arti_indices = wp.array(view_indices, dtype=int, device=self.device)
-        root_body_indices = wp.array(root_indices, dtype=int, device=self.device)
-        dof_position_indices = wp.array(dof_position_indices, dtype=int, device=self.device)
-        dof_velocity_indices = wp.array(dof_velocity_indices, dtype=int, device=self.device)
-        dof_axis_indices = wp.array(dof_axis_indices, dtype=int, device=self.device)
-        joint_indices = wp.array(joint_indices, dtype=int, device=self.device)
+        arti_indices = wp.array(view_indices, dtype=int, device=self.device)  # type: ignore[var-annotated]
+        root_body_indices = wp.array(root_indices, dtype=int, device=self.device)  # type: ignore[var-annotated]
+        dof_position_indices = wp.array(dof_position_indices, dtype=int, device=self.device)  # type: ignore[assignment]
+        dof_velocity_indices = wp.array(dof_velocity_indices, dtype=int, device=self.device)  # type: ignore[assignment]
+        dof_axis_indices = wp.array(dof_axis_indices, dtype=int, device=self.device)  # type: ignore[assignment]
+        joint_indices = wp.array(joint_indices, dtype=int, device=self.device)  # type: ignore[assignment]
 
         max_shapes = 0
         max_links = 0
@@ -740,19 +809,19 @@ class NewtonSimView:
                 link_indices[i, j] = meta.link_indices[meta.link_names[j]]
 
         count = len(view_indices)
-        shape_indices = wp.array(shape_indices, dtype=wp.int32, device=self.device)
-        link_indices = wp.array(link_indices, dtype=wp.int32, device=self.device)
+        shape_indices = wp.array(shape_indices, dtype=wp.int32, device=self.device)  # type: ignore[assignment]
+        link_indices = wp.array(link_indices, dtype=wp.int32, device=self.device)  # type: ignore[assignment]
 
         return ArticulationSet(
             self.newton_stage,
-            arti_indices,
-            root_body_indices,
-            dof_position_indices,
-            dof_velocity_indices,
-            dof_axis_indices,
-            joint_indices,
-            shape_indices,
-            link_indices,
+            arti_indices,  # type: ignore[arg-type]
+            root_body_indices,  # type: ignore[arg-type]
+            dof_position_indices,  # type: ignore[arg-type]
+            dof_velocity_indices,  # type: ignore[arg-type]
+            dof_axis_indices,  # type: ignore[arg-type]
+            joint_indices,  # type: ignore[arg-type]
+            shape_indices,  # type: ignore[arg-type]
+            link_indices,  # type: ignore[arg-type]
             meta_types,
             count,
             max_dofs,

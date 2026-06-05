@@ -12,8 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """
-The Kit extension system tests for Python has additional wrapping
+The Kit extension system tests for Python has additional wrapping.
+
 to make test auto-discoverable add support for async/await tests.
 The easiest way to set up the test class is to have it derive from
 the omni.kit.test.AsyncTestCase class that implements them.
@@ -34,14 +36,14 @@ class TestExtension(omni.kit.test.AsyncTestCase):
     """
 
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
         # ---------------
         # Do custom setUp
         # ---------------
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         # ------------------
         # Do custom tearDown
         # ------------------

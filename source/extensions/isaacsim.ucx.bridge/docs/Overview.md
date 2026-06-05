@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.ucx.bridge extension provides high-performance communication capabilities using UCX (Unified Communication X) for distributed simulation scenarios with low-latency data transfer. This extension serves as an integration point that brings together core UCX functionality and node-based communication components to enable efficient distributed computing in Isaac Sim.

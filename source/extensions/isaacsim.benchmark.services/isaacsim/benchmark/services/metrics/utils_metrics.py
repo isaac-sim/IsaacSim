@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,49 +12,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Utility helpers for building benchmark metrics payloads."""
 
 import calendar
-import copy
-import hashlib
-import json
 import os
 import pathlib
 import platform
-import subprocess
-import time
 import uuid
-import xml.etree.ElementTree as ET
-from dataclasses import asdict, dataclass
 from datetime import datetime
-from getpass import getuser
-from socket import gethostname
-from typing import Any
 
 import carb
 import omni.kit
-import psutil
 import yaml  # type: ignore[import-untyped]
 
 from .. import utils
 
 logger = utils.set_up_logging(__name__)
-from isaacsim.benchmark.services.metrics.schemas import (
-    GPU,
-    Application,
-    BenchData,
-    Benchmark,
-    BenchmarkIdentifier,
-    CPUConfiguration,
-    ExecutionEnvironment,
-    GPUConfiguration,
-    HardwareConfiguration,
-    MemoryConfiguration,
-    Metric,
-    OSConfiguration,
-)
-
-from .. import utils
 
 
 def get_execution_environment() -> tuple[str, str]:
@@ -199,7 +173,7 @@ def get_package_info_yaml(yaml_path: str | None = None) -> dict:
     yaml_contents = {}
     try:
         logger.info(f"PACKAGE-INFO.yaml path = {yaml_path}")
-        with open(yaml_path, "r") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             yaml_contents = yaml.safe_load(f)
             logger.info(f"PACKAGE-INFO.yaml contents: {yaml_contents}")
     except Exception as e:

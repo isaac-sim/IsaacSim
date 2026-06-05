@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,14 +12,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import math
 
-import omni.asset_validator.core as av_core
+"""Validates physics joint drive configurations and properties for Isaac Sim assets."""
+
+from __future__ import annotations
+
 from omni.asset_validator.core import registerRule
 from pxr import PhysxSchema, Usd, UsdPhysics
 
+from .util import DedupBaseRuleChecker
 
-def GetJointDrivesAndJointStates(joint):
+
+def get_joint_drives_and_joint_states(
+    joint: Usd.Prim,
+) -> tuple[list[UsdPhysics.DriveAPI], list[PhysxSchema.JointStateAPI]]:
     """Get the drive APIs and joint state APIs for a joint.
 
     Args:
@@ -31,24 +37,23 @@ def GetJointDrivesAndJointStates(joint):
     driveAPIs = []
     joint_states = []
     if joint.IsA(UsdPhysics.RevoluteJoint):
-        driveAPIs.append(UsdPhysics.DriveAPI(joint, "angular"))
-        joint_states.append(PhysxSchema.JointStateAPI(joint, "angular"))
+        if joint.HasAPI(UsdPhysics.DriveAPI, "angular"):
+            driveAPIs.append(UsdPhysics.DriveAPI(joint, "angular"))
+            joint_states.append(PhysxSchema.JointStateAPI(joint, "angular"))
     elif joint.IsA(UsdPhysics.PrismaticJoint):
-        driveAPIs.append(UsdPhysics.DriveAPI(joint, "linear"))
-        joint_states.append(PhysxSchema.JointStateAPI(joint, "linear"))
+        if joint.HasAPI(UsdPhysics.DriveAPI, "linear"):
+            driveAPIs.append(UsdPhysics.DriveAPI(joint, "linear"))
+            joint_states.append(PhysxSchema.JointStateAPI(joint, "linear"))
     else:
-        axis = [f"{prefix}{i}" for prefix in ["rot", "trans"] for i in ["X", "Y", "Z"]]
-        for axis in axis:
-            driveAPI = UsdPhysics.DriveAPI(joint, axis)
-            joint_state = PhysxSchema.JointStateAPI(joint, axis)
-            if driveAPI:
-                driveAPIs.append(driveAPI)
-                joint_states.append(joint_state)
+        for axis in (f"{prefix}{i}" for prefix in ("rot", "trans") for i in ("X", "Y", "Z")):
+            if joint.HasAPI(UsdPhysics.DriveAPI, axis):
+                driveAPIs.append(UsdPhysics.DriveAPI(joint, axis))
+                joint_states.append(PhysxSchema.JointStateAPI(joint, axis))
     return driveAPIs, joint_states
 
 
 @registerRule("IsaacSim.PhysicsRules")
-class PhysicsJointHasDriveOrMimicAPI(av_core.BaseRuleChecker):
+class PhysicsJointHasDriveOrMimicAPI(DedupBaseRuleChecker):
     """Validates that joints have a drive or mimic API.
 
     This rule ensures that all joints (except fixed joints) have either a drive API
@@ -56,7 +61,7 @@ class PhysicsJointHasDriveOrMimicAPI(av_core.BaseRuleChecker):
     configuration where drive stiffness and damping are set to 0.0 when mimic is used.
     """
 
-    def CheckPrim(self, prim: Usd.Prim) -> None:
+    def CheckPrim(self, prim: Usd.Prim) -> None:  # noqa: N802
         """Check if a prim has proper drive or mimic API configuration.
 
         Args:
@@ -64,7 +69,7 @@ class PhysicsJointHasDriveOrMimicAPI(av_core.BaseRuleChecker):
         """
         if not UsdPhysics.Joint(prim) or UsdPhysics.FixedJoint(prim):
             return
-        drives, joint_states = GetJointDrivesAndJointStates(prim)
+        drives, joint_states = get_joint_drives_and_joint_states(prim)
         has_mimic = prim.HasAPI(PhysxSchema.PhysxMimicJointAPI)
         exclude_from_articulation = UsdPhysics.Joint(prim).GetExcludeFromArticulationAttr().Get()
         if not drives and not has_mimic and not exclude_from_articulation:
@@ -74,19 +79,19 @@ class PhysicsJointHasDriveOrMimicAPI(av_core.BaseRuleChecker):
             for drive in drives:
                 stiffness = drive.GetStiffnessAttr().Get()
                 damping = drive.GetDampingAttr().Get()
-                if (stiffness and stiffness.Get() != 0.0) or (damping and damping.Get() != 0.0):
+                if (stiffness is not None and stiffness != 0.0) or (damping is not None and damping != 0.0):
                     self._AddError(message=f"Joint {prim.GetPath()} has both drive and mimic API", at=prim)
 
 
 @registerRule("IsaacSim.PhysicsRules")
-class PhysicsJointMaxVelocity(av_core.BaseRuleChecker):
+class PhysicsJointMaxVelocity(DedupBaseRuleChecker):
     """Validates that joints have a positive max velocity set.
 
     This rule checks that joints with the PhysxJointAPI have a defined and positive
     max joint velocity, which is required for proper joint simulation.
     """
 
-    def CheckPrim(self, prim: Usd.Prim) -> None:
+    def CheckPrim(self, prim: Usd.Prim) -> None:  # noqa: N802
         """Check if a prim has proper max joint velocity configuration.
 
         Args:
@@ -110,20 +115,20 @@ class PhysicsJointMaxVelocity(av_core.BaseRuleChecker):
 
 
 @registerRule("IsaacSim.PhysicsRules")
-class PhysicsDriveAndJointState(av_core.BaseRuleChecker):
+class PhysicsDriveAndJointState(DedupBaseRuleChecker):
     """Validates that joint drives have proper force limits and matching state values.
 
     This rule checks that joint drives have defined and reasonable max force values,
     and that drive target positions/velocities match joint state positions/velocities.
     """
 
-    def CheckPrim(self, prim: Usd.Prim) -> None:
+    def CheckPrim(self, prim: Usd.Prim) -> None:  # noqa: N802
         """Check if a prim has proper drive and joint state configuration.
 
         Args:
             prim: The USD prim to validate.
         """
-        drives, joint_states = GetJointDrivesAndJointStates(prim)
+        drives, joint_states = get_joint_drives_and_joint_states(prim)
         if not drives:
             return
         is_mimic = prim.HasAPI(PhysxSchema.PhysxMimicJointAPI)
@@ -132,7 +137,7 @@ class PhysicsDriveAndJointState(av_core.BaseRuleChecker):
             for drive, joint_state in zip(drives, joint_states):
                 stiffness = drive.GetStiffnessAttr().Get()
                 damping = drive.GetDampingAttr().Get()
-                if (stiffness and stiffness.Get() != 0.0) or (damping and damping.Get() != 0.0):
+                if (stiffness is not None and stiffness != 0.0) or (damping is not None and damping != 0.0):
                     stop = False
                     break
         if stop:
@@ -183,7 +188,7 @@ class PhysicsDriveAndJointState(av_core.BaseRuleChecker):
 
 
 @registerRule("IsaacSim.PhysicsRules")
-class DriveJointValueReasonable(av_core.BaseRuleChecker):
+class DriveJointValueReasonable(DedupBaseRuleChecker):
     """Validates that joint drive stiffness values are within reasonable ranges.
 
     This rule checks that joint drive stiffness values are within defined minimum and
@@ -191,38 +196,40 @@ class DriveJointValueReasonable(av_core.BaseRuleChecker):
     """
 
     DRIVE_STIFFNESS_MIN = 0.0
+    """Minimum allowed drive stiffness value for joint validation."""
     DRIVE_STIFFNESS_MAX = 1000000.0  # 1e6 stiffness
+    """Maximum allowed drive stiffness value for joint validation."""
     NATURAL_FREQUENCY_MIN = 0.0
+    """Minimum allowed natural frequency value for joint validation."""
     NATURAL_FREQUENCY_MAX = 500.0  # 500 Hz - warning threshold.
+    """Maximum allowed natural frequency value for joint validation."""
 
-    def CheckPrim(self, prim: Usd.Prim) -> None:
+    def CheckPrim(self, prim: Usd.Prim) -> None:  # noqa: N802
         """Check if a prim has reasonable drive stiffness values.
 
         Args:
             prim: The USD prim to validate.
         """
-        drives, joint_states = GetJointDrivesAndJointStates(prim)
+        drives, joint_states = get_joint_drives_and_joint_states(prim)
         is_mimic = prim.HasAPI(PhysxSchema.PhysxMimicJointAPI)
         for drive in drives:
             stiffness = drive.GetStiffnessAttr().Get()
-            if not stiffness and not is_mimic:
+            if stiffness is None and not is_mimic:
                 self._AddError(
                     message=f"Drive stiffness is not set on <{drive.GetPath()}>", at=drive.GetStiffnessAttr()
                 )
                 continue
             elif is_mimic:
                 damping = drive.GetDampingAttr().Get()
-                if damping:
-                    if damping.Get() != 0.0:
-                        self._AddError(
-                            message=f"joint is mimic but has damping set <{drive.GetPath()}>", at=drive.GetDampingAttr()
-                        )
-                if stiffness:
-                    if stiffness.Get() != 0.0:
-                        self._AddError(
-                            message=f"joint is mimic but has stiffness set <{drive.GetPath()}>",
-                            at=drive.GetStiffnessAttr(),
-                        )
+                if damping is not None and damping != 0.0:
+                    self._AddError(
+                        message=f"joint is mimic but has damping set <{drive.GetPath()}>", at=drive.GetDampingAttr()
+                    )
+                if stiffness is not None and stiffness != 0.0:
+                    self._AddError(
+                        message=f"joint is mimic but has stiffness set <{drive.GetPath()}>",
+                        at=drive.GetStiffnessAttr(),
+                    )
             elif stiffness < self.DRIVE_STIFFNESS_MIN or stiffness > self.DRIVE_STIFFNESS_MAX:
                 self._AddError(
                     message=f"Drive stiffness is out of range <{drive.GetPath()}>: {stiffness}",

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
 
 """Tests for pycoverage compatibility patches applied to NumPy and SciPy functions."""
 
+from __future__ import annotations
 
 import numpy as np
 import omni.kit.test
@@ -32,11 +33,11 @@ class TestPyCoveragePatches(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
     # scipy.stats import (CopyMode patch)
     # ------------------------------------------------------------------
-    async def test_import_scipy_stats(self):
+    async def test_import_scipy_stats(self) -> None:
         """Importing scipy.stats must not raise (covers _CopyMode patch)."""
         import scipy.stats  # noqa: F401
 
-    async def test_scipy_stats_truncnorm_accessible(self):
+    async def test_scipy_stats_truncnorm_accessible(self) -> None:
         """scipy.stats.truncnorm must be accessible after import."""
         import scipy.stats as stats
 
@@ -45,7 +46,7 @@ class TestPyCoveragePatches(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
     # numpy _CopyMode np.array wrapper patch
     # ------------------------------------------------------------------
-    async def test_numpy_array_with_copymode(self):
+    async def test_numpy_array_with_copymode(self) -> None:
         """np.array must accept _CopyMode values in the copy parameter."""
         import numpy._globals as npg
 
@@ -71,7 +72,7 @@ class TestPyCoveragePatches(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
     # numpy amax / amin / sum / prod patches
     # ------------------------------------------------------------------
-    async def test_numpy_amax(self):
+    async def test_numpy_amax(self) -> None:
         """np.amax must return correct results after patching."""
         a = np.array([1, 3, 2])
         self.assertEqual(np.amax(a), 3)
@@ -79,7 +80,7 @@ class TestPyCoveragePatches(omni.kit.test.AsyncTestCase):
         b = np.array([[1, 5], [3, 2]])
         np.testing.assert_array_equal(np.amax(b, axis=1), np.array([5, 3]))
 
-    async def test_numpy_amin(self):
+    async def test_numpy_amin(self) -> None:
         """np.amin must return correct results after patching."""
         a = np.array([4, 1, 7])
         self.assertEqual(np.amin(a), 1)
@@ -87,7 +88,7 @@ class TestPyCoveragePatches(omni.kit.test.AsyncTestCase):
         b = np.array([[4, 1], [7, 2]])
         np.testing.assert_array_equal(np.amin(b, axis=1), np.array([1, 2]))
 
-    async def test_numpy_sum(self):
+    async def test_numpy_sum(self) -> None:
         """np.sum must return correct results after patching."""
         a = np.array([1, 2, 3])
         self.assertEqual(np.sum(a), 6)
@@ -95,7 +96,7 @@ class TestPyCoveragePatches(omni.kit.test.AsyncTestCase):
         b = np.array([[1, 2], [3, 4]])
         np.testing.assert_array_equal(np.sum(b, axis=1), np.array([3, 7]))
 
-    async def test_numpy_prod(self):
+    async def test_numpy_prod(self) -> None:
         """np.prod must return correct results after patching."""
         a = np.array([2, 3, 4])
         self.assertEqual(np.prod(a), 24)

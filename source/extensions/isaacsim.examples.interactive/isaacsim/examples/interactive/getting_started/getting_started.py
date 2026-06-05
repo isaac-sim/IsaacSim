@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Basic example demonstrating the fundamental structure and lifecycle of Isaac Sim samples."""
-
 
 from isaacsim.core.rendering_manager import ViewportManager
 from isaacsim.examples.base.base_sample_experimental import BaseSample
@@ -38,29 +37,24 @@ class GettingStarted(BaseSample):
     - Getting familiar with basic camera positioning and viewport management
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
-    def setup_scene(self):
+    def setup_scene(self) -> None:
         """Sets up the scene for the getting started sample."""
-        pass
 
-    async def setup_post_load(self):
+    async def setup_post_load(self) -> None:
         """Sets up the scene after loading by configuring the camera view position."""
         ViewportManager.set_camera_view(eye=[5.0, 2.0, 2.5], target=[0.00, 0.00, 0.00], camera="/OmniverseKit_Persp")
 
-    async def setup_pre_reset(self):
+    async def setup_pre_reset(self) -> None:
         """Performs setup tasks before the scene is reset."""
-        pass
 
-    async def setup_post_reset(self):
+    async def setup_post_reset(self) -> None:
         """Performs setup tasks after the scene is reset."""
-        pass
 
-    async def setup_post_clear(self):
+    async def setup_post_clear(self) -> None:
         """Performs setup tasks after the scene is cleared."""
-        pass
 
-    def physics_cleanup(self):
+    def physics_cleanup(self) -> None:
         """Cleans up physics-related resources."""
-        pass

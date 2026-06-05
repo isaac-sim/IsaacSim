@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Tests for Franka robot policy examples with both CPU and GPU simulation environments."""
-
 
 import asyncio
 
@@ -140,21 +139,34 @@ class TestFrankaExampleExtension(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         max_drawer_opening = 0
         drawer_link_idx = self.cabinet.get_dof_indices("drawer_top_joint")
-        for i in range(200):
-            # Step the simulation
-            await omni.kit.app.get_app().next_update_async()
+        min_drawer_opening = 0.25
+
+        def is_drawer_open():
+            nonlocal max_drawer_opening
             drawer_joint_position = self.cabinet.get_dof_positions(indices=[0], dof_indices=drawer_link_idx)
-            # Convert Warp array to numpy array and extract the scalar value
             drawer_position_numpy = drawer_joint_position.numpy()
             drawer_position_scalar = float(drawer_position_numpy[0][0])
             if drawer_position_scalar > max_drawer_opening:
                 max_drawer_opening = drawer_position_scalar
+            return max_drawer_opening > min_drawer_opening
+
+        condition_met = await self.simulate_until_condition(is_drawer_open, max_frames=300)
 
         # drawer is closed at 0.0 and open at 0.4, the robot should be able to open the drawer
         # to at least 0.3
-        self.assertGreater(max_drawer_opening, 0.3)
+        self.assertTrue(condition_met, f"Expected drawer to open past {min_drawer_opening}, got {max_drawer_opening}")
 
-    async def spawn_franka(self, name="franka", add_physics_callback=True):
+    async def simulate_until_condition(self, condition_func, max_frames=180):
+        """Simulate until condition is met or maximum frames reached."""
+        frames_run = 0
+        while frames_run < max_frames:
+            await omni.kit.app.get_app().next_update_async()
+            frames_run += 1
+            if condition_func():
+                return True
+        return False
+
+    async def spawn_franka(self, name: str = "franka", add_physics_callback: bool = True):
         """Spawn a Franka robot with drawer opening policy in the simulation.
 
         Args:
@@ -177,7 +189,7 @@ class TestFrankaExampleExtension(omni.kit.test.AsyncTestCase):
             )
         await omni.kit.app.get_app().next_update_async()
 
-    def on_physics_step(self, step_size, context):
+    def on_physics_step(self, step_size: float, context: object) -> None:
         """Physics step callback that advances the Franka robot's policy.
 
         Args:

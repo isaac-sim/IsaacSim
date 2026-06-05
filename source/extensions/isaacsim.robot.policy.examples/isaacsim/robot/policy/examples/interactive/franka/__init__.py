@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,6 @@
 # NOTE: Import here your extension examples to be propagated to ISAAC SIM Extensions startup
 
 """Interactive Franka robot policy example demonstrating autonomous drawer opening tasks in Isaac Sim."""
-
 
 from .franka_example import FrankaExample
 from .franka_example_extension import FrankaExampleExtension

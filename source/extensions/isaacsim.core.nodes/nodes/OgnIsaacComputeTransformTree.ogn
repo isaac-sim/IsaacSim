@@ -1,0 +1,52 @@
+{
+    "IsaacComputeTransformTree": {
+        "version": 1,
+        "icon": "icons/isaac-sim.svg",
+        "description": "Computes transform tree for a set of prims relative to an optional parent frame. For articulation roots, expands to the full link tree.",
+        "metadata": {
+            "uiName": "Isaac Compute Transform Tree"
+        },
+        "categoryDefinitions": "config/CategoryDefinition.json",
+        "categories": "isaacCore",
+        "inputs": {
+            "execIn": {
+                "type": "execution",
+                "description": "The input execution port"
+            },
+            "parentPrim": {
+                "type": "target",
+                "description": "Prim used as parent frame for all transforms; leave blank to use World",
+                "optional": true
+            },
+            "targetPrims": {
+                "type": "target",
+                "description": "Target prims to compute transforms for. If a prim is an articulation root, the entire link tree is computed.",
+                "metadata": {
+                    "allowMultiInputs": "1"
+                }
+            }
+        },
+        "outputs": {
+            "execOut": {
+                "type": "execution",
+                "description": "The output execution port"
+            },
+            "parentFrames": {
+                "type": "token[]",
+                "description": "Parent frame name per transform"
+            },
+            "childFrames": {
+                "type": "token[]",
+                "description": "Child frame name per transform"
+            },
+            "translations": {
+                "type": "double[3][]",
+                "description": "Translation (x, y, z) per transform in stage units"
+            },
+            "orientations": {
+                "type": "double[4][]",
+                "description": "Quaternion (x, y, z, w) per transform"
+            }
+        }
+    }
+}

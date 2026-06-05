@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test deleting a prim while it is in contact with another prim."""
+
 from isaacsim import SimulationApp
 
-app = SimulationApp({"headless": False})
+app = SimulationApp(
+    {
+        "headless": False,
+        "extra_args": ["--enable", "isaacsim.sensors.physics"],
+    }
+)
 
 import sys
 
@@ -65,6 +72,7 @@ cs = _sensor.acquire_contact_sensor_interface()
 
 
 def block_1_is_contacting_block_0():
+    """Check whether block_1 is in contact with block_0."""
     raw_data = cs.get_rigid_body_raw_data(block_1.prim_paths[0])
     in_contact = False
     for c in raw_data:

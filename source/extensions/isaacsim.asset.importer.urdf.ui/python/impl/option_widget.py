@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,20 +12,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """UI option widgets for the URDF importer."""
 
-import typing
+from collections.abc import Callable
 
 import omni.ui as ui
+from isaacsim.asset.importer.urdf import URDFImporterConfig
+from isaacsim.gui.components.ui_utils import checkbox_builder, dropdown_builder, string_filed_builder
 
 from .style import get_option_style
-from .ui_utils import (
-    RosPackageDelegate,
-    RosPackageModel,
-    checkbox_builder,
-    dropdown_builder,
-    string_filed_builder,
-)
+from .ui_utils import RosPackageDelegate, RosPackageItem, RosPackageModel
 
 
 def option_header(collapsed: bool, title: str) -> None:
@@ -34,6 +31,7 @@ def option_header(collapsed: bool, title: str) -> None:
     Args:
         collapsed: Whether the frame is collapsed.
         title: Header title to display.
+
     """
     with ui.HStack(height=22):
         ui.Spacer(width=4)
@@ -54,8 +52,8 @@ def option_header(collapsed: bool, title: str) -> None:
 
 def option_frame(
     title: str,
-    build_content_fn: typing.Callable[[], None],
-    collapse_fn: typing.Callable[[bool], None] | None = None,
+    build_content_fn: Callable[[], None],
+    collapse_fn: Callable[[bool], None] | None = None,
 ) -> None:
     """Build a collapsable options frame.
 
@@ -63,6 +61,7 @@ def option_frame(
         title: Frame title to display.
         build_content_fn: Callback that builds the frame content.
         collapse_fn: Optional callback invoked on collapse changes.
+
     """
     with ui.CollapsableFrame(
         title, name="option", height=0, collapsed=False, build_header_fn=option_header, collapsed_changed_fn=collapse_fn
@@ -79,24 +78,33 @@ class OptionWidget:
     Args:
         models: Dictionary used to store UI models.
         config: Import configuration to update from the UI.
+
     """
 
-    def __init__(self, models: dict[str, typing.Any], config: typing.Any) -> None:
+    def __init__(self, models: dict[str, ui.AbstractValueModel], config: URDFImporterConfig) -> None:
         self._models = models
         self._config = config
         self._ros_package_table_frame = None
-        self._ros_package_model = None
+        self._ros_package_model: RosPackageModel | None = None
         self._ros_package_delegate = None
         self._ros_package_tree = None
 
     @property
-    def models(self):
-        """Return the models dictionary used by the widget."""
+    def models(self) -> dict[str, ui.AbstractValueModel]:
+        """Return the models dictionary used by the widget.
+
+        Returns:
+            Map of option keys to Omni UI value models.
+        """
         return self._models
 
     @property
-    def config(self):
-        """Return the importer configuration instance."""
+    def config(self) -> URDFImporterConfig:
+        """Return the importer configuration instance.
+
+        Returns:
+            Live ``URDFImporterConfig`` edited by this widget.
+        """
         return self._config
 
     def build_options(self) -> None:
@@ -106,8 +114,10 @@ class OptionWidget:
             self._build_colliders_frame()
             self._build_options_frame()
 
-    def _build_model_frame(self):
-        def build_model_content():
+    def _build_model_frame(self) -> None:
+        """Build the Model options frame (USD output path and ROS package table)."""
+
+        def build_model_content() -> None:
             with ui.VStack(spacing=0):
                 ui.Label("USD Output")
                 self._models["dst_path"] = string_filed_builder(
@@ -136,7 +146,7 @@ class OptionWidget:
 
         option_frame("Model", build_model_content)
 
-    def _build_colliders_frame(self):
+    def _build_colliders_frame(self) -> None:
         """Build the Colliders options frame.
 
         Creates UI elements for:
@@ -145,7 +155,7 @@ class OptionWidget:
         - Allow self-collision checkbox
         """
 
-        def build_colliders_content():
+        def build_colliders_content() -> None:
             def set_collision_type(value: str) -> None:
                 self._config.collision_type = value
 
@@ -201,17 +211,29 @@ class OptionWidget:
 
         option_frame("Colliders", build_colliders_content)
 
-    def _build_options_frame(self):
+    _BASE_TYPE_ITEMS = ["Source", "Fixed", "Mobile"]
+    _BASE_TYPE_TO_FIX_BASE = {"Source": None, "Fixed": True, "Mobile": False}
+
+    def _set_base_type(self, value: str) -> None:
+        """Map the Base Type dropdown selection onto ``config.fix_base``."""
+        self._config.fix_base = self._BASE_TYPE_TO_FIX_BASE[value]
+
+    def _build_options_frame(self) -> None:
         """Build the Options frame.
 
         Creates UI elements for:
-        - Layer Structure checkbox (default: True)
+        - Robot Type dropdown
+        - Base Type dropdown (Source / Fixed / Mobile)
         - Merge Mesh checkbox (default: False)
         - Debug Mode checkbox (default: False)
-        - Open Gains Tuner checkbox (default: False)
         """
 
-        def build_options_content():
+        def build_options_content() -> None:
+            from isaacsim.asset.importer.utils.impl.importer_utils import ROBOT_TYPE_TOKENS
+
+            def set_robot_type(value: str) -> None:
+                self._config.robot_type = value
+
             def set_merge_mesh(value: bool) -> None:
                 self._config.merge_mesh = value
 
@@ -220,7 +242,38 @@ class OptionWidget:
 
             with ui.VStack(spacing=4):
 
-                # Merge Mesh checkbox
+                self._models["robot_type"] = dropdown_builder(
+                    "Robot Type",
+                    tooltip="Category of robot for the Isaac robot schema (e.g. Manipulator, Humanoid)",
+                    default_val=ROBOT_TYPE_TOKENS.index(self._config.robot_type),
+                    items=ROBOT_TYPE_TOKENS,
+                    on_clicked_fn=set_robot_type,
+                    identifier="urdf_robot_type",
+                    show_flourish=False,
+                    label_width=90,
+                )
+
+                base_type_default = 0
+                if self._config.fix_base is True:
+                    base_type_default = 1
+                elif self._config.fix_base is False:
+                    base_type_default = 2
+                self._models["base_type"] = dropdown_builder(
+                    "Base Type",
+                    tooltip=(
+                        "How to anchor the robot's root link. "
+                        "Source leaves the source URDF authoring untouched; "
+                        "Fixed adds a world-to-root fixed joint; "
+                        "Mobile removes any world-to-root fixed joint."
+                    ),
+                    default_val=base_type_default,
+                    items=self._BASE_TYPE_ITEMS,
+                    on_clicked_fn=self._set_base_type,
+                    identifier="urdf_base_type",
+                    show_flourish=False,
+                    label_width=90,
+                )
+
                 self._models["merge_mesh"] = checkbox_builder(
                     "Merge Mesh",
                     tooltip="If True, merges meshes where possible to optimize the model",
@@ -229,7 +282,6 @@ class OptionWidget:
                     identifier="urdf_merge_mesh",
                 )
 
-                # Debug Mode checkbox
                 self._models["debug_mode"] = checkbox_builder(
                     "Debug Mode",
                     tooltip="If True, enables debug mode with additional logging and visualization",
@@ -245,16 +297,17 @@ class OptionWidget:
 
         Args:
             value: Boolean indicating if collision from visuals is enabled.
+
         """
         self._config.collision_from_visuals = value
         self._collision_type_frame.visible = value
 
-    def _add_ros_package_row(self):
+    def _add_ros_package_row(self) -> None:
         if not self._ros_package_model:
             return
         self._ros_package_model.add_row("", "")
 
-    def _build_ros_package_table(self, rows_data):
+    def _build_ros_package_table(self, rows_data: list[tuple[str, str]]) -> None:
         if not self._ros_package_table_frame:
             return
         self._ros_package_table_frame.clear()
@@ -262,7 +315,7 @@ class OptionWidget:
         row_height = 28
         column_widths = [ui.Fraction(0.3), ui.Fraction(0.7)]
 
-        if not self._ros_package_model:
+        if self._ros_package_model is None:
             self._ros_package_model = RosPackageModel(rows_data)
         elif not self._ros_package_model.get_rows():
             self._ros_package_model.add_row("", "")
@@ -299,6 +352,7 @@ class OptionWidget:
 
         Returns:
             List of ROS package name/path mappings.
+
         """
         if not self._ros_package_model:
             return []
@@ -310,7 +364,22 @@ class OptionWidget:
                 ros_packages.append({"name": name, "path": path})
         return ros_packages
 
-    def _delete_ros_package_row(self, item):
+    def populate_packages(self, packages: list[tuple[str, str]]) -> None:
+        """Replace the current ROS package table rows with *packages*.
+
+        Each entry is a ``(name, path)`` tuple.  The user can still edit,
+        add, or remove rows after pre-population.
+
+        Args:
+            packages: Discovered package name/path pairs.
+
+        """
+        if not packages:
+            return
+        self._ros_package_model = RosPackageModel(packages)
+        self._build_ros_package_table(packages)
+
+    def _delete_ros_package_row(self, item: RosPackageItem) -> None:
         if not self._ros_package_model:
             return
         self._ros_package_model.remove_row(item)

@@ -1,7 +1,3 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The **omni.usd.schema.newton** extension defines USD schemas for Newton physics simulation, providing a comprehensive set of API schemas that extend standard USD physics primitives with Newton-specific simulation attributes. This extension integrates Newton's physics solvers into USD-based physics workflows by defining schemas for scene configuration, solver parameters, and enhanced material properties.

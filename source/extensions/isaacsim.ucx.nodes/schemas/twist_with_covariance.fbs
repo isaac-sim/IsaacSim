@@ -1,0 +1,16 @@
+include "twist.fbs";
+include "math_types.fbs";
+include "tensor.fbs";
+
+namespace isaac;
+
+// Describes a twist with a covariance matrix.
+table TwistWithCovariance {
+  // The twist.
+  twist: Twist (id: 0);
+
+  // The covariance matrix of the twist.
+  covariance: Tensor (id: 1);
+}
+
+root_type TwistWithCovariance;

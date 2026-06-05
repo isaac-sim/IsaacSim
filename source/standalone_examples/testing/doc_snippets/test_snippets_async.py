@@ -1,4 +1,18 @@
-#!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Test script that loads doc snippets and checks for errors.
 
 This script:
@@ -9,16 +23,26 @@ This script:
 5. Returns appropriate status code (nonzero if exceptions, zero otherwise)
 """
 
+from __future__ import annotations
+
 import argparse
 import asyncio
+import atexit
 import csv
+import fnmatch
 import importlib.util
 import os
+import platform
 import re
+import signal
 import sys
+import time
 import traceback
 import unittest
+import xml.etree.ElementTree as ET
 from collections import defaultdict
+from datetime import datetime
+from functools import partial
 from pathlib import Path
 
 # Note: SimulationApp is imported inside the experience loop to allow fresh imports
@@ -29,6 +53,7 @@ def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Test script that loads doc snippets and checks for errors.")
     parser.add_argument(
+        "-f",
         "--filter",
         type=str,
         nargs="*",
@@ -52,22 +77,66 @@ def parse_args():
         "First column is the snippet path (relative to the doc_snippets directory), "
         "second column is an optional exception message regex pattern.",
     )
+    parser.add_argument(
+        "--snippet-timeout",
+        type=int,
+        default=120,
+        help="Per-snippet timeout in seconds. If a snippet takes longer than this, "
+        "it is aborted and reported as a failure. Default: 120.",
+    )
+    parser.add_argument(
+        "--excluded-snippets-csv",
+        type=str,
+        default=None,
+        help="Path to a CSV file listing snippets to skip entirely (e.g. snippets that "
+        "crash or hang the test process). First column is the snippet path (relative to "
+        "the snippets directory). Lines starting with '#' are comments.",
+    )
+    parser.add_argument(
+        "--platform-constraints-csv",
+        type=str,
+        default=None,
+        help="Path to a CSV file listing per-snippet platform constraints. "
+        "First column is the snippet path (relative to the snippets directory), "
+        "subsequent columns are allowed Isaac Sim platform names or fnmatch patterns.",
+    )
+    parser.add_argument(
+        "--junit-xml",
+        type=str,
+        default=None,
+        help="Path to write a JUnit XML report with one testcase per snippet. "
+        "When set, the report is written after all tests complete so CI systems "
+        "like GitLab can display per-snippet pass/fail rows.",
+    )
+    parser.add_argument(
+        "--asset-root",
+        type=str,
+        default=None,
+        help="Override the /persistent/isaac/asset_root/default carb setting "
+        "after SimulationApp starts. Useful when the default Nucleus server is "
+        "unreachable and you want to use S3 or a local path instead.",
+    )
     return parser.parse_known_args()
 
 
-def parse_experience_csv(csv_path, base_dir):
+def parse_experience_csv(csv_path, base_dir, snippets_root=None):
     """Parse the experience CSV file and return a mapping of absolute file paths to experiences.
 
     Args:
         csv_path: Path to the CSV file (relative to base_dir or absolute).
-        base_dir: Base directory for resolving relative paths in the CSV and the CSV path itself.
+        base_dir: Base directory for resolving the CSV file path itself.
+        snippets_root: Base directory for resolving snippet paths within the CSV.
+            If None, defaults to base_dir.
 
     Returns:
         Dictionary mapping absolute file paths (as strings) to experience names.
     """
+    if snippets_root is None:
+        snippets_root = base_dir
     experience_map = {}
     # Resolve CSV path relative to base_dir if not absolute
     csv_file = Path(csv_path)
+    root_path = Path(snippets_root)
     if not csv_file.is_absolute():
         csv_file = base_dir / csv_file
     if not csv_file.exists():
@@ -77,11 +146,14 @@ def parse_experience_csv(csv_path, base_dir):
     with open(csv_file, "r", encoding="utf-8") as f:
         reader = csv.reader(f)
         for row in reader:
+            if not row or row[0].strip().startswith("#"):
+                continue
             if len(row) >= 2:
                 snippet_path = row[0].strip()
+                if not snippet_path:
+                    continue
                 experience = row[1].strip()
-                # Resolve relative path to absolute
-                abs_path = (base_dir / snippet_path).resolve()
+                abs_path = (root_path / snippet_path).resolve()
                 experience_map[str(abs_path)] = experience
 
     return experience_map
@@ -104,6 +176,93 @@ def group_files_by_experience(files, experience_map):
     return groups
 
 
+def resolve_experience_path(experience):
+    """Resolve an experience name from the CSV to a Kit app path."""
+    if not experience:
+        return ""
+
+    experience_path = Path(experience)
+    candidates = []
+    if experience_path.is_absolute():
+        candidates.append(experience_path)
+    else:
+        exp_root = os.environ.get("EXP_PATH")
+        if exp_root:
+            candidates.append(Path(exp_root) / experience_path)
+        candidates.append(experience_path)
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+
+    print(f"Warning: Experience file not found for {experience!r}; passing value through unchanged")
+    return experience
+
+
+def get_current_platform_name() -> str:
+    """Return the current platform using Isaac Sim platform target naming."""
+    machine = platform.machine().lower()
+    if machine in {"amd64", "x64"}:
+        machine = "x86_64"
+    elif machine == "arm64":
+        machine = "aarch64"
+
+    if sys.platform.startswith("linux"):
+        return f"linux-{machine}"
+    if sys.platform.startswith("win"):
+        return f"windows-{machine}"
+    return f"{sys.platform}-{machine}"
+
+
+def parse_platform_constraints_csv(
+    csv_path: str | Path, base_dir: str | Path, snippets_root: str | Path | None = None
+) -> dict[str, tuple[str, ...]]:
+    """Parse snippet platform constraints from CSV."""
+    if snippets_root is None:
+        snippets_root = base_dir
+
+    constraints = {}
+    csv_file = Path(csv_path)
+    base_path = Path(base_dir)
+    root_path = Path(snippets_root)
+    if not csv_file.is_absolute():
+        csv_file = base_path / csv_file
+    if not csv_file.exists():
+        print(f"Warning: Platform constraints CSV file not found: {csv_file}")
+        return constraints
+
+    with open(csv_file, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        for row in reader:
+            if not row or row[0].strip().startswith("#"):
+                continue
+            snippet_path = row[0].strip()
+            if not snippet_path:
+                continue
+            allowed_platforms = []
+            for field in row[1:]:
+                allowed_platforms.extend(platform for platform in re.split(r"[;\s]+", field.strip()) if platform)
+            if not allowed_platforms:
+                continue
+
+            abs_path = str((root_path / snippet_path).resolve())
+            constraints[abs_path] = tuple(allowed_platforms)
+
+    return constraints
+
+
+def get_platform_skip_reason(
+    file_path: str | Path, current_platform: str, platform_constraints: dict[str, tuple[str, ...]]
+) -> str | None:
+    """Return a unittest skip reason when the snippet is not allowed on the current platform."""
+    allowed_platforms = platform_constraints.get(str(Path(file_path).resolve()))
+    if not allowed_platforms:
+        return None
+    if any(fnmatch.fnmatchcase(current_platform, allowed_platform) for allowed_platform in allowed_platforms):
+        return None
+    return f"Snippet is constrained to platform(s): {', '.join(allowed_platforms)}"
+
+
 def parse_expected_failures_csv(csv_path, base_dir, snippets_root=None):
     """Parse expected failures CSV and return a list of (abs_path, compiled_pattern|None) tuples.
 
@@ -119,7 +278,6 @@ def parse_expected_failures_csv(csv_path, base_dir, snippets_root=None):
     if snippets_root is None:
         snippets_root = base_dir
     entries = []
-    resolve_dir = snippets_dir if snippets_dir is not None else base_dir
     csv_file = Path(csv_path)
     if not csv_file.is_absolute():
         csv_file = base_dir / csv_file
@@ -139,6 +297,46 @@ def parse_expected_failures_csv(csv_path, base_dir, snippets_root=None):
             entries.append((abs_path, compiled))
 
     return entries
+
+
+def parse_excluded_snippets_csv(csv_path, base_dir, snippets_root=None):
+    """Parse excluded snippets CSV and return a set of absolute paths to skip.
+
+    These are snippets that should be completely excluded from test discovery
+    (e.g. snippets that crash, hang, or kill the test process via timeouts
+    that cannot be caught by expected-failure matching).
+
+    Args:
+        csv_path: Path to the CSV file (relative to base_dir or absolute).
+        base_dir: Base directory for resolving the CSV file path itself.
+        snippets_root: Base directory for resolving snippet paths within the CSV.
+            If None, defaults to base_dir.
+
+    Returns:
+        Set of absolute path strings to exclude.
+    """
+    if snippets_root is None:
+        snippets_root = base_dir
+    excluded = set()
+    csv_file = Path(csv_path)
+    if not csv_file.is_absolute():
+        csv_file = base_dir / csv_file
+    if not csv_file.exists():
+        print(f"Warning: Excluded snippets CSV file not found: {csv_file}")
+        return excluded
+
+    with open(csv_file, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        for row in reader:
+            if not row or row[0].strip().startswith("#"):
+                continue
+            snippet_path = row[0].strip()
+            if not snippet_path:
+                continue
+            abs_path = str((snippets_root / snippet_path).resolve())
+            excluded.add(abs_path)
+
+    return excluded
 
 
 def is_expected_failure(file_path, exception, expected_failures):
@@ -179,7 +377,7 @@ def file_contains_simulation_app(file_path):
         raise
 
 
-def cleanup_before_new_stage(simulation_app, file_path):
+def cleanup_before_new_stage(simulation_app, file_path, deadline=None):
     """Clean up the current stage before creating a new one."""
     import omni.timeline
     import omni.usd
@@ -196,7 +394,14 @@ def cleanup_before_new_stage(simulation_app, file_path):
 
         if rep.orchestrator.get_status() not in [rep.orchestrator.Status.STOPPED, rep.orchestrator.Status.STOPPING]:
             rep.orchestrator.stop()
-            rep.orchestrator.wait_until_complete()
+        cleanup_deadline = time.monotonic() + 10.0
+        if deadline is not None:
+            cleanup_deadline = min(cleanup_deadline, deadline)
+        while rep.orchestrator.get_status() != rep.orchestrator.Status.STOPPED:
+            if time.monotonic() > cleanup_deadline:
+                print(f"Warning: Timed out waiting for replicator cleanup before file: {file_path}")
+                break
+            simulation_app.update()
         rep.orchestrator.set_capture_on_play(False)
     except Exception:
         pass
@@ -237,18 +442,195 @@ def _task_belongs_to_snippets(task, snippets_root):
         return False
 
 
-def _wait_for_snippet_tasks(simulation_app, tasks, settle_frames=10):
+def _exception_belongs_to_snippets(exception, snippets_root):
+    """Return True if any traceback frame for *exception* is from snippets tree."""
+    try:
+        tb = exception.__traceback__
+        while tb is not None:
+            source_file = tb.tb_frame.f_code.co_filename
+            if source_file and _is_path_within(source_file, snippets_root):
+                return True
+            tb = tb.tb_next
+    except Exception:
+        return False
+    return False
+
+
+def _loop_context_belongs_to_snippets(context, snippets_root):
+    """Return True if an asyncio loop exception context belongs to the snippet under test."""
+    exception = context.get("exception")
+    if exception is not None and _exception_belongs_to_snippets(exception, snippets_root):
+        return True
+
+    task = context.get("task") or context.get("future")
+    if task is not None and _task_belongs_to_snippets(task, snippets_root):
+        return True
+
+    return False
+
+
+def _patch_simulation_context_render_for_fabric_bootstrap():
+    """Avoid cached-core Fabric updates before SimulationContext has a PhysicsContext."""
+    import omni.kit.app
+    from isaacsim.core.api.simulation_context import SimulationContext
+    from isaacsim.core.utils.carb import set_carb_setting
+
+    if getattr(SimulationContext, "_doc_snippets_fabric_bootstrap_patch", False):
+        return
+
+    original_render = SimulationContext.render
+    original_render_async = SimulationContext.render_async
+
+    def render(self):
+        if getattr(self, "_physics_context", None) is not None:
+            return original_render(self)
+        set_carb_setting(self._settings, "/app/player/playSimulations", False)
+        self._app.update()
+        set_carb_setting(self._settings, "/app/player/playSimulations", True)
+        return None
+
+    async def render_async(self):
+        if getattr(self, "_physics_context", None) is not None:
+            return await original_render_async(self)
+        set_carb_setting(self._settings, "/app/player/playSimulations", False)
+        await omni.kit.app.get_app().next_update_async()
+        set_carb_setting(self._settings, "/app/player/playSimulations", True)
+        return None
+
+    SimulationContext.render = render
+    SimulationContext.render_async = render_async
+    SimulationContext._doc_snippets_fabric_bootstrap_patch = True
+
+
+class JUnitTestResult(unittest.TextTestResult):
+    """TextTestResult subclass that records per-test timing for JUnit XML output.
+
+    When *junit_xml_path* is set, the report is flushed to disk after every test
+    so that a partial report survives even if the process is killed mid-run.
+    """
+
+    def __init__(self, stream, descriptions, verbosity, junit_xml_path=None):
+        super().__init__(stream, descriptions, verbosity)
+        self.test_timings = []
+        self._test_start = 0.0
+        self._junit_xml_path = junit_xml_path
+
+    def _flush_report(self):
+        """Write the current (possibly partial) JUnit XML to disk."""
+        if self._junit_xml_path:
+            try:
+                self.write_junit_xml(self._junit_xml_path)
+            except Exception:
+                pass
+
+    def startTest(self, test):
+        super().startTest(test)
+        self._test_start = time.monotonic()
+
+    def addSuccess(self, test):
+        super().addSuccess(test)
+        self.test_timings.append((test, "pass", time.monotonic() - self._test_start, None))
+        self._flush_report()
+
+    def addFailure(self, test, err):
+        super().addFailure(test, err)
+        msg = self._exc_info_to_string(err, test)
+        self.test_timings.append((test, "fail", time.monotonic() - self._test_start, msg))
+        self._flush_report()
+
+    def addError(self, test, err):
+        super().addError(test, err)
+        msg = self._exc_info_to_string(err, test)
+        self.test_timings.append((test, "error", time.monotonic() - self._test_start, msg))
+        self._flush_report()
+
+    def write_junit_xml(self, output_path):
+        """Write a JUnit XML report with one <testcase> per snippet."""
+        failures = sum(1 for _, s, _, _ in self.test_timings if s == "fail")
+        errors_count = sum(1 for _, s, _, _ in self.test_timings if s == "error")
+        total_time = sum(e for _, _, e, _ in self.test_timings)
+
+        testsuites = ET.Element("testsuites")
+        testsuite = ET.SubElement(
+            testsuites,
+            "testsuite",
+            name="doc_snippets_async",
+            tests=str(len(self.test_timings)),
+            failures=str(failures),
+            errors=str(errors_count),
+            time=f"{total_time:.3f}",
+            timestamp=datetime.now().isoformat(),
+        )
+
+        for test, status, elapsed, msg in self.test_timings:
+            name = test.shortDescription() or str(test)
+            tc = ET.SubElement(
+                testsuite,
+                "testcase",
+                name=name,
+                classname=test.__class__.__name__,
+                time=f"{elapsed:.3f}",
+            )
+            if status == "fail":
+                failure = ET.SubElement(tc, "failure", message=f"{name} failed")
+                failure.text = _sanitize_xml(msg) if msg else f"{name} failed"
+            elif status == "error":
+                error_el = ET.SubElement(tc, "error", message=f"{name} error")
+                error_el.text = _sanitize_xml(msg) if msg else f"{name} error"
+
+        ET.indent(testsuites, space="  ", level=0)
+        tree = ET.ElementTree(testsuites)
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        tree.write(output_path, encoding="utf-8", xml_declaration=True)
+        print(f"JUnit XML report written to {output_path}")
+
+
+def _sanitize_xml(text):
+    """Remove control characters that are invalid in XML 1.0."""
+    if not text:
+        return text
+    return "".join(ch if (ord(ch) >= 0x20 or ch in "\t\n\r") else "" for ch in text)
+
+
+class SnippetTimeoutError(Exception):
+    """Raised when a snippet exceeds its per-snippet time limit."""
+
+
+# How long to wait after the initial SIGALRM before force-exiting.  This gives
+# the Python-level exception a chance to propagate when possible; if the process
+# is stuck inside native code that swallowed the exception, the escalation
+# handler terminates the process so CI isn't left waiting for the outer timeout.
+_ALARM_ESCALATION_SECONDS = 30
+
+
+def _force_exit_alarm_handler(signum, frame):
+    """Last-resort SIGALRM handler: force-exit when a snippet is stuck in native code."""
+    print(
+        f"\n[FATAL] Snippet still stuck {_ALARM_ESCALATION_SECONDS}s after timeout. "
+        "Partial JUnit report (if any) has been written to disk. Forcing exit.",
+        flush=True,
+    )
+    os._exit(1)
+
+
+def _wait_for_snippet_tasks(simulation_app, tasks, settle_frames=10, deadline=None):
     """Give snippet-created async tasks a chance to complete."""
     if not tasks:
         return
     for _ in range(settle_frames):
         if all(task.done() for task in tasks):
             break
+        if deadline is not None and time.monotonic() > deadline:
+            break
         simulation_app.update()
 
 
-def load_snippet_module(file_path, snippets_root, index, simulation_app):
-    """Load a snippet module and return any exception that occurred."""
+def load_snippet_module(file_path, snippets_root, index, simulation_app, snippet_timeout=120):
+    """Load a snippet module and return any exception that occurred.
+
+    Returns:
+        Tuple of (file_path_str, exception_or_None, elapsed_seconds).
+    """
     import gc
 
     import isaacsim.core.utils.stage as stage_utils
@@ -261,10 +643,36 @@ def load_snippet_module(file_path, snippets_root, index, simulation_app):
     captured_loop_exceptions = []
     # Snapshot of modules before loading
     modules_before = set(sys.modules.keys())
+    start_time = time.monotonic()
+    deadline = start_time + snippet_timeout
 
     def loop_exception_handler(loop, context):
         """Capture unhandled loop exceptions as test failures."""
         captured_loop_exceptions.append(context)
+
+    def _check_deadline(phase):
+        """Raise SnippetTimeoutError if the per-snippet deadline has been exceeded."""
+        if time.monotonic() > deadline:
+            raise SnippetTimeoutError(f"Snippet timed out after {snippet_timeout}s during {phase}: {file_path}")
+
+    # Use SIGALRM as a hard backstop to interrupt blocking C/C++ calls that
+    # cannot be interrupted by a Python-level deadline check.
+    prev_alarm_handler = None
+    prev_alarm_remaining = 0
+
+    def _alarm_handler(signum, frame):
+        # Install a second-chance handler: if this raise gets swallowed by
+        # native code (e.g. a C callback catches the Python exception at the
+        # boundary), the escalation alarm will force-exit the process so CI
+        # doesn't hang until the outer timeout.
+        signal.signal(signal.SIGALRM, _force_exit_alarm_handler)
+        signal.alarm(_ALARM_ESCALATION_SECONDS)
+        raise SnippetTimeoutError(f"Snippet timed out after {snippet_timeout}s (SIGALRM): {file_path}")
+
+    if hasattr(signal, "SIGALRM"):
+        prev_alarm_handler = signal.signal(signal.SIGALRM, _alarm_handler)
+        # Add a few extra seconds so the soft deadline check fires first when possible.
+        prev_alarm_remaining = signal.alarm(snippet_timeout + 5)
 
     try:
         loop = asyncio.get_event_loop()
@@ -273,12 +681,14 @@ def load_snippet_module(file_path, snippets_root, index, simulation_app):
         loop.set_exception_handler(loop_exception_handler)
 
         # Clean up the current stage before creating a new one
-        cleanup_before_new_stage(simulation_app, file_path)
+        cleanup_before_new_stage(simulation_app, file_path, deadline=deadline)
+        _check_deadline("cleanup")
 
         # Open a new stage and wait for it to finish loading
         stage_utils.create_new_stage()
         simulation_app.update()
         while stage_utils.is_stage_loading():
+            _check_deadline("stage_loading")
             simulation_app.update()
 
         # Add the snippets root to sys.path if not already there
@@ -294,7 +704,16 @@ def load_snippet_module(file_path, snippets_root, index, simulation_app):
         module = importlib.util.module_from_spec(spec)
         # Execute the module
         spec.loader.exec_module(module)
+        _check_deadline("exec_module")
 
+    except SystemExit as e:
+        # Snippets must not call sys.exit(); treat as a test failure.
+        exceptions.append(RuntimeError(f"Snippet called sys.exit({e.code!r}). Snippets must not call sys.exit()."))
+    except KeyboardInterrupt:
+        # Don't let a stray KeyboardInterrupt from a snippet kill the whole harness.
+        exceptions.append(RuntimeError("KeyboardInterrupt raised during snippet execution."))
+    except SnippetTimeoutError as e:
+        exceptions.append(e)
     except Exception as e:
         exceptions.append(e)
     finally:
@@ -305,14 +724,17 @@ def load_snippet_module(file_path, snippets_root, index, simulation_app):
                 task for task in (current_tasks - baseline_tasks) if _task_belongs_to_snippets(task, snippets_root)
             ]
 
-            # Let snippet-created tasks finish naturally first.
-            _wait_for_snippet_tasks(simulation_app, snippet_tasks, settle_frames=30)
+            timed_out = time.monotonic() > deadline
+
+            if not timed_out:
+                # Let snippet-created tasks finish naturally first.
+                _wait_for_snippet_tasks(simulation_app, snippet_tasks, settle_frames=30, deadline=deadline)
 
             # Cancel still-pending snippet tasks so they do not leak across snippets.
             pending_snippet_tasks = [task for task in snippet_tasks if not task.done()]
             for task in pending_snippet_tasks:
                 task.cancel()
-            _wait_for_snippet_tasks(simulation_app, pending_snippet_tasks, settle_frames=5)
+            _wait_for_snippet_tasks(simulation_app, pending_snippet_tasks, settle_frames=5, deadline=deadline)
 
             # Retrieve task exceptions explicitly so they become deterministic test failures.
             for task in snippet_tasks:
@@ -334,8 +756,20 @@ def load_snippet_module(file_path, snippets_root, index, simulation_app):
             except Exception:
                 pass
 
+        # Disarm the SIGALRM backstop.
+        if hasattr(signal, "SIGALRM"):
+            signal.alarm(0)
+            if prev_alarm_handler is not None:
+                signal.signal(signal.SIGALRM, prev_alarm_handler)
+            if prev_alarm_remaining > 0:
+                signal.alarm(prev_alarm_remaining)
+
         # Promote unhandled loop-level async exceptions to snippet failures.
+        # Kit can emit unrelated loop-level exceptions during stage churn; keep
+        # the failure attribution scoped to the snippet under test.
         for context in captured_loop_exceptions:
+            if not _loop_context_belongs_to_snippets(context, snippets_root):
+                continue
             loop_exception = context.get("exception")
             if loop_exception is not None:
                 exceptions.append(loop_exception)
@@ -363,11 +797,16 @@ def load_snippet_module(file_path, snippets_root, index, simulation_app):
         # Force garbage collection to clean up unreferenced objects
         gc.collect()
 
+    elapsed = time.monotonic() - start_time
     if not exceptions:
-        return (str(file_path), None)
+        return (str(file_path), None, elapsed)
     if len(exceptions) == 1:
-        return (str(file_path), exceptions[0])
-    return (str(file_path), ExceptionGroup(f"Multiple exceptions while testing snippet {file_path}", exceptions))
+        return (str(file_path), exceptions[0], elapsed)
+    return (
+        str(file_path),
+        ExceptionGroup(f"Multiple exceptions while testing snippet {file_path}", exceptions),
+        elapsed,
+    )
 
 
 # Parse command line arguments
@@ -411,10 +850,20 @@ if args.filter:
     files_to_test = [f for f in files_to_test if any(keyword in str(f) for keyword in args.filter)]
     print(f"After applying filter {args.filter}: {len(files_to_test)} files to test")
 
+# Exclude snippets that crash/hang the test process
+excluded_snippets = set()
+if args.excluded_snippets_csv:
+    excluded_snippets = parse_excluded_snippets_csv(args.excluded_snippets_csv, script_dir, snippets_dir)
+    if excluded_snippets:
+        before_count = len(files_to_test)
+        files_to_test = [f for f in files_to_test if str(f.resolve()) not in excluded_snippets]
+        skipped = before_count - len(files_to_test)
+        print(f"Excluded {skipped} snippet(s) via {args.excluded_snippets_csv} ({len(files_to_test)} remaining)")
+
 # Parse experience CSV and group files by experience
 experience_map = {}
 if args.experience_csv:
-    experience_map = parse_experience_csv(args.experience_csv, script_dir)
+    experience_map = parse_experience_csv(args.experience_csv, script_dir, snippets_dir)
     print(f"Loaded {len(experience_map)} experience mappings from CSV")
 
 files_by_experience = group_files_by_experience(files_to_test, experience_map)
@@ -426,6 +875,16 @@ expected_failures = []
 if args.expected_failures_csv:
     expected_failures = parse_expected_failures_csv(args.expected_failures_csv, script_dir, snippets_dir)
     print(f"Loaded {len(expected_failures)} expected failure rules from CSV")
+
+# Parse platform constraints
+current_platform = get_current_platform_name()
+platform_constraints = {}
+if args.platform_constraints_csv:
+    platform_constraints = parse_platform_constraints_csv(args.platform_constraints_csv, script_dir, snippets_dir)
+    print(
+        f"Loaded {len(platform_constraints)} platform constraint rule(s) from CSV "
+        f"for current platform: {current_platform}"
+    )
 
 # ---------------------------------------------------------------------------
 # Dynamic unittest generation -- one test method per snippet file
@@ -445,13 +904,27 @@ def is_in_expected_failures(file_path, expected_failures):
     return False
 
 
-def _make_snippet_test(file_path, snippets_root, snippet_index, total_count, expected_failures_list):
+def _make_snippet_test(
+    file_path,
+    snippets_root,
+    snippet_index,
+    total_count,
+    expected_failures_list,
+    snippet_timeout,
+    platform_constraints_map,
+    current_platform_name,
+):
     """Create a test method for a single doc snippet."""
 
     def test_snippet(self):
-        result_path, exception = load_snippet_module(
-            file_path, snippets_root, snippet_index, self.__class__._simulation_app
+        platform_skip_reason = get_platform_skip_reason(file_path, current_platform_name, platform_constraints_map)
+        if platform_skip_reason:
+            self.skipTest(platform_skip_reason)
+
+        result_path, exception, elapsed = load_snippet_module(
+            file_path, snippets_root, snippet_index, self.__class__._simulation_app, snippet_timeout=snippet_timeout
         )
+        print(f" [{elapsed:.1f}s]", end="", flush=True)
         if exception is None:
             if is_in_expected_failures(result_path, expected_failures_list):
                 self.fail(
@@ -470,6 +943,7 @@ def _make_snippet_test(file_path, snippets_root, snippet_index, total_count, exp
     return test_snippet
 
 
+_simulation_app = None
 _test_classes = []
 _snippet_counter = 0
 
@@ -485,36 +959,42 @@ for _exp_idx, _experience in enumerate(experience_names):
         _class_name = f"{_base_name}_{_dedup}"
         _dedup += 1
 
-    _is_last_group = _exp_idx == len(experience_names) - 1
-
-    def _make_class_methods(exp_value, group_files, defer_close):
+    def _make_class_methods(exp_value, group_files):
         @classmethod
         def setUpClass(cls):
-            from isaacsim import SimulationApp
+            global _simulation_app
+            if _simulation_app is None:
+                from isaacsim import SimulationApp
+
+                launch_config = {"headless": True}
+                experience_path = resolve_experience_path(exp_value)
+                if experience_path:
+                    print(f"Launching SimulationApp with experience: {experience_path}")
+                _simulation_app = SimulationApp(launch_config=launch_config, experience=experience_path)
+
+                # Override asset root if requested (e.g. when Nucleus is unreachable)
+                if args.asset_root:
+                    import carb
+
+                    carb.settings.get_settings().set("/persistent/isaac/asset_root/default", args.asset_root)
+                    print(f"Asset root overridden to: {args.asset_root}")
+
+                _patch_simulation_context_render_for_fabric_bootstrap()
+
+            cls._simulation_app = _simulation_app
 
             exp_disp = exp_value if exp_value else "(default)"
             print(f"\n{'=' * 80}")
             print(f"Processing experience group: {exp_disp} ({len(group_files)} files)")
             print("=" * 80)
 
-            launch_config = {"headless": True}
-            if exp_value:
-                launch_config["experience"] = os.environ["EXP_PATH"] + "/" + exp_value
-            cls._simulation_app = SimulationApp(launch_config=launch_config)
-
         @classmethod
         def tearDownClass(cls):
-            if defer_close:
-                return
-            if hasattr(cls, "_simulation_app") and cls._simulation_app is not None:
-                sys.stdout.flush()
-                cls._simulation_app.close()
-                exp_disp = exp_value if exp_value else "(default)"
-                print(f"Closed SimulationApp for experience: {exp_disp}")
+            pass
 
         return setUpClass, tearDownClass
 
-    _setup, _teardown = _make_class_methods(_experience, _group, _is_last_group)
+    _setup, _teardown = _make_class_methods(_experience, _group)
 
     _TestClass = type(
         _class_name,
@@ -531,7 +1011,16 @@ for _exp_idx, _experience in enumerate(experience_names):
         _safe_name = re.sub(r"[^a-zA-Z0-9]", "_", str(_rel))
         _test_name = f"test_{_snippet_counter:04d}_{_safe_name}"
 
-        _func = _make_snippet_test(_file_path, snippets_dir, _snippet_counter, _total_snippets, expected_failures)
+        _func = _make_snippet_test(
+            _file_path,
+            snippets_dir,
+            _snippet_counter,
+            _total_snippets,
+            expected_failures,
+            args.snippet_timeout,
+            platform_constraints,
+            current_platform,
+        )
         _func.__name__ = _test_name
         _func.__doc__ = str(_rel)
         setattr(_TestClass, _test_name, _func)
@@ -550,24 +1039,47 @@ print(f"\n{'=' * 40}")
 print(f"Running Tests (count: {_test_count}):")
 print("=" * 40)
 
-_runner = unittest.TextTestRunner(stream=sys.stdout, verbosity=2)
+_ResultClass = partial(JUnitTestResult, junit_xml_path=args.junit_xml) if args.junit_xml else JUnitTestResult
+_runner = unittest.TextTestRunner(stream=sys.stdout, verbosity=2, resultclass=_ResultClass)
 _result = _runner.run(_suite)
 
-# Print summary before closing the last SimulationApp (close may exit the process).
-print("=" * 40)
-if _result.wasSuccessful():
-    print("[ ok ] Test passed.")
-else:
-    _fail_count = len(_result.failures) + len(_result.errors)
-    print(f"[ FAIL ] Test failed. ({_fail_count} failure(s))")
+# SimulationApp.close() may terminate the process (e.g. fastShutdown), so register
+# the summary as an atexit handler to guarantee it prints regardless.
+_summary_printed = False
 
-sys.stdout.flush()
 
-# Now close the last SimulationApp whose tearDownClass was deferred.
-if _test_classes:
-    _last_cls = _test_classes[-1]
-    if hasattr(_last_cls, "_simulation_app") and _last_cls._simulation_app is not None:
-        _last_cls._simulation_app.close()
+def _print_summary():
+    global _summary_printed
+    if _summary_printed:
+        return
+    _summary_printed = True
+    print("=" * 40)
+    if _result.wasSuccessful():
+        print("[ ok ] Test passed.")
+    else:
+        _fail_count = len(_result.failures) + len(_result.errors)
+        print(f"[ FAIL ] Test failed. ({_fail_count} failure(s))")
+        if _result.failures:
+            print(f"\n{'=' * 40}")
+            print("Failed tests:")
+            print("=" * 40)
+            for _test, _tb in _result.failures:
+                print(f"  FAIL: {_test}")
+        if _result.errors:
+            print(f"\n{'=' * 40}")
+            print("Error tests:")
+            print("=" * 40)
+            for _test, _tb in _result.errors:
+                print(f"  ERROR: {_test}")
+    sys.stdout.flush()
+
+
+atexit.register(_print_summary)
+_print_summary()
+
+# Close the single SimulationApp after the summary has been printed.
+if _simulation_app is not None:
+    _simulation_app.close()
 
 if not _result.wasSuccessful():
     sys.exit(1)

@@ -16,7 +16,8 @@ app.hydraEngine.waitIdle = true
 app.updateOrder.checkForHydraRenderComplete = 1000
 app.vulkan = true                     # Explicitly enable Vulkan
 app.enableDeveloperWarnings = false   # disable developer warnings to reduce log noise
-app.exts.isaacsim.ros2.bridge.publish_multithreading_disabled = true # disable multithreading for ros2 bridge to reduce latency
+exts."isaacsim.ros2.bridge".publish_multithreading_disabled = true # disable multithreading for ros2 bridge to reduce latency
+exts."isaacsim.ros2.bridge".publish_with_queue_thread = false # disable queue-based thread mode for ros2 bridge
 
 [settings.app.exts.folders]
 '++' = [

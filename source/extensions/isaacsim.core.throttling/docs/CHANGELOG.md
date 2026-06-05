@@ -1,4 +1,22 @@
 # Changelog
+## [2.3.3] - 2026-05-20
+### Changed
+- Cleanup code, add docstrings and new tests for edge cases
+### Fixed
+- Async rendering is now disabled after the timeline play callback returns, preventing hangs when play-on-load examples start simulation while async rendering is enabled.
+
+## [2.3.2] - 2026-05-07
+### Fixed
+- Async rendering no longer re-enables on timeline pause/stop while Replicator is capturing with attached annotators, preventing skipped writer frames.
+
+## [2.3.1] - 2026-03-26
+### Changed
+- Updated Python bindings import paths for consistency
+
+## [2.3.0] - 2026-03-04
+### Changed
+- Added Overview.md, python_api.md, SETTINGS.md and updated docstrings
+
 ## [2.2.5] - 2026-01-06
 ### Changed
 - Migrate more events to Events 2.0.

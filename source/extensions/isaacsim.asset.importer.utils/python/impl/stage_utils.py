@@ -1,9 +1,10 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
+#
 # http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
@@ -14,10 +15,13 @@
 
 """Stage helpers for asset importer utilities."""
 
-import os
-import threading
-
 from pxr import Usd, UsdUtils
+
+__all__ = [
+    "save_stage",
+    "open_stage",
+    "get_stage_id",
+]
 
 
 def save_stage(stage: Usd.Stage, usd_path: str) -> bool:

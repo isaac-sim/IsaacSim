@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Module providing PhysX-specific scene management with GPU configuration and solver settings."""
 
 from __future__ import annotations
 
@@ -34,17 +36,29 @@ class PhysxGpuCfg:
     """
 
     gpu_collision_stack_size: int | None = None
+    """Size of the GPU collision stack in bytes."""
     gpu_found_lost_aggregate_pairs_capacity: int | None = None
+    """Capacity for GPU found/lost aggregate pairs."""
     gpu_found_lost_pairs_capacity: int | None = None
+    """Capacity for GPU found/lost pairs."""
     gpu_heap_capacity: int | None = None
+    """Size of the GPU heap in bytes."""
     gpu_max_deformable_surface_contacts: int | None = None
+    """Maximum number of deformable surface contacts on GPU."""
     gpu_max_num_partitions: int | None = None
+    """Maximum number of GPU partitions."""
     gpu_max_particle_contacts: int | None = None
+    """Maximum number of particle contacts on GPU."""
     gpu_max_rigid_contact_count: int | None = None
+    """Maximum number of rigid body contacts on GPU."""
     gpu_max_rigid_patch_count: int | None = None
+    """Maximum number of rigid patches on GPU."""
     gpu_max_soft_body_contacts: int | None = None
+    """Maximum number of soft body contacts on GPU."""
     gpu_temp_buffer_capacity: int | None = None
+    """Size of the GPU temporary buffer in bytes."""
     gpu_total_aggregate_pairs_capacity: int | None = None
+    """Total capacity for GPU aggregate pairs."""
 
 
 class PhysxScene(PhysicsScene):
@@ -69,7 +83,7 @@ class PhysxScene(PhysicsScene):
         >>> physx_scene = PhysxScene("/World/physicsScene")
     """
 
-    def __init__(self, prim: str | Usd.Prim):
+    def __init__(self, prim: str | Usd.Prim) -> None:
         super().__init__(prim)
         prim_utils.ensure_api(self._prim, PhysxSchema.PhysxSceneAPI)
 
@@ -434,7 +448,7 @@ class PhysxScene(PhysicsScene):
             gpu_max_particle_contacts=physx_scene_api.GetGpuMaxParticleContactsAttr().Get(),
             gpu_max_rigid_contact_count=physx_scene_api.GetGpuMaxRigidContactCountAttr().Get(),
             gpu_max_rigid_patch_count=physx_scene_api.GetGpuMaxRigidPatchCountAttr().Get(),
-            gpu_max_soft_body_contacts=physx_scene_api.GetGpuMaxSoftBodyContactsAttr().Get(),
+            gpu_max_soft_body_contacts=physx_scene_api.GetGpuMaxDeformableVolumeContactsAttr().Get(),
             gpu_temp_buffer_capacity=physx_scene_api.GetGpuTempBufferCapacityAttr().Get(),
             gpu_total_aggregate_pairs_capacity=physx_scene_api.GetGpuTotalAggregatePairsCapacityAttr().Get(),
         )
@@ -479,7 +493,7 @@ class PhysxScene(PhysicsScene):
         if cfg.gpu_max_rigid_patch_count is not None:
             physx_scene_api.GetGpuMaxRigidPatchCountAttr().Set(cfg.gpu_max_rigid_patch_count)
         if cfg.gpu_max_soft_body_contacts is not None:
-            physx_scene_api.GetGpuMaxSoftBodyContactsAttr().Set(cfg.gpu_max_soft_body_contacts)
+            physx_scene_api.GetGpuMaxDeformableVolumeContactsAttr().Set(cfg.gpu_max_soft_body_contacts)
         if cfg.gpu_temp_buffer_capacity is not None:
             physx_scene_api.GetGpuTempBufferCapacityAttr().Set(cfg.gpu_temp_buffer_capacity)
         if cfg.gpu_total_aggregate_pairs_capacity is not None:

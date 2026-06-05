@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
 
 """Test suite for image capture utilities in Isaac Sim."""
 
+from __future__ import annotations
 
 import io
 import os
@@ -43,12 +44,12 @@ from pxr import UsdGeom, UsdLux
 class TestImageCapture(TimedAsyncTestCase):
     """Test suite for image capture utilities."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures."""
         await super().setUp()
         self.test_dir = tempfile.mkdtemp()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test fixtures."""
         # Clean up temporary files
         import shutil
@@ -69,7 +70,7 @@ class TestImageCapture(TimedAsyncTestCase):
         extension_path = ext_manager.get_extension_path(ext_id)
         return os.path.join(extension_path, "data", "golden", "image_capture")
 
-    async def setup_golden_stage(self):
+    async def setup_golden_stage(self) -> None:
         """Create a minimal scene for deterministic rendering.
 
         Sets up a basic USD stage with a cube and distant light for consistent test results.
@@ -85,7 +86,7 @@ class TestImageCapture(TimedAsyncTestCase):
         for _ in range(3):
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_capture_rgb_data_async(self):
+    async def test_capture_rgb_data_async(self) -> None:
         """Test capture_rgb_data_async with basic functionality and compare to golden image."""
         # Set up minimal stage and resolve golden path.
         await self.setup_golden_stage()
@@ -141,7 +142,7 @@ class TestImageCapture(TimedAsyncTestCase):
             f"Captured stdout:\n{captured_stdout}",
         )
 
-    async def test_capture_rgb_data_with_existing_camera_async(self):
+    async def test_capture_rgb_data_with_existing_camera_async(self) -> None:
         """Test capture_rgb_data_async using an existing camera prim."""
         await self.setup_golden_stage()
 
@@ -169,7 +170,7 @@ class TestImageCapture(TimedAsyncTestCase):
         # Ensure the existing camera prim remains.
         self.assertTrue(stage.GetPrimAtPath("/World/TestCamera").IsValid())
 
-    async def test_distance_to_camera_metric_tiff_async(self):
+    async def test_distance_to_camera_metric_tiff_async(self) -> None:
         """Test saving distance_to_camera depth data as float32 TIFF (lossless metric)."""
         # Set up minimal stage and resolve golden path.
         await self.setup_golden_stage()
@@ -230,7 +231,7 @@ class TestImageCapture(TimedAsyncTestCase):
             f"Captured stdout:\n{captured_stdout}",
         )
 
-    async def test_distance_to_camera_normalized_png_async(self):
+    async def test_distance_to_camera_normalized_png_async(self) -> None:
         """Test saving distance_to_camera depth data as normalized PNG (8-bit grayscale visualization)."""
         # Set up minimal stage and resolve golden path.
         await self.setup_golden_stage()
@@ -285,7 +286,7 @@ class TestImageCapture(TimedAsyncTestCase):
             f"Captured stdout:\n{captured_stdout}",
         )
 
-    async def test_distance_to_camera_non_normalized_png_async(self):
+    async def test_distance_to_camera_non_normalized_png_async(self) -> None:
         """Test saving distance_to_camera depth data as non-normalized PNG and JPEG formats."""
         # Set up minimal stage and resolve golden path.
         await self.setup_golden_stage()
@@ -357,7 +358,7 @@ class TestImageCapture(TimedAsyncTestCase):
         jpg_img = Image.open(jpg_request_path)
         self.assertIn(jpg_img.mode, ("L", "RGB"))  # JPEG might convert to RGB
 
-    async def test_capture_viewport_annotator_data_async_default_args(self):
+    async def test_capture_viewport_annotator_data_async_default_args(self) -> None:
         """Test capture_viewport_annotator_data_async with default arguments."""
         await self.setup_golden_stage()
 

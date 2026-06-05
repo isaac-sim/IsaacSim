@@ -1,4 +1,16 @@
+# Changelog
 
+## [2.10.5] - 2026-05-19
+### Fixed
+- Help menu: `OpenUSD Reference Guide`, `Warp Getting Started`, and `Warp Documentation` now render reliably in `isaacsim.exp.full.kit`. Previously they bound to `source=` items not provided by the app's dependency closure and rendered as orphan separators. Register the actions and `MenuItemDescription`s locally instead.
+
+## [2.10.4] - 2026-03-16
+### Changed
+- Migrate extension implementation to core experimental API
+
+## [2.10.3] - 2026-03-12
+### Changed
+- Remove unused golden images
 
 ## [2.10.2] - 2026-03-10
 ### Fixed
@@ -8,7 +20,6 @@
 ### Fixed
 - OMPE-84348: fixed flaky test
 
-# Changelog
 ## [2.10.0] - 2026-03-04
 ### Changed
 - Add Overview.md, python_api.md and update docstrings

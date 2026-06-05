@@ -1,3 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Utility classes and functions for Newton physics UI property builders."""
+
 import carb
 import omni.ui as ui
 from omni.kit.property.usd.usd_attribute_model import UsdAttributeModel
@@ -9,6 +26,8 @@ except ImportError:
     from enum import IntEnum
 
     class PrimType(IntEnum):  # Stub matching newton.PrimType values
+        """Stub enum matching newton.PrimType values for use when Newton is not available."""
+
         SCENE = 0
         JOINT = 1
         SHAPE = 2
@@ -23,7 +42,7 @@ _RESOLVER_INDEX = None
 _RESOLVER_NAMES = None
 
 
-def make_hide_cb(own_resolver_name: str, prim_type, key, default=None):
+def make_hide_cb(own_resolver_name: str, prim_type: "PrimType", key: str | list, default: object = None):
     """Create a disable callback for a property covered by both Newton and Mjc resolvers.
 
     Resolvers are ordered by priority (Newton first, Mjc second). The *preferred* resolver is
@@ -53,8 +72,16 @@ def make_hide_cb(own_resolver_name: str, prim_type, key, default=None):
     """
     keys = key if isinstance(key, list) else [key]
 
-    def _resolver_authored_attr(r, prim):
-        """Returns the USD attribute name of the first authored key, or None."""
+    def _resolver_authored_attr(r: object, prim: object) -> str | None:
+        """Returns the USD attribute name of the first authored key, or None.
+
+        Args:
+            r: The schema resolver to query for authored values.
+            prim: The USD prim to check for authored attributes.
+
+        Returns:
+            The USD attribute name of the first authored key, or None.
+        """
         for k in keys:
             if r.get_value(prim, prim_type, k) is not None:
                 spec = r.mapping.get(prim_type, {}).get(k)
@@ -105,7 +132,11 @@ def make_hide_cb(own_resolver_name: str, prim_type, key, default=None):
 
 
 class DisableByCallbackBuilder(UsdPropertiesWidgetBuilder):
+    """Widget builder that disable a property based on a callback result."""
+
     def __new__(cls, stage, prop, prim_paths, label_kwargs, widget_kwargs, disable_callback):
+        """Create a new widget with an overlay that disables based on a callback."""
+
         def _tooltip(resolver_name, attr_name):
             if not resolver_name:
                 return ""
@@ -137,7 +168,10 @@ class DisableByCallbackBuilder(UsdPropertiesWidgetBuilder):
 
 
 class HideByCallbackBuilder(UsdPropertiesWidgetBuilder):
+    """Widget builder that hide a property based on a callback result."""
+
     def __new__(cls, stage, prop, prim_paths, label_kwargs, widget_kwargs, hide_callback):
+        """Create a new widget that is hidden when the callback returns True."""
         hidden = hide_callback(stage, prim_paths)
         if not hidden:
             model = cls.build(

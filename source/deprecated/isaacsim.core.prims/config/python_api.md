@@ -1,0 +1,498 @@
+# Public API for module isaacsim.core.prims:
+
+## Classes
+
+- class Articulation(XFormPrim)
+  - def __init__(self, prim_paths_expr: str | list[str], name: str = 'articulation_prim_view', positions: np.ndarray | torch.Tensor | wp.array | None = None, translations: np.ndarray | torch.Tensor | wp.array | None = None, orientations: np.ndarray | torch.Tensor | wp.array | None = None, scales: np.ndarray | torch.Tensor | wp.array | None = None, visibilities: np.ndarray | torch.Tensor | wp.array | None = None, reset_xform_properties: bool = True)
+  - [property] def num_dof(self) -> int
+  - [property] def num_bodies(self) -> int
+  - [property] def num_shapes(self) -> int
+  - [property] def num_joints(self) -> int
+  - [property] def num_fixed_tendons(self) -> int
+  - [property] def body_names(self) -> List[str]
+  - [property] def dof_names(self) -> List[str]
+  - [property] def joint_names(self) -> List[str]
+  - def is_physics_handle_valid(self) -> bool
+  - def get_body_index(self, body_name: str) -> int
+  - def get_dof_index(self, dof_name: str) -> int
+  - def get_dof_types(self, dof_names: list[str] = None) -> list[str]
+  - def get_dof_limits(self) -> Union[np.ndarray, torch.Tensor]
+  - def get_drive_types(self) -> Union[np.ndarray, torch.Tensor]
+  - def get_joint_index(self, joint_name: str) -> int
+  - def get_link_index(self, link_name: str) -> int
+  - def set_friction_coefficients(self, values: Union[np.ndarray, torch.Tensor], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None)
+  - def get_friction_coefficients(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.array]
+  - def set_armatures(self, values: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None)
+  - def get_armatures(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_articulation_body_count(self) -> int
+  - def set_joint_position_targets(self, positions: Optional[Union[np.ndarray, torch.Tensor, wp.array]], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None)
+  - def set_joint_positions(self, positions: Optional[Union[np.ndarray, torch.Tensor, wp.array]], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None)
+  - def set_joint_velocity_targets(self, velocities: Optional[Union[np.ndarray, torch.Tensor, wp.array]], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None)
+  - def set_joint_velocities(self, velocities: Optional[Union[np.ndarray, torch.Tensor, wp.array]], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None)
+  - def set_joint_efforts(self, efforts: Optional[Union[np.ndarray, torch.Tensor, wp.array]], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None)
+  - def get_applied_joint_efforts(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_measured_joint_efforts(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_measured_joint_forces(self, indices: Optional[Union[np.ndarray, List, torch.Tensor]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor]] = None, joint_names: Optional[List[str]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor]
+  - def get_joint_positions(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_joint_velocities(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def apply_action(self, control_actions: ArticulationActions, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def get_applied_actions(self, clone: bool = True) -> ArticulationActions
+  - def set_world_poses(self, positions: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, orientations: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, usd: bool = True)
+  - def get_world_poses(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, clone: bool = True, usd: bool = True) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[torch.Tensor, torch.Tensor], Tuple[wp.indexedarray, wp.indexedarray]]
+  - def get_local_poses(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[torch.Tensor, torch.Tensor], Tuple[wp.indexedarray, wp.indexedarray]]
+  - def set_local_poses(self, translations: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, orientations: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def set_velocities(self, velocities: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def get_velocities(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_linear_velocities(self, velocities: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def get_linear_velocities(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_angular_velocities(self, velocities: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def get_angular_velocities(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_joints_default_state(self, positions: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, velocities: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, efforts: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None)
+  - def get_joints_default_state(self) -> JointsState
+  - def get_joints_state(self) -> JointsState
+  - def get_effort_modes(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None) -> List[str]
+  - def set_effort_modes(self, mode: str, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor]] = None, joint_names: Optional[List[str]] = None)
+  - def set_max_efforts(self, values: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None)
+  - def get_max_efforts(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_max_joint_velocities(self, values: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None)
+  - def get_joint_max_velocities(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_gains(self, kps: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, kds: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None, save_to_usd: bool = False)
+  - def get_gains(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None, clone: bool = True) -> Tuple[Union[np.ndarray, torch.Tensor], Union[np.ndarray, torch.Tensor], Union[wp.indexedarray, wp.index]]
+  - def switch_control_mode(self, mode: str, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None)
+  - def switch_dof_control_mode(self, mode: str, dof_index: int, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def set_solver_position_iteration_counts(self, counts: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def get_solver_position_iteration_counts(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_solver_velocity_iteration_counts(self, counts: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def get_solver_velocity_iteration_counts(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_stabilization_thresholds(self, thresholds: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def get_stabilization_thresholds(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_enabled_self_collisions(self, flags: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def get_enabled_self_collisions(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_sleep_thresholds(self, thresholds: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def get_sleep_thresholds(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_jacobian_shape(self) -> Union[np.ndarray, torch.Tensor, wp.array]
+  - def get_mass_matrix_shape(self) -> Union[np.ndarray, torch.Tensor, wp.array]
+  - def get_jacobians(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_mass_matrices(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_coriolis_and_centrifugal_forces(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_generalized_gravity_forces(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, joint_names: Optional[List[str]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_body_masses(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, body_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_body_inv_masses(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, body_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_body_coms(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, body_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_body_inertias(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, body_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_body_inv_inertias(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, body_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_body_disable_gravity(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, body_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_body_masses(self, values: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, body_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def set_body_inertias(self, values: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, body_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def set_body_coms(self, positions: Union[np.ndarray, torch.Tensor, wp.array] = None, orientations: Union[np.ndarray, torch.Tensor, wp.array] = None, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, body_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def set_body_disable_gravity(self, values: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, body_indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def get_fixed_tendon_stiffnesses(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_fixed_tendon_dampings(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_fixed_tendon_limit_stiffnesses(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_fixed_tendon_limits(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_fixed_tendon_rest_lengths(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_fixed_tendon_offsets(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_fixed_tendon_properties(self, stiffnesses: Union[np.ndarray, torch.Tensor, wp.array] = None, dampings: Union[np.ndarray, torch.Tensor, wp.array] = None, limit_stiffnesses: Union[np.ndarray, torch.Tensor, wp.array] = None, limits: Union[np.ndarray, torch.Tensor, wp.array] = None, rest_lengths: Union[np.ndarray, torch.Tensor, wp.array] = None, offsets: Union[np.ndarray, torch.Tensor, wp.array] = None, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def pause_motion(self)
+  - def resume_motion(self)
+  - def initialize(self, physics_sim_view: omni.physics.tensors.SimulationView = None)
+
+- class ClothPrim(XFormPrim)
+  - def __init__(self, prim_paths_expr: str, particle_systems: np.ndarray | torch.Tensor = None, particle_materials: np.ndarray | torch.Tensor | None = None, name: str = 'cloth_prim_view', reset_xform_properties: bool = True, positions: np.ndarray | torch.Tensor | None = None, translations: np.ndarray | torch.Tensor | None = None, orientations: np.ndarray | torch.Tensor | None = None, scales: np.ndarray | torch.Tensor | None = None, visibilities: np.ndarray | torch.Tensor | None = None, particle_masses: np.ndarray | torch.Tensor | None = None, pressures: np.ndarray | torch.Tensor | None = None, particle_groups: np.ndarray | torch.Tensor | None = None, self_collisions: np.ndarray | torch.Tensor | None = None, self_collision_filters: np.ndarray | torch.Tensor | None = None, stretch_stiffnesses: np.ndarray | torch.Tensor | None = None, bend_stiffnesses: np.ndarray | torch.Tensor | None = None, shear_stiffnesses: np.ndarray | torch.Tensor | None = None, spring_dampings: np.ndarray | torch.Tensor | None = None)
+  - [property] def count(self) -> int
+  - [property] def max_springs_per_cloth(self) -> int
+  - [property] def max_particles_per_cloth(self) -> int
+  - def is_physics_handle_valid(self) -> bool
+  - def initialize(self, physics_sim_view: omni.physics.tensors.SimulationView = None)
+  - def set_world_positions(self, positions: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def get_world_positions(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def set_velocities(self, velocities: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def get_velocities(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def set_particle_masses(self, masses: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def get_particle_masses(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def set_stretch_stiffnesses(self, stiffness: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def get_stretch_stiffnesses(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def set_spring_dampings(self, damping: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def get_spring_dampings(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def set_pressures(self, pressures: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_self_collision_filters(self, self_collision_filters: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_self_collisions(self, self_collisions: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_particle_groups(self, particle_groups: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_cloths_dampings(self, values: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_cloths_stretch_stiffnesses(self, values: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_cloths_bend_stiffnesses(self, values: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_cloths_shear_stiffnesses(self, values: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def get_cloths_dampings(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_cloths_stretch_stiffnesses(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_cloths_bend_stiffnesses(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_cloths_shear_stiffnesses(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_self_collision_filters(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_self_collisions(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_pressures(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_particle_groups(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+
+- class DeformablePrim(XFormPrim)
+  - def __init__(self, prim_paths_expr: str, deformable_materials: Optional[Union[np.ndarray, torch.Tensor]] = None, name: str = 'deformable_prim_view', reset_xform_properties: bool = True, positions: Optional[Union[np.ndarray, torch.Tensor]] = None, translations: Optional[Union[np.ndarray, torch.Tensor]] = None, orientations: Optional[Union[np.ndarray, torch.Tensor]] = None, scales: Optional[Union[np.ndarray, torch.Tensor]] = None, visibilities: Optional[Union[np.ndarray, torch.Tensor]] = None, vertex_velocity_dampings: Optional[Union[np.ndarray, torch.Tensor]] = None, sleep_dampings: Optional[Union[np.ndarray, torch.Tensor]] = None, sleep_thresholds: Optional[Union[np.ndarray, torch.Tensor]] = None, settling_thresholds: Optional[Union[np.ndarray, torch.Tensor]] = None, self_collisions: Optional[Union[np.ndarray, torch.Tensor]] = None, self_collision_filter_distances: Optional[Union[np.ndarray, torch.Tensor]] = None, solver_position_iteration_counts: Optional[Union[np.ndarray, torch.Tensor]] = None)
+  - [property] def count(self) -> int
+  - [property] def max_simulation_mesh_elements_per_body(self) -> int
+  - [property] def max_simulation_mesh_vertices_per_body(self) -> int
+  - [property] def max_collision_mesh_elements_per_body(self) -> int
+  - [property] def max_collision_mesh_vertices_per_body(self) -> int
+  - def is_physics_handle_valid(self) -> bool
+  - def initialize(self, physics_sim_view: omni.physics.tensors.SimulationView = None)
+  - def apply_deformable_materials(self, deformable_materials: Union[DeformableMaterial, List[DeformableMaterial]], indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None)
+  - def get_applied_deformable_materials(self, indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None) -> List[DeformableMaterial]
+  - def set_simulation_mesh_nodal_positions(self, positions: Optional[Union[np.ndarray, torch.Tensor]], indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None)
+  - def set_simulation_mesh_nodal_velocities(self, velocities: Optional[Union[np.ndarray, torch.Tensor]], indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None)
+  - def set_simulation_mesh_kinematic_targets(self, positions: Optional[Union[np.ndarray, torch.Tensor]], indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None)
+  - def set_simulation_mesh_indices(self, values: Optional[Union[np.ndarray, torch.Tensor]], indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None)
+  - def set_collision_mesh_indices(self, values: Optional[Union[np.ndarray, torch.Tensor]], indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None)
+  - def set_collision_mesh_rest_points(self, values: Optional[Union[np.ndarray, torch.Tensor]], indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None)
+  - def set_simulation_mesh_rest_points(self, values: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_sleep_dampings(self, values: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_sleep_thresholds(self, values: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_settling_thresholds(self, values: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_self_collision_filter_distances(self, values: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_self_collisions(self, values: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_vertex_velocity_dampings(self, values: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_solver_position_iteration_counts(self, values: np.ndarray | torch.Tensor | None, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def get_sleep_dampings(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_sleep_thresholds(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_settling_thresholds(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_self_collision_filter_distances(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_self_collisions(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_vertex_velocity_dampings(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_solver_position_iteration_counts(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_simulation_mesh_nodal_positions(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_simulation_mesh_nodal_velocities(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_simulation_mesh_kinematic_targets(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_collision_mesh_nodal_positions(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_simulation_mesh_indices(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_collision_mesh_indices(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_simulation_mesh_rest_points(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_simulation_mesh_element_rest_poses(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_collision_mesh_element_rest_poses(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_simulation_mesh_element_rotations(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_collision_mesh_element_rotations(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_simulation_mesh_element_deformation_gradients(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_collision_mesh_element_deformation_gradients(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_simulation_mesh_element_stresses(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_collision_mesh_element_stresses(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+
+- class GeometryPrim(XFormPrim)
+  - def __init__(self, prim_paths_expr: str, name: str = 'geometry_prim_view', positions: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, translations: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, orientations: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, scales: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, visibilities: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, reset_xform_properties: bool = True, collisions: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, track_contact_forces: bool = False, prepare_contact_sensors: bool = False, disable_stablization: bool = True, contact_filter_prim_paths_expr: Optional[List[str]] = [], max_contact_count: int = 0)
+  - [property] def geoms(self) -> list[UsdGeom.Gprim]
+  - def initialize(self, physics_sim_view: omni.physics.tensors.SimulationView | None = None)
+  - def set_contact_offsets(self, offsets: np.ndarray | torch.Tensor | wp.array, indices: np.ndarray | list | torch.Tensor | wp.array | None = None)
+  - def get_contact_offsets(self, indices: np.ndarray | list | torch.Tensor | wp.array | None = None) -> np.ndarray | torch.Tensor | wp.indexedarray
+  - def set_rest_offsets(self, offsets: np.ndarray | torch.Tensor | wp.array, indices: np.ndarray | list | torch.Tensor | wp.array | None = None)
+  - def get_rest_offsets(self, indices: np.ndarray | list | torch.Tensor | wp.array | None = None) -> np.ndarray | torch.Tensor | wp.indexedarray
+  - def set_torsional_patch_radii(self, radii: np.ndarray | torch.Tensor | wp.array, indices: np.ndarray | list | torch.Tensor | wp.array | None = None)
+  - def get_torsional_patch_radii(self, indices: np.ndarray | list | torch.Tensor | wp.array | None = None) -> np.ndarray | torch.Tensor | wp.indexedarray
+  - def set_min_torsional_patch_radii(self, radii: np.ndarray | torch.Tensor | wp.array, indices: np.ndarray | list | torch.Tensor | wp.array | None = None)
+  - def get_min_torsional_patch_radii(self, indices: np.ndarray | list | torch.Tensor | None = None) -> np.ndarray | torch.Tensor
+  - def set_collision_approximations(self, approximation_types: list[str], indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def get_collision_approximations(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None) -> list[str]
+  - def enable_collision(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def disable_collision(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def is_collision_enabled(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def apply_collision_apis(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def apply_physics_materials(self, physics_materials: Union[PhysicsMaterial, list[PhysicsMaterial]], weaker_than_descendants: Optional[Union[bool, list[bool]]] = None, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def get_applied_physics_materials(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None) -> list[PhysicsMaterial]
+  - def get_net_contact_forces(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, clone: bool = True, dt: float = 1.0) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_contact_force_matrix(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, clone: bool = True, dt: float = 1.0) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_contact_force_data(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True, dt: float = 1.0) -> Tuple[Union[np.ndarray, torch.Tensor, wp.indexedarray], Union[np.ndarray, torch.Tensor, wp.indexedarray], Union[np.ndarray, torch.Tensor, wp.indexedarray], Union[np.ndarray, torch.Tensor, wp.indexedarray], Union[np.ndarray, torch.Tensor, wp.indexedarray], Union[np.ndarray, torch.Tensor, wp.indexedarray]]
+  - def get_friction_data(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True, dt: float = 1.0) -> Tuple[Union[np.ndarray, torch.Tensor, wp.indexedarray], Union[np.ndarray, torch.Tensor, wp.indexedarray], Union[np.ndarray, torch.Tensor, wp.indexedarray], Union[np.ndarray, torch.Tensor, wp.indexedarray]]
+
+- class ParticleSystem
+  - def __init__(self, prim_paths_expr: str, name: str = 'particle_system_view', particle_systems_enabled: Optional[Union[np.ndarray, torch.Tensor]] = None, simulation_owners: Optional[Sequence[str]] = None, contact_offsets: Optional[Union[np.ndarray, torch.Tensor]] = None, rest_offsets: Optional[Union[np.ndarray, torch.Tensor]] = None, particle_contact_offsets: Optional[Union[np.ndarray, torch.Tensor]] = None, solid_rest_offsets: Optional[Union[np.ndarray, torch.Tensor]] = None, fluid_rest_offsets: Optional[Union[np.ndarray, torch.Tensor]] = None, enable_ccds: Optional[Union[np.ndarray, torch.Tensor]] = None, solver_position_iteration_counts: Optional[Union[np.ndarray, torch.Tensor]] = None, max_depenetration_velocities: Optional[Union[np.ndarray, torch.Tensor]] = None, winds: Optional[Union[np.ndarray, torch.Tensor]] = None, max_neighborhoods: Optional[int] = None, max_velocities: Optional[Union[np.ndarray, torch.Tensor]] = None, global_self_collisions_enabled: Optional[Union[np.ndarray, torch.Tensor]] = None)
+  - [property] def count(self) -> int
+  - [property] def name(self) -> str
+  - def is_physics_handle_valid(self) -> bool
+  - def initialize(self, physics_sim_view: omni.physics.tensors.SimulationView = None)
+  - def is_valid(self, indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None) -> bool
+  - def post_reset(self)
+  - def apply_particle_materials(self, particle_materials: Union[ParticleMaterial, List[ParticleMaterial]], indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None)
+  - def get_applied_particle_materials(self, indices: np.ndarray | list | torch.Tensor | None = None) -> list[ParticleMaterial]
+  - def set_particle_contact_offsets(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | List | torch.Tensor | None = None)
+  - def set_solid_rest_offsets(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | List | torch.Tensor | None = None)
+  - def set_fluid_rest_offsets(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | List | torch.Tensor | None = None)
+  - def set_winds(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | List | torch.Tensor | None = None)
+  - def set_max_velocities(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | List | torch.Tensor | None = None)
+  - def set_max_depenetration_velocities(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | List | torch.Tensor | None = None)
+  - def set_rest_offsets(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | List | torch.Tensor | None = None)
+  - def set_contact_offsets(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | List | torch.Tensor | None = None)
+  - def set_solver_position_iteration_counts(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | List | torch.Tensor | None = None)
+  - def set_max_neighborhoods(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_global_self_collisions_enabled(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_enable_ccds(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_particle_systems_enabled(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_simulation_owners(self, values: Sequence[str], indices: np.ndarray | list | torch.Tensor | None = None)
+  - def get_particle_contact_offsets(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_solid_rest_offsets(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_fluid_rest_offsets(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_winds(self, indices: np.ndarray | list | torch.Tensor | None = None, clone: bool = True) -> np.ndarray | torch.Tensor
+  - def get_max_velocities(self, indices: np.ndarray | list | torch.Tensor | None = None) -> np.ndarray | torch.Tensor
+  - def get_max_depenetration_velocities(self, indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None) -> Union[np.ndarray, torch.Tensor]
+  - def get_rest_offsets(self, indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None) -> Union[np.ndarray, torch.Tensor]
+  - def get_contact_offsets(self, indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None) -> Union[np.ndarray, torch.Tensor]
+  - def get_solver_position_iteration_counts(self, indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None) -> Union[np.ndarray, torch.Tensor]
+  - def get_max_neighborhoods(self, indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None) -> Union[np.ndarray, torch.Tensor]
+  - def get_global_self_collisions_enabled(self, indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None) -> Union[np.ndarray, torch.Tensor]
+  - def get_enable_ccds(self, indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None) -> Union[np.ndarray, torch.Tensor]
+  - def get_particle_systems_enabled(self, indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None) -> Union[np.ndarray, torch.Tensor]
+  - def get_simulation_owners(self, indices: Optional[Union[np.ndarray, list, torch.Tensor]] = None) -> Sequence[str]
+
+- class RigidPrim(XFormPrim)
+  - def __init__(self, prim_paths_expr: Union[str, List[str]], name: str = 'rigid_prim_view', positions: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, translations: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, orientations: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, scales: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, visibilities: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, reset_xform_properties: bool = True, masses: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, densities: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, linear_velocities: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, angular_velocities: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, track_contact_forces: bool = False, prepare_contact_sensors: bool = True, disable_stablization: bool = True, contact_filter_prim_paths_expr: Optional[List[str]] = [], max_contact_count: int = 0)
+  - [property] def num_shapes(self) -> int
+  - def is_physics_handle_valid(self) -> bool
+  - def set_world_poses(self, positions: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, orientations: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, usd: bool = True)
+  - def get_world_poses(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, clone: bool = True, usd: bool = True) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[torch.Tensor, torch.Tensor], Tuple[wp.indexedarray, wp.indexedarray]]
+  - def get_local_poses(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[torch.Tensor, torch.Tensor], Tuple[wp.indexedarray, wp.indexedarray]]
+  - def set_local_poses(self, translations: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, orientations: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def set_linear_velocities(self, velocities: Optional[Union[np.ndarray, torch.Tensor, wp.array]], indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def get_linear_velocities(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_angular_velocities(self, velocities: Optional[Union[np.ndarray, torch.Tensor, wp.array]], indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def get_angular_velocities(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_velocities(self, velocities: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def get_velocities(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def apply_forces(self, forces: Optional[Union[np.ndarray, torch.Tensor, wp.array]], indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, is_global: bool = True)
+  - def apply_forces_and_torques_at_pos(self, forces: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, torques: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, positions: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, is_global: bool = True)
+  - def get_masses(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_inv_masses(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_coms(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_inertias(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_inv_inertias(self, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_masses(self, masses: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def set_inertias(self, values: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def set_coms(self, positions: Union[np.ndarray, torch.Tensor, wp.array] = None, orientations: Union[np.ndarray, torch.Tensor, wp.array] = None, indices: Optional[Union[np.ndarray, List, torch.Tensor, wp.array]] = None)
+  - def set_densities(self, densities: Optional[Union[np.ndarray, torch.Tensor, wp.array]], indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def get_densities(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def set_sleep_thresholds(self, thresholds: Optional[Union[np.ndarray, torch.Tensor, wp.array]], indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def get_sleep_thresholds(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def enable_rigid_body_physics(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def disable_rigid_body_physics(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def enable_gravities(self, indices: np.ndarray | list | torch.Tensor | wp.array | None = None)
+  - def disable_gravities(self, indices: np.ndarray | list | torch.Tensor | wp.array | None = None)
+  - def set_default_state(self, positions: np.ndarray | torch.Tensor | wp.array | None = None, orientations: np.ndarray | torch.Tensor | wp.array | None = None, linear_velocities: np.ndarray | torch.Tensor | wp.array | None = None, angular_velocities: np.ndarray | torch.Tensor | wp.array | None = None, indices: np.ndarray | list | torch.Tensor | wp.array | None = None)
+  - def get_default_state(self) -> DynamicsViewState
+  - def get_current_dynamic_state(self) -> DynamicsViewState
+  - def get_net_contact_forces(self, indices: np.ndarray | List | torch.Tensor | wp.array | None = None, clone: bool = True, dt: float = 1.0) -> np.ndarray | torch.Tensor | wp.indexedarray
+  - def get_contact_force_matrix(self, indices: np.ndarray | List | torch.Tensor | wp.array | None = None, clone: bool = True, dt: float = 1.0) -> np.ndarray | torch.Tensor | wp.indexedarray
+  - def get_contact_force_data(self, indices: np.ndarray | List | torch.Tensor | wp.array | None = None, clone: bool = True, dt: float = 1.0) -> Tuple[np.ndarray | torch.Tensor | wp.indexedarray, np.ndarray | torch.Tensor | wp.indexedarray, np.ndarray | torch.Tensor | wp.indexedarray, np.ndarray | torch.Tensor | wp.indexedarray, np.ndarray | torch.Tensor | wp.indexedarray, np.ndarray | torch.Tensor | wp.indexedarray]
+  - def get_friction_data(self, indices: np.ndarray | List | torch.Tensor | wp.array | None = None, clone: bool = True, dt: float = 1.0) -> Tuple[np.ndarray | torch.Tensor | wp.indexedarray, np.ndarray | torch.Tensor | wp.indexedarray, np.ndarray | torch.Tensor | wp.indexedarray, np.ndarray | torch.Tensor | wp.indexedarray]
+  - def initialize(self, physics_sim_view: omni.physics.tensors.SimulationView = None)
+
+- class SdfShapePrim(GeometryPrim)
+  - def __init__(self, prim_paths_expr: str, num_query_points: int, prepare_sdf_schemas: bool = True, name: str = 'sdf_shape_view', positions: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, translations: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, orientations: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, scales: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, visibilities: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, reset_xform_properties: bool = True, collisions: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, track_contact_forces: bool = False, prepare_contact_sensors: bool = False, disable_stablization: bool = True, contact_filter_prim_paths_expr: Optional[List[str]] = [])
+  - [property] def num_query_points(self) -> int
+  - def is_physics_handle_valid(self) -> bool
+  - def initialize(self, physics_sim_view: omni.physics.tensors.SimulationView = None)
+  - def get_sdf_and_gradients(self, points: Union[np.ndarray, torch.Tensor], indices: Optional[Union[np.ndarray, torch.Tensor]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor]
+  - def get_sdf_margins(self, indices: Optional[Union[np.ndarray, List, torch.Tensor]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor]
+  - def get_sdf_narrow_band_thickness(self, indices: Optional[Union[np.ndarray, List, torch.Tensor]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor]
+  - def get_sdf_subgrid_resolution(self, indices: Optional[Union[np.ndarray, List, torch.Tensor]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor]
+  - def get_sdf_resolution(self, indices: Optional[Union[np.ndarray, List, torch.Tensor]] = None, clone: bool = True) -> Union[np.ndarray, torch.Tensor]
+  - def set_sdf_margins(self, values: Union[np.ndarray, torch.Tensor], indices: Optional[Union[np.ndarray, List, torch.Tensor]] = None)
+  - def set_sdf_narrow_band_thickness(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_sdf_subgrid_resolution(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | list | torch.Tensor | None = None)
+  - def set_sdf_resolution(self, values: np.ndarray | torch.Tensor, indices: np.ndarray | list | torch.Tensor | None = None)
+
+- class SingleArticulation(_SinglePrimWrapper)
+  - def __init__(self, prim_path: str, name: str = 'articulation', position: Optional[Sequence[float]] = None, translation: Optional[Sequence[float]] = None, orientation: Optional[Sequence[float]] = None, scale: Optional[Sequence[float]] = None, visible: Optional[bool] = None, reset_xform_properties: bool = True, articulation_controller: Optional[ArticulationController] = None)
+  - [property] def handles_initialized(self) -> bool
+  - [property] def num_dof(self) -> int
+  - [property] def num_bodies(self) -> int
+  - [property] def dof_properties(self) -> np.ndarray
+  - [property] def dof_names(self) -> list[str]
+  - def initialize(self, physics_sim_view: omni.physics.tensors.SimulationView = None)
+  - def get_dof_index(self, dof_name: str) -> int
+  - def get_articulation_body_count(self) -> int
+  - def disable_gravity(self)
+  - def enable_gravity(self)
+  - def set_world_velocity(self, velocity: np.ndarray)
+  - def get_world_velocity(self) -> np.ndarray
+  - def set_joint_positions(self, positions: np.ndarray, joint_indices: list | np.ndarray | None = None)
+  - def get_joint_positions(self, joint_indices: list | np.ndarray | None = None) -> np.ndarray
+  - def set_joint_velocities(self, velocities: np.ndarray, joint_indices: list | np.ndarray | None = None)
+  - def set_joint_efforts(self, efforts: np.ndarray, joint_indices: list | np.ndarray | None = None)
+  - def get_joint_velocities(self, joint_indices: list | np.ndarray | None = None) -> np.ndarray
+  - def get_measured_joint_efforts(self, joint_indices: list | np.ndarray | None = None) -> np.ndarray
+  - def get_applied_joint_efforts(self, joint_indices: list | np.ndarray | None = None) -> np.ndarray
+  - def get_measured_joint_forces(self, joint_indices: list | np.ndarray | None = None) -> np.ndarray
+  - def get_joints_default_state(self) -> JointsState
+  - def set_joints_default_state(self, positions: np.ndarray | None = None, velocities: np.ndarray | None = None, efforts: np.ndarray | None = None)
+  - def get_joints_state(self) -> JointsState
+  - def get_articulation_controller(self) -> ArticulationController
+  - def set_linear_velocity(self, velocity: np.ndarray)
+  - def get_linear_velocity(self) -> np.ndarray
+  - def set_angular_velocity(self, velocity: np.ndarray)
+  - def get_angular_velocity(self) -> np.ndarray
+  - def apply_action(self, control_actions: ArticulationAction)
+  - def get_applied_action(self) -> ArticulationAction
+  - def set_solver_position_iteration_count(self, count: int)
+  - def get_solver_position_iteration_count(self) -> int
+  - def set_solver_velocity_iteration_count(self, count: int)
+  - def get_solver_velocity_iteration_count(self) -> int
+  - def set_stabilization_threshold(self, threshold: float)
+  - def get_stabilization_threshold(self) -> float
+  - def set_enabled_self_collisions(self, flag: bool)
+  - def get_enabled_self_collisions(self) -> int
+  - def set_sleep_threshold(self, threshold: float)
+  - def get_sleep_threshold(self) -> float
+
+- class SingleClothPrim(_SinglePrimWrapper)
+  - def __init__(self, prim_path: str, particle_system: SingleParticleSystem, particle_material: Optional[ParticleMaterial] = None, name: Optional[str] = 'cloth', position: Optional[Sequence[float]] = None, orientation: Optional[Sequence[float]] = None, scale: Optional[Sequence[float]] = None, visible: Optional[bool] = None, particle_mass: Optional[float] = 0.01, pressure: Optional[float] = None, particle_group: Optional[int] = 0, self_collision: Optional[bool] = True, self_collision_filter: Optional[bool] = True, stretch_stiffness: Optional[float] = None, bend_stiffness: Optional[float] = None, shear_stiffness: Optional[float] = None, spring_damping: Optional[float] = None)
+  - [property] def mesh(self) -> UsdGeom.Mesh
+  - def get_current_dynamic_state(self) -> DynamicState
+  - def set_stretch_stiffness(self, stiffness: Union[np.ndarray, torch.Tensor])
+  - def set_spring_damping(self, damping: Union[np.ndarray, torch.Tensor])
+  - def set_cloth_stretch_stiffness(self, stiffness: Union[np.ndarray, torch.Tensor])
+  - def set_cloth_bend_stiffness(self, stiffness: float)
+  - def set_cloth_shear_stiffness(self, stiffness: float)
+  - def set_cloth_damping(self, damping: float)
+  - def set_pressure(self, pressure: float)
+  - def set_self_collision_filter(self, self_collision_filter: bool)
+  - def set_self_collision(self, self_collision: bool)
+  - def set_particle_group(self, particle_group: int)
+  - def get_stretch_stiffness(self) -> Union[np.ndarray, torch.Tensor]
+  - def get_spring_damping(self) -> Union[np.ndarray, torch.Tensor]
+  - def get_cloth_stretch_stiffness(self) -> float
+  - def get_cloth_bend_stiffness(self) -> float
+  - def get_cloth_shear_stiffness(self) -> float
+  - def get_cloth_damping(self) -> Union[np.ndarray, torch.Tensor]
+  - def get_pressure(self) -> float
+  - def get_self_collision_filter(self) -> bool
+  - def get_self_collision(self) -> bool
+  - def get_particle_group(self) -> int
+
+- class SingleDeformablePrim(_SinglePrimWrapper)
+  - def __init__(self, prim_path: str, deformable_material: Optional[DeformableMaterial] = None, name: Optional[str] = 'deformable', position: Optional[Sequence[float]] = None, orientation: Optional[Sequence[float]] = None, scale: Optional[Sequence[float]] = None, visible: Optional[bool] = None, vertex_velocity_damping: Optional[float] = None, sleep_damping: Optional[float] = None, sleep_threshold: Optional[float] = None, settling_threshold: Optional[float] = None, self_collision: Optional[bool] = True, self_collision_filter_distance: Optional[float] = None, solver_position_iteration_count: Optional[int] = None, kinematic_enabled: Optional[bool] = False, simulation_rest_points: Optional[Sequence[float]] = None, simulation_indices: Optional[Sequence[int]] = None, simulation_hexahedral_resolution: Optional[int] = 10, collision_rest_points: Optional[Sequence[float]] = None, collision_indices: Optional[Sequence[int]] = None, collision_simplification: Optional[bool] = True, collision_simplification_remeshing: Optional[bool] = True, collision_simplification_remeshing_resolution: Optional[int] = 0, collision_simplification_target_triangle_count: Optional[int] = 0, collision_simplification_force_conforming: Optional[bool] = False, embedding: Optional[Sequence[int]] = None)
+  - [property] def mesh(self) -> UsdGeom.Mesh
+  - def get_current_dynamic_state(self) -> DynamicState
+  - def apply_deformable_material(self, deformable_materials: DeformableMaterial)
+  - def get_applied_deformable_material(self) -> DeformableMaterial
+  - def set_vertex_velocity_damping(self, vertex_velocity_damping: float)
+  - def set_sleep_damping(self, sleep_damping: float)
+  - def set_sleep_threshold(self, sleep_threshold: float)
+  - def set_settling_threshold(self, settling_threshold: float)
+  - def set_self_collision_filter_distance(self, self_collision_filter_distance: float)
+  - def set_self_collision(self, self_collision: bool)
+  - def set_solver_position_iteration_count(self, iterations: int)
+  - def get_simulation_mesh_rest_points(self) -> Union[np.ndarray, torch.Tensor]
+  - def get_simulation_mesh_indices(self) -> Union[np.ndarray, torch.Tensor]
+  - def get_collision_mesh_indices(self) -> Union[np.ndarray, torch.Tensor]
+  - def get_solver_position_iteration_count(self) -> int
+  - def get_vertex_velocity_damping(self) -> float
+  - def get_sleep_damping(self) -> float
+  - def get_sleep_threshold(self) -> float
+  - def get_settling_threshold(self) -> float
+  - def get_self_collision_filter_distance(self) -> float
+  - def get_self_collision(self) -> bool
+
+- class SingleGeometryPrim(_SinglePrimWrapper)
+  - def __init__(self, prim_path: str, name: str = 'geometry_prim', position: Optional[Sequence[float]] = None, translation: Optional[Sequence[float]] = None, orientation: Optional[Sequence[float]] = None, scale: Optional[Sequence[float]] = None, visible: Optional[bool] = None, reset_xform_properties: bool = True, collision: bool = False, track_contact_forces: bool = False, prepare_contact_sensor: bool = False, disable_stablization: bool = True, contact_filter_prim_paths_expr: Optional[List[str]] = [])
+  - [property] def geom(self) -> UsdGeom.Gprim
+  - def set_contact_offset(self, offset: float)
+  - def get_contact_offset(self) -> float
+  - def set_rest_offset(self, offset: float)
+  - def get_rest_offset(self) -> float
+  - def set_torsional_patch_radius(self, radius: float)
+  - def get_torsional_patch_radius(self) -> float
+  - def set_min_torsional_patch_radius(self, radius: float)
+  - def get_min_torsional_patch_radius(self) -> float
+  - def set_collision_approximation(self, approximation_type: str)
+  - def get_collision_approximation(self) -> str
+  - def set_collision_enabled(self, enabled: bool)
+  - def get_collision_enabled(self) -> bool
+  - def apply_physics_material(self, physics_material: PhysicsMaterial, weaker_than_descendants: bool = False)
+  - def get_applied_physics_material(self) -> PhysicsMaterial
+  - def get_net_contact_forces(self, dt: float = 1.0) -> Union[np.ndarray, torch.Tensor]
+  - def get_contact_force_matrix(self, dt: float = 1.0) -> Union[np.ndarray, torch.Tensor]
+  - def get_contact_force_data(self, dt: float = 1.0) -> Union[np.ndarray, torch.Tensor]
+  - def get_friction_data(self, dt: float = 1.0) -> Union[np.ndarray, torch.Tensor]
+
+- class SingleParticleSystem
+  - def __init__(self, prim_path: str, name: str | None = 'particle_system', particle_system_enabled: bool | None = None, simulation_owner: str | None = None, contact_offset: float | None = None, rest_offset: float | None = None, particle_contact_offset: float | None = None, solid_rest_offset: float | None = None, fluid_rest_offset: float | None = None, enable_ccd: bool | None = None, solver_position_iteration_count: float | None = None, max_depenetration_velocity: float | None = None, wind: Sequence[float] = None, max_neighborhood: int | None = None, max_velocity: float | None = None, global_self_collision_enabled: bool | None = None, non_particle_collision_enabled: bool | None = None)
+  - [property] def prim_path(self) -> str
+  - [property] def prim(self) -> Usd.Prim
+  - [property] def particle_system(self) -> PhysxSchema.PhysxParticleSystem
+  - [property] def name(self) -> str | None
+  - def initialize(self, physics_sim_view = None)
+  - def is_valid(self) -> bool
+  - def post_reset(self)
+  - def apply_particle_material(self, particle_materials: ParticleMaterial)
+  - def get_applied_particle_material(self) -> ParticleMaterial
+  - def set_particle_system_enabled(self, value: bool)
+  - def set_simulation_owner(self, value: str)
+  - def set_contact_offset(self, value: float)
+  - def set_rest_offset(self, value: float)
+  - def set_particle_contact_offset(self, value: float)
+  - def set_solid_rest_offset(self, value: float)
+  - def set_fluid_rest_offset(self, value: float)
+  - def set_enable_ccd(self, value: bool)
+  - def set_solver_position_iteration_count(self, value: int)
+  - def set_max_depenetration_velocity(self, value: float)
+  - def set_wind(self, value: Sequence[float])
+  - def set_max_neighborhood(self, value: int)
+  - def set_max_velocity(self, value: float)
+  - def set_global_self_collision_enabled(self, value: bool)
+  - def get_particle_system_enabled(self) -> bool
+  - def get_simulation_owner(self) -> Usd.Prim
+  - def get_contact_offset(self) -> float
+  - def get_rest_offset(self) -> float
+  - def get_particle_contact_offset(self) -> float
+  - def get_solid_rest_offset(self) -> float
+  - def get_fluid_rest_offset(self) -> float
+  - def get_enable_ccd(self) -> bool
+  - def get_solver_position_iteration_count(self) -> int
+  - def get_max_depenetration_velocity(self) -> float
+  - def get_wind(self) -> Sequence[float]
+  - def get_max_neighborhood(self) -> int
+  - def get_max_velocity(self) -> float
+  - def get_global_self_collision_enabled(self) -> bool
+  - def apply_particle_anisotropy(self) -> PhysxSchema.PhysxParticleAnisotropyAPI
+  - def apply_particle_smoothing(self) -> PhysxSchema.PhysxParticleSmoothingAPI
+  - def apply_particle_isotropy(self) -> PhysxSchema.PhysxParticleAnisotropyAPI
+
+- class SingleRigidPrim(_SinglePrimWrapper)
+  - def __init__(self, prim_path: str, name: str = 'rigid_prim', position: Optional[Sequence[float]] = None, translation: Optional[Sequence[float]] = None, orientation: Optional[Sequence[float]] = None, scale: Optional[Sequence[float]] = None, visible: Optional[bool] = None, reset_xform_properties: bool = True, mass: Optional[float] = None, density: Optional[float] = None, linear_velocity: Optional[np.ndarray] = None, angular_velocity: Optional[np.ndarray] = None)
+  - def set_linear_velocity(self, velocity: np.ndarray)
+  - def get_linear_velocity(self) -> np.ndarray
+  - def set_angular_velocity(self, velocity: np.ndarray)
+  - def get_angular_velocity(self) -> np.ndarray
+  - def set_com(self, position: np.ndarray, orientation: np.ndarray)
+  - def get_com(self) -> tuple[np.ndarray, np.ndarray]
+  - def set_mass(self, mass: float)
+  - def get_mass(self) -> float
+  - def set_density(self, density: float)
+  - def get_density(self) -> float
+  - def set_sleep_threshold(self, threshold: float)
+  - def get_sleep_threshold(self) -> float
+  - def enable_rigid_body_physics(self)
+  - def disable_rigid_body_physics(self)
+  - def set_default_state(self, position: Optional[Sequence[float]] = None, orientation: Optional[Sequence[float]] = None, linear_velocity: Optional[np.ndarray] = None, angular_velocity: Optional[np.ndarray] = None)
+  - def get_default_state(self) -> DynamicState
+  - def get_current_dynamic_state(self) -> DynamicState
+
+- class SingleXFormPrim(_SinglePrimWrapper)
+  - def __init__(self, prim_path: str, name: str = 'xform_prim', position: Optional[Sequence[float]] = None, translation: Optional[Sequence[float]] = None, orientation: Optional[Sequence[float]] = None, scale: Optional[Sequence[float]] = None, visible: Optional[bool] = None, reset_xform_properties: bool = True)
+
+- class XFormPrim(Prim)
+  - def __init__(self, prim_paths_expr: str | list[str], name: str = 'xform_prim_view', positions: np.ndarray | torch.Tensor | None = None, translations: np.ndarray | torch.Tensor | None = None, orientations: np.ndarray | torch.Tensor | None = None, scales: np.ndarray | torch.Tensor | None = None, visibilities: np.ndarray | torch.Tensor | None = None, reset_xform_properties: bool = True, usd: bool = True)
+  - [property] def is_non_root_articulation_link(self) -> bool
+  - def set_visibilities(self, visibilities: Union[np.ndarray, torch.Tensor, wp.array], indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def get_visibilities(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None) -> Union[np.ndarray, torch.Tensor, wp.indexedarray]
+  - def get_default_state(self) -> XFormPrimViewState
+  - def set_default_state(self, positions: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, orientations: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def apply_visual_materials(self, visual_materials: Union[VisualMaterial, List[VisualMaterial]], weaker_than_descendants: Optional[Union[bool, List[bool]]] = None, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None)
+  - def get_applied_visual_materials(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None) -> List[VisualMaterial]
+  - def is_visual_material_applied(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None) -> List[bool]
+  - def get_world_poses(self, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, usd: bool = True) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[torch.Tensor, torch.Tensor], Tuple[wp.indexedarray, wp.indexedarray]]
+  - def set_world_poses(self, positions: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, orientations: Optional[Union[np.ndarray, torch.Tensor, wp.array]] = None, indices: Optional[Union[np.ndarray, list, torch.Tensor, wp.array]] = None, usd: bool = True)
+  - def get_local_poses(self, indices: np.ndarray | list | torch.Tensor | wp.array | None = None) -> tuple[np.ndarray, np.ndarray] | tuple[torch.Tensor, torch.Tensor] | tuple[wp.indexedarray, wp.indexedarray]
+  - def set_local_poses(self, translations: np.ndarray | torch.Tensor | wp.array | None = None, orientations: np.ndarray | torch.Tensor | wp.array | None = None, indices: np.ndarray | list | torch.Tensor | wp.array | None = None)
+  - def get_world_scales(self, indices: np.ndarray | list | torch.Tensor | wp.array | None = None) -> np.ndarray | torch.Tensor | wp.indexedarray
+  - def set_local_scales(self, scales: np.ndarray | torch.Tensor | wp.array | None, indices: np.ndarray | list | torch.Tensor | wp.array | None = None)
+  - def get_local_scales(self, indices: np.ndarray | list | torch.Tensor | wp.array | None = None) -> np.ndarray | torch.Tensor | wp.indexedarray

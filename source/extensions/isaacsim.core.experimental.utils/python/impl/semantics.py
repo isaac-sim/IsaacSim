@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Functions for creating, accessing and deleting semantic labels.
-"""
+"""Functions for creating, accessing and deleting semantic labels."""
 
 from __future__ import annotations
 
 from collections import defaultdict
 
+import carb
 from pxr import Usd, UsdSemantics
 
 from . import stage as stage_utils
@@ -93,7 +92,7 @@ def get_labels(prim: str | Usd.Prim, *, include_descendants: bool = False) -> di
         {'class': ['label_a', 'label_b'], 'custom': ['label_c']}
     """
 
-    def _get_labels(target_prim: Usd.Prim):
+    def _get_labels(target_prim: Usd.Prim) -> None:
         for schema in target_prim.GetAppliedSchemas():
             if schema.startswith("SemanticsLabelsAPI:"):
                 taxonomy = schema.split(":", 1)[-1]
@@ -148,7 +147,7 @@ def remove_labels(
         {'class': ['label_b'], 'custom': ['label_c']}
     """
 
-    def _remove_labels(target_prim: Usd.Prim):
+    def _remove_labels(target_prim: Usd.Prim) -> None:
         for schema in target_prim.GetAppliedSchemas():
             if schema.startswith("SemanticsLabelsAPI:"):
                 current_taxonomy = schema.split(":", 1)[-1]
@@ -205,7 +204,7 @@ def remove_all_labels(
         {}
     """
 
-    def _remove_all_labels(target_prim: Usd.Prim):
+    def _remove_all_labels(target_prim: Usd.Prim) -> None:
         for schema in target_prim.GetAppliedSchemas():
             if schema.startswith("SemanticsLabelsAPI:"):
                 current_taxonomy = schema.split(":", 1)[-1]
@@ -222,3 +221,83 @@ def remove_all_labels(
             _remove_all_labels(p)
     else:
         _remove_all_labels(prim)
+
+
+def upgrade_prim_semantics_to_labels(prim: str | Usd.Prim, *, include_descendants: bool = False) -> list[str]:
+    """Upgrade a prim from the deprecated ``Semantics.SemanticsAPI`` to ``UsdSemantics.LabelsAPI``.
+
+    Backends: :guilabel:`usd`.
+
+    Converts each ``SemanticsAPI`` instance found on the prim (and optionally its
+    descendants) to a ``LabelsAPI`` instance. The old ``semanticType`` becomes
+    the new taxonomy (instance name), and the old ``semanticData`` becomes the
+    label. The old ``SemanticsAPI`` is removed after upgrading.
+
+    Args:
+        prim: Prim path or prim instance.
+        include_descendants: If ``True``, upgrades the prim and all its descendants.
+            If ``False``, upgrades only the specified prim.
+
+    Returns:
+        Paths of prims that had at least one ``SemanticsAPI`` instance upgraded.
+
+    Examples:
+
+    .. code-block:: python
+
+        >>> import isaacsim.core.experimental.utils.semantics as semantics_utils
+        >>>
+        >>> # upgrade old-style semantics on a prim and its descendants
+        >>> upgraded_paths = semantics_utils.upgrade_prim_semantics_to_labels("/World/Asset", include_descendants=True)
+    """
+    import Semantics
+
+    prim = stage_utils.get_current_stage(backend="usd").GetPrimAtPath(prim) if isinstance(prim, str) else prim
+    upgraded_paths: list[str] = []
+
+    prims_to_process = Usd.PrimRange(prim) if include_descendants else [prim]
+
+    for current_prim in prims_to_process:
+        if not current_prim:
+            continue
+
+        old_semantics: dict[str, tuple[str, str, object]] = {}
+        for prop in current_prim.GetProperties():
+            if Semantics.SemanticsAPI.IsSemanticsAPIPath(prop.GetPath()):
+                instance_name = prop.SplitName()[1]
+                sem_api = Semantics.SemanticsAPI.Get(current_prim, instance_name)
+                if sem_api:
+                    type_attr = sem_api.GetSemanticTypeAttr()
+                    data_attr = sem_api.GetSemanticDataAttr()
+                    if type_attr and data_attr and instance_name not in old_semantics:
+                        old_semantics[instance_name] = (type_attr.Get(), data_attr.Get(), sem_api)
+
+        if not old_semantics:
+            continue
+
+        prim_upgraded = False
+        for old_instance_name, (old_type, old_data, old_api) in old_semantics.items():
+            if not old_type or not old_data:
+                carb.log_warn(
+                    f"Skipping instance '{old_instance_name}' on {current_prim.GetPath()}"
+                    " due to missing type or data."
+                )
+                continue
+
+            try:
+                if old_api:
+                    for attr in (old_api.GetSemanticTypeAttr(), old_api.GetSemanticDataAttr()):
+                        if attr and attr.IsDefined():
+                            current_prim.RemoveProperty(attr.GetName())
+                    current_prim.RemoveAPI(Semantics.SemanticsAPI, old_instance_name)
+
+                add_labels(current_prim, labels=[old_data], taxonomy=old_type)
+                prim_upgraded = True
+
+            except Exception as e:
+                carb.log_warn(f"Failed to upgrade instance '{old_instance_name}' on {current_prim.GetPath()}: {e}")
+
+        if prim_upgraded:
+            upgraded_paths.append(str(current_prim.GetPath()))
+
+    return upgraded_paths

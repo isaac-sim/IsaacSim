@@ -1,0 +1,12 @@
+namespace isaac;
+
+// Time.
+table Time {
+  // The time in nanoseconds.
+  time_ns: int64 (id: 0);
+
+  // Acquisition time in nanoseconds.
+  acqtime_ns: int64 (id: 1);
+}
+
+root_type Time;

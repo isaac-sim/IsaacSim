@@ -1,0 +1,125 @@
+# Public API for module isaacsim.core.simulation_manager:
+
+## Classes
+
+- class PhysicsScene
+  - def __init__(self, prim: str | Usd.Prim)
+  - [property] def path(self) -> str
+  - [property] def prim(self) -> Usd.Prim
+  - [property] def physics_scene(self) -> UsdPhysics.Scene
+  - static def get_physics_scene_paths(stage: Usd.Stage | None = None) -> list[str]
+  - def get_gravity(self) -> Gf.Vec3f
+  - def set_gravity(self, gravity: Gf.Vec3f | tuple[float, float, float] | list[float])
+  - def get_dt(self) -> float
+  - def set_dt(self, dt: float)
+  - def get_enabled_gravity(self) -> bool
+  - def set_enabled_gravity(self, enabled: bool)
+  - def get_max_solver_iterations(self) -> int
+  - def set_max_solver_iterations(self, iterations: int)
+
+- class PhysxGpuCfg
+  - gpu_collision_stack_size: int | None
+  - gpu_found_lost_aggregate_pairs_capacity: int | None
+  - gpu_found_lost_pairs_capacity: int | None
+  - gpu_heap_capacity: int | None
+  - gpu_max_deformable_surface_contacts: int | None
+  - gpu_max_num_partitions: int | None
+  - gpu_max_particle_contacts: int | None
+  - gpu_max_rigid_contact_count: int | None
+  - gpu_max_rigid_patch_count: int | None
+  - gpu_max_soft_body_contacts: int | None
+  - gpu_temp_buffer_capacity: int | None
+  - gpu_total_aggregate_pairs_capacity: int | None
+
+- class PhysxScene(PhysicsScene)
+  - def __init__(self, prim: str | Usd.Prim)
+  - def get_dt(self) -> float
+  - def set_dt(self, dt: float)
+  - def get_steps_per_second(self) -> int
+  - def set_steps_per_second(self, steps_per_second: int)
+  - def get_solver_type(self) -> Literal[TGS, PGS]
+  - def set_solver_type(self, solver_type: Literal[TGS, PGS])
+  - def get_enabled_gpu_dynamics(self) -> bool
+  - def set_enabled_gpu_dynamics(self, enabled: bool)
+  - def get_enabled_ccd(self) -> bool
+  - def set_enabled_ccd(self, enabled: bool)
+  - def get_broadphase_type(self) -> Literal[MBP, GPU, SAP]
+  - def set_broadphase_type(self, broadphase_type: Literal[MBP, GPU, SAP])
+  - def get_enabled_stabilization(self) -> bool
+  - def set_enabled_stabilization(self, enabled: bool)
+  - def get_gpu_configuration(self) -> PhysxGpuCfg
+  - def set_gpu_configuration(self, cfg: PhysxGpuCfg | dict)
+
+- class SimulationEvent(Enum)
+  - PHYSICS_PRE_STEP: str
+  - PHYSICS_POST_STEP: str
+  - SIMULATION_SETUP: str
+  - SIMULATION_STARTED: str
+  - SIMULATION_PAUSED: str
+  - SIMULATION_RESUMED: str
+  - SIMULATION_STOPPED: str
+  - PRIM_DELETED: str
+
+- class SimulationManager
+  - class def get_active_physics_engine(cls) -> Literal[physx]
+  - class def get_default_engine(cls) -> str
+  - class def get_available_physics_engines(cls, verbose: bool = False) -> list[tuple[str, bool]]
+  - class def switch_physics_engine(cls, engine_name: Literal[physx, newton], verbose: bool = False) -> bool
+  - class def initialize_physics(cls)
+  - class def invalidate_physics(cls)
+  - class def setup_simulation(cls, dt: float | None = None, device: str | wp.Device | None = None)
+  - class def get_physics_scenes(cls) -> list[PhysicsScene]
+  - class def get_physics_simulation_view(cls) -> 'SimulationView' | None
+  - class def get_simulation_time(cls) -> float
+  - class def get_num_physics_steps(cls) -> int
+  - class def is_simulating(cls) -> bool
+  - class def is_paused(cls) -> bool
+  - class def step(cls)
+  - class def set_device(cls, device: str | wp.Device)
+  - class def get_device(cls) -> wp.Device
+  - class def enable_fabric(cls, enable: bool)
+  - class def is_fabric_enabled(cls) -> bool
+  - class def register_callback(cls, callback: Callable, event: SimulationEvent | IsaacEvents, **kwargs) -> int
+  - class def deregister_callback(cls, uid: int) -> bool
+  - class def deregister_all_callbacks(cls)
+  - class def enable_usd_notice_handler(cls, enable: bool)
+  - class def enable_fabric_usd_notice_handler(cls, stage_id, enable: bool)
+  - class def is_fabric_usd_notice_handler_enabled(cls, stage_id)
+  - class def assets_loading(cls) -> bool
+  - class def enable_default_callbacks(cls)
+  - class def enable_all_default_callbacks(cls, enable: bool = True)
+  - class def is_default_callback_enabled(cls, callback_name: str) -> bool
+  - class def get_default_callback_status(cls) -> dict
+  - class def enable_post_warm_start_callback(cls, enable: bool = True)
+  - class def enable_warm_start_callback(cls, enable: bool = True)
+  - class def enable_on_stop_callback(cls, enable: bool = True)
+  - class def enable_stage_open_callback(cls, enable: bool = True)
+  - class def set_backend(cls, val: str)
+  - class def get_backend(cls) -> str
+  - class def get_physics_sim_view(cls)
+  - class def set_default_physics_scene(cls, physics_scene_prim_path: str)
+  - class def get_default_physics_scene(cls) -> str
+  - class def set_physics_sim_device(cls, val)
+  - class def get_physics_sim_device(cls) -> str
+  - class def set_physics_dt(cls, dt: float = 1.0 / 60.0, physics_scene: str = None)
+  - class def get_physics_dt(cls, physics_scene: str | None = None) -> float
+  - class def get_broadphase_type(cls, physics_scene: str | None = None) -> str
+  - class def set_broadphase_type(cls, val: str, physics_scene: str | None = None)
+  - class def enable_ccd(cls, flag: bool, physics_scene: str | None = None)
+  - class def is_ccd_enabled(cls, physics_scene: str | None = None) -> bool
+  - class def enable_gpu_dynamics(cls, flag: bool, physics_scene: str | None = None)
+  - class def is_gpu_dynamics_enabled(cls, physics_scene: str | None = None) -> bool
+  - class def set_solver_type(cls, solver_type: str, physics_scene: str | None = None)
+  - class def get_solver_type(cls, physics_scene: str | None = None) -> str
+  - class def enable_stablization(cls, flag: bool, physics_scene: str | None = None)
+  - class def is_stablization_enabled(cls, physics_scene: str = None) -> bool
+
+- class IsaacEvents(Enum)
+  - PHYSICS_WARMUP: str
+  - SIMULATION_VIEW_CREATED: str
+  - PHYSICS_READY: str
+  - POST_RESET: str
+  - PRIM_DELETION: str
+  - PRE_PHYSICS_STEP: str
+  - POST_PHYSICS_STEP: str
+  - TIMELINE_STOP: str

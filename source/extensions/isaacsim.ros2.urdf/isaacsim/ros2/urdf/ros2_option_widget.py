@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+
 """UI option widgets for the ROS 2 URDF node importer."""
 
 import typing
@@ -19,12 +21,7 @@ import typing
 import omni.ui as ui
 from isaacsim.asset.importer.urdf import URDFImporterConfig
 from isaacsim.asset.importer.urdf.ui.impl.style import get_option_style
-from isaacsim.asset.importer.urdf.ui.impl.ui_utils import (
-    checkbox_builder,
-    dropdown_builder,
-    str_builder,
-    string_filed_builder,
-)
+from isaacsim.gui.components.ui_utils import checkbox_builder, dropdown_builder, str_builder, string_filed_builder
 
 
 def _option_header(collapsed: bool, title: str) -> None:
@@ -114,12 +111,20 @@ class Ros2UrdfOptionWidget:
 
     @property
     def models(self) -> dict[str, typing.Any]:
-        """Return the models dictionary used by the widget."""
+        """Models dictionary used by the widget.
+
+        Returns:
+            Dictionary mapping model names to their UI model instances.
+        """
         return self._models
 
     @property
     def config(self) -> URDFImporterConfig:
-        """Return the importer configuration instance."""
+        """Importer configuration instance.
+
+        Returns:
+            The URDFImporterConfig object used for import settings.
+        """
         return self._config
 
     def build_options(self) -> None:
@@ -172,7 +177,7 @@ class Ros2UrdfOptionWidget:
 
         Args:
             text: Status text to display.
-            color: Text color to apply. Defaults to green.
+            color: Text color to apply.
 
         Example:
 
@@ -213,6 +218,7 @@ class Ros2UrdfOptionWidget:
                     tooltip="ROS 2 node containing the robot_description parameter",
                     use_folder_picker=False,
                     identifier="ros2_urdf_node_name",
+                    label_width=90,
                 )
                 if self._on_node_changed is not None:
                     self._models["ros2_node"].add_end_edit_fn(self._on_node_changed)
@@ -236,7 +242,7 @@ class Ros2UrdfOptionWidget:
                 ui.Label("USD Output")
                 self._models["dst_path"] = string_filed_builder(
                     tooltip="USD output folder for the imported robot",
-                    default_val="Same as Imported Model(Default)",
+                    default_val="System temp directory (Default)",
                     folder_dialog_title="Select Output Folder",
                     folder_button_title="Select Folder",
                     read_only=True,
@@ -301,10 +307,22 @@ class Ros2UrdfOptionWidget:
 
         _option_frame("Colliders", build_colliders_content)
 
+    _BASE_TYPE_ITEMS = ["Source", "Fixed", "Mobile"]
+    _BASE_TYPE_TO_FIX_BASE = {"Source": None, "Fixed": True, "Mobile": False}
+
+    def _set_base_type(self, value: str) -> None:
+        """Map the Base Type dropdown selection onto ``config.fix_base``."""
+        self._config.fix_base = self._BASE_TYPE_TO_FIX_BASE[value]
+
     def _build_options_frame(self) -> None:
         """Build the Options frame."""
 
         def build_options_content() -> None:
+            from isaacsim.asset.importer.utils.impl.importer_utils import ROBOT_TYPE_TOKENS
+
+            def set_robot_type(value: str) -> None:
+                self._config.robot_type = value
+
             def set_merge_mesh(value: bool) -> None:
                 self._config.merge_mesh = value
 
@@ -312,6 +330,38 @@ class Ros2UrdfOptionWidget:
                 self._config.debug_mode = value
 
             with ui.VStack(spacing=4):
+                self._models["robot_type"] = dropdown_builder(
+                    "Robot Type",
+                    tooltip="Category of robot for the Isaac robot schema (e.g. Manipulator, Humanoid)",
+                    default_val=ROBOT_TYPE_TOKENS.index(self._config.robot_type),
+                    items=ROBOT_TYPE_TOKENS,
+                    on_clicked_fn=set_robot_type,
+                    identifier="ros2_urdf_robot_type",
+                    show_flourish=False,
+                    label_width=90,
+                )
+
+                base_type_default = 0
+                if self._config.fix_base is True:
+                    base_type_default = 1
+                elif self._config.fix_base is False:
+                    base_type_default = 2
+                self._models["base_type"] = dropdown_builder(
+                    "Base Type",
+                    tooltip=(
+                        "How to anchor the robot's root link. "
+                        "Source leaves the source URDF authoring untouched; "
+                        "Fixed adds a world-to-root fixed joint; "
+                        "Mobile removes any world-to-root fixed joint."
+                    ),
+                    default_val=base_type_default,
+                    items=self._BASE_TYPE_ITEMS,
+                    on_clicked_fn=self._set_base_type,
+                    identifier="ros2_urdf_base_type",
+                    show_flourish=False,
+                    label_width=90,
+                )
+
                 self._models["merge_mesh"] = checkbox_builder(
                     "Merge Mesh",
                     tooltip="If True, merges meshes where possible to optimize the model",

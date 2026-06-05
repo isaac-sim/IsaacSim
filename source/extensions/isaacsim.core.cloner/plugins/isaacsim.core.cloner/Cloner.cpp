@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,23 +13,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // clang-format off
 #include <pch/UsdPCH.h>
 // clang-format on
 
 #include <isaacsim/core/cloner/Cloner.h>
 #include <omni/fabric/FabricUSD.h>
-#include <omni/fabric/IFabric.h>
+// clang-format on
 
-#if !defined(_WIN32)
-#    pragma GCC diagnostic push
-#    pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#    pragma GCC diagnostic ignored "-Wunused-variable"
-#endif
-#include <omni/fabric/connectivity/Connectivity.h>
 #include <usdrt/hierarchy/IFabricHierarchy.h>
 #include <usdrt/population/IUtils.h>
+
+// clang-format off
+#if defined(__GNUC__) && !defined(_WIN32)
+#    pragma GCC diagnostic push
+#    pragma GCC diagnostic ignored "-Wunused-variable"
+#    pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 #include <usdrt/scenegraph/usd/usd/stage.h>
 #if !defined(_WIN32)
 #    pragma GCC diagnostic pop

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Shared UI utilities for robot schema visualization."""
 
 from enum import Enum, auto
@@ -372,11 +373,11 @@ class PathMap:
     hierarchy stage's prim paths.
     """
 
-    def __init__(self):
-        self.original_to_hierarchy = {}
-        self.hierarchy_to_original = {}
+    def __init__(self) -> None:
+        self.original_to_hierarchy: dict[Sdf.Path, Sdf.Path] = {}
+        self.hierarchy_to_original: dict[Sdf.Path, Sdf.Path] = {}
 
-    def insert(self, original_path: Sdf.Path, hierarchy_path: Sdf.Path):
+    def insert(self, original_path: Sdf.Path, hierarchy_path: Sdf.Path) -> None:
         """Add a path mapping.
 
         Args:
@@ -426,7 +427,7 @@ class PathMap:
         """
         return self.hierarchy_to_original.get(hierarchy_path)
 
-    def clear(self):
+    def clear(self) -> None:
         """Clear all path mappings.
 
         Example:
@@ -644,7 +645,7 @@ def _create_hierarchy_node(
     robot_root_path: Sdf.Path,
     path_map: PathMap,
     joint_connections: list[Any],
-):
+) -> None:
     """Create a hierarchy node and its children recursively.
 
     Internal helper function for generate_robot_hierarchy_stage().
@@ -858,17 +859,21 @@ def _create_hierarchy_node_mujoco(
 
 
 def generate_robot_hierarchy_stage(
+    robot_root_path: Sdf.Path | str,
     mode: HierarchyMode = HierarchyMode.LINKED,
     stage: Usd.Stage | None = None,
     masking_layer_id: str | None = None,
 ) -> tuple[Usd.Stage | None, PathMap, list[Any]]:
-    """Generate an in-memory USD stage representing the robot joint hierarchy.
+    """Generate an in-memory USD stage for a single robot's joint hierarchy.
 
-    Scans the current stage for prims with the Robot API applied, builds
-    a link tree for each robot, and creates a hierarchy stage where joints
-    are represented as parent-child relationships rather than as properties.
+    Builds a link tree for the robot at ``robot_root_path`` and creates a
+    hierarchy stage where joints are represented as parent-child
+    relationships rather than as properties. Other robots present on the
+    stage are ignored, so the cost of this call is independent of the
+    total number of robots in the scene.
 
     Args:
+        robot_root_path: Path of the robot root prim to generate. Required.
         mode: The display mode for the hierarchy.  ``LINKED`` (default) uses
             the parent-link → joint → child-link chain.  ``FLAT`` places all
             links under a ``Links`` scope and all joints under a ``Joints``
@@ -885,14 +890,17 @@ def generate_robot_hierarchy_stage(
         ``hierarchy_stage`` is an in-memory stage with the hierarchy structure,
         ``path_map`` translates between original and hierarchy paths, and
         ``joint_connections`` contains connection items for viewport visualization.
-        Returns (None, an empty path map, []) if no robots are found.
+        Returns (None, an empty path map, []) if the path does not resolve
+        to a prim with the Robot API applied.
 
     Example:
 
     .. code-block:: python
 
-        hierarchy_stage, path_map, connections = generate_robot_hierarchy_stage()
-        hierarchy_stage, path_map, connections = generate_robot_hierarchy_stage(HierarchyMode.FLAT)
+        hierarchy_stage, path_map, connections = generate_robot_hierarchy_stage("/World/Robot")
+        hierarchy_stage, path_map, connections = generate_robot_hierarchy_stage(
+            "/World/Robot", HierarchyMode.FLAT
+        )
     """
     from .masking_state import MaskingState
 
@@ -906,11 +914,14 @@ def generate_robot_hierarchy_stage(
     if not stage:
         return None, path_map, joint_connections
 
+    if not isinstance(robot_root_path, Sdf.Path):
+        robot_root_path = Sdf.Path(str(robot_root_path))
+
     if masking_layer_id:
         stage.MuteLayer(masking_layer_id)
 
     try:
-        return _generate_robot_hierarchy_stage_inner(stage, mode)
+        return _generate_robot_hierarchy_stage_inner(stage, mode, robot_root_path)
     finally:
         if masking_layer_id:
             stage.UnmuteLayer(masking_layer_id)
@@ -920,23 +931,26 @@ def generate_robot_hierarchy_stage_in_background(
     root_layer_identifier: str,
     masking_layer_id: str | None,
     mode: HierarchyMode,
+    robot_root_path: str,
 ) -> dict[str, Any] | None:
     """Run hierarchy generation in a background thread; returns serializable result.
 
     Opens a stage from root_layer_identifier, mutes the masking layer, runs
-    hierarchy generation, and returns a dict that can be passed to
-    deserialize_hierarchy_result on the main thread to rebuild the hierarchy
-    stage and path map and to build ConnectionItems from path data.
+    hierarchy generation for the given robot, and returns a dict that can
+    be passed to deserialize_hierarchy_result on the main thread to rebuild
+    the hierarchy stage and path map and to build ConnectionItems from path
+    data.
 
     Args:
         root_layer_identifier: Identifier of the root layer (e.g. from
             context stage's GetRootLayer().identifier).
         masking_layer_id: Masking layer id to mute, or None.
         mode: Hierarchy display mode.
+        robot_root_path: Path string of the robot root to generate. Required.
 
     Returns:
         Serializable dict with "layer_str", "path_map_list", "connections", or
-        None if generation failed or no robots found.
+        None if generation failed or the path does not resolve to a robot.
     """
     try:
         stage = Usd.Stage.Open(root_layer_identifier)
@@ -945,7 +959,7 @@ def generate_robot_hierarchy_stage_in_background(
     if not stage:
         return None
     hierarchy_stage, path_map, joint_connections = generate_robot_hierarchy_stage(
-        mode=mode, stage=stage, masking_layer_id=masking_layer_id
+        robot_root_path, mode=mode, stage=stage, masking_layer_id=masking_layer_id
     )
     if hierarchy_stage is None:
         return None
@@ -1021,34 +1035,28 @@ def deserialize_hierarchy_result(
 def _generate_robot_hierarchy_stage_inner(
     stage: Usd.Stage,
     mode: HierarchyMode,
+    robot_root_path: Sdf.Path,
 ) -> tuple[Usd.Stage | None, PathMap, list[Any]]:
     """Core hierarchy generation executed while the masking layer is muted.
 
     Args:
-        stage: Source USD stage containing the robot prims.
+        stage: Source USD stage containing the robot prim.
         mode: Hierarchy display mode (FLAT, LINKED, or MUJOCO).
+        robot_root_path: Path of the robot root to generate. The stage is
+            **not** traversed; only the prim at this path is inspected.
 
     Returns:
         Tuple of ``(hierarchy_stage, path_map, joint_connections)``; the
-        first element is ``None`` if no robots are found in the stage.
+        first element is ``None`` if the path does not resolve to a prim
+        with the Robot API applied.
     """
     path_map = PathMap()
     joint_connections: list[Any] = []
 
-    root_prim = stage.GetPrimAtPath("/")
-    robot_prims = [prim for prim in Usd.PrimRange(root_prim) if prim.HasAPI(robot_schema.Classes.ROBOT_API.value)]
-
-    if not robot_prims:
+    prim = stage.GetPrimAtPath(robot_root_path)
+    if not prim or not prim.IsValid() or not prim.HasAPI(robot_schema.Classes.ROBOT_API.value):
         return None, path_map, joint_connections
-
-    # Exclude robots whose root path is nested inside another robot's subtree.
-    # Such robots are drawn exclusively by their parent robot's tree.
-    robot_paths = {prim.GetPath() for prim in robot_prims}
-    top_level_robot_prims = [
-        prim
-        for prim in robot_prims
-        if not any(candidate != prim.GetPath() and prim.GetPath().HasPrefix(candidate) for candidate in robot_paths)
-    ]
+    top_level_robot_prims = [prim]
 
     # Collect valid robots with their link trees
     robot_data = []
@@ -1069,14 +1077,14 @@ def _generate_robot_hierarchy_stage_inner(
         hierarchy_root_prim = hierarchy_stage.DefinePrim(robot_root_prim.GetPath(), "Xform")
         _copy_applied_schemas(robot_root_prim, hierarchy_root_prim)
         path_map.insert(robot_root_prim.GetPath(), hierarchy_root_prim.GetPath())
-        robot_root_path = robot_root_prim.GetPath()
+        current_root_path = robot_root_prim.GetPath()
 
         if mode == HierarchyMode.FLAT:
             _generate_flat_hierarchy(
                 hierarchy_stage,
                 robot_root_prim,
                 hierarchy_root_prim,
-                robot_root_path,
+                current_root_path,
                 path_map,
                 joint_connections,
                 stage,
@@ -1088,7 +1096,7 @@ def _generate_robot_hierarchy_stage_inner(
                 hierarchy_root_prim,
                 None,
                 None,
-                robot_root_path,
+                current_root_path,
                 path_map,
                 joint_connections,
             )
@@ -1099,7 +1107,7 @@ def _generate_robot_hierarchy_stage_inner(
                 hierarchy_root_prim,
                 None,
                 None,
-                robot_root_path,
+                current_root_path,
                 path_map,
                 joint_connections,
             )

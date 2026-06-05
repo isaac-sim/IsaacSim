@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Recorder for continuous process CPU usage sampling."""
 
 import os
@@ -42,7 +43,7 @@ class CPUContinuousRecorder(MeasurementDataRecorder):
         sample_interval_frames: Sample CPU every N frames.
     """
 
-    def __init__(self, context: InputContext | None = None, sample_interval_frames: int = 10):
+    def __init__(self, context: InputContext | None = None, sample_interval_frames: int = 10) -> None:
         self.context = context
         self.sample_interval_frames = sample_interval_frames
         self._samples: list[dict[str, float]] = []
@@ -51,7 +52,7 @@ class CPUContinuousRecorder(MeasurementDataRecorder):
         self._phase: str | None = None
         self._process = psutil.Process(os.getpid())
 
-    def start_collecting(self):
+    def start_collecting(self) -> None:
         """Start continuous CPU sampling.
 
         Example:
@@ -80,7 +81,7 @@ class CPUContinuousRecorder(MeasurementDataRecorder):
             self.sample_interval_frames,
         )
 
-    def stop_collecting(self):
+    def stop_collecting(self) -> None:
         """Stop continuous CPU sampling.
 
         Example:
@@ -92,7 +93,7 @@ class CPUContinuousRecorder(MeasurementDataRecorder):
         self._subscription = None
         logger.info("CPUContinuousRecorder: Stopped collecting. Collected %d samples", len(self._samples))
 
-    def _on_app_update(self, _event: Any):
+    def _on_app_update(self, _event: Any) -> None:
         """Sample CPU usage periodically.
 
         Args:

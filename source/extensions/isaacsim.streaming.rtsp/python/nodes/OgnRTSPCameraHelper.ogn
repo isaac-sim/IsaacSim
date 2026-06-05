@@ -1,0 +1,43 @@
+{
+    "isaacsim.streaming.rtsp.RTSPCameraHelper": {
+        "version": 1,
+        "icon": "icons/isaac-sim.svg",
+        "description": "Sets up RTSP streaming for a camera render product. Attaches a Replicator writer that captures LdrColor frames and pushes them to an RTSP server via kit-livestream.",
+        "language": "Python",
+        "categoryDefinitions": "config/CategoryDefinition.json",
+        "categories": "isaacRtsp",
+        "metadata": {
+            "uiName": "RTSP Camera Helper"
+        },
+        "inputs": {
+            "execIn": {
+                "type": "execution",
+                "description": "Triggering this causes the RTSP streaming pipeline to be set up"
+            },
+            "enabled": {
+                "type": "bool",
+                "description": "True to enable the RTSP stream, False to disable",
+                "default": true
+            },
+            "renderProductPath": {
+                "type": "token",
+                "description": "Path of the render product used for capturing data"
+            },
+            "port": {
+                "type": "int",
+                "description": "RTSP server port. Each simultaneous stream needs a unique port.",
+                "default": 8554
+            },
+            "mountPath": {
+                "type": "string",
+                "description": "RTSP mount path appended to the server URL (e.g. /stream)",
+                "default": "/stream"
+            },
+            "useRawEncoding": {
+                "type": "bool",
+                "description": "When true, streams uncompressed CUDA frames and lets the RTSP server handle encoding internally. When false (default), the render pipeline pre-encodes frames as H.264 before passing them to the RTSP server, which is more efficient and supports SEI metadata injection.",
+                "default": false
+            }
+        }
+    }
+}

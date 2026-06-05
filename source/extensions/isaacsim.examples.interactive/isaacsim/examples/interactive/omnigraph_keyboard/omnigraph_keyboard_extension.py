@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Provides an extension demonstrating keyboard input control through Omnigraph programming in Isaac Sim."""
-
 
 import os
 
@@ -36,7 +35,7 @@ class OmnigraphKeyboardExtension(omni.ext.IExt):
     and provides an interactive UI for running the demonstration.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initializes the Omnigraph Keyboard extension.
 
         Sets up the UI template and registers the example with the examples browser. The example demonstrates how to control cube size using keyboard input through Omnigraph programming.
@@ -44,7 +43,6 @@ class OmnigraphKeyboardExtension(omni.ext.IExt):
         Args:
             ext_id: The extension identifier.
         """
-
         self.example_name = "Omnigraph Keyboard"
         self.category = "Input Devices"
 
@@ -73,7 +71,7 @@ class OmnigraphKeyboardExtension(omni.ext.IExt):
             category=self.category,
         )
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Cleans up the Omnigraph Keyboard extension.
 
         Deregisters the example from the examples browser.

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,7 +57,7 @@ public:
      * @param[in] rosDistro The ROS 2 distribution to use (e.g., "humble", "foxy").
      * @return True if initialization was successful, false otherwise.
      */
-    bool initialize(const std::string& rosDistro)
+    bool initialize(const std::string& rosDistro) override
     {
         if (!isaacsim::ros2::core::isRos2DistroSupported(rosDistro))
         {
@@ -81,8 +81,8 @@ public:
         if (!m_tf2Factory)
         {
 
-            using createFactory_binding = Tf2Factory* (*)();
-            createFactory_binding createFactory = (m_libraryLoader->getSymbol<createFactory_binding>("createFactory"));
+            using CreateFactoryBinding = Tf2Factory* (*)();
+            CreateFactoryBinding createFactory = (m_libraryLoader->getSymbol<CreateFactoryBinding>("createFactory"));
             if (!createFactory)
             {
                 CARB_LOG_ERROR("Unable to load symbols from the isaacsim.ros2.tf_viewer.%s library", rosDistro.c_str());
@@ -103,7 +103,7 @@ public:
      * @details
      * Cleans up subscribers and resets the ROS 2 node.
      */
-    void finalize()
+    void finalize() override
     {
         if (m_subscriberTf)
         {
@@ -126,7 +126,7 @@ public:
      *
      * @return True if processing was successful, false otherwise.
      */
-    bool spin()
+    bool spin() override
     {
         if (!isInitialized())
         {
@@ -157,8 +157,8 @@ public:
         }
 
         bool status = true;
-        status &= subscriberCallback(false);
-        status &= subscriberCallback(true);
+        status &= _subscriberCallback(false);
+        status &= _subscriberCallback(true);
         return status;
     }
 
@@ -167,7 +167,7 @@ public:
      * @details
      * Clears all transformation data stored in the buffer.
      */
-    void reset()
+    void reset() override
     {
         if (!m_buffer)
         {
@@ -184,7 +184,7 @@ public:
      *
      * @param[in] rootFrame The reference frame for all transformations.
      */
-    void computeTransforms(const std::string& rootFrame)
+    void computeTransforms(const std::string& rootFrame) override
     {
         if (!m_buffer)
         {
@@ -222,7 +222,7 @@ public:
      *
      * @return Vector of frame ID strings.
      */
-    const std::vector<std::string>& getFrames()
+    const std::vector<std::string>& getFrames() override
     {
         return m_frames;
     };
@@ -235,7 +235,7 @@ public:
      *
      * @return Vector of tuples containing child-parent frame ID pairs.
      */
-    const std::vector<std::tuple<std::string, std::string>>& getRelations()
+    const std::vector<std::tuple<std::string, std::string>>& getRelations() override
     {
         return m_relations;
     };
@@ -250,7 +250,7 @@ public:
      */
     const std::unordered_map<std::string,
                              std::tuple<std::tuple<double, double, double>, std::tuple<double, double, double, double>>>&
-    getTransforms()
+    getTransforms() override
     {
         return m_transforms;
     };
@@ -296,7 +296,7 @@ private:
      * @param[in] isStatic Whether to process messages from the static transform subscriber.
      * @return True if processing was successful, false otherwise.
      */
-    bool subscriberCallback(bool isStatic)
+    bool _subscriberCallback(bool isStatic)
     {
         if (!m_buffer)
         {

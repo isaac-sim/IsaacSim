@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,8 +16,6 @@
 #pragma once
 
 #include <carb/Interface.h>
-
-#include <cstdint>
 
 namespace isaacsim
 {
@@ -56,18 +54,18 @@ struct ImuSensorReading
  */
 struct ImuRawData
 {
-    float time{ 0.0f };
-    float dt{ 0.0f };
-    float linearVelocityX{ 0.0f };
-    float linearVelocityY{ 0.0f };
-    float linearVelocityZ{ 0.0f };
-    float angularVelocityX{ 0.0f };
-    float angularVelocityY{ 0.0f };
-    float angularVelocityZ{ 0.0f };
-    float orientationW{ 1.0f };
-    float orientationX{ 0.0f };
-    float orientationY{ 0.0f };
-    float orientationZ{ 0.0f };
+    float time{ 0.0f }; ///< Simulation time of this sample in seconds.
+    float dt{ 0.0f }; ///< Physics step delta time in seconds.
+    float linearVelocityX{ 0.0f }; ///< Linear velocity X component in m/s.
+    float linearVelocityY{ 0.0f }; ///< Linear velocity Y component in m/s.
+    float linearVelocityZ{ 0.0f }; ///< Linear velocity Z component in m/s.
+    float angularVelocityX{ 0.0f }; ///< Angular velocity X component in rad/s.
+    float angularVelocityY{ 0.0f }; ///< Angular velocity Y component in rad/s.
+    float angularVelocityZ{ 0.0f }; ///< Angular velocity Z component in rad/s.
+    float orientationW{ 1.0f }; ///< Orientation quaternion W component.
+    float orientationX{ 0.0f }; ///< Orientation quaternion X component.
+    float orientationY{ 0.0f }; ///< Orientation quaternion Y component.
+    float orientationZ{ 0.0f }; ///< Orientation quaternion Z component.
 };
 
 /**
@@ -90,7 +88,7 @@ struct ImuRawData
  */
 struct IImuSensor
 {
-    CARB_PLUGIN_INTERFACE("isaacsim::sensors::experimental::physics::IImuSensor", 1, 0);
+    CARB_PLUGIN_INTERFACE("isaacsim::sensors::experimental::physics::IImuSensor", 2, 0);
 
     /**
      * @brief Shut down the manager, destroying all sensors and freeing resources.
@@ -100,25 +98,26 @@ struct IImuSensor
     /**
      * @brief Create an IMU sensor for the given IsaacImuSensor prim.
      * @details Finds the parent rigid body by walking up the prim hierarchy and
-     * creates an IRigidBodyDataView for velocity data.
+     * creates an IRigidBodyDataView for velocity data. If a sensor already exists
+     * for this prim path the call succeeds without creating a duplicate.
      * @param primPath USD path to the IsaacImuSensor prim.
-     * @return Unique sensor ID (>= 0), or -1 on failure.
+     * @return true on success (sensor created or already exists), false on failure.
      */
-    virtual int64_t createSensor(const char* primPath) = 0;
+    virtual bool createSensor(const char* primPath) = 0;
 
     /**
      * @brief Remove a sensor and free its resources.
-     * @param sensorId ID returned by createSensor().
+     * @param primPath USD path used when the sensor was created.
      */
-    virtual void removeSensor(int64_t sensorId) = 0;
+    virtual void removeSensor(const char* primPath) = 0;
 
     /**
      * @brief Get the latest reading for a sensor.
-     * @param sensorId ID returned by createSensor().
+     * @param primPath USD path used when the sensor was created.
      * @param readGravity If true, include gravity in acceleration output.
      * @return Sensor reading. isValid is false if sensor is disabled or not found.
      */
-    virtual ImuSensorReading getSensorReading(int64_t sensorId, bool readGravity) = 0;
+    virtual ImuSensorReading getSensorReading(const char* primPath, bool readGravity) = 0;
 };
 
 } // namespace physics

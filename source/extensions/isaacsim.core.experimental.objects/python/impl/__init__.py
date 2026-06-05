@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .camera import Camera
-from .ground_plane import GroundPlane
-from .lights import CylinderLight, DiskLight, DistantLight, DomeLight, Light, RectLight, SphereLight
-from .mesh import Mesh
-from .shapes import Capsule, Cone, Cube, Cylinder, Plane, Shape, Sphere
+"""Implementation module providing concrete object classes for ground planes, lights, meshes, and geometric shapes."""
+
+from .camera import Camera as Camera
+from .ground_plane import GroundPlane as GroundPlane
+from .lights import CylinderLight as CylinderLight
+from .lights import DiskLight as DiskLight
+from .lights import DistantLight as DistantLight
+from .lights import DomeLight as DomeLight
+from .lights import Light as Light
+from .lights import RectLight as RectLight
+from .lights import SphereLight as SphereLight
+from .mesh import Mesh as Mesh
+from .shapes import Capsule as Capsule
+from .shapes import Cone as Cone
+from .shapes import Cube as Cube
+from .shapes import Cylinder as Cylinder
+from .shapes import Plane as Plane
+from .shapes import Shape as Shape
+from .shapes import Sphere as Sphere

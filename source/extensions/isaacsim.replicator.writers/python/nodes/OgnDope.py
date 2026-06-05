@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,17 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-This is the implementation of the OGN node defined in OgnDope.ogn
-"""
+"""This is the implementation of the OGN node defined in OgnDope.ogn."""
 
 import json
 
+import isaacsim.core.experimental.utils.transform as transform_utils
 import numpy as np
 import omni.graph.core as og
-from isaacsim.core.utils.rotations import euler_angles_to_quat
-from isaacsim.core.utils.transformations import pose_from_tf_matrix, tf_matrix_from_pose
-from isaacsim.replicator.writers.scripts.utils import get_image_space_points
+from isaacsim.replicator.writers.scripts.utils import get_image_space_points, pose_from_tf_matrix, tf_matrix_from_pose
 from omni.syntheticdata.scripts.helpers import get_bbox_3d_corners
 
 
@@ -118,13 +115,11 @@ def _get_semantics(
 
 
 class OgnDope:
-    """
-    Gets pose information of assets with semantic labels. Information is used to train a DOPE model.
-    """
+    """Get pose information of assets with semantic labels. Information is used to train a DOPE model."""
 
     @staticmethod
     def compute(db) -> bool:
-        """Compute the outputs from the current input"""
+        """Compute the outputs from the current input."""
 
         db.log_warn("Deprecation warning: OgnDope has been deprecated and will be removed in the next major release.")
 
@@ -185,7 +180,9 @@ class OgnDope:
         # Desired view projection matrix, transforming points from world frame to image space of desired camera
         default_camera_to_desired_camera = tf_matrix_from_pose(
             translation=(0.0, 0.0, 0.0),
-            orientation=euler_angles_to_quat(np.array(db.inputs.cameraRotation), degrees=True),
+            orientation=transform_utils.euler_angles_to_quaternion(
+                np.array(db.inputs.cameraRotation), degrees=True
+            ).numpy(),
         )
 
         world_to_default_camera_row_major = np.asarray(cameraViewTransform).reshape((4, 4))

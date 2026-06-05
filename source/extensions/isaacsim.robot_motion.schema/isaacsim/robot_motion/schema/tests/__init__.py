@@ -15,5 +15,4 @@
 
 """Tests for the robot motion schema module."""
 
-
 scan_for_test_modules = True

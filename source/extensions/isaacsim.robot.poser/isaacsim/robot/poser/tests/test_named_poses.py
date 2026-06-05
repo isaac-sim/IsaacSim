@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
 """Tests for Robot Poser named-pose CRUD, import/export, and validation."""
 
 import json
+import logging
 import os
 import tempfile
 
@@ -26,8 +27,8 @@ import omni.usd
 from isaacsim.robot.poser.robot_poser import (
     NAMED_POSES_SCOPE,
     PoseResult,
+    _build_cold_start_seeds,
     _sanitize_name,
-    apply_pose_by_name,
     delete_named_pose,
     export_poses,
     get_named_pose,
@@ -39,6 +40,7 @@ from isaacsim.robot.poser.robot_poser import (
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 from usd.schema.isaac import robot_schema
 from usd.schema.isaac.robot_schema import utils as robot_utils
+from usd.schema.isaac.robot_schema.math import Joint, Transform
 
 
 def _create_test_robot(stage: Usd.Stage) -> tuple[Usd.Prim, Usd.Prim, Usd.Prim]:
@@ -127,6 +129,51 @@ class TestNamedPoseCRUD(omni.kit.test.AsyncTestCase):
         """Verify that _sanitize_name replaces spaces and disallowed chars with underscores."""
         self.assertEqual(_sanitize_name("Home Pose"), "Home_Pose")
         self.assertEqual(_sanitize_name("a/b.c"), "a_b_c")
+
+    async def test_sanitize_name_handles_colon(self) -> None:
+        """Verify that colon is replaced (was previously passed through, crashing USD)."""
+        self.assertEqual(_sanitize_name("home:v2"), "home_v2")
+        self.assertEqual(_sanitize_name("ns:pose:1"), "ns_pose_1")
+
+    async def test_sanitize_name_handles_empty_and_invalid_leading(self) -> None:
+        """Verify that empty and non-identifier-start inputs become valid USD identifiers."""
+        self.assertTrue(Sdf.Path.IsValidIdentifier(_sanitize_name("")))
+        self.assertTrue(Sdf.Path.IsValidIdentifier(_sanitize_name("1pose")))
+        self.assertTrue(Sdf.Path.IsValidIdentifier(_sanitize_name("home:v2")))
+        self.assertTrue(Sdf.Path.IsValidIdentifier(_sanitize_name(":::")))
+
+    async def test_sanitize_name_handles_non_ascii(self) -> None:
+        """Verify that non-ASCII letters/digits are rejected by USD and replaced."""
+        # str.isalnum() accepts Unicode; Sdf.Path.IsValidIdentifier does not.
+        # Tf.MakeValidIdentifier replaces non-ASCII with underscores.
+        for raw in ("café", "位姿", "²pose", "naïve_pose", "pose-α"):
+            sanitized = _sanitize_name(raw)
+            self.assertTrue(
+                Sdf.Path.IsValidIdentifier(sanitized),
+                f"_sanitize_name({raw!r}) returned invalid identifier {sanitized!r}",
+            )
+
+    async def test_store_named_pose_with_colon_and_empty(self) -> None:
+        """Verify that previously crash-inducing inputs now store successfully."""
+        robot_prim, _, _ = self._create_robot()
+        result = self._make_pose_result()
+        self.assertTrue(store_named_pose(self._stage, robot_prim, "home:v2", result))
+        self.assertTrue(store_named_pose(self._stage, robot_prim, "", result))
+
+        names = list_named_poses(self._stage, robot_prim)
+        self.assertIn(_sanitize_name("home:v2"), names)
+        self.assertIn(_sanitize_name(""), names)
+
+    async def test_store_named_pose_warns_on_sanitized_collision(self) -> None:
+        """Verify that overwriting a sanitized name with a different raw input emits a warning."""
+        import logging
+
+        robot_prim, _, _ = self._create_robot()
+        result = self._make_pose_result()
+        self.assertTrue(store_named_pose(self._stage, robot_prim, "home:v2", result))
+        with self.assertLogs("isaacsim.robot.poser.robot_poser", level=logging.WARNING) as cm:
+            self.assertTrue(store_named_pose(self._stage, robot_prim, "home/v2", result))
+        self.assertTrue(any("sanitizes to" in msg for msg in cm.output))
 
     # -- store_named_pose --------------------------------------------------
 
@@ -417,3 +464,204 @@ class TestNamedPoseImportExport(omni.kit.test.AsyncTestCase):
             self.assertEqual(sorted(names), ["Pose_1", "Pose_2"])
         finally:
             os.unlink(path)
+
+
+class TestColdStartSeedLadder(omni.kit.test.AsyncTestCase):
+    """Unit tests for the multi-seed cold-start ladder used by ``RobotPoser.solve_ik``.
+
+    These tests do not require a USD stage or simulation — they exercise
+    the pure-Python seed-generation helper directly with synthetic Joint
+    objects.  Their purpose is to lock in the priority order, joint-limit
+    handling, and determinism guarantees that ``solve_ik``'s cold-start
+    path relies on to escape the Franka 7-DOF zero-config local minimum.
+    """
+
+    @staticmethod
+    def _make_joint(prim_path: str, lower: float, upper: float) -> Joint:
+        """Build a minimal Joint with the requested limits.
+
+        The screw axis, home pose, and joint type are irrelevant for the
+        seed-ladder helper — only ``lower``/``upper`` are read.
+        """
+        identity = Transform(t=[0.0, 0.0, 0.0], q=[1.0, 0.0, 0.0, 0.0])
+        return Joint(
+            w=np.array([0.0, 0.0, 1.0], dtype=float),
+            v=np.array([0.0, 0.0, 0.0], dtype=float),
+            home=identity,
+            prim_path=prim_path,
+            lower=float(lower),
+            upper=float(upper),
+        )
+
+    async def test_empty_chain_returns_single_zero_array(self) -> None:
+        """Verify that an empty joint list yields a single empty seed (no crash)."""
+        seeds = _build_cold_start_seeds([])
+        self.assertEqual(len(seeds), 1)
+        self.assertEqual(seeds[0].shape, (0,))
+
+    async def test_first_seed_is_joint_limit_midpoint(self) -> None:
+        """Verify the highest-priority candidate is the joint-limit midpoint."""
+        joints = [
+            self._make_joint("/r/j0", -2.0, 4.0),
+            self._make_joint("/r/j1", 0.0, 1.0),
+            self._make_joint("/r/j2", -1.5, 1.5),
+        ]
+        seeds = _build_cold_start_seeds(joints, n_random=2)
+        np.testing.assert_allclose(seeds[0], [1.0, 0.5, 0.0])
+
+    async def test_zero_configuration_is_final_fallback(self) -> None:
+        """Verify the legacy zero-configuration seed is the final candidate."""
+        joints = [self._make_joint(f"/r/j{i}", -1.0, 1.0) for i in range(4)]
+        seeds = _build_cold_start_seeds(joints, n_random=3)
+        np.testing.assert_array_equal(seeds[-1], np.zeros(4))
+
+    async def test_random_seeds_respect_finite_joint_limits(self) -> None:
+        """Verify random restarts stay inside authored joint limits."""
+        lo = [-1.5, -3.0, 0.5, -0.25]
+        hi = [1.5, 3.0, 2.0, 0.25]
+        joints = [self._make_joint(f"/r/j{i}", lo[i], hi[i]) for i in range(4)]
+        seeds = _build_cold_start_seeds(joints, n_random=5)
+        # Skip seed[0] (midpoint) and seed[-1] (zeros); inspect random restarts.
+        for q in seeds[1:-1]:
+            self.assertTrue(np.all(q >= np.array(lo)))
+            self.assertTrue(np.all(q <= np.array(hi)))
+
+    async def test_unbounded_joint_midpoint_is_zero(self) -> None:
+        """Verify joints without finite limits use 0.0 as the midpoint."""
+        joints = [
+            self._make_joint("/r/j0", -np.inf, np.inf),
+            self._make_joint("/r/j1", -2.0, 2.0),
+        ]
+        seeds = _build_cold_start_seeds(joints, n_random=0)
+        np.testing.assert_allclose(seeds[0], [0.0, 0.0])
+
+    async def test_seed_ladder_is_deterministic(self) -> None:
+        """Verify two invocations produce the same ladder (reproducibility)."""
+        joints = [self._make_joint(f"/r/j{i}", -np.pi, np.pi) for i in range(7)]
+        seeds_a = _build_cold_start_seeds(joints, n_random=3)
+        seeds_b = _build_cold_start_seeds(joints, n_random=3)
+        self.assertEqual(len(seeds_a), len(seeds_b))
+        for a, b in zip(seeds_a, seeds_b):
+            np.testing.assert_array_equal(a, b)
+
+    async def test_ladder_length_is_one_plus_random_plus_one(self) -> None:
+        """Verify ladder length: midpoint + n_random restarts + zeros."""
+        joints = [self._make_joint(f"/r/j{i}", -1.0, 1.0) for i in range(3)]
+        for n_random in (0, 1, 5):
+            seeds = _build_cold_start_seeds(joints, n_random=n_random)
+            self.assertEqual(len(seeds), 1 + n_random + 1)
+
+
+class TestColdStartSolveIK(omni.kit.test.AsyncTestCase):
+    """Behavioral tests for ``RobotPoser.solve_ik`` seeding strategy.
+
+    Uses the existing 1-DOF revolute fixture.  The fixture's joint has no
+    authored limits, so the midpoint candidate equals the legacy zeros and
+    backward compatibility is preserved.  These tests cover:
+
+    * explicit ``seed=`` short-circuits the ladder,
+    * a cached ``_last_solution`` runs first and skips the ladder when it
+      converges,
+    * a cached ``_last_solution`` that does NOT converge falls back to the
+      cold-start ladder (regression for the stale-cache trap),
+    * cold-start failure on an unreachable target emits a single warning
+      while still returning the lowest-error attempt,
+    * :meth:`RobotPoser.apply_pose` refuses to apply a failed
+      :class:`PoseResult`.
+    """
+
+    async def setUp(self) -> None:
+        """Create a fresh USD stage and 1-DOF revolute robot fixture before each test."""
+        await omni.usd.get_context().new_stage_async()
+        await omni.kit.app.get_app().next_update_async()
+        self._stage = omni.usd.get_context().get_stage()
+        self._robot, self._link, self._joint = _create_test_robot(self._stage)
+
+    async def test_cold_start_unreachable_target_warns_and_returns_best_attempt(self) -> None:
+        """Cold-start IK failure logs a warning and returns the lowest-error attempt."""
+        from isaacsim.robot.poser import RobotPoser, Transform
+
+        poser = RobotPoser(self._stage, self._robot, self._robot, self._link)
+        # Place the target far outside the chain's reachable workspace.  The
+        # 1-DOF fixture cannot translate the end link in z, so this is
+        # guaranteed to fail for every seed in the ladder.
+        target = Transform(t=[1.0, 0.0, 5.0], q=[1.0, 0.0, 0.0, 0.0])
+
+        with self.assertLogs("isaacsim.robot.poser.robot_poser", level=logging.WARNING) as cm:
+            result = poser.solve_ik(target)
+
+        self.assertFalse(result.success)
+        # Joints are populated with the best (lowest-error) attempt.
+        self.assertEqual(set(result.joints.keys()), {"/World/Robot/joint1"})
+        self.assertTrue(any("cold-start IK failed" in msg for msg in cm.output))
+
+    async def test_explicit_seed_skips_cold_start_ladder(self) -> None:
+        """Caller-supplied seed disables the cold-start ladder (no cold-start warning)."""
+        from isaacsim.robot.poser import RobotPoser, Transform
+
+        poser = RobotPoser(self._stage, self._robot, self._robot, self._link)
+        target = Transform(t=[1.0, 0.0, 0.0], q=[1.0, 0.0, 0.0, 0.0])
+
+        with self.assertNoLogs("isaacsim.robot.poser.robot_poser", level=logging.WARNING):
+            _ = poser.solve_ik(target, seed=[0.0])
+
+    async def test_cached_last_solution_skips_cold_start_ladder(self) -> None:
+        """A cached _last_solution that converges short-circuits the ladder."""
+        from isaacsim.robot.poser import RobotPoser, Transform
+
+        poser = RobotPoser(self._stage, self._robot, self._robot, self._link)
+        # Pre-cache a solution so the cached-seed path is exercised.
+        poser.set_seed([0.5])
+        target = Transform(t=[1.0, 0.0, 0.0], q=[1.0, 0.0, 0.0, 0.0])
+
+        with self.assertNoLogs("isaacsim.robot.poser.robot_poser", level=logging.WARNING):
+            _ = poser.solve_ik(target)
+
+    async def test_stale_cached_solution_falls_back_to_ladder(self) -> None:
+        """Regression: a non-converging cached ``_last_solution`` must trigger the cold-start ladder.
+
+        Previously, a stale cache from a far-away previous target would seed
+        the solver once and short-circuit the ladder. If that single attempt
+        landed in the wrong convergence basin, ``success=False`` was returned
+        even when the ladder could have converged. The fallback path runs the
+        full ladder when the cached attempt does not converge.
+        """
+        from isaacsim.robot.poser import RobotPoser, Transform
+
+        poser = RobotPoser(self._stage, self._robot, self._robot, self._link)
+        # Force a cache that cannot converge to the target. For the 1-DOF
+        # fixture the cache is itself probably good enough, so target an
+        # unreachable z to ensure the cached attempt fails. The point under
+        # test is the WARNING surface: when cold-start fallback runs we get
+        # the cold-start warning; without fallback we would get nothing.
+        poser.set_seed([1.234])
+        target = Transform(t=[1.0, 0.0, 7.0], q=[1.0, 0.0, 0.0, 0.0])
+
+        with self.assertLogs("isaacsim.robot.poser.robot_poser", level=logging.WARNING) as cm:
+            result = poser.solve_ik(target)
+
+        self.assertFalse(result.success)
+        self.assertTrue(
+            any("cold-start IK failed" in msg and "stale-cache fallback" in msg for msg in cm.output),
+            f"Expected stale-cache fallback warning, got: {cm.output}",
+        )
+
+    async def test_apply_pose_refuses_failed_pose_result(self) -> None:
+        """Regression: ``apply_pose(PoseResult)`` with ``success=False`` must be a no-op."""
+        from isaacsim.robot.poser import PoseResult, RobotPoser
+
+        poser = RobotPoser(self._stage, self._robot, self._robot, self._link)
+        failed = PoseResult(
+            success=False,
+            joints={"/World/Robot/joint1": 1.234},
+            joint_fixed={"/World/Robot/joint1": False},
+            start_link="/World/Robot",
+            end_link="/World/Robot/link1",
+        )
+
+        with self.assertLogs("isaacsim.robot.poser.robot_poser", level=logging.WARNING) as cm:
+            poser.apply_pose(failed)
+        self.assertTrue(
+            any("refusing to apply a failed PoseResult" in msg for msg in cm.output),
+            f"Expected refusal warning, got: {cm.output}",
+        )

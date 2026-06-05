@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Functions for manipulating and performing operations on Warp arrays and other types.
-"""
+"""Functions for manipulating and performing operations on Warp arrays and other types."""
 
 from __future__ import annotations
 
@@ -24,8 +22,20 @@ import numpy as np
 import warp as wp
 from warp._src.types import np_dtype_to_warp_type
 
+_INDICES_CACHE: dict[tuple[int, type, str], wp.array] = {}
+
 
 def _broadcastable_shape(src: tuple[int], dst: tuple[int]) -> tuple[tuple[int] | None, tuple[bool] | None]:
+    """Determine the broadcastable shape and axis information for broadcasting operations.
+
+    Args:
+        src: Source shape tuple.
+        dst: Destination shape tuple to broadcast to.
+
+    Returns:
+        A tuple containing the supporting shape and boolean flags for each axis indicating
+        whether broadcasting is needed.
+    """
     shape = [1] * len(dst)
     axes = [True] * len(dst)
     reversed_src = src[::-1]
@@ -42,6 +52,15 @@ def _broadcastable_shape(src: tuple[int], dst: tuple[int]) -> tuple[tuple[int] |
 
 
 def _astype(src: wp.array, dtype: type) -> wp.array:
+    """Cast a Warp array to a different data type.
+
+    Args:
+        src: Source Warp array to cast.
+        dtype: Target data type for the output array.
+
+    Returns:
+        New Warp array with the specified data type and same shape as source.
+    """
     dst = wp.empty(shape=src.shape, dtype=dtype, device=src.device)
     wp.launch(
         _WK_CAST[src.ndim],
@@ -242,7 +261,13 @@ def resolve_indices(
     if x is None:
         if count is None:
             raise ValueError("Either input argument `x` or `count` must be provided")
-        return wp.array(np.arange(count), dtype=dtype, device=device)
+        resolved_device = parse_device(device)
+        key = (count, dtype, str(resolved_device))
+        cached = _INDICES_CACHE.get(key)
+        if cached is None:
+            cached = wp.array(np.arange(count), dtype=dtype, device=resolved_device)
+            _INDICES_CACHE[key] = cached
+        return cached
     elif isinstance(x, wp.array):
         if device is not None:
             x = x.to(device)
@@ -374,31 +399,62 @@ Custom Warp kernels.
 
 
 @wp.kernel(enable_backward=False)
-def _wk_cast_1d(src: wp.array(ndim=1), dst: wp.array(ndim=1)):
+def _wk_cast_1d(src: wp.array(ndim=1), dst: wp.array(ndim=1)) -> None:
+    """Warp kernel for casting 1D arrays to a different data type.
+
+    Args:
+        src: Source 1D Warp array to cast.
+        dst: Destination 1D Warp array with target data type.
+    """
     i = wp.tid()
     dst[i] = dst.dtype(src[i])
 
 
 @wp.kernel(enable_backward=False)
-def _wk_cast_2d(src: wp.array(ndim=2), dst: wp.array(ndim=2)):
+def _wk_cast_2d(src: wp.array(ndim=2), dst: wp.array(ndim=2)) -> None:
+    """Warp kernel for casting 2D arrays to a different data type.
+
+    Args:
+        src: Source 2D Warp array to cast.
+        dst: Destination 2D Warp array with target data type.
+    """
     i, j = wp.tid()
     dst[i, j] = dst.dtype(src[i, j])
 
 
 @wp.kernel(enable_backward=False)
-def _wk_cast_3d(src: wp.array(ndim=3), dst: wp.array(ndim=3)):
+def _wk_cast_3d(src: wp.array(ndim=3), dst: wp.array(ndim=3)) -> None:
+    """Warp kernel for casting 3D arrays to a different data type.
+
+    Args:
+        src: Source 3D Warp array to cast.
+        dst: Destination 3D Warp array with target data type.
+    """
     i, j, k = wp.tid()
     dst[i, j, k] = dst.dtype(src[i, j, k])
 
 
 @wp.kernel(enable_backward=False)
-def _wk_cast_4d(src: wp.array(ndim=4), dst: wp.array(ndim=4)):
-    i, j, k, l = wp.tid()
-    dst[i, j, k, l] = dst.dtype(src[i, j, k, l])
+def _wk_cast_4d(src: wp.array(ndim=4), dst: wp.array(ndim=4)) -> None:
+    """Warp kernel for casting 4D arrays to a different data type.
+
+    Args:
+        src: Source 4D Warp array to cast.
+        dst: Destination 4D Warp array with target data type.
+    """
+    i, j, k, w = wp.tid()
+    dst[i, j, k, w] = dst.dtype(src[i, j, k, w])
 
 
 @wp.kernel(enable_backward=False)
-def _wk_broadcast_1d(src: wp.array(ndim=1), dst: wp.array(ndim=1), axis_0: bool):
+def _wk_broadcast_1d(src: wp.array(ndim=1), dst: wp.array(ndim=1), axis_0: bool) -> None:
+    """Warp kernel for broadcasting 1D arrays.
+
+    Args:
+        src: Source 1D Warp array.
+        dst: Destination 1D Warp array to fill.
+        axis_0: Whether to broadcast along axis 0.
+    """
     i = wp.tid()
     index_0 = i
     if axis_0:
@@ -407,7 +463,15 @@ def _wk_broadcast_1d(src: wp.array(ndim=1), dst: wp.array(ndim=1), axis_0: bool)
 
 
 @wp.kernel(enable_backward=False)
-def _wk_broadcast_2d(src: wp.array(ndim=2), dst: wp.array(ndim=2), axis_0: bool, axis_1: bool):
+def _wk_broadcast_2d(src: wp.array(ndim=2), dst: wp.array(ndim=2), axis_0: bool, axis_1: bool) -> None:
+    """Warp kernel for broadcasting 2D arrays.
+
+    Args:
+        src: Source 2D Warp array.
+        dst: Destination 2D Warp array to fill.
+        axis_0: Whether to broadcast along axis 0.
+        axis_1: Whether to broadcast along axis 1.
+    """
     i, j = wp.tid()
     index_0, index_1 = i, j
     if axis_0:
@@ -418,7 +482,16 @@ def _wk_broadcast_2d(src: wp.array(ndim=2), dst: wp.array(ndim=2), axis_0: bool,
 
 
 @wp.kernel(enable_backward=False)
-def _wk_broadcast_3d(src: wp.array(ndim=3), dst: wp.array(ndim=3), axis_0: bool, axis_1: bool, axis_2: bool):
+def _wk_broadcast_3d(src: wp.array(ndim=3), dst: wp.array(ndim=3), axis_0: bool, axis_1: bool, axis_2: bool) -> None:
+    """Warp kernel for broadcasting 3D arrays.
+
+    Args:
+        src: Source 3D Warp array.
+        dst: Destination 3D Warp array to fill.
+        axis_0: Whether to broadcast along axis 0.
+        axis_1: Whether to broadcast along axis 1.
+        axis_2: Whether to broadcast along axis 2.
+    """
     i, j, k = wp.tid()
     index_0, index_1, index_2 = i, j, k
     if axis_0:
@@ -433,9 +506,19 @@ def _wk_broadcast_3d(src: wp.array(ndim=3), dst: wp.array(ndim=3), axis_0: bool,
 @wp.kernel(enable_backward=False)
 def _wk_broadcast_4d(
     src: wp.array(ndim=4), dst: wp.array(ndim=4), axis_0: bool, axis_1: bool, axis_2: bool, axis_3: bool
-):
-    i, j, k, l = wp.tid()
-    index_0, index_1, index_2, index_3 = i, j, k, l
+) -> None:
+    """Warp kernel for broadcasting 4D arrays.
+
+    Args:
+        src: Source 4D Warp array.
+        dst: Destination 4D Warp array to fill.
+        axis_0: Whether to broadcast along axis 0.
+        axis_1: Whether to broadcast along axis 1.
+        axis_2: Whether to broadcast along axis 2.
+        axis_3: Whether to broadcast along axis 3.
+    """
+    i, j, k, w = wp.tid()
+    index_0, index_1, index_2, index_3 = i, j, k, w
     if axis_0:
         index_0 = 0
     if axis_1:
@@ -444,7 +527,7 @@ def _wk_broadcast_4d(
         index_2 = 0
     if axis_3:
         index_3 = 0
-    dst[i, j, k, l] = src[index_0, index_1, index_2, index_3]
+    dst[i, j, k, w] = src[index_0, index_1, index_2, index_3]
 
 
 _WK_CAST = [

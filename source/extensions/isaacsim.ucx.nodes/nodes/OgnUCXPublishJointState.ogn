@@ -3,7 +3,7 @@
         "version": 1,
         "icon": "icons/isaac-sim.svg",
         "description": [
-            "This node publishes joint states of a robot via UCX communication"
+            "This node publishes joint states via UCX communication. Connect joint data from upstream nodes (e.g. Isaac Read Joint State)."
         ],
         "metadata": {
             "uiName": "UCX Publish Joint State"
@@ -18,16 +18,12 @@
             "port": {
                 "type": "uint",
                 "description": "Port number for UCX communication",
-                "default": 13337
+                "default": 50008
             },
             "tag": {
                 "type": "uint64",
-                "description": "UCX tag for message identification",
-                "default": 1
-            },
-            "targetPrim":{
-                "type": "target",
-                "description": "USD reference to the robot prim"
+                "description": "UCX tag for message identification. Default is FNV-1a 32-bit hash of 'isaac.JointState'.",
+                "default": 3806437495
             },
             "timeStamp": {
                 "type": "double",
@@ -39,7 +35,22 @@
                 "type": "uint",
                 "description": "Timeout in milliseconds for UCX send requests. If 0, waits indefinitely.",
                 "uiName": "Timeout (ms)",
-                "default": 1
+                "default": 0
+            },
+            "jointPositions": {
+                "type": "double[]",
+                "description": "Joint positions array",
+                "default": []
+            },
+            "jointVelocities": {
+                "type": "double[]",
+                "description": "Joint velocities array",
+                "default": []
+            },
+            "jointEfforts": {
+                "type": "double[]",
+                "description": "Joint efforts array",
+                "default": []
             }
         },
         "outputs": {

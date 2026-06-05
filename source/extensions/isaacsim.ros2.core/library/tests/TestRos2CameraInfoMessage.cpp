@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 /*
 Test is implemented using the doctest C++ testing framework:
   https://github.com/doctest/doctest/blob/master/doc/markdown/readme.md
@@ -132,21 +133,21 @@ TEST_SUITE("isaacsim.ros2.core.camera_info_message_tests")
             // K = [fx  0 cx]
             //     [ 0 fy cy]
             //     [ 0  0  1]
-            double K[9] = { 500.0, 0.0, 320.0, 0.0, 500.0, 240.0, 0.0, 0.0, 1.0 };
+            double K[9] = { 500.0, 0.0, 320.0, 0.0, 500.0, 240.0, 0.0, 0.0, 1.0 }; // NOLINT(readability-identifier-naming)
             cameraInfoMsg->writeIntrinsicMatrix(K, 9);
             CHECK(true);
         }
 
         SUBCASE("Identity matrix")
         {
-            double K[9] = { 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 };
+            double K[9] = { 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 }; // NOLINT(readability-identifier-naming)
             cameraInfoMsg->writeIntrinsicMatrix(K, 9);
             CHECK(true);
         }
 
         SUBCASE("Different focal lengths")
         {
-            double K[9] = { 600.0, 0.0, 640.0, 0.0, 400.0, 360.0, 0.0, 0.0, 1.0 };
+            double K[9] = { 600.0, 0.0, 640.0, 0.0, 400.0, 360.0, 0.0, 0.0, 1.0 }; // NOLINT(readability-identifier-naming)
             cameraInfoMsg->writeIntrinsicMatrix(K, 9);
             CHECK(true);
         }
@@ -165,7 +166,9 @@ TEST_SUITE("isaacsim.ros2.core.camera_info_message_tests")
             // P = [fx  0 cx tx]
             //     [ 0 fy cy ty]
             //     [ 0  0  1  0]
-            double P[12] = { 500.0, 0.0, 320.0, 0.0, 0.0, 500.0, 240.0, 0.0, 0.0, 0.0, 1.0, 0.0 };
+            double P[12] = {
+                500.0, 0.0, 320.0, 0.0, 0.0, 500.0, 240.0, 0.0, 0.0, 0.0, 1.0, 0.0
+            }; // NOLINT(readability-identifier-naming)
             cameraInfoMsg->writeProjectionMatrix(P, 12);
             CHECK(true);
         }
@@ -173,8 +176,9 @@ TEST_SUITE("isaacsim.ros2.core.camera_info_message_tests")
         SUBCASE("Projection matrix with baseline")
         {
             // Stereo camera with baseline
-            double P[12] = { 500.0, 0.0,   320.0, -50.0, // tx = -fx * baseline
-                             0.0,   500.0, 240.0, 0.0,   0.0, 0.0, 1.0, 0.0 };
+            double P[12] = { 500.0, 0.0, 320.0, -50.0, // tx = -fx * baseline  //
+                                                       // NOLINT(readability-identifier-naming)
+                             0.0, 500.0, 240.0, 0.0, 0.0, 0.0, 1.0, 0.0 };
             cameraInfoMsg->writeProjectionMatrix(P, 12);
             CHECK(true);
         }
@@ -190,14 +194,14 @@ TEST_SUITE("isaacsim.ros2.core.camera_info_message_tests")
 
         SUBCASE("Identity rectification (no rectification needed)")
         {
-            double R[9] = { 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 };
+            double R[9] = { 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 }; // NOLINT(readability-identifier-naming)
             cameraInfoMsg->writeRectificationMatrix(R, 9);
             CHECK(true);
         }
 
         SUBCASE("Rotation rectification matrix")
         {
-            double R[9] = { 0.999, 0.01, 0.0, -0.01, 0.999, 0.0, 0.0, 0.0, 1.0 };
+            double R[9] = { 0.999, 0.01, 0.0, -0.01, 0.999, 0.0, 0.0, 0.0, 1.0 }; // NOLINT(readability-identifier-naming)
             cameraInfoMsg->writeRectificationMatrix(R, 9);
             CHECK(true);
         }
@@ -213,7 +217,7 @@ TEST_SUITE("isaacsim.ros2.core.camera_info_message_tests")
 
         SUBCASE("Plumb bob distortion model")
         {
-            std::vector<double> D = { 0.1, -0.2, 0.001, -0.001, 0.0 };
+            std::vector<double> D = { 0.1, -0.2, 0.001, -0.001, 0.0 }; // NOLINT(readability-identifier-naming)
             std::string model = "plumb_bob";
             cameraInfoMsg->writeDistortionParameters(D, model);
             CHECK(true);
@@ -221,7 +225,7 @@ TEST_SUITE("isaacsim.ros2.core.camera_info_message_tests")
 
         SUBCASE("No distortion")
         {
-            std::vector<double> D = { 0.0, 0.0, 0.0, 0.0, 0.0 };
+            std::vector<double> D = { 0.0, 0.0, 0.0, 0.0, 0.0 }; // NOLINT(readability-identifier-naming)
             std::string model = "plumb_bob";
             cameraInfoMsg->writeDistortionParameters(D, model);
             CHECK(true);
@@ -229,7 +233,9 @@ TEST_SUITE("isaacsim.ros2.core.camera_info_message_tests")
 
         SUBCASE("Rational polynomial model")
         {
-            std::vector<double> D = { 0.1, -0.2, 0.001, -0.001, 0.15, -0.28, 0.002, -0.0003 };
+            std::vector<double> D = {
+                0.1, -0.2, 0.001, -0.001, 0.15, -0.28, 0.002, -0.0003
+            }; // NOLINT(readability-identifier-naming)
             std::string model = "rational_polynomial";
             cameraInfoMsg->writeDistortionParameters(D, model);
             CHECK(true);
@@ -237,7 +243,7 @@ TEST_SUITE("isaacsim.ros2.core.camera_info_message_tests")
 
         SUBCASE("Empty distortion coefficients")
         {
-            std::vector<double> D;
+            std::vector<double> D; // NOLINT(readability-identifier-naming)
             std::string model = "";
             cameraInfoMsg->writeDistortionParameters(D, model);
             CHECK(true);
@@ -259,16 +265,18 @@ TEST_SUITE("isaacsim.ros2.core.camera_info_message_tests")
 
         cameraInfoMsg->writeResolution(480, 640);
 
-        double K[9] = { 500.0, 0.0, 320.0, 0.0, 500.0, 240.0, 0.0, 0.0, 1.0 };
+        double K[9] = { 500.0, 0.0, 320.0, 0.0, 500.0, 240.0, 0.0, 0.0, 1.0 }; // NOLINT(readability-identifier-naming)
         cameraInfoMsg->writeIntrinsicMatrix(K, 9);
 
-        double P[12] = { 500.0, 0.0, 320.0, 0.0, 0.0, 500.0, 240.0, 0.0, 0.0, 0.0, 1.0, 0.0 };
+        double P[12] = {
+            500.0, 0.0, 320.0, 0.0, 0.0, 500.0, 240.0, 0.0, 0.0, 0.0, 1.0, 0.0
+        }; // NOLINT(readability-identifier-naming)
         cameraInfoMsg->writeProjectionMatrix(P, 12);
 
-        double R[9] = { 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 };
+        double R[9] = { 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 }; // NOLINT(readability-identifier-naming)
         cameraInfoMsg->writeRectificationMatrix(R, 9);
 
-        std::vector<double> D = { 0.0, 0.0, 0.0, 0.0, 0.0 };
+        std::vector<double> D = { 0.0, 0.0, 0.0, 0.0, 0.0 }; // NOLINT(readability-identifier-naming)
         std::string model = "plumb_bob";
         cameraInfoMsg->writeDistortionParameters(D, model);
 

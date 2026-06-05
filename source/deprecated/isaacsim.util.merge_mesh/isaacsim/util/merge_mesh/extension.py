@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Extension module for the Mesh Merge Tool UI."""
 
 import gc
 import weakref
@@ -27,7 +29,6 @@ from isaacsim.gui.components.menu import make_menu_item_description
 from isaacsim.gui.components.style import get_style
 from isaacsim.gui.components.ui_utils import btn_builder, cb_builder, combo_cb_str_builder, str_builder
 from omni.kit.menu.utils import MenuItemDescription, add_menu_items, remove_menu_items
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
 
 from .mesh_merger import MeshMerger
 
@@ -37,11 +38,12 @@ EXTENSION_NAME = "Mesh Merge Tool"
 class Extension(omni.ext.IExt):
     """Mesh Merge Tool extension for combining multiple meshes into a single mesh."""
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize the extension and create the UI window.
 
         Args:
             ext_id: The unique identifier for this extension instance.
+
         """
         carb.log_warn(
             f"Extension {EXTENSION_NAME} is deprecated since ISaac Sim 6.0.0. Replaced with the Scene Optimizer"
@@ -63,7 +65,7 @@ class Extension(omni.ext.IExt):
 
         self.mesh_merger = MeshMerger(self._stage)
 
-    def build_ui(self):
+    def build_ui(self) -> None:
         """Build the user interface for the Mesh Merge Tool window."""
         with self._window.frame:
             with ui.HStack(spacing=5):
@@ -76,13 +78,13 @@ class Extension(omni.ext.IExt):
                         vertical_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_ON,
                     )
 
-                    def input_changed(model):
+                    def input_changed(model: object) -> None:
                         if input_frame.collapsed:
-                            input_frame.title = "Input ({})".format(model.get_value_as_string())
+                            input_frame.title = f"Input ({model.get_value_as_string()})"
 
-                    def collapsed_changed_fn(frame, base_txt, model, collapsed):
+                    def collapsed_changed_fn(frame: object, base_txt: str, model: object, collapsed: bool) -> None:
                         if collapsed:
-                            frame.title = base_txt + " ({})".format(model.get_value_as_string())
+                            frame.title = base_txt + f" ({model.get_value_as_string()})"
                         else:
                             frame.title = base_txt
 
@@ -137,33 +139,36 @@ class Extension(omni.ext.IExt):
                     self.mesh_merger.on_materials_changed_fn = self.on_mat_changed
                     btn_builder(label="Merge Selected Prim", text="Merge", on_clicked_fn=self._merge_mesh)
 
-    def on_mat_changed(self, value):
+    def on_mat_changed(self, value: object) -> None:
         """Handle material change events from the mesh merger.
 
         Args:
             value: The new material destination path value.
+
         """
         if type(value) == str:
             self.override_looks_directory[1].set_value(value)
 
-    def on_mat_dest_changed(self, value):
+    def on_mat_dest_changed(self, value: str) -> None:
         """Handle material destination path change events from the UI.
 
         Args:
             value: The new material destination path entered by the user.
+
         """
         if self.mesh_merger.materials_destination != value:
             self.mesh_merger.materials_destination = value
 
-    def _menu_callback(self):
+    def _menu_callback(self) -> None:
         """Toggle the visibility of the Mesh Merge Tool window."""
         self._window.visible = not self._window.visible
 
-    def _on_window(self, visible):
+    def _on_window(self, visible: bool) -> None:
         """Handle window visibility change events.
 
         Args:
             visible: Whether the window is now visible.
+
         """
         if self._window.visible:
             self._usd_context = omni.usd.get_context()
@@ -178,13 +183,14 @@ class Extension(omni.ext.IExt):
         else:
             self._stage_event_sub = None
 
-    def _on_stage_event(self, event=None):
+    def _on_stage_event(self, event: object = None) -> None:
         """Handle stage events such as selection changes.
 
         Updates the UI to reflect the currently selected prims and their mesh properties.
 
         Args:
             event: The stage event that triggered this callback. If None, forces a UI update.
+
         """
         if self._window.visible:
             self._stage = omni.usd.get_context().get_stage()
@@ -214,11 +220,11 @@ class Extension(omni.ext.IExt):
                     self.models["output_mesh"].set_value("")
                     self.models["output_subset"].set_value(0)
 
-    def _merge_mesh(self):
+    def _merge_mesh(self) -> None:
         """Execute the mesh merge operation using the current settings."""
         self.mesh_merger.merge_meshes()
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up resources when the extension is unloaded."""
         remove_menu_items(self._menu_items, "Tools")
         self._window = None

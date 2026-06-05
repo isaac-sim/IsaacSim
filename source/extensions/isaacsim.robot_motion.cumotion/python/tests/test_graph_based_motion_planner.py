@@ -12,7 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
+
+"""Tests for the graph-based motion planner functionality with Franka robot configurations."""
 
 import cumotion
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -30,8 +31,26 @@ from omni.kit.app import get_app
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of the module will make it auto-discoverable by omni.kit.test
 class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
+    """Test suite for the ``GraphBasedMotionPlanner`` class with Franka robot configurations.
+
+    This test class validates the functionality of the cuMotion graph-based motion planner using a Franka robot.
+    It tests various planning scenarios including configuration space planning, task space planning, obstacle
+    avoidance, error handling, and input validation. The tests cover both successful planning cases and edge cases
+    where planning may fail or encounter errors.
+
+    The test suite includes validation of:
+    - Configuration space (joint space) motion planning
+    - Task space pose and translation target planning
+    - Obstacle avoidance capabilities
+    - Error handling for invalid inputs and unreachable targets
+    - Custom configuration file usage
+    - Different input formats (numpy arrays, warp arrays, Python lists)
+    - Joint limit validation
+    - Custom tool frame specification
+    """
+
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment before each test."""
         await stage_utils.create_new_stage_async()
 
@@ -41,7 +60,8 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
         self._timeline = omni.timeline.get_timeline_interface()
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Clean up test environment after each test."""
         # Stop timeline if running
         if self._timeline.is_playing():
             self._timeline.stop()
@@ -52,7 +72,8 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
 
         await get_app().next_update_async()
 
-    async def test_plan_to_cspace_target(self):
+    async def test_plan_to_cspace_target(self) -> None:
+        """Test configuration space planning between two joint configurations."""
         # create a cumotion robot configuration:
         cumotion_robot = cu_mg.load_cumotion_supported_robot("franka")
 
@@ -80,7 +101,7 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(path)
         print(f"path found: {path.get_waypoints()}")
 
-    async def test_plan_to_pose_target_no_obstacles(self):
+    async def test_plan_to_pose_target_no_obstacles(self) -> None:
         """Test task space pose planning to a reachable target."""
         cumotion_robot = cu_mg.load_cumotion_supported_robot("franka")
 
@@ -109,7 +130,7 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(path)
         self.assertGreater(path.get_waypoints_count(), 1)
 
-    async def test_plan_to_translation_target_no_obstacles(self):
+    async def test_plan_to_translation_target_no_obstacles(self) -> None:
         """Test translation-only planning to a reachable target."""
         cumotion_robot = cu_mg.load_cumotion_supported_robot("franka")
 
@@ -137,7 +158,7 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(path)
         self.assertGreater(path.get_waypoints_count(), 1)
 
-    async def test_plan_with_obstacle_avoidance(self):
+    async def test_plan_with_obstacle_avoidance(self) -> None:
         """Test planning around an obstacle blocking the path."""
         cumotion_robot = cu_mg.load_cumotion_supported_robot("franka")
 
@@ -170,7 +191,7 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(path)
         self.assertGreater(path.get_waypoints_count(), 1)
 
-    async def test_no_path_exists(self):
+    async def test_no_path_exists(self) -> None:
         """Test that None is returned when no path can be found."""
         cumotion_robot = cu_mg.load_cumotion_supported_robot("franka")
 
@@ -202,7 +223,7 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertIsNone(path)
 
-    async def test_invalid_joint_dimensions(self):
+    async def test_invalid_joint_dimensions(self) -> None:
         """Test error handling with incorrect joint dimension inputs."""
         cumotion_robot = cu_mg.load_cumotion_supported_robot("franka")
 
@@ -241,7 +262,7 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
                 q_initial=q_wrong_size, translation_target=[0.5, 0.0, 0.5]
             )
 
-    async def test_plan_with_custom_config_file(self):
+    async def test_plan_with_custom_config_file(self) -> None:
         """Test planning with a custom configuration file."""
         cumotion_robot = cu_mg.load_cumotion_supported_robot("franka")
 
@@ -269,7 +290,7 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(path)
         self.assertGreater(path.get_waypoints_count(), 1)
 
-    async def test_plan_with_absolute_config_path(self):
+    async def test_plan_with_absolute_config_path(self) -> None:
         """Test planning with absolute configuration file path (auto-detected)."""
         cumotion_robot = cu_mg.load_cumotion_supported_robot("franka")
 
@@ -300,7 +321,7 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(path)
         self.assertGreater(path.get_waypoints_count(), 1)
 
-    async def test_same_start_and_goal(self):
+    async def test_same_start_and_goal(self) -> None:
         """Test planning when start and goal configurations are identical."""
         cumotion_robot = cu_mg.load_cumotion_supported_robot("franka")
 
@@ -324,7 +345,7 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
         # Should return a valid path (even if trivial)
         self.assertIsNotNone(path)
 
-    async def test_invalid_orientation_format(self):
+    async def test_invalid_orientation_format(self) -> None:
         """Test error handling for invalid orientation formats in pose planning."""
         cumotion_robot = cu_mg.load_cumotion_supported_robot("franka")
 
@@ -351,7 +372,7 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
                 q_initial=q_initial, position=target_position, orientation=invalid_orientation
             )
 
-    async def test_custom_tool_frame(self):
+    async def test_custom_tool_frame(self) -> None:
         """Test planning with a custom tool frame."""
         cumotion_robot = cu_mg.load_cumotion_supported_robot("franka")
 
@@ -381,7 +402,7 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertIsNotNone(path)
 
-    async def test_warp_array_inputs(self):
+    async def test_warp_array_inputs(self) -> None:
         """Test planning with warp array inputs."""
         cumotion_robot = cu_mg.load_cumotion_supported_robot("franka")
 
@@ -411,7 +432,7 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(path)
         self.assertGreater(path.get_waypoints_count(), 1)
 
-    async def test_list_inputs(self):
+    async def test_list_inputs(self) -> None:
         """Test planning with list inputs."""
         cumotion_robot = cu_mg.load_cumotion_supported_robot("franka")
 
@@ -436,7 +457,7 @@ class TestGraphBasedMotionPlannerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(path)
         self.assertGreater(path.get_waypoints_count(), 1)
 
-    async def test_joint_limit_violations(self):
+    async def test_joint_limit_violations(self) -> None:
         """Test planning with targets that may violate joint limits."""
         cumotion_robot = cu_mg.load_cumotion_supported_robot("franka")
 

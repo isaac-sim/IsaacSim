@@ -13,4 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test utilities and modules for asset transformer functionality."""
+
 scan_for_test_modules = True

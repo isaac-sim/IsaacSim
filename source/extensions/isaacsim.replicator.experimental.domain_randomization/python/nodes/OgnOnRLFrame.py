@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,13 +47,15 @@ class OgnOnRLFrame:
         Returns:
             True if computation completed successfully.
         """
-        if not context._context or not context._context.trigger:
+        ctx = context.resolve_context()
+
+        if not ctx or not ctx.trigger:
             db.outputs.execOut = og.ExecutionAttributeState.DISABLED
             return True
 
-        context._context.trigger = False
+        ctx.trigger = False
         state = db.per_instance_state
-        reset_inds = context.get_reset_inds()
+        reset_inds = ctx.reset_inds
 
         if state.frame_count is None:
             state.frame_count = np.zeros(db.inputs.num_envs)
@@ -65,7 +67,6 @@ class OgnOnRLFrame:
             db.outputs.resetInds = []
 
         db.outputs.frameNum = state.frame_count
-
         state.frame_count += 1
 
         db.outputs.execOut = og.ExecutionAttributeState.ENABLED

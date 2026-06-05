@@ -1,0 +1,39 @@
+[package]
+version = "1.0.1"
+category = "Simulation"
+title = "Holoscan Sensor Bridge"
+description = "The Holoscan Sensor Bridge (HSB) extension provides OmniGraph nodes featuring HSB emulator to enable high-performance communication between Isaac Sim and external applications with low-latency sensor data transfer"
+keywords = ["isaac", "holoscan", "hsb", "sensor", "bridge", "communication", "omnigraph", "emulator", "external"]
+changelog = "docs/CHANGELOG.md"
+readme = "docs/Overview.md"
+preview_image = "data/preview.png"
+icon = "data/icon.png"
+writeTarget.kit = true
+writeTarget.platform = true
+
+[dependencies]
+"isaacsim.hsb.core" = {}
+"isaacsim.hsb.nodes" = {}
+
+[[python.module]]
+name = "isaacsim.hsb.bridge"
+
+[settings]
+# All HSB Bridge settings are centrally defined in the isaacsim.hsb.core extension.
+
+[[test]]
+name = "startup"
+enabled = true
+timeout = 300
+args = [
+    "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
+]
+stdoutFailPatterns.exclude = [
+    "*omni.replicator.nv*",
+    "*SyntheticData extension needs*",
+    "*[HSB Bridge] Failed to connect: Failed to create socket*",
+    "*Failed to initialize endpoint*",
+]
+
+[documentation]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

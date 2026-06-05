@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,20 +12,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Shared utility helpers for benchmark services."""
 
-import asyncio
-import dataclasses
 import functools
 import inspect
 import logging
 import os
-import platform
-import stat
 import sys
 import time
 import traceback
-from enum import Enum, auto
 from pathlib import Path
 from typing import Any
 from urllib import parse as urlparse
@@ -68,7 +64,7 @@ def set_up_logging(name: str) -> logging.Logger:
     return logger
 
 
-def set_persistent_setting(name: str, value: Any, type: type):
+def set_persistent_setting(name: str, value: Any, type: type) -> None:
     """Set a persistent setting and remember the original value.
 
     Args:
@@ -96,7 +92,7 @@ def set_persistent_setting(name: str, value: Any, type: type):
     _set_settings_value(name, value, type)
 
 
-def restore_persistent_settings():
+def restore_persistent_settings() -> None:
     """Restore all previously captured persistent settings.
 
     Example:
@@ -109,7 +105,7 @@ def restore_persistent_settings():
         _set_settings_value(name, _dict["value"], _dict["type"])
 
 
-def _set_settings_value(name: str, value: Any, type: type):
+def _set_settings_value(name: str, value: Any, type: type) -> None:
     """Set a settings value directly.
 
     Args:
@@ -166,7 +162,7 @@ async def stage_event() -> int:
     return event
 
 
-async def capture_next_frame(app: Any, capture_file_path: str, timeout_sec: float = 2.0):
+async def capture_next_frame(app: Any, capture_file_path: str, timeout_sec: float = 2.0) -> None:
     """Capture the next frame to a file using viewport capture APIs.
 
     Args:
@@ -198,11 +194,11 @@ async def capture_next_frame(app: Any, capture_file_path: str, timeout_sec: floa
 
     # Wait until the viewport has valid resources
     start_time = time.time()
-    while viewport_ldr_rp == None and time.time() - start_time < timeout_sec:
+    while viewport_ldr_rp is None and time.time() - start_time < timeout_sec:
         await app.next_update_async()
         viewport_ldr_rp = _viewport_interface.get_viewport_window(None).get_drawable_ldr_resource()
 
-    if viewport_ldr_rp == None:
+    if viewport_ldr_rp is None:
         raise RuntimeError(f"Timeout waiting for viewport to have valid resources after {timeout_sec} seconds.")
 
     _renderer.capture_next_frame_rp_resource(capture_file_path, viewport_ldr_rp)
@@ -299,7 +295,7 @@ async def load_stage(stage_path: str, syncloads: bool, num_assets_loaded: int = 
     return load_time
 
 
-def getStageDefaultPrimPath(stage: Any):
+def getStageDefaultPrimPath(stage: Any) -> Any:  # noqa: N802
     """Get the default prim path for a stage.
 
     Args:
@@ -325,11 +321,11 @@ def getStageDefaultPrimPath(stage: Any):
 class LogErrorChecker:
     """Monitor log events and count errors during a test."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Setup this test case to fail if any error is produced
         self._error_count = 0
 
-        def on_log_event(e):
+        def on_log_event(e: Any) -> None:
             if e["level"] >= carb.logging.LEVEL_ERROR:
                 self._error_count = self._error_count + 1
 
@@ -340,7 +336,7 @@ class LogErrorChecker:
             observer_name="isaacsim.benchmark.services.utils.on_log_event",
         )
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Unsubscribe from log events.
 
         Example:
@@ -381,7 +377,7 @@ def get_calling_test_id() -> str:
         test_id = get_calling_test_id()
     """
 
-    def get_class_from_frame(fr):
+    def get_class_from_frame(fr: Any) -> type | None:
         args, _, _, value_dict = inspect.getargvalues(fr)
         # we check the first parameter for the frame function is
         # named 'self'
@@ -408,7 +404,7 @@ def get_calling_test_id() -> str:
     return ""
 
 
-def ensure_dir(file_path: str | Path):
+def ensure_dir(file_path: str | Path) -> None:
     """Create a directory if it does not exist.
 
     Args:
@@ -451,7 +447,7 @@ def get_kit_version_branch() -> tuple[str, str, str]:
 # e.g. current frame needed X times less time than the previous one
 async def wait_until_stage_is_fully_loaded_async(
     max_frames: int = 10, frametime_threshold: float = 0.1, time_ratio_treshold: float = 5
-):
+) -> None:
     """Wait for stage to fully load by observing frame times.
 
     Args:
@@ -483,7 +479,7 @@ async def wait_until_stage_is_fully_loaded_async(
 # e.g. current frame needed X times less time than the previous one
 def wait_until_stage_is_fully_loaded(
     max_frames: int = 10, frametime_threshold: float = 0.1, time_ratio_treshold: float = 5
-):
+) -> None:
     """Wait for stage to fully load by observing frame times.
 
     Args:

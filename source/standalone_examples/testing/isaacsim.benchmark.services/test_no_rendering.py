@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test benchmark services with no rendering enabled."""
+
 from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({"headless": True})
@@ -20,13 +22,12 @@ simulation_app = SimulationApp({"headless": True})
 import sys
 
 import carb
-import omni.kit.test
-from isaacsim.core.api import PhysicsContext
-from isaacsim.core.utils.extensions import enable_extension
-from isaacsim.core.utils.stage import add_reference_to_stage
+import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
+from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.storage.native import get_assets_root_path
 
-enable_extension("isaacsim.benchmark.services")
+app_utils.enable_extension("isaacsim.benchmark.services")
 from isaacsim.benchmark.services import BaseIsaacBenchmark
 
 # ----------------------------------------------------------------------
@@ -44,31 +45,27 @@ if assets_root_path is None:
 
 
 asset_path = assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd"
-robot = add_reference_to_stage(usd_path=asset_path, prim_path="/World/panda")
-robot.GetVariantSet("Gripper").SetVariantSelection("AlternateFinger")
-robot.GetVariantSet("Mesh").SetVariantSelection("Quality")
+stage_utils.add_reference_to_stage(
+    asset_path, "/World/panda", variants=[("Gripper", "AlternateFinger"), ("Mesh", "Quality")]
+)
 
 # Wait two frames so that stage starts loading
 simulation_app.update()
 simulation_app.update()
 
 print("Loading stage...")
-from isaacsim.core.utils.stage import is_stage_loading
-
-while is_stage_loading():
+while stage_utils.is_stage_loading():
     simulation_app.update()
 print("Loading Complete")
 
 benchmark.set_phase("benchmark")
 
-timeline = omni.timeline.get_timeline_interface()
-timeline.play()
+SimulationManager.set_physics_dt(1.0 / 60.0)
+app_utils.play()
+simulation_app.update()
 
-physics_context = PhysicsContext(physics_dt=1.0 / 60.0)
-time = 0
 for _ in range(0, 1000):
-    physics_context._step(time)
-    time += physics_context.get_physics_dt()
+    SimulationManager.step()
 
 benchmark.store_measurements()
 min_physics_time = 0
@@ -77,9 +74,9 @@ for measurement in benchmark._test_phases[0].measurements:
         min_physics_time = measurement.value
 
 benchmark.stop()
-timeline.stop()
+app_utils.stop()
 
-omni.kit.app.get_app().update()
+simulation_app.update()
 
 assert min_physics_time > 0
 simulation_app.close()

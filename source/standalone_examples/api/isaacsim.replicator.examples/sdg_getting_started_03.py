@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Demonstrate SDG with custom and graph-based randomizers."""
+
 import os
 import random
 
@@ -25,13 +27,14 @@ import omni.replicator.core as rep
 import omni.usd
 
 
-# Randomize the location of a prim without the graph-based randomizer
 def randomize_location(prim):
+    """Randomize the position of a prim using the USD functional API."""
     random_pos = (random.uniform(-1, 1), random.uniform(-1, 1), random.uniform(-1, 1))
     rep.functional.modify.position(prim, random_pos)
 
 
 def run_example():
+    """Run SDG with combined USD API and graph-based randomization."""
     # Create a new stage and disable capture on play
     omni.usd.get_context().new_stage()
     rep.orchestrator.set_capture_on_play(False)
@@ -84,5 +87,38 @@ def run_example():
 
 # Run the example
 run_example()
+
+# <start-sdg-getting-started-03-test>
+import argparse
+import sys
+
+from isaacsim.core.utils.extensions import enable_extension
+
+enable_extension("isaacsim.test.utils")
+from isaacsim.test.utils.file_validation import validate_folder_contents
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--test",
+    action="store_true",
+    help="Validate captured output files against expected counts and exit.",
+)
+args, _ = parser.parse_known_args()
+
+if args.test:
+    # BasicWriter with rgb + colorized semantic_segmentation writes 2 png + 1 json per capture.
+    num_captures = 3
+    out_dir = os.path.join(os.getcwd(), "_out_basic_writer_rand")
+    ok = validate_folder_contents(
+        path=out_dir,
+        recursive=True,
+        expected_counts={"png": num_captures * 2, "json": num_captures},
+        fail_on_empty_files=True,
+    )
+    if not ok:
+        print(f"[SDG][Test][FAIL] Output validation failed for {out_dir}")
+        sys.exit(1)
+    print(f"[SDG][Test][PASS] Output validation succeeded for {out_dir}")
+# <end-sdg-getting-started-03-test>
 
 simulation_app.close()

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,17 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 """Interactive sample demonstrating gamepad control of a Kaya robot in Isaac Sim."""
-
 
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
-import omni.graph.core as og
 import omni.usd
 from isaacsim.examples.base.base_sample_experimental import BaseSample
 from isaacsim.storage.native import get_assets_root_path
-from pxr import Sdf, UsdLux
+from pxr import Sdf
 
 
 class KayaGamepad(BaseSample):
@@ -43,11 +40,11 @@ class KayaGamepad(BaseSample):
     testing robot behaviors, and interactive demonstrations.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._kaya_prim_path = "/kaya"
 
-    def setup_scene(self):
+    def setup_scene(self) -> None:
         """Sets up the simulation scene with Kaya robot, ground plane, and lighting.
 
         Loads the Kaya robot with gamepad controller, adds a ground plane environment,
@@ -74,22 +71,17 @@ class KayaGamepad(BaseSample):
         dome_light = stage.DefinePrim("/World/DomeLight", "DomeLight")
         dome_light.CreateAttribute("inputs:intensity", Sdf.ValueTypeNames.Float).Set(450.0)
 
-    async def setup_post_load(self):
+    async def setup_post_load(self) -> None:
         """Called after the scene is loaded."""
-        pass
 
-    async def setup_pre_reset(self):
+    async def setup_pre_reset(self) -> None:
         """Called before world reset."""
-        pass
 
-    async def setup_post_reset(self):
+    async def setup_post_reset(self) -> None:
         """Called after world reset."""
-        pass
 
-    async def setup_post_clear(self):
+    async def setup_post_clear(self) -> None:
         """Called after clearing the scene."""
-        pass
 
-    def physics_cleanup(self):
-        """Function called when extension shutdowns and starts again, (hot reloading feature)"""
-        pass
+    def physics_cleanup(self) -> None:
+        """Function called when extension shutdowns and starts again, (hot reloading feature)."""

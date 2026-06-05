@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test for visual material omni glass."""
 
 from typing import Literal
 
@@ -44,6 +46,8 @@ def parametrize(
     prim_class_kwargs: dict = {},
     max_num_prims: int = 5,
 ):
+    """Parametrize."""
+
     def decorator(func):
         async def wrapper(self):
             for device in devices:
@@ -94,22 +98,26 @@ def parametrize(
 
 
 class TestOmniGlass(omni.kit.test.AsyncTestCase):
+    """Test omni glass."""
+
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
     @parametrize(backends=["usd"])
     async def test_len(self, prim, num_prims, device, backend):
+        """Test len."""
         self.assertEqual(len(prim), num_prims, f"Invalid len ({num_prims} prims)")
 
     @parametrize(backends=["usd"])
     async def test_properties_and_getters(self, prim, num_prims, device, backend):
+        """Test properties and getters."""
         # test cases (properties)
         # - materials
         self.assertEqual(len(prim.materials), num_prims, f"Invalid materials len ({num_prims} prims)")
@@ -122,6 +130,7 @@ class TestOmniGlass(omni.kit.test.AsyncTestCase):
 
     @parametrize(devices=["cpu"], backends=["usd"], instances=["one"], operations=["wrap", "create"])
     async def test_input_definitions(self, prim, num_prims, device, backend):
+        """Test input definitions."""
         mdl_path = prim.shaders[0].GetSourceAsset("mdl").resolvedPath
         self.assertTrue(mdl_path.endswith("OmniGlass.mdl"), f"Invalid MDL path: {mdl_path}")
         with open(mdl_path) as file:
@@ -131,6 +140,7 @@ class TestOmniGlass(omni.kit.test.AsyncTestCase):
 
     @parametrize(backends=["usd"])
     async def test_input_values(self, prim, num_prims, device, backend):
+        """Test input values."""
         cases = {
             # Color
             "glass_color": lambda count: draw_sample(

@@ -1,5 +1,9 @@
 # Changelog
 
+## [6.1.2] - 2026-05-05
+### Changed
+- `JointState` and `SpatialState` build their per-row valid views (`positions`, `velocities`, `position_indices`, etc.) lazily on first property access, reusing zero-copy NumPy slices instead of eagerly allocating `wp.array`s in the constructor. Public API and semantics are unchanged.
+
 ## [6.1.1] - 2026-03-04
 ### Fixed
 - Fixed type annotation errors by adding `from __future__ import annotations` to files using union type syntax.

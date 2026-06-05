@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Provide utility functions for Infinigen synthetic data generation."""
 
 import math
 import os
@@ -492,6 +494,7 @@ def resolve_scale_issues_with_metrics_assembler() -> None:
 
 
 def get_matching_prim_location(match_string, root_path=None):
+    """Return the translation of the first prim matching the given string."""
     prim = find_matching_prims(
         match_strings=[match_string], root_path=root_path, prim_type="Xform", first_match_only=True
     )
@@ -644,7 +647,6 @@ def run_simulation(num_frames: int, render: bool = True) -> None:
         # Run physics simulation for each frame
         for _ in range(num_frames):
             physics_sim_interface.simulate(physx_dt, 0)
-            physics_sim_interface.fetch_results()
 
 
 def register_dome_light_randomizer() -> None:

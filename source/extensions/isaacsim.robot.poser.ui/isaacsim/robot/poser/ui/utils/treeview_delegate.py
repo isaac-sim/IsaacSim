@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -121,7 +121,6 @@ class SearchableItem(ui.AbstractItem):
 
     def refresh_text(self) -> None:
         """Sync text from the model; override in subclasses."""
-        pass
 
 
 class PlacerHolderItem(ui.AbstractItem):
@@ -175,7 +174,7 @@ class TreeViewWithPlacerHolderModel(ui.AbstractItemModel):
         return self._start_site
 
     @start_site.setter
-    def start_site(self, value):  # type: ignore[no-redef]
+    def start_site(self, value: list) -> None:  # type: ignore[no-redef]
         if value == self._start_site:
             return
         self._start_site = value
@@ -293,7 +292,6 @@ class TreeViewWithPlacerHolderModel(ui.AbstractItemModel):
         Args:
             item: The item to edit.
         """
-        pass
 
     def filter_by_text(self, filter_texts: list) -> None:
         """Filter visible items by substring match on text.
@@ -332,7 +330,6 @@ class TreeViewWithPlacerHolderModel(ui.AbstractItemModel):
         Args:
             condition: Filter condition (unused in base).
         """
-        pass
 
     def find_unique_name(self, name: str) -> str:
         """Return a unique name by appending a counter if needed.
@@ -435,7 +432,6 @@ class TreeViewWithPlacerHolderDelegate(ui.AbstractItemDelegate):
             level: Nesting level.
             expanded: Whether the branch is expanded.
         """
-        pass
 
     def __build_rename_field(
         self,

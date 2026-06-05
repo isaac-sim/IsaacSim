@@ -1,0 +1,50 @@
+########################################################################################################################
+# Isaac Sim Extension Templates
+#
+# Available via: ./repo.sh template new
+########################################################################################################################
+
+[templates."isaacsim-python-extension"]
+class = "ExtensionTemplate"
+name = "Isaac Sim Python Extension"
+url = "."
+subpath = "isaacsim-python-extension"
+variables.extension_name = "isaacsim.my.extension"
+variables.title = "My Extension"
+variables.version = "0.1.0"
+variables.description = "A new Isaac Sim extension."
+variables.category = "Simulation"
+
+[templates."isaacsim-ui-extension"]
+class = "ExtensionTemplate"
+name = "Isaac Sim UI Extension"
+url = "."
+subpath = "isaacsim-ui-extension"
+variables.extension_name = "isaacsim.my.example"
+variables.title = "My Example"
+variables.version = "0.1.0"
+variables.description = "A new Isaac Sim UI extension with scene management and Examples Browser integration."
+variables.category = "Examples"
+
+[templates."isaacsim-cpp-extension"]
+class = "ExtensionTemplate"
+name = "Isaac Sim C++ and Python Extension"
+url = "."
+subpath = "isaacsim-cpp-extension"
+variables.extension_name = "isaacsim.my.extension"
+variables.title = "My Extension"
+variables.version = "0.1.0"
+variables.description = "A new Isaac Sim C++ extension with Python bindings."
+variables.category = "Simulation"
+variables.binding_module = "my_extension"
+
+[templates."isaacsim-omnigraph-extension"]
+class = "ExtensionTemplate"
+name = "Isaac Sim OmniGraph Node Extension"
+url = "."
+subpath = "isaacsim-omnigraph-extension"
+variables.extension_name = "isaacsim.my.nodes"
+variables.title = "My OmniGraph Nodes"
+variables.version = "0.1.0"
+variables.description = "A new Isaac Sim OmniGraph node extension."
+variables.category = "Simulation"

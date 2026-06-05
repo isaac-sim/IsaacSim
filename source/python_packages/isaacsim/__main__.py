@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -30,7 +31,7 @@ VSCODE_SETTINGS_TEMPLATE = """
     "python.jediEnabled": false,
 
     // Those paths are automatically filled by isaacsim (see: 'python -m isaacsim --help')
-    "python.defaultInterpreterPath": "PYTHON.DEFAULTINTERPRETERPATH",
+    "python.defaultInterpreterPath": PYTHON.DEFAULTINTERPRETERPATH,
     "python.analysis.extraPaths": [
         PYTHON.ANALYSIS.EXTRAPATHS
     ],
@@ -133,10 +134,10 @@ def generate_vscode_settings():
 
     # update 'python.defaultInterpreterPath'
     template = VSCODE_SETTINGS_TEMPLATE[:]
-    template = template.replace("PYTHON.DEFAULTINTERPRETERPATH", sys.executable)
+    template = template.replace("PYTHON.DEFAULTINTERPRETERPATH", json.dumps(sys.executable))
 
     # update 'python.analysis.extraPaths'
-    content = "\n".join([f'"{path}",' for path in extensions_paths])
+    content = ",\n".join([json.dumps(path) for path in extensions_paths])
     content = textwrap.indent(content, prefix=" " * 8)[8:]
     template = template.replace("PYTHON.ANALYSIS.EXTRAPATHS", content)
 

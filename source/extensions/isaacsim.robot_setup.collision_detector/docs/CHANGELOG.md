@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1] - 2026-03-06
+### Fixed
+- Deregister USD ObjectsChanged listener when window is hidden; re-register on show to avoid unnecessary stage traversals while the panel is not visible
+
+## [0.2.0] - 2026-03-05
+### Changed
+- Added Overview.md, python_api.md and updated docstrings
+
 ## [0.1.0] - 2026-02-20
 ### Added
 - Initial release of the Robot Self Collision Detector panel.

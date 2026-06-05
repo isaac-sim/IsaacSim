@@ -9,38 +9,35 @@
 [![Windows platform](https://img.shields.io/badge/platform-windows--64-orange.svg)](https://www.microsoft.com/en-us/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-yellow.svg)](LICENSE)
 
-> **⚠️ PRE-RELEASE SOFTWARE NOTICE**
-> This is pre-release, currently in development. You may encounter bugs, incomplete features, and other issues that will be addressed in future releases. Please [report](#support) any issues you encounter. This will be finalized into a stable release in the future.
-
 NVIDIA Isaac Sim™ is a simulation platform built on NVIDIA Omniverse, designed to develop, test, train, and deploy AI-powered robots in realistic virtual environments. It supports importing robotic systems from common formats such as URDF, MJCF, and CAD. The simulator leverages high-fidelity, GPU-accelerated physics engines to simulate accurate dynamics and support multi-sensor RTX rendering at scale. It comes equipped with end-to-end workflows including synthetic data generation, reinforcement learning, ROS integration, and digital twin simulation. Isaac Sim provides the infrastructure needed to support robotics development at any stage.
 
 ## Key Features
 
-- [Asset Import & Export](https://docs.isaacsim.omniverse.nvidia.com/6.0.0/importer_exporter/importers_exporters.html): Importing and exporting robots and environments from and to non-USD format.
-- [Robot Tuning](https://docs.isaacsim.omniverse.nvidia.com/6.0.0/robot_setup/index.html): Optimize robot for physics accuracy, computation efficiency, or photorealism
-- [Robot Simulation](https://docs.isaacsim.omniverse.nvidia.com/6.0.0/robot_simulation/index.html): Tools for moving robots, such as controllers, motion generation and kinematics solvers, and policy integration.
-- [Sensors](https://docs.isaacsim.omniverse.nvidia.com/6.0.0/sensors/index.html): RTX and physics-based sensors
+- [Asset Import & Export](https://docs.isaacsim.omniverse.nvidia.com/latest/importer_exporter/importers_exporters.html): Importing and exporting robots and environments from and to non-USD format.
+- [Robot Tuning](https://docs.isaacsim.omniverse.nvidia.com/latest/robot_setup/index.html): Optimize robot for physics accuracy, computation efficiency, or photorealism
+- [Robot Simulation](https://docs.isaacsim.omniverse.nvidia.com/latest/robot_simulation/index.html): Tools for moving robots, such as controllers, motion generation and kinematics solvers, and policy integration.
+- [Sensors](https://docs.isaacsim.omniverse.nvidia.com/latest/sensors/index.html): RTX and physics-based sensors
 
 ## Key Applications
 
-- [Isaac Lab](https://docs.isaacsim.omniverse.nvidia.com/6.0.0/isaac_lab_tutorials/index.html): GPU-accelerated framework built for reinforcement learning, imitation learning, and motion planning.
-- [ROS Bridge](https://docs.isaacsim.omniverse.nvidia.com/6.0.0/ros2_tutorials/ros2_landing_page.html): Integration with Robot Operating System (ROS).
-- [Synthetic Data Generation](https://docs.isaacsim.omniverse.nvidia.com/6.0.0/synthetic_data_generation/index.html): Collection of SDG tools
+- [Isaac Lab](https://docs.isaacsim.omniverse.nvidia.com/latest/isaac_lab_tutorials/index.html): GPU-accelerated framework built for reinforcement learning, imitation learning, and motion planning.
+- [ROS Bridge](https://docs.isaacsim.omniverse.nvidia.com/latest/ros2_tutorials/ros2_landing_page.html): Integration with Robot Operating System (ROS).
+- [Synthetic Data Generation](https://docs.isaacsim.omniverse.nvidia.com/latest/synthetic_data_generation/index.html): Collection of SDG tools
 
 ## Documentation
 
 For the latest Isaac Sim documentation, see [Isaac Sim Documentation](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html).
 Follow these links to get started:
 
-- [Tutorials](https://docs.isaacsim.omniverse.nvidia.com/6.0.0/introduction/quickstart_index.html)
-- [Assets](https://docs.isaacsim.omniverse.nvidia.com/6.0.0/assets/usd_assets_overview.html)
+- [Tutorials](https://docs.isaacsim.omniverse.nvidia.com/latest/introduction/quickstart_index.html)
+- [Assets](https://docs.isaacsim.omniverse.nvidia.com/latest/assets/usd_assets_overview.html)
 
 
 ## Prerequisites and Environment Setup
 
 Ensure your system is set up with the following before building Isaac Sim:
 
-- **Operating System**: Windows 10/11 or Linux (Ubuntu 22.04)
+- **Operating System**: Windows 11 or Linux (Ubuntu 22.04/24.04)
 
   > **(Linux) Ubuntu 24.04**
   > Building with Ubuntu 24.04 requires GCC/G++ 11 to be installed, GCC/G++ 12+ is not supported.
@@ -123,7 +120,7 @@ This section guides you through building Isaac Sim from source code.
 
 
 ```bash
-git clone -b develop https://github.com/isaac-sim/IsaacSim.git isaacsim
+git clone -b main https://github.com/isaac-sim/IsaacSim.git isaacsim
 cd isaacsim
 git lfs install
 git lfs pull
@@ -222,7 +219,7 @@ Congratulations on installing Isaac Sim! To get started with using Isaac Sim, fo
 
 ## Additional Build Tools
 
-Beyond building and running from source (see [Quick Start](#quick-start)), Isaac Sim can also be packaged as a standalone binary archive or deployed as a Docker container.
+Beyond building and running from source (see [Quick Start](#quick-start)), Isaac Sim can also be packaged as a standalone binary archive, built as Python wheels, or deployed as a Docker container.
 
 ### Binary Package
 
@@ -243,6 +240,48 @@ Build a standalone redistributable binary package from source. A successful [bui
 ```
 
 The packaged archive is written to the `_build/packages/` directory.
+
+### PIP Packages
+
+Build Isaac Sim Python (PIP) wheels locally from a successful [build](#quick-start). Pre-built wheels for released versions are also available on [pypi.nvidia.com](https://pypi.nvidia.com); see [Install Isaac Sim using PIP](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_python.html#installation-using-pip) for the install-only path.
+
+A successful [build](#quick-start) is required before packaging.
+
+**Linux:**
+
+```bash
+./repo.sh python_package --create
+./repo.sh comment_archive_deps
+./repo.sh python_package --wheel
+```
+
+**Windows:**
+
+```powershell
+.\repo.bat python_package --create
+.\repo.bat comment_archive_deps
+.\repo.bat python_package --wheel
+```
+
+The three steps, in order:
+
+1. `python_package --create` stages per-package source trees under `_build/packages/python/` from the wheel definitions in [python_packages.toml](python_packages.toml).
+2. `comment_archive_deps` comments out references to Kit pip-archive extensions (`omni.kit.pip_archive`, `omni.isaac.core_archive`, `omni.isaac.ml_archive`, `omni.pip.compute`, `omni.pip.cloud`, `isaacsim.pip.newton`) in the generated `extension.toml` and `*.kit` files so wheel metadata is self-contained.
+3. `python_package --wheel` builds the `.whl` files into `_build/packages/dist/`.
+
+Install locally-built wheels into a Python 3.12 virtual environment:
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install _build/packages/dist/*.whl
+```
+
+> **(Linux aarch64) ⚠️**
+> On aarch64 hosts, X11 development headers are required to build transitive Python dependencies that lack pre-built aarch64 wheels (same note as under [Prerequisites and Environment Setup](#prerequisites-and-environment-setup)):
+> ```bash
+> sudo apt-get install -y libx11-dev xorg-dev
+> ```
 
 ### Container (Docker)
 

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -107,7 +107,7 @@ public:
             if (state.m_cachedBuffer.size() != dataSize || std::memcmp(state.m_cachedBuffer.data(), data, dataSize) != 0)
             {
                 state.m_cachedBuffer.assign(data, data + dataSize);
-                state.m_cachedJson["id_to_labels"] = generateIdToLabels(data, dataSize);
+                state.m_cachedJson["id_to_labels"] = _generateIdToLabels(data, dataSize);
             }
         }
 
@@ -139,7 +139,7 @@ public:
         state.reset();
     }
 
-    virtual void reset()
+    void reset() override
     {
         m_publisher.reset(); // This should be reset before we reset the handle.
         m_cachedBuffer.clear();
@@ -148,7 +148,7 @@ public:
     }
 
 private:
-    nlohmann::json generateIdToLabels(const uint8_t* data, size_t dataSize)
+    nlohmann::json _generateIdToLabels(const uint8_t* data, size_t dataSize)
     {
         nlohmann::json idMapping;
 

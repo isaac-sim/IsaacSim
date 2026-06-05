@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,8 +17,8 @@
 
 """Provides example robot policies including terrain navigation and manipulation tasks for Anymal, Franka, H1, and Spot robots."""
 
-
 from isaacsim.robot.policy.examples.robots.anymal import AnymalFlatTerrainPolicy
 from isaacsim.robot.policy.examples.robots.franka import FrankaOpenDrawerPolicy
+from isaacsim.robot.policy.examples.robots.go2 import Go2FlatTerrainPolicy
 from isaacsim.robot.policy.examples.robots.h1 import H1FlatTerrainPolicy
 from isaacsim.robot.policy.examples.robots.spot import SpotFlatTerrainPolicy

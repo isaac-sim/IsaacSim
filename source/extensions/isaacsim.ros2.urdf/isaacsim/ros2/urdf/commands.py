@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,9 +12,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Kit command helpers for importing URDF from ROS 2 nodes."""
+
+"""Deprecated Kit command helpers for importing URDF from ROS 2 nodes."""
 
 import os
+import tempfile
 import typing
 from functools import partial
 
@@ -24,11 +26,12 @@ import omni.kit.commands
 from isaacsim.asset.importer.urdf import URDFImporter, URDFImporterConfig
 from isaacsim.ros2.urdf.robot_definition_reader import RobotDefinitionReader
 from omni.client import Result
-from pxr import Usd, UsdUtils
 
 
 class URDFImportFromROS2Node(omni.kit.commands.Command):
-    """Command that imports a URDF from a ROS 2 node.
+    """Deprecated command that imports a URDF from a ROS 2 node.
+
+    .. deprecated:: Use RobotDefinitionReader and URDFImporter directly instead.
 
     Args:
         ros2_node_name: ROS 2 node to query for robot_description.
@@ -43,7 +46,11 @@ class URDFImportFromROS2Node(omni.kit.commands.Command):
         import_config: URDFImporterConfig = URDFImporterConfig(),
         dest_path: str = "",
         get_articulation_root: bool = False,
-    ):
+    ) -> None:
+        carb.log_warn(
+            "URDFImportFromROS2Node command is deprecated and will be removed in a future version. "
+            "Use RobotDefinitionReader and URDFImporter classes directly instead."
+        )
         self.urdf_importer = URDFImporter()
         self.ros2_node_name = ros2_node_name
         self.dest_path = dest_path
@@ -70,17 +77,14 @@ class URDFImportFromROS2Node(omni.kit.commands.Command):
                 self.import_robot(self.urdf_path)
             return
 
-    def on_description_received(self, urdf_description: str) -> None:
+    def on_description_received(self, urdf_description: str, package_found: bool = False) -> None:
         """Persist the received URDF description to disk.
 
         Args:
             urdf_description: URDF document string from the node.
+            package_found: Whether ROS package URLs were resolved.
         """
-        ext_manager = omni.kit.app.get_app().get_extension_manager()
-        ext_id = ext_manager.get_enabled_extension_id("isaacsim.ros2.urdf")
-        self._extension_path = ext_manager.get_extension_path(ext_id)
-        data_folder = os.path.join(self._extension_path, "data", "urdf", "temp")
-        os.makedirs(data_folder, exist_ok=True)
+        data_folder = tempfile.mkdtemp(prefix="ros2_urdf_cmd_")
         urdf_path = os.path.join(data_folder, "urdf_description.urdf")
         with open(urdf_path, "w", encoding="utf-8") as f:
             f.write(urdf_description)

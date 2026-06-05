@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,7 +48,7 @@ class TestActionItem:
         string_param: str = "",
         int_param: int = 0,
         bool_param: bool = False,
-    ):
+    ) -> None:
         self._name = name
         self._model = ui.SimpleBoolModel()
         self._model.set_value(enabled)
@@ -60,17 +60,29 @@ class TestActionItem:
 
     @property
     def name(self) -> str:
-        """Human-readable name of this action."""
+        """Human-readable name of this action.
+
+        Returns:
+            Display string for this test action.
+        """
         return self._name
 
     @property
     def model(self) -> ui.AbstractValueModel:
-        """Boolean value model tracking the enabled state."""
+        """Boolean value model tracking the enabled state.
+
+        Returns:
+            The underlying Omni UI bool model.
+        """
         return self._model
 
     @property
     def enabled(self) -> bool:
-        """Whether this action is enabled."""
+        """Whether this action is enabled.
+
+        Returns:
+            Current value from ``model``.
+        """
         return self._model.get_value_as_bool()
 
     @enabled.setter
@@ -87,7 +99,6 @@ class TestActionItem:
 
     def build_ui(self) -> None:
         """Build UI (no-op for tests)."""
-        pass
 
     def to_dict(self) -> dict:
         """Serialize this action to a dictionary.
@@ -129,7 +140,7 @@ class TestActionItem:
 class TestActionItemSerialization(omni.kit.test.AsyncTestCase):
     """Test serialization roundtrip for TestActionItem."""
 
-    async def test_to_dict_contains_required_fields(self):
+    async def test_to_dict_contains_required_fields(self) -> None:
         """Verify to_dict output contains all required fields."""
         action = TestActionItem(
             name="Test Action",
@@ -152,7 +163,7 @@ class TestActionItemSerialization(omni.kit.test.AsyncTestCase):
         self.assertEqual(data["config"]["int_param"], 42)
         self.assertEqual(data["config"]["bool_param"], True)
 
-    async def test_from_dict_restores_all_fields(self):
+    async def test_from_dict_restores_all_fields(self) -> None:
         """Verify from_dict correctly restores all fields."""
         data = {
             "type": "TestActionItem",
@@ -175,7 +186,7 @@ class TestActionItemSerialization(omni.kit.test.AsyncTestCase):
         self.assertEqual(restored_data["config"]["int_param"], 123)
         self.assertEqual(restored_data["config"]["bool_param"], True)
 
-    async def test_roundtrip_preserves_data(self):
+    async def test_roundtrip_preserves_data(self) -> None:
         """Verify serialize -> deserialize roundtrip preserves all data."""
         original = TestActionItem(
             name="Roundtrip Test",
@@ -202,7 +213,7 @@ class TestActionItemSerialization(omni.kit.test.AsyncTestCase):
         restored_data = restored.to_dict()
         self.assertEqual(original_data, restored_data)
 
-    async def test_from_dict_handles_missing_config(self):
+    async def test_from_dict_handles_missing_config(self) -> None:
         """Verify from_dict handles missing config gracefully."""
         data = {
             "type": "TestActionItem",
@@ -221,7 +232,7 @@ class TestActionItemSerialization(omni.kit.test.AsyncTestCase):
         self.assertEqual(restored_data["config"]["int_param"], 0)
         self.assertEqual(restored_data["config"]["bool_param"], False)
 
-    async def test_from_dict_handles_missing_name(self):
+    async def test_from_dict_handles_missing_name(self) -> None:
         """Verify from_dict provides default name when missing."""
         data = {
             "type": "TestActionItem",
@@ -232,7 +243,7 @@ class TestActionItemSerialization(omni.kit.test.AsyncTestCase):
 
         self.assertEqual(action.name, "Unnamed Action")
 
-    async def test_enabled_state_toggle(self):
+    async def test_enabled_state_toggle(self) -> None:
         """Verify enabled state can be toggled and serialized correctly."""
         action = TestActionItem(name="Toggle Test", enabled=True)
 
@@ -244,7 +255,7 @@ class TestActionItemSerialization(omni.kit.test.AsyncTestCase):
         self.assertFalse(action.enabled)
         self.assertFalse(action.to_dict()["enabled"])
 
-    async def test_json_serializable(self):
+    async def test_json_serializable(self) -> None:
         """Verify to_dict output is JSON serializable."""
         action = TestActionItem(
             name="JSON Test",
@@ -268,7 +279,7 @@ class TestActionItemSerialization(omni.kit.test.AsyncTestCase):
 class TestActionListModelSerialization(omni.kit.test.AsyncTestCase):
     """Test serialization of multiple actions in a list."""
 
-    async def test_serialize_multiple_actions(self):
+    async def test_serialize_multiple_actions(self) -> None:
         """Verify multiple actions can be serialized to a preset format."""
         model = ActionListModel()
 
@@ -295,7 +306,7 @@ class TestActionListModelSerialization(omni.kit.test.AsyncTestCase):
         self.assertEqual(preset["actions"][0]["config"]["int_param"], 1)
         self.assertEqual(preset["actions"][1]["config"]["int_param"], 2)
 
-    async def test_deserialize_multiple_actions(self):
+    async def test_deserialize_multiple_actions(self) -> None:
         """Verify preset can be deserialized back into action list."""
         preset_json = """
         {
@@ -337,7 +348,7 @@ class TestActionListModelSerialization(omni.kit.test.AsyncTestCase):
         self.assertTrue(item1.action_model.get_action().enabled)
         self.assertFalse(item2.action_model.get_action().enabled)
 
-    async def test_roundtrip_through_file(self):
+    async def test_roundtrip_through_file(self) -> None:
         """Verify full roundtrip through actual file I/O."""
         # Create original model with actions
         original_model = ActionListModel()
@@ -405,7 +416,7 @@ class TestActionListModelSerialization(omni.kit.test.AsyncTestCase):
         finally:
             temp_path.unlink()
 
-    async def test_empty_model_serialization(self):
+    async def test_empty_model_serialization(self) -> None:
         """Verify empty model serializes correctly."""
         model = ActionListModel()
 
@@ -423,7 +434,7 @@ class TestActionListModelSerialization(omni.kit.test.AsyncTestCase):
 class TestPresetFormat(omni.kit.test.AsyncTestCase):
     """Test preset format structure and validation."""
 
-    async def test_version_field_present(self):
+    async def test_version_field_present(self) -> None:
         """Verify version field is included in serialized presets."""
         action = TestActionItem(name="Version Test")
         preset = {
@@ -433,7 +444,7 @@ class TestPresetFormat(omni.kit.test.AsyncTestCase):
 
         self.assertEqual(preset["version"], "1.0")
 
-    async def test_preset_is_valid_json(self):
+    async def test_preset_is_valid_json(self) -> None:
         """Verify preset can be serialized to valid JSON."""
         actions = [
             TestActionItem(name="Action 1", string_param="value1"),
@@ -453,19 +464,19 @@ class TestPresetFormat(omni.kit.test.AsyncTestCase):
         self.assertEqual(parsed["version"], "1.0")
         self.assertEqual(len(parsed["actions"]), 2)
 
-    async def test_invalid_preset_missing_version(self):
+    async def test_invalid_preset_missing_version(self) -> None:
         """Verify detection of presets missing version field."""
         preset = {"actions": []}
 
         self.assertNotIn("version", preset)
 
-    async def test_invalid_preset_missing_actions(self):
+    async def test_invalid_preset_missing_actions(self) -> None:
         """Verify detection of presets missing actions field."""
         preset = {"version": "1.0"}
 
         self.assertNotIn("actions", preset)
 
-    async def test_preset_action_order_preserved(self):
+    async def test_preset_action_order_preserved(self) -> None:
         """Verify action order is preserved through serialization."""
         names = ["First", "Second", "Third", "Fourth", "Fifth"]
         actions = [TestActionItem(name=n) for n in names]

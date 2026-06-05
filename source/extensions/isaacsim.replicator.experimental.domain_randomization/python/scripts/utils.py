@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Utility functions and classes for domain randomization operations in Isaac Sim Replicator."""
-
 
 import json
 from typing import Dict, List
@@ -122,7 +121,7 @@ class NumpyEncoder(json.JSONEncoder):
     """JSON encoder that handles numpy arrays."""
 
     def default(self, obj):
-        """Converts numpy arrays to JSON-serializable format.
+        """Convert numpy arrays to JSON-serializable format.
 
         Args:
             obj: Object to be serialized. If it's a numpy array, converts it to a list.

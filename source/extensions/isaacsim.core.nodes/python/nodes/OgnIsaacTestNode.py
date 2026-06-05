@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,13 +15,11 @@
 
 
 class OgnIsaacTestNode:
-    """
-    Test Isaac Sim Node
-    """
+    """Test Isaac Sim Node."""
 
     @staticmethod
     def compute(db) -> bool:
-        """Dummy Compute Function"""
+        """Dummy Compute Function."""
         # copy input to output
         db.outputs.output = db.inputs.input
         return True

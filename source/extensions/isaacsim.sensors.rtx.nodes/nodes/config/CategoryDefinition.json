@@ -1,0 +1,6 @@
+{
+    "categoryDefinitions": {
+        "$description": "Categories for RTX sensor nodes in isaacsim.sensors.rtx.nodes",
+        "isaacRtxSensor": "Nodes for RTX sensor point cloud extraction and visualization"
+    }
+}

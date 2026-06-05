@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,7 +27,7 @@ def on_interval(interval):
     Returns:
         The OmniGraph node for interval filtering.
     """
-    node = create_node("isaacsim.replicator.experimental.domain_randomization.OgnIntervalFiltering")
+    node = create_node("isaacsim.replicator.domain_randomization.OgnIntervalFiltering")
     trigger_node = ReplicatorItem._get_context()
 
     node.get_attribute("inputs:interval").set(interval)
@@ -44,7 +44,7 @@ def on_env_reset():
     Returns:
         The OmniGraph node for reset filtering.
     """
-    node = create_node("isaacsim.replicator.experimental.domain_randomization.OgnIntervalFiltering")
+    node = create_node("isaacsim.replicator.domain_randomization.OgnIntervalFiltering")
     trigger_node = ReplicatorItem._get_context()
 
     node.get_attribute("inputs:ignoreInterval").set(True)

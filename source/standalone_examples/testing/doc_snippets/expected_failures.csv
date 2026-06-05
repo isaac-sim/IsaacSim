@@ -2,53 +2,44 @@
 # Paths are relative to docs/isaacsim/snippets/.
 # Format: snippet_path, optional_exception_regex
 #
-# ---- WG1: introduction/ (code fragments needing prior context) ----
-introduction/quickstart_isaacsim/moving_an_object_using_core_api.py
-introduction/quickstart_isaacsim/moving_an_object_using_raw_usd_api.py
-introduction/quickstart_isaacsim/adding_physics_and_collision_to_existing_object.py
-introduction/quickstart_isaacsim/moving_an_object_using_core_api_standalone.py
-introduction/quickstart_isaacsim_robot/examine_robot_joints.py
-introduction/quickstart_isaacsim_robot/remove_physics_callback.py
-introduction/quickstart_isaacsim_robot/set_joint_positions_control.py
+# ---- WG1: introduction/ ----
+# Sequential robot snippets — FIXED with test setups (callback snippets)
+# Standalone stepping loop references simulation_app from standalone_start_and_scene.py (creates SimulationApp)
 introduction/quickstart_isaacsim_robot/standalone_stepping_loop.py
 #
 # ---- WG2: isaac_lab_tutorials/ ----
-isaac_lab_tutorials/tutorial_cloner/accessing_cloned_objects.py
-isaac_lab_tutorials/tutorial_cloner/clone_the_cube_at_target_paths.py
-isaac_lab_tutorials/tutorial_cloner/physics_replication.py
-isaac_lab_tutorials/tutorial_cloner/additional_parameters.py
+# Class method fragments — reference self, torch, wp; not standalone-testable
 isaac_lab_tutorials/tutorial_policy_deployment/compute_observation.py
-isaac_lab_tutorials/tutorial_policy_deployment/robot_joint_properties.py
 isaac_lab_tutorials/tutorial_policy_deployment/forward.py
-isaac_lab_tutorials/tutorial_policy_deployment/robot_joint_order.py
 isaac_lab_tutorials/tutorial_policy_deployment/run_the_actuator_network.py
+# Code fragment referencing undefined 'create_parent_xforms' from prior context
 isaac_lab_tutorials/tutorial_instanceable_assets/save_as_path_str_usd_file_path_for_modified_usd_st.py
+# Sequential cloner snippets — FIXED with test setups + migrated to experimental API
 #
-# ---- WG3: replicator / SDG (module not loaded, async timeout, or complex runtime) ----
+# ---- WG3: replicator / SDG ----
+# Missing modules or API changes in current build
 replicator_tutorials/tutorial_replicator_isaac_snippets/motion_blur_script_editor.py
-action_and_event_data_generation/ira_config_read_update.py
-action_and_event_data_generation/ira_config_load_save.py
-action_and_event_data_generation/ira_setup_and_data_generation.py
-replicator_tutorials/tutorial_replicator_augmentation/annotator_augmentation_script_editor.py
-replicator_tutorials/tutorial_replicator_augmentation/writer_augmentation_script_editor.py
-replicator_tutorials/tutorial_replicator_ur10_palletizing/sdg_ur10_palletizing_script_editor.py
 replicator_tutorials/tutorial_replicator_custom_og_randomizer/replicator_wrapper.py
-replicator_tutorials/tutorial_replicator_scene_based_sdg/scene_based_sdg_script_editor.py
-synthetic_data_generation/tutorial_replicator_grasping_sdg/grasping_workflow_sdg_script_editor.py
+replicator_tutorials/tutorial_replicator_ur10_palletizing/sdg_ur10_palletizing_script_editor.py
+replicator_tutorials/tutorial_replicator_augmentation/writer_augmentation_script_editor.py
+replicator_tutorials/tutorial_replicator_augmentation/annotator_augmentation_script_editor.py
+synthetic_data_generation/tutorial_replicator_grasping_sdg/grasping_workflow_sdg_script_editor.py,ModuleNotFoundError.*isaacsim\.replicator\.grasping
 #
 # ---- WG4: robot_simulation/ ----
-robot_simulation/ext_isaacsim_robot_surface_gripper/get_gripper_state.py
-robot_simulation/ext_isaacsim_robot_surface_gripper/controlling_the_gripper.py
-robot_simulation/ext_isaacsim_robot_surface_gripper/defining_the_surface_gripper_properties.py
-robot_simulation/grasp_editor/using_authored_grasps_in_isaac_sim.py
-robot_simulation/mobile_robot_controllers/holonomic_robot_usd_setup.py
-robot_simulation/articulation_controller/apply_action_1.py
+# Extension not available in default build
+robot_simulation/grasp_editor/using_authored_grasps_in_isaac_sim.py,ModuleNotFoundError.*isaacsim\.robot_setup
+# Require external robot USD assets (Nucleus server)
+robot_simulation/articulation_controller/wrap_the_prim_as_an_articulation.py,FileNotFoundError
+robot_simulation/articulation_controller/create_the_articulation_controller.py,FileNotFoundError
+# Sequential snippets referencing articulation/controller from prior context (need Nucleus assets)
+robot_simulation/articulation_controller/initialize_the_controller.py
 robot_simulation/articulation_controller/initialize_the_controller_1.py
 robot_simulation/articulation_controller/apply_action.py
-robot_simulation/articulation_controller/script_editor_example.py
-robot_simulation/articulation_controller/initialize_the_controller.py
+robot_simulation/articulation_controller/apply_action_1.py
 #
-# ---- WG5: cortex_tutorials/ (all code fragments) ----
+# ---- WG5: cortex_tutorials/ ----
+# Deprecated cortex framework — deeply embedded class fragments with undefined bases
+# (DfDecider, DfBindable, DfContext, etc.) and ellipsis placeholders
 cortex_tutorials/tutorial_cortex_7_cortex_extension/building_cortex_based_extensions.py
 cortex_tutorials/tutorial_cortex_1_overview/note_on_rotation_matrix_calculations_1.py
 cortex_tutorials/tutorial_cortex_1_overview/note_on_rotation_matrix_calculations.py
@@ -78,92 +69,79 @@ cortex_tutorials/tutorial_cortex_2_decider_networks/class_dfstatedfbindable.py
 cortex_tutorials/tutorial_cortex_2_decider_networks/setup_automatic_action_on_the_monitored_logical_st.py
 #
 # ---- WG6: omniverse_usd/ ----
-omniverse_usd/open_usd/usda_10_1.py
-omniverse_usd/open_usd/inspecting_and_authoring_properties_4.py
-omniverse_usd/open_usd/connect_up_the_shader_graph.py
-omniverse_usd/open_usd/hello_world.py
-omniverse_usd/open_usd/inspecting_and_authoring_properties_2.py
-omniverse_usd/open_usd/inspecting_and_authoring_properties_3.py
-omniverse_usd/open_usd/inspecting_and_authoring_properties_1.py
-omniverse_usd/open_usd/traversing_stage_or_prim.py
-omniverse_usd/open_usd/inspecting_and_authoring_properties.py
-omniverse_usd/open_usd/working_with_multiple_layers.py
-omniverse_usd/open_usd/usda_10_2.py
-omniverse_usd/omniverse_tools/registered_actions.py
+# isaacsim.robot.poser not available in base.python.kit experience
+omniverse_usd/robot_schema/import_named_pose_crud.py,ModuleNotFoundError.*isaacsim\.robot\.poser
+# Needs actual robot with links/joints for GenerateRobotLinkTree
 omniverse_usd/robot_schema/open_the_script_editor_in_window_script_editor_and.py
-omniverse_usd/robot_schema/robot_link_node.py
-omniverse_usd/robot_schema/applying_the_robot_schema_through_code.py
-omniverse_usd/robot_schema/import_named_pose_crud.py
 #
 # ---- WG7: python_scripting/ ----
-python_scripting/environment_setup/adding_a_transform_matrix_to_a_prim.py
-python_scripting/environment_setup/set_gravity_vector.py
-python_scripting/robots_simulation/dof_position_control.py
-python_scripting/robots_simulation/read_dof_states.py
-python_scripting/robots_simulation/dof_effort_control.py
-python_scripting/robots_simulation/velocity_control.py
-python_scripting/robots_simulation/wrapping_articulations_2.py
-python_scripting/robots_simulation/single_dof_velocity_control.py
-python_scripting/robots_simulation/single_dof_position_control.py
-python_scripting/robots_simulation/query_articulation.py
+# Low-level Kit bootstrap fragments — cannot run inside existing SimulationApp
 python_scripting/manual_standalone_python/run_headless.py
 python_scripting/manual_standalone_python/run_headless_1.py
 python_scripting/manual_standalone_python/details_how_simulationapp_works_1.py
 python_scripting/manual_standalone_python/details_how_simulationapp_works.py
+# Code fragment referencing articulations from prior snippet — COMBINED into wrapping_articulations.py
 #
 # ---- WG8: ros2_tutorials/ ----
-ros2_tutorials/tutorial_ros2_camera_noise/register_writer_for_replicator_telemetry_tracking.py
-ros2_tutorials/tutorial_ros2_camera_noise/the_image_gaussian_noise_warp_variable_can_be_repl.py
-ros2_tutorials/tutorial_ros2_camera_noise/gpu_noise_kernel_for_illustrative_purposes_input_i.py
-ros2_tutorials/tutorial_ros2_camera_noise/grab_our_render_product_and_directly_set_the_camer.py
-ros2_tutorials/tutorial_ros2_camera_noise/cpu_noise_kernel.py
-ros2_tutorials/tutorial_ros2_camera_noise/code_explained.py
-ros2_tutorials/tutorial_ros2_rtx_lidar/exposing_metadata_through_python_script.py
-ros2_tutorials/tutorial_ros2_rtx_lidar/rtx_lidar_script_sample.py
-ros2_tutorials/tutorial_ros2_rtx_lidar/rtx_lidar_script_sample_3.py
-ros2_tutorials/tutorial_ros2_rtx_lidar/interpreting_object_id_metadata.py
-ros2_tutorials/tutorial_ros2_rtx_lidar/rtx_lidar_script_sample_2.py
-ros2_tutorials/tutorial_ros2_rtx_lidar/rtx_lidar_script_sample_4.py
+# ROS2 bridge node types not available in default experience
+ros2_tutorials/tutorial_ros2_camera_noise/camera_noise.py
+# RTX lidar sequential snippets — need ROS2 bridge or undefined context vars
 ros2_tutorials/tutorial_ros2_rtx_lidar/rtx_lidar_script_sample_1.py
+ros2_tutorials/tutorial_ros2_rtx_lidar/rtx_lidar_script_sample_2.py
+ros2_tutorials/tutorial_ros2_rtx_lidar/rtx_lidar_script_sample_3.py
+ros2_tutorials/tutorial_ros2_rtx_lidar/rtx_lidar_script_sample_4.py
+# ROS2 launch file fragments — undefined vars (map_yaml_file, Node, LaunchDescription)
 ros2_tutorials/tutorial_ros2_multi_navigation/set_up_the_namespace_carter1_by_defining_the_node_.py
 ros2_tutorials/tutorial_ros2_multi_navigation/finally_at_the_end_of_the_launch_file_add_the_two_.py
-ros2_tutorials/tutorial_ros2_camera_publishing/publish_camera_intrinsics_to_camerainfo_topic.py
-ros2_tutorials/tutorial_ros2_camera_publishing/publish_depth_images.py
-ros2_tutorials/tutorial_ros2_camera_publishing/publish_pointcloud_from_depth_images.py
-ros2_tutorials/tutorial_ros2_camera_publishing/publish_rgb_images.py
-ros2_tutorials/tutorial_ros2_camera_publishing/publish_a_tf_tree_for_the_camera_pose.py
+# Code fragment referencing JointState from rclpy (not installed)
 ros2_tutorials/tutorial_ros2_manipulation/spin_in_a_separate_thread.py
-ros2_tutorials/tutorial_ros2_manipulation/add_joint_states_in_extension.py
+# OmniGraph with ROS2 bridge nodes (not available in default experience)
+# Infinite loop with rclpy (not installed)
 ros2_tutorials/tutorial_ros2_manipulation/position_and_velocity_control_modes.py
-ros2_tutorials/tutorial_ros2_python/manually_stepping_ros2_components.py
+# OmniGraph with ROS2 bridge nodes
+# Code fragment referencing prior snippet's graph path
 ros2_tutorials/tutorial_ros2_python/disable_usedomainidenvvar_to_ensure_we_use_the_abo.py
 #
 # ---- WG9: sensors/ ----
-sensors/isaacsim_sensors_physics_effort/get_sensor_reading.py
-sensors/isaacsim_sensors_physics_effort/reading_sensor_output_with_python.py
-sensors/isaacsim_sensors_physx_generic/selforigin_offsets_npzerosbatch_size3_no_offsets.py
-sensors/isaacsim_sensors_physx_generic/custom_pattern_must_be_sent_as_an_array_of_azimuth.py
+# Pseudocode snippet — RtxCamera constructor fails (prim path /rig/camera_color doesn't resolve)
 sensors/isaacsim_sensors_camera/extrinsic_calibration.py
-sensors/isaacsim_sensors_physx_lidar/script_editor_1.py
-sensors/isaacsim_sensors_physx_lidar/these_commands_are_the_python_equivalent_of_the_fi_1.py
-sensors/isaacsim_sensors_physics_contact/using_python_wrapper_1.py
+# USD generated by create_camera_depth_sensor.py not guaranteed to exist by the time this snippet is tested
+sensors/isaacsim_sensors_camera_depth/updating_existing_assets_to_use_depth_sensors.py
+# Migration "before" snippet that deliberately references an undefined `rawPtr`
+# (the raw GMO buffer pointer that the removed OgnIsaacReadRTXLidarData node would
+# have produced). NameError is the expected outcome.
+sensors/isaacsim_sensors_rtx/migration_gmo_old.py,NameError
 #
 # ---- WG10: misc ----
-# omnigraph
+# Sequential OmniGraph snippets — reference /action_graph/print (PrintText node) from prior tutorial step
+# omni.graph.ui_nodes.PrintText not available in headless test environment
 omnigraph/omnigraph_scripting/editing_a_graph.py
 omnigraph/omnigraph_scripting/set_new_value.py
-# core_api_tutorials
-core_api_tutorials/tutorial_core_multiple_tasks/adding_randomization_2.py
+# Class fragment referencing self._num_scenarios, RobotScenario (from prior snippet context)
 core_api_tutorials/tutorial_core_multiple_tasks/adding_randomization.py
-core_api_tutorials/tutorial_core_adding_manipulator/understanding_the_state_machine.py
-core_api_tutorials/tutorial_core_adding_manipulator/customizing_the_scene.py
-# robot_setup_tutorials
-robot_setup_tutorials/tutorial_rig_legged_robot/run_the_snippet_by_clicking_on_the_run_button.py
-# physics, robot_setup, importer_exporter, utilities, overview
+# Missing module: isaacsim.robot.experimental.manipulators
+core_api_tutorials/tutorial_core_multiple_tasks/scaling_to_many_tasks.py,ModuleNotFoundError.*isaacsim\.robot\.experimental
+core_api_tutorials/tutorial_core_multiple_tasks/parameterizing_tasks.py,ModuleNotFoundError.*isaacsim\.robot\.experimental
+core_api_tutorials/tutorial_core_adding_multiple_robots/adding_state_machine_logic.py,ModuleNotFoundError.*isaacsim\.robot\.experimental
+# Pseudocode with fake API names (UsdPhysics.SomePhysicsAPI)
 physics/simulation_fundamentals/physics_in_usd_schemas.py
+# Newton physics engine not available in default build
+# Extension module not importable in default build
 robot_setup/assemble_robots/robot_assembler_api.py
-importer_exporter/ext_isaacsim_asset_importer_mjcf/robot_properties.py
-utilities/vscode_extension_template_generator/running_the_extension.py
-utilities/custom_interactive_examples/add_the_following_lines_to_codeextsisaacsimexample.py
-utilities/custom_interactive_examples/edit_the_highlighted_lines_in_codeextsisaacsimexam.py
-overview/extensions_renaming/renaming_extension_apis.py
+# Class with relative import (.rmpflow) — not standalone-testable
+robot_setup_tutorials/tutorial_pickplace_example/basic_pick_and_place_task_using_rmp_flow.py
+# Non-existent template module (my.custom.extension)
+utilities/vscode_extension_template_generator/running_the_extension.py,ModuleNotFoundError
+# Old deprecated import path (omni.isaac.sensor)
+overview/extensions_renaming/renaming_extension_apis.py,ModuleNotFoundError.*omni\.isaac\.sensor
+#
+# ---- WG11: digital_twin/ ----
+# Extension not available in default experience
+digital_twin/warehouse_logistics/ext_omni_warehouse_creator/headless_generation.py,ModuleNotFoundError.*omni\.warehouse
+#
+# ---- WG12: action_and_event_data_generation/ ----
+# These run with isaacsim.exp.action_and_event_data_generation.full.kit experience
+# Modules not available in default test environment
+action_and_event_data_generation/ira_config_read_update.py,ModuleNotFoundError.*isaacsim\.replicator\.agent
+action_and_event_data_generation/ira_setup_and_data_generation.py,ModuleNotFoundError.*isaacsim\.replicator\.agent
+action_and_event_data_generation/ira_config_load_save.py,ModuleNotFoundError.*isaacsim\.replicator\.agent

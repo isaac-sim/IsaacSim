@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Demonstrate synthetic data generation with deformable physics objects."""
 
 from isaacsim import SimulationApp
 
@@ -47,6 +49,7 @@ ASSETS_CONFIG = [
 
 
 def run_example(assets_config: list[tuple[str, int, str, float, float]]):
+    """Run deformable drop simulation and capture frames on trigger height."""
     omni.usd.get_context().new_stage()
     assets_root_path = get_assets_root_path()
     rng = random.Random(RNG_SEED)
@@ -205,5 +208,39 @@ def run_example(assets_config: list[tuple[str, int, str, float, float]]):
 
 
 run_example(ASSETS_CONFIG)
+
+# <start-sdg-deformables-test>
+import argparse
+import sys
+
+from isaacsim.core.utils.extensions import enable_extension
+
+enable_extension("isaacsim.test.utils")
+from isaacsim.test.utils.file_validation import validate_folder_contents
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--test",
+    action="store_true",
+    help="Validate captured output files against expected counts and exit.",
+)
+args, _ = parser.parse_known_args()
+
+if args.test:
+    # BasicWriter with rgb + colorized semantic_segmentation writes 2 png + 1 json per capture.
+    # One capture is triggered per asset in ASSETS_CONFIG (sum of counts).
+    num_captures = sum(count for _, count, _, _, _ in ASSETS_CONFIG)
+    out_dir = os.path.join(os.getcwd(), "_out_deformable_drop")
+    ok = validate_folder_contents(
+        path=out_dir,
+        recursive=True,
+        expected_counts={"png": num_captures * 2, "json": num_captures},
+        fail_on_empty_files=True,
+    )
+    if not ok:
+        print(f"[SDG][Test][FAIL] Output validation failed for {out_dir}")
+        sys.exit(1)
+    print(f"[SDG][Test][PASS] Output validation succeeded for {out_dir}")
+# <end-sdg-deformables-test>
 
 simulation_app.close()

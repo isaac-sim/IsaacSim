@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Tools menu layout for Isaac Sim."""
+
 import omni.kit.menu.utils
 from omni.kit.menu.utils import LayoutSourceSearch, MenuItemDescription, MenuLayout, add_menu_items
 
@@ -24,7 +26,7 @@ class ToolsMenuExtension:
         ext_id: Extension identifier provided by the extension manager.
     """
 
-    def __init__(self, ext_id: str):
+    def __init__(self, ext_id: str) -> None:
         self.__menu_layout = [
             MenuLayout.Menu(
                 "Tools",
@@ -87,6 +89,9 @@ class ToolsMenuExtension:
                             MenuLayout.Item(name="Stop"),
                             MenuLayout.Seperator("Grasping"),
                             MenuLayout.Item(name="Grasping"),
+                            MenuLayout.Seperator("Teleop"),
+                            MenuLayout.Item(name="Teleop"),
+                            MenuLayout.Item(name="Episode Recorder"),
                         ],
                     ),
                     MenuLayout.SubMenu(
@@ -151,7 +156,7 @@ class ToolsMenuExtension:
 
         add_menu_items([physics_inspector], "Tools")
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Remove menu layouts.
 
         Example:

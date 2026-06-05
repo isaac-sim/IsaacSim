@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,13 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Isaac Sim GUI menu extension entry point."""
 
 import gc
 
 import omni.ext
 import omni.kit.commands
-from omni.kit.menu.utils import MenuItemDescription, add_menu_items, remove_menu_items
 
 from .create_menu import CreateMenuExtension
 from .edit_menu.edit_menu import EditMenuExtension
@@ -37,7 +37,7 @@ from .window_menu import WindowMenuExtension
 class Extension(omni.ext.IExt):
     """Register and manage Isaac Sim GUI menus."""
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize menu extensions and menu ordering.
 
         Args:
@@ -67,7 +67,7 @@ class Extension(omni.ext.IExt):
         menu_order["Layouts"] = 6
         menu_order["Help"] = 99
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Tear down menu extensions and release resources."""
         # remove_menu_items(self._menu_items, "Create")
         self.__hook_menu.shutdown()

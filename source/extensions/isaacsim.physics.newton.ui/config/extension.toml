@@ -26,5 +26,6 @@ dependencies = [
 stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
 ]
+
 [documentation]
 pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

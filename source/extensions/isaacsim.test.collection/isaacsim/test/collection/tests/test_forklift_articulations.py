@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Test module for forklift robot articulation and movement functionality."""
-
 
 import carb
 import isaacsim.core.experimental.utils.app as app_utils
@@ -32,7 +31,7 @@ class TestForkliftArticulations(omni.kit.test.AsyncTestCase):
     """Tests for forklift robot articulation and movement."""
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment with forklift robot and action graph."""
         await stage_utils.create_new_stage_async()
         self._timeline = omni.timeline.get_timeline_interface()
@@ -113,8 +112,6 @@ class TestForkliftArticulations(omni.kit.test.AsyncTestCase):
             },
         )
 
-        pass
-
     # After running each test
     async def tearDown(self):
         """Clean up test environment and stop timeline."""
@@ -122,7 +119,6 @@ class TestForkliftArticulations(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
-        pass
 
     async def test_forklift_forward(self):
         """Test forklift moves forward when positive wheel velocity is applied."""

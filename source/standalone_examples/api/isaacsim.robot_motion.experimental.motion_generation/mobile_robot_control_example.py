@@ -13,8 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Complete example demonstrating robot control with the Motion Generation API.
+"""Complete example demonstrating robot control with the Motion Generation API.
 
 This example shows how to use a differential drive controller with optional
 low-pass filtering and noise injection.
@@ -35,13 +34,14 @@ from typing import Optional
 import isaacsim.core.experimental.utils.stage as stage_utils
 import isaacsim.robot_motion.experimental.motion_generation as mg
 import numpy as np
+import omni.kit.app
 import omni.timeline
 import warp as wp
 from isaacsim.core.experimental.objects import Cylinder
 from isaacsim.core.experimental.prims import Articulation
+from isaacsim.core.rendering_manager import ViewportManager
 from isaacsim.core.simulation_manager import SimulationManager
-from isaacsim.core.utils.viewports import set_camera_view
-from isaacsim.storage.native import get_assets_root_path
+from isaacsim.storage.native import get_assets_root_path_async
 
 
 # ============================================================================
@@ -483,26 +483,25 @@ def differential_drive_control(
 # ============================================================================
 # 6. Main Function
 # ============================================================================
-
-
-def setup_scene() -> tuple[Articulation, list[str]]:
+async def setup_scene() -> tuple[Articulation, list[str]]:
     """Setup the simulation scene and return the robot and joint space.
 
     Returns:
         Tuple of (robot articulation, robot_joint_space)
     """
     # Setup scene
-    stage_utils.create_new_stage(template="default stage")
+    await stage_utils.create_new_stage_async(template="default stage")
 
     # Add ground plane
-    assets_root_path = get_assets_root_path()
+    assets_root_path = await get_assets_root_path_async()
 
     # Add Jetbot robot
     jetbot_path = assets_root_path + "/Isaac/Robots/NVIDIA/Jetbot/jetbot.usd"
     stage_utils.add_reference_to_stage(usd_path=jetbot_path, path="/World/Jetbot")
+    await omni.kit.app.get_app().next_update_async()
 
     # Set camera view
-    set_camera_view(eye=[0.0, 0.1, 1.5], target=[0.0, 0.1, 0.0], camera_prim_path="/OmniverseKit_Persp")
+    ViewportManager.set_camera_view("/OmniverseKit_Persp", eye=[0.0, 0.1, 1.5], target=[0.0, 0.1, 0.0])
 
     # draw a small red disk:
     disk = Cylinder(
@@ -516,6 +515,7 @@ def setup_scene() -> tuple[Articulation, list[str]]:
 
     # Create articulation wrapper
     robot = Articulation("/World/Jetbot")
+    await omni.kit.app.get_app().next_update_async()
 
     # Initialize physics
     SimulationManager.set_physics_dt(1.0 / 60.0)
@@ -554,7 +554,7 @@ def main():
         action="store_true",
         help="Ignore: used for snippet testing only",
     )
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
 
     print("=" * 60)
     print("Motion Generation API - Differential Drive Controller Example")
@@ -562,8 +562,9 @@ def main():
     print(f"  Filter: {args.filter}")
     print("=" * 60)
 
-    # Setup scene
-    robot, robot_joint_space = setup_scene()
+    # Setup scene asynchronously - this keeps the app responsive during asset loading
+    print("Setting up scene (this may take a moment)...")
+    robot, robot_joint_space = simulation_app.run_coroutine(setup_scene())
 
     # Run differential drive example with optional noise and filter
     differential_drive_control(robot, robot_joint_space, add_noise=args.noise, use_filter=args.filter)

@@ -1,8 +1,8 @@
 [package]
-version = "4.15.1"
+version = "4.16.0"
 category = "Simulation"
 title = "Isaac Sim Samples"
-description = "Provides interactive sample extensions demonstrating Isaac Sim features including robot manipulation, path planning, gamepad control, bin filling, and Cortex behavior framework usage."
+description = "Provides interactive sample extensions demonstrating Isaac Sim features including robot manipulation, path planning, gamepad control, and bin filling."
 keywords = ["isaac", "samples", "manipulation"]
 changelog = "docs/CHANGELOG.md"
 readme = "docs/Overview.md"
@@ -11,20 +11,16 @@ icon = "data/icon.png"
 writeTarget.kit = true
 
 [dependencies]
-"isaacsim.core.api" = {}
+"isaacsim.core.experimental.materials" = {}
+"isaacsim.core.experimental.objects" = {}
+"isaacsim.core.experimental.prims" = {}
 "isaacsim.core.experimental.utils" = {}
-"isaacsim.core.prims" = {}
-"isaacsim.cortex.behaviors" = {}
-"isaacsim.cortex.framework" = {}
 "isaacsim.examples.base" = {}
 "isaacsim.examples.browser" = {}
-"isaacsim.examples.extension" = {}
 "isaacsim.gui.components" = {}
+"isaacsim.robot.experimental.manipulators.examples" = {}
 "isaacsim.robot.experimental.wheeled_robots" = {}
-"isaacsim.robot.manipulators" = {}
-"isaacsim.robot.manipulators.examples" = {}
-"isaacsim.robot.wheeled_robots" = {}
-"isaacsim.robot_motion.motion_generation" = {}
+"isaacsim.robot.wheeled_robots.nodes" = {}
 "isaacsim.storage.native" = {}
 "omni.graph.action" = {}
 "omni.graph.core" = {}
@@ -43,34 +39,13 @@ name = "isaacsim.examples.interactive.kaya_gamepad"
 name = "isaacsim.examples.interactive.omnigraph_keyboard"
 
 [[python.module]]
-name = "isaacsim.examples.interactive.follow_target"
-
-[[python.module]]
-name = "isaacsim.examples.interactive.path_planning"
-
-[[python.module]]
-name = "isaacsim.examples.interactive.bin_filling"
-
-[[python.module]]
-name = "isaacsim.examples.interactive.franka_cortex"
-
-[[python.module]]
-name = "isaacsim.examples.interactive.robo_factory"
-
-[[python.module]]
 name = "isaacsim.examples.interactive.robo_party"
 
 [[python.module]]
 name = "isaacsim.examples.interactive.hello_world"
 
 [[python.module]]
-name = "isaacsim.examples.interactive.replay_follow_target"
-
-[[python.module]]
 name = "isaacsim.examples.interactive.surface_gripper"
-
-[[python.module]]
-name = "isaacsim.examples.interactive.ur10_palletizing"
 
 [[python.module]]
 name = "isaacsim.examples.interactive.user_examples"
@@ -80,9 +55,6 @@ name = "isaacsim.examples.interactive.getting_started"
 
 [[test]]
 name = "startup"
-dependencies = [
-    "omni.isaac.ml_archive",
-]
 args = [
     "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
 ]
@@ -94,7 +66,6 @@ stdoutFailPatterns.exclude = [
 timeout = 900
 dependencies = [
     "isaacsim.test.utils",
-    "omni.isaac.ml_archive"
 ]
 stdoutFailPatterns.exclude = [
     '*[Error] [carb] [Plugin: omni.sensors.nv.lidar.ext.plugin] Dependency: [omni::sensors::lidar::IGenericModelOutputIOFactory v0.1] failed to be resolved.*', # feature not included in Windows
@@ -142,8 +113,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
     ### Extension specific args
     "--/app/window/dpiScaleOverride=1.0",

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import carb
 import numpy as np
 import omni.graph.core as og
+import warp as wp
+from isaacsim.core.experimental.utils.ops import place
 from isaacsim.core.experimental.utils.transform import euler_angles_to_quaternion
 from isaacsim.replicator.experimental.domain_randomization import ARTICULATION_ATTRIBUTES, TENDON_ATTRIBUTES
 from isaacsim.replicator.experimental.domain_randomization import physics_view as physics
@@ -108,7 +111,7 @@ class OgnWritePhysicsArticulationView:
         on_reset = db.inputs.on_reset
 
         try:
-            view = physics._articulation_views.get(view_name)
+            view = physics.resolve_articulation_view(view_name)
             if view is None:
                 raise ValueError(f"Expected a registered articulation_view, but instead received {view_name}")
             if attribute_name not in ARTICULATION_ATTRIBUTES:
@@ -128,27 +131,28 @@ class OgnWritePhysicsArticulationView:
         if on_reset:
             modify_initial_values(view_name, operation, attribute_name, samples, indices)
 
+        wp_indices = place(indices, dtype=wp.int32, device="cpu")
+
         if attribute_name == "stiffness":
             stiffnesses = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            physics_view.set_dof_stiffnesses(stiffnesses, indices)
+            physics_view.set_dof_stiffnesses(place(stiffnesses, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "damping":
             dampings = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            physics_view.set_dof_dampings(dampings, indices)
+            physics_view.set_dof_dampings(place(dampings, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "joint_friction":
             frictions = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            physics_view.set_dof_friction_coefficients(frictions, indices)
+            physics_view.set_dof_friction_coefficients(place(frictions, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "position":
             positions = apply_randomization_operation(view_name, operation, attribute_name, samples, indices, on_reset)
             view.set_world_poses(positions=positions, indices=indices)
         elif attribute_name == "orientation":
             rpys = apply_randomization_operation(view_name, operation, attribute_name, samples, indices, on_reset)
-            # Convert euler angles to quaternions using experimental utils (returns wp.array, convert to numpy)
             orientations = euler_angles_to_quaternion(rpys, degrees=False, extrinsic=True).numpy()
             view.set_world_poses(orientations=orientations, indices=indices)
         elif attribute_name == "linear_velocity":
@@ -177,46 +181,46 @@ class OgnWritePhysicsArticulationView:
             )
             view.set_dof_velocities(velocities=joint_velocities, indices=indices)
         elif attribute_name == "lower_dof_limits":
-            dof_limits = np.asarray(view.get_dof_limits())
-            dof_limits[..., 0] = apply_randomization_operation_full_tensor(
+            dof_limits_np = np.asarray(physics_view.get_dof_limits())
+            dof_limits_np[..., 0] = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            physics_view.set_dof_limits(dof_limits, indices)
+            physics_view.set_dof_limits(place(dof_limits_np, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "upper_dof_limits":
-            dof_limits = np.asarray(view.get_dof_limits())
-            dof_limits[..., 1] = apply_randomization_operation_full_tensor(
+            dof_limits_np = np.asarray(physics_view.get_dof_limits())
+            dof_limits_np[..., 1] = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            physics_view.set_dof_limits(dof_limits, indices)
+            physics_view.set_dof_limits(place(dof_limits_np, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "max_efforts":
             max_efforts = apply_randomization_operation(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            view.set_max_efforts(efforts=max_efforts, indices=indices)
+            view.set_dof_max_efforts(max_efforts, indices=indices)
         elif attribute_name == "joint_armatures":
             joint_armatures = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            physics_view.set_dof_armatures(joint_armatures, indices)
+            physics_view.set_dof_armatures(place(joint_armatures, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "joint_max_velocities":
             joint_max_velocities = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            physics_view.set_dof_max_velocities(joint_max_velocities, indices)
+            physics_view.set_dof_max_velocities(place(joint_max_velocities, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "joint_efforts":
             view.set_dof_efforts(efforts=samples, indices=indices)
         elif attribute_name == "body_masses":
             body_masses = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            physics_view.set_masses(body_masses, indices)
+            physics_view.set_masses(place(body_masses, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "body_inertias":
             diagonal_inertias = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
             inertia_matrices = np.zeros((len(view), physics_view.max_links, 9), dtype=np.float32)
             inertia_matrices[:, :, [0, 4, 8]] = diagonal_inertias.reshape(len(view), physics_view.max_links, 3)
-            physics_view.set_inertias(inertia_matrices, indices)
+            physics_view.set_inertias(place(inertia_matrices, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "material_properties":
             material_properties = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
@@ -231,54 +235,31 @@ class OgnWritePhysicsArticulationView:
                     dist_param_2,
                     num_buckets,
                 )
-            physics_view.set_material_properties(material_properties, indices)
+            physics_view.set_material_properties(place(material_properties, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "contact_offset":
             contact_offsets = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            physics_view.set_contact_offsets(contact_offsets, indices)
+            physics_view.set_contact_offsets(place(contact_offsets, dtype=wp.float32, device="cpu"), wp_indices)
         elif attribute_name == "rest_offset":
             rest_offsets = apply_randomization_operation_full_tensor(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            physics_view.set_rest_offsets(rest_offsets, indices)
-        elif attribute_name == "tendon_stiffnesses":
-            tendon_stiffnesses = apply_randomization_operation(
+            physics_view.set_rest_offsets(place(rest_offsets, dtype=wp.float32, device="cpu"), wp_indices)
+        elif attribute_name in TENDON_ATTRIBUTES:
+            if not physics._current_tendon_properties:
+                carb.log_error(
+                    f"Cannot randomize tendon attribute '{attribute_name}' for view '{view_name}': "
+                    "articulation has no fixed tendons."
+                )
+                db.outputs.execOut = og.ExecutionAttributeState.ENABLED
+                return True
+            tendon_values = apply_randomization_operation(
                 view_name, operation, attribute_name, samples, indices, on_reset
             )
-            physics._current_tendon_properties["tendon_stiffnesses"][indices] = tendon_stiffnesses
-        elif attribute_name == "tendon_dampings":
-            tendon_dampings = apply_randomization_operation(
-                view_name, operation, attribute_name, samples, indices, on_reset
-            )
-            physics._current_tendon_properties["tendon_dampings"][indices] = tendon_dampings
-        elif attribute_name == "tendon_limit_stiffnesses":
-            tendon_limit_stiffnesses = apply_randomization_operation(
-                view_name, operation, attribute_name, samples, indices, on_reset
-            )
-            physics._current_tendon_properties["tendon_limit_stiffnesses"][indices] = tendon_limit_stiffnesses
-        elif attribute_name == "tendon_lower_limits":
-            tendon_lower_limits = apply_randomization_operation(
-                view_name, operation, attribute_name, samples, indices, on_reset
-            )
-            physics._current_tendon_properties["tendon_lower_limits"][indices] = tendon_lower_limits
-        elif attribute_name == "tendon_upper_limits":
-            tendon_upper_limits = apply_randomization_operation(
-                view_name, operation, attribute_name, samples, indices, on_reset
-            )
-            physics._current_tendon_properties["tendon_upper_limits"][indices] = tendon_upper_limits
-        elif attribute_name == "tendon_rest_lengths":
-            tendon_rest_lengths = apply_randomization_operation(
-                view_name, operation, attribute_name, samples, indices, on_reset
-            )
-            physics._current_tendon_properties["tendon_rest_lengths"][indices] = tendon_rest_lengths
-        elif attribute_name == "tendon_offsets":
-            tendon_offsets = apply_randomization_operation(
-                view_name, operation, attribute_name, samples, indices, on_reset
-            )
-            physics._current_tendon_properties["tendon_offsets"][indices] = tendon_offsets
+            physics._current_tendon_properties[attribute_name][indices] = tendon_values
 
-        if attribute_name in TENDON_ATTRIBUTES:
+        if attribute_name in TENDON_ATTRIBUTES and physics._current_tendon_properties:
             current_tendon_limits = np.stack(
                 (
                     physics._current_tendon_properties["tendon_lower_limits"],

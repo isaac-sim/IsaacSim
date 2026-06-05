@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,9 +18,7 @@ from isaacsim.core.rendering_manager import ViewportManager
 
 
 class OgnIsaacSetCameraOnRenderProduct:
-    """
-    Isaac Sim Set Camera On Render Product
-    """
+    """Isaac Sim Set Camera On Render Product."""
 
     @staticmethod
     def compute(db) -> bool:

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,9 +15,4 @@
 
 from .extension import *
 
-__all__ = [
-    "MujocoUiDefinitions",
-    "get_mujoco_schema_names",
-    "NewtonUiDefinitions",
-    "get_newton_schema_names",
-]
+__all__ = []

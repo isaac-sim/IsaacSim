@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Behavior script that randomizes prim locations within specified bounds."""
+
+from __future__ import annotations
+
+from typing import Any
+
 import carb
 import numpy as np
-import omni.kit.window.property
 from isaacsim.replicator.behavior.global_variables import EXPOSED_ATTR_NS
 from isaacsim.replicator.behavior.utils.behavior_utils import (
     check_if_exposed_variables_should_be_removed,
@@ -29,8 +34,8 @@ from pxr import Gf, Sdf, Usd, UsdGeom
 
 
 class LocationRandomizer(BehaviorScript):
-    """
-    Behavior script that randomizes the location of prims within specified bounds.
+    """Behavior script that randomizes the location of prims within specified bounds.
+
     The behavior can be applied to multiple prims at once.
     """
 
@@ -40,25 +45,32 @@ class LocationRandomizer(BehaviorScript):
             "attr_name": "range:minPosition",
             "attr_type": Sdf.ValueTypeNames.Vector3d,
             "default_value": Gf.Vec3d(-1.0, -1.0, -1.0),
-            "doc": "The minimum position for the randomization.",
+            "doc": "Minimum bounds of the random offset applied each update.",
         },
         {
             "attr_name": "range:maxPosition",
             "attr_type": Sdf.ValueTypeNames.Vector3d,
             "default_value": Gf.Vec3d(1.0, 1.0, 1.0),
-            "doc": "The maximum position for the randomization.",
+            "doc": "Maximum bounds of the random offset applied each update.",
         },
         {
             "attr_name": "frame:useRelativeFrame",
             "attr_type": Sdf.ValueTypeNames.Bool,
             "default_value": True,
-            "doc": "Use relative frame for randomization.",
+            "doc": (
+                "If true, preserve the prim's initial offset (from the target prim if set, otherwise from its own "
+                "starting position) and add the random offset on top. If false, the random offset is applied as an "
+                "absolute position relative to the target prim if set, or to the world origin otherwise."
+            ),
         },
         {
             "attr_name": "frame:targetPrimPath",
             "attr_type": Sdf.ValueTypeNames.String,
             "default_value": "",
-            "doc": "Path to the target prim for relative randomization.",
+            "doc": (
+                "Optional path to a reference prim. When set, randomization is anchored to this prim's world "
+                "location; leave empty to randomize independently of any other prim."
+            ),
         },
         {
             "attr_name": "includeChildren",
@@ -80,7 +92,7 @@ class LocationRandomizer(BehaviorScript):
         },
     ]
 
-    def on_init(self):
+    def on_init(self) -> None:
         """Called when the script is assigned to a prim."""
         self._rng = None
         self._min_position = Gf.Vec3d(-1.0, -1.0, -1.0)
@@ -96,30 +108,31 @@ class LocationRandomizer(BehaviorScript):
         # Expose the variables as USD attributes
         create_exposed_variables(self.prim, EXPOSED_ATTR_NS, self.BEHAVIOR_NS, self.VARIABLES_TO_EXPOSE)
 
-        # Refresh the property windows to show the exposed variables
-        omni.kit.window.property.get_window().request_rebuild()
-
-    def on_destroy(self):
+    def on_destroy(self) -> None:
         """Called when the script is unassigned from a prim."""
         self._reset()
         # Exposed variables should be removed if the script is no longer assigned to the prim
         if check_if_exposed_variables_should_be_removed(self.prim, __file__):
             remove_exposed_variables(self.prim, EXPOSED_ATTR_NS, self.BEHAVIOR_NS, self.VARIABLES_TO_EXPOSE)
-            omni.kit.window.property.get_window().request_rebuild()
 
-    def on_play(self):
+    def on_play(self) -> None:
         """Called when `play` is pressed."""
         self._setup()
         # Make sure the initial behavior is applied if the interval is larger than 0
         if self._interval > 0:
             self._apply_behavior()
 
-    def on_stop(self):
+    def on_stop(self) -> None:
         """Called when `stop` is pressed."""
         self._reset()
 
-    def on_update(self, current_time: float, delta_time: float):
-        """Called on per frame update events that occur when `playing`."""
+    def on_update(self, current_time: float, delta_time: float) -> None:
+        """Called on per frame update events that occur when `playing`.
+
+        Args:
+            current_time: The current simulation time.
+            delta_time: The time elapsed since the last update.
+        """
         if delta_time <= 0:
             return
         if self._interval <= 0:
@@ -130,8 +143,8 @@ class LocationRandomizer(BehaviorScript):
                 self._apply_behavior()
                 self._update_counter = 0
 
-    def _setup(self):
-        # Fetch the exposed attributes
+    def _setup(self) -> None:
+        # Fetch the exposed attributes (re-read on every setup so runtime edits take effect on the next apply)
         self._min_position = self._get_exposed_variable("range:minPosition")
         self._max_position = self._get_exposed_variable("range:maxPosition")
         self._use_relative_frame = self._get_exposed_variable("frame:useRelativeFrame")
@@ -139,6 +152,11 @@ class LocationRandomizer(BehaviorScript):
         include_children = self._get_exposed_variable("includeChildren")
         self._interval = self._get_exposed_variable("interval")
         seed = self._get_exposed_variable("seed")
+
+        # Skip the one-shot setup if already initialized (e.g. a play/pause/play loop). Re-caching here
+        # would store the current randomized location as the "initial" and break restoration on stop.
+        if self._valid_prims:
+            return
 
         # Initialize the random number generator (use seed if valid, otherwise non-deterministic)
         if self._rng is None:
@@ -174,7 +192,7 @@ class LocationRandomizer(BehaviorScript):
             if self._target_prim:
                 self._target_offsets[prim] = self._initial_locations[prim] - get_world_location(self._target_prim)
 
-    def _reset(self):
+    def _reset(self) -> None:
         # Set prims back to their initial locations
         for prim, location in self._initial_locations.items():
             self._set_location(prim, location)
@@ -187,16 +205,16 @@ class LocationRandomizer(BehaviorScript):
         self._update_counter = 0
         self._rng = None
 
-    def _apply_behavior(self):
+    def _apply_behavior(self) -> None:
         # Run the randomization for each valid prim
         for prim in self._valid_prims:
             self._randomize_location(prim)
 
-    def _get_exposed_variable(self, attr_name):
+    def _get_exposed_variable(self, attr_name: str) -> Any:
         full_attr_name = f"{EXPOSED_ATTR_NS}:{self.BEHAVIOR_NS}:{attr_name}"
         return get_exposed_variable(self.prim, full_attr_name)
 
-    def _get_location(self, prim):
+    def _get_location(self, prim: Usd.Prim) -> Gf.Vec3d:
         # Get the location of the prim based on the available xformOps, create a default translation if none exists
         xformable = UsdGeom.Xformable(prim)
         xform_ops = xformable.GetOrderedXformOps()
@@ -215,7 +233,7 @@ class LocationRandomizer(BehaviorScript):
         translate_op.Set(default_translation)
         return default_translation
 
-    def _set_location(self, prim, location: Gf.Vec3d):
+    def _set_location(self, prim: Usd.Prim, location: Gf.Vec3d) -> None:
         # Set the location of the prim based on the available xformOps
         xformable = UsdGeom.Xformable(prim)
         xform_ops = xformable.GetOrderedXformOps()
@@ -235,7 +253,7 @@ class LocationRandomizer(BehaviorScript):
 
         carb.log_warn(f"No valid location op found on {prim.GetPath()}")
 
-    def _randomize_location(self, prim):
+    def _randomize_location(self, prim: Usd.Prim) -> None:
         # Generate a random offset within the bounds
         random_offset = Gf.Vec3d(
             self._rng.uniform(self._min_position[0], self._max_position[0]),
@@ -264,7 +282,7 @@ class LocationRandomizer(BehaviorScript):
         # Set the randomized location to the prim
         self._set_location(prim, loc)
 
-    def set_rng(self, rng: np.random.Generator | None = None):
+    def set_rng(self, rng: np.random.Generator | None = None) -> None:
         """Set the random number generator, overriding the USD seed attribute.
 
         Args:

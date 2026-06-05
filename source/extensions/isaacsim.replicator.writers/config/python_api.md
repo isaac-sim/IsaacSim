@@ -35,7 +35,7 @@
 - class PytorchListener
   - def __init__(self)
   - def write_data(self, data: dict)
-  - def get_rgb_data(self) -> Optional[torch.Tensor]
+  - def get_rgb_data(self) -> torch.Tensor | None
 
 - class PytorchWriter(Writer)
   - def __init__(self, listener: PytorchListener, output_dir: str = None, tiled_sensor: bool = False, device: str = 'cuda')

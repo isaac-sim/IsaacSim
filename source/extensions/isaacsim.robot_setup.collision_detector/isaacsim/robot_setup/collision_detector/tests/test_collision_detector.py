@@ -12,13 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Tests for the collision detector widget's detection logic."""
 
 import omni.kit.app
 import omni.kit.test
 import omni.ui as ui
 import omni.usd
-from pxr import Gf, PhysxSchema, Sdf, UsdGeom, UsdPhysics
+from pxr import Gf, PhysxSchema, Sdf, Usd, UsdGeom, UsdPhysics
 from usd.schema.isaac import robot_schema
 
 from ..widget import CollisionDetectorWidget, RigidBodyPairData
@@ -52,7 +53,7 @@ class TestCollisionDetection(omni.kit.test.AsyncTestCase):
     # Robot fixture
     # ------------------------------------------------------------------
 
-    def _build_four_link_robot(self):
+    def _build_four_link_robot(self) -> Usd.Prim:
         """Build a serial robot with four links and three revolute joints.
 
         Links 1-3 sit at nearby positions with large cubes that overlap.
@@ -91,7 +92,7 @@ class TestCollisionDetection(omni.kit.test.AsyncTestCase):
 
         return robot_root
 
-    def _add_link(self, path: str, position: Gf.Vec3d):
+    def _add_link(self, path: str, position: Gf.Vec3d) -> Usd.Prim:
         xform = UsdGeom.Xform.Define(self._stage, path)
         prim = xform.GetPrim()
         UsdPhysics.RigidBodyAPI.Apply(prim)
@@ -102,7 +103,9 @@ class TestCollisionDetection(omni.kit.test.AsyncTestCase):
         UsdPhysics.CollisionAPI.Apply(cube.GetPrim())
         return prim
 
-    def _add_revolute_joint(self, path: str, body0, body1, local_pos0: Gf.Vec3f, local_pos1: Gf.Vec3f):
+    def _add_revolute_joint(
+        self, path: str, body0: Usd.Prim, body1: Usd.Prim, local_pos0: Gf.Vec3f, local_pos1: Gf.Vec3f
+    ) -> UsdPhysics.RevoluteJoint:
         joint = UsdPhysics.RevoluteJoint.Define(self._stage, path)
         joint.CreateBody0Rel().SetTargets([body0.GetPath()])
         joint.CreateBody1Rel().SetTargets([body1.GetPath()])
@@ -195,7 +198,7 @@ class TestCollisionDetection(omni.kit.test.AsyncTestCase):
     # Environment collision tests
     # ------------------------------------------------------------------
 
-    def _add_env_obstacle(self, path: str = "/World/Obstacle", position: Gf.Vec3d = Gf.Vec3d(0, 0, 0)):
+    def _add_env_obstacle(self, path: str = "/World/Obstacle", position: Gf.Vec3d = Gf.Vec3d(0, 0, 0)) -> Usd.Prim:
         """Add a non-robot rigid body with a collision cube.
 
         Args:

@@ -30,7 +30,7 @@ How the manager passes stages to this rule:
 - Original composition: The manager does *not* pass a separate
   "pre-Geometries" stage. It passes the original input asset path via
   ``args["input_stage_path"]``: that is the path given to
-  ``manager.run(input_stage_path, ...)``, i.e. the asset on disk before any
+  ``manager.run(input_stage, ...)``, i.e. the asset on disk before any
   rules ran. The pipeline writes to ``package_root`` (e.g.
   ``payloads/base.usd``); it does not overwrite ``input_stage_path``. So this
   rule opens ``Usd.Stage.Open(args["input_stage_path"])`` to obtain the
@@ -56,6 +56,7 @@ def _fmt(m: Gf.Matrix4d | None) -> str:
 
     Returns:
         Human-readable string with translation and quaternion components.
+
     """
     if m is None:
         return "None"
@@ -78,6 +79,7 @@ def _get_joint_local_transform(joint: UsdPhysics.Joint, body_index: int) -> Gf.M
 
     Returns:
         4x4 local transform matrix, or None if attributes are missing.
+
     """
     translate_attr = joint.GetLocalPos0Attr() if body_index == 0 else joint.GetLocalPos1Attr()
     rotate_attr = joint.GetLocalRot0Attr() if body_index == 0 else joint.GetLocalRot1Attr()
@@ -113,6 +115,7 @@ def _joint_world_pose_from_body(
 
     Returns:
         4x4 joint world transform matrix, or None if the body is missing.
+
     """
     joint = UsdPhysics.Joint(joint_prim)
     rel = joint.GetBody0Rel() if body_index == 0 else joint.GetBody1Rel()
@@ -137,6 +140,7 @@ def _decompose_rigid(m: Gf.Matrix4d) -> tuple[Gf.Vec3f, Gf.Quatf]:
 
     Returns:
         Tuple of (``Vec3f`` translation, ``Quatf`` rotation).
+
     """
     trans = Gf.Vec3f(m.ExtractTranslation())
     quat = m.ExtractRotationQuat().GetNormalized()
@@ -162,6 +166,7 @@ def _pose_equal(
 
     Returns:
         True if the poses match within tolerance.
+
     """
     ta = a.ExtractTranslation()
     tb = b.ExtractTranslation()
@@ -189,6 +194,7 @@ class PhysicsJointPoseFixRule(RuleInterface):
 
         Returns:
             List of configuration parameter descriptors.
+
         """
         return [
             RuleConfigurationParam(
@@ -227,6 +233,7 @@ class PhysicsJointPoseFixRule(RuleInterface):
 
         Returns:
             Always None.
+
         """
         params = self.args.get("params", {}) or {}
         original_path = params.get("original_composition_path") or self.args.get("input_stage_path")
@@ -238,7 +245,7 @@ class PhysicsJointPoseFixRule(RuleInterface):
         tol_orient = float(params.get("tolerance_orientation", _DEFAULT_TOLERANCE_ORIENT))
 
         try:
-            original_stage = Usd.Stage.Open(original_path)
+            original_stage = self.args.get("input_stage") or Usd.Stage.Open(original_path)
         except Exception:
             original_stage = None
         if not original_stage:
@@ -296,6 +303,7 @@ class PhysicsJointPoseFixRule(RuleInterface):
 
         Returns:
             Number of body sides fixed (0, 1, or 2).
+
         """
         path_str = joint_prim.GetPath().pathString
         orig_joint = original_stage.GetPrimAtPath(joint_prim.GetPath())
@@ -403,6 +411,7 @@ class PhysicsJointPoseFixRule(RuleInterface):
 
         Returns:
             4x4 world transform matrix, or None if the prim is invalid.
+
         """
         if body_path is None:
             return None
@@ -443,6 +452,7 @@ class PhysicsJointPoseFixRule(RuleInterface):
             new_local: Computed corrective local transform.
             trans: New translation value.
             quat: New rotation value.
+
         """
         tag = f"body{body_index}"
         self.log_operation(

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,6 @@
 
 """Provides the SimulationApp class for launching and managing an Omniverse Toolkit application instance."""
 
-
 from __future__ import annotations  # This allows us to hint types that do not yet exist like omni.usd etc
 
 import argparse
@@ -28,7 +27,7 @@ import re
 import signal
 import sys
 import time
-from typing import Any, Coroutine
+from typing import Any
 
 import carb
 import omni.kit.app
@@ -41,8 +40,12 @@ class SimulationApp:
     the Toolkit is already running. Thus, it is necessary to launch the Toolkit first from
     your python application and then import everything else.
 
+    Launches the Omniverse Toolkit with the provided configuration settings.
+    The settings in DEFAULT_LAUNCHER_CONFIG are overwritten by those in launch_config.
+
     Args:
         launch_config: A dictionary containing the configuration for the app.
+            See DEFAULT_LAUNCHER_CONFIG for available options.
         experience: Path to the application config loaded by the launcher.
             If not specified, the launcher will load one of the following experience files in order
             (where ``$EXP_PATH`` points to the ``apps`` folder in a default Isaac Sim setup):
@@ -70,6 +73,20 @@ class SimulationApp:
 
     Note:
             The settings in :obj:`DEFAULT_LAUNCHER_CONFIG` are overwritten by those in :obj:`config`.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> from isaacsim.simulation_app import SimulationApp
+        >>> config = {
+        ...     "width": 1280,
+        ...     "height": 720,
+        ...     "headless": False,
+        ... }
+        >>> simulation_app = SimulationApp(config)
+        >>> # Rest of the code follows
+        >>> simulation_app.close()
     """
 
     DEFAULT_LAUNCHER_CONFIG = {
@@ -86,7 +103,8 @@ class SimulationApp:
         "window_height": 900,
         "display_options": 3094,
         "subdiv_refinement_level": 0,
-        "renderer": "RealTimePathTracing",  # Can also be PathTracing or RaytracedLighting
+        "renderer": "RealTimePathTracing",  # Can also be PathTracing, RaytracedLighting, or MinimalRendering
+        "minimal_shading_mode": 0,
         "anti_aliasing": 3,
         "samples_per_pixel_per_frame": 64,
         "denoiser": True,
@@ -137,7 +155,8 @@ class SimulationApp:
         window_height (int): Height of the application window, independent of viewport, defaults to 900,
         display_options (int): used to specify whats visible in the stage by default. Defaults to 3094 so extra objects do not appear in synthetic data. 3286 is another good default, used for the regular isaac-sim editor experience
         subdiv_refinement_level (int): Number of subdivisons to perform on supported geometry. Defaults to 0
-        renderer (str): Rendering mode, can be  `RaytracedLighting`, `PathTracing`, `RealTimePathTracing`. Defaults to `RealTimePathTracing`
+        renderer (str): Rendering mode, can be `RaytracedLighting`, `PathTracing`, `RealTimePathTracing`, or `MinimalRendering` (also accepts `Minimal`). Defaults to `RealTimePathTracing`
+        minimal_shading_mode (int): Minimal shading mode for `MinimalRendering`, maps to `/rtx/minimal/mode`. 0: Real-Time 2.0 (reference), 1: Diffuse/Glossy/Emission, 2: Textured Diffuse, 3: Constant Diffuse, 4: No Rendering. Defaults to 0
         anti_aliasing (int): Antialiasing mode, 0: Disabled, 1: TAA, 2: FXAA, 3: DLSS, 4:RTXAA
         samples_per_pixel_per_frame (int): The number of samples to render per frame, increase for improved quality, used for `PathTracing` only. Defaults to 64
         denoiser (bool):  Enable this to use AI denoising to improve image quality, used for `PathTracing` only. Defaults to True
@@ -154,32 +173,7 @@ class SimulationApp:
         disable_viewport_updates (bool): Disable viewport updates to improve performance. Defaults to False.
     """
 
-    def __init__(self, launch_config: dict = None, experience: str = ""):
-        """Initialize the SimulationApp with specified configuration.
-
-        Launches the Omniverse Toolkit with the provided configuration settings.
-        The settings in DEFAULT_LAUNCHER_CONFIG are overwritten by those in launch_config.
-
-        Args:
-            launch_config: A dictionary containing the configuration for the app.
-                See DEFAULT_LAUNCHER_CONFIG for available options.
-            experience: Path to the application config loaded by the launcher.
-                If not specified, loads one of the default experience files in order.
-
-        Example:
-
-        .. code-block:: python
-
-            >>> from isaacsim.simulation_app import SimulationApp
-            >>> config = {
-            ...     "width": 1280,
-            ...     "height": 720,
-            ...     "headless": False,
-            ... }
-            >>> simulation_app = SimulationApp(config)
-            >>> # Rest of the code follows
-            >>> simulation_app.close()
-        """
+    def __init__(self, launch_config: dict = None, experience: str = "") -> None:
         # Enable callstack on crash
         faulthandler.enable()
         # Sanity check to see if any extra omniverse modules are loaded
@@ -294,7 +288,7 @@ class SimulationApp:
 
         # Register signal handler to exit when ctrl-c happens
         # This needs to happen after the app starts so that we can overide the default handler
-        def signal_handler(signal, frame):
+        def signal_handler(signal: int, frame: Any) -> None:
             # Disable logging as we are forcefully exiting
             _logging = carb.logging.acquire_logging()
             _logging.set_log_enabled(False)
@@ -312,6 +306,7 @@ class SimulationApp:
         self.reset_render_settings()
 
         self._app.print_and_log("Simulation App Starting")
+
         self._update_without_ready()
 
         self.open_usd = self.config.get("open_usd")
@@ -340,7 +335,7 @@ class SimulationApp:
             window_title = get_main_window_title()
             app_version_core, _, _, _, _, _, _, _ = get_version()
             window_title.set_app_version(app_version_core)
-        except:
+        except Exception:
             pass
 
         self._wait_for_viewport()
@@ -383,7 +378,7 @@ class SimulationApp:
 
         atexit.register(self._atexit_close)
 
-    def _apply_renderer_defaults(self, launch_config: dict | None):
+    def _apply_renderer_defaults(self, launch_config: dict | None) -> None:
         """Apply renderer-specific defaults when values are not provided in the launch config.
 
         Args:
@@ -398,7 +393,7 @@ class SimulationApp:
             if setting_key not in override_keys:
                 self.config[setting_key] = default_value
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Destructor for the SimulationApp class.
 
         Warns if the application is still running when Python exits,
@@ -411,15 +406,15 @@ class SimulationApp:
                 + "\033[0m"
             )
 
-    def _atexit_close(self):
+    def _atexit_close(self) -> None:
         """Automatically close the application during interpreter shutdown if close() was not called."""
         if not self._exiting:
             carb.log_warn("SimulationApp.close() was not called explicitly. Shutting down automatically")
-            self.close()
+            self.close(wait_for_replicator=False)
 
     ### Private methods
 
-    def _start_app(self):
+    def _start_app(self) -> None:
         """Launch the Omniverse application."""
         carb.log_info("SimulationApp._start_app: Starting app launch process")
         exe_path = os.path.abspath(f'{os.environ["CARB_APP_PATH"]}')
@@ -589,7 +584,7 @@ class SimulationApp:
             carb.log_info("SimulationApp._start_app: Help requested, exiting")
             self.close(skip_cleanup=True)
 
-    def _set_render_settings(self, default: bool = False):
+    def _set_render_settings(self, default: bool = False) -> None:
         """Set render settings to those in config.
 
         Note:
@@ -608,14 +603,20 @@ class SimulationApp:
             rtx_mode = "/rtx"
 
         # Set renderer mode, handle case where user may have entered incorrect case
-        if self.config["renderer"].lower() == "raytracedlighting":
-            set_carb_setting(self._carb_settings, rtx_mode + "/rendermode", "RaytracedLighting")
-        elif self.config["renderer"].lower() == "pathtracing":
-            set_carb_setting(self._carb_settings, rtx_mode + "/rendermode", "PathTracing")
-        elif self.config["renderer"].lower() == "realtimepathtracing":
-            set_carb_setting(self._carb_settings, rtx_mode + "/rendermode", "RealTimePathTracing")
+        renderer_lower = self.config["renderer"].lower()
+        if renderer_lower == "raytracedlighting":
+            render_mode = "RaytracedLighting"
+        elif renderer_lower == "pathtracing":
+            render_mode = "PathTracing"
+        elif renderer_lower == "realtimepathtracing":
+            render_mode = "RealTimePathTracing"
+        elif renderer_lower in ("minimal", "minimalrendering"):
+            render_mode = "MinimalRendering"
         else:
-            set_carb_setting(self._carb_settings, rtx_mode + "/rendermode", self.config["renderer"])
+            render_mode = self.config["renderer"]
+        set_carb_setting(self._carb_settings, rtx_mode + "/rendermode", render_mode)
+        if render_mode == "MinimalRendering":
+            set_carb_setting(self._carb_settings, rtx_mode + "/minimal/mode", self.config["minimal_shading_mode"])
         # Raytrace mode settings
         set_carb_setting(self._carb_settings, rtx_mode + "/post/aa/op", self.config["anti_aliasing"])
 
@@ -656,7 +657,7 @@ class SimulationApp:
         set_carb_setting(self._carb_settings, "/omni.kit.plugin/syncUsdLoads", self.config["sync_loads"])
         carb.log_info("SimulationApp._set_render_settings: Completed render settings configuration")
 
-    def _prepare_ui(self):
+    def _prepare_ui(self) -> None:
         """Dock the windows in the UI if they exist."""
         carb.log_info("SimulationApp._prepare_ui: Starting UI setup")
         try:
@@ -674,13 +675,13 @@ class SimulationApp:
                 console.dock_order = 1
             if samples:
                 samples.visible = False
-        except:
+        except Exception:
             pass
 
         self._update_without_ready()
         carb.log_info("SimulationApp._prepare_ui: UI setup completed")
 
-    def _update_without_ready(self):
+    def _update_without_ready(self) -> None:
         """Update the application without waiting for the app to be ready.
 
         This is a convenience function that updates the application without waiting for the app to be ready.
@@ -690,7 +691,7 @@ class SimulationApp:
             app.delay_app_ready("IsaacSim")
         self._app.update()
 
-    def _wait_for_viewport(self):
+    def _wait_for_viewport(self) -> None:
         """Wait for the viewport to become available and properly initialized."""
         MAX_FRAMES = 240 if os.name == "nt" else 120
         DOCKING_FRAMES = 10
@@ -716,7 +717,6 @@ class SimulationApp:
                 raise Exception("Timeout waiting for viewport")
         except Exception as e:
             carb.log_info(f"SimulationApp._wait_for_viewport: Exception during viewport wait: {e}")
-            pass
 
         # once we load, we need a few frames so everything docks itself
         if frame_count < DOCKING_FRAMES:
@@ -727,7 +727,7 @@ class SimulationApp:
 
     ### Public methods
 
-    def update(self):
+    def update(self) -> None:
         """Step the application forward by one frame.
 
         This is a convenience function that advances the simulation by a single frame,
@@ -745,7 +745,7 @@ class SimulationApp:
         """
         self._app.update()
 
-    def set_setting(self, setting: str, value):
+    def set_setting(self, setting: str, value: Any) -> None:
         """Set a Carbonite framework setting.
 
         Sets a configuration value in the Carbonite settings system.
@@ -768,7 +768,7 @@ class SimulationApp:
 
         set_carb_setting(self._carb_settings, setting, value)
 
-    def reset_render_settings(self):
+    def reset_render_settings(self) -> None:
         """Reset render settings to those specified in the launch configuration.
 
         Re-applies the rendering settings from the initial configuration.
@@ -834,7 +834,16 @@ class SimulationApp:
             return task_or_future.result()
         return task_or_future
 
-    def close(self, wait_for_replicator=True, skip_cleanup=False):
+    @staticmethod
+    def _flush_stdio() -> None:
+        """Flush Python's stdout and stderr, swallowing errors from closed/detached streams."""
+        for stream in (sys.stdout, sys.stderr):
+            try:
+                stream.flush()
+            except (ValueError, OSError, AttributeError):
+                pass
+
+    def close(self, wait_for_replicator: bool = True, skip_cleanup: bool = False, exit_code: int = 0) -> None:
         """Close the running Omniverse Toolkit application.
 
         Performs cleanup and shuts down the application. Can either perform
@@ -845,6 +854,9 @@ class SimulationApp:
                 before shutdown.
             skip_cleanup: If True, performs immediate exit without cleanup.
                 If False, performs graceful shutdown with full cleanup.
+            exit_code: Process exit status to preserve when fast shutdown terminates
+                the process. Nonzero values flush stdio and exit with the supplied
+                status before Kit's fast-shutdown path can replace it with 0.
 
         Example:
 
@@ -863,14 +875,25 @@ class SimulationApp:
             carb.log_info("SimulationApp.close: already exiting, skipping duplicate close call")
             return
 
+        # Flush Python stdio before any shutdown path that may terminate the process via _exit().
+        # When stdout/stderr are piped (e.g. through `tee` in test runners), CPython uses block
+        # buffering; the fast-shutdown path calls quickReleaseFrameworkAndTerminate which bypasses
+        # the interpreter's normal flush-on-exit, so pending print() output would otherwise be lost.
+        self._flush_stdio()
+
+        if exit_code != 0 and self.config.get("fast_shutdown", False):
+            self._exiting = True
+            os._exit(exit_code)
+
         # `post_quit()` can already stop Kit's run loop before callers reach `close()`.
-        # In that state, forcing `shutdown_and_release_framework()` may block indefinitely.
+        # In that state, forcing shutdown may block indefinitely.
         if not self._app.is_running():
             self._exiting = True
             carb.log_info("SimulationApp.close: app already stopped, skipping framework shutdown")
             if self.config.get("fast_shutdown", False):
                 self._app.print_and_log("Simulation App Shutting Down")
-                os._exit(0)
+                self._flush_stdio()
+                os._exit(exit_code)
             return
 
         if skip_cleanup:
@@ -878,7 +901,8 @@ class SimulationApp:
             carb.log_info("SimulationApp.close: immediate_exit")
             _logging = carb.logging.acquire_logging()
             _logging.set_log_enabled(False)
-            self._app.shutdown_and_release_framework()
+            self._flush_stdio()
+            self._app.shutdown()
             return
         try:
             # Ensure replicator workflows complete any queued writes.
@@ -908,7 +932,7 @@ class SimulationApp:
         self._exiting = True
         self._app.print_and_log("Simulation App Shutting Down")
 
-        # Cleanup any running tracy intances so data is not lost
+        # Cleanup any running tracy instances so data is not lost
         try:
             _profiler_tracy = carb.profiler.acquire_profiler_interface(plugin_name="carb.profiler-tracy.plugin")
             if _profiler_tracy:
@@ -916,14 +940,24 @@ class SimulationApp:
                 _profiler_tracy.end(0)
                 _profiler_tracy.shutdown()
         except RuntimeError:
-            # Tracy plugin was not loaded, so profiler never started - skip checks.
             pass
-        carb.log_info("SimulationApp.close: shutting down app and releasing framework")
-        # Disable logging before shutdown to keep the log clean
-        # Warnings at this point don't matter as the python process is about to be terminated
+
+        carb.log_info("SimulationApp.close: shutting down app")
         _logging = carb.logging.acquire_logging()
         _logging.set_log_enabled(False)
-        self._app.shutdown_and_release_framework()
+
+        # Use app.shutdown() instead of shutdown_and_release_framework() to avoid a
+        # GIL deadlock (NVBug 5948099): the Python binding for
+        # shutdown_and_release_framework holds the GIL while
+        # releaseFrameworkAndShutdown() joins carb.tasking worker threads that may
+        # themselves be blocked waiting for the GIL.
+        #
+        # app.shutdown() handles /app/fastShutdown internally — when true (the
+        # default) it calls quickReleaseFrameworkAndTerminate which exits the process
+        # immediately.  When false it performs full extension teardown and returns;
+        # the framework/plugin unload is left to process exit.
+        self._flush_stdio()
+        self._app.shutdown()
 
     def is_running(self) -> bool:
         """Check if the simulation application is currently running.

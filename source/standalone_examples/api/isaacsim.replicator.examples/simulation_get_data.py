@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Demonstrate simulation-event-driven data capture with writers and annotators."""
+
 from isaacsim import SimulationApp
 
 simulation_app = SimulationApp(launch_config={"headless": False})
 
-import json
 import os
 
 import carb.settings
@@ -30,8 +31,8 @@ from omni.replicator.core.functional import write_image, write_json
 from pxr import UsdPhysics
 
 
-# Util function to save semantic segmentation annotator data
 def write_sem_data(sem_data, file_path):
+    """Save semantic segmentation data as JSON labels and PNG image."""
     id_to_labels = sem_data["info"]["idToLabels"]
     write_json(path=file_path + ".json", data=id_to_labels)
     sem_image_data = sem_data["data"]
@@ -113,5 +114,38 @@ rgb_annot.detach()
 sem_annot.detach()
 writer.detach()
 rp.destroy()
+
+# <start-simulation-get-data-test>
+import argparse
+import sys
+
+from isaacsim.core.utils.extensions import enable_extension
+
+enable_extension("isaacsim.test.utils")
+from isaacsim.test.utils.file_validation import validate_folder_contents
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--test",
+    action="store_true",
+    help="Validate captured output files against expected counts and exit.",
+)
+args, _ = parser.parse_known_args()
+
+if args.test:
+    # 5 cubes, each captured once: BasicWriter writes rgb + colorized sem_seg + json (2 png + 1 json),
+    # annotator branch writes rgb + sem_seg pngs + sem_seg json (2 png + 1 json).
+    num_captures = 5
+    expected = {"png": num_captures * 4, "json": num_captures * 2}
+    if not validate_folder_contents(
+        path=out_dir,
+        recursive=True,
+        expected_counts=expected,
+        fail_on_empty_files=True,
+    ):
+        print(f"[SDG][Test][FAIL] Output validation failed for {out_dir}")
+        sys.exit(1)
+    print(f"[SDG][Test][PASS] Output validation succeeded for {out_dir}")
+# <end-simulation-get-data-test>
 
 simulation_app.close()

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test effort sensor functionality."""
 
 # NOTE:
 #   omni.kit.test - std python's unittest module with additional wrapping to add suport for async/await tests
@@ -35,8 +37,11 @@ from pxr import UsdPhysics, UsdUtils
 
 
 class TestEffortSensor(omni.kit.test.AsyncTestCase):
+    """Test effort sensor."""
+
     # Before running each test
     async def setUp(self):
+        """Set up test fixtures."""
         self._assets_root_path = await get_assets_root_path_async()
         if self._assets_root_path is None:
             carb.log_error("Could not find Isaac Sim assets folder")
@@ -47,6 +52,7 @@ class TestEffortSensor(omni.kit.test.AsyncTestCase):
     async def create_simple_articulation(
         self, physics_rate=60, include_cube=False, cube_path="/new_cube", cube_position=np.array([1, 0, 0.1])
     ):
+        """Create simple articulation."""
         self.pivot_path = "/Articulation/CenterPivot"
         self.slider_path = "/Articulation/Slider"
         self.arm_path = "/Articulation/Arm"
@@ -78,6 +84,7 @@ class TestEffortSensor(omni.kit.test.AsyncTestCase):
 
     # After running each test
     async def tearDown(self):
+        """Tear down test fixtures."""
         if self._timeline.is_playing():
             self._timeline.stop()
         SimulationManager.invalidate_physics()
@@ -92,6 +99,7 @@ class TestEffortSensor(omni.kit.test.AsyncTestCase):
         pass
 
     async def test_sensor_reading(self):
+        """Test sensor reading."""
         await self.create_simple_articulation()
 
         self.effort_sensor = EffortSensor("/Articulation/Arm/RevoluteJoint")
@@ -131,8 +139,35 @@ class TestEffortSensor(omni.kit.test.AsyncTestCase):
         reading = self.effort_sensor.get_sensor_reading()
         self.assertFalse(reading.is_valid)
 
+    async def test_physics_only_step_outputs_effort_data(self):
+        """EffortSensor produces data when stepping physics without app/render updates."""
+        await self.create_simple_articulation()
+
+        self.effort_sensor = EffortSensor("/Articulation/Arm/RevoluteJoint")
+        reading = self.effort_sensor.get_sensor_reading()
+        self.assertFalse(reading.is_valid, "Reading should be invalid before physics steps")
+
+        try:
+            self._timeline.play()
+            SimulationManager.initialize_physics()
+            SimulationManager.step(steps=3, update_fabric=False)
+
+            reading = self.effort_sensor.get_sensor_reading()
+            self.assertTrue(reading.is_valid, "Reading should be valid after physics-only steps")
+            self.assertGreater(reading.time, 0.0)
+            self.assertNotEqual(reading.value, 0.0)
+        finally:
+            if self.effort_sensor is not None:
+                self.effort_sensor.reset()
+                self.effort_sensor._stage_open_callback_fn()
+                self.effort_sensor = None
+            if self._timeline.is_playing():
+                self._timeline.stop()
+                await omni.kit.app.get_app().next_update_async()
+
     # Remove this test later
     async def test_change_to_wrong_dof_name_in_play(self):
+        """Test change to wrong dof name in play."""
         await self.create_simple_articulation()
 
         self.effort_sensor = EffortSensor("/Articulation/Arm/RevoluteJoint")
@@ -177,6 +212,7 @@ class TestEffortSensor(omni.kit.test.AsyncTestCase):
         self.assertEqual(reading.is_valid, True)
 
     async def test_change_buffer_size(self):
+        """Test change buffer size."""
         await self.create_simple_articulation()
 
         self.effort_sensor = EffortSensor("/Articulation/Arm/RevoluteJoint")
@@ -326,7 +362,10 @@ class TestEffortSensor(omni.kit.test.AsyncTestCase):
                 await omni.kit.app.get_app().next_update_async()
 
             reading_after = self.effort_sensor.get_sensor_reading()
-            carb.log_info(f"Post-reinit effort reading valid={reading_after.is_valid}")
+            self.assertTrue(
+                reading_after.is_valid,
+                "Effort reading should remain valid after reader.initialize() rebuilds views",
+            )
         finally:
             _prims_reader.release_prim_data_reader_interface(reader)
 
@@ -354,5 +393,10 @@ class TestEffortSensor(omni.kit.test.AsyncTestCase):
                 reader.initialize(stage_id, -1)
                 for _ in range(5):
                     await omni.kit.app.get_app().next_update_async()
+
+            self.assertTrue(
+                self.effort_sensor.get_sensor_reading().is_valid,
+                "Effort reading should remain valid after multiple reader.initialize() calls",
+            )
         finally:
             _prims_reader.release_prim_data_reader_interface(reader)

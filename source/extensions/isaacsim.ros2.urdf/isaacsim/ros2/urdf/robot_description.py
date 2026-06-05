@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,10 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """ROS 2 URDF importer UI workflow."""
 
 import os
 import re
+import tempfile
 import typing
 from functools import partial
 
@@ -70,28 +72,31 @@ class RobotDescription:
             urdf_description: URDF document string from the node.
             package_found: Whether ROS package URLs were resolved.
         """
-        ext_manager = omni.kit.app.get_app().get_extension_manager()
-        ext_id = ext_manager.get_enabled_extension_id("isaacsim.ros2.urdf")
-        self._extension_path = os.path.normpath(ext_manager.get_extension_path(ext_id))
-
         match = re.search(r'<robot[^>]*name=["\']([^"\']+)["\']', urdf_description)
         self.package_name = match.group(1) if match else "robot"
 
-        out_dir = os.path.normpath(os.path.join(self._extension_path, "data", "urdf"))
-        os.makedirs(out_dir, exist_ok=True)
+        out_dir = tempfile.mkdtemp(prefix="ros2_urdf_")
         out_path = os.path.normpath(os.path.join(out_dir, f"{self.package_name}.urdf"))
-        print(out_path)
+        carb.log_info(f"Writing URDF to {out_path}")
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(urdf_description)
 
         self.urdf_description = urdf_description
         self._last_urdf_path = os.path.normpath(out_path)
         if package_found:
-            self._set_status("ROS node found")
+            self._set_status("ROS package paths resolved")
         else:
-            self._set_status("ROS node not found", color=0xFF0000FF)
-        self._option_widget.set_refresh_enabled(True)
-        self._option_widget.set_import_enabled(True)
+            self._set_status("ROS package paths could not be resolved", color=0xFF0000FF)
+
+        def _enable_ui() -> None:
+            self._option_widget.set_refresh_enabled(True)
+            self._option_widget.set_import_enabled(True)
+
+        app = omni.kit.app.get_app()
+        if hasattr(app, "post_to_main_thread"):
+            app.post_to_main_thread(_enable_ui)
+        else:
+            _enable_ui()
 
     def _on_node_changed(self, model: ui.AbstractValueModel) -> None:
         """Request a new URDF description for the provided node.
@@ -128,12 +133,20 @@ class RobotDescription:
 
         carb.log_info(f"ROS2 URDF Importer: Importing {normalized_urdf_path}")
         self._sync_config_from_models()
+        no_output_dir = self._config.usd_path is None
+        if no_output_dir:
+            carb.log_warn(
+                f"ROS2 URDF Importer: No USD output directory specified, using output path '{os.path.dirname(normalized_urdf_path)}'. "
+                "Set the 'USD Output' folder in the import window to control where the USD is saved."
+            )
         self._config.urdf_path = normalized_urdf_path
         self.urdf_importer.config = self._config
         output_path = os.path.normpath(self.urdf_importer.import_urdf())
         if not output_path:
             carb.log_error(f"ROS2 URDF Importer: Failed to import {normalized_urdf_path}")
             return
+        if no_output_dir:
+            carb.log_warn(f"ROS2 URDF Importer: USD written to {output_path}")
         carb.log_info(f"ROS2 URDF Importer: Opening stage {output_path}")
         result = omni.usd.get_context().open_stage(output_path)
         if not result:
@@ -226,7 +239,7 @@ class RobotDescription:
                 if path.rfind("/") < 0:
                     basepath = path[: path.rfind("\\")]
                 return os.path.normpath(basepath)
-        return "Same as Imported Model(Default)"
+        return "System temp directory (Default)"
 
     def _sync_config_from_models(self) -> None:
         """Update configuration values from UI models."""
@@ -244,7 +257,7 @@ class RobotDescription:
         if not model:
             return None
         output_path = model.get_value_as_string()
-        if output_path == "Same as Imported Model(Default)":
+        if output_path == "System temp directory (Default)":
             return None
         output_path = os.path.normpath(output_path)
         if output_path and not os.path.isdir(output_path):

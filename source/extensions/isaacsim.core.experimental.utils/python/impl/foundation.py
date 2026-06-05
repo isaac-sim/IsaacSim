@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Functions for working with USD/USDRT foundations, e.g.: Scene Description Foundations (Sdf), Graphics Foundations (Gf).
-"""
+"""Functions for working with USD/USDRT foundations, e.g.: Scene Description Foundations (Sdf), Graphics Foundations (Gf)."""
 
 from __future__ import annotations
 
@@ -56,11 +54,11 @@ def get_value_type_names(
         >>> foundation_utils.get_value_type_names(format=usdrt.Sdf.ValueTypeNames)
         [Sdf.ValueTypeName('asset'), Sdf.ValueTypeName('asset[]'), Sdf.ValueTypeName('bool'), ...]
     """
-    if format == str:
+    if format is str:
         return [item[1] for item in _VALUE_TYPE_NAMES]
-    elif format == Sdf.ValueTypeNames:
+    elif format is Sdf.ValueTypeNames:
         return [item[2] for item in _VALUE_TYPE_NAMES]
-    elif format == usdrt.Sdf.ValueTypeNames:
+    elif format is usdrt.Sdf.ValueTypeNames:
         return [item[3] for item in _VALUE_TYPE_NAMES]
     else:
         raise ValueError(f"Invalid format: '{format}'")
@@ -85,7 +83,7 @@ def resolve_value_type_name(
         ValueError: If the backend is not supported.
         ValueError: If the type name is invalid.
 
-     Example:
+    Example:
 
     .. code-block:: python
 

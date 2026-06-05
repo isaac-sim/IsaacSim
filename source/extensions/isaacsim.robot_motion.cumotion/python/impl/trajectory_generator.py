@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Implementation of trajectory generation functionality for creating smooth, time-optimal robot trajectories."""
+
 from __future__ import annotations
 
 import cumotion
@@ -33,12 +35,16 @@ class TrajectoryGenerator:
 
     Args:
         cumotion_robot: Robot configuration containing kinematics and joint information.
+        robot_joint_space: List of joint names defining the robot's joint space.
+
+    Raises:
+        ValueError: If cumotion controlled joints are not a subset of the robot_joint_space.
 
     Example:
 
         .. code-block:: python
 
-            generator = TrajectoryGenerator(robot_config)
+            generator = TrajectoryGenerator(robot_config, joint_names)
             trajectory = generator.generate_trajectory_from_cspace_waypoints(
                 waypoints=[[0, 0, 0], [1, 1, 1], [2, 2, 2]]
             )
@@ -48,7 +54,7 @@ class TrajectoryGenerator:
         self,
         cumotion_robot: CumotionRobot,
         robot_joint_space: list[str],
-    ):
+    ) -> None:
         if not set(cumotion_robot.controlled_joint_names).issubset(set(robot_joint_space)):
             raise ValueError(
                 f"Cumotion controlled joints {cumotion_robot.controlled_joint_names} are not a subset of the robot_joint_space {robot_joint_space}."
@@ -114,7 +120,6 @@ class TrajectoryGenerator:
                 path_spec.add_cspace_waypoint(np.array([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]))
                 trajectory = generator.generate_trajectory_from_path_specification(path_spec)
         """
-
         if tool_frame_name is None:
             tool_frame_names = self._cumotion_robot.robot_description.tool_frame_names()
             if not tool_frame_names:

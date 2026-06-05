@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,8 +17,7 @@
 
 import argparse
 import csv
-import sys
-from typing import List, Optional, Tuple
+from typing import List
 
 # Initialize simulation app first
 from isaacsim import SimulationApp
@@ -45,7 +44,6 @@ enable_extension("omni.asset_validator.core")
 
 # Isaac Sim imports
 import carb
-import omni.usd
 from isaacsim.core.utils.stage import get_current_stage, is_stage_loading, open_stage
 from isaacsim.storage.native import (
     find_files_recursive,

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
-import os
-from typing import List
+"""Tests for the robot assembler assembly and disassembly workflows."""
 
-import carb
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
@@ -31,8 +28,11 @@ from pxr import Gf, Sdf, UsdGeom
 # Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will
 # make it auto-discoverable by omni.kit.test
 class TestRobotAssembler(omni.kit.test.AsyncTestCase):
+    """Test the robot assembler assembly, cancellation, and finishing workflows."""
+
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Set up test environment with robot assembler and stage."""
         self._physics_fps = 60
         self._physics_dt = 1 / self._physics_fps  # duration of physics frame in seconds
 
@@ -53,24 +53,26 @@ class TestRobotAssembler(omni.kit.test.AsyncTestCase):
         await app_utils.update_app_async()
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Tear down test environment and reset the assembler."""
         self._timeline.stop()
         self._robot_assembler.reset()
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await app_utils.update_app_async()
         await app_utils.update_app_async()
 
-    async def _create_light(self):
+    async def _create_light(self) -> None:
         sphere_light = SphereLight("/World/SphereLight", radii=2.0, positions=[6.5, 0, 12])
         sphere_light.set_intensities(100000)
 
-    def assertListsSame(self, l1, l2):
+    def assertListsSame(self, l1: list, l2: list) -> None:  # noqa: N802
+        """Assert that two lists contain the same elements regardless of order."""
         for item in l1:
             self.assertTrue(item in l2, f"{l1}, {l2}")
 
         self.assertTrue(len(l2) == len(l1), f"{l1}, {l2}")
 
-    async def _prepare_stage(self):
+    async def _prepare_stage(self) -> None:
         # Set settings to ensure deterministic behavior
         # Initialize the robot
         # Play the timeline
@@ -93,7 +95,13 @@ class TestRobotAssembler(omni.kit.test.AsyncTestCase):
 
         await app_utils.update_app_async()
 
-    def apply_rotation(self, axis, angle):
+    def apply_rotation(self, axis: list, angle: float) -> None:
+        """Apply a rotation to the attachment robot prim.
+
+        Args:
+            axis: Rotation axis vector.
+            angle: Rotation angle in degrees.
+        """
         prim = self.stage.GetPrimAtPath(self._robot_assembler._attachment_robot_prim)
 
         xformable = UsdGeom.Xformable(prim)
@@ -109,7 +117,8 @@ class TestRobotAssembler(omni.kit.test.AsyncTestCase):
             new_transform_matrix=new_matrix,
         )
 
-    async def test_robot_assembler_begin_assembly(self):
+    async def test_robot_assembler_begin_assembly(self) -> None:
+        """Test beginning a robot assembly with rotation adjustments."""
         self._robot_assembler.begin_assembly(
             self.stage,
             self._robot_base,
@@ -125,7 +134,8 @@ class TestRobotAssembler(omni.kit.test.AsyncTestCase):
 
         await self._assert_pose()
 
-    async def test_robot_assembler_cancel_assembly(self):
+    async def test_robot_assembler_cancel_assembly(self) -> None:
+        """Test canceling a robot assembly restores original pose."""
         self._robot_assembler.begin_assembly(
             self.stage,
             self._robot_base,
@@ -142,11 +152,34 @@ class TestRobotAssembler(omni.kit.test.AsyncTestCase):
         )
         self.assertAlmostEqual(np.linalg.norm(attachment_mount_pose - np.eye(4)), 0.0, 2)
 
-    async def test_robot_assembler_cancel_twice(self):
+    async def test_robot_assembler_cancel_twice(self) -> None:
+        """Test canceling assembly twice in succession."""
         for i in range(2):
             await self.test_robot_assembler_cancel_assembly()
 
-    async def _assert_pose(self):
+    async def test_robot_assembler_cancel_on_idle_instance_is_noop(self) -> None:
+        """Regression: ``cancel_assembly`` on a fresh instance must be a no-op.
+
+        Calling it on a never-started instance must not raise
+        ``AttributeError: '_assembly_identifier'``.
+
+        Reproduces the failure mode where calling ``cancel_assembly`` (or any
+        flow that reaches it via ``reset()``) before ``begin_assembly`` has
+        ever run crashed because the assembly-sublayer state attributes were
+        only initialized inside ``begin_assembly``.
+        """
+        fresh_assembler = RobotAssembler()
+        # Must not raise.
+        fresh_assembler.cancel_assembly()
+        # Allow the async cleanup scheduled by cancel_assembly to settle.
+        await app_utils.update_app_async(steps=2)
+        # A second cancel on the now-reset instance must also be safe.
+        fresh_assembler.cancel_assembly()
+        await app_utils.update_app_async(steps=2)
+        # Direct reset on a fresh instance must likewise be safe.
+        RobotAssembler().reset()
+
+    async def _assert_pose(self) -> None:
         robot_base_pose = omni.usd.get_world_transform_matrix(
             self.stage.GetPrimAtPath(self._robot_base + self._robot_base_mount)
         )
@@ -157,7 +190,7 @@ class TestRobotAssembler(omni.kit.test.AsyncTestCase):
         dist = np.linalg.norm(robot_base_pose.ExtractTranslation() - attachment_mount_pose.ExtractTranslation())
         self.assertAlmostEqual(float(dist), 0.0, 2)
 
-    async def _assert_assembled(self):
+    async def _assert_assembled(self) -> None:
         self._robot_assembler.assemble()
 
         attachment_root_joint = self.stage.GetPrimAtPath(self._robot_attach + "/root_joint")
@@ -169,19 +202,22 @@ class TestRobotAssembler(omni.kit.test.AsyncTestCase):
         await app_utils.update_app_async(steps=20)
         await self._assert_pose()
 
-    async def test_robot_assembler_assemble(self):
+    async def test_robot_assembler_assemble(self) -> None:
+        """Test assembling robots and verifying pose during simulation."""
         await self.test_robot_assembler_begin_assembly()
         await self._assert_assembled()
         self._timeline.stop()
         await app_utils.update_app_async()
 
-    async def test_robot_assembler_assemble_twice(self):
+    async def test_robot_assembler_assemble_twice(self) -> None:
+        """Test assembling robots twice with a cancel in between."""
         await self.test_robot_assembler_assemble()
         self._robot_assembler.cancel_assembly()
         await app_utils.update_app_async(steps=5)
         await self.test_robot_assembler_assemble()
 
-    async def test_robot_assembler_finish_assembly(self):
+    async def test_robot_assembler_finish_assembly(self) -> None:
+        """Test finishing assembly and verifying pose persists after timeline stop."""
         await self.test_robot_assembler_assemble()
         self._robot_assembler.finish_assemble()
         await app_utils.update_app_async(steps=10)

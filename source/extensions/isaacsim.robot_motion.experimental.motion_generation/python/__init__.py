@@ -15,7 +15,6 @@
 
 """Experimental robot motion generation library with trajectory following, obstacle handling, and controller interfaces."""
 
-
 from .impl import *
 
 __all__ = [

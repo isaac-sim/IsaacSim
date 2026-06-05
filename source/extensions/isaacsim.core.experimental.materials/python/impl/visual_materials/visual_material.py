@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Base class for visual materials that provides common functionality for USD material shader manipulation."""
 
 from __future__ import annotations
 
@@ -198,7 +200,6 @@ class VisualMaterial(Prim, ABC):
         Returns:
             Boolean flags indicating if the prims are valid for creating material instances (shape ``(N, 1)``).
         """
-        pass
 
     @staticmethod
     def fetch_instances(paths: str | Usd.Prim | list[str | Usd.Prim]) -> list[VisualMaterial | None]:
@@ -261,7 +262,14 @@ class VisualMaterial(Prim, ABC):
         spec: dict,
         indices: int | list | np.ndarray | wp.array | None = None,
     ) -> None:
-        """Set shader input values."""
+        """Set shader input values.
+
+        Args:
+            name: Shader input name.
+            values: Input values to set on the shaders.
+            spec: Input specification containing type and validation information.
+            indices: Indices of prims to process (shape ``(N,)``). If not defined, all wrapped prims are processed.
+        """
         sdf_type, sdf_type_class = self._parse_sdf_type(spec["type"])
         place_func, _, set_func, _, _ = self._get_sdf_type_spec(sdf_type, sdf_type_class)
         # accommodate values
@@ -286,7 +294,16 @@ class VisualMaterial(Prim, ABC):
         spec: dict,
         indices: int | list | np.ndarray | wp.array | None = None,
     ) -> list | wp.array:
-        """Get shader input values."""
+        """Get shader input values.
+
+        Args:
+            name: Shader input name.
+            spec: Input specification containing type information.
+            indices: Indices of prims to process (shape ``(N,)``). If not defined, all wrapped prims are processed.
+
+        Returns:
+            Values from the shader inputs.
+        """
         sdf_type, sdf_type_class = self._parse_sdf_type(spec["type"])
         _, create_func, _, get_func, return_func = self._get_sdf_type_spec(sdf_type, sdf_type_class)
         # get values
@@ -305,10 +322,18 @@ class VisualMaterial(Prim, ABC):
     """
 
     @staticmethod
-    def _get_material_and_shader_from_material(
+    def _get_material_and_shader(
         stage: Usd.Stage, path: str
     ) -> tuple[UsdShade.Material | None, UsdShade.Shader | None]:
-        """Get the material and shader from a material."""
+        """Get the material and shader for a given material path.
+
+        Args:
+            stage: USD stage containing the material.
+            path: Path to the material prim.
+
+        Returns:
+            Two-elements tuple. 1) USD Material, if found. 2) USD Shader, if found.
+        """
         material = None
         shader = None
         # material
@@ -318,30 +343,27 @@ class VisualMaterial(Prim, ABC):
         # shader
         if material is not None:
             shader = UsdShade.Shader(omni.usd.get_shader_from_material(prim, get_prim=True))
-        return material, shader
-
-    @staticmethod
-    def _get_material_and_shader(
-        stage: Usd.Stage, path: str
-    ) -> tuple[UsdShade.Material | None, UsdShade.Shader | None]:
-        """Get the material and shader for a given material path."""
-        material = None
-        shader = None
-        # material
-        prim = stage.GetPrimAtPath(path)
-        if prim.IsValid() and prim.IsA(UsdShade.Material):
-            material = UsdShade.Material(prim)
-        # shader
-        for name in ["Shader", "shader"]:
-            prim = stage.GetPrimAtPath(f"{path}/{name}")
-            if prim.IsValid() and prim.IsA(UsdShade.Shader):
-                shader = UsdShade.Shader(prim)
-                break
+        if shader is None:
+            for name in ["Shader", "shader"]:
+                prim = stage.GetPrimAtPath(f"{path}/{name}")
+                if prim.IsValid() and prim.IsA(UsdShade.Shader):
+                    shader = UsdShade.Shader(prim)
+                    break
         return material, shader
 
     @staticmethod
     def _parse_sdf_type(type_name: str | Sdf.ValueTypeName) -> tuple[Sdf.ValueTypeName, type]:
-        """Parse a Sdf value type name into Sdf type and type class."""
+        """Parse a Sdf value type name into Sdf type and type class.
+
+        Args:
+            type_name: The Sdf value type name to parse.
+
+        Returns:
+            A tuple containing the Sdf ValueTypeName and its corresponding Python type class.
+
+        Raises:
+            ValueError: If the type name is invalid.
+        """
         sdf_type = None
         if isinstance(type_name, Sdf.ValueTypeName):
             sdf_type = type_name
@@ -364,7 +386,19 @@ class VisualMaterial(Prim, ABC):
     def _get_sdf_type_spec(
         sdf_type: Sdf.ValueTypeName, sdf_type_class: type
     ) -> tuple[callable, callable, callable, callable]:
-        """Get helper functions to place, create, set and get values for a given Sdf type."""
+        """Get helper functions to place, create, set and get values for a given Sdf type.
+
+        Args:
+            sdf_type: The Sdf ValueTypeName to get helpers for.
+            sdf_type_class: The Python type class associated with the Sdf type.
+
+        Returns:
+            A tuple of four callables (place_func, create_func, set_func, get_func, return_func) for handling
+            the specified Sdf type.
+
+        Raises:
+            NotImplementedError: If the Sdf type is not supported.
+        """
         # Gf.Vec*
         if hasattr(sdf_type_class, "__isGfVec"):
             dimension = sdf_type_class.dimension

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,25 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Defines a Replicator writer that converts RGB data to PyTorch tensor batches and sends them to a listener."""
+"""Define a Replicator writer that converts RGB data to PyTorch tensor batches and sends them to a listener."""
 
+from __future__ import annotations
 
 import carb
 import warp as wp
 from isaacsim.core.deprecation_manager import import_module
 from omni.replicator.core import AnnotatorRegistry, BackendDispatch, Writer
 
-from . import PytorchListener
-
-torch = import_module("torch")
+from .pytorch_listener import PytorchListener
 
 __version__ = "0.0.1"
 
 
 class PytorchWriter(Writer):
-    """A custom writer that uses omni.replicator API to retrieve RGB data via render products
+    """A custom writer that uses omni.replicator API to retrieve RGB data via render products.
+
             and formats them as tensor batches. The writer takes a PytorchListener which is able
             to retrieve pytorch tensors for the user directly after each writer call.
+
+    .. deprecated:: 1.5.0
+
+        This class is deprecated and will be removed in a future version. No replacement is provided.
 
     Args:
         listener: A PytorchListener that is sent pytorch batch tensors at each write() call.
@@ -66,7 +70,8 @@ class PytorchWriter(Writer):
         self.version = __version__
 
     def write(self, data: dict):
-        """Sends data captured by the attached render products to the PytorchListener and will write data to
+        """Send data captured by the attached render products to the PytorchListener and will write data to.
+
         the output directory if specified during initialization.
 
         Args:
@@ -86,7 +91,7 @@ class PytorchWriter(Writer):
 
     @carb.profiler.profile
     def _write_rgb(self, data: dict, rp_info: dict):
-        """Writes RGB data to the output directory as PNG files.
+        """Write RGB data to the output directory as PNG files.
 
         Args:
             data: Dictionary containing annotator data with RGB information.
@@ -107,8 +112,8 @@ class PytorchWriter(Writer):
                 self._backend.write_image(file_path, img_data)
 
     @carb.profiler.profile
-    def _convert_to_pytorch(self, data: dict, rp_info: dict) -> torch.Tensor:
-        """Converts annotator data to a PyTorch tensor batch.
+    def _convert_to_pytorch(self, data: dict, rp_info: dict) -> "torch.Tensor":
+        """Convert annotator data to a PyTorch tensor batch.
 
         Args:
             data: Dictionary containing annotator data to convert.
@@ -128,7 +133,6 @@ class PytorchWriter(Writer):
             if annotator.startswith("LdrColor"):
                 data_tensors.append(wp.to_torch(data[annotator]).unsqueeze(0))
             elif annotator.startswith("RtxSensor"):
-                breakpoint()
                 width, height = rp_info["resolution"][0], rp_info["resolution"][1]
                 img_data = data[annotator]
                 data_tensors.append(wp.to_torch(img_data).reshape(height, width, -1).unsqueeze(0))
@@ -140,5 +144,6 @@ class PytorchWriter(Writer):
         device = "cuda:0" if self.device == "cuda" else self.device
         data_tensors = [t.to(device) for t in data_tensors]
 
+        torch = import_module("torch")
         data_tensor = torch.cat(data_tensors, dim=0)
         return data_tensor

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,14 @@
 
 import json
 
+import isaacsim.core.experimental.utils.transform as transform_utils
 import numpy as np
 import omni.graph.core as og
-from isaacsim.core.utils.rotations import euler_angles_to_quat
-from isaacsim.core.utils.transformations import get_transform_with_normalized_rotation, tf_matrix_from_pose
-from isaacsim.replicator.writers.scripts.utils import get_image_space_points
+from isaacsim.replicator.writers.scripts.utils import (
+    get_image_space_points,
+    get_transform_with_normalized_rotation,
+    tf_matrix_from_pose,
+)
 
 
 class OgnPose:
@@ -162,7 +165,8 @@ class OgnPose:
         cameraProjection = db.inputs.cameraProjection
 
         default_camera_to_desired_camera = tf_matrix_from_pose(
-            translation=(0.0, 0.0, 0.0), orientation=euler_angles_to_quat(cameraRotation, degrees=True)
+            translation=(0.0, 0.0, 0.0),
+            orientation=transform_utils.euler_angles_to_quaternion(cameraRotation, degrees=True).numpy(),
         )
 
         world_to_default_camera_row_major = np.asarray(cameraViewTransform).reshape((4, 4))

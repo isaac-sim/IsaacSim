@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,14 +26,14 @@ _SETTING_RATE_LIMIT_ENABLED = "/app/runLoops/main/rateLimitEnabled"
 
 class TestViewportManager(omni.kit.test.AsyncTestCase):
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
         # ---------------
         await stage_utils.create_new_stage_async()
         # ---------------
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         # ------------------
         stage_utils.close_stage()
         # ------------------

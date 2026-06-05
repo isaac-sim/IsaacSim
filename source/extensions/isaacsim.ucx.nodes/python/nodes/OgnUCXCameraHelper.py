@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""OmniGraph node for publishing camera images over UCX."""
+
+from __future__ import annotations
+
 import traceback
 
 import carb
@@ -26,14 +30,17 @@ from pxr import Usd
 
 
 class OgnUCXCameraHelperInternalState(BaseWriterNode):
-    def __init__(self):
+    """Internal state for the UCX camera helper OmniGraph node."""
+
+    def __init__(self) -> None:
         self.rv = ""
         self.resetSimulationTimeOnStop = True
         self.publishStepSize = 1
 
         super().__init__(initialize=False)
 
-    def post_attach(self, writer, render_product):
+    def post_attach(self, writer: rep.Writer, render_product: str | list[str]) -> None:
+        """Configure node attributes after attaching a writer to a render product."""
         try:
             if self.rv != "":
                 omni.syntheticdata.SyntheticData.Get().set_node_attributes(
@@ -49,12 +56,16 @@ class OgnUCXCameraHelperInternalState(BaseWriterNode):
 
 
 class OgnUCXCameraHelper:
+    """OmniGraph node that publish camera images over UCX."""
+
     @staticmethod
-    def internal_state():
+    def internal_state() -> OgnUCXCameraHelperInternalState:
+        """Return a new internal state instance."""
         return OgnUCXCameraHelperInternalState()
 
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: og.Database) -> bool:
+        """Compute the node output by initializing and attaching camera writers."""
         if db.per_instance_state.initialized is False:
             db.per_instance_state.initialized = True
             stage = omni.usd.get_context().get_stage()
@@ -64,12 +75,18 @@ class OgnUCXCameraHelper:
                     carb.log_warn("Render product not valid")
                     db.per_instance_state.initialized = False
                     return False
+
                 if stage.GetPrimAtPath(render_product_path) is None:
-                    carb.log_warn("Render product no created yet, retrying on next call")
+                    carb.log_warn("Render product not created yet, retrying on next call")
                     db.per_instance_state.initialized = False
                     return False
                 db.per_instance_state.resetSimulationTimeOnStop = db.inputs.resetSimulationTimeOnStop
 
+                if db.inputs.frameSkipCount > 0:
+                    carb.log_warn(
+                        "The frameSkipCount input is deprecated. "
+                        "Control publish rate by setting omni:sensor:tickRate on the sensor prim instead, and setting frameSkipCount to 0."
+                    )
                 db.per_instance_state.publishStepSize = db.inputs.frameSkipCount + 1
 
                 writer = None
@@ -90,6 +107,7 @@ class OgnUCXCameraHelper:
                     writer.initialize(
                         port=db.inputs.port,
                         tag=db.inputs.tag,
+                        sendCudaBuffer=bool(db.inputs.sendCudaBuffer),
                     )
 
                     if writer is not None:
@@ -104,12 +122,12 @@ class OgnUCXCameraHelper:
         return True
 
     @staticmethod
-    def release_instance(node, graph_instance_id):
+    def release_instance(node: object, graph_instance_id: int) -> None:
+        """Release resources when a node instance is destroyed."""
         try:
             state = OgnUCXCameraHelperInternalState.per_instance_internal_state(node)
         except Exception:
             state = None
-            pass
 
         if state is not None:
             state.reset()

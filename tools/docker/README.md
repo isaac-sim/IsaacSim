@@ -18,6 +18,7 @@ This directory contains scripts for building Docker images of Isaac Sim. The bui
   - [Checking status and endpoints](#checking-status-and-endpoints)
   - [Rebuilding the web viewer](#rebuilding-the-web-viewer)
   - [Multiple instances with dedicated GPUs](#multiple-instances-with-dedicated-gpus)
+- [Hub Workstation Cache](#hub-workstation-cache)
 - [Cloud Deployment (AWS, GCP, Azure)](#cloud-deployment-aws-gcp-azure)
   - [Retrieving the VM's public IP](#retrieving-the-vms-public-ip)
   - [Launching with the public IP](#launching-with-the-public-ip)
@@ -88,8 +89,8 @@ sudo systemctl restart docker
 sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 
-# Verify (optional)
-docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
+# Verify (optional) — uses the public NGC CUDA base image to avoid Docker Hub anonymous pull rate limits (HTTP 429)
+docker run --rm --runtime=nvidia --gpus all nvcr.io/nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi
 ```
 
 On other systems, install these packages using your system's package manager. For full details and alternatives, see [Container Setup](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_container.html#container-setup).
@@ -97,7 +98,7 @@ On other systems, install these packages using your system's package manager. Fo
 ### Clone the Repository
 
 ```bash
-git clone -b develop https://github.com/isaac-sim/IsaacSim.git isaacsim
+git clone -b main https://github.com/isaac-sim/IsaacSim.git isaacsim
 cd isaacsim
 git lfs install
 git lfs pull
@@ -221,7 +222,8 @@ Alternatively, use the provided helper script which drops into a bash shell insi
 ```bash
 # Create cache/log mounts (optional; use uid 1234 to match container user)
 mkdir -p ~/docker/isaac-sim/{cache/main,cache/computecache,config,data,logs,pkg}
-sudo chown -R 1234:1234 ~/docker
+mkdir -p ~/.cache/ov/hub
+sudo chown -R 1234:1234 ~/docker ~/.cache/ov/hub
 
 docker run --name isaac-sim --rm -it --gpus all --network=host \
   -e ACCEPT_EULA=Y \
@@ -234,6 +236,7 @@ docker run --name isaac-sim --rm -it --gpus all --network=host \
   -v ~/docker/isaac-sim/config:/isaac-sim/.nvidia-omniverse/config:rw \
   -v ~/docker/isaac-sim/data:/isaac-sim/.local/share/ov/data:rw \
   -v ~/docker/isaac-sim/pkg:/isaac-sim/.local/share/ov/pkg:rw \
+  -v ~/.cache/ov/hub:/var/cache/hub:rw \
   -u 1234:1234 \
   isaac-sim-docker:latest
 ```
@@ -275,6 +278,8 @@ If you override ports via `ISAACSIM_SIGNAL_PORT`, `ISAACSIM_STREAM_PORT` or `WEB
 
 A `docker-compose.yml` is provided that launches both Isaac Sim (headless streaming) and a WebRTC web-viewer container side by side. The web viewer is built from `@nvidia/create-ov-web-rtc-app` in local streaming mode and connects the browser directly to the Isaac Sim WebRTC endpoints.
 
+> **Support note:** Docker Compose web viewer deployment is supported only on Ubuntu hosts and DGX Spark systems. Windows hosts, including WSL, are not supported.
+
 > **Security notice:** Isaac Sim and the web viewer are designed for use on private/trusted networks. They do not include authentication or encryption. Do **not** expose them on the public Internet without additional safeguards. If you need remote access, restrict the ports with firewall rules or add a reverse proxy with HTTPS/TLS and authentication (e.g. nginx with SSL certificates and basic auth). See [Cloud Deployment](#cloud-deployment-aws-gcp-azure) for cloud-specific guidance. Users are responsible for securing any public-facing deployments.
 
 ### Quick start
@@ -282,7 +287,8 @@ A `docker-compose.yml` is provided that launches both Isaac Sim (headless stream
 ```bash
 # Create cache/log mounts (use uid 1234 to match container user)
 mkdir -p ~/docker/isaac-sim/{cache/main,cache/computecache,config,data,logs,pkg}
-sudo chown -R 1234:1234 ~/docker
+mkdir -p ~/.cache/ov/hub
+sudo chown -R 1234:1234 ~/docker ~/.cache/ov/hub
 
 # 1. Build the Isaac Sim image (existing workflow)
 ./tools/docker/prep_docker_build.sh --build --x86_64
@@ -308,7 +314,7 @@ On first run, Docker Compose will build the `web-viewer` image automatically. Th
 By default the compose file uses the locally built `isaac-sim-docker:latest` image. To use a prebuilt NGC image instead, set `ISAAC_SIM_IMAGE`:
 
 ```bash
-ISAAC_SIM_IMAGE=nvcr.io/nvidia/isaac-sim:6.0.0-dev2 docker compose -p isim -f tools/docker/docker-compose.yml up --build -d
+ISAAC_SIM_IMAGE=nvcr.io/nvidia/isaac-sim:6.0.0 docker compose -p isim -f tools/docker/docker-compose.yml up --build -d
 ```
 
 This skips the local Isaac Sim build steps (`prep_docker_build.sh` and `build_docker.sh`).
@@ -329,7 +335,7 @@ Override any variable via the shell or a `.env` file next to `docker-compose.yml
 
 | Variable                 | Default                      | Description                                                              |
 | ------------------------ | ---------------------------- | ------------------------------------------------------------------------ |
-| **ISAAC_SIM_IMAGE**      | `isaac-sim-docker:latest`    | Docker image to run. Set to a prebuilt NGC image (e.g. `nvcr.io/nvidia/isaac-sim:6.0.0-dev2`) to skip local build steps. |
+| **ISAAC_SIM_IMAGE**      | `isaac-sim-docker:latest`    | Docker image to run. Set to a prebuilt NGC image (e.g. `nvcr.io/nvidia/isaac-sim:6.0.0`) to skip local build steps. |
 | **ISAACSIM_HOST**        | `127.0.0.1`                  | Host IP for WebRTC streaming (used by both services). See [Cloud Deployment](#cloud-deployment-aws-gcp-azure) for cloud VMs. |
 | **ISAACSIM_SIGNAL_PORT** | `49100`                      | WebRTC signaling port (TCP)                                              |
 | **ISAACSIM_STREAM_PORT** | `47998`                      | WebRTC media port (UDP)                                                  |
@@ -360,7 +366,8 @@ You can run multiple Isaac Sim instances on the same host by using Docker Compos
 # Prepare separate data directories (one per instance, owned by uid 1234)
 mkdir -p ~/docker/isaac-sim-1/{cache/main,cache/computecache,config,data,logs,pkg}
 mkdir -p ~/docker/isaac-sim-2/{cache/main,cache/computecache,config,data,logs,pkg}
-sudo chown -R 1234:1234 ~/docker/isaac-sim-1 ~/docker/isaac-sim-2
+mkdir -p ~/.cache/ov/hub
+sudo chown -R 1234:1234 ~/docker ~/.cache/ov/hub
 
 # Instance 1 — GPU 0, default ports, web viewer on 8210
 GPU_DEVICE=0 \
@@ -399,6 +406,48 @@ To stop a specific instance:
 docker compose -p isim1 -f tools/docker/docker-compose.yml down
 docker compose -p isim2 -f tools/docker/docker-compose.yml down
 ```
+
+## Hub Workstation Cache
+
+[Hub Workstation Cache](https://docs.omniverse.nvidia.com/utilities/latest/cache/hub-workstation.html) is a service that speeds up USD workflows by caching storage-derived data locally. When running Isaac Sim in a container, Hub should also run as a container on the same host so that all Kit-based clients can benefit from the shared cache.
+
+> **Note:** Hub Workstation Cache is designed for **local workstation use only** — for example, bare-metal runs or containers on a local workstation. It is not intended for multi-user servers or cloud deployments. For distributed or cloud caching, see [Derived Data Cache Service (DDCS)](https://docs.nvidia.com/cloud-functions/current/latest/ddcs.html).
+
+The Hub Workstation Cache image is public and can be pulled without logging in to `nvcr.io`. If your Docker client is already logged in to `nvcr.io`, NGC checks whether the governing terms have been accepted for your NGC organization before allowing the pull.
+
+Before pulling the Hub image with Docker credentials, open the [Hub Workstation Cache container page](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/omniverse/containers/hub_workstation_cache?version=2.0.0) in a browser, sign in to NGC, select version `2.0.0`, and accept the governing terms. NGC requires terms acceptance once per NGC organization. For the official NGC procedure, see [Accepting Terms Before Downloading](https://docs.nvidia.com/ngc/latest/ngc-catalog-user-guide.html#accepting-terms-before-downloading).
+
+If Docker reports `DENIED` with `Please accept license on the browser to be able to download`, either accept the terms in the browser for the same NGC organization used by `docker login nvcr.io`, or log out of `nvcr.io` before pulling this public image anonymously:
+
+```bash
+docker logout nvcr.io
+docker pull nvcr.io/nvidia/omniverse/hub_workstation_cache:2.0.0
+```
+
+Start the Hub container **before** launching Isaac Sim:
+
+```bash
+mkdir -p ~/.cache/ov/hub
+sudo chown -R 1234:1234 ~/.cache/ov/hub
+docker run --name hub-cache --rm -d --network=host \
+  -v ~/.cache/ov/hub:/var/cache/hub:rw \
+  -u 1234:1234 \
+  nvcr.io/nvidia/omniverse/hub_workstation_cache:2.0.0
+```
+
+Once the container is running, the Hub settings UI is available at `http://localhost:14090/index.html`.
+
+The Isaac Sim container is already configured to discover Hub at runtime via the following environment variables baked into the image:
+
+| Variable                  | Value                 | Purpose                                                    |
+| ------------------------- | --------------------- | ---------------------------------------------------------- |
+| `HUB__CACHE__PATH`        | `/var/cache/hub`      | Tells the local Hub executable where to find the cache     |
+| `HUB__ARGS__DETECT_ONLY`  | `true`                | Prevents the client from starting its own Hub instance     |
+| `OMNICLIENT_HUB_EXE`     | `/usr/local/bin/hub`  | Path to the Hub executable used for client coordination    |
+
+The `~/.cache/ov/hub` volume mount in the Isaac Sim `docker run` examples maps the same host directory into both containers so they share the cache. `--network=host` is required so the Hub client inside Isaac Sim can reach the Hub service on `localhost`.
+
+For more details, see the [Hub as a Docker Container](https://docs.omniverse.nvidia.com/utilities/latest/cache/hub-workstation.html#hub-as-a-docker-container) documentation.
 
 ## Cloud Deployment (AWS, GCP, Azure)
 
@@ -484,12 +533,27 @@ gcloud compute firewall-rules create allow-isaacsim \
 
 ## Troubleshooting
 
-- **Cannot connect to livestream**: (1) Ensure you are using `--network=host` (required for WebRTC streaming). (2) Set `ISAACSIM_HOST` to the IP address the client uses to reach the host (e.g. LAN IP). (3) Allow ports 8210/tcp, 49100/tcp, and 47998/udp in the host firewall (e.g. UFW).
+- **Cannot connect to livestream / black screen / ports not listening**: (1) Confirm the Isaac Sim app reached the loaded state. (2) Ensure you are using `--network=host` (required for WebRTC streaming). (3) Set `ISAACSIM_HOST` to the IP address the client uses to reach the host (e.g. LAN IP or cloud public IP). (4) Allow ports 8210/tcp, 49100/tcp, and 47998/udp in the host firewall (e.g. UFW). Opening TCP ports alone is not sufficient because WebRTC media uses UDP 47998.
+- **Hub startup or connectivity issues after a previous test**: Restart the Hub container from the [Hub Workstation Cache](#hub-workstation-cache) section, then retry Docker Compose.
 - **Stale volume mounts causing issues (e.g. crashes, config errors, or livestream failures)**: Old cached data in the Docker volume mount directories can cause unexpected behavior. Remove the existing mounts and recreate them:
   ```bash
   sudo rm -rf ~/docker
   mkdir -p ~/docker/isaac-sim/{cache/main,cache/computecache,config,data,logs,pkg}
-  sudo chown -R 1234:1234 ~/docker
+  sudo rm -rf ~/.cache/ov/hub
+  mkdir -p ~/.cache/ov/hub
+  sudo chown -R 1234:1234 ~/docker ~/.cache/ov/hub
+  ```
+- **Docker image starts with missing module or plugin errors after an interrupted build, failed extraction, or disk-full event**: Remove the generated Docker build context and prepare the image again:
+  ```bash
+  rm -rf _container_temp
+  ./tools/docker/prep_docker_build.sh --x86_64
+  ./tools/docker/build_docker.sh --x86_64
+  ```
+  If the build output itself may be incomplete, remove `_build` as well and rebuild before preparing the Docker context:
+  ```bash
+  rm -rf _build _container_temp
+  ./tools/docker/prep_docker_build.sh --build --x86_64
+  ./tools/docker/build_docker.sh --x86_64
   ```
 - **Second browser or tab cannot connect**: Only one browser connection to Isaac Sim is supported at a time. Close the existing browser tab or window that is connected to the web viewer, then open the URL again in a single tab.
 - **Clipboard (Ctrl+C/V) not working in the web viewer**: The browser Clipboard API requires a secure context. When accessing the web viewer over HTTP from a non-localhost address, clipboard forwarding to Isaac Sim is blocked. To enable it, open `chrome://flags/#unsafely-treat-insecure-origin-as-secure` in Chrome, add your web viewer URL (e.g. `http://192.168.1.100:8210`), and relaunch the browser.
@@ -510,4 +574,3 @@ gcloud compute firewall-rules create allow-isaacsim \
   docker buildx inspect --bootstrap
   ./tools/docker/build_docker.sh --aarch64
   ```
-

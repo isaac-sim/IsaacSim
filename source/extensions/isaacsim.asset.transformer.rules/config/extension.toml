@@ -1,17 +1,20 @@
 [package]
-version = "1.2.0"
+version = "1.7.8"
 category = "Simulation"
 title = "Isaac Sim Asset Transformer Rules"
 description = "Rule implementations for the Asset Transformer"
 keywords = ["isaac", "assets", "transform", "rules"]
 changelog = "docs/CHANGELOG.md"
-readme = "docs/README.md"
+readme = "docs/Overview.md"
 preview_image = "data/preview.png"
 icon = "data/icon.png"
 
 [dependencies]
+"isaacsim.asset.importer.utils" = {}
 "isaacsim.asset.transformer" = {}
 "isaacsim.robot.schema" = {}
+"omni.kit.material.library" = {optional = true} # used by MaterialsRoutingRule to discover Kit-shipped built-in MDLs; falls back to a hardcoded list when unavailable
+"omni.kit.pip_archive" = {} # provides numpy, used by GeometriesRoutingRule._quantize_value
 "omni.usdphysics" = {}
 
 [[python.module]]
@@ -19,3 +22,6 @@ name = "isaacsim.asset.transformer.rules"
 
 [[python.module]]
 name = "isaacsim.asset.transformer.rules.tests"
+
+[documentation]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

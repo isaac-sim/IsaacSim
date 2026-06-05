@@ -1,3 +1,4 @@
+FROM nvcr.io/nvidia/omniverse/hub_workstation_cache:2.0.0 AS hub-cache
 FROM nvcr.io/nvidia/base/ubuntu:noble-20251013
 
 ENV NVIDIA_VISIBLE_DEVICES=all NVIDIA_DRIVER_CAPABILITIES=all
@@ -40,6 +41,8 @@ ENV VK_DRIVER_FILES=/etc/vulkan/icd.d/nvidia_icd.json
 USER root
 RUN useradd -ms /bin/bash -l --uid 1234 isaac-sim -d /isaac-sim
 RUN chown -R isaac-sim /tmp
+RUN mkdir -p /var/cache/hub && chown isaac-sim:isaac-sim /var/cache/hub
+RUN touch /tmp/hub-isaac-sim.lock && chown isaac-sim:isaac-sim /tmp/hub-isaac-sim.lock
 USER isaac-sim
 
 # Copy package
@@ -48,7 +51,13 @@ WORKDIR /isaac-sim
 COPY --chown=isaac-sim:isaac-sim . /isaac-sim/
 RUN mkdir -p /isaac-sim/.nvidia-omniverse/config
 
+# Copy /app from hub_workstation_cache
+COPY --from=hub-cache --chmod=755 /app/hub /usr/local/bin/hub
+
 ENV MIN_DRIVER_VERSION=570.169
+ENV HUB__CACHE__PATH=/var/cache/hub
+ENV HUB__ARGS__DETECT_ONLY=true
+ENV OMNICLIENT_HUB_EXE=/usr/local/bin/hub
 
 # Add symlink
 RUN ln -s exts/isaacsim.examples.interactive/isaacsim/examples/interactive extension_examples

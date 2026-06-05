@@ -25,8 +25,7 @@
   - def forward(self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs) -> Optional[RobotState]
 
 - class ObstacleConfiguration
-  - representation: ObstacleRepresentation
-  - safety_tolerance: float
+  - def __init__(self, representation: ObstacleRepresentation | str, safety_tolerance: float)
 
 - class ObstacleRepresentation(StrEnum)
   - SPHERE: str
@@ -55,7 +54,7 @@
 
 - class SceneQuery
   - def __init__(self)
-  - def get_prims_in_aabb(self, search_box_origin: wp.array | list[float] | np.ndarray, search_box_minimum: wp.array | list[float] | np.ndarray, search_box_maximum: wp.array | list[float] | np.ndarray, tracked_api: TrackableApi, include_prim_paths: list[str] | None = None, exclude_prim_paths: list[str] | None = None) -> list[str]
+  - def get_prims_in_aabb(self, search_box_origin: wp.array | list[float] | np.ndarray, search_box_minimum: wp.array | list[float] | np.ndarray, search_box_maximum: wp.array | list[float] | np.ndarray, tracked_api: TrackableApi, include_prim_paths: list[str] | str | None = None, exclude_prim_paths: list[str] | str | None = None) -> list[str]
   - def get_robots_in_stage(self) -> list[str]
 
 - class TrackableApi(StrEnum)

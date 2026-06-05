@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,13 +15,9 @@
 
 from os.path import exists
 
-import omni
-
 
 class OgnIsaacReadFilePath:
-    """
-    look for file at path given, and return its contents
-    """
+    """look for file at path given, and return its contents."""
 
     @staticmethod
     def compute(db) -> bool:

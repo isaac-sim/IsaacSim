@@ -1,4 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+"""Robo party sample combining Franka stacking, UR10 stacking, Kaya, and Jetbot."""
+
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +20,8 @@ import numpy as np
 from isaacsim.core.rendering_manager import ViewportManager
 from isaacsim.core.simulation_manager import SimulationEvent, SimulationManager
 from isaacsim.examples.base.base_sample_experimental import BaseSample
+from isaacsim.robot.experimental.manipulators.examples.franka.stacking import Stacking as FrankaStacking
+from isaacsim.robot.experimental.manipulators.examples.universal_robots.stacking import Stacking as UR10Stacking
 
 # Wheeled robots (Kaya, Jetbot): isaacsim.robot.experimental.wheeled_robots
 # Extension: source/extensions/isaacsim.robot.experimental.wheeled_robots
@@ -29,8 +33,6 @@ from isaacsim.robot.experimental.wheeled_robots.robots import (
     HolonomicRobotUsdSetup,
     WheeledRobot,
 )
-from isaacsim.robot.manipulators.examples.franka.stacking import Stacking as FrankaStacking
-from isaacsim.robot.manipulators.examples.universal_robots.stacking import Stacking as UR10Stacking
 from isaacsim.storage.native import get_assets_root_path
 
 
@@ -178,8 +180,13 @@ class RoboParty(BaseSample):
             SimulationManager.deregister_callback(self._physics_callback_id)
             self._physics_callback_id = None
 
-    def _party_physics_callback(self, dt, context) -> None:
-        """Run stacking and time-based wheeled robot commands."""
+    def _party_physics_callback(self, dt: float, context: object) -> None:
+        """Run stacking and time-based wheeled robot commands.
+
+        Args:
+            dt: Time delta for the physics step.
+            context: Physics simulation context.
+        """
         if not self._is_executing:
             return
 

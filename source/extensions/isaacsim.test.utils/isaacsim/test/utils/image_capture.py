@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +15,10 @@
 
 """Utilities for capturing image and annotator data from virtual cameras in Isaac Sim simulations."""
 
-
 import os
 from typing import Any
 
+import carb
 import numpy as np
 
 
@@ -271,7 +271,106 @@ async def capture_depth_data_async(
     )
 
 
-async def capture_viewport_annotator_data_async(viewport_api, annotator_name="rgb") -> Any:
+async def capture_app_screenshot_async(output_path: str, *, max_wait_frames: int = 20) -> bool:
+    """Capture a full-application screenshot (entire window including UI chrome) and save it to disk.
+
+    Uses ``omni.kit.renderer.capture`` swapchain capture.  Works in both windowed and
+    headless (``--no-window``) modes.
+
+    Args:
+        output_path: Destination file path for the PNG screenshot.
+        max_wait_frames: Maximum number of additional app-update frames to wait for
+            the file to appear on disk after the capture is triggered.
+
+    Returns:
+        ``True`` if the screenshot file was successfully created, ``False`` otherwise.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> from isaacsim.test.utils.image_capture import capture_app_screenshot_async
+        >>>
+        >>> ok = await capture_app_screenshot_async("/tmp/app.png")
+        App screenshot saved: /tmp/app.png (12345 bytes)
+        >>> ok
+        True
+    """
+    import omni.kit.app
+    import omni.kit.renderer.capture
+
+    renderer = omni.kit.renderer.capture.acquire_renderer_capture_interface()
+
+    # Wait one frame so any open menus close
+    await omni.kit.app.get_app().next_update_async()
+
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    renderer.capture_next_frame_swapchain(output_path)
+
+    await omni.kit.app.get_app().next_update_async()
+    renderer.wait_async_capture()
+
+    # Poll until the file appears on disk
+    for _ in range(max_wait_frames):
+        if os.path.isfile(output_path):
+            break
+        await omni.kit.app.get_app().next_update_async()
+
+    if os.path.isfile(output_path):
+        print(f"App screenshot saved: {output_path} ({os.path.getsize(output_path)} bytes)")
+        return True
+    print(f"ERROR: App screenshot not created at {output_path}")
+    return False
+
+
+async def capture_viewport_screenshot_async(output_path: str, *, viewport_api: Any = None) -> bool:
+    """Capture the active viewport's rendered image and save it to disk.
+
+    Uses replicator annotators to capture the RGB render — works in headless
+    (``--no-window``) mode.  Does not include UI chrome.
+
+    Args:
+        output_path: Destination file path for the PNG screenshot.
+        viewport_api: Viewport API instance to capture from.  If ``None``, the
+            active viewport is used.
+
+    Returns:
+        ``True`` if the screenshot file was successfully created, ``False`` otherwise.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> from isaacsim.test.utils.image_capture import capture_viewport_screenshot_async
+        >>>
+        >>> ok = await capture_viewport_screenshot_async("/tmp/viewport.png")
+        Viewport screenshot saved: /tmp/viewport.png (98765 bytes)
+        >>> ok
+        True
+    """
+    import omni.kit.viewport.utility
+    from isaacsim.test.utils.image_io import save_rgb_image
+
+    if viewport_api is None:
+        viewport_api = omni.kit.viewport.utility.get_active_viewport()
+    if viewport_api is None:
+        print("ERROR: No active viewport found")
+        return False
+
+    rgb_data = await capture_viewport_annotator_data_async(viewport_api, annotator_name="rgb")
+
+    out_dir = os.path.dirname(output_path) or "."
+    os.makedirs(out_dir, exist_ok=True)
+    save_rgb_image(rgb_data, out_dir, os.path.basename(output_path))
+
+    if os.path.isfile(output_path):
+        print(f"Viewport screenshot saved: {output_path} ({os.path.getsize(output_path)} bytes)")
+        return True
+    print(f"ERROR: Viewport screenshot not created at {output_path}")
+    return False
+
+
+async def capture_viewport_annotator_data_async(viewport_api: Any, annotator_name: str = "rgb") -> Any:
     """Capture annotator data from an existing viewport's render product.
 
     This function attaches a replicator annotator to an existing viewport's render product,
@@ -327,3 +426,187 @@ async def capture_viewport_annotator_data_async(viewport_api, annotator_name="rg
 
     # Use the existing capture_annotator_data_async with the viewport's render product
     return await capture_annotator_data_async(annotator_name, render_product=render_product_path)
+
+
+async def capture_frame_sequence_async(
+    output_dir: str,
+    num_frames: int = 30,
+    updates_per_frame: int = 2,
+    mode: str = "app",
+    *,
+    prefix: str = "frame",
+    start_index: int = 0,
+    annotator_name: str = "rgb",
+    resolution: tuple[int, int] | None = None,
+    camera_prim_path: str | None = None,
+    render_product: Any = None,
+) -> list[str]:
+    """Capture a sequence of frames for video assembly.
+
+    Captures screenshots at a configurable interval while executing app updates.
+    The captured frames can be assembled into a video using external tools
+    (ffmpeg, Pillow).
+
+    Three capture modes are supported:
+
+    - ``"app"`` — Full-app swapchain capture including UI chrome. Requires a display.
+    - ``"viewport"`` — Viewport-only capture using the active viewport's render product.
+      No UI chrome; works headless.
+    - ``"replicator"`` — Capture via a replicator render product and annotator. Supports
+      custom cameras, resolutions, and any annotator type (rgb, depth, normals,
+      segmentation, etc.). The render product is created once and reused across all
+      frames for efficiency. Works headless.
+
+    Args:
+        output_dir: Directory for output files. Created if it does not exist.
+        num_frames: Number of frames to capture.
+        updates_per_frame: Number of app update steps between captures.
+        mode: Capture mode — one of ``"app"``, ``"viewport"``, or ``"replicator"``.
+        prefix: Filename prefix. Files are named ``{prefix}_{index:04d}.{ext}``.
+        start_index: Starting index for frame numbering.
+        annotator_name: Replicator annotator name. Only used in ``"replicator"`` mode.
+            Image annotators (rgb, normals) save as PNG; array annotators (depth,
+            segmentation) save as NPY.
+        resolution: Output resolution ``(width, height)``. Only used in ``"replicator"``
+            mode. Defaults to ``(1280, 720)`` if not provided.
+        camera_prim_path: USD path to the camera prim. Only used in ``"replicator"``
+            mode. Defaults to the active viewport camera if not provided.
+        render_product: Existing replicator render product to reuse. Only used in
+            ``"replicator"`` mode. If provided, ``camera_prim_path`` and ``resolution``
+            are ignored.
+
+    Returns:
+        List of file paths for the captured frames.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> from isaacsim.test.utils.image_capture import capture_frame_sequence_async
+        >>>
+        >>> # Capture 60 frames of the full app
+        >>> paths = await capture_frame_sequence_async("/tmp/recording", num_frames=60)
+        Captured 60 frames in /tmp/recording
+        >>>
+        >>> # Capture viewport-only frames with more sim steps between captures
+        >>> paths = await capture_frame_sequence_async(
+        ...     "/tmp/recording", num_frames=30, updates_per_frame=4, mode="viewport"
+        ... )
+        >>>
+        >>> # Capture RGB at 1080p from a specific camera via replicator
+        >>> paths = await capture_frame_sequence_async(
+        ...     "/tmp/recording",
+        ...     num_frames=60,
+        ...     mode="replicator",
+        ...     resolution=(1920, 1080),
+        ...     camera_prim_path="/World/Camera",
+        ... )
+        >>>
+        >>> # Capture depth frames via replicator
+        >>> paths = await capture_frame_sequence_async(
+        ...     "/tmp/depth_recording",
+        ...     num_frames=30,
+        ...     mode="replicator",
+        ...     annotator_name="distance_to_camera",
+        ... )
+    """
+    import omni.kit.app
+
+    app = omni.kit.app.get_app()
+    os.makedirs(output_dir, exist_ok=True)
+    paths = []
+
+    if mode == "app":
+        import omni.kit.renderer.capture
+
+        renderer = omni.kit.renderer.capture.acquire_renderer_capture_interface()
+
+        for i in range(num_frames):
+            idx = start_index + i
+            path = os.path.join(output_dir, f"{prefix}_{idx:04d}.png")
+            renderer.capture_next_frame_swapchain(path)
+            await app.next_update_async()
+            renderer.wait_async_capture()
+            for _ in range(updates_per_frame - 1):
+                await app.next_update_async()
+            paths.append(path)
+
+    elif mode == "viewport":
+        import omni.kit.viewport.utility as viewport_utils
+        from isaacsim.test.utils.image_io import save_rgb_image
+
+        viewport_api = viewport_utils.get_active_viewport()
+        if viewport_api is None:
+            carb.log_error("No active viewport found for frame sequence capture")
+            return paths
+
+        for i in range(num_frames):
+            idx = start_index + i
+            rgb_data = await capture_viewport_annotator_data_async(viewport_api, annotator_name="rgb")
+            path = os.path.join(output_dir, f"{prefix}_{idx:04d}.png")
+            save_rgb_image(rgb_data, os.path.dirname(path) or ".", os.path.basename(path))
+            for _ in range(updates_per_frame):
+                await app.next_update_async()
+            paths.append(path)
+
+    elif mode == "replicator":
+        import numpy as np
+        import omni.replicator.core as rep
+        from isaacsim.test.utils.image_io import save_rgb_image
+
+        owns_render_product = render_product is None
+
+        if render_product is None:
+            if resolution is None:
+                resolution = (1280, 720)
+
+            if camera_prim_path is None:
+                import omni.kit.viewport.utility as viewport_utils
+
+                viewport_api = viewport_utils.get_active_viewport()
+                if viewport_api is None:
+                    carb.log_error("No active viewport or camera_prim_path for replicator capture")
+                    return paths
+                camera_prim_path = str(viewport_api.camera_path)
+
+            render_product = rep.create.render_product(camera_prim_path, resolution)
+
+        annot = rep.AnnotatorRegistry.get_annotator(annotator_name)
+        annot.attach(render_product)
+
+        # Determine if this annotator produces image data (save as PNG) or array data (save as NPY)
+        is_image_annotator = annotator_name in ("rgb", "normals", "instance_segmentation_fast")
+
+        try:
+            for i in range(num_frames):
+                idx = start_index + i
+                await rep.orchestrator.step_async()
+                data = annot.get_data(do_array_copy=True)
+
+                if is_image_annotator and isinstance(data, np.ndarray) and data.ndim >= 2:
+                    path = os.path.join(output_dir, f"{prefix}_{idx:04d}.png")
+                    save_rgb_image(data, os.path.dirname(path) or ".", os.path.basename(path))
+                elif isinstance(data, np.ndarray):
+                    path = os.path.join(output_dir, f"{prefix}_{idx:04d}.npy")
+                    np.save(path, data)
+                elif isinstance(data, dict) and "data" in data and isinstance(data["data"], np.ndarray):
+                    path = os.path.join(output_dir, f"{prefix}_{idx:04d}.npy")
+                    np.save(path, data["data"])
+                else:
+                    path = os.path.join(output_dir, f"{prefix}_{idx:04d}.npy")
+                    np.save(path, np.array(data))
+
+                for _ in range(updates_per_frame):
+                    await app.next_update_async()
+                paths.append(path)
+        finally:
+            annot.detach()
+            if owns_render_product:
+                render_product.destroy()
+
+    else:
+        raise ValueError(f"Unknown capture mode: {mode!r}. Use 'app', 'viewport', or 'replicator'.")
+
+    carb.log_info(f"Captured {len(paths)} frames in {output_dir}")
+    print(f"Captured {len(paths)} frames in {output_dir}")
+    return paths

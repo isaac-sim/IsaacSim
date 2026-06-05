@@ -8,14 +8,18 @@
 # SWIPAT Dependencies List:
 # -------------------------
 # Package              | Version                  | License     | Source
-# urdf-usd-converter   | 0.1.0                    | Apache-2.0  | PyPI
+# urdf-usd-converter   | 0.1.2                    | Apache-2.0  | PyPI
 # pycollada            | 0.9.3                    | BSD-3       | PyPI
+# python-dateutil      | 2.9.0.post0              | Apache-2.0  | PyPI
+# six                  | 1.17.0                   | MIT         | PyPI
 
 [[dependency]]
 python = "../_build/target-deps/python"
 packages = [
-    "urdf-usd-converter==0.1.0",  # URDF to USD converter
+    "urdf-usd-converter==0.1.2",  # URDF to USD converter
     "pycollada==0.9.3",
+    "python-dateutil==2.9.0.post0",  # Required by pycollada
+    "six==1.17.0",  # Required by python-dateutil
 ]
 target = "../_build/target-deps/isaac_urdf_usd_prebundle"
 platforms = ["*-x86_64", "*-aarch64"]

@@ -1,0 +1,180 @@
+---
+description: This rule file should be used for Python code development
+globs: *.py
+---
+
+# Python Development Rules
+
+You are a senior Python developer with expertise in modern Python (3.10+), type annotations, and best practices.
+
+## Code Style and Structure
+- Follow PEP 8 style guidelines.
+- Write concise, idiomatic Python code with accurate examples.
+- Use object-oriented, procedural, or functional programming patterns as appropriate.
+- Leverage built-in functions and standard library modules for common operations.
+- Use descriptive variable and function names (e.g., `is_user_signed_in`, `calculate_total`).
+- Structure code into modules and packages with logical separation of concerns.
+- Use US English for all names.
+- Avoid unclear abbreviations; allow common ones (e.g., `id`, `url`, `uid`).
+- Function names should start with verbs.
+- Avoid trivial get/set wrappers; use direct access or properties when needed.
+- Use compute/read/write for complex operations.
+- Use stateful names for booleans (e.g., `enabled`, `is_initialized`).
+- Avoid redundancy in function names.
+- End files with a single blank line.
+- Limit line length to 120 characters.
+- Use 4 spaces for indentation (never tabs).
+
+## Naming Conventions
+- Modules: snake_case.py
+- Packages: snake_case (directory names)
+- Classes: PascalCase
+- Exceptions: PascalCase (should end with `Error` or `Exception`)
+- Constants: SCREAMING_SNAKE_CASE
+- Enum members: SCREAMING_SNAKE_CASE
+- Public functions: snake_case()
+- Private functions: _snake_case()
+- Public methods: snake_case()
+- Private methods: _snake_case()
+- Public attributes: snake_case
+- Private attributes: _snake_case
+- Local variables: snake_case
+- Function parameters: snake_case
+- Type variables: PascalCase (e.g., `T`, `KeyType`, `ValueType`)
+
+## Python Features Usage
+- Use modern Python features (type hints, f-strings, walrus operator where appropriate).
+- Use type annotations for all function signatures and class attributes.
+- Always annotate the return type, including `-> None` for functions that do not return a value.
+  Enforced by ruff ANN2xx rules (ANN201, ANN202, ANN204, ANN205, ANN206).
+- Use modern annotation syntax (PEP 604):
+  - `X | Y` instead of `Union[X, Y]`
+  - `X | None` instead of `Optional[X]`
+  - `list[T]` instead of `List[T]`
+  - `dict[K, V]` instead of `Dict[K, V]`
+  - `set[T]` instead of `Set[T]`
+  - `tuple[T, ...]` instead of `Tuple[T, ...]`
+- **Do NOT quote type names in annotations.** Use `from __future__ import annotations` at the top of
+  the file to enable postponed evaluation (PEP 563), which makes all annotations strings at runtime
+  and eliminates the need for forward-reference quotes. This applies to all type contexts: parameters,
+  return types, variable annotations, and generic arguments.
+  - **Wrong**: `def foo(prim: "Usd.Prim") -> "np.ndarray": ...`
+  - **Correct**: `def foo(prim: Usd.Prim) -> np.ndarray: ...`  (with `from __future__ import annotations`)
+  - **Wrong**: `def bar(paths: str | "Usd.Prim" | list[str | "Usd.Prim"]): ...`
+  - **Correct**: `def bar(paths: str | Usd.Prim | list[str | Usd.Prim]): ...`
+- Use dataclasses or named tuples for data-only classes.
+- Use `Enum` for enumerated types.
+- Use context managers (`with` statements) for resource management.
+- Use generators and iterators for memory-efficient iteration.
+- Use list/dict/set comprehensions where they improve readability.
+- Prefer `pathlib.Path` over `os.path` for file path operations.
+- Use `typing.Protocol` for structural subtyping instead of ABCs where appropriate.
+
+## Class Organization
+- Order class contents as follows:
+  1. Class docstring
+  2. Class-level constants and type annotations
+  3. `__slots__` (if used)
+  4. `__init__` method
+  5. Other dunder methods (`__str__`, `__repr__`, `__eq__`, etc.)
+  6. Class methods (`@classmethod`)
+  7. Static methods (`@staticmethod`)
+  8. Properties (`@property`)
+  9. Public methods
+  10. Private methods (prefixed with `_`)
+- Use `@property` for computed attributes and controlled access.
+- Prefer composition over inheritance.
+- Use `__slots__` for classes with fixed attributes to reduce memory usage.
+
+## Module and Package Organization
+- Place an empty line between the license header block and the module docstring.
+- Place imports at the top of the file after module docstring.
+- Group imports in this order, separated by blank lines:
+  1. Standard library imports
+  2. Third-party imports
+  3. Local/project imports
+- Sort imports alphabetically within each group.
+- Use absolute imports over relative imports.
+- Avoid circular imports by restructuring or using late imports.
+- Use `__all__` to define public API in modules.
+- Keep `__init__.py` files minimal; use them primarily for re-exports.
+
+## Syntax and Formatting
+- Run `repo format` to format code. It uses Black (line length 120) and isort (`--profile black`) under the hood.
+- Do not manually override formatting choices that Black handles (quotes, trailing commas, bracket placement, whitespace, etc.). Let the formatter decide.
+- Use parentheses for line continuation instead of backslashes.
+
+## Error Handling and Validation
+- Use specific exception types (e.g., `ValueError`, `TypeError`, `RuntimeError`).
+- Create custom exceptions for domain-specific errors.
+- Use `raise ... from ...` to chain exceptions and preserve context.
+- Validate inputs at function boundaries.
+- Prefer explicit validation over silent failures.
+- Use `try/except/else/finally` blocks appropriately.
+- Never use bare `except:` clauses; catch specific exceptions.
+- Log errors using `carb.log_error` in Isaac Sim extensions; use `carb.log_info` and `carb.log_warn` for other levels (avoid `print` for errors).
+- Use `assert` only for debugging, never for runtime validation.
+- Start print/log messages with a capital letter and continue in normal sentence case (e.g., `print("Loading stage completed")`, `carb.log_info("Simulation started successfully")`). Exceptions: identifiers that are naturally lowercase (e.g., variable names) may start the message only when necessary.
+
+## Performance Optimization
+- Profile before optimizing; use `cProfile` or `line_profiler`.
+- Use built-in functions and methods (implemented in C) where possible.
+- Avoid repeated attribute lookups in loops; cache them locally.
+- Use `collections.deque` for efficient queue operations.
+- Use `set` or `frozenset` for membership testing.
+- Use `dict.get()` when a default is appropriate; prefer explicit access when missing keys are errors.
+- Use `itertools` for efficient iteration patterns.
+- Consider `functools.lru_cache` for memoization.
+- Prefer NumPy for numerical computations when it is already a dependency and performance matters.
+
+## Key Conventions
+- Use `None` as a sentinel value, not mutable default arguments.
+- Default mutable arguments should be `None`, initialized in the function body.
+- Use `*args` and `**kwargs` sparingly and document them clearly.
+- Prefer explicit keyword arguments for functions with more than 3 parameters.
+- Use `@staticmethod` for utility functions that don't need class/instance state.
+- Use `@classmethod` for factory methods and alternative constructors.
+- Remove trailing `return` statements at the end of a function when they have no effect.
+- Return `None` explicitly only when it improves clarity in complex branches.
+- Avoid global variables; use module-level constants or class attributes.
+- Use `copy.deepcopy()` when you need independent copies of mutable objects.
+
+## Testing
+- Write unit tests using `unittest` and `omni.kit.test.AsyncTestCase` for extension tests.
+- Use descriptive test function names: `test_<function_name>_<scenario>`.
+- Use `setUp` and `tearDown` (or `async setUp`/`async tearDown`) methods for test setup and teardown.
+- Mock external dependencies with `unittest.mock`.
+- Aim for high test coverage of critical code paths.
+- Use `unittest.TestCase.subTest` for testing multiple inputs within a single test method.
+- Keep tests isolated and independent.
+
+## Security
+- Never use `eval()` or `exec()` with untrusted input.
+- Sanitize all user inputs.
+- Use `secrets` module for cryptographic randomness.
+- Avoid hardcoding sensitive information; use environment variables.
+- Validate file paths to prevent directory traversal attacks.
+- Use parameterized queries for database operations.
+
+## Documentation
+- See python_docstrings.mdc for detailed docstring conventions.
+- Use Google-style docstrings.
+- Document all public modules, classes, functions, and methods.
+- Put constructor parameters (Args) and Raises in the **class docstring**, not in `__init__`. The `__init__` method does not need its own docstring.
+- Document class attributes inline below each attribute using Sphinx-style `#:` comments, not in an `Attributes:` section in the class docstring.
+- Include type annotations in function signatures, not in docstrings.
+- Add inline comments for complex logic.
+- Keep comments up to date with code changes.
+- When referring to identifiers (variables, functions, classes, parameters, prim paths, constants) in comments, wrap them in backticks (e.g., `# Monitor \`cube_2\` state`, `# Called by \`initialize()\``). See python_docstrings.mdc for full details.
+
+## Isaac Sim Specific Rules
+- Use `carb.log_info`, `carb.log_warn`, and `carb.log_error` for logging instead of `print` or standard `logging`.
+- Follow the extension structure conventions defined in extension_structure.mdc.
+- Use `carb.settings.get_settings()` for configuration values.
+- Import Omniverse modules lazily when possible to reduce startup time.
+- Use asyncio for async operations within extensions.
+- Handle USD stage operations within proper contexts.
+- Clean up subscriptions and callbacks in `on_shutdown`.
+- Use `isaacsim.core.simulation_manager.SimulationEvent` for simulation lifecycle events (e.g., `SimulationEvent.PHYSICS_POST_STEP`).
+- Use `isaacsim.core.experimental.utils.app` for timeline-related utility functions rather than `omni.timeline` directly.
+- Use `isaacsim.core.simulation_manager.SimulationManager` for simulation setup and callback registration.

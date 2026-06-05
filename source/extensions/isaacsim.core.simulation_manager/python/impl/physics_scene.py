@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import annotations
+"""Implementation for manipulating USD Physics Scene prims and their attributes."""
 
-from typing import Any
+from __future__ import annotations
 
 import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
+from pxr import Gf, PhysxSchema, Usd, UsdGeom, UsdPhysics
 
 from .. import _simulation_manager
 
@@ -38,7 +38,7 @@ class PhysicsScene:
         ValueError: If the input prim exists and is not a USD Physics Scene prim.
     """
 
-    def __init__(self, prim: str | Usd.Prim):
+    def __init__(self, prim: str | Usd.Prim) -> None:
         physics_scene = _simulation_manager.PhysicsScene(prim_utils.get_prim_path(prim))
         self._path = physics_scene.path
         self._prim = prim_utils.get_prim_at_path(prim)
@@ -161,7 +161,7 @@ class PhysicsScene:
         """Get the Physics Scene's delta time (DT).
 
         Returns:
-            Physics Scene's delta time (DT).
+            Physics Scene's delta time (DT) for the active physics engine.
 
         Example:
 
@@ -170,6 +170,11 @@ class PhysicsScene:
             >>> physics_scene.get_dt()
             0.001
         """
+        if self._prim.HasAPI(PhysxSchema.PhysxSceneAPI):
+            physx_scene_api = PhysxSchema.PhysxSceneAPI(self._prim)
+            steps_per_second = physx_scene_api.GetTimeStepsPerSecondAttr().Get()
+            return 1.0 / steps_per_second if steps_per_second else 0.0
+
         attr = self._prim.GetAttribute("newton:timeStepsPerSecond")
         steps_per_second = attr.Get() if attr else 1000
         return 1.0 / steps_per_second if steps_per_second else 0.0
@@ -178,9 +183,10 @@ class PhysicsScene:
         """Set the Physics Scene's delta time (DT).
 
         Args:
-            dt: Physics Scene's delta time (DT).
+            dt: Physics Scene's delta time (DT) for the active physics engine.
 
         Raises:
+            RuntimeError: If the Physics Scene has no 'NewtonSceneAPI' applied.
             ValueError: If the delta time (DT) is less than 0 or greater than 1.0.
 
         Example:
@@ -192,9 +198,16 @@ class PhysicsScene:
         if dt < 0.0 or dt > 1.0:
             raise ValueError(f"The delta time (DT) must be in the range [0.0, 1.0], got {dt}")
         steps_per_second = int(1.0 / dt) if dt else 0
+
+        if self._prim.HasAPI(PhysxSchema.PhysxSceneAPI):
+            physx_scene_api = PhysxSchema.PhysxSceneAPI(self._prim)
+            physx_scene_api.GetTimeStepsPerSecondAttr().Set(steps_per_second)
+            return
+
+        if not self._prim.HasAPI("NewtonSceneAPI"):
+            raise RuntimeError("The Physics Scene has no 'NewtonSceneAPI' applied")
         attr = self._prim.GetAttribute("newton:timeStepsPerSecond")
-        if attr:
-            attr.Set(steps_per_second)
+        attr.Set(steps_per_second)
 
     def get_enabled_gravity(self) -> bool:
         """Get whether gravity is enabled for the Physics Scene.
@@ -218,15 +231,19 @@ class PhysicsScene:
         Args:
             enabled: True to enable gravity, False to disable.
 
+        Raises:
+            RuntimeError: If the Physics Scene has no 'NewtonSceneAPI' applied.
+
         Example:
 
         .. code-block:: python
 
             >>> physics_scene.set_enabled_gravity(False)
         """
+        if not self._prim.HasAPI("NewtonSceneAPI"):
+            raise RuntimeError("The Physics Scene has no 'NewtonSceneAPI' applied")
         attr = self._prim.GetAttribute("newton:gravityEnabled")
-        if attr:
-            attr.Set(bool(enabled))
+        attr.Set(bool(enabled))
 
     def get_max_solver_iterations(self) -> int:
         """Get the maximum number of solver iterations for the Physics Scene.
@@ -251,6 +268,7 @@ class PhysicsScene:
             iterations: Maximum number of solver iterations. Set to -1 to use solver default.
 
         Raises:
+            RuntimeError: If the Physics Scene has no 'NewtonSceneAPI' applied.
             ValueError: If the iterations is less than -1.
 
         Example:
@@ -261,6 +279,7 @@ class PhysicsScene:
         """
         if iterations < -1:
             raise ValueError(f"The iterations must be greater than or equal to -1, got {iterations}")
+        if not self._prim.HasAPI("NewtonSceneAPI"):
+            raise RuntimeError("The Physics Scene has no 'NewtonSceneAPI' applied")
         attr = self._prim.GetAttribute("newton:maxSolverIterations")
-        if attr:
-            attr.Set(int(iterations))
+        attr.Set(int(iterations))

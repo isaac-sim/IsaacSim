@@ -27,7 +27,7 @@ from omni.kit.app import get_app
 class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
     """Test suite for TrajectoryGenerator with Franka robot."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment before each test."""
         await stage_utils.create_new_stage_async()
         await get_app().next_update_async()
@@ -46,7 +46,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
             robot_joint_space=self.cumotion_robot.controlled_joint_names,
         )
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after each test."""
         # Stop timeline if running
         if self._timeline.is_playing():
@@ -58,12 +58,12 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
     # Test initialization
     # ============================================================================
 
-    async def test_trajectory_generator_initialization(self):
+    async def test_trajectory_generator_initialization(self) -> None:
         """Test that TrajectoryGenerator initializes correctly."""
         self.assertIsNotNone(self.trajectory_generator)
         self.assertIsNotNone(self.trajectory_generator.get_cspace_trajectory_generator())
 
-    async def test_get_cspace_trajectory_generator(self):
+    async def test_get_cspace_trajectory_generator(self) -> None:
         """Test getting the underlying CSpaceTrajectoryGenerator."""
         cspace_gen = self.trajectory_generator.get_cspace_trajectory_generator()
         self.assertIsNotNone(cspace_gen)
@@ -73,7 +73,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
     # Test generate_trajectory_from_cspace_waypoints with numpy arrays
     # ============================================================================
 
-    async def test_generate_trajectory_from_cspace_waypoints_numpy(self):
+    async def test_generate_trajectory_from_cspace_waypoints_numpy(self) -> None:
         """Test trajectory generation from c-space waypoints as numpy array."""
         # Create simple waypoints - move joint 1 from -pi/2 to pi/2
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
@@ -96,7 +96,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(trajectory.get_target_state(0.0).joints.positions.numpy(), q_start))
         self.assertTrue(np.allclose(trajectory.get_target_state(trajectory.duration).joints.positions.numpy(), q_end))
 
-    async def test_generate_trajectory_from_cspace_waypoints_warp_array(self):
+    async def test_generate_trajectory_from_cspace_waypoints_warp_array(self) -> None:
         """Test trajectory generation from c-space waypoints as warp array."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_start[1] = -np.pi / 2
@@ -115,7 +115,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(trajectory.get_target_state(0.0).joints.positions.numpy(), q_start))
         self.assertTrue(np.allclose(trajectory.get_target_state(trajectory.duration).joints.positions.numpy(), q_end))
 
-    async def test_generate_trajectory_from_cspace_waypoints_list(self):
+    async def test_generate_trajectory_from_cspace_waypoints_list(self) -> None:
         """Test trajectory generation from c-space waypoints as list."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_start[1] = -np.pi / 2
@@ -136,7 +136,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
     # Test generate_trajectory_from_cspace_waypoints with timing
     # ============================================================================
 
-    async def test_generate_trajectory_with_time_stamps_numpy(self):
+    async def test_generate_trajectory_with_time_stamps_numpy(self) -> None:
         """Test trajectory generation with explicit time stamps as numpy array."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_start[1] = -np.pi / 2
@@ -158,7 +158,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(trajectory.get_target_state(0.0).joints.positions.numpy(), q_start))
         self.assertTrue(np.allclose(trajectory.get_target_state(trajectory.duration).joints.positions.numpy(), q_end))
 
-    async def test_generate_trajectory_with_time_stamps_warp_array(self):
+    async def test_generate_trajectory_with_time_stamps_warp_array(self) -> None:
         """Test trajectory generation with explicit time stamps as warp array."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_end = self.cumotion_robot.robot_description.default_cspace_configuration()
@@ -179,7 +179,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(trajectory.get_target_state(0.0).joints.positions.numpy(), q_start))
         self.assertTrue(np.allclose(trajectory.get_target_state(trajectory.duration).joints.positions.numpy(), q_end))
 
-    async def test_generate_trajectory_with_time_stamps_list(self):
+    async def test_generate_trajectory_with_time_stamps_list(self) -> None:
         """Test trajectory generation with explicit time stamps as list."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_end = self.cumotion_robot.robot_description.default_cspace_configuration()
@@ -197,7 +197,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(trajectory.get_target_state(0.0).joints.positions.numpy(), q_start))
         self.assertTrue(np.allclose(trajectory.get_target_state(trajectory.duration).joints.positions.numpy(), q_end))
 
-    async def test_generate_trajectory_with_interpolation_mode(self):
+    async def test_generate_trajectory_with_interpolation_mode(self) -> None:
         """Test trajectory generation with different interpolation modes."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_end = self.cumotion_robot.robot_description.default_cspace_configuration()
@@ -234,7 +234,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
     # Test error handling for waypoints
     # ============================================================================
 
-    async def test_generate_trajectory_invalid_waypoint_dimensions(self):
+    async def test_generate_trajectory_invalid_waypoint_dimensions(self) -> None:
         """Test that invalid waypoint dimensions raise an error."""
         # 1D array instead of 2D
         waypoints_1d = np.array([0.0, 1.0, 2.0])
@@ -242,7 +242,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         with self.assertRaises(RuntimeError):
             self.trajectory_generator.generate_trajectory_from_cspace_waypoints(waypoints_1d)
 
-    async def test_generate_trajectory_invalid_joint_count(self):
+    async def test_generate_trajectory_invalid_joint_count(self) -> None:
         """Test that waypoints with wrong number of joints raise an error."""
         # Franka has 7 joints, provide waypoints with 6
         waypoints_wrong_size = np.array([[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]])
@@ -250,7 +250,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         with self.assertRaises(RuntimeError):
             self.trajectory_generator.generate_trajectory_from_cspace_waypoints(waypoints_wrong_size)
 
-    async def test_generate_trajectory_invalid_time_dimensions(self):
+    async def test_generate_trajectory_invalid_time_dimensions(self) -> None:
         """Test that invalid time array dimensions raise an error."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_end = self.cumotion_robot.robot_description.default_cspace_configuration()
@@ -262,7 +262,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         with self.assertRaises(RuntimeError):
             self.trajectory_generator.generate_trajectory_from_cspace_waypoints(waypoints=waypoints, times=times_2d)
 
-    async def test_generate_trajectory_mismatched_waypoint_time_count(self):
+    async def test_generate_trajectory_mismatched_waypoint_time_count(self) -> None:
         """Test that mismatched waypoint and time counts raise an error."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_end = self.cumotion_robot.robot_description.default_cspace_configuration()
@@ -274,7 +274,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         with self.assertRaises(RuntimeError):
             self.trajectory_generator.generate_trajectory_from_cspace_waypoints(waypoints=waypoints, times=times)
 
-    async def test_generate_trajectory_with_negative_times(self):
+    async def test_generate_trajectory_with_negative_times(self) -> None:
         """Test that negative time values raise an error."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_end = self.cumotion_robot.robot_description.default_cspace_configuration()
@@ -285,7 +285,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         with self.assertRaises(RuntimeError):
             self.trajectory_generator.generate_trajectory_from_cspace_waypoints(waypoints=waypoints, times=times)
 
-    async def test_generate_trajectory_with_negative_end_time(self):
+    async def test_generate_trajectory_with_negative_end_time(self) -> None:
         """Test that negative end time raises an error."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_end = self.cumotion_robot.robot_description.default_cspace_configuration()
@@ -296,7 +296,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         with self.assertRaises(RuntimeError):
             self.trajectory_generator.generate_trajectory_from_cspace_waypoints(waypoints=waypoints, times=times)
 
-    async def test_generate_trajectory_with_non_increasing_times(self):
+    async def test_generate_trajectory_with_non_increasing_times(self) -> None:
         """Test that non-increasing time values raise an error."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_mid = self.cumotion_robot.robot_description.default_cspace_configuration()
@@ -308,7 +308,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         with self.assertRaises(RuntimeError):
             self.trajectory_generator.generate_trajectory_from_cspace_waypoints(waypoints=waypoints, times=times)
 
-    async def test_generate_trajectory_with_equal_consecutive_times(self):
+    async def test_generate_trajectory_with_equal_consecutive_times(self) -> None:
         """Test that equal consecutive time values raise an error."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_mid = self.cumotion_robot.robot_description.default_cspace_configuration()
@@ -320,7 +320,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         with self.assertRaises(RuntimeError):
             self.trajectory_generator.generate_trajectory_from_cspace_waypoints(waypoints=waypoints, times=times)
 
-    async def test_generate_trajectory_with_all_zero_times(self):
+    async def test_generate_trajectory_with_all_zero_times(self) -> None:
         """Test that all zero time values raise an error."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_end = self.cumotion_robot.robot_description.default_cspace_configuration()
@@ -335,7 +335,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
     # Test generate_trajectory_from_path_specification with CSpacePathSpec
     # ============================================================================
 
-    async def test_generate_trajectory_from_cspace_path_spec(self):
+    async def test_generate_trajectory_from_cspace_path_spec(self) -> None:
         """Test trajectory generation from CSpacePathSpec."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_start[1] = -np.pi / 2
@@ -368,7 +368,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
     # Test generate_trajectory_from_path_specification with TaskSpacePathSpec
     # ============================================================================
 
-    async def test_generate_trajectory_from_task_space_path_spec(self):
+    async def test_generate_trajectory_from_task_space_path_spec(self) -> None:
         """Test trajectory generation from TaskSpacePathSpec."""
         # Get current pose at default configuration
         q_default = self.cumotion_robot.robot_description.default_cspace_configuration()
@@ -412,7 +412,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(initial_pose.matrix(), initial_trajectory_pose.matrix(), atol=1e-2))
         self.assertTrue(np.allclose(target_position, final_trajectory_pose.translation, atol=1e-2))
 
-    async def test_generate_trajectory_from_task_space_path_spec_linear_path(self):
+    async def test_generate_trajectory_from_task_space_path_spec_linear_path(self) -> None:
         """Test trajectory generation from TaskSpacePathSpec with linear path."""
         q_default = self.cumotion_robot.robot_description.default_cspace_configuration()
         kinematics = self.cumotion_robot.kinematics
@@ -446,7 +446,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(initial_pose.matrix(), initial_trajectory_pose.matrix(), atol=1e-2))
         self.assertTrue(np.allclose(target_pose.matrix(), final_trajectory_pose.matrix(), atol=1e-2))
 
-    async def test_generate_trajectory_from_task_space_with_custom_configs(self):
+    async def test_generate_trajectory_from_task_space_with_custom_configs(self) -> None:
         """Test trajectory generation with custom TaskSpacePathConversionConfig and IkConfig."""
         q_default = self.cumotion_robot.robot_description.default_cspace_configuration()
         kinematics = self.cumotion_robot.kinematics
@@ -491,7 +491,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
     # Test generate_trajectory_from_path_specification with CompositePathSpec
     # ============================================================================
 
-    async def test_generate_trajectory_from_composite_path_spec(self):
+    async def test_generate_trajectory_from_composite_path_spec(self) -> None:
         """Test trajectory generation from CompositePathSpec."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_start[1] = -np.pi / 4
@@ -526,7 +526,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         self.assertIsInstance(trajectory, cu_mg.CumotionTrajectory)
         self.assertGreater(trajectory.duration, 0.0)
 
-    async def test_generate_trajectory_from_composite_path_spec_skip_transition(self):
+    async def test_generate_trajectory_from_composite_path_spec_skip_transition(self) -> None:
         """Test CompositePathSpec with SKIP transition mode."""
         q1 = self.cumotion_robot.robot_description.default_cspace_configuration()
         q1[1] = -np.pi / 4
@@ -556,7 +556,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
     # Test trajectory properties
     # ============================================================================
 
-    async def test_generated_trajectory_has_valid_properties(self):
+    async def test_generated_trajectory_has_valid_properties(self) -> None:
         """Test that generated trajectory has valid properties."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_end = self.cumotion_robot.robot_description.default_cspace_configuration()
@@ -575,7 +575,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(active_joints), len(self.cumotion_robot.controlled_joint_names))
         self.assertEqual(active_joints, self.cumotion_robot.controlled_joint_names)
 
-    async def test_trajectory_evaluation_at_different_times(self):
+    async def test_trajectory_evaluation_at_different_times(self) -> None:
         """Test evaluating trajectory at different time points."""
         q_start = self.cumotion_robot.robot_description.default_cspace_configuration()
         q_start[1] = -np.pi / 2
@@ -608,7 +608,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         state_before = trajectory.get_target_state(-1.0)
         self.assertIsNone(state_before)
 
-    async def test_trajectory_respects_joint_limits(self):
+    async def test_trajectory_respects_joint_limits(self) -> None:
         """Test that trajectory waypoints respect joint limits."""
         kinematics = self.cumotion_robot.kinematics
 
@@ -631,7 +631,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(trajectory)
         self.assertGreater(trajectory.duration, 0.0)
 
-    async def test_multi_waypoint_trajectory(self):
+    async def test_multi_waypoint_trajectory(self) -> None:
         """Test trajectory with multiple waypoints."""
         q_default = self.cumotion_robot.robot_description.default_cspace_configuration()
 
@@ -658,7 +658,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
     # Test tool frame handling
     # ============================================================================
 
-    async def test_trajectory_generation_with_explicit_tool_frame(self):
+    async def test_trajectory_generation_with_explicit_tool_frame(self) -> None:
         """Test trajectory generation with explicitly specified tool frame."""
         q_default = self.cumotion_robot.robot_description.default_cspace_configuration()
         kinematics = self.cumotion_robot.kinematics
@@ -678,7 +678,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
 
         self.assertIsNotNone(trajectory)
 
-    async def test_trajectory_generation_with_default_tool_frame(self):
+    async def test_trajectory_generation_with_default_tool_frame(self) -> None:
         """Test trajectory generation with default tool frame (None specified)."""
         q_default = self.cumotion_robot.robot_description.default_cspace_configuration()
         kinematics = self.cumotion_robot.kinematics
@@ -703,7 +703,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
     # Test edge cases
     # ============================================================================
 
-    async def test_empty_waypoints_trajectory(self):
+    async def test_empty_waypoints_trajectory(self) -> None:
         """Test trajectory generation with no waypoints raises RuntimeError."""
         waypoints = np.array([]).reshape(0, 7)  # Empty array with correct number of columns
 
@@ -711,7 +711,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         with self.assertRaises(RuntimeError):
             self.trajectory_generator.generate_trajectory_from_cspace_waypoints(waypoints)
 
-    async def test_single_waypoint_trajectory(self):
+    async def test_single_waypoint_trajectory(self) -> None:
         """Test trajectory generation with a single waypoint raises RuntimeError."""
         q_default = self.cumotion_robot.robot_description.default_cspace_configuration()
         waypoints = np.array([q_default])
@@ -720,7 +720,7 @@ class TestTrajectoryGeneratorFranka(omni.kit.test.AsyncTestCase):
         with self.assertRaises(RuntimeError):
             self.trajectory_generator.generate_trajectory_from_cspace_waypoints(waypoints)
 
-    async def test_very_close_waypoints(self):
+    async def test_very_close_waypoints(self) -> None:
         """Test trajectory generation with waypoints very close together."""
         q_default = self.cumotion_robot.robot_description.default_cspace_configuration()
 

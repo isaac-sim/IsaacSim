@@ -1,0 +1,555 @@
+---
+description: Python source code docstrings
+globs: *.py
+---
+You are an expert at writing and maintaining Python docstrings to document functions and class properties and methods.
+
+## General guidelines
+
+- Docstrings use Google-style format (Args, Returns, Raises sections).
+- Docstring paragraphs and sentences end with periods.
+- Place docstrings for modules, classes, functions, and class methods.
+- Never add, modify, refactor or delete code when adding or updating documentation.
+- Document all functions and class properties and methods in order and without skipping any. Be consistent.
+
+## Type annotations
+
+- **Do NOT include types in docstrings** — types belong in function signatures only.
+- For annotation syntax rules (PEP 604, no quoting, `from __future__ import annotations`),
+  see python_codestyle.mdc § Python Features Usage.
+
+### Type annotation consistency for parameters
+
+- Only include `| None` in a parameter's type annotation when:
+  1. The default value is `None` (e.g., `param: str | None = None`), OR
+  2. The function explicitly handles `None` as a valid input distinct from the default
+- Do NOT use `| None` when the parameter has a non-None default and `None` is not a supported input:
+  - **Wrong**: `visibility: bool | None = False` (implies None is accepted, but it isn't)
+  - **Correct**: `visibility: bool = False`
+- If a parameter has a non-None default but also accepts `None` for special behavior,
+  document this in the docstring (e.g., "Pass None to skip this step.")
+
+## Docstring style
+
+- Brief summary line just after opening triple quotes.
+- Write the summary line in **imperative mood** (a command), not third-person present tense.
+  This follows PEP 257: describe the function's effect as a command ("Do this", "Return that").
+  - **Correct** (imperative): `"""Get the sensor frequency."""`
+  - **Wrong** (third-person): `"""Gets the sensor frequency."""`
+  - **Correct** (imperative): `"""Check if the sensor is paused."""`
+  - **Wrong** (third-person): `"""Checks if the sensor is paused."""`
+  - For classes, a noun phrase is also acceptable: `"""RTX-based Lidar sensor implementation."""`
+- Long description, separated by an empty line.
+  The long description should only appear as long as it is worthwhile to add relevant
+  information to clarify complex logic, help explain calling conventions, or edge cases.
+- List of all parameters defined under the 'Args' section (without types - types are in the signature).
+- Return description defined under the 'Returns' section (without type - type is in the signature).
+  **Do NOT use an unescaped colon (`:`) in the Returns description** — Sphinx interprets text before
+  the first colon as a return type. Either rephrase to avoid the colon or escape it with a backslash (`\:`).
+- List of all raised exception types defined under the 'Raises' section.
+- Usage example, for public functions and class properties and methods, under the 'Example:' section using the `.. code-block:: python` directive.
+  Code must be separated by an empty line from the 'Example:' header.
+- Example sections for deprecated methods are optional and not required.
+
+## Class docstrings
+
+For classes, put constructor parameters (Args) and Raises in the **class docstring**, NOT in the `__init__` method.
+This is required for Sphinx autodoc to properly render constructor parameters.
+
+**Do NOT document default values** in Args descriptions - they are already visible in the function signature.
+
+```python
+class LidarRtx(BaseSensor):
+    """RTX-based Lidar sensor implementation.
+
+    Long description of the class functionality.
+
+    Args:
+        prim_path: Path to the USD prim for the sensor.
+        name: Name of the sensor.
+        position: Global position as [x, y, z].
+        **kwargs: Additional keyword arguments.
+
+    Raises:
+        Exception: If the prim is invalid.
+    """
+
+    def __init__(
+        self,
+        prim_path: str,
+        name: str = "lidar_rtx",
+        position: np.ndarray | None = None,
+        **kwargs,
+    ) -> None:
+        # No docstring needed here - Args are in the class docstring
+        pass
+```
+
+## Class attributes
+
+Document class attributes **inline below each attribute** using Sphinx-style `#:` comments, NOT in an `Attributes:` section
+in the class docstring. This keeps documentation close to the code and is properly recognized by Sphinx autodoc.
+
+```python
+class IsaacSensorCreateRtxSensor(omni.kit.commands.Command):
+    """Base class for creating RTX sensors in Isaac Sim.
+
+    Args:
+        path: Path where the sensor will be created.
+        config: Configuration name for the sensor.
+    """
+
+    _replicator_api: Callable[..., Any] | None = None
+    #: Static method reference to the Replicator API for sensor creation.
+
+    _sensor_type: str = "sensor"
+    #: String identifier for the type of sensor.
+
+    _supported_configs: list[Any] | dict[str, set[str]] = []
+    #: Supported sensor configurations (list or dict mapping config paths to variants).
+
+    _schema: Any = None
+    #: Schema for the sensor type.
+
+    _sensor_plugin_name: str = ""
+    #: Name of the sensor plugin.
+
+    _camera_config_name: str = ""
+    #: Name of the camera configuration.
+```
+
+**Key points for class attributes:**
+- Use `#:` comment prefix (Sphinx-style) directly below each attribute
+- Keep the description concise (one line when possible)
+- Do NOT include type information in the comment (types are in the annotation)
+- Do NOT document default values (visible in the assignment)
+
+## Method and function docstrings
+
+For methods and standalone functions, describe parameters and returns without repeating type information:
+
+```python
+def attach_annotator(self, annotator_name: str, **kwargs) -> None:
+    """Attach an annotator to the sensor.
+
+    Args:
+        annotator_name: Name of the annotator to attach.
+        **kwargs: Additional arguments to pass to the annotator.
+
+    Raises:
+        ValueError: If annotator_name is invalid.
+    """
+    pass
+
+def get_current_frame(self) -> dict:
+    """Get the current frame data from the sensor.
+
+    Returns:
+        Dictionary containing the current frame data including rendering time
+        and frame number.
+    """
+    pass
+
+def get_depth_range(self) -> tuple[float, float]:
+    """Get the depth range of the sensor.
+
+    Returns:
+        Tuple of (min_depth, max_depth).
+    """
+    pass
+```
+
+**Avoid unescaped colons in Returns descriptions.** Sphinx parses `Returns:` entries as
+`type: description` when a colon is present, so any text before the first colon is silently
+treated as a return type. Either rephrase to remove the colon or escape it with `\:`.
+
+```python
+# BAD - Sphinx interprets "Dictionary with keys" as a return type
+def get_data(self) -> dict:
+    """Get sensor data.
+
+    Returns:
+        Dictionary with keys: "time", "value", "status".
+    """
+    pass
+
+# GOOD - rephrased to avoid the colon
+def get_data(self) -> dict:
+    """Get sensor data.
+
+    Returns:
+        Dictionary with "time", "value", and "status" keys.
+    """
+    pass
+
+# GOOD - colon escaped with backslash
+def get_data(self) -> dict:
+    """Get sensor data.
+
+    Returns:
+        Dictionary with keys\: "time", "value", "status".
+    """
+    pass
+```
+
+## Optional return types
+
+When a function can return `None`, use `T | None` in the type annotation.
+The docstring description should explain when `None` is returned.
+
+```python
+def get_horizontal_fov(self) -> float | None:
+    """Get the horizontal field of view of the sensor.
+
+    Returns:
+        The horizontal FOV value if available, None otherwise.
+    """
+    if self._is_initialized:
+        return self._fov
+    return None
+
+def get_render_product_path(self) -> str | None:
+    """Get the path to the render product.
+
+    Returns:
+        Path to the render product, or None if not initialized.
+    """
+    return self._render_product_path
+
+def get_depth_range(self) -> tuple[float, float] | None:
+    """Get the depth range of the sensor.
+
+    Returns:
+        Tuple of (min_depth, max_depth) if available, None otherwise.
+    """
+    pass
+```
+
+**Key rules for optional returns:**
+1. Use `T | None` when the function can return `None` as a valid result
+2. Always explain the condition when `None` is returned (e.g., "if not initialized", "if unavailable")
+3. Do NOT return `None` when it indicates an error - raise an exception instead
+
+## Methods that do NOT need Example sections
+
+The following categories of methods do NOT need Example sections since they are called by frameworks,
+not directly by users:
+
+### Extension lifecycle methods
+`on_startup`, `on_shutdown` - called by the extension framework.
+
+### Private methods
+Any method starting with `_` (e.g., `_build_ui`, `_on_click`, `_callback_fn`) - internal use only.
+
+### Command pattern methods
+`do()` and `undo()` methods in classes inheriting from `omni.kit.commands.Command` - called by Kit command system.
+
+### OmniGraph node methods
+`compute(db)` and `internal_state()` methods in OGN nodes - called by OmniGraph framework.
+
+### Simulation lifecycle methods
+`initialize`, `post_reset`, `pre_reset` - called by the simulation framework (World, SimulationContext).
+
+### Callback functions
+Methods registered as event handlers (often named `*_callback`, `*_callback_fn`) - called by event dispatchers.
+
+### Test methods and test files
+`setUp`, `tearDown`, `test_*` methods - called by test frameworks.
+Test helper functions in test files (e.g., `_create_test_*`, factory functions) have relaxed requirements.
+
+### Deprecated methods
+Example sections are optional for deprecated methods. Include them only if they add value.
+
+```python
+class MyExtension(omni.ext.IExt):
+    """Extension that provides functionality X."""
+
+    def on_startup(self, ext_id: str) -> None:
+        """Initialize the extension when it is loaded.
+
+        Args:
+            ext_id: Extension identifier provided by the extension manager.
+        """
+        pass
+
+    def on_shutdown(self) -> None:
+        """Clean up resources when the extension is unloaded."""
+        pass
+
+    def _build_ui(self) -> None:
+        """Build the extension's user interface."""
+        pass
+
+
+class IsaacSensorCreateContactSensor(omni.kit.commands.Command):
+    """Command to create a contact sensor."""
+
+    def do(self) -> Usd.Prim:
+        """Execute the command to create the sensor.
+
+        Returns:
+            The created sensor prim.
+        """
+        pass
+
+    def undo(self) -> None:
+        """Undo the command by removing the sensor."""
+        pass
+```
+
+## Example section best practices
+
+### Empty line after imports
+
+In example code blocks, place an empty line after import statements, consistent with code formatter
+conventions (e.g., `isort`, `black`). This keeps examples looking like properly formatted code.
+
+```python
+def get_frequency(self) -> float:
+    """Get the sensor output frequency.
+
+    Returns:
+        Frequency in Hz.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> from isaacsim.sensors.experimental.physics import ContactSensor
+
+        >>> sensor = ContactSensor("/World/ContactSensor")  # doctest: +NO_CHECK
+        >>> sensor.get_frequency()  # doctest: +NO_CHECK
+        60.0
+    """
+    pass
+```
+
+### Print or display results for verification
+
+Rather than silently storing a result in a variable, either call the method without storing the result
+(which causes it to be printed in doctest) or explicitly print the stored variable. This provides:
+
+- **Extra verification**: Acts as an implicit test case in the docstring testing system, catching
+  regressions even when no explicit test exists for the method.
+- **User clarity**: Allows users to identify the expected data type, value, and format just by
+  reading the example.
+
+```python
+# BAD - result is silently stored, no verification or output shown
+>>> paused = sensor.is_paused()
+
+# GOOD - result is displayed, showing expected type and value
+>>> sensor.is_paused()  # doctest: +NO_CHECK
+False
+
+# GOOD - result is stored and printed, useful when the variable is needed later
+>>> frame = sensor.get_current_frame()  # doctest: +NO_CHECK
+>>> print(frame["in_contact"])  # doctest: +NO_CHECK
+False
+```
+
+### Class instantiation only in the class example
+
+It is not necessary to instantiate the class in every method's example. Instantiate the class only in
+the class-level (or `__init__`) Example section. Other methods' examples should assume the instance
+already exists and focus solely on showcasing their own usage. This avoids repetitive boilerplate and
+keeps examples concise.
+
+```python
+class ContactSensor(XformPrim):
+    """High-level contact sensor wrapper.
+
+    Args:
+        prim_path: USD path where the sensor should be located.
+        frequency: Sensor output frequency in Hz.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> from isaacsim.sensors.experimental.physics import ContactSensor
+
+        >>> sensor = ContactSensor("/World/ContactSensor")  # doctest: +NO_CHECK
+    """
+
+    def is_paused(self) -> bool:
+        """Check if the sensor is currently paused.
+
+        Returns:
+            True if sensor is paused, False otherwise.
+
+        Example:
+
+        .. code-block:: python
+
+            >>> sensor.is_paused()  # doctest: +NO_CHECK
+            False
+        """
+        pass
+
+    def set_frequency(self, value: float) -> None:
+        """Set the sensor output frequency.
+
+        Args:
+            value: Frequency in Hz.
+
+        Example:
+
+        .. code-block:: python
+
+            >>> sensor.set_frequency(120.0)
+        """
+        pass
+
+    def get_frequency(self) -> float:
+        """Get the sensor output frequency.
+
+        Returns:
+            Frequency in Hz.
+
+        Example:
+
+        .. code-block:: python
+
+            >>> sensor.get_frequency()  # doctest: +NO_CHECK
+            60.0
+        """
+        pass
+```
+
+## Inline comments
+
+When referring to a variable name, function name, class name, parameter name, prim path, or other
+source identifier in an inline comment or `#:` attribute comment, wrap it in backticks so it renders
+as code in documentation and stands out visually in source.
+
+```python
+# BAD - identifier blends in with prose
+# Step simulation and monitor cube_2 state
+x = position[0]  # Extract x from position
+
+# GOOD - identifier is backtick-quoted
+# Step simulation and monitor `cube_2` state
+x = position[0]  # Extract `x` from `position`
+```
+
+This also applies to Sphinx-style `#:` class attribute comments:
+
+```python
+_sensor_type: str = "lidar"
+#: Sensor type identifier used by the `SensorRegistry`.
+```
+
+**When to backtick:**
+- Variable and attribute names (e.g., `self._stage`, `cube_2`)
+- Function and method names (e.g., `get_world_pose()`, `initialize()`)
+- Class names (e.g., `RigidPrim`, `SimulationContext`)
+- Parameter names referenced outside their Args section (e.g., `prim_path`)
+- USD prim paths or property names (e.g., `/World/Cube`, `xformOp:translate`)
+- Constants and enum members (e.g., `MAX_RETRIES`, `SimulationEvent.PHYSICS_POST_STEP`)
+
+**When NOT to backtick:**
+- Common English words that happen to match a name (use judgment)
+- Types used generically in prose (e.g., "returns a dictionary" — no backticks needed)
+
+## Key rules (Google Style)
+
+1. **Args format**: `param_name: Description.` - NO types (types are in the signature)
+2. **Returns format**: `Description.` - NO type prefix (type is in the signature). Avoid unescaped colons in the description (Sphinx parses text before `:` as a return type); rephrase or escape with `\:`
+3. **Raises format**: `ExceptionType: Description.`
+4. **Never use `param` prefix**: Write `param_name:` not `param param_name:`
+5. **Constructor Args go in class docstring**: Not in `__init__` method
+6. **Multi-line descriptions**: Indent continuation lines by 4 spaces
+7. **Do NOT document default values**: Default values are visible in function signatures and API docs; documenting them in docstrings is redundant and creates maintenance burden when defaults change
+8. **Optional returns**: Use `T | None` when `None` is a valid return value; explain when `None` is returned
+9. **Type annotation style**: See python_codestyle.mdc for PEP 604 syntax, no-quoting, and `from __future__ import annotations`
+10. **No Examples for framework methods**: The following don't need Example sections:
+    - Extension lifecycle: `on_startup`, `on_shutdown`
+    - Private methods: `_*` (any method starting with underscore)
+    - Command methods: `do()`, `undo()`
+    - OmniGraph: `compute(db)`, `internal_state()`
+    - Simulation lifecycle: `initialize`, `post_reset`, `pre_reset`
+    - Callbacks: `*_callback`, `*_callback_fn`
+    - Tests: `setUp`, `tearDown`, `test_*`
+11. **Empty line after imports in examples**: Separate import statements from code with a blank line
+12. **Display results in examples**: Avoid silently storing results; show expected output for verification
+13. **Instantiate class only once**: Create the instance in the class/`__init__` example; other methods assume it exists
+14. **Backtick identifiers in comments**: Wrap variable, function, class, parameter, and prim path names in backticks when referenced in inline comments or `#:` attribute comments
+15. **Imperative mood for summary lines**: Write "Get the value" not "Gets the value"; class summaries may use noun phrases
+
+## Linting tools
+
+Use `./repo.sh run_python_linting` to check extensions. The following tools enforce these guidelines:
+
+### pydoclint (enforces no types in docstrings)
+
+pydoclint validates that docstrings match function signatures and that types are NOT in docstrings:
+
+```bash
+./repo.sh run_python_linting --pydoclint --extensions isaacsim.core.api
+```
+
+Configuration used:
+- `--style=google` - Google-style docstrings
+- `--arg-type-hints-in-docstring=false` - Types should NOT be in docstrings
+- `--arg-type-hints-in-signature=true` - Types should be in function signatures
+- `--check-return-types=false` - Return types not checked in docstrings (types belong in signatures)
+- `--check-yield-types=false` - Yield types not checked in docstrings
+- `--require-return-section-when-returning-nothing=false` - Void functions don't need a Returns section
+- `--skip-checking-raises=true` - Raises sections are not enforced by pydoclint
+- `--check-class-attributes=false` - Class attribute documentation not enforced by pydoclint
+
+### ruff (enforces docstring style, modern annotations, naming, and code quality)
+
+ruff checks for docstring style (Google convention), modern Python type annotations, naming conventions,
+and code quality. It replaces the standalone pydocstyle tool with ruff's native D rules for faster and
+more consistent checks.
+
+```bash
+# Check for issues (all default rules)
+./repo.sh run_python_linting --ruff --extensions isaacsim.core.api
+
+# Auto-fix issues
+./repo.sh run_python_linting --ruff --fix --extensions isaacsim.core.api
+
+# Include cleanup rules (unused imports, unnecessary pass)
+./repo.sh run_python_linting --ruff --ruff-clean --fix --extensions isaacsim.core.api
+```
+
+Default rules enforced:
+- **D** (pydocstyle): Docstring style checking (Google convention). Ignored rules:
+  - D104: Missing docstring in public package (we skip `__init__.py` intentionally)
+  - D107: Missing docstring in `__init__` (constructor Args go in class docstring for Sphinx)
+  - D412: No blank lines between section header and content (our Example sections use
+    `.. code-block:: python` RST directive which requires a blank line)
+- **ANN001**: Missing type annotation for function argument
+- **ANN002**: Missing type annotation for `*args`
+- **ANN003**: Missing type annotation for `**kwargs`
+- **ANN201**: Missing return type annotation for public function (including `-> None`)
+- **ANN202**: Missing return type annotation for private function
+- **ANN204**: Missing return type annotation for special method (dunder)
+- **ANN205**: Missing return type annotation for staticmethod
+- **ANN206**: Missing return type annotation for classmethod
+- **UP006**: `List[X]` → `list[X]`, `Dict[K, V]` → `dict[K, V]`, `Set[X]` → `set[X]`
+- **UP007**: `Union[X, Y]` → `X | Y`
+- **UP008**: `super(__class__, self)` → `super()`
+- **UP015**: Redundant open mode parameters
+- **UP018**: Unnecessary `str()`, `int()`, `float()` calls
+- **UP031/UP032**: Use f-strings instead of `%` or `.format()`
+- **UP034**: Extraneous parentheses
+- **UP035**: Deprecated `typing` module imports
+- **UP039**: Unnecessary parentheses after class definition
+- **E711**: Comparison to None (use `is` / `is not`)
+- **E712**: Comparison to True/False (use `if x:`)
+- **E722**: Bare `except` (catch specific exceptions)
+- **B006**: Mutable default arguments
+- **N801**: Class names should use PascalCase
+- **N802**: Function names should use snake_case
+- **C4**: Comprehension simplifications
+- **RET501/RET502**: Return statement hygiene
+- **SIM101**: Merge duplicate `isinstance` calls
+- **SIM110**: Use `any()`/`all()` instead of for-loop
+- **SIM115**: Open file with context handler
+- **SIM118**: `key in dict` instead of `key in dict.keys()`
+- **SIM201**: `!=` instead of `not ... ==`
+- **SIM300**: Yoda conditions

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
 
 """Module providing custom doctest functionality with extended output checking capabilities."""
 
+from __future__ import annotations
 
 import doctest
 import inspect
@@ -68,7 +69,7 @@ Example:
 class _Checker(doctest.OutputChecker):
     """Custom doctest's output checker to support the NO_CHECK option."""
 
-    def check_output(self, want, got, optionflags):
+    def check_output(self, want: str, got: str, optionflags: int) -> bool:
         """Check if the actual output matches the expected output.
 
         Extends the default doctest output checking by supporting the NO_CHECK flag.
@@ -106,12 +107,12 @@ class DocTest:
         **kwargs: Arbitrary keyword arguments for configuring the doctest runner.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: object, **kwargs: object):
         self._globs = {"__name__": "__main__"}
         self._checker = _Checker()
 
-    def _get_names(self, obj, privates: bool = False) -> list[str]:
-        """Get class/module names without including special methods
+    def _get_names(self, obj: object, privates: bool = False) -> list[str]:
+        """Get class/module names without including special methods.
 
         Args:
             obj: The class or module object to get names from.
@@ -155,9 +156,13 @@ class DocTest:
         return sorted(names)
 
     def get_members(
-        self, expr: object, order: list[tuple[object, int]] = [], exclude: list[object] = [], _globals: dict = {}
+        self,
+        expr: object,
+        order: list[tuple[object, int]] | None = None,
+        exclude: list[object] | None = None,
+        _globals: dict | None = None,
     ) -> list[object]:
-        """Get class/module members (names)
+        """Get class/module members (names).
 
         Args:
             expr: module function or class definition, property or method to check docstrings examples for
@@ -168,6 +173,12 @@ class DocTest:
         Returns:
             list of class/module members
         """
+        if order is None:
+            order = []
+        if exclude is None:
+            exclude = []
+        if _globals is None:
+            _globals = {}
         _globals.update({expr.__name__: expr})
         members = [eval(name, _globals) for name in self._get_names(expr)]
         # remove exclude items
@@ -184,7 +195,7 @@ class DocTest:
         expr: object,
         flags: int = doctest.NORMALIZE_WHITESPACE | doctest.ELLIPSIS | doctest.FAIL_FAST,
     ) -> bool:
-        """Check that the examples in docstrings pass for a class/module member
+        """Check that the examples in docstrings pass for a class/module member.
 
         Args:
             expr: module function or class definition, property or method to check docstrings examples for
@@ -198,13 +209,22 @@ class DocTest:
         testRunner = doctest.DocTestRunner(checker=self._checker, verbose=False, optionflags=flags)
         for test in testFinder.find(expr, name="module"):
             test.globs = self._globs
-            status = testRunner.run(test, clear_globs=False)
+            try:
+                status = testRunner.run(test, clear_globs=False)
+            except SystemExit as exc:
+                import carb
+
+                carb.log_error(
+                    f"SystemExit({exc.code}) raised during doctest for {expr!r}. "
+                    "Docstring examples must not call sys.exit()."
+                )
+                return False
             if status.failed:
                 return False
         return True
 
-    def _is_pybind11_module(self, obj) -> bool:
-        """Check if this is a pybind11 module
+    def _is_pybind11_module(self, obj: object) -> bool:
+        """Check if this is a pybind11 module.
 
         Args:
             obj: The object to check.
@@ -225,8 +245,8 @@ class DocTest:
 
         return False
 
-    def _is_function_like(self, obj) -> bool:
-        """Check if object is function-like (including pybind11 functions)
+    def _is_function_like(self, obj: object) -> bool:
+        """Check if object is function-like (including pybind11 functions).
 
         Args:
             obj: The object to check.

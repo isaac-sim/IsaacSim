@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -84,7 +84,7 @@ class OgnWritePhysicsSimulationContext:
         on_reset = db.inputs.on_reset
 
         try:
-            physics_sim_view = physics._physics_sim_view
+            physics_sim_view = physics.resolve_physics_sim_view()
             if physics_sim_view is None:
                 raise ValueError("Expected a registered simulation context with physics_sim_view")
             if attribute_name not in SIMULATION_CONTEXT_ATTRIBUTES:

@@ -1,0 +1,56 @@
+{
+    "HSBSend": {
+        "version": 1,
+        "icon": "icons/isaac-sim.svg",
+        "description": "Send data buffers via HSB (Holoscan Sensor Bridge) using DLTensor",
+        "metadata": {
+            "uiName": "HSB Send"
+        },
+        "categoryDefinitions": "config/CategoryDefinition.json",
+        "categories": "internal",
+        "inputs": {
+            "execIn": {
+                "type": "execution",
+                "description": "Execution trigger"
+            },
+            "ipAddress": {
+                "type": "string",
+                "description": "HSB target IP address",
+                "default": "127.0.0.1"
+            },
+            "dataPlaneType": {
+                "type": "string",
+                "description": "HSB data plane: coe (IEEE 1722B Camera-over-Ethernet) or linux (RoCEv2 UDP)",
+                "default": "coe"
+            },
+            "dataPlaneId": {
+                "type": "uint",
+                "description": "HSB data plane ID",
+                "default": 0
+            },
+            "sensorId": {
+                "type": "uint",
+                "description": "HSB sensor ID",
+                "default": 0
+            },
+            "timeStamp": {
+                "type": "double",
+                "description": "Timestamp in seconds",
+                "default": 0.0
+            },
+            "data": {
+                "type": "uchar[]",
+                "description": "Buffer data to send",
+                "memoryType": "cpu",
+                "default": [],
+                "optional": true
+            }
+        },
+        "outputs": {
+            "execOut": {
+                "type": "execution",
+                "description": "Execution output"
+            }
+        }
+    }
+}

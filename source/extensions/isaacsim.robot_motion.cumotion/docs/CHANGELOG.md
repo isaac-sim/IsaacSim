@@ -1,4 +1,30 @@
 # Changelog
+## [1.3.0] - 2026-05-20
+### Added
+- `normalize_urdf_for_urdfdom(urdf_text)` helper (`urdf_normalize.py`): rewrites a URDF document in-memory so it satisfies urdfdom 4.0.1's strict parser without modifying any kinematically meaningful values. Inserts default `effort`/`velocity` attributes on `<limit>` elements that omit them, adds a wide-open `<limit>` to `revolute`/`prismatic` joints that have none, adds `k_velocity="0"` to `<safety_controller>` elements missing it, drops empty `<dynamics/>` elements, and removes `<mimic>` elements with no target joint. Idempotent on already-clean URDFs.
+
+### Changed
+- `load_cumotion_robot` now pre-processes the URDF through `normalize_urdf_for_urdfdom` and calls `cumotion.load_robot_from_memory` (rather than `cumotion.load_robot_from_file`). This makes the loader accept URDFs produced by `isaacsim.asset.exporter.urdf.UsdToUrdfConverter` and other generators that omit attributes urdfdom requires but the URDF spec / most other parsers do not. Disk content is never mutated.
+
+## [1.2.0] - 2026-05-05
+### Added
+- `CumotionWorldInterface` now accepts a `device` constructor parameter (any value `wp.get_device` accepts; defaults to `None`, which resolves to warp's current default device). Selects the device used for internally-allocated warp arrays and dispatches the per-frame collider transform composition to either a vectorized NumPy path (CPU) or the Warp kernel (CUDA).
+- `compute_collider_transforms_cpu` utility: vectorized NumPy mirror of the Warp collider-transform kernel.
+
+### Changed
+- `get_world_to_robot_base_transform` now memoizes its return value and yields the same `wp.array` tuple until the base pose is updated.
+
+## [1.1.2] - 2026-04-23
+### Added
+- `RmpFlowController` contains `maximum_substep_size` for sub-stepping when more stable integration is required.
+
+## [1.1.1] - 2026-03-16
+### Fixed
+- TrajectoryOptimizer now functional on Windows.
+
+## [1.1.0] - 2026-03-05
+### Changed
+- Added Overview.md, python_api.md and updated docstrings
 
 ## [1.0.1] - 2026-03-04
 ### Fixed

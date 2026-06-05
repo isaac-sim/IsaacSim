@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Utilities for validating file system contents and structures in Isaac Sim tests."""
-
 
 from collections import Counter
 from pathlib import Path
@@ -129,11 +128,11 @@ def validate_folder_contents(
 
     # Check for unexpected extensions if allowed_extra_extensions is specified
     if allowed_extra_extensions is not None:
-        expected_extensions = {ext.lower() for ext in expected_counts.keys()}
+        expected_extensions = {ext.lower() for ext in expected_counts}
         allowed_extensions = {ext.lower() for ext in allowed_extra_extensions}
         all_allowed = expected_extensions | allowed_extensions
 
-        for found_ext in file_counts.keys():
+        for found_ext in file_counts:
             if found_ext not in all_allowed:
                 return False
 

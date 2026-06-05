@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,22 +15,15 @@
 
 """Test suite for validating grasp subframe positioning and pose computations in robotic grasping scenarios."""
 
-
 import asyncio
 
+import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
-
-# Import extension python module we are testing with absolute import path, as if we are external user (other extension)
 import omni.kit.test
-from isaacsim.core.api.objects import GroundPlane
-from isaacsim.core.prims import SingleXFormPrim, XFormPrim
-from isaacsim.core.utils.stage import (
-    add_reference_to_stage,
-    create_new_stage_async,
-    get_current_stage,
-    update_stage_async,
-)
-from isaacsim.core.utils.viewports import set_camera_view
+from isaacsim.core.experimental.objects import GroundPlane
+from isaacsim.core.experimental.prims import XformPrim
+from isaacsim.core.rendering_manager import ViewportManager
 from isaacsim.robot_setup.grasp_editor import import_grasps_from_file
 from isaacsim.robot_setup.grasp_editor.util import move_rb_subframe_to_position
 from isaacsim.storage.native import get_assets_root_path_async
@@ -67,37 +60,43 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
         extension_path = ext_manager.get_extension_path(ext_id)
         self._grasp_file = extension_path + "/data/robotiq_soup_grasp.yaml"
 
-        await create_new_stage_async()
-        await update_stage_async()
+        await stage_utils.create_new_stage_async()
+        await app_utils.update_app_async()
         await self._create_light()
 
-        set_camera_view(eye=[-0.6, -0.45, 0.3], target=[0, 0.3, 0], camera_prim_path="/OmniverseKit_Persp")
+        ViewportManager.set_camera_view("/OmniverseKit_Persp", eye=[-0.6, -0.45, 0.3], target=[0, 0.3, 0])
 
         asset_root_path = await get_assets_root_path_async()
 
         gripper_usd_path = asset_root_path + "/Isaac/Robots/Robotiq/2F-140/Robotiq_2F_140_config.usd"
         self._gripper_path = "/Robotiq_2F_140"
-        add_reference_to_stage(gripper_usd_path, self._gripper_path)
-        self._gripper_xform = SingleXFormPrim(self._gripper_path)
-        self._gripper_xform.set_world_pose(np.array([-0.24, 0.02, 0.11]))
+        stage_utils.add_reference_to_stage(gripper_usd_path, self._gripper_path)
+        self._gripper_xform = XformPrim(self._gripper_path, reset_xform_op_properties=True)
+        self._gripper_xform.set_world_poses(np.array([-0.24, 0.02, 0.11]))
         self._gripper_subframe = "/Robotiq_2F_140/robotiq_base_link"
 
         fixed_joint_path = self._gripper_path + "/FixedJoint"
 
-        stage = get_current_stage()
+        stage = stage_utils.get_current_stage()
         fixed_joint = UsdPhysics.FixedJoint.Define(stage, fixed_joint_path)
         fixed_joint.GetBody1Rel().SetTargets([self._gripper_subframe])
 
         self._rb_path = "/soup_can"
-        add_reference_to_stage(asset_root_path + "/Isaac/Props/YCB/Axis_Aligned/005_tomato_soup_can.usd", self._rb_path)
+        stage_utils.add_reference_to_stage(
+            asset_root_path + "/Isaac/Props/YCB/Axis_Aligned/005_tomato_soup_can.usd", self._rb_path
+        )
 
-        self._rb_xform = XFormPrim(self._rb_path)
+        self._rb_xform = XformPrim(self._rb_path, reset_xform_op_properties=True)
         self._rb_xform.set_world_poses(
             np.array([-0.06, 0.0, 0.14])[np.newaxis, :], np.array([0.707, -0.707, 0.0, 0.0])[np.newaxis, :]
         )
 
-        self._rb_subframe = SingleXFormPrim(
-            "/soup_can/subframe", translation=np.array([0.2, 0.1, -0.05]), orientation=np.array([0.5, 0.2, 0.6, -1])
+        stage_utils.define_prim("/soup_can/subframe")
+        self._rb_subframe = XformPrim(
+            "/soup_can/subframe",
+            translations=np.array([0.2, 0.1, -0.05]),
+            orientations=np.array([0.5, 0.2, 0.6, -1]),
+            reset_xform_op_properties=True,
         )
 
         await self._create_light()
@@ -120,9 +119,9 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
         self._ground_truth_gripper_orientation = np.array([0.0, 7.07106781e-01, 0.0, 7.07106781e-01])
 
         self._grasp_spec = import_grasps_from_file(self._grasp_file)
-        await update_stage_async()
+        await app_utils.update_app_async()
 
-    def assertAlmostEqual(self, a, b, msg: str = "", tol: float = 1e-6):
+    def assertAlmostEqual(self, a: object, b: object, msg: str = "", tol: float = 1e-6):
         """Assert that two arrays are almost equal within tolerance.
 
         Overrides the default method to support array comparisons by converting inputs to NumPy
@@ -144,10 +143,10 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
 
         Adds a UsdLux SphereLight with specified radius and intensity positioned above the scene.
         """
-        sphereLight = UsdLux.SphereLight.Define(get_current_stage(), Sdf.Path("/World/SphereLight"))
+        sphereLight = UsdLux.SphereLight.Define(stage_utils.get_current_stage(), Sdf.Path("/World/SphereLight"))
         sphereLight.CreateRadiusAttr(2)
         sphereLight.CreateIntensityAttr(100000)
-        SingleXFormPrim(str(sphereLight.GetPath().pathString)).set_world_pose([6.5, 0, 12])
+        XformPrim(str(sphereLight.GetPath().pathString), reset_xform_op_properties=True).set_world_poses([6.5, 0, 12])
 
     async def tearDown(self):
         """Clean up test environment after test completion.
@@ -157,11 +156,11 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             print("tearDown, assets still loading, waiting to finish...")
             await asyncio.sleep(1.0)
-        await update_stage_async()
+        await app_utils.update_app_async()
 
     # Each ground truth pose for the representative subframes was captured when creating the imported
     # grasp file.  The information in the file should be enough to exactly recover the ground truth pose
-    def compareRigidBodyPoseToGroundTruth(self, grasp_index: int, translation, orientation):
+    def compareRigidBodyPoseToGroundTruth(self, grasp_index: int, translation: object, orientation: object) -> None:
         """Compare rigid body pose against recorded ground truth values.
 
         Validates that the computed pose matches the expected ground truth pose for the
@@ -175,7 +174,7 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(self._ground_truth_rb_translations[grasp_index], translation)
         self.assertAlmostEqual(self._ground_truth_rb_quats[grasp_index], orientation, tol=1e-3)
 
-    def compareGripperPoseToGroundTruth(self, translation, orientation):
+    def compareGripperPoseToGroundTruth(self, translation: object, orientation: object) -> None:
         """Compare gripper pose against recorded ground truth values.
 
         Validates that the computed gripper pose matches the expected ground truth pose
@@ -190,7 +189,8 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
 
     # Carry out test described in
     async def test_derived_poses(self):
-        """Ground truths were recorded from the Properties Panel while using the Grasp Editor UI
+        """Ground truths were recorded from the Properties Panel while using the Grasp Editor UI.
+
         to author the grasps in `robotiq_soup_grasp.yaml`.  These ground truths represent the
         state of the gripper and soup for each authored grasp (The gripper was left in one place).
 
@@ -223,9 +223,10 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
         desired_trans = np.array([0.123, -2.4, 0.6])
         desired_orient = np.array([0.965, 0.0, 0.0, -0.259])  # -30 degree about Z
 
-        move_rb_subframe_to_position(self._rb_xform, self._rb_subframe.prim_path, desired_trans, desired_orient)
+        move_rb_subframe_to_position(self._rb_xform, self._rb_subframe.paths[0], desired_trans, desired_orient)
 
-        t, q = self._rb_subframe.get_world_pose()
+        t, q = self._rb_subframe.get_world_poses()
+        t, q = t[0].numpy(), q[0].numpy()
 
         self.assertAlmostEqual(t, desired_trans)
         # Error is expected to accumulate from rotation conversions

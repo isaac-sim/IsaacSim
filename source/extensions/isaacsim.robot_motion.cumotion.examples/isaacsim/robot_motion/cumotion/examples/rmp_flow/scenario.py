@@ -13,15 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""RMPflow controller with cuMotion integration example for Franka motion planning."""
+
 import isaacsim.robot_motion.experimental.motion_generation as mg
 import numpy as np
-import warp as wp
+import omni.kit.app
 from isaacsim.core.experimental.objects import Cone, Cube, Cylinder, Mesh
-from isaacsim.core.experimental.prims import Articulation, GeomPrim, XformPrim
+from isaacsim.core.experimental.prims import Articulation, GeomPrim
 from isaacsim.core.experimental.utils import prim as prim_utils
 from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.core.experimental.utils import transform as transform_utils
 from isaacsim.core.experimental.utils.stage import add_reference_to_stage
+from isaacsim.core.rendering_manager import ViewportManager
+from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.robot_motion.cumotion import (
     CumotionWorldInterface,
     RmpFlowController,
@@ -34,131 +38,118 @@ from isaacsim.robot_motion.experimental.motion_generation import (
     TrackableApi,
     WorldBinding,
 )
-from isaacsim.storage.native import get_assets_root_path
+from isaacsim.storage.native import get_assets_root_path_async
+from pxr import UsdPhysics
+
+_ROBOT_PRIM_PATH = "/panda"
+_TARGET_PRIM_PATH = "/World/target"
+_OBSTACLE_PRIM_PATH = "/World/obstacle"
+_PHYSICS_SCENE_PATH = "/World/PhysicsScene"
 
 
 class FrankaRmpFlowExample:
-    """Example demonstrating RMPflow controller with cuMotion integration.
+    """RMPflow controller with cuMotion integration for a Franka robot.
 
-    This example shows how to:
-    - Set up a cuMotion world interface with obstacles
-    - Create an RMPflow controller
-    - Use the controller to follow a target while avoiding obstacles
+    Owns the full scene and controller state for the demo:
+      - stage creation and asset loading (:meth:`load`)
+      - controller setup (:meth:`setup`)
+      - per-tick update (:meth:`step`, :meth:`update`)
+      - teardown (:meth:`cleanup`)
     """
 
-    def __init__(self):
-        self._controller = None
-        self._articulation = None
-        self._target = None
-        self._world_binding = None
-        self._controlled_joint_names = None
+    def __init__(self) -> None:
+        self._controller: RmpFlowController | None = None
+        self._articulation: Articulation | None = None
+        self._target: Cube | None = None
+        self._world_binding: WorldBinding | None = None
+        self._controlled_joint_names: list[str] | None = None
+        self._robot_prim_path: str | None = None
+        self._robot_joint_space: list[str] | None = None
+        self._robot_site_space: list[str] | None = None
+        self._tool_frame: str | None = None
+        self._sim_time = 0.0
+        self._controller_reset = False
 
-    def load_example_assets(self):
-        """Load robot, target, and obstacle assets to the stage."""
-        self._robot_prim_path = "/panda"
-        path_to_robot_usd = get_assets_root_path() + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd"
+    # ---------------------------------------------------------------- loading
 
-        add_reference_to_stage(path_to_robot_usd, self._robot_prim_path)
-        self._articulation = Articulation(self._robot_prim_path)
+    async def load(self) -> None:
+        """Create a fresh stage, load the Franka, and prime the RMPflow controller.
 
-        self._target = Cube(paths="/World/target", sizes=0.04, positions=[0.5, 0.0, 0.25])
+        Single-shot load: creates the stage, references in the robot USD,
+        defines the obstacle and target, allocates physics tensors, and
+        runs :meth:`setup` so the controller is ready when LOAD returns.
+        """
+        await stage_utils.create_new_stage_async(template="default stage")
+        stage_utils.set_stage_up_axis("Z")
+        stage_utils.set_stage_units(meters_per_unit=1.0)
 
-        # Create fixed cube obstacle
-        obstacle_path = "/World/obstacle"
-        obstacle_size = 0.05
-        obstacle_position = np.array([0.4, 0.0, 0.65])
+        self._robot_prim_path = _ROBOT_PRIM_PATH
+        assets_root = await get_assets_root_path_async()
+        add_reference_to_stage(assets_root + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd", _ROBOT_PRIM_PATH)
+        self._articulation = Articulation(_ROBOT_PRIM_PATH)
 
-        # Create cube geometry
-        cube = Cube(obstacle_path, sizes=obstacle_size, positions=[obstacle_position])
+        self._target = Cube(paths=_TARGET_PRIM_PATH, sizes=0.04, positions=[0.5, 0.0, 0.25])
 
-        # Apply collision APIs
-        GeomPrim(obstacle_path, apply_collision_apis=True)
+        # Fixed cube obstacle with collision API.
+        Cube(_OBSTACLE_PRIM_PATH, sizes=0.05, positions=[np.array([0.4, 0.0, 0.65])])
+        GeomPrim(_OBSTACLE_PRIM_PATH, apply_collision_apis=True)
 
-        return self._articulation, self._target, cube
+        ViewportManager.set_camera_view(camera="/OmniverseKit_Persp", eye=[2, 1.5, 2], target=[0, 0, 0])
 
-    def _cleanup_debug_prims(self):
-        """Delete all prims under 'CumotionDebug' to clean up old debug visualization."""
-        # Find all prims that have "CumotionDebug" in their path
-        debug_prim_paths = prim_utils.find_matching_prim_paths(".*CumotionDebug.*", traverse=True)
+        # Ensure a physics scene exists; allocate physics tensors without stepping.
+        stage = stage_utils.get_current_stage()
+        if not stage.GetPrimAtPath(_PHYSICS_SCENE_PATH).IsValid():
+            UsdPhysics.Scene.Define(stage, _PHYSICS_SCENE_PATH)
+        await omni.kit.app.get_app().next_update_async()
+        if SimulationManager.get_physics_sim_view() is None:
+            SimulationManager.initialize_physics()
 
-        if not debug_prim_paths:
-            return
+        self.setup()
 
-        # Filter to only root-level prims (ones whose parent is not in the list)
-        # Deleting a parent automatically deletes all its children
-        debug_prim_paths_set = set(debug_prim_paths)
-        root_prim_paths = [path for path in debug_prim_paths if path.rsplit("/", 1)[0] not in debug_prim_paths_set]
+    # ---------------------------------------------------------------- setup
 
-        # Delete only the root prims
-        for prim_path in root_prim_paths:
-            try:
-                stage_utils.delete_prim(prim_path)
-            except ValueError:
-                # Prim may have already been deleted or doesn't exist, skip
-                pass
-
-    def setup(self):
-        """Set up the RMPflow controller and world interface."""
-        # Clean up old world binding and debug prims before setting up
+    def setup(self) -> None:
+        """Build the RMPflow controller and world binding for the current scene."""
+        # Drop any prior world binding so its GPU resources can be reclaimed.
         if self._world_binding is not None:
-            # Clean up debug prims from the old world binding
             self._cleanup_debug_prims()
-            # Set to None to allow garbage collection of GPU resources
             self._world_binding = None
-
-        # Clean up any remaining debug prims
         self._cleanup_debug_prims()
 
-        # Load robot configuration
         robot_config = load_cumotion_supported_robot("franka")
 
-        # Create scene query to discover obstacles
         scene_query = SceneQuery()
-
-        # Get robot base transform
         robot_base_positions, robot_base_orientations = self._articulation.get_world_poses()
-
-        # Get all objects surrounding the robot
         search_origin = robot_base_positions.numpy()[0] if robot_base_positions.shape[0] > 0 else [0.0, 0.0, 0.0]
         objects = scene_query.get_prims_in_aabb(
             search_box_origin=search_origin,
             search_box_minimum=[-10.0, -10.0, -10.0],
             search_box_maximum=[10.0, 10.0, 10.0],
             tracked_api=TrackableApi.PHYSICS_COLLISION,
-            exclude_prim_paths=[self._robot_prim_path],  # don't include the franka itself
+            exclude_prim_paths=[self._robot_prim_path],
         )
 
-        # Set up obstacle strategy
         obstacle_strategy = ObstacleStrategy()
         obstacle_strategy.set_default_configuration(Mesh, ObstacleConfiguration("obb", 0.01))
         obstacle_strategy.set_default_configuration(Cone, ObstacleConfiguration("obb", 0.01))
         obstacle_strategy.set_default_configuration(Cylinder, ObstacleConfiguration("obb", 0.01))
 
-        # Create world binding
         self._world_binding = WorldBinding(
-            world_interface=CumotionWorldInterface(),
+            world_interface=CumotionWorldInterface(device="cpu"),
             obstacle_strategy=obstacle_strategy,
             tracked_prims=objects,
             tracked_collision_api=TrackableApi.PHYSICS_COLLISION,
         )
-
-        # Populate the world
         self._world_binding.initialize()
-
-        # Update world interface with robot base transform
         self._world_binding.get_world_interface().update_world_to_robot_root_transforms(
             poses=(robot_base_positions, robot_base_orientations)
         )
-
-        # Synchronize transforms before using controller
         self._world_binding.synchronize_transforms()
 
-        # Get robot joint and site names
         self._robot_joint_space = self._articulation.dof_names
         self._robot_site_space = robot_config.robot_description.tool_frame_names()
         self._tool_frame = self._robot_site_space[0]
 
-        # Create RMPflow controller
         self._controller = RmpFlowController(
             cumotion_robot=robot_config,
             cumotion_world_interface=self._world_binding.get_world_interface(),
@@ -166,37 +157,43 @@ class FrankaRmpFlowExample:
             robot_site_space=self._robot_site_space,
             tool_frame=self._tool_frame,
         )
-
-        # Store controlled joint names for update()
         self._controlled_joint_names = robot_config.controlled_joint_names
 
-        # Set initial target position
+        # Move the target into a reachable pose with the EE looking down.
         quat = transform_utils.euler_angles_to_quaternion([0, np.pi, 0]).numpy()
         self._target.set_world_poses(positions=np.array([[0.5, 0, 0.7]]), orientations=np.array([quat]))
 
         self._sim_time = 0.0
         self._controller_reset = False
 
-    def update(self, step: float):
-        """Update controller on each physics step."""
+    def reset(self) -> None:
+        """Re-run :meth:`setup` so the controller is fresh for another run."""
+        self.setup()
+
+    # --------------------------------------------------------------- per-tick
+
+    def step(self, dt: float) -> None:
+        """Per-physics-step update, guarded against invalid physics tensors.
+
+        Safe to call before :meth:`setup` has run or while the articulation's
+        physics tensors are not yet valid; both cases are no-ops.
+        """
+        if self._articulation is None or self._controller is None or self._world_binding is None:
+            return
+        if not self._articulation.is_physics_tensor_entity_valid():
+            return
+        self.update(dt)
+
+    def update(self, step: float) -> None:
+        """Drive the RMPflow controller for one physics step.
+
+        Args:
+            step: Physics time step in seconds.
+        """
         if self._controller is None or self._world_binding is None:
             return
 
-        # Get current robot state
-        controlled_joint_names = self._controlled_joint_names
-
-        estimated_state = mg.RobotState(
-            joints=mg.JointState.from_name(
-                robot_joint_space=self._robot_joint_space,
-                positions=(self._robot_joint_space, self._articulation.get_dof_positions()),
-                velocities=(self._robot_joint_space, self._articulation.get_dof_velocities()),
-            )
-        )
-
-        # Get target pose
         target_positions, target_orientations = self._target.get_world_poses()
-
-        # Create setpoint with target site
         setpoint_state = mg.RobotState(
             sites=mg.SpatialState.from_name(
                 spatial_space=self._robot_site_space,
@@ -205,21 +202,27 @@ class FrankaRmpFlowExample:
             ),
         )
 
-        # Update world interface to track robot base movements
-        self._world_binding.get_world_interface().update_world_to_robot_root_transforms(
-            self._articulation.get_world_poses()
-        )
+        if not self._controller_reset:
+            # First step only: pin the world-to-robot transform and seed controller state.
+            self._world_binding.get_world_interface().update_world_to_robot_root_transforms(
+                self._articulation.get_world_poses()
+            )
+            estimated_state = mg.RobotState(
+                joints=mg.JointState.from_name(
+                    robot_joint_space=self._robot_joint_space,
+                    positions=(self._robot_joint_space, self._articulation.get_dof_positions()),
+                    velocities=(self._robot_joint_space, self._articulation.get_dof_velocities()),
+                )
+            )
+        else:
+            estimated_state = None
 
-        # Synchronize transforms
         self._world_binding.synchronize_transforms()
 
         if not self._controller_reset:
             self._controller_reset = self._controller.reset(estimated_state, setpoint_state, self._sim_time)
 
-        # Get desired state from controller
         desired_state = self._controller.forward(estimated_state, setpoint_state, self._sim_time)
-
-        # Apply action to articulation
         if desired_state is not None and desired_state.joints.positions is not None:
             self._articulation.set_dof_position_targets(
                 positions=desired_state.joints.positions,
@@ -228,6 +231,44 @@ class FrankaRmpFlowExample:
 
         self._sim_time += step
 
-    def reset(self):
-        """Reset the example."""
-        self.setup()
+    # --------------------------------------------------------------- teardown
+
+    def cleanup(self) -> None:
+        """Drop all USD/prim-wrapper references so the stage can fully release.
+
+        Without this the soon-to-be-closed UsdStage often has a refcount > 1
+        (debug visible as the ``Unexpected reference count of 2 for UsdStage``
+        warning in omni.usd).
+        """
+        if self._world_binding is not None:
+            self._cleanup_debug_prims()
+            self._world_binding = None
+        self._controller = None
+        self._articulation = None
+        self._target = None
+        self._controlled_joint_names = None
+        self._robot_prim_path = None
+        self._robot_joint_space = None
+        self._robot_site_space = None
+        self._tool_frame = None
+        self._controller_reset = False
+        self._sim_time = 0.0
+
+    def _cleanup_debug_prims(self) -> None:
+        """Delete all prims under 'CumotionDebug' to clean up old debug visualization."""
+        try:
+            stage_utils.get_current_stage()
+        except ValueError:
+            # There is no stage.
+            return
+        debug_prim_paths = prim_utils.find_matching_prim_paths(".*CumotionDebug.*", traverse=True)
+        if not debug_prim_paths:
+            return
+        # Filter to root-level prims (deleting a parent removes its children).
+        debug_prim_paths_set = set(debug_prim_paths)
+        root_prim_paths = [p for p in debug_prim_paths if p.rsplit("/", 1)[0] not in debug_prim_paths_set]
+        for prim_path in root_prim_paths:
+            try:
+                stage_utils.delete_prim(prim_path)
+            except ValueError:
+                pass

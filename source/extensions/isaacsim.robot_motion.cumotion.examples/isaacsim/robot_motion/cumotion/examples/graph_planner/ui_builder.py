@@ -13,56 +13,93 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
+"""User interface builder for the cuMotion graph planner example.
 
-import numpy as np
+Strictly a view: builds widgets, forwards button clicks to the
+:class:`FrankaGraphPlannerExample` scenario, and resets widget state on
+USD stage changes.  All scene-loading, planning, and trajectory state
+live on the scenario.
+"""
+
+import asyncio
+from collections.abc import Callable
+from typing import Any
+
 import omni.kit.app
 import omni.timeline
 import omni.ui as ui
-from isaacsim.core.experimental.objects import Cube
-from isaacsim.core.experimental.prims import Articulation, GeomPrim
-from isaacsim.core.experimental.utils import stage as stage_utils
-from isaacsim.core.experimental.utils.stage import add_reference_to_stage
-from isaacsim.core.rendering_manager import RenderingManager, ViewportManager
-from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.gui.components.element_wrappers import Button, CollapsableFrame, StateButton
 from isaacsim.gui.components.style import get_style
-from isaacsim.robot_motion.cumotion import load_cumotion_supported_robot
-from isaacsim.storage.native import get_assets_root_path
-from pxr import UsdPhysics
+from omni.kit.async_engine import run_coroutine
 
 from .scenario import FrankaGraphPlannerExample
 
 
 class UIBuilder:
-    def __init__(self):
-        self.frames = []
-        self.wrapped_ui_elements = []
+    """Builds and drives the cuMotion graph planner UI.
+
+    Owns only widgets and the asyncio task for scene loading.  The
+    :class:`FrankaGraphPlannerExample` scenario owns all scene/planner
+    state.
+
+    The UI has two sections:
+      - **World Controls** - Load the scene, set joint targets, and
+        plan to either a configuration-space or task-space target.
+      - **Run Scenario** - Execute the planned trajectory.
+    """
+
+    def __init__(self) -> None:
+        self.frames: list[Any] = []
+        self.wrapped_ui_elements: list[Any] = []
         self._timeline = omni.timeline.get_timeline_interface()
-        self._joint_slider_models = []
-        self._on_init()
+        self._joint_slider_models: list[ui.AbstractValueModel] = []
+        self._load_task: asyncio.Task | None = None
+        self._scenario: FrankaGraphPlannerExample | None = FrankaGraphPlannerExample()
 
-    def on_menu_callback(self):
-        pass
+    # ------------------------------------------------------------- lifecycle
 
-    def on_timeline_event(self, event):
+    def cleanup(self) -> None:
+        """Tear down the UI on extension shutdown or window close.
+
+        Cancels any in-flight load task, cleans up wrapped widgets, and
+        drops scenario references so the closing UsdStage can be fully
+        released (avoids the ``Unexpected reference count of 2`` warning).
+        """
+        if self._load_task is not None and not self._load_task.done():
+            self._load_task.cancel()
+            self._load_task = None
+        for ui_elem in self.wrapped_ui_elements:
+            ui_elem.cleanup()
+        self.wrapped_ui_elements.clear()
+        if self._scenario is not None:
+            self._scenario.cleanup()
+
+    def on_stage_changed(self, event: Any) -> None:
+        """Reset widget state in response to a USD stage event.
+
+        Skipped while a load is in flight (the load itself triggers stage
+        events; resetting state mid-load would clobber it).  When the
+        stage changes outside of a load - e.g. the user opens a different
+        stage in the viewport - this drops the now-stale scenario state
+        so the next LOAD click starts cleanly.
+        """
+        if self._load_task is not None and not self._load_task.done():
+            return
+        if self._scenario is not None:
+            self._scenario.cleanup()
+        self._scenario = FrankaGraphPlannerExample()
+        self._reset_widgets()
+
+    def on_timeline_event(self, event: Any) -> None:
+        """Reset the Run/Stop button on timeline state changes."""
         self._scenario_state_btn.reset()
         self._scenario_state_btn.enabled = False
 
-    def on_physics_step(self, step: float):
-        pass
+    # -------------------------------------------------------------- build UI
 
-    def on_stage_event(self, event):
-        self._reset_extension()
-
-    def cleanup(self):
-        for ui_elem in self.wrapped_ui_elements:
-            ui_elem.cleanup()
-
-    def build_ui(self):
-        world_controls_frame = CollapsableFrame("World Controls", collapsed=False)
-
-        with world_controls_frame:
+    def build_ui(self) -> None:
+        """Construct the widget tree."""
+        with CollapsableFrame("World Controls", collapsed=False):
             with ui.VStack(style=get_style(), spacing=5, height=0):
                 self._load_btn = Button(
                     "Load Button",
@@ -72,217 +109,143 @@ class UIBuilder:
                 )
                 self.wrapped_ui_elements.append(self._load_btn)
 
-                # Joint angle sliders for C-space target
-                self._joint_sliders_frame = CollapsableFrame("Configuration Target", collapsed=False)
-                with self._joint_sliders_frame:
+                # Joint angle sliders for the C-space target are added in _create_joint_sliders
+                # after the robot config has loaded.
+                with CollapsableFrame("Configuration Target", collapsed=False):
                     with ui.VStack(style=get_style(), spacing=5, height=0):
-                        # Sliders will be created in _setup_scenario after robot is loaded
                         self._joint_sliders_container = ui.VStack(style=get_style(), spacing=3, height=0)
 
-                self._to_cspace_btn = ui.Button(
+                self._to_cspace_btn = Button(
+                    "Plan to C-Space",
                     "TO CSPACE TARGET",
-                    clicked_fn=self._on_to_cspace_target_btn,
-                    style=get_style(),
+                    tooltip="Plan a path to the joint configuration above",
+                    on_click_fn=self._on_to_cspace_target_btn,
                 )
                 self._to_cspace_btn.enabled = False
+                self.wrapped_ui_elements.append(self._to_cspace_btn)
 
-                self._to_task_space_btn = ui.Button(
+                self._to_task_space_btn = Button(
+                    "Plan to Task-Space",
                     "TO TASK-SPACE TARGET",
-                    clicked_fn=self._on_to_task_space_target_btn,
-                    style=get_style(),
+                    tooltip="Plan a path to the target cube's world pose",
+                    on_click_fn=self._on_to_task_space_target_btn,
                 )
                 self._to_task_space_btn.enabled = False
+                self.wrapped_ui_elements.append(self._to_task_space_btn)
 
-        run_scenario_frame = CollapsableFrame("Run Scenario")
-
-        with run_scenario_frame:
+        with CollapsableFrame("Run Scenario"):
             with ui.VStack(style=get_style(), spacing=5, height=0):
                 self._scenario_state_btn = StateButton(
                     "Run Scenario",
                     "RUN",
                     "STOP",
-                    on_a_click_fn=self._on_run_scenario_a_text,
-                    on_b_click_fn=self._on_run_scenario_b_text,
+                    on_a_click_fn=lambda: self._timeline.play(),
+                    on_b_click_fn=lambda: self._timeline.pause(),
                     physics_callback_fn=self._update_scenario,
                 )
                 self._scenario_state_btn.enabled = False
                 self.wrapped_ui_elements.append(self._scenario_state_btn)
 
-    def _on_init(self):
+    # ---------------------------------------------------------- LOAD handler
+
+    def _on_load_btn(self) -> None:
+        """Handle LOAD click.
+
+        Cancels any previous in-flight load, drops the old scenario's prim
+        references, and schedules a fresh two-phase load on the Kit asyncio
+        loop.
+        """
+        if self._load_task is not None and not self._load_task.done():
+            self._load_task.cancel()
+        if self._scenario is not None:
+            self._scenario.cleanup()
         self._scenario = FrankaGraphPlannerExample()
+        self._reset_widgets()
+        self._load_task = run_coroutine(self._load_scene_async())
 
-    def _load_example_assets(self):
-        """Load robot, target, and obstacle assets to the stage."""
-        self._scenario._robot_prim_path = "/panda"
-        path_to_robot_usd = get_assets_root_path() + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd"
+    async def _load_scene_async(self) -> None:
+        """Two-phase scene load.
 
-        add_reference_to_stage(path_to_robot_usd, self._scenario._robot_prim_path)
-        self._scenario._articulation = Articulation(self._scenario._robot_prim_path)
+        Phase 1 (fast, local): create the stage and load the cuMotion
+        robot config.  Returns as soon as the joint sliders can be built,
+        so the UI is responsive even while the heavy USD load runs.
 
-        angle = np.pi / 2
-        target_orientation = np.array([np.cos(angle / 2), 0.0, np.sin(angle / 2), 0.0])
+        Phase 2 (slow, network): pull the Franka USD, create target +
+        obstacle, init physics.
+        """
+        await self._scenario.load_robot_config()
+        self._create_joint_sliders()
+        self._enable_planning_buttons()
+        await self._scenario.load_assets()
 
-        # Create target cube (non-collision, can be moved around)
-        self._scenario._target = Cube(
-            paths="/World/target", sizes=0.04, positions=[0.5, 0.0, 0.7], orientations=target_orientation
-        )
+    # ------------------------------------------------------- planning buttons
 
-        # Create fixed cube obstacle
-        obstacle_path = "/World/obstacle"
-        obstacle_size = 0.1
-        obstacle_position = np.array([0.25, 0.0, 0.5])
+    def _on_to_cspace_target_btn(self) -> None:
+        """Handle 'Plan to C-Space' click - read sliders, ask the scenario to plan."""
+        self._timeline.pause()
+        q_target = [m.get_value_as_float() for m in self._joint_slider_models]
+        self._run_plan(lambda: self._scenario.plan_to_cspace_target(q_target=q_target))
 
-        # Create cube geometry
-        cube = Cube(obstacle_path, sizes=obstacle_size, positions=[obstacle_position])
+    def _on_to_task_space_target_btn(self) -> None:
+        """Handle 'Plan to Task-Space' click - ask the scenario to plan to the target cube's pose."""
+        self._timeline.pause()
+        self._run_plan(self._scenario.plan_to_task_space_target)
 
-        # Plan to a C-space target
-        # Use default configuration as starting point (ensures valid configuration)
-        self._scenario._cumotion_robot = load_cumotion_supported_robot("franka")
-        self._scenario._controlled_dof_indices = (
-            self._scenario._articulation.get_dof_indices(self._scenario._cumotion_robot.controlled_joint_names)
-            .numpy()
-            .flatten()
-        )
-        self._scenario._q_initial = self._scenario._cumotion_robot.robot_description.default_cspace_configuration()
-        self._scenario._q_initial[0] = -np.pi / 2
-        self._scenario._q_initial[1] = -np.pi / 8  # Modify joint 1 for a different starting pose
-        self._scenario._first_trajectory = True
-
-        # Apply collision APIs
-        GeomPrim(obstacle_path, apply_collision_apis=True)
-
-    def _on_load_btn(self):
-        """Handle Load button click - loads scene and initializes scenario."""
-        asyncio.ensure_future(self._load_scene_async())
-
-    async def _load_scene_async(self):
-        """Async function to load the scene without using World."""
-        # Create new stage
-        await stage_utils.create_new_stage_async(template="default stage")
-
-        # Set up stage properties
-        stage_utils.set_stage_up_axis("Z")
-        stage_utils.set_stage_units(meters_per_unit=1.0)
-
-        # Setup scene (load assets)
-        self._setup_scene()
-
-        # Set camera view
-        ViewportManager.set_camera_view(camera="/OmniverseKit_Persp", eye=[2, 1.5, 2], target=[0, 0, 0])
-
-        # Create physics scene if it doesn't exist
-        stage = stage_utils.get_current_stage()
-        physics_scene_path = "/World/PhysicsScene"
-        if not stage.GetPrimAtPath(physics_scene_path).IsValid():
-            UsdPhysics.Scene.Define(stage, physics_scene_path)
-        await omni.kit.app.get_app().next_update_async()
-
-        # Set physics and rendering timesteps
-        SimulationManager.set_physics_dt(dt=1.0 / 60.0)
-        RenderingManager.set_dt(dt=1.0 / 60.0)
-        await omni.kit.app.get_app().next_update_async()
-
-        # Initialize physics if needed
-        if SimulationManager.get_physics_sim_view() is None:
-            SimulationManager.initialize_physics()
-
-        # Play timeline to initialize physics tensors
-        self._timeline.play()
-        # Wait for multiple updates to ensure physics runs and tensors are initialized
-        for _ in range(5):
-            await omni.kit.app.get_app().next_update_async()
-        self._timeline.stop()
-        await omni.kit.app.get_app().next_update_async()
-
-        # Setup scenario (post-load callback)
-        self._setup_scenario()
-
-    def _setup_scene(self):
-        """Load assets onto the stage."""
-        # Load assets - prims are automatically added to the stage
-        self._load_example_assets()
-
-    def _setup_scenario(self):
-        # Don't call setup() here - let user choose target type via buttons
+    def _run_plan(self, plan_fn: Callable[[], str | None]) -> None:
+        """Run a planning function and update the Run button based on the result."""
+        error_message = plan_fn()
         self._scenario_state_btn.reset()
-        self._scenario_state_btn.enabled = False  # Enable only after planning
+        if error_message is not None:
+            self._show_error_dialog(error_message)
+            self._scenario_state_btn.enabled = False
+        else:
+            self._scenario_state_btn.enabled = True
+
+    # ------------------------------------------------------------ per-tick
+
+    def _update_scenario(self, step: float, *args: Any, **kwargs: Any) -> None:
+        """Per-physics-step callback wired into the StateButton."""
+        if self._scenario is not None:
+            self._scenario.step(step)
+
+    # ------------------------------------------------------------- internals
+
+    def _reset_widgets(self) -> None:
+        """Disable planning/run buttons and clear any joint sliders."""
+        self._scenario_state_btn.reset()
+        self._scenario_state_btn.enabled = False
+        self._to_cspace_btn.enabled = False
+        self._to_task_space_btn.enabled = False
+        self._joint_slider_models.clear()
+        if hasattr(self, "_joint_sliders_container"):
+            self._joint_sliders_container.clear()
+
+    def _enable_planning_buttons(self) -> None:
+        """Enable the plan buttons; called after the robot config loads."""
+        self._scenario_state_btn.reset()
+        self._scenario_state_btn.enabled = False  # Enabled only after a successful plan.
         self._to_cspace_btn.enabled = True
         self._to_task_space_btn.enabled = True
 
-        # Create joint sliders after robot is loaded
-        self._create_joint_sliders()
-
-    def _get_joint_limits(self):
-        """Get joint limits for all controlled joints.
-
-        Returns:
-            tuple: (lower_limits, upper_limits) as numpy arrays
-        """
-        if self._scenario._cumotion_robot is None:
-            return None, None
-
-        kinematics = self._scenario._cumotion_robot.kinematics
-        num_joints = kinematics.num_cspace_coords()
-        lower_limits = []
-        upper_limits = []
-
-        for i in range(num_joints):
-            limits = kinematics.cspace_coord_limits(i)
-            lower_limits.append(limits.lower)
-            upper_limits.append(limits.upper)
-
-        return np.array(lower_limits), np.array(upper_limits)
-
-    def _get_joint_names(self):
-        """Get the names of all controlled joints.
-
-        Returns:
-            list: List of joint names
-        """
-        if self._scenario._cumotion_robot is None:
-            return []
-        return self._scenario._cumotion_robot.controlled_joint_names
-
-    def _create_joint_sliders(self):
-        """Create sliders for each joint with limits from the robot description."""
-        # Clear existing sliders
+    def _create_joint_sliders(self) -> None:
+        """Build one labelled FloatSlider per controlled joint."""
         self._joint_slider_models.clear()
         self._joint_sliders_container.clear()
 
-        # Get joint limits and names
-        lower_limits, upper_limits = self._get_joint_limits()
-        joint_names = self._get_joint_names()
-
-        if lower_limits is None or upper_limits is None or len(joint_names) == 0:
+        if not self._scenario.is_robot_config_loaded():
             return
 
-        # Get default configuration for initial slider values
-        cumotion_robot = self._scenario._cumotion_robot
-        default_q = cumotion_robot.robot_description.default_cspace_configuration()
-        # Set default target values (matching the original default target)
-        default_target = default_q.copy()
-        default_target[0] = np.pi / 2
-        default_target[1] = -np.pi / 3
+        joint_names = self._scenario.get_controlled_joint_names()
+        lower_limits, upper_limits = self._scenario.get_joint_limits()
+        default_target = self._scenario.get_default_target_configuration()
 
-        # Create a slider for each joint inside the container
         with self._joint_sliders_container:
-            for i, joint_name in enumerate(joint_names):
+            for i, name in enumerate(joint_names):
                 with ui.HStack(style=get_style(), spacing=5):
-                    ui.Label(
-                        joint_name,
-                        width=120,
-                        alignment=ui.Alignment.LEFT_CENTER,
-                    )
-                    # Create FloatField model for the value
-                    field_model = ui.FloatField(
-                        name="Field",
-                        width=80,
-                        alignment=ui.Alignment.LEFT_CENTER,
-                    ).model
+                    ui.Label(name, width=120, alignment=ui.Alignment.LEFT_CENTER)
+                    field_model = ui.FloatField(name="Field", width=80, alignment=ui.Alignment.LEFT_CENTER).model
                     field_model.set_value(float(default_target[i]))
-
-                    # Create FloatSlider with min/max limits
-                    slider = ui.FloatSlider(
+                    ui.FloatSlider(
                         width=ui.Fraction(1),
                         alignment=ui.Alignment.LEFT_CENTER,
                         min=float(lower_limits[i]),
@@ -290,15 +253,10 @@ class UIBuilder:
                         step=0.01,
                         model=field_model,
                     )
-
                     self._joint_slider_models.append(field_model)
 
-    def _show_error_dialog(self, message: str):
-        """Show a modal error dialog with the given message.
-
-        Args:
-            message: Error message to display.
-        """
+    def _show_error_dialog(self, message: str) -> None:
+        """Show a modal error dialog with the given message."""
         dialog = ui.Window(
             "Planning Failed",
             width=500,
@@ -307,11 +265,10 @@ class UIBuilder:
             flags=(ui.WINDOW_FLAGS_NO_SCROLLBAR | ui.WINDOW_FLAGS_MODAL | ui.WINDOW_FLAGS_NO_SAVED_SETTINGS),
         )
 
-        def _close_dialog():
-            """Hide immediately, destroy on the next frame."""
+        def _close_dialog() -> None:
             dialog.visible = False
 
-            async def _destroy_next_frame():
+            async def _destroy_next_frame() -> None:
                 await omni.kit.app.get_app().next_update_async()
                 dialog.destroy()
 
@@ -324,59 +281,3 @@ class UIBuilder:
                 ui.Spacer(height=10)
                 ui.Button("OK", clicked_fn=_close_dialog, alignment=ui.Alignment.CENTER)
                 ui.Spacer(height=10)
-
-    def _on_to_cspace_target_btn(self):
-        """Handle click on 'to cspace_target' button."""
-        # Pause timeline before planning
-        self._timeline.pause()
-
-        # Get target configuration from sliders
-        q_target = [model.get_value_as_float() for model in self._joint_slider_models]
-
-        error_message = self._scenario.plan_to_cspace_target(q_target=q_target)
-        if error_message is not None:
-            self._show_error_dialog(error_message)
-            self._scenario_state_btn.reset()
-            self._scenario_state_btn.enabled = False
-        else:
-            self._scenario_state_btn.reset()
-            self._scenario_state_btn.enabled = True
-
-    def _on_to_task_space_target_btn(self):
-        """Handle click on 'to task-space target' button."""
-        # Pause timeline before planning
-        self._timeline.pause()
-        error_message = self._scenario.plan_to_task_space_target()
-        if error_message is not None:
-            self._show_error_dialog(error_message)
-            self._scenario_state_btn.reset()
-            self._scenario_state_btn.enabled = False
-        else:
-            self._scenario_state_btn.reset()
-            self._scenario_state_btn.enabled = True
-
-    def _update_scenario(self, step: float, *args, **kwargs):
-        # Check if physics tensors are valid before updating
-        if self._scenario._articulation is not None:
-            if not self._scenario._articulation.is_physics_tensor_entity_valid():
-                return
-        self._scenario.update(step)
-
-    def _on_run_scenario_a_text(self):
-        self._timeline.play()
-
-    def _on_run_scenario_b_text(self):
-        self._timeline.pause()
-
-    def _reset_extension(self):
-        self._on_init()
-        self._reset_ui()
-
-    def _reset_ui(self):
-        self._scenario_state_btn.reset()
-        self._scenario_state_btn.enabled = False
-        self._to_cspace_btn.enabled = False
-        self._to_task_space_btn.enabled = False
-        self._joint_slider_models.clear()
-        if hasattr(self, "_joint_sliders_container"):
-            self._joint_sliders_container.clear()

@@ -1,11 +1,11 @@
 [package]
-version = "2.0.6"
+version = "2.1.0"
 category = "Other"
 title = "Isaac Sim Version"
 description = "Isaac Sim Version extension provides tools to query Isaac Sim version and build information."
 keywords = ["isaac"]
 changelog = "docs/CHANGELOG.md"
-readme = "docs/README.md"
+readme = "docs/Overview.md"
 preview_image = "data/preview.png"
 icon = "data/icon.png"
 writeTarget.kit = true
@@ -21,3 +21,6 @@ name = "isaacsim.core.version.tests"
 
 [[test]]
 dependencies = ["omni.kit.test"]
+
+[documentation]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

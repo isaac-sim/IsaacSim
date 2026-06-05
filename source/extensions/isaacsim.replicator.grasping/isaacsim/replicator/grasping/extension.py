@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,6 @@
 
 """Extension for generating grasping-related synthetic data using Isaac Sim Replicator."""
 
-
 import omni.ext
 
 
@@ -27,14 +26,12 @@ class Extension(omni.ext.IExt):
     generation of diverse grasping data for training and validation of robotic manipulation models.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Called when the extension is starting up.
 
         Args:
             ext_id: The unique identifier of the extension being started.
         """
-        pass
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Called when the extension is shutting down."""
-        pass

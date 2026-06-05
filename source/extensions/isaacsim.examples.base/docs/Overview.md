@@ -1,16 +1,12 @@
-```{csv-table}
-**Extension**: {{ extension_version }},**Documentation Generated**: {sub-ref}`today`
-```
-
 # Overview
 
 The isaacsim.examples.base extension provides foundational base classes for creating structured Isaac Sim simulation examples. It establishes a standardized framework that combines simulation logic with user interface templates, enabling developers to build consistent and reusable simulation demonstrations.
 
 ## Key Components
 
-### [BaseSample](isaacsim.examples.base/isaacsim.examples.base.BaseSample)
+### {class}`BaseSample <isaacsim.examples.base.BaseSample>`
 
-The [BaseSample](isaacsim.examples.base/isaacsim.examples.base.BaseSample) class serves as the abstract foundation for simulation examples. It manages the complete simulation lifecycle including world loading, resetting, and cleanup operations through a structured async workflow.
+The {class}`BaseSample <isaacsim.examples.base.BaseSample>` class serves as the abstract foundation for simulation examples. It manages the complete simulation lifecycle including world loading, resetting, and cleanup operations through a structured async workflow.
 
 The class establishes default simulation settings with a physics timestep of 1/60 seconds, stage units in meters, and rendering timestep of 1/60 seconds. It provides core simulation management including timeline control and physics simulation interface integration.
 
@@ -23,9 +19,9 @@ The class establishes default simulation settings with a physics timestep of 1/6
 
 The class automatically handles viewport camera positioning, physics scene creation, and timeline control during world loading and reset operations.
 
-### [BaseSampleUITemplate](isaacsim.examples.base/isaacsim.examples.base.BaseSampleUITemplate)
+### {class}`BaseSampleUITemplate <isaacsim.examples.base.BaseSampleUITemplate>`
 
-The [BaseSampleUITemplate](isaacsim.examples.base/isaacsim.examples.base.BaseSampleUITemplate) class provides a standardized UI framework for Isaac Sim examples with common controls for world loading, resetting, and timeline management. It creates a collapsible frame structure with default world controls and extensible areas for custom UI elements.
+The {class}`BaseSampleUITemplate <isaacsim.examples.base.BaseSampleUITemplate>` class provides a standardized UI framework for Isaac Sim examples with common controls for world loading, resetting, and timeline management. It creates a collapsible frame structure with default world controls and extensible areas for custom UI elements.
 
 The template automatically manages stage and timeline event subscriptions and button state management. It provides abstract methods for customizing behavior during different operations:
 

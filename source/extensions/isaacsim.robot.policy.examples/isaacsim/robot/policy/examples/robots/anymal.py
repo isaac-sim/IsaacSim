@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,18 +15,15 @@
 
 """Provides a policy controller for ANYmal quadruped robot executing flat terrain locomotion using an LSTM-based SEA network."""
 
-
 import io
 
 import omni
 import warp as wp
 from isaacsim.core.deprecation_manager import import_module
 from isaacsim.core.experimental.utils.transform import quaternion_to_rotation_matrix
+from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.robot.policy.examples.controllers import PolicyController
-from isaacsim.robot.policy.examples.utils import LstmSeaNetwork
 from isaacsim.storage.native import get_assets_root_path
-
-torch = import_module("torch")
 
 
 class AnymalFlatTerrainPolicy(PolicyController):
@@ -42,6 +39,8 @@ class AnymalFlatTerrainPolicy(PolicyController):
         usd_path: The robot usd filepath in the directory.
         position: The position of the robot.
         orientation: The orientation of the robot.
+        policy_path: Path to the policy file. If None, uses default policy.
+        env_config_path: Path to the environment config file. If None, uses default config.
     """
 
     def __init__(
@@ -51,32 +50,35 @@ class AnymalFlatTerrainPolicy(PolicyController):
         usd_path: str | None = None,
         position: list[float] | None = None,
         orientation: list[float] | None = None,
-    ):
-        """
-        Initialize anymal robot, import policy and actuator network.
+        policy_path: str | None = None,
+        env_config_path: str | None = None,
+    ) -> None:
 
-        Args:
-            prim_path: The prim path of the robot on the stage
-            root_path: The path to the articulation root of the robot
-            usd_path: The robot usd filepath in the directory
-            position: The position of the robot
-            orientation: The orientation of the robot
-        """
         assets_root_path = get_assets_root_path()
-        if usd_path == None:
-            usd_path = assets_root_path + "/Isaac/Robots/ANYbotics/anymal_c/anymal_c.usd"
+        if usd_path is None:
+            is_newton = SimulationManager.get_active_physics_engine() == "newton"
+            if is_newton:
+                usd_path = (
+                    assets_root_path + "/Isaac/Samples/Mujoco_Menagerie/anybotics_anymal_c/anymal_c/anymal_c.usda"
+                )
+            else:
+                usd_path = assets_root_path + "/Isaac/Robots/ANYbotics/anymal_c/anymal_c.usd"
 
         super().__init__(prim_path, root_path, usd_path, position, orientation)
 
-        self.load_policy(
-            assets_root_path + "/Isaac/Samples/Policies/Anymal_Policies/anymal_policy.pt",
-            assets_root_path + "/Isaac/Samples/Policies/Anymal_Policies/anymal_env.yaml",
-        )
-        self._action_scale = 0.5
+        if policy_path is None:
+            policy_path = assets_root_path + "/Isaac/Samples/Policies/Anymal_Policies/anymal_policy.pt"
+        if env_config_path is None:
+            env_config_path = assets_root_path + "/Isaac/Samples/Policies/Anymal_Policies/anymal_env.yaml"
+
+        torch = import_module("torch")
         self._previous_action = torch.zeros(12)
+        self._action_scale = 0.5
         self._policy_counter = 0
 
-    def _compute_observation(self, command):
+        self.load_policy(policy_path, env_config_path)
+
+    def _compute_observation(self, command: object) -> object:
         """Compute the observation vector for the policy.
 
         The observation includes base linear/angular velocities, gravity direction,
@@ -86,7 +88,7 @@ class AnymalFlatTerrainPolicy(PolicyController):
             command: The robot command velocities (v_x, v_y, w_z) in m/s and rad/s
 
         Returns:
-            A 48-dimensional observation vector containing:
+            object: A 48-dimensional observation vector containing:
             - [0:3]: Base linear velocity in body frame
             - [3:6]: Base angular velocity in body frame
             - [6:9]: Gravity direction in body frame
@@ -95,6 +97,8 @@ class AnymalFlatTerrainPolicy(PolicyController):
             - [24:36]: Joint velocities
             - [36:48]: Previous action
         """
+        torch = import_module("torch")
+
         lin_vel_I, ang_vel_I = self.robot.get_velocities()
         pos_IB, q_IB = self.robot.get_world_poses()
 
@@ -122,8 +126,9 @@ class AnymalFlatTerrainPolicy(PolicyController):
         obs[36:48] = self._previous_action
         return obs
 
-    def forward(self, dt, command):
+    def forward(self, dt: float, command: object) -> None:
         """Computes and applies joint torques for ANYmal locomotion based on the policy output.
+
         The control runs at a decimated rate and uses an actuator network to convert
         policy actions into joint torques. Joint order is:
         FL (hip, thigh, calf) -> FR -> RL -> RR.
@@ -151,15 +156,14 @@ class AnymalFlatTerrainPolicy(PolicyController):
         self.robot.set_dof_efforts(wp.from_torch(joint_torques))
         self._policy_counter += 1
 
-    def initialize(self, physics_sim_view=None):
-        """Initialize the articulation interface and set up drive mode.
-
-        Args:
-            physics_sim_view: The physics simulation view
-        """
-        super().initialize(physics_sim_view=physics_sim_view, control_mode="effort")
+    def initialize(self):
+        """Initialize the articulation interface and set up drive mode."""
+        super().initialize(control_mode="effort")
 
         import warnings
+
+        # defer the `LstmSeaNetwork` import to avoid loading torch at startup
+        from isaacsim.robot.policy.examples.utils import LstmSeaNetwork
 
         # Suppress expected user warning from the actuation network, this is a limitation with the trained policy
         warnings.filterwarnings(

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional
+"""Heightmap importer utilities."""
+
+from typing import Optional
 
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -21,7 +23,7 @@ import numpy as np
 import omni.usd
 from isaacsim.core.experimental.objects import GroundPlane
 from PIL import Image
-from pxr import Gf, Sdf, UsdGeom, UsdLux, UsdPhysics
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics
 
 # Heightmap generation constants
 DEFAULT_CUBE_HEIGHT = 2.0
@@ -47,14 +49,12 @@ class HeightmapImporter:
 
     This class handles the conversion of 2D heightmap images into 3D terrain
     in USD stages using point instancers for efficient rendering.
+
+    Args:
+        stage: USD stage to create heightmap in. If None, uses the current stage.
     """
 
-    def __init__(self, stage: Optional[any] = None):
-        """Initialize the heightmap importer.
-
-        Args:
-            stage: USD stage to create heightmap in. If None, uses the current stage.
-        """
+    def __init__(self, stage: Optional[any] = None) -> None:
         self._stage = stage
 
     def create_heightmap(
@@ -101,6 +101,9 @@ class HeightmapImporter:
         if image is None:
             raise ValueError("Image cannot be None")
 
+        if not isinstance(image, Image.Image):
+            raise ValueError(f"Image must be a PIL Image, got {type(image).__name__}")
+
         if cell_scale <= 0:
             raise ValueError(f"Cell scale must be positive, got {cell_scale}")
 
@@ -122,11 +125,6 @@ class HeightmapImporter:
         carb.log_info("Setting up stage properties...")
         self._setup_stage_properties()
 
-        # Create ground plane if requested
-        if create_ground_plane:
-            carb.log_info("Creating ground plane...")
-            self._create_ground_plane(image_width, image_height, cell_scale)
-
         # Create lighting if requested
         if create_lighting:
             carb.log_info("Setting up lighting...")
@@ -136,6 +134,11 @@ class HeightmapImporter:
         carb.log_info("Generating heightmap instances...")
         num_cells = self._create_heightmap_instances(image, cell_scale)
 
+        # Create ground plane sized to the heightmap's actual XY bounds (after instances exist)
+        if create_ground_plane:
+            carb.log_info("Creating ground plane...")
+            self._create_ground_plane()
+
         carb.log_info(f"Heightmap generation complete! Created {num_cells} cells.")
 
         return num_cells
@@ -144,22 +147,34 @@ class HeightmapImporter:
         """Configure basic stage properties like units and up-axis."""
         UsdGeom.SetStageMetersPerUnit(self._stage, 1.0)
         stage_utils.set_stage_up_axis("Z")
-        self._stage.SetDefaultPrim(self._stage.GetPrimAtPath(WORLD_PATH))
+        world_prim = self._stage.GetPrimAtPath(WORLD_PATH)
+        if not world_prim.IsValid():
+            UsdGeom.Xform.Define(self._stage, WORLD_PATH)
+            world_prim = self._stage.GetPrimAtPath(WORLD_PATH)
+        self._stage.SetDefaultPrim(world_prim)
 
-    def _create_ground_plane(self, image_width: int, image_height: int, cell_scale: float) -> None:
-        """Create a ground plane for the heightmap.
+    def _create_ground_plane(self) -> None:
+        """Create a ground plane sized to fit the heightmap's XY bounds.
 
-        Args:
-            image_width: Width of the image in pixels.
-            image_height: Height of the image in pixels.
-            cell_scale: The scale of each cell in meters.
+        Must be called after :py:meth:`_create_heightmap_instances` so the bounding box
+        computed from the occupancy map prim reflects the generated geometry.
         """
-        ground_plane_size = max(image_width, image_height) * cell_scale / 2.0 + GROUND_PLANE_MARGIN
-        ground_plane_position = Gf.Vec3f((image_width * cell_scale / 2), -(image_height * cell_scale / 2), 0.0)
+        bbox_cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), includedPurposes=[UsdGeom.Tokens.default_])
+        bounds = bbox_cache.ComputeWorldBound(self._stage.GetPrimAtPath(OCCUPANCY_MAP_PATH)).GetRange()
+        if bounds.IsEmpty():
+            carb.log_warn("Occupancy map has empty bounds; skipping ground plane creation.")
+            return
+        min_pt, max_pt = bounds.GetMin(), bounds.GetMax()
+
+        # Use the longer XY dimension so a square plane fully covers the heightmap without stretching.
+        size = max(max_pt[0] - min_pt[0], max_pt[1] - min_pt[1]) + 2 * GROUND_PLANE_MARGIN
+        center_x = (min_pt[0] + max_pt[0]) / 2.0
+        center_y = (min_pt[1] + max_pt[1]) / 2.0
+
         GroundPlane(
             GROUND_PLANE_PATH,
-            sizes=ground_plane_size,
-            positions=[[ground_plane_position[0], ground_plane_position[1], ground_plane_position[2]]],
+            sizes=size,
+            positions=[[center_x, center_y, 0.0]],
             colors=[1.0, 1.0, 1.0],
         )
 
@@ -180,7 +195,7 @@ class HeightmapImporter:
         """
         cell_offset = cell_scale / 2.0
 
-        parent_xform = self._create_parent_transform(cell_offset)
+        self._create_parent_transform(cell_offset)
         point_instancer = self._create_point_instancer()
         cube_prototype = self._create_cube_prototype(cell_scale)
         occupied_positions = self._generate_occupied_positions(image, cell_scale, cell_offset)
@@ -218,7 +233,7 @@ class HeightmapImporter:
         return point_instancer
 
     def _configure_point_instancer(
-        self, point_instancer: UsdGeom.PointInstancer, cube_prototype: UsdGeom.Cube, positions: List[Gf.Vec3f]
+        self, point_instancer: UsdGeom.PointInstancer, cube_prototype: UsdGeom.Cube, positions: list[Gf.Vec3f]
     ) -> None:
         """Configure the point instancer with positions and prototype.
 
@@ -255,7 +270,7 @@ class HeightmapImporter:
 
         return cube
 
-    def _generate_occupied_positions(self, image: Image.Image, cell_scale: float, cell_offset: float) -> List[Gf.Vec3f]:
+    def _generate_occupied_positions(self, image: Image.Image, cell_scale: float, cell_offset: float) -> list[Gf.Vec3f]:
         """Generate 3D positions for all occupied cells in the image.
 
         Uses NumPy for efficient vectorized processing of large images.
@@ -272,15 +287,18 @@ class HeightmapImporter:
             # Convert PIL Image to numpy array for fast processing
             img_array = np.array(image)
 
-            # Validate array shape
-            if img_array.ndim < 3 or img_array.shape[2] < 1:
-                carb.log_error(
-                    f"Image has invalid shape: {img_array.shape}. Expected at least 3 dimensions with channels."
+            # Handle 2D grayscale (mode 'L', 'I', 'F') and 3D+ (RGB/RGBA) arrays
+            if img_array.ndim == 2:
+                channel = img_array
+            elif img_array.ndim >= 3 and img_array.shape[2] >= 1:
+                channel = img_array[:, :, 0]
+            else:
+                raise ValueError(
+                    f"Image has invalid shape: {img_array.shape}. Expected 2D grayscale or 3D+ with channels."
                 )
-                return []
 
-            # Get first channel (R) and find occupied pixels (below threshold)
-            occupied_mask = img_array[:, :, 0] < OCCUPIED_PIXEL_THRESHOLD
+            # Find occupied pixels (below threshold)
+            occupied_mask = channel < OCCUPIED_PIXEL_THRESHOLD
 
             # Get coordinates of occupied pixels (y, x order from numpy)
             y_coords, x_coords = np.where(occupied_mask)
@@ -294,8 +312,8 @@ class HeightmapImporter:
 
             return occupied_positions
         except IndexError as e:
-            carb.log_error(f"Failed to access image array channels: {e}")
-            return []
+            raise ValueError(f"Failed to access image array channels: {e}") from e
         except Exception as e:
-            carb.log_error(f"Failed to generate occupied positions: {e}")
-            return []
+            if isinstance(e, ValueError):
+                raise
+            raise ValueError(f"Failed to generate occupied positions: {e}") from e

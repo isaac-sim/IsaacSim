@@ -1,5 +1,5 @@
 [package]
-version = "2.1.0"
+version = "2.2.0"
 category = "other"
 title = "Sensor Icon"
 description = "Renders sensor icons in the viewport and stage hierarchy for visual identification of camera, lidar, IMU, and other sensor prims."
@@ -51,7 +51,7 @@ enabled = true
 dependencies = [
     "omni.hydra.rtx",
     "omni.hydra.usdrt_delegate",
-    "omni.kit.ui_test", 
+    "omni.kit.ui_test",
 ]
 args = [
     "--enable",
@@ -94,9 +94,14 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
+    ### Extension specific args
+    # Short-circuit /ExternalSimulationTime check when multitick is enabled
+    "--/rtx/hydra/multiTickRateForcedFixedSimRate=60"
 ]
 
 

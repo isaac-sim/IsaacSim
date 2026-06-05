@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.test
@@ -23,7 +22,7 @@ from isaacsim.storage.native import get_assets_root_path_async
 
 class TestCoreNodes(omni.kit.test.AsyncTestCase):
     async def setUp(self):
-        """Set up  test environment, to be torn down when done"""
+        """Set up  test environment, to be torn down when done."""
         self._timeline = omni.timeline.get_timeline_interface()
         # add franka robot for test
         assets_root_path = await get_assets_root_path_async()
@@ -34,7 +33,7 @@ class TestCoreNodes(omni.kit.test.AsyncTestCase):
 
     # ----------------------------------------------------------------------
     async def tearDown(self):
-        """Get rid of temporary data used by the test"""
+        """Get rid of temporary data used by the test."""
         await omni.kit.stage_templates.new_stage_async()
 
     # ----------------------------------------------------------------------

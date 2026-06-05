@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,10 +32,10 @@ public:
         AttributeObj attrMessageSubfolderObj = nodeObj.iNode->getAttribute(nodeObj, "inputs:messageSubfolder");
         AttributeObj attrMessageNameObj = nodeObj.iNode->getAttribute(nodeObj, "inputs:messageName");
         attrMessagePackageObj.iAttribute->registerValueChangedCallback(
-            attrMessagePackageObj, onMessagePackageChanged, true);
+            attrMessagePackageObj, _onMessagePackageChanged, true);
         attrMessageSubfolderObj.iAttribute->registerValueChangedCallback(
-            attrMessageSubfolderObj, onMessageSubfolderChanged, true);
-        attrMessageNameObj.iAttribute->registerValueChangedCallback(attrMessageNameObj, onMessageNameChanged, true);
+            attrMessageSubfolderObj, _onMessageSubfolderChanged, true);
+        attrMessageNameObj.iAttribute->registerValueChangedCallback(attrMessageNameObj, _onMessageNameChanged, true);
     }
 
     static bool compute(OgnROS2SubscriberDatabase& db)
@@ -84,7 +84,7 @@ public:
         // Update message and node attributes
         if (state.m_messageUpdateNeeded || !state.m_message)
         {
-            bool status = createMessageAndAttributes(
+            bool status = _createMessageAndAttributes(
                 nodeObj, state.m_messagePackage, state.m_messageSubfolder, state.m_messageName);
             if (!status)
             {
@@ -165,7 +165,7 @@ public:
         state.reset();
     }
 
-    virtual void reset()
+    void reset() override
     {
         m_subscriberUpdateNeeded = false;
         m_messageUpdateNeeded = false;
@@ -212,8 +212,8 @@ public:
                 if (messageField.isArray)
                 {
                     auto data = *std::static_pointer_cast<const std::vector<bool>>(messageData.at(i));
-                    auto outputValue =
-                        getAttributeWritableArrayData<bool*>(db.abi_node(), "outputs:" + messageField.name, data.size());
+                    auto outputValue = _getAttributeWritableArrayData<bool*>(
+                        db.abi_node(), "outputs:" + messageField.name, data.size());
                     // std::vector<bool> is a specialization that has no ::data
                     for (size_t j = 0; j < data.size(); ++j)
                     {
@@ -222,7 +222,7 @@ public:
                 }
                 else
                 {
-                    auto outputValue = getAttributeWritableData<bool>(db.abi_node(), "outputs:" + messageField.name);
+                    auto outputValue = _getAttributeWritableData<bool>(db.abi_node(), "outputs:" + messageField.name);
                     *outputValue = *std::static_pointer_cast<const bool>(messageData.at(i));
                 }
                 break;
@@ -232,13 +232,13 @@ public:
                 if (messageField.isArray)
                 {
                     auto data = *std::static_pointer_cast<const std::vector<uint8_t>>(messageData.at(i));
-                    auto outputValue = getAttributeWritableArrayData<uint8_t*>(
+                    auto outputValue = _getAttributeWritableArrayData<uint8_t*>(
                         db.abi_node(), "outputs:" + messageField.name, data.size());
                     std::memcpy(*outputValue, data.data(), data.size() * sizeof(uint8_t));
                 }
                 else
                 {
-                    auto outputValue = getAttributeWritableData<uint8_t>(db.abi_node(), "outputs:" + messageField.name);
+                    auto outputValue = _getAttributeWritableData<uint8_t>(db.abi_node(), "outputs:" + messageField.name);
                     *outputValue = *std::static_pointer_cast<const uint8_t>(messageData.at(i));
                 }
                 break;
@@ -248,13 +248,13 @@ public:
                 if (messageField.isArray)
                 {
                     auto data = *std::static_pointer_cast<const std::vector<int32_t>>(messageData.at(i));
-                    auto outputValue = getAttributeWritableArrayData<int32_t*>(
+                    auto outputValue = _getAttributeWritableArrayData<int32_t*>(
                         db.abi_node(), "outputs:" + messageField.name, data.size());
                     std::memcpy(*outputValue, data.data(), data.size() * sizeof(int32_t));
                 }
                 else
                 {
-                    auto outputValue = getAttributeWritableData<int32_t>(db.abi_node(), "outputs:" + messageField.name);
+                    auto outputValue = _getAttributeWritableData<int32_t>(db.abi_node(), "outputs:" + messageField.name);
                     *outputValue = *std::static_pointer_cast<const int32_t>(messageData.at(i));
                 }
                 break;
@@ -264,13 +264,13 @@ public:
                 if (messageField.isArray)
                 {
                     auto data = *std::static_pointer_cast<const std::vector<uint32_t>>(messageData.at(i));
-                    auto outputValue = getAttributeWritableArrayData<uint32_t*>(
+                    auto outputValue = _getAttributeWritableArrayData<uint32_t*>(
                         db.abi_node(), "outputs:" + messageField.name, data.size());
                     std::memcpy(*outputValue, data.data(), data.size() * sizeof(uint32_t));
                 }
                 else
                 {
-                    auto outputValue = getAttributeWritableData<uint32_t>(db.abi_node(), "outputs:" + messageField.name);
+                    auto outputValue = _getAttributeWritableData<uint32_t>(db.abi_node(), "outputs:" + messageField.name);
                     *outputValue = *std::static_pointer_cast<const uint32_t>(messageData.at(i));
                 }
                 break;
@@ -280,13 +280,13 @@ public:
                 if (messageField.isArray)
                 {
                     auto data = *std::static_pointer_cast<const std::vector<int64_t>>(messageData.at(i));
-                    auto outputValue = getAttributeWritableArrayData<int64_t*>(
+                    auto outputValue = _getAttributeWritableArrayData<int64_t*>(
                         db.abi_node(), "outputs:" + messageField.name, data.size());
                     std::memcpy(*outputValue, data.data(), data.size() * sizeof(int64_t));
                 }
                 else
                 {
-                    auto outputValue = getAttributeWritableData<int64_t>(db.abi_node(), "outputs:" + messageField.name);
+                    auto outputValue = _getAttributeWritableData<int64_t>(db.abi_node(), "outputs:" + messageField.name);
                     *outputValue = *std::static_pointer_cast<const int64_t>(messageData.at(i));
                 }
                 break;
@@ -296,13 +296,13 @@ public:
                 if (messageField.isArray)
                 {
                     auto data = *std::static_pointer_cast<const std::vector<uint64_t>>(messageData.at(i));
-                    auto outputValue = getAttributeWritableArrayData<uint64_t*>(
+                    auto outputValue = _getAttributeWritableArrayData<uint64_t*>(
                         db.abi_node(), "outputs:" + messageField.name, data.size());
                     std::memcpy(*outputValue, data.data(), data.size() * sizeof(uint64_t));
                 }
                 else
                 {
-                    auto outputValue = getAttributeWritableData<uint64_t>(db.abi_node(), "outputs:" + messageField.name);
+                    auto outputValue = _getAttributeWritableData<uint64_t>(db.abi_node(), "outputs:" + messageField.name);
                     *outputValue = *std::static_pointer_cast<const uint64_t>(messageData.at(i));
                 }
                 break;
@@ -317,13 +317,13 @@ public:
                 if (messageField.isArray)
                 {
                     auto data = *std::static_pointer_cast<const std::vector<float>>(messageData.at(i));
-                    auto outputValue = getAttributeWritableArrayData<float*>(
+                    auto outputValue = _getAttributeWritableArrayData<float*>(
                         db.abi_node(), "outputs:" + messageField.name, data.size());
                     std::memcpy(*outputValue, data.data(), data.size() * sizeof(float));
                 }
                 else
                 {
-                    auto outputValue = getAttributeWritableData<float>(db.abi_node(), "outputs:" + messageField.name);
+                    auto outputValue = _getAttributeWritableData<float>(db.abi_node(), "outputs:" + messageField.name);
                     *outputValue = *std::static_pointer_cast<const float>(messageData.at(i));
                 }
                 break;
@@ -333,13 +333,13 @@ public:
                 if (messageField.isArray)
                 {
                     auto data = *std::static_pointer_cast<const std::vector<double>>(messageData.at(i));
-                    auto outputValue = getAttributeWritableArrayData<double*>(
+                    auto outputValue = _getAttributeWritableArrayData<double*>(
                         db.abi_node(), "outputs:" + messageField.name, data.size());
                     std::memcpy(*outputValue, data.data(), data.size() * sizeof(double));
                 }
                 else
                 {
-                    auto outputValue = getAttributeWritableData<double>(db.abi_node(), "outputs:" + messageField.name);
+                    auto outputValue = _getAttributeWritableData<double>(db.abi_node(), "outputs:" + messageField.name);
                     *outputValue = *std::static_pointer_cast<const double>(messageData.at(i));
                 }
                 break;
@@ -349,7 +349,7 @@ public:
                 if (messageField.isArray)
                 {
                     auto stringValues = *std::static_pointer_cast<const std::vector<std::string>>(messageData.at(i));
-                    auto outputValue = getAttributeWritableArrayData<NameToken*>(
+                    auto outputValue = _getAttributeWritableArrayData<NameToken*>(
                         db.abi_node(), "outputs:" + messageField.name, stringValues.size());
                     for (size_t j = 0; j < stringValues.size(); ++j)
                     {
@@ -359,7 +359,8 @@ public:
                 else
                 {
                     auto stringValue = *std::static_pointer_cast<const std::string>(messageData.at(i));
-                    auto outputValue = getAttributeWritableData<NameToken>(db.abi_node(), "outputs:" + messageField.name);
+                    auto outputValue =
+                        _getAttributeWritableData<NameToken>(db.abi_node(), "outputs:" + messageField.name);
                     *outputValue = db.stringToToken(stringValue.c_str());
                 }
                 break;
@@ -369,7 +370,7 @@ public:
                 if (messageField.isArray)
                 {
                     auto array = *std::static_pointer_cast<const std::vector<nlohmann::json>>(messageData.at(i));
-                    auto outputValue = getAttributeWritableArrayData<NameToken*>(
+                    auto outputValue = _getAttributeWritableArrayData<NameToken*>(
                         db.abi_node(), "outputs:" + messageField.name, array.size());
                     for (size_t j = 0; j < array.size(); ++j)
                     {
@@ -404,7 +405,7 @@ private:
 
     // OGN utils
 
-    static AttributeObj getAttributeObj(const NodeObj& nodeObj, const std::string& attrName)
+    static AttributeObj _getAttributeObj(const NodeObj& nodeObj, const std::string& attrName)
     {
         AttributeObj attrObj = nodeObj.iNode->getAttribute(nodeObj, attrName.c_str());
         CARB_ASSERT(attrObj.isValid());
@@ -412,7 +413,7 @@ private:
     }
 
     template <typename T>
-    static T* getAttributeWritableData(const NodeObj& nodeObj, const std::string& attrName)
+    static T* _getAttributeWritableData(const NodeObj& nodeObj, const std::string& attrName)
     {
         GraphObj graphObj = nodeObj.iNode->getGraph(nodeObj);
         GraphContextObj context = graphObj.iGraph->getDefaultGraphContext(graphObj);
@@ -423,7 +424,7 @@ private:
     }
 
     template <typename T>
-    static T* getAttributeWritableArrayData(const NodeObj& nodeObj, const std::string& attrName, size_t newCount)
+    static T* _getAttributeWritableArrayData(const NodeObj& nodeObj, const std::string& attrName, size_t newCount)
     {
         GraphObj graphObj = nodeObj.iNode->getGraph(nodeObj);
         GraphContextObj context = graphObj.iGraph->getDefaultGraphContext(graphObj);
@@ -436,7 +437,7 @@ private:
         return value;
     }
 
-    static const char* getTokenText(AttributeObj const& attrObj)
+    static const char* _getTokenText(AttributeObj const& attrObj)
     {
         NodeObj nodeObj = attrObj.iAttribute->getNode(attrObj);
         GraphObj graphObj = nodeObj.iNode->getGraph(nodeObj);
@@ -448,27 +449,27 @@ private:
         return token->getText();
     }
 
-    static const char* getTokenText(const NodeObj& nodeObj, const std::string& attrName)
+    static const char* _getTokenText(const NodeObj& nodeObj, const std::string& attrName)
     {
-        return getTokenText(getAttributeObj(nodeObj, attrName));
+        return _getTokenText(_getAttributeObj(nodeObj, attrName));
     }
 
-    static const char* getTokenText(const NodeObj& nodeObj, const omni::graph::core::NameToken& token)
+    static const char* _getTokenText(const NodeObj& nodeObj, const omni::graph::core::NameToken& token)
     {
         // GraphObj graphObj = nodeObj.iNode->getGraph(nodeObj);
         // GraphContextObj context = graphObj.iGraph->getDefaultGraphContext(graphObj);
         return token.getText();
     }
 
-    static bool setAllowedTokens(const NodeObj& nodeObj,
-                                 const std::string& attrName,
-                                 const std::vector<std::string>& allowedTokens)
+    static bool _setAllowedTokens(const NodeObj& nodeObj,
+                                  const std::string& attrName,
+                                  const std::vector<std::string>& allowedTokens)
     {
         // OGN
         std::stringstream stream;
         copy(allowedTokens.begin(), allowedTokens.end(), std::ostream_iterator<std::string>(stream, ","));
         std::string ognAllowedTokens = stream.str();
-        AttributeObj attrObj = getAttributeObj(nodeObj, attrName);
+        AttributeObj attrObj = _getAttributeObj(nodeObj, attrName);
         attrObj.iAttribute->setMetadata(attrObj, kOgnMetadataAllowedTokens, ognAllowedTokens.c_str());
         // USD
         pxr::UsdStagePtr stage = omni::usd::UsdContext::getContext()->getStage();
@@ -486,7 +487,7 @@ private:
         return true;
     }
 
-    static bool removeDynamicAttributes(const NodeObj& nodeObj, AttributePortType portType)
+    static bool _removeDynamicAttributes(const NodeObj& nodeObj, AttributePortType portType)
     {
         // Get node attributes
         auto attrCount = nodeObj.iNode->getAttributeCount(nodeObj);
@@ -518,10 +519,10 @@ private:
 
     // Node
 
-    static bool createMessageAndAttributes(const NodeObj& nodeObj,
-                                           const std::string& messagePackage,
-                                           const std::string& messageSubfolder,
-                                           const std::string& messageName)
+    static bool _createMessageAndAttributes(const NodeObj& nodeObj,
+                                            const std::string& messagePackage,
+                                            const std::string& messageSubfolder,
+                                            const std::string& messageName)
     {
         auto db = OgnROS2SubscriberDatabase(nodeObj);
         auto& state = db.perInstanceState<OgnROS2Subscriber>();
@@ -543,14 +544,14 @@ private:
             return false;
         }
         // Check if existing dynamic attributes match the message
-        if (checkForMatchingAttributes(nodeObj, messageFields))
+        if (_checkForMatchingAttributes(nodeObj, messageFields))
         {
             CARB_LOG_INFO("OgnROS2Subscriber: reuse of existing dynamic attributes: %s", messageType.c_str());
             return true;
         }
         // Remove dynamic attributes
         CARB_LOG_INFO("OgnROS2Subscriber: remove dynamic attributes: %s", messageType.c_str());
-        status = removeDynamicAttributes(nodeObj, AttributePortType::kAttributePortType_Output);
+        status = _removeDynamicAttributes(nodeObj, AttributePortType::kAttributePortType_Output);
         if (!status)
         {
             db.logWarning("Unable to remove existing attributes from the node");
@@ -572,14 +573,14 @@ private:
             {
                 db.logWarning(
                     ("Unable to create attribute " + messageField.name + " of type " + messageField.ognType).c_str());
-                removeDynamicAttributes(nodeObj, AttributePortType::kAttributePortType_Output);
+                _removeDynamicAttributes(nodeObj, AttributePortType::kAttributePortType_Output);
                 return false;
             }
         }
         return status;
     }
 
-    static bool checkForMatchingAttributes(const NodeObj& nodeObj, std::vector<DynamicMessageField> messageFields)
+    static bool _checkForMatchingAttributes(const NodeObj& nodeObj, std::vector<DynamicMessageField> messageFields)
     {
         auto db = OgnROS2SubscriberDatabase(nodeObj);
         auto dynamicOutputs = db.getDynamicOutputs();
@@ -606,7 +607,7 @@ private:
 
     // Node events
 
-    static void onMessagePackageChanged(AttributeObj const& attrObj, void const* userData)
+    static void _onMessagePackageChanged(AttributeObj const& attrObj, void const* userData)
     {
         // Get message package, subfolder and name
         NodeObj nodeObj = attrObj.iAttribute->getNode(attrObj);
@@ -615,10 +616,10 @@ private:
         std::string messageSubfolder = std::string(db.inputs.messageSubfolder());
         std::string messageName = std::string(db.inputs.messageName());
         // Build message attributes
-        createMessageAndAttributes(nodeObj, messagePackage, messageSubfolder, messageName);
+        _createMessageAndAttributes(nodeObj, messagePackage, messageSubfolder, messageName);
     }
 
-    static void onMessageSubfolderChanged(const AttributeObj& attrObj, void const* userData)
+    static void _onMessageSubfolderChanged(const AttributeObj& attrObj, void const* userData)
     {
         // Get message package, subfolder and name
         NodeObj nodeObj = attrObj.iAttribute->getNode(attrObj);
@@ -627,10 +628,10 @@ private:
         std::string messageSubfolder = std::string(db.inputs.messageSubfolder());
         std::string messageName = std::string(db.inputs.messageName());
         // Build message attributes
-        createMessageAndAttributes(nodeObj, messagePackage, messageSubfolder, messageName);
+        _createMessageAndAttributes(nodeObj, messagePackage, messageSubfolder, messageName);
     }
 
-    static void onMessageNameChanged(const AttributeObj& attrObj, void const* userData)
+    static void _onMessageNameChanged(const AttributeObj& attrObj, void const* userData)
     {
         // Get message package, subfolder and name
         NodeObj nodeObj = attrObj.iAttribute->getNode(attrObj);
@@ -639,7 +640,7 @@ private:
         std::string messageSubfolder = std::string(db.inputs.messageSubfolder());
         std::string messageName = std::string(db.inputs.messageName());
         // Build message attributes
-        createMessageAndAttributes(nodeObj, messagePackage, messageSubfolder, messageName);
+        _createMessageAndAttributes(nodeObj, messagePackage, messageSubfolder, messageName);
     }
 };
 

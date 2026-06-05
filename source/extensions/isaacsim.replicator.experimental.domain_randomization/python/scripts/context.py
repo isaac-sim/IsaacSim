@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Context management for domain randomization triggers and tendon execution in Isaac Sim replicator."""
-
 
 import omni.graph.core as og
 from omni.replicator.core.utils import utils
@@ -95,6 +94,18 @@ def get_reset_inds():
         The current reset indices used for domain randomization.
     """
     return _context.reset_inds
+
+
+def resolve_context():
+    """Return the active context, falling back to the deprecated module's context."""
+    if _context is not None:
+        return _context
+    try:
+        from isaacsim.replicator.domain_randomization.scripts import context as dep_ctx
+
+        return dep_ctx._context
+    except ImportError:
+        return None
 
 
 def trigger_randomization(reset_inds):

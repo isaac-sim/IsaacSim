@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,13 +25,16 @@ FR-22.  Behavioral requirements: BR-01 through BR-05.
 from __future__ import annotations
 
 import json
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
 # Ensure the default LM solver is registered at import time.
 import usd.schema.isaac.robot_schema.lm_ik as _lm_ik  # noqa: F401
-from pxr import Gf, Sdf, Usd, UsdGeom
+from pxr import Gf, Sdf, Tf, Usd, UsdGeom
 from usd.schema.isaac.robot_schema import Attributes, Classes, Relations
 from usd.schema.isaac.robot_schema.ik_solver import IKSolver, IKSolverRegistry, pose_error
 from usd.schema.isaac.robot_schema.kinematic_chain import (
@@ -44,6 +47,8 @@ from usd.schema.isaac.robot_schema.math import (
     _prim_pose_in_robot_frame,
 )
 from usd.schema.isaac.robot_schema.utils import GetAllNamedPoses
+
+logger = logging.getLogger(__name__)
 
 NAMED_POSES_SCOPE = "NamedPoses"
 
@@ -115,15 +120,26 @@ def _is_simulation_running() -> bool:
 
 
 def _sanitize_name(name: str) -> str:
-    """Replace characters illegal in USD prim names.
+    """Coerce ``name`` to a valid USD identifier.
+
+    Delegates to :func:`pxr.Tf.MakeValidIdentifier`, which replaces every
+    character outside ASCII ``[A-Za-z0-9_]`` with ``_`` and prepends ``_``
+    when the result would otherwise start with a digit. The returned string
+    is always a valid USD identifier (``Sdf.Path.IsValidIdentifier`` is
+    ``True``).
+
+    Empty input is not accepted by ``MakeValidIdentifier``; it is mapped to
+    a single underscore here so callers can still address an unnamed pose.
 
     Args:
         name: Original name string.
 
     Returns:
-        Sanitized name safe for USD prim names.
+        Sanitized name safe for use as a USD prim name.
     """
-    return name.replace(" ", "_").replace("/", "_").replace(".", "_")
+    if not name:
+        return "_"
+    return Tf.MakeValidIdentifier(name)
 
 
 def _to_native_value(stage: Usd.Stage, joint_path: str, value: float) -> float:
@@ -171,6 +187,86 @@ def _joint_dict_to_array(joint_dict: dict[str, float], joints: list) -> np.ndarr
         Array of values in joint-chain order, defaulting to 0.0 for missing keys.
     """
     return np.array([joint_dict.get(j.prim_path, 0.0) for j in joints], dtype=float)
+
+
+# Default number of random restarts attempted on cold-start IK when no explicit
+# seed and no cached previous solution are available.  Empirically chosen to
+# escape the zero-configuration local minimum on 7-DOF arms (e.g. Franka Panda)
+# while keeping the cost bounded for callers that solve on the hot path.
+_COLD_START_RANDOM_RESTARTS = 3
+# Process-global RNG seed for the cold-start random restarts.  Determinism
+# (same restarts on every machine, every process) keeps the cold-start path
+# reproducible across runs and is required by the ladder unit tests.
+# Trade-off: ensemble / parallel callers that solve the same configuration
+# concurrently will explore identical restarts; if true ensemble diversity
+# is needed pass explicit ``seed=`` instead of relying on the ladder.
+_COLD_START_RNG_SEED = 0
+
+
+def _build_cold_start_seeds(
+    joints: list,
+    *,
+    n_random: int = _COLD_START_RANDOM_RESTARTS,
+    rng_seed: int = _COLD_START_RNG_SEED,
+) -> list[np.ndarray]:
+    """Return a prioritized list of cold-start IK seed candidates.
+
+    The Levenberg-Marquardt solver is sensitive to initialization on
+    redundant arms (>=6 DOF).  Starting from the all-zero configuration
+    leaves the solver in a flat region of the cost landscape for many
+    7-DOF kinematic structures (Franka Panda, etc.), where it converges
+    to a wrong-basin local minimum even for trivially reachable targets.
+    This helper produces a small, deterministic ladder of starting
+    configurations the caller can try in order:
+
+    1. The joint-limit midpoint for joints with finite limits (zeros for
+       joints without authored limits).  Mid-range is biased away from
+       singularities and matches the null-space centering used inside
+       :func:`ik_lm`.
+    2. ``n_random`` deterministic uniform-random samples within the
+       finite joint limits.  For joints without authored limits the
+       sampling range falls back to ``[-1.0, 1.0]`` rad/m so unlimited
+       chains still benefit from restarts.
+    3. The all-zero configuration (legacy default) as a final fallback.
+
+    Determinism (fixed RNG seed) keeps the cold-start path reproducible
+    across runs, across processes, and across machines.  See
+    ``_COLD_START_RNG_SEED`` for the ensemble-diversity trade-off.
+
+    Args:
+        joints: Chain joints (each must expose ``lower`` and ``upper``).
+        n_random: Number of random restart seeds to append.
+        rng_seed: RNG seed for the random-restart samples.
+
+    Returns:
+        List of joint-value arrays in chain order, ordered by attempt
+        priority.  Always non-empty (returns ``[zeros(0)]`` for an empty
+        chain).
+    """
+    n = len(joints)
+    if n == 0:
+        return [np.zeros(0)]
+
+    lo = np.array([j.lower for j in joints], dtype=float)
+    hi = np.array([j.upper for j in joints], dtype=float)
+    finite_mask = np.isfinite(lo) & np.isfinite(hi)
+
+    # Compute midpoint only on finite entries; for unbounded joints lo+hi would
+    # be -inf + +inf = NaN and emit a RuntimeWarning even though np.where would
+    # discard the value.
+    midpoint = np.zeros_like(lo)
+    midpoint[finite_mask] = 0.5 * (lo[finite_mask] + hi[finite_mask])
+    seeds: list[np.ndarray] = [midpoint]
+
+    if n_random > 0:
+        rng = np.random.default_rng(rng_seed)
+        sample_lo = np.where(finite_mask, lo, -1.0)
+        sample_hi = np.where(finite_mask, hi, 1.0)
+        for _ in range(n_random):
+            seeds.append(rng.uniform(sample_lo, sample_hi))
+
+    seeds.append(np.zeros(n))
+    return seeds
 
 
 # ---------------------------------------------------------------------------
@@ -311,21 +407,58 @@ class RobotPoser:
         seed: dict[str, float] | np.ndarray | list[float] | None = None,
         *,
         tolerance: float = 1e-4,
-        **solver_kwargs,
+        **solver_kwargs: Any,
     ) -> PoseResult:
         """Solve inverse kinematics for the configured chain.
 
+        Seeding strategy
+        ----------------
+        The candidates the solver is started from depend on what the caller
+        provides:
+
+        * ``seed=...`` (explicit caller-supplied seed): exactly one solve
+          attempt from the given configuration. Lowest latency; recommended
+          on hot paths.
+        * No ``seed=`` and a cached ``_last_solution``: the cached
+          configuration is tried first (lowest latency for tracking targets
+          near the previous solve). If that attempt does not converge, the
+          full cold-start ladder is run in parallel as a fallback so a
+          stale cache cannot trap the solver in the wrong basin.
+        * No ``seed=`` and no cached solution: the full cold-start ladder
+          (joint-limit midpoint, deterministic random restarts within
+          joint limits, and the all-zero configuration) runs in parallel
+          via a thread pool. The highest-priority converged result wins.
+
+        On every path, when no candidate converges the lowest-error attempt
+        is returned with ``success=False`` and a single warning is logged
+        recommending an explicit ``seed=``.
+
+        Parallel ladder execution
+        -------------------------
+        Cold-start (and ``_last_solution`` fallback) ladders run candidate
+        seeds concurrently on a :class:`~concurrent.futures.ThreadPoolExecutor`.
+        The LM solver in this project is stateless and ``chain.compute_fk``
+        does not mutate the chain, so the only shared mutable state across
+        attempts is the result aggregation, which happens after the threads
+        join. The latency of a cold-start ladder is therefore bounded by the
+        slowest single solve, not by the sum of all attempts.
+
         Args:
             target: Desired end-effector pose in the robot-base frame.
-            seed: Initial joint-value guess. When None, uses the last
-                successful solution or zeros.
+            seed: Initial joint-value guess.  When ``None``, uses the last
+                successful solution (with cold-start fallback) if available,
+                otherwise runs the cold-start ladder directly.
             tolerance: Convergence threshold on the pose-error norm.
             **solver_kwargs: Forwarded to the IK solver (e.g. lam, iters,
                 null_space_bias, joint_fixed). joint_fixed can be a dict
                 mapping joint prim path to bool to lock DOFs.
 
         Returns:
-            PoseResult with success, joints, and target info.
+            PoseResult with success, joints, and target info.  On failure
+            the joints field still contains the lowest-error attempt so
+            callers can inspect or visualize near-misses; callers must
+            gate calls to :meth:`apply_pose` on ``success`` to avoid
+            teleporting the robot to a random-restart configuration.
         """
         if self._chain is None or not self._chain.joints:
             return PoseResult(success=False)
@@ -344,29 +477,98 @@ class RobotPoser:
         # by other tracked chains (which move the robot's joints) are
         # reflected in the chain-local target transformation.
         start_pose = _prim_pose_in_robot_frame(self._robot_prim, self._chain.start_prim)
+        target_local = start_pose.inv() @ target
 
+        tol_sq = tolerance * tolerance
+
+        def _solve_one(q0: np.ndarray) -> tuple[np.ndarray, float]:
+            """Run a single solver attempt and return ``(q_sol, err_sq)``."""
+            q_sol = self._solver.solve(self._chain, target_local, q0, **solver_kwargs)
+            T_final, _ = self._chain.compute_fk(q_sol)
+            err = pose_error(target_local, T_final)
+            return q_sol, float(err @ err)
+
+        def _run_ladder(candidate_seeds: list[np.ndarray]) -> tuple[np.ndarray, float, bool, int]:
+            """Run the ladder in parallel and return the best result.
+
+            Returns the highest-priority converged result, or the lowest-error
+            attempt if none converge.
+
+            Returns:
+                ``(best_q, best_err_sq, success, winning_index)`` where
+                ``winning_index`` is the priority index of the seed whose
+                result was selected.
+            """
+            if len(candidate_seeds) == 1:
+                q_sol, err_sq = _solve_one(candidate_seeds[0])
+                return q_sol, err_sq, err_sq < tol_sq, 0
+
+            with ThreadPoolExecutor(max_workers=len(candidate_seeds)) as pool:
+                # ``pool.map`` preserves submission order, which is the priority
+                # order produced by ``_build_cold_start_seeds``.
+                results = list(pool.map(_solve_one, candidate_seeds))
+
+            # Pick the highest-priority candidate that converged.
+            for idx, (q_sol, err_sq) in enumerate(results):
+                if err_sq < tol_sq:
+                    return q_sol, err_sq, True, idx
+            # No convergence: return the lowest-error attempt (priority is the
+            # tie-breaker so the result is deterministic across runs).
+            best_idx = 0
+            best_err = results[0][1]
+            for idx, (_q, err_sq) in enumerate(results):
+                if err_sq < best_err:
+                    best_err = err_sq
+                    best_idx = idx
+            return results[best_idx][0], best_err, False, best_idx
+
+        used_ladder_fallback = False
         if seed is not None:
+            # Caller-supplied seed: single attempt, no ladder, no fallback.
             if isinstance(seed, dict):
                 q0 = _joint_dict_to_array(seed, joints)
             else:
                 q0 = np.asarray(seed, dtype=float)
+            best_q, best_err_sq, success, _ = _run_ladder([q0])
+            is_cold_start = False
         elif self._last_solution is not None:
-            q0 = self._last_solution.copy()
+            # Cache priority: try the cached seed first (single solve, cheap),
+            # only fall back to the ladder if it fails so a stale cache cannot
+            # trap the solver in the wrong basin.
+            cached_q, cached_err_sq = _solve_one(self._last_solution.copy())
+            if cached_err_sq < tol_sq:
+                best_q, best_err_sq, success = cached_q, cached_err_sq, True
+            else:
+                # Fall back to the full cold-start ladder in parallel.
+                used_ladder_fallback = True
+                ladder_seeds = _build_cold_start_seeds(joints)
+                best_q, best_err_sq, success, _ = _run_ladder(ladder_seeds)
+                # If the cached attempt happens to be better than the best
+                # ladder attempt (rare but possible), keep it.
+                if cached_err_sq < best_err_sq:
+                    best_q, best_err_sq = cached_q, cached_err_sq
+                    success = cached_err_sq < tol_sq
+            is_cold_start = used_ladder_fallback
         else:
-            q0 = np.zeros(n)
+            ladder_seeds = _build_cold_start_seeds(joints)
+            best_q, best_err_sq, success, _ = _run_ladder(ladder_seeds)
+            is_cold_start = True
 
-        target_local = start_pose.inv() @ target
-        q_sol = self._solver.solve(self._chain, target_local, q0, **solver_kwargs)
+        if not success and is_cold_start:
+            logger.warning(
+                "solve_ik: cold-start IK failed across the seed ladder%s; "
+                "best pose-error was %.4f. Provide a near-solution joint "
+                "configuration via the 'seed=' parameter for reliable "
+                "convergence on redundant arms.",
+                " (with stale-cache fallback)" if used_ladder_fallback else "",
+                float(np.sqrt(best_err_sq)),
+            )
 
-        T_final, _ = self._chain.compute_fk(q_sol)
-        err = pose_error(target_local, T_final)
-        success = bool(err @ err < tolerance * tolerance)
-
-        joint_dict: dict[str, float] = {j.prim_path: float(qval) for j, qval in zip(joints, q_sol)}
+        joint_dict: dict[str, float] = {j.prim_path: float(qval) for j, qval in zip(joints, best_q)}
         fixed_dict: dict[str, bool] = {j.prim_path: fixed_mask[i] for i, j in enumerate(joints)}
 
         if success:
-            self._last_solution = q_sol
+            self._last_solution = best_q
 
         return PoseResult(
             success=success,
@@ -404,7 +606,7 @@ class RobotPoser:
 
     # -- pose application --------------------------------------------------
 
-    def apply_pose(self, joint_dict: dict[str, float]) -> None:
+    def apply_pose(self, joint_dict: dict[str, float] | PoseResult) -> None:
         """Apply joint values to the robot, anchoring at the start link.
 
         For chains that include backward (child-to-parent) joints the
@@ -414,10 +616,32 @@ class RobotPoser:
         During simulation delegates to _drive_robot directly.
 
         Args:
-            joint_dict: Mapping of joint prim path to value (radians or meters).
+            joint_dict: Either a mapping of joint prim path to value
+                (radians or meters), or a :class:`PoseResult`. When a
+                ``PoseResult`` with ``success=False`` is passed, the call
+                is a no-op and a warning is logged: failed solves carry
+                the lowest-error attempt across the cold-start ladder,
+                which may be a random-restart configuration, and applying
+                it would teleport the robot to an arbitrary pose.
         """
         if self._chain is None:
             return
+
+        if isinstance(joint_dict, PoseResult):
+            if not joint_dict.success:
+                logger.warning(
+                    "apply_pose: refusing to apply a failed PoseResult "
+                    "(start_link=%r, end_link=%r). The ``joints`` payload "
+                    "of a failed solve holds the lowest-error cold-start "
+                    "attempt and may be a random-restart configuration; "
+                    "applying it would teleport the robot. Pass the dict "
+                    "explicitly via ``apply_pose(result.joints)`` to "
+                    "override.",
+                    joint_dict.start_link,
+                    joint_dict.end_link,
+                )
+                return
+            joint_dict = joint_dict.joints
 
         if _is_simulation_running():
             _drive_robot(self._stage, self._robot_prim, joint_dict)
@@ -475,7 +699,7 @@ class RobotPoser:
 _articulation_cache: dict[str, tuple] = {}
 
 
-def _get_articulation(robot_path: str):
+def _get_articulation(robot_path: str) -> tuple[Any, dict[str, int]]:
     """Return a cached (Articulation, dof_path_to_idx) pair for *robot_path*.
 
     Args:
@@ -622,10 +846,17 @@ def store_named_pose(
     in the robot's namedPoses relationship. The prim's Xform is set to
     the end-link target pose.
 
+    ``pose_name`` is sanitized to a valid USD identifier via
+    :func:`pxr.Tf.MakeValidIdentifier` before use. Distinct inputs that
+    sanitize to the same identifier (for example ``"home:v2"`` and
+    ``"home/v2"``) refer to the same stored pose; this function logs a
+    warning and overwrites the existing prim in that case.
+
     Args:
         stage: USD stage.
         robot_prim: Robot root prim.
-        pose_name: Human-readable name for the pose.
+        pose_name: Human-readable name for the pose. Sanitized as described
+            above before being used as a USD prim name.
         pose_result: Must have success=True.
 
     Returns:
@@ -640,6 +871,15 @@ def store_named_pose(
 
     safe = _sanitize_name(pose_name)
     pose_path = scope.GetPath().AppendChild(safe)
+    existing_prim = stage.GetPrimAtPath(pose_path)
+    if existing_prim and existing_prim.IsValid() and safe != pose_name:
+        logger.warning(
+            "Named pose %r sanitizes to %r, which already exists at %s; overwriting. "
+            "Use a name composed only of ASCII letters, digits, and underscores to avoid collisions.",
+            pose_name,
+            safe,
+            pose_path,
+        )
     pose_prim = stage.DefinePrim(pose_path, Classes.NAMED_POSE.value)
 
     # -- Relationships --
@@ -700,7 +940,8 @@ def apply_pose_by_name(
     Args:
         stage: USD stage.
         robot_prim: Robot root prim.
-        pose_name: Name of the stored pose.
+        pose_name: Name of the stored pose. Sanitized to a valid USD
+            identifier using the same rules as :func:`store_named_pose`.
 
     Returns:
         True if the pose was found and applied.
@@ -793,7 +1034,8 @@ def get_named_pose(
     Args:
         stage: USD stage.
         robot_prim: Robot root prim.
-        pose_name: Name of the stored pose.
+        pose_name: Name of the stored pose. Sanitized to a valid USD
+            identifier using the same rules as :func:`store_named_pose`.
 
     Returns:
         PoseResult, or None when no pose with that name exists.
@@ -834,7 +1076,8 @@ def delete_named_pose(
     Args:
         stage: USD stage.
         robot_prim: Robot root prim.
-        pose_name: Name of the pose to remove.
+        pose_name: Name of the pose to remove. Sanitized to a valid USD
+            identifier using the same rules as :func:`store_named_pose`.
 
     Returns:
         True when the pose existed and was removed.

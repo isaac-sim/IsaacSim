@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
 
 """Module for standalone doctest support in Isaac Sim test environments."""
 
+from __future__ import annotations
 
 import doctest
 import sys
@@ -88,7 +89,7 @@ class StandaloneDocTestCase(unittest.TestCase):
         **kwargs: Additional keyword arguments passed to the parent unittest.TestCase class.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: object, **kwargs: object):
         super().__init__(*args, **kwargs)
         self._doctest_checker = _doctest.DocTest()
 
@@ -126,8 +127,8 @@ class StandaloneDocTestCase(unittest.TestCase):
         expr: object,
         msg: str = "",
         flags: int = doctest.NORMALIZE_WHITESPACE | doctest.ELLIPSIS | doctest.FAIL_FAST,
-        order: list[tuple[object, int]] = [],
-        exclude: list[object] = [],
+        order: list[tuple[object, int]] | None = None,
+        exclude: list[object] | None = None,
         stop_on_failure: bool = False,
     ):
         """Check that the examples in docstrings pass for all class/module's members (names).
@@ -152,6 +153,10 @@ class StandaloneDocTestCase(unittest.TestCase):
             >>> tester.assertDocTests(StandaloneDocTestCase, exclude=[StandaloneDocTestCase.assertDocTests])
             ... # doctest: +NO_CHECK
         """
+        if order is None:
+            order = []
+        if exclude is None:
+            exclude = []
         objects = self._doctest_checker.get_members(expr, order, exclude, {})
         print(f"class/module members to check: {len(objects)}")
         # test docstrings examples

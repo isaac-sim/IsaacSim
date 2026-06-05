@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """File menu action handlers for Isaac Sim."""
 
 __all__ = ["register_actions", "deregister_actions"]
@@ -22,7 +23,7 @@ import omni.kit.window.file
 import omni.usd
 
 
-def post_notification(message: str, info: bool = False, duration: int = 3):
+def post_notification(message: str, info: bool = False, duration: int = 3) -> None:
     """Post a notification with a message.
 
     Args:
@@ -47,7 +48,7 @@ def post_notification(message: str, info: bool = False, duration: int = 3):
         carb.log_warn(message)
 
 
-def quit_kit(fast: bool = False):
+def quit_kit(fast: bool = False) -> None:
     """Request the application to quit.
 
     Args:
@@ -63,7 +64,7 @@ def quit_kit(fast: bool = False):
     omni.kit.app.get_app().post_quit()
 
 
-def open_stage_with_new_edit_layer():
+def open_stage_with_new_edit_layer() -> None:
     """Open the current USD stage with a new edit layer.
 
     This posts a notification if no valid stage is available.
@@ -81,7 +82,7 @@ def open_stage_with_new_edit_layer():
     omni.kit.window.file.open_with_new_edit_layer(stage.GetRootLayer().identifier)
 
 
-def register_actions(extension_id: str):
+def register_actions(extension_id: str) -> None:
     """Register file-related actions within an extension.
 
     Args:
@@ -122,7 +123,7 @@ def register_actions(extension_id: str):
     )
 
 
-def deregister_actions(extension_id: str):
+def deregister_actions(extension_id: str) -> None:
     """Remove all registered actions for an extension.
 
     Args:

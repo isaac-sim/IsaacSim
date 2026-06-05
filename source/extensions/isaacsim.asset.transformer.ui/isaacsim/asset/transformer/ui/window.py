@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 import carb
 import omni.kit.app
@@ -65,11 +66,14 @@ from .style import STYLE
 
 
 class Sections(StrEnum):
-    """Identifiers for the three collapsable sections of the window."""
+    """Identifiers for the three collapsible sections of the window."""
 
     INPUT = "input"
+    """Identifier for the input file selection section."""
     ACTIONS = "actions"
+    """Identifier for the transformation actions configuration section."""
     REVIEW = "review"
+    """Identifier for the review and execute section."""
 
 
 @dataclass
@@ -77,6 +81,14 @@ class InputFileSelectionData:
     """Storage for widgets related to input file selection.
 
     Holds only the widgets that need to be read or written at runtime.
+
+    Args:
+        input_source_label: Label widget for the input source field.
+        input_source_field: String field widget displaying the input source path.
+        output_dir_field: String field widget for the output directory path.
+        select_source_button: Button widget to open file picker for source selection.
+        select_output_button: Button widget to open file picker for output directory selection.
+        autoload_option: Checkbox widget to enable/disable auto-loading of transformed assets.
     """
 
     input_source_label: ui.Label
@@ -105,7 +117,7 @@ def _filter_file_picker(ext: list[str], item: FileBrowserItem) -> bool:
 
 
 class BoldCollapsableFrame(ui.CollapsableFrame):
-    """Collapsable frame with a custom bold header and directional triangle.
+    """Collapsible frame with a custom bold header and directional triangle.
 
     Args:
         show_help_button: Reserved for future use.
@@ -115,7 +127,7 @@ class BoldCollapsableFrame(ui.CollapsableFrame):
     # TODO: This class _may_ not be necessary with proper styling, look into this
     # Especially since I moved the docs button to a top-level floaring button...
 
-    def __init__(self, show_help_button: bool = False, **kwargs) -> None:
+    def __init__(self, show_help_button: bool = False, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.set_build_header_fn(self._build_header)
         self.explicit_hover = True
@@ -167,12 +179,15 @@ class AssetTransformerWindow(MenuHelperWindow):
     """
 
     WINDOW_TITLE: str = "Asset Transformer"
+    """The title displayed in the window header."""
 
     # Default window dimensions
     DEFAULT_WIDTH = 600
+    """The default pixel width of the window."""
     DEFAULT_HEIGHT = 710
+    """The default pixel height of the window."""
 
-    def __init__(self, visible: bool = True, **kwargs) -> None:
+    def __init__(self, visible: bool = True, **kwargs: Any) -> None:
         # Set default size if not provided via kwargs
         kwargs.setdefault("width", self.DEFAULT_WIDTH)
         kwargs.setdefault("height", self.DEFAULT_HEIGHT)
@@ -255,16 +270,46 @@ class AssetTransformerWindow(MenuHelperWindow):
         """Execute the configured transformation actions on the input stage."""
         assert self._file_data is not None
 
-        input_stage_path = self._resolve_input_stage_path()
+        # Unconditional precheck: if "Active Stage" is selected and the stage
+        # has unsaved state (new or dirty), ask the user how to proceed
+        # before doing anything else. Yes saves and re-runs, No proceeds
+        # with the on-disk version, Cancel aborts.
+        if self._is_active_stage_unsaved():
+            carb.log_warn("Asset Transformer: stage is unsaved, prompting Save before running")
+            self._show_save_prompt(
+                on_yes=lambda: self._save_active_stage_and_run(on_saved=self._run_actions_after_precheck),
+                on_no=self._run_actions_after_precheck,
+            )
+            return
+
+        self._run_actions_after_precheck()
+
+    def _run_actions_after_precheck(self) -> None:
+        """Run the transformer pipeline after the unsaved-stage precheck has resolved.
+
+        Called from two paths: directly from :meth:`_run_actions` when the
+        stage is already saved, and from the Save prompt callbacks (Yes after
+        a successful save, No to use the on-disk version as-is).
+        """
+        assert self._file_data is not None
+
+        input_stage_path, input_error = self._resolve_input_stage_path()
         if not input_stage_path:
+            self._show_error_dialog("Cannot Run Asset Transformer", input_error or "Input stage is not available.")
             return
 
         profile = self._build_profile_from_actions()
         if not profile.rules:
-            carb.log_warn("No actions configured to execute")
+            self._show_error_dialog(
+                "No Actions Configured",
+                "Add at least one action via the Actions section before clicking Execute Actions.",
+            )
             return
         if not profile.output_package_root:
-            carb.log_error("Output directory is not set")
+            self._show_error_dialog(
+                "Output Directory Not Set",
+                "Set an output directory in the Input section before clicking Execute Actions.",
+            )
             return
 
         try:
@@ -285,7 +330,26 @@ class AssetTransformerWindow(MenuHelperWindow):
                 carb.log_warn(f"Could not save report at {report_path}: {e}")
         except Exception as exc:  # noqa: BLE001
             carb.log_error(f"Failed to execute actions: {exc}")
+            self._show_error_dialog("Asset Transformer Failed", f"Failed to execute actions:\n{exc}")
             return
+
+        # Surface per-rule failures from the execution report. Individual rule
+        # failures (e.g. misconfigured rules raising ValueError) are captured
+        # by the manager into RuleExecutionResult and do not propagate as
+        # exceptions, so the only signal to the user is the report itself.
+        failed = [r for r in report.results if not r.success]
+        if failed:
+            # Cap how many failures we display so a profile with many
+            # misconfigured rules does not produce a modal that overflows the
+            # screen; full details remain in the persisted report.
+            max_lines = 10
+            lines = [f"  - {r.rule.name}: {r.error or 'rule reported failure'}" for r in failed[:max_lines]]
+            if len(failed) > max_lines:
+                lines.append(f"  ... and {len(failed) - max_lines} more (see report for full details)")
+            self._show_error_dialog(
+                "Some Actions Failed",
+                f"{len(failed)} of {len(report.results)} actions failed:\n" + "\n".join(lines),
+            )
 
         if self._file_data.autoload_option.model.get_value_as_bool():
             output_path = report.output_stage_path
@@ -442,7 +506,7 @@ class AssetTransformerWindow(MenuHelperWindow):
         self._update_stage_field()
 
         # Update profile and buttons when output file changes
-        def _on_output_dir_changed(_):
+        def _on_output_dir_changed(_: ui.AbstractValueModel) -> None:
             self._update_profile_output_paths()
             self._update_button_states()
 
@@ -490,11 +554,15 @@ class AssetTransformerWindow(MenuHelperWindow):
                 # Use identifier as fallback (might be a URL)
                 self._file_data.input_source_field.model.set_value(identifier)
 
-    def _resolve_input_stage_path(self) -> str | None:
+    def _resolve_input_stage_path(self) -> tuple[str | None, str | None]:
         """Resolve the input stage file path from either the open stage or the text field.
 
         Returns:
-            The resolved file path, or None if the path cannot be determined.
+            A ``(path, error_message)`` tuple. On success, ``path`` is the
+            resolved file path and ``error_message`` is ``None``. On failure,
+            ``path`` is ``None`` and ``error_message`` is a user-facing string
+            describing the specific failure so the caller can surface it in
+            the UI in addition to writing it to the developer log.
         """
         assert self._file_data is not None
 
@@ -502,28 +570,106 @@ class AssetTransformerWindow(MenuHelperWindow):
         if use_stage:
             stage = self._usd_context.get_stage()
             if stage is None:
-                carb.log_error("No stage is open")
-                return None
+                msg = "No stage is open."
+                carb.log_error(msg)
+                return None, msg
             root_layer = stage.GetRootLayer()
             if root_layer is None:
-                carb.log_error("Current stage has no root layer")
-                return None
+                msg = "Current stage has no root layer."
+                carb.log_error(msg)
+                return None, msg
             if root_layer.realPath:
-                return root_layer.realPath
+                return root_layer.realPath, None
             identifier = root_layer.identifier
             if identifier and not identifier.startswith("anon:"):
-                return identifier
+                return identifier, None
+            msg = (
+                "The active stage must be saved before running the Asset Transformer.\n"
+                "Save the stage via File > Save and try again."
+            )
             carb.log_error("Stage must be saved to run the transformer")
-            return None
+            return None, msg
 
         input_path = self._file_data.input_source_field.model.get_value_as_string().strip()
         if not input_path:
+            msg = "Input file is not set. Choose a USD file in the Input section."
             carb.log_error("Input file is not set")
-            return None
+            return None, msg
         if not Path(input_path).exists():
+            msg = f"Input file does not exist:\n{input_path}"
             carb.log_error(f"Input file does not exist: {input_path}")
-            return None
-        return input_path
+            return None, msg
+        return input_path, None
+
+    def _is_active_stage_unsaved(self) -> bool:
+        """Return True when the active stage has any state the transformer cannot see on disk.
+
+        Two cases count as "unsaved" for our purposes, because the
+        transformer reads the stage from disk and so will silently ignore
+        anything not yet written out:
+
+        1. The stage has never been written to disk — ``is_new_stage()`` is
+           True. Kit's :func:`omni.kit.window.file.save` will route this to
+           Save As, opening the file-picker dialog.
+        2. The stage was previously saved but has pending in-memory edits —
+           ``omni.usd.get_dirty_layers(stage, recursive=True)`` returns a
+           non-empty list. Kit's ``save()`` will save the dirty layers in
+           place (no dialog) so the transformer sees the latest state.
+
+        Only meaningful when "Active Stage" is selected; the "From File"
+        mode operates on a user-chosen file regardless of the active stage's
+        save state.
+        """
+        use_stage = self._file_type_radio_collection and self._file_type_radio_collection.model.get_value_as_int() == 0
+        if not use_stage:
+            return False
+        ctx = self._usd_context
+        if ctx.get_stage_state() != omni.usd.StageState.OPENED:
+            return False
+        if ctx.is_new_stage():
+            return True
+        stage = ctx.get_stage()
+        if stage is None:
+            return False
+        dirty_layers = omni.usd.get_dirty_layers(stage, True)
+        return bool(dirty_layers)
+
+    def _save_active_stage_and_run(self, on_saved: Callable[[], None]) -> None:
+        """Invoke Kit's standard save flow; on success invoke *on_saved*.
+
+        Delegates entirely to :func:`omni.kit.window.file.save`. That helper
+        already handles the "no path yet" case by routing to Save As (which
+        opens the Save Stage file picker), as well as in-place save for stages
+        that already have a backing file. We pass a completion callback that
+        re-invokes the original Execute Actions click once the stage is on
+        disk, so the user does not have to click Execute a second time.
+
+        Args:
+            on_saved: Callable invoked after the stage is successfully
+                saved. Typically :meth:`_run_actions` so the original Execute
+                Actions click resumes once the precondition is satisfied.
+        """
+        # Imported lazily so importing this module does not require
+        # ``omni.kit.window.file`` to be loaded eagerly (it is a runtime
+        # dependency declared in ``extension.toml``).
+        import omni.kit.window.file
+
+        def _on_save_done(success: bool, url: str) -> None:
+            if not success:
+                # User cancelled the file picker or save failed. Surface this
+                # in the UI as well as the developer log so the user is not
+                # left wondering why "Execute Actions" appeared to do nothing.
+                carb.log_warn(f"Save cancelled or failed (url={url!r}); not re-running Asset Transformer")
+                self._show_error_dialog(
+                    "Save Cancelled",
+                    "Save was cancelled or failed; the Asset Transformer was not run.\n"
+                    "Click Execute Actions again once the stage has been saved.",
+                )
+                return
+            carb.log_info(f"Stage saved to {url!r}; resuming Asset Transformer run")
+            on_saved()
+
+        omni.kit.window.file.save(_on_save_done)
 
     def _resolve_output_package_root(self) -> str | None:
         """Read the output directory from the UI field.
@@ -618,7 +764,7 @@ class AssetTransformerWindow(MenuHelperWindow):
         self._file_picker = None
         picker.hide()
 
-        async def _deferred_destroy():
+        async def _deferred_destroy() -> None:
             await omni.kit.app.get_app().next_update_async()
             picker.destroy()
 
@@ -643,42 +789,162 @@ class AssetTransformerWindow(MenuHelperWindow):
         chrome = 16 + 8 + 30 + 8  # top spacer + gap + button row + bottom spacer
         return max(160, text_height + chrome + 30)
 
-    def _show_confirmation_dialog(self, title: str, message: str, on_confirm: Callable[[], None]) -> None:
-        """Show a modal confirmation dialog with Confirm / Cancel buttons.
+    def _dismiss_active_modal(self) -> None:
+        """Properly close any modal currently occupying ``self._confirmation_dialog``.
 
-        The window height is computed from the message content so that long
-        file paths do not cause the buttons to be clipped.  Destruction of
-        the dialog is deferred to the next frame to avoid
-        ``Container::destroy during draw`` errors.
+        Hides the dialog immediately, clears the slot, and schedules
+        :func:`ui.Window.destroy` for the next frame to avoid
+        ``Container::destroy during draw`` errors. Any user-supplied
+        ``on_*`` callbacks of the displaced modal are NOT invoked --
+        replacement is treated as a silent cancel so the caller of the
+        new modal can rely on its own callbacks firing exclusively.
+
+        Existing modals previously leaked when a new one stomped the slot
+        (the window object stayed alive because no ``_deferred_destroy``
+        ever ran); this helper makes the displacement explicit and safe.
+        """
+        previous = self._confirmation_dialog
+        if previous is None:
+            return
+        self._confirmation_dialog = None
+        previous.visible = False
+        carb.log_warn(
+            f"AssetTransformerWindow modal slot displaced while {previous.title!r} was open; "
+            "the previous dialog is being dismissed without invoking its callbacks."
+        )
+
+        async def _destroy_next_frame() -> None:
+            await omni.kit.app.get_app().next_update_async()
+            previous.destroy()
+
+        asyncio.ensure_future(_destroy_next_frame())
+
+    def _build_modal_window(self, title: str, message: str, width: int = 450) -> tuple[Any, Callable[[], None]]:
+        """Create a modal window plus a deferred-destroy closure.
+
+        Shared scaffolding for the three modal helpers. Returns the
+        ``ui.Window`` (caller fills in the frame contents) and a
+        ``_deferred_destroy`` callable to wire to the buttons.
 
         Args:
             title: Window title.
-            message: Body text displayed to the user.
-            on_confirm: Callable invoked when the user presses Confirm.
-        """
-        if self._confirmation_dialog is not None:
-            self._confirmation_dialog.visible = False
-            self._confirmation_dialog = None
+            message: Body text -- used only to size the window height.
+            width: Window width in pixels.
 
-        dialog_height = self._estimate_dialog_height(message)
+        Returns:
+            ``(dialog, deferred_destroy)``.
+        """
+        self._dismiss_active_modal()
         dialog = ui.Window(
             title,
-            width=450,
-            height=dialog_height,
+            width=width,
+            height=self._estimate_dialog_height(message, dialog_width=width),
             flags=(ui.WINDOW_FLAGS_NO_SCROLLBAR | ui.WINDOW_FLAGS_MODAL | ui.WINDOW_FLAGS_NO_SAVED_SETTINGS),
         )
         self._confirmation_dialog = dialog
 
         def _deferred_destroy() -> None:
-            """Hide immediately, destroy on the next frame."""
+            if self._confirmation_dialog is dialog:
+                self._confirmation_dialog = None
             dialog.visible = False
-            self._confirmation_dialog = None
 
-            async def _destroy_next_frame():
+            async def _destroy_next_frame() -> None:
                 await omni.kit.app.get_app().next_update_async()
                 dialog.destroy()
 
             asyncio.ensure_future(_destroy_next_frame())
+
+        return dialog, _deferred_destroy
+
+    def _show_save_prompt(self, on_yes: Callable[[], None], on_no: Callable[[], None]) -> None:
+        """Show a modal Yes / No / Cancel dialog asking whether to save before continuing.
+
+        Mirrors the standard "Save before continuing?" pattern: ``Yes`` saves
+        and continues, ``No`` continues without saving, ``Cancel`` aborts.
+        Reuses the shared modal slot via :meth:`_build_modal_window`, which
+        properly destroys (not just hides) any prior modal.
+
+        Args:
+            on_yes: Callback invoked when the user clicks Yes.
+            on_no: Callback invoked when the user clicks No.
+        """
+        message = "Save before continuing?"
+        dialog, _deferred_destroy = self._build_modal_window("Save Stage?", message, width=360)
+
+        def _yes() -> None:
+            _deferred_destroy()
+            on_yes()
+
+        def _no() -> None:
+            _deferred_destroy()
+            on_no()
+
+        with dialog.frame:
+            with ui.VStack(spacing=8):
+                ui.Spacer(height=8)
+                ui.Label(message, word_wrap=True, alignment=ui.Alignment.CENTER, height=0)
+                ui.Spacer()
+                with ui.HStack(height=30):
+                    ui.Spacer()
+                    ui.Button("Yes", width=ui.Pixel(80), clicked_fn=_yes)
+                    ui.Spacer(width=8)
+                    ui.Button("No", width=ui.Pixel(80), clicked_fn=_no)
+                    ui.Spacer(width=8)
+                    ui.Button("Cancel", width=ui.Pixel(80), clicked_fn=_deferred_destroy)
+                    ui.Spacer()
+                ui.Spacer(height=8)
+
+        dialog.visible = True
+
+    def _show_error_dialog(self, title: str, message: str) -> None:
+        """Show a modal error dialog with a single OK button.
+
+        Used to surface preflight failures (unsaved stage, missing output
+        directory, etc.) and exception/result errors from
+        :meth:`_run_actions` into the Asset Transformer window. Without this
+        the only signal is a ``carb.log_error`` entry in the developer
+        console, which is invisible to anyone watching only the tool window.
+
+        Args:
+            title: Window title (typically a short error category).
+            message: Body text explaining the failure and corrective action.
+        """
+        dialog, _deferred_destroy = self._build_modal_window(title, message)
+
+        with dialog.frame:
+            with ui.VStack(spacing=8):
+                ui.Spacer(height=8)
+                ui.Label(message, word_wrap=True, alignment=ui.Alignment.CENTER, height=0)
+                ui.Spacer()
+                with ui.HStack(height=30):
+                    ui.Spacer()
+                    ui.Button("OK", width=ui.Pixel(100), clicked_fn=_deferred_destroy)
+                    ui.Spacer()
+                ui.Spacer(height=8)
+
+        dialog.visible = True
+
+    def _show_confirmation_dialog(
+        self,
+        title: str,
+        message: str,
+        on_confirm: Callable[[], None],
+        confirm_label: str = "Confirm",
+        cancel_label: str = "Cancel",
+    ) -> None:
+        """Show a modal confirmation dialog with two buttons.
+
+        The window height is computed from the message content so that long
+        file paths do not cause the buttons to be clipped.
+
+        Args:
+            title: Window title.
+            message: Body text displayed to the user.
+            on_confirm: Callable invoked when the user presses the confirm button.
+            confirm_label: Text shown on the confirm button. Defaults to ``"Confirm"``.
+            cancel_label: Text shown on the cancel button. Defaults to ``"Cancel"``.
+        """
+        dialog, _deferred_destroy = self._build_modal_window(title, message)
 
         def _confirm() -> None:
             _deferred_destroy()
@@ -694,9 +960,9 @@ class AssetTransformerWindow(MenuHelperWindow):
                 ui.Spacer()
                 with ui.HStack(height=30):
                     ui.Spacer()
-                    ui.Button("Confirm", width=100, clicked_fn=_confirm)
+                    ui.Button(confirm_label, width=ui.Pixel(120), clicked_fn=_confirm)
                     ui.Spacer(width=8)
-                    ui.Button("Cancel", width=100, clicked_fn=_cancel)
+                    ui.Button(cancel_label, width=ui.Pixel(120), clicked_fn=_cancel)
                     ui.Spacer()
                 ui.Spacer(height=8)
 
@@ -730,7 +996,7 @@ class AssetTransformerWindow(MenuHelperWindow):
 
         picker = self._file_picker
 
-        async def _deferred_navigate():
+        async def _deferred_navigate() -> None:
             await omni.kit.app.get_app().next_update_async()
             if picker is not self._file_picker:
                 return
@@ -1074,7 +1340,7 @@ class AssetTransformerWindow(MenuHelperWindow):
     def _save_preset(self) -> None:
         """Open a file picker dialog to save the current profile as a JSON preset.
 
-        Navigates to the directory of the last-used preset file.  Falls back
+        Navigates to the directory of the last-used preset file. Falls back
         to the user's ``Documents`` folder (or home directory) when no recent
         preset path is available.
         """

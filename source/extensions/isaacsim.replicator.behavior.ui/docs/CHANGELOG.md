@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.0] - 2026-04-22
+### Added
+- Subscribe to the `isaacsim.replicator.behavior.EXPOSED_VARS_CHANGED` event and refresh the property window when exposed variables are created or removed. This replaces the direct `omni.kit.window.property.request_rebuild()` calls previously issued from the core behavior scripts, allowing the core extension to be decoupled from any UI module and run headless.
+- Guarded the `omni.kit.window.property` import so the UI extension can still be imported in headless contexts (the event handler becomes a no-op).
+
+## [1.1.1] - 2026-04-18
+### Changed
+- Added return type annotations and imperative-mood docstrings
+
 ## [1.1.0] - 2026-03-04
 ### Changed
 - Added Overview.md, python_api.md and updated docstrings

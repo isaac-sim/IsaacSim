@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,8 +31,6 @@ class Extension(omni.ext.IExt):
         Args:
             ext_id: Extension identifier provided by the extension manager.
         """
-        pass
 
     def on_shutdown(self):
         """Clean up resources when the extension is unloaded."""
-        pass

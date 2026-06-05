@@ -1,4 +1,26 @@
 # Changelog
+
+## [2.3.2] - 2026-05-14
+### Changed
+- Add missing type annotations across the UI builder, viewport scene, and transform listeners; replace bare `except` clauses, switch `set([...])` literals and `.format()` calls to modern equivalents, fix `!= None` comparisons, and import `Callable` from `collections.abc`
+
+## [2.3.1] - 2026-04-27
+### Removed
+- Remove the `omni.isaac.ml_archive` dependency
+
+## [2.3.0] - 2026-04-01
+### Changed
+- Added `isaacsim.core.experimental.utils` dependency
+- Migrated test utilities to use `stage_utils` from `isaacsim.core.experimental.utils`
+
+## [2.2.1] - 2026-03-26
+### Changed
+- Moved Python binding module to `bindings/` subdirectory
+
+## [2.2.0] - 2026-03-17
+### Changed
+- Updated documentation with AI agent.
+
 ## [2.1.24] - 2025-11-10
 ### Changed
 - Added CUDA build dependencies

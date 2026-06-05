@@ -1,4 +1,22 @@
 # Changelog
+## [1.4.2] - 2026-05-14
+### Changed
+- Add return type and docstring annotations to Python binding tests to satisfy ruff lint rules.
+
+## [1.4.1] - 2026-05-05
+### Fixed
+- Set UCX_MODULE_DIR via dladdr so the UCS module loader finds libuct_cuda.so.0 and libucm_cuda.so.0 in the ucx/ subdirectory alongside the library
+- Pre-load libucm_cuda.so.0 with RTLD_GLOBAL before ucxx::createContext() to make CUDA symbols available without requiring ucx/ in LD_LIBRARY_PATH at launch
+- Explicitly request cuda_copy,sm,self,tcp TLS so the CUDA transport is active for GPU buffer rendezvous sends
+
+## [1.4.0] - 2026-04-20
+### Added
+- Python bindings exposing `UCXListener` and `UCXListenerRegistry` to Python via `isaacsim.ucx.core`
+
+## [1.3.2] - 2026-04-17
+### Fixed
+- Clear endpoint close callback during shutdown to prevent dangling pointer if external code holds stale endpoint references
+
 ## [1.3.1] - 2026-03-02
 ### Changed
 - Add Overview.md, public python_api.md and update docstrings

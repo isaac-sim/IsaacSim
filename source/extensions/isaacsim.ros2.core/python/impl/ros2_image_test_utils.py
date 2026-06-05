@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Utility functions for creating ROS 2 image messages in tests."""
+
 import re
-from typing import Any
 
 import numpy as np
 
@@ -27,7 +28,19 @@ except ImportError:
 
 
 def create_image(height: int, width: int, encoding: str, step: int, data: bytes, is_bigendian: int = 0) -> Image:
-    """Create a ``sensor_msgs/msg/Image`` message with the given parameters."""
+    """Create a ``sensor_msgs/msg/Image`` message with the given parameters.
+
+    Args:
+        height: Image height in pixels.
+        width: Image width in pixels.
+        encoding: Image encoding string (e.g., ``rgb8``, ``mono8``).
+        step: Full row length in bytes.
+        data: Raw image data bytes.
+        is_bigendian: Whether the data is big-endian.
+
+    Returns:
+        A populated ROS2 Image message.
+    """
     img = Image()
     img.height = int(height)
     img.width = int(width)
@@ -60,13 +73,13 @@ def ros2_image_to_buffer(
     For color BGR/BGRA (8/16-bit), channels are reordered to RGB/RGBA when ``return_rgb_order=True``.
 
     Args:
-        param image_msg: ROS2 image message (``sensor_msgs.msg.Image``-like) providing ``height``,
+        image_msg: ROS2 image message (``sensor_msgs.msg.Image``-like) providing ``height``,
             ``width``, ``encoding``, ``step``, ``data`` (bytes), and optionally ``is_bigendian``.
-        param normalize_color_order: If True, normalize BGR/BGRA channel order to RGB/RGBA.
+        normalize_color_order: If True, normalize BGR/BGRA channel order to RGB/RGBA.
             Has no effect for monochrome, Bayer, OpenCV generic types where order is not BGR,
             or YUV encodings which are not converted here.
-        param squeeze_singleton_channel: If True, squeeze single-channel output to ``(H, W)``.
-        param copy: If True, return a contiguous copy. Otherwise returns a view when possible.
+        squeeze_singleton_channel: If True, squeeze single-channel output to ``(H, W)``.
+        copy: If True, return a contiguous copy. Otherwise returns a view when possible.
 
     Returns:
         Numpy array of shape ``(H, W, C)`` for color encodings or ``(H, W)`` for single-channel

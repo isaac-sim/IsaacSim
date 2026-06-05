@@ -1,11 +1,11 @@
 [package]
-version = "2.2.1"
+version = "2.3.3"
 category = "Simulation"
 title = "Heightmap extension for Isaac Sim Occupancy Map"
 description = "The Heightmap extension converts heightmap images into 3D terrain environments"
 keywords = ["isaac", "occupancy map"]
 changelog = "docs/CHANGELOG.md"
-readme = "docs/README.md"
+readme = "docs/Overview.md"
 preview_image = "data/preview.png"
 icon = "data/icon.png"
 writeTarget.kit = true
@@ -25,3 +25,6 @@ name = "isaacsim.asset.importer.heightmap"
 stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
 ]
+
+[documentation]
+pages = ["docs/Overview.md", "docs/CHANGELOG.md"]

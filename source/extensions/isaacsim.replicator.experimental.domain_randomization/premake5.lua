@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,6 +30,7 @@ add_files("python", "*.py")
 add_files("python/nodes", "python/nodes/**.py")
 add_files("python/impl", "python/impl/**.py")
 add_files("python/scripts", "python/scripts/**.py")
+add_files("python/tests", "python/tests/**.py")
 
 -- Add the standard dependencies all OGN projects have
 add_ogn_dependencies(ogn, { "python/nodes" })
@@ -44,4 +45,5 @@ repo_build.prebuild_link {
     { "data", ext.target_dir .. "/data" },
     { "python/impl", ogn.python_target_path .. "/impl" },
     { "python/scripts", ogn.python_target_path .. "/scripts" },
+    { "python/tests", ogn.python_tests_target_path },
 }

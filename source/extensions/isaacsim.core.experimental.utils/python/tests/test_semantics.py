@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,25 +13,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test for semantics."""
+
 import isaacsim.core.experimental.utils.semantics as semantics_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.test
 
 
 class TestSemantics(omni.kit.test.AsyncTestCase):
+    """Test semantics."""
+
     async def setUp(self):
-        """Method called to prepare the test fixture"""
+        """Method called to prepare the test fixture."""
         super().setUp()
         # create new stage
         await stage_utils.create_new_stage_async()
 
     async def tearDown(self):
-        """Method called immediately after the test method has been called"""
+        """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
     async def test_add_labels(self):
+        """Test add labels."""
         prim = stage_utils.define_prim("/World/A", "Cube")
         self.assertDictEqual(semantics_utils.get_labels(prim), {})
         # test cases
@@ -47,6 +52,7 @@ class TestSemantics(omni.kit.test.AsyncTestCase):
         self.assertDictEqual(semantics_utils.get_labels(prim), match)
 
     async def test_get_labels(self):
+        """Test get labels."""
         stage_utils.define_prim("/World/A", "Cube")
         stage_utils.define_prim("/World/B", "Xform")
         self.assertDictEqual(semantics_utils.get_labels("/World/A"), {})
@@ -67,6 +73,7 @@ class TestSemantics(omni.kit.test.AsyncTestCase):
         self.assertDictEqual(semantics_utils.get_labels("/World", include_descendants=True), match)
 
     async def test_remove_labels(self):
+        """Test remove labels."""
         prim = stage_utils.define_prim("/World/A", "Cube")
         self.assertDictEqual(semantics_utils.get_labels(prim), {})
         # add labels
@@ -93,6 +100,7 @@ class TestSemantics(omni.kit.test.AsyncTestCase):
         self.assertDictEqual(semantics_utils.get_labels(prim), match)
 
     async def test_remove_all_labels(self):
+        """Test remove all labels."""
         prim = stage_utils.define_prim("/World/A", "Cube")
         self.assertDictEqual(semantics_utils.get_labels(prim), {})
         # add labels
@@ -111,4 +119,99 @@ class TestSemantics(omni.kit.test.AsyncTestCase):
         self.assertDictEqual(semantics_utils.get_labels(prim), match)
         # -- current prim and descendants
         semantics_utils.remove_all_labels("/World", remove_taxonomies=True, include_descendants=True)
+        self.assertDictEqual(semantics_utils.get_labels(prim), {})
+
+    async def test_upgrade_prim_semantics_to_labels_single_prim(self):
+        """Test upgrade_prim_semantics_to_labels on a single prim."""
+        import Semantics
+
+        prim = stage_utils.define_prim("/World/A", "Cube")
+        # apply old-style SemanticsAPI
+        old_api = Semantics.SemanticsAPI.Apply(prim, "class")
+        old_api.CreateSemanticTypeAttr().Set("class")
+        old_api.CreateSemanticDataAttr().Set("box")
+
+        self.assertEqual(semantics_utils.get_labels(prim), {})
+
+        upgraded = semantics_utils.upgrade_prim_semantics_to_labels(prim)
+        self.assertEqual(len(upgraded), 1)
+        self.assertEqual(upgraded[0], str(prim.GetPath()))
+        self.assertEqual(semantics_utils.get_labels(prim), {"class": ["box"]})
+        self.assertFalse(prim.HasAPI(Semantics.SemanticsAPI, "class"))
+
+    async def test_upgrade_prim_semantics_to_labels_by_path(self):
+        """Test upgrade_prim_semantics_to_labels using a string path."""
+        import Semantics
+
+        prim = stage_utils.define_prim("/World/A", "Cube")
+        old_api = Semantics.SemanticsAPI.Apply(prim, "class")
+        old_api.CreateSemanticTypeAttr().Set("class")
+        old_api.CreateSemanticDataAttr().Set("cube")
+
+        upgraded = semantics_utils.upgrade_prim_semantics_to_labels("/World/A")
+        self.assertEqual(len(upgraded), 1)
+        self.assertEqual(upgraded[0], "/World/A")
+        self.assertEqual(semantics_utils.get_labels("/World/A"), {"class": ["cube"]})
+        self.assertFalse(prim.HasAPI(Semantics.SemanticsAPI, "class"))
+
+    async def test_upgrade_prim_semantics_to_labels_multiple_instances(self):
+        """Test upgrade with multiple SemanticsAPI instances on one prim."""
+        import Semantics
+
+        prim = stage_utils.define_prim("/World/A", "Cube")
+        api_class = Semantics.SemanticsAPI.Apply(prim, "class")
+        api_class.CreateSemanticTypeAttr().Set("class")
+        api_class.CreateSemanticDataAttr().Set("box")
+        api_color = Semantics.SemanticsAPI.Apply(prim, "color")
+        api_color.CreateSemanticTypeAttr().Set("color")
+        api_color.CreateSemanticDataAttr().Set("red")
+
+        upgraded = semantics_utils.upgrade_prim_semantics_to_labels(prim)
+        self.assertEqual(len(upgraded), 1)
+        self.assertEqual(upgraded[0], str(prim.GetPath()))
+        labels = semantics_utils.get_labels(prim)
+        self.assertEqual(labels.get("class"), ["box"])
+        self.assertEqual(labels.get("color"), ["red"])
+        self.assertFalse(prim.HasAPI(Semantics.SemanticsAPI, "class"))
+        self.assertFalse(prim.HasAPI(Semantics.SemanticsAPI, "color"))
+
+    async def test_upgrade_prim_semantics_to_labels_no_old_semantics(self):
+        """Test upgrade on a prim with no old-style semantics returns empty list."""
+        stage_utils.define_prim("/World/A", "Cube")
+        upgraded = semantics_utils.upgrade_prim_semantics_to_labels("/World/A")
+        self.assertEqual(upgraded, [])
+
+    async def test_upgrade_prim_semantics_to_labels_with_descendants(self):
+        """Test upgrade with include_descendants=True."""
+        import Semantics
+
+        stage_utils.define_prim("/World/Parent", "Xform")
+        child = stage_utils.define_prim("/World/Parent/Child", "Cube")
+        old_api = Semantics.SemanticsAPI.Apply(child, "class")
+        old_api.CreateSemanticTypeAttr().Set("class")
+        old_api.CreateSemanticDataAttr().Set("child_obj")
+
+        upgraded = semantics_utils.upgrade_prim_semantics_to_labels("/World/Parent", include_descendants=True)
+        self.assertEqual(len(upgraded), 1)
+        self.assertEqual(upgraded[0], str(child.GetPath()))
+        self.assertEqual(semantics_utils.get_labels(child), {"class": ["child_obj"]})
+        self.assertFalse(child.HasAPI(Semantics.SemanticsAPI, "class"))
+
+    async def test_upgrade_prim_semantics_to_labels_empty_type_or_data(self):
+        """Test upgrade skips instances with empty type or data."""
+        import Semantics
+
+        prim = stage_utils.define_prim("/World/A", "Cube")
+        # apply old-style SemanticsAPI with empty data
+        old_api = Semantics.SemanticsAPI.Apply(prim, "empty_data")
+        old_api.CreateSemanticTypeAttr().Set("class")
+        old_api.CreateSemanticDataAttr().Set("")
+
+        # apply another with empty type
+        old_api2 = Semantics.SemanticsAPI.Apply(prim, "empty_type")
+        old_api2.CreateSemanticTypeAttr().Set("")
+        old_api2.CreateSemanticDataAttr().Set("something")
+
+        upgraded = semantics_utils.upgrade_prim_semantics_to_labels(prim)
+        self.assertEqual(upgraded, [])
         self.assertDictEqual(semantics_utils.get_labels(prim), {})

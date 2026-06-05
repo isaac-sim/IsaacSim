@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Test publishing camera data through ROS2 bridge with timestamp validation."""
 
 import argparse
 import sys
@@ -32,25 +34,24 @@ CONFIG = {"renderer": "RealTimePathTracing", "headless": True}
 
 # Example ROS2 bridge sample demonstrating the manual loading of stages and manual publishing of images
 simulation_app = SimulationApp(CONFIG)
-import isaacsim.core.utils.numpy.rotations as rot_utils
+import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
+import isaacsim.core.experimental.utils.transform as transform_utils
 import numpy as np
 import omni
 import omni.graph.core as og
 import omni.replicator.core as rep
 import omni.syntheticdata._syntheticdata as sd
-from isaacsim.core.api import SimulationContext
 from isaacsim.core.nodes.scripts.utils import set_target_prims
-from isaacsim.core.utils import extensions, stage
-from isaacsim.core.utils.prims import is_prim_path_valid
 from isaacsim.sensors.camera import Camera
 from isaacsim.storage.native import nucleus
 
 # Enable ROS2 bridge extension
-extensions.enable_extension("isaacsim.ros2.bridge")
+app_utils.enable_extension("isaacsim.ros2.bridge")
 
 simulation_app.update()
 
-simulation_context = SimulationContext(stage_units_in_meters=1.0)
+stage_utils.set_stage_units(meters_per_unit=1.0)
 
 # Locate Isaac Sim assets folder to load environment and robot stages
 assets_root_path = nucleus.get_assets_root_path()
@@ -60,7 +61,7 @@ if assets_root_path is None:
     sys.exit()
 
 # Loading the environment
-stage.add_reference_to_stage(assets_root_path + BACKGROUND_USD_PATH, BACKGROUND_STAGE_PATH)
+stage_utils.add_reference_to_stage(assets_root_path + BACKGROUND_USD_PATH, BACKGROUND_STAGE_PATH)
 
 from collections import defaultdict
 from threading import Event, Thread
@@ -71,6 +72,8 @@ from rclpy.node import Node
 
 
 class TimestampChecker(Node):
+    """Check ROS2 topic timestamps for duplicates and backwards time."""
+
     def __init__(self):
         super().__init__("timestamp_checker")
         self.topic_timestamps = defaultdict(set)  # topic_name -> set of timestamps
@@ -81,6 +84,7 @@ class TimestampChecker(Node):
         self.subscribed_types = {}
 
     def subscribe_dynamic(self, topic_name, msg_type_str):
+        """Subscribe to a topic dynamically by resolving the message type string."""
         if topic_name in self.subscribed_types:
             return
         msg_type = self._import_message_type(msg_type_str)
@@ -93,6 +97,7 @@ class TimestampChecker(Node):
         self.subscribed_types[topic_name] = msg_type
 
     def check_timestamp(self, msg, topic_name):
+        """Validate that message timestamps are unique and monotonically increasing."""
         timestamp = getattr(msg, "header", None)
         if timestamp:
             time_val = (timestamp.stamp.sec, timestamp.stamp.nanosec)
@@ -140,10 +145,12 @@ class TimestampChecker(Node):
             return None
 
     def stop(self):
+        """Signal the checker to stop spinning."""
         self.event.set()
 
 
 def run_checker(checker):
+    """Spin the timestamp checker node until it is stopped."""
     while rclpy.ok() and not checker.event.is_set():
         rclpy.spin_once(checker, timeout_sec=0.1)
 
@@ -155,9 +162,10 @@ def run_checker(checker):
 
 # Paste functions from the tutorial here
 def publish_camera_tf(camera: Camera):
+    """Publish TF transforms for a camera prim using an OmniGraph action graph."""
     camera_prim = camera.prim_path
 
-    if not is_prim_path_valid(camera_prim):
+    if not omni.usd.get_context().get_stage().GetPrimAtPath(camera_prim).IsValid():
         raise ValueError(f"Camera path '{camera_prim}' is invalid.")
 
     try:
@@ -170,8 +178,8 @@ def publish_camera_tf(camera: Camera):
         ros_camera_graph_path = "/CameraTFActionGraph"
 
         # If a camera graph is not found, create a new one.
-        if not is_prim_path_valid(ros_camera_graph_path):
-            (ros_camera_graph, _, _, _) = og.Controller.edit(
+        if not omni.usd.get_context().get_stage().GetPrimAtPath(ros_camera_graph_path).IsValid():
+            ros_camera_graph, _, _, _ = og.Controller.edit(
                 {
                     "graph_path": ros_camera_graph_path,
                     "evaluator_name": "execution",
@@ -195,6 +203,7 @@ def publish_camera_tf(camera: Camera):
             ros_camera_graph_path,
             {
                 og.Controller.Keys.CREATE_NODES: [
+                    ("ComputeTF_" + camera_frame_id, "isaacsim.core.nodes.IsaacComputeTransformTree"),
                     ("PublishTF_" + camera_frame_id, "isaacsim.ros2.bridge.ROS2PublishTransformTree"),
                     ("PublishRawTF_" + camera_frame_id + "_world", "isaacsim.ros2.bridge.ROS2PublishRawTransformTree"),
                 ],
@@ -209,7 +218,30 @@ def publish_camera_tf(camera: Camera):
                     ("PublishRawTF_" + camera_frame_id + "_world.inputs:rotation", [0.5, -0.5, 0.5, 0.5]),
                 ],
                 og.Controller.Keys.CONNECT: [
-                    (ros_camera_graph_path + "/OnTick.outputs:tick", "PublishTF_" + camera_frame_id + ".inputs:execIn"),
+                    (
+                        ros_camera_graph_path + "/OnTick.outputs:tick",
+                        "ComputeTF_" + camera_frame_id + ".inputs:execIn",
+                    ),
+                    (
+                        "ComputeTF_" + camera_frame_id + ".outputs:execOut",
+                        "PublishTF_" + camera_frame_id + ".inputs:execIn",
+                    ),
+                    (
+                        "ComputeTF_" + camera_frame_id + ".outputs:parentFrames",
+                        "PublishTF_" + camera_frame_id + ".inputs:parentFrames",
+                    ),
+                    (
+                        "ComputeTF_" + camera_frame_id + ".outputs:childFrames",
+                        "PublishTF_" + camera_frame_id + ".inputs:childFrames",
+                    ),
+                    (
+                        "ComputeTF_" + camera_frame_id + ".outputs:translations",
+                        "PublishTF_" + camera_frame_id + ".inputs:translations",
+                    ),
+                    (
+                        "ComputeTF_" + camera_frame_id + ".outputs:orientations",
+                        "PublishTF_" + camera_frame_id + ".inputs:orientations",
+                    ),
                     (
                         ros_camera_graph_path + "/OnTick.outputs:tick",
                         "PublishRawTF_" + camera_frame_id + "_world.inputs:execIn",
@@ -228,9 +260,9 @@ def publish_camera_tf(camera: Camera):
     except Exception as e:
         print(e)
 
-    # Add target prims for the USD pose. All other frames are static.
+    # Set target prims on the compute node for USD pose. All other frames are static.
     set_target_prims(
-        primPath=ros_camera_graph_path + "/PublishTF_" + camera_frame_id,
+        primPath=ros_camera_graph_path + "/ComputeTF_" + camera_frame_id,
         inputName="inputs:targetPrims",
         targetPrimPaths=[camera_prim],
     )
@@ -238,6 +270,7 @@ def publish_camera_tf(camera: Camera):
 
 
 def publish_camera_info(camera: Camera, freq):
+    """Publish camera info messages at the specified frequency."""
     from isaacsim.ros2.core import read_camera_info
 
     # The following code will link the camera's render product and publish the data to the specified topic name.
@@ -276,6 +309,7 @@ def publish_camera_info(camera: Camera, freq):
 
 
 def publish_pointcloud_from_depth(camera: Camera, freq):
+    """Publish point cloud data generated from depth images at the specified frequency."""
     # The following code will link the camera's render product and publish the data to the specified topic name.
     render_product = camera._render_product_path
     step_size = int(60 / freq)
@@ -300,6 +334,7 @@ def publish_pointcloud_from_depth(camera: Camera, freq):
 
 
 def publish_depth(camera: Camera, freq):
+    """Publish depth image data at the specified frequency."""
     # The following code will link the camera's render product and publish the data to the specified topic name.
     render_product = camera._render_product_path
     step_size = int(60 / freq)
@@ -321,6 +356,7 @@ def publish_depth(camera: Camera, freq):
 
 
 def publish_rgb(camera: Camera, freq):
+    """Publish RGB image data at the specified frequency."""
     # The following code will link the camera's render product and publish the data to the specified topic name.
     render_product = camera._render_product_path
     step_size = int(60 / freq)
@@ -349,7 +385,7 @@ camera = Camera(
     position=np.array([-3.11, -1.87, 1.0]),
     frequency=20,
     resolution=(256, 256),
-    orientation=rot_utils.euler_angles_to_quats(np.array([0, 0, 0]), degrees=True),
+    orientation=transform_utils.euler_angles_to_quaternion(np.array([0, 0, 0]), degrees=True).numpy(),
 )
 camera.initialize()
 
@@ -386,12 +422,12 @@ checker_thread.start()
 
 ####################################################################
 
-# Initialize physics
-simulation_context.initialize_physics()
-simulation_context.play()
+# Initialize physics and start simulation
+app_utils.play()
+simulation_app.update()
 
 for _ in range(args.test_steps):
-    simulation_context.step(render=True)
+    simulation_app.update()
     if checker.error_detected:
         print("[error] Exiting simulation loop due to timestamp error")
         break
@@ -401,5 +437,5 @@ checker.stop()
 rclpy.shutdown()
 checker_thread.join()
 checker.destroy_node()
-simulation_context.stop()
+app_utils.stop()
 simulation_app.close()

@@ -17,7 +17,6 @@
 
 """Test suite for validating the ObstacleStrategy functionality in robot motion generation."""
 
-
 import omni.kit.test
 from isaacsim.core.experimental.objects import Capsule, Cone, Cube, Cylinder, Mesh, Plane, Sphere
 from isaacsim.core.experimental.utils.stage import create_new_stage_async
@@ -61,6 +60,7 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
         pass
 
     async def test_representation_as_string(self):
+        """Test setting obstacle representation using a string value."""
         obstacle_strategy = ObstacleStrategy()
         obstacle_strategy.set_default_configuration(Mesh, ObstacleConfiguration("obb", 0.05))
 
@@ -1196,6 +1196,7 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
             obstacle_strategy.get_obstacle_configuration("/World/NotAShape")
 
     async def test_set_configuration_overrides_invalid_prim(self):
+        """Test that setting configuration overrides with invalid prims raise an error."""
         obstacle_strategy = ObstacleStrategy()
 
         stage = await create_new_stage_async()
@@ -1210,11 +1211,13 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
             )
 
     async def test_invalid_representation_type(self):
+        """Test that an invalid obstacle representation type raise a ValueError."""
         ObstacleRepresentation("sphere")
         with self.assertRaises(ValueError):
             ObstacleRepresentation("not_a_type")
 
     async def test_shape_level_configuration_overrides(self):
+        """Test shape-level configuration overrides for obstacle strategy."""
         obstacle_strategy = ObstacleStrategy()
 
         await create_new_stage_async()

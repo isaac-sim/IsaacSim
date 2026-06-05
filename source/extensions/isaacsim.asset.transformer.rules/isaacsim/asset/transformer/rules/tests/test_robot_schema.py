@@ -1,10 +1,12 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
+#
 # http://www.apache.org/licenses/LICENSE-2.0
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -60,7 +62,7 @@ _JOINT_PATHS = [
 class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
     """Async tests for RobotSchemaRule."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Create a temporary test environment and load the base stage."""
         self._tmpdir = tempfile.mkdtemp()
         self._setup_test_structure()
@@ -68,7 +70,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
         self.stage = Usd.Stage.Open(self._base_usd_path)
         self.log = None
 
-    def _setup_test_structure(self):
+    def _setup_test_structure(self) -> None:
         """Populate the temporary payloads directory for tests."""
         # Create payloads directory with a flattened base layer
         # Copy the payloads directory from the UR10E_INTERFACE_USD to the temp directory
@@ -88,7 +90,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
             base_layer.subLayerPaths = sublayers
             base_layer.Save()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up the temporary directory or persist diagnostics."""
         if self._success:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
@@ -104,6 +106,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             Dictionary of parameter values.
+
         """
         params = _DEFAULT_PARAMS.copy()
         params.update(overrides)
@@ -118,6 +121,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             Configured RobotSchemaRule instance.
+
         """
         params = self._get_params(**param_overrides)
         return RobotSchemaRule(
@@ -135,6 +139,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             Absolute output path for the robot schema file.
+
         """
         name = stage_name or _DEFAULT_PARAMS["stage_name"]
         return os.path.join(self._tmpdir, "payloads", name)
@@ -144,6 +149,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
 
         Args:
             rule: Rule instance to execute.
+
         """
         rule.process_rule()
         self.log = rule.get_operation_log()
@@ -157,6 +163,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             Opened output layer.
+
         """
         output_path = self._get_output_path(stage_name)
         output_layer = Sdf.Layer.FindOrOpen(output_path)
@@ -172,6 +179,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             List of applied schema tokens.
+
         """
         prim_spec = layer.GetPrimAtPath(prim_path)
         if not prim_spec:
@@ -191,6 +199,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             True if the schema token is present.
+
         """
         schemas = self._get_api_schemas(layer, prim_path)
         return any(schema_name in str(item) for item in schemas)
@@ -205,6 +214,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             List of relationship target paths.
+
         """
         prim_spec = layer.GetPrimAtPath(prim_path)
         if not prim_spec:
@@ -223,6 +233,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             True if any log line contains the substring.
+
         """
         if case_sensitive:
             return any(substring in msg for msg in self.log)
@@ -236,12 +247,13 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
 
         Returns:
             Executed RobotSchemaRule instance.
+
         """
         rule = self._create_rule(self.stage, **param_overrides)
         self._run_rule(rule)
         return rule
 
-    async def test_get_configuration_parameters(self):
+    async def test_get_configuration_parameters(self) -> None:
         """Verify configuration parameters are exposed."""
         rule = self._create_rule(self.stage)
 
@@ -256,13 +268,13 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
         self.assertIn("sublayer", param_names)
         self._success = True
 
-    async def test_process_rule_adds_affected_stage(self):
+    async def test_process_rule_adds_affected_stage(self) -> None:
         """Verify affected stages are recorded."""
         rule = self._run_default_rule()
         self.assertGreater(len(rule.get_affected_stages()), 0)
         self._success = True
 
-    async def test_process_rule_applies_joint_api_to_joints(self):
+    async def test_process_rule_applies_joint_api_to_joints(self) -> None:
         """Verify joint API schemas are applied to joint prims."""
         self._run_default_rule()
         output_layer = self._get_output_layer()
@@ -270,7 +282,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(found_joint_api)
         self._success = True
 
-    async def test_process_rule_applies_link_api_to_links(self):
+    async def test_process_rule_applies_link_api_to_links(self) -> None:
         """Verify link API schemas are applied to link prims."""
         self._run_default_rule()
         output_layer = self._get_output_layer()
@@ -278,7 +290,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(found_link_api)
         self._success = True
 
-    async def test_process_rule_applies_robot_api(self):
+    async def test_process_rule_applies_robot_api(self) -> None:
         """Verify robot API schema is applied to the root prim."""
         self._run_default_rule()
         self.assertTrue(os.path.exists(self._get_output_path()))
@@ -286,26 +298,26 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(self._has_api_schema(output_layer, "/ur10e", "IsaacRobotAPI"))
         self._success = True
 
-    async def test_process_rule_detects_root_link(self):
+    async def test_process_rule_detects_root_link(self) -> None:
         """Verify root link detection logs a message."""
         self._run_default_rule()
         self.assertTrue(self._log_contains("root link", case_sensitive=False))
         self._success = True
 
-    async def test_process_rule_invalid_prim_path_skips(self):
+    async def test_process_rule_invalid_prim_path_skips(self) -> None:
         """Verify invalid prim path causes the rule to skip."""
         self._run_default_rule(prim_path="/nonexistent/prim")
         self.assertTrue(self._log_contains("skipped", case_sensitive=False))
         self._success = True
 
-    async def test_process_rule_logs_completion(self):
+    async def test_process_rule_logs_completion(self) -> None:
         """Verify start and completion logs are recorded."""
         self._run_default_rule()
         self.assertTrue(self._log_contains("RobotSchemaRule start"))
         self.assertTrue(self._log_contains("RobotSchemaRule completed"))
         self._success = True
 
-    async def test_process_rule_populates_links_and_joints(self):
+    async def test_process_rule_populates_links_and_joints(self) -> None:
         """Verify robot link and joint relationships are populated."""
         self._run_default_rule()
         output_layer = self._get_output_layer()
@@ -324,7 +336,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
         self.assertEqual(joint_targets, expected_joints)
         self._success = True
 
-    async def test_process_rule_returns_none(self):
+    async def test_process_rule_returns_none(self) -> None:
         """Verify process_rule returns None."""
         rule = self._create_rule(self.stage)
         result = rule.process_rule()
@@ -332,13 +344,13 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
         self.assertIsNone(result)
         self._success = True
 
-    async def test_process_rule_uses_default_prim_when_no_prim_path(self):
+    async def test_process_rule_uses_default_prim_when_no_prim_path(self) -> None:
         """Verify default prim is used when prim_path is None."""
         self._run_default_rule(prim_path=None)
         self.assertTrue(self._log_contains("/ur10e"))
         self._success = True
 
-    async def test_process_rule_with_add_sites_disabled(self):
+    async def test_process_rule_with_add_sites_disabled(self) -> None:
         """Verify sites are not added when add_sites is False."""
         self._run_default_rule(add_sites=False)
         self.assertTrue(self._log_contains("add_sites=False"))
@@ -349,7 +361,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
         self.assertEqual(link_targets, expected_links)
         self._success = True
 
-    async def test_process_rule_with_add_sites_enabled(self):
+    async def test_process_rule_with_add_sites_enabled(self) -> None:
         """Verify sites are added when add_sites is True."""
         self._run_default_rule(add_sites=True)
         self.assertTrue(self._log_contains("add_sites=True"))
@@ -373,20 +385,20 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
         self.assertEqual(link_targets, expected_links)
         self._success = True
 
-    async def test_process_rule_with_custom_stage_name(self):
+    async def test_process_rule_with_custom_stage_name(self) -> None:
         """Verify custom stage name output is created."""
         custom_stage_name = "custom_robot.usda"
         self._run_default_rule(stage_name=custom_stage_name)
         self.assertTrue(os.path.exists(self._get_output_path(custom_stage_name)))
         self._success = True
 
-    async def test_process_rule_with_explicit_prim_path(self):
+    async def test_process_rule_with_explicit_prim_path(self) -> None:
         """Verify explicit prim path is respected."""
         self._run_default_rule(prim_path="/ur10e")
         self.assertTrue(self._log_contains("prim=/ur10e"))
         self._success = True
 
-    async def test_process_rule_with_sites_last(self):
+    async def test_process_rule_with_sites_last(self) -> None:
         """Verify sites_last orders sites after links."""
         self._run_default_rule(add_sites=True, sites_last=True)
 
@@ -403,7 +415,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(self._log_contains("sites_last=True"))
         self._success = True
 
-    async def test_process_rule_sublayer_path_is_relative_forward_slash(self):
+    async def test_process_rule_sublayer_path_is_relative_forward_slash(self) -> None:
         """Verify the destination layer is added as a relative forward-slash sublayer path.
 
         Regression test for Windows where os.path produces backslash paths and
@@ -429,7 +441,7 @@ class TestRobotSchemaRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(self._has_api_schema(output_layer, "/ur10e", "IsaacRobotAPI"))
         self._success = True
 
-    async def test_process_rule_update_deprecated_schemas(self):
+    async def test_process_rule_update_deprecated_schemas(self) -> None:
         """Verify deprecated schemas are updated and reordered."""
         custom_stage_name = "robot.usda"
         self._run_default_rule(stage_name=custom_stage_name, update_deprecated_schemas=True)

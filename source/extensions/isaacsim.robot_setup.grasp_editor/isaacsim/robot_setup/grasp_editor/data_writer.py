@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
 # limitations under the License.
 
 """Data writer for managing grasp data in the Isaac Grasp format."""
-
 
 from collections import OrderedDict
 
@@ -41,7 +40,7 @@ class DataWriter:
         rb_frame_name: Name of the rigid body frame that serves as the object reference frame.
     """
 
-    def __init__(self, gripper_frame_name, rb_frame_name):
+    def __init__(self, gripper_frame_name: str, rb_frame_name: str):
         self.data = OrderedDict()
         self.data["format"] = "isaac_grasp"
         self.data["format_version"] = 1.0
@@ -167,7 +166,7 @@ class DataWriter:
 
         return ""
 
-    def write_grasp_to_file(self, results: GraspTestResults, confidence: float, file_path: str):
+    def write_grasp_to_file(self, results: GraspTestResults, confidence: float, file_path: str) -> None:
         """Writes grasp data to a YAML file.
 
         Args:
@@ -182,7 +181,7 @@ class DataWriter:
         with open(file_path, "a") as f:
             self._write_grasp(grasp_name, f)
 
-    def _write_grasp(self, k: str, f):
+    def _write_grasp(self, k: str, f: object) -> None:
         """Writes a single grasp entry to an open file handle.
 
         Args:

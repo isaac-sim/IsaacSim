@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -52,6 +52,7 @@ includedirs {
     "%{root}/source/extensions/isaacsim.core.nodes/include",
     "%{kit_sdk_bin_dir}/dev/fabric/include/",
     "%{root}/_build/target-deps/python/include",
+    "%{root}/source/extensions/isaacsim.robot.schema/include",
 }
 libdirs {
     "%{root}/_build/target-deps/usd/%{cfg.buildcfg}/lib",
@@ -64,6 +65,7 @@ links {
 }
 
 extra_usd_libs = { "usdGeom", "usdPhysics", "ts" }
+
 
 -- Begin OpenUSD
 add_usd(extra_usd_libs)

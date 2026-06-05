@@ -1,5 +1,78 @@
 # Changelog
 
+## [1.9.1] - 2026-05-14
+### Changed
+- Add missing type annotations on `ROS2TestCase` methods and replace a bare `except` in viewport-ready setup
+
+## [1.9.0] - 2026-05-07
+### Fixed
+- Downgraded bundled Fast-RTPS from 2.6.11 to 2.6.10 in the Humble nv_ros2 linux packages to avoid a regression introduced upstream in 2.6.11.
+
+## [1.8.6] - 2026-04-28
+### Changed
+- `wait_for_publishers_on_topic` and `wait_for_subscribers_on_topic` now include the last-observed endpoint count in their timeout failure messages to aid flake diagnosis
+
+### Fixed
+- Make `Ros2TestBase` use the sourced distro so the test loads the same backend the plugin already initialized.
+
+## [1.8.5] - 2026-04-28
+### Fixed
+- `read_camera_info()` ignored render product resolution for `opencvPinhole`/`opencvFisheye` lens models, publishing stale `CameraInfo` when the render product was retargeted to a different resolution than the authored `opencv*:imageSize`. Apply the render-product resolution and scale `fx`, `fy`, `cx`, `cy` accordingly.
+
+## [1.8.4] - 2026-04-28
+### Fixed
+- Raise error if `/exts/omni.replicator.srtx/enabled=true` on non-Linux platforms.
+
+## [1.8.3] - 2026-04-27
+### Removed
+- Remove the `omni.isaac.ml_archive` and `isaacsim.robot.wheeled_robots` dependencies
+
+## [1.8.2] - 2026-04-24
+### Fixed
+- Fix joint state publisher writing no position/velocity data when effort retrieval fails
+
+## [1.8.1] - 2026-04-22
+### Added
+- Added `wait_for_publishers_on_topic` and `wait_for_subscribers_on_topic` helpers to `ROS2TestCase` for waiting on DDS endpoint discovery before asserting on message delivery. Uses wall-clock timeout to handle platforms with no frame rate limiter.
+
+## [1.8.0] - 2026-04-21
+### Changed
+- Migrated `camera_info_utils` from deprecated `isaacsim.sensors.camera` to `isaacsim.sensors.experimental.rtx` APIs
+- Camera info now reads OpenCV distortion coefficients from `OmniLensDistortion` schemata (`OmniLensDistortionOpenCvPinholeAPI`, `OmniLensDistortionOpenCvFisheyeAPI`)
+- Removed deprecated `isaacsim.sensors.camera` and `isaacsim.sensors.rtx` dependencies; added `isaacsim.sensors.experimental.rtx` and `isaacsim.sensors.rtx.nodes`
+- Removed legacy physical distortion model support (`physicalDistortionModel`, `physicalDistortionCoefficients`)
+- Refactored `test_camera_info_utils.py` to use `RtxCamera` and `OmniLensDistortion` schemas
+
+## [1.7.4] - 2026-04-20
+### Fixed
+- Remove unused isaacsim.sensors.physx dependency
+
+## [1.7.3] - 2026-04-17
+### Changed
+- Updated internal ROS 2 libraries to support latest simulation interfaces versions (v1.4.0 Humble and v1.5.0 Jazzy)
+
+## [1.7.2] - 2026-04-15
+### Fixed
+- Fixed handling for fixed-size array types in `ROS2DynamicMessage.cpp` when the input array length differs from the expected size
+
+## [1.7.1] - 2026-04-03
+### Fixed
+- Added explicit import of `_ros2_core` bindings module for stubgen discoverability
+- Added Doxygen `@cond` to hide internal anonymous namespace in `Ros2Distro.h`
+
+## [1.7.0] - 2026-04-01
+### Changed
+- Removed deprecated `isaacsim.core.api` and `isaacsim.core.utils` dependencies
+- Replaced `render_product_utils.py` with `ViewportManager` from `isaacsim.core.rendering_manager`
+
+## [1.6.1] - 2026-03-30
+### Changed
+- Added `LibraryLoader.h` include to `Ros2Types.h` for SRTX integration support
+
+## [1.6.0] - 2026-03-17
+### Changed
+- Updated documentation with AI agent.
+
 ## [1.5.1] - 2026-03-09
 ### Fixed
 - Hardened subprocess call to avoid shell=True with string concatenation

@@ -1,5 +1,5 @@
 [package]
-version = "1.9.0"
+version = "1.11.4"
 category = "SyntheticData"
 title = "Isaac Sim Replicator Examples"
 description="The extension provides various replicator snippets and examples for Synthetic Data Generation (SDG) workflows."
@@ -30,7 +30,6 @@ exclude = ["Ogn*Database.py"]
 [[test]]
 name = "startup"
 dependencies = [
-    "omni.isaac.ml_archive",
 ]
 args = [
     "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
@@ -45,7 +44,6 @@ timeout = 900
 dependencies = [
     "isaacsim.examples.interactive",
     "isaacsim.test.utils",
-    "omni.isaac.ml_archive",
 ]
 args = [
     "--enable",
@@ -88,8 +86,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 
@@ -102,7 +102,6 @@ timeout = 900
 dependencies = [
     "isaacsim.examples.interactive",
     "isaacsim.test.utils",
-    "omni.isaac.ml_archive",
 ]
 args = [
     "--enable",
@@ -145,8 +144,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 
@@ -167,7 +168,6 @@ dependencies = [
     "isaacsim.examples.interactive",
     "isaacsim.test.utils",
     "isaacsim.util.debug_draw",
-    "omni.isaac.ml_archive",
 ]
 args = [
     "--enable",
@@ -210,8 +210,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 
@@ -225,7 +227,6 @@ timeout = 900
 dependencies = [
     "isaacsim.examples.interactive",
     "isaacsim.test.utils",
-    "omni.isaac.ml_archive",
 ]
 args = [
     "--enable",
@@ -268,8 +269,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 
@@ -286,7 +289,6 @@ timeout = 900
 dependencies = [
     "isaacsim.examples.interactive",
     "isaacsim.test.utils",
-    "omni.isaac.ml_archive",
 ]
 args = [
     "--enable",
@@ -329,8 +331,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 
@@ -341,6 +345,7 @@ pythonTests.include = [
 ]
 timeout = 900
 dependencies = [
+    "isaacsim.cortex.examples",
     "isaacsim.examples.interactive",
     "isaacsim.test.utils",
     "omni.isaac.ml_archive",
@@ -386,8 +391,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 

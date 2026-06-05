@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,7 +28,6 @@ from itertools import cycle
 import carb.eventdispatcher
 import carb.settings
 import omni.client
-import omni.kit.app
 import omni.replicator.core as rep
 import omni.timeline
 import omni.usd
@@ -37,15 +36,29 @@ from isaacsim.core.utils.stage import create_new_stage
 from isaacsim.storage.native import get_assets_root_path
 from pxr import Gf, UsdGeom
 
-ENV_URLS = [
+DEFAULT_ENV_URLS = [
     "/Isaac/Environments/Grid/default_environment.usd",
     "/Isaac/Environments/Simple_Warehouse/warehouse.usd",
     "/Isaac/Environments/Grid/gridroom_black.usd",
+    None,
 ]
+
+
+def _parse_env_url_arg(env_url: str) -> str | None:
+    """Parse CLI environment arguments, where None/null selects the generic environment."""
+    return None if env_url.lower() in {"none", "null"} else env_url
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num_frames", type=int, default=9, help="The number of frames to capture")
 parser.add_argument("--env_interval", type=int, default=3, help="Interval at which to change the environments")
+parser.add_argument(
+    "--env_urls",
+    nargs="+",
+    type=_parse_env_url_arg,
+    default=None,
+    help="Replace DEFAULT_ENV_URLS entirely. Use None for the generic environment.",
+)
 parser.add_argument("--use_temp_rp", action="store_true", help="Create and destroy render products for each SDG frame")
 args, unknown = parser.parse_known_args()
 
@@ -58,6 +71,7 @@ class NavSDGDemo:
     PROPS_URL = "/Isaac/Props/YCB/Axis_Aligned_Physics"
     LEFT_CAMERA_REL_PATH = "sensors/front_hawk/left/camera_left"
     RIGHT_CAMERA_REL_PATH = "sensors/front_hawk/right/camera_right"
+    ENVIRONMENT_SCOPE_PATH = "/Environment"
 
     def __init__(self) -> None:
         """Initialize the navigation SDG demo with default values."""
@@ -85,7 +99,7 @@ class NavSDGDemo:
         self,
         num_frames: int = 10,
         out_dir: str | None = None,
-        env_urls: list[str] = [],
+        env_urls: list[str | None] | None = None,
         env_interval: int = 3,
         use_temp_rp: bool = False,
         seed: int | None = None,
@@ -95,9 +109,10 @@ class NavSDGDemo:
         if seed is not None:
             rep.set_global_seed(seed)
             random.seed(seed)
+        selected_env_urls = env_urls if env_urls is not None else DEFAULT_ENV_URLS
         self._num_frames = num_frames
         self._out_dir = out_dir if out_dir is not None else os.path.join(os.getcwd(), "_out_nav_sdg_demo")
-        self._cycled_env_urls = cycle(env_urls)
+        self._cycled_env_urls = cycle(selected_env_urls)
         self._env_interval = env_interval
         self._use_temp_rp = use_temp_rp
         self._frame_counter = 0
@@ -152,13 +167,13 @@ class NavSDGDemo:
         """Create a new stage and load environment, robot, dolly, light, and props."""
         create_new_stage()
         self._stage = omni.usd.get_context().get_stage()
+        assets_root_path = get_assets_root_path()
         rep.functional.physics.create_physics_scene(
             "/PhysicsScene", enableCCD=True, broadphaseType="MBP", enableGPUDynamics=False
         )
 
         # Environment
-        assets_root_path = get_assets_root_path()
-        rep.functional.create.reference(usd_path=assets_root_path + next(self._cycled_env_urls), name="Environment")
+        self._load_environment(next(self._cycled_env_urls))
 
         # Nova Carter
         rep.functional.create.scope(name="NavWorld")
@@ -261,13 +276,13 @@ class NavSDGDemo:
         # Set DLSS to Quality mode (2) for best SDG results , options: 0 (Performance), 1 (Balanced), 2 (Quality), 3 (Auto)
         carb.settings.get_settings().set("rtx/post/dlss/execMode", 2)
 
-        # Set camera sensors fStop to 0.0 to get well lit sharp images
-        left_camera_path = self._carter_chassis.GetPath().AppendPath(self.LEFT_CAMERA_REL_PATH)
-        left_camera_prim = self._stage.GetPrimAtPath(left_camera_path)
-        left_camera_prim.GetAttribute("fStop").Set(0.0)
-        right_camera_path = self._carter_chassis.GetPath().AppendPath(self.RIGHT_CAMERA_REL_PATH)
-        right_camera_prim = self._stage.GetPrimAtPath(right_camera_path)
-        right_camera_prim.GetAttribute("fStop").Set(0.0)
+        # fStop=0 for well-lit sharp images; tickRate=0 forces autotrigger so the sensor
+        # cameras stay in sync with rep.orchestrator.step_async under multi-tick rendering.
+        for rel_path in (self.LEFT_CAMERA_REL_PATH, self.RIGHT_CAMERA_REL_PATH):
+            camera_prim = self._stage.GetPrimAtPath(self._carter_chassis.GetPath().AppendPath(rel_path))
+            camera_prim.GetAttribute("fStop").Set(0.0)
+            if camera_prim.HasAttribute("omni:sensor:tickRate"):
+                camera_prim.GetAttribute("omni:sensor:tickRate").Set(0.0)
 
         backend = rep.backends.get("DiskBackend")
         backend.initialize(output_dir=self._out_dir)
@@ -340,11 +355,26 @@ class NavSDGDemo:
 
     def _load_next_env(self) -> None:
         """Replace current environment with the next one from the cycle."""
-        if self._stage.GetPrimAtPath("/Environment"):
-            omni.kit.commands.execute("DeletePrimsCommand", paths=["/Environment"])
-        assets_root_path = get_assets_root_path()
+        self._load_environment(next(self._cycled_env_urls))
+
+    def _load_environment(self, env_url: str | None) -> None:
+        """Load the next environment under a shared scope."""
+        if self._stage.GetPrimAtPath(self.ENVIRONMENT_SCOPE_PATH):
+            omni.kit.commands.execute("DeletePrimsCommand", paths=[self.ENVIRONMENT_SCOPE_PATH])
+
         rep.functional.create.scope(name="Environment")
-        rep.functional.create.reference(usd_path=assets_root_path + next(self._cycled_env_urls), name="Environment")
+        if env_url:
+            assets_root_path = get_assets_root_path()
+            rep.functional.create.reference(
+                usd_path=assets_root_path + env_url, parent=self.ENVIRONMENT_SCOPE_PATH, name="Scene"
+            )
+            return
+
+        rep.functional.create.dome_light(intensity=500, parent=self.ENVIRONMENT_SCOPE_PATH, name="DomeLight")
+        ground = rep.functional.create.plane(
+            parent=self.ENVIRONMENT_SCOPE_PATH, name="GroundPlane", scale=(100, 100, 1)
+        )
+        rep.functional.physics.apply_collider(ground)
 
     def _on_sdg_done(self, task) -> None:
         """Callback invoked when async SDG step completes."""
@@ -399,11 +429,12 @@ class NavSDGDemo:
 
 
 out_dir = os.path.join(os.getcwd(), "_out_nav_sdg_demo", "")
+selected_env_urls = args.env_urls if args.env_urls is not None else DEFAULT_ENV_URLS
 nav_demo = NavSDGDemo()
 nav_demo.start(
     num_frames=args.num_frames,
     out_dir=out_dir,
-    env_urls=ENV_URLS,
+    env_urls=selected_env_urls,
     env_interval=args.env_interval,
     use_temp_rp=args.use_temp_rp,
     seed=22,

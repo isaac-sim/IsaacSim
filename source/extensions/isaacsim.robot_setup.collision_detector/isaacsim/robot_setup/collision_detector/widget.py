@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Collision detector widget and supporting data/view classes."""
 
 __all__ = ["CollisionDetectorWidget", "deregister_selection_groups"]
@@ -217,7 +218,7 @@ class CollisionListModel(ui.AbstractItemModel):
             column_id: Column index to sort by.
         """
 
-        def sort_val(item: RigidBodyPairItem):
+        def sort_val(item: RigidBodyPairItem) -> str | int:
             if column_id == 0:
                 return item.data.body_a_name.lower()
             elif column_id == 1:
@@ -1515,14 +1516,18 @@ class CollisionDetectorWidget:
     def on_visibility_changed(self, visible: bool) -> None:
         """Respond to the owning window's visibility changes.
 
-        Clears viewport overlays when the widget becomes hidden.
+        Clears viewport overlays when the widget becomes hidden. Removes listeners when hidden and restores them when shown.
 
         Args:
             visible: Whether the widget is now visible.
         """
         if not visible:
+            self._deregister_usd_notice_listener()
             self._clear_viewport_overlay()
             self._restore_selection_outline()
+        else:
+            self._register_usd_notice_listener()
+            self._refresh_robot_list()
 
     def destroy(self) -> None:
         """Release all resources, subscriptions, and UI references."""

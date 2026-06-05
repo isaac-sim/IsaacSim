@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2018-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2018-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,5 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# there is no extension, so we just import bindings
-from .impl import *
+from .bindings import _surface_gripper  # noqa: F401
+from .impl import Extension  # noqa: F401 (loaded for Kit extension discovery)
+from .impl import GripperView, create_surface_gripper
+
+__all__ = ["GripperView", "create_surface_gripper"]

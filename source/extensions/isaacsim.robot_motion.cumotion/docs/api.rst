@@ -1,8 +1,5 @@
-API
-===
-
 Python API
-----------
+==========
 
 .. Summary
 
@@ -46,12 +43,12 @@ Python API
 .. autosummary::
     :nosignatures:
 
-    isaacsim.robot_motion.cumotion.impl.utils.isaac_sim_to_cumotion_pose
-    isaacsim.robot_motion.cumotion.impl.utils.isaac_sim_to_cumotion_translation
-    isaacsim.robot_motion.cumotion.impl.utils.isaac_sim_to_cumotion_rotation
-    isaacsim.robot_motion.cumotion.impl.utils.cumotion_to_isaac_sim_pose
-    isaacsim.robot_motion.cumotion.impl.utils.cumotion_to_isaac_sim_translation
-    isaacsim.robot_motion.cumotion.impl.utils.cumotion_to_isaac_sim_rotation
+    impl.utils.isaac_sim_to_cumotion_pose
+    impl.utils.isaac_sim_to_cumotion_translation
+    impl.utils.isaac_sim_to_cumotion_rotation
+    impl.utils.cumotion_to_isaac_sim_pose
+    impl.utils.cumotion_to_isaac_sim_translation
+    impl.utils.cumotion_to_isaac_sim_rotation
 
 |
 
@@ -113,9 +110,6 @@ Trajectory Generation
     :undoc-members:
     :inherited-members:
     :show-inheritance:
-
-.. note::
-   **Windows Support**: The :class:`TrajectoryOptimizer` is not currently available on Windows.
 
 .. autoclass:: isaacsim.robot_motion.cumotion.TrajectoryOptimizer
     :members:

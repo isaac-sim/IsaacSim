@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Demonstrate batch asset conversion to USD format."""
+
 import argparse
 import asyncio
 import os
@@ -21,6 +23,7 @@ from isaacsim import SimulationApp
 
 
 async def convert(in_file, out_file, load_materials=False):
+    """Convert an asset file to USD format asynchronously."""
     # This import causes conflicts when global
     import omni.kit.asset_converter
 
@@ -52,6 +55,7 @@ async def convert(in_file, out_file, load_materials=False):
 
 
 def asset_convert(args):
+    """Convert all supported assets in the specified folders to USD."""
     supported_file_formats = ["stl", "obj", "fbx"]
     for folder in args.folders:
         local_asset_output = folder + "_converted"
@@ -60,7 +64,7 @@ def asset_convert(args):
     for folder in args.folders:
         print(f"\nConverting folder {folder}...")
 
-        (result, models) = omni.client.list(folder)
+        result, models = omni.client.list(folder)
         for i, entry in enumerate(models):
             if i >= args.max_models:
                 print(f"max models ({args.max_models}) reached, exiting conversion")
@@ -86,7 +90,7 @@ if __name__ == "__main__":
     kit = SimulationApp()
 
     import omni
-    from isaacsim.core.utils.extensions import enable_extension
+    from isaacsim.core.experimental.utils.app import enable_extension
 
     enable_extension("omni.kit.asset_converter")
 

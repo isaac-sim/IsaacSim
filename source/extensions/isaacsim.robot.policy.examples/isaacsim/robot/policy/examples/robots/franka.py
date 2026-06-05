@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,6 @@
 
 """Example implementations of policies for Franka robots."""
 
-
 import isaacsim.core.experimental.utils.transform as transform_utils
 import warp as wp
 from isaacsim.core.deprecation_manager import import_module
@@ -25,8 +24,6 @@ from isaacsim.core.experimental.utils.backend import use_backend
 # from isaacsim.core.utils.transformations import get_world_pose_from_relative
 from isaacsim.robot.policy.examples.controllers import PolicyController
 from isaacsim.storage.native import get_assets_root_path
-
-torch = import_module("torch")
 
 
 class FrankaOpenDrawerPolicy(PolicyController):
@@ -50,17 +47,7 @@ class FrankaOpenDrawerPolicy(PolicyController):
         position: list[float] | None = None,
         orientation: list[float] | None = None,
     ):
-        """
-        Initialize franka robot and import flat terrain policy.
 
-        Args:
-            prim_path: The prim path of the robot on the stage
-            cabinet: The cabinet articulation
-            root_path: The path to the articulation root of the robot
-            usd_path: The robot usd filepath in the directory
-            position: The position of the robot
-            orientation: The orientation of the robot
-        """
         assets_root_path = get_assets_root_path()
 
         policy_path = assets_root_path + "/Isaac/Samples/Policies/Franka_Policies/Open_Drawer_Policy/"
@@ -74,8 +61,9 @@ class FrankaOpenDrawerPolicy(PolicyController):
             policy_path + "env.yaml",
         )
 
-        self._action_scale = 1.0
+        torch = import_module("torch")
         self._previous_action = torch.zeros(8)
+        self._action_scale = 1.0
         self._indices = wp.array([0, 1, 2, 3, 4, 5, 6, 7], dtype=wp.int32)  # index 8 is a mimic joint
         self._policy_counter = 0
 
@@ -123,7 +111,7 @@ class FrankaOpenDrawerPolicy(PolicyController):
                 - 0.0
                 - 0.1034
         """
-
+        torch = import_module("torch")
         with use_backend("usdrt"):
             # Get world poses of the links
             drawer_world_pos, drawer_world_orient = self.drawer_handle_top_prim.get_world_poses()
@@ -172,8 +160,9 @@ class FrankaOpenDrawerPolicy(PolicyController):
 
         return obs
 
-    def forward(self, dt):
+    def forward(self, dt: float) -> None:
         """Computes and applies joint position targets for the Franka arm to execute the drawer opening task.
+
         The control runs at a decimated rate and applies position control to the first 8 joints
         (excluding the mimic joint). Actions are scaled and added to the default pose.
 
@@ -192,14 +181,12 @@ class FrankaOpenDrawerPolicy(PolicyController):
 
         self._policy_counter += 1
 
-    def initialize(self, physics_sim_view=None):
+    def initialize(self):
         """Initializes the Franka arm articulation with position control mode and configures solver parameters.
-        Sets up drawer link indices and specific physics solver settings for stable manipulation.
 
-        Args:
-            physics_sim_view: The physics simulation view
+        Sets up drawer link indices and specific physics solver settings for stable manipulation.
         """
-        super().initialize(physics_sim_view=physics_sim_view, control_mode="position", set_articulation_props=False)
+        super().initialize(control_mode="position", set_articulation_props=False)
 
         self.drawer_link_idx = self.cabinet.get_dof_indices("drawer_top_joint")
 

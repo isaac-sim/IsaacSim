@@ -1,9 +1,14 @@
 {
     "isaacsim.ros2.bridge.ROS2PublishLaserScan": {
-        "version": 2,
+        "version": 3,
         "icon": "icons/isaac-sim.svg",
         "description": [
-            "This node publishes LiDAR scans as a ROS2 LaserScan message"
+            "This node publishes LiDAR scans as a ROS2 LaserScan message. ",
+            "It accepts depth data from either an RTX lidar (via the GMO dataPtr path) or a physics raycast sensor ",
+            "(via the linearDepthData array path). When using a physics raycast sensor, the sensor must be configured ",
+            "to cast a full horizontal sweep of rays so that every frame produces a complete scan; partial scans will ",
+            "be published as-is. When intensitiesData is not connected, binary hit/miss intensities (255/0) are ",
+            "synthesized from the depth data."
         ],
         "metadata": {
             "uiName": "ROS2 Publish Laser Scan"
@@ -51,6 +56,16 @@
                 "uiName": "Timestamp",
                 "default": 0.0
             },
+            "dataPtr": {
+                "type": "uint64",
+                "description": "Pointer to GenericModelOutput buffer. When non-zero, the node processes the GMO buffer directly and linearDepthData/intensitiesData inputs are ignored.",
+                "default": 0
+            },
+            "bufferSize": {
+                "type": "uint64",
+                "description": "Size of the GenericModelOutput buffer in bytes",
+                "default": 0
+            },
             "horizontalFov": {
                 "type": "float",
                 "description": "Horizontal Field of View (deg)",
@@ -79,7 +94,7 @@
             },
             "intensitiesData":{
                 "type": "uchar[]",
-                "description": "Intensity measurements from full scan, ordered by increasing azimuth",
+                "description": "Intensity measurements from full scan, ordered by increasing azimuth. Optional: when unconnected or empty, binary hit/miss intensities (255/0) are synthesized from linearDepthData.",
                 "memoryType": "cpu",
                 "default": []
             },

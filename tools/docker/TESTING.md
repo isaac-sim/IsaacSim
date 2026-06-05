@@ -38,7 +38,7 @@ docker compose -p isim -f docker-compose.yml up --build -d
 To use a prebuilt NGC image instead of building locally:
 
 ```bash
-ISAAC_SIM_IMAGE=nvcr.io/nvidia/isaac-sim:6.0.0-dev2 docker compose -p isim -f docker-compose.yml up --build -d
+ISAAC_SIM_IMAGE=nvcr.io/nvidia/isaac-sim:6.0.0 docker compose -p isim -f docker-compose.yml up --build -d
 ```
 
 ## 2. Check status and get the web viewer URL

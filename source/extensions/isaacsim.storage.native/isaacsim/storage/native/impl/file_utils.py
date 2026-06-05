@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""File utility functions for USD asset discovery, validation, and path operations."""
+
 import asyncio
 import concurrent.futures
 import os
@@ -22,12 +25,14 @@ from pxr import Sdf, UsdUtils
 
 from ..nucleus import get_assets_root_path, get_assets_root_path_async
 
+_URL_SCHEMES = ("omniverse://", "https://", "http://", "ftp://", "sftp://")
+
 
 def path_join(base: str, name: str) -> str:
-    """Join two path components intelligently handling Omniverse URLs.
+    """Join two path components intelligently handling Omniverse URLs and remote URLs.
 
     Args:
-        base: Base path, can be local or Omniverse URL.
+        base: Base path, can be local or a URL (omniverse://, https://, file://, etc.).
         name: Path component to append to the base.
 
     Returns:
@@ -39,14 +44,17 @@ def path_join(base: str, name: str) -> str:
 
         >>> path_join("omniverse://server/folder", "file.usd")
         'omniverse://server/folder/file.usd'
+        >>> path_join("https://cdn.example.com/assets", "file.usd")
+        'https://cdn.example.com/assets/file.usd'
         >>> path_join("/local/path", "file.usd")
         '/local/path/file.usd'
     """
-    if base.startswith("omniverse://"):
+    if "://" in base:
+        name = name.replace("\\", "/")
         if name.startswith("./"):
             name = name[2:]
         while name.startswith("../"):
-            base = os.path.dirname(base)
+            base = base.rsplit("/", 1)[0]
             name = name[3:]
         if base.endswith("/"):
             base = base[:-1]
@@ -81,18 +89,14 @@ def is_local_path(path: str) -> bool:
 
     path = path.strip()
 
-    # Check for online URL schemes
-    online_schemes = ["omniverse://", "http://", "https://", "ftp://", "sftp://"]
-
-    for scheme in online_schemes:
-        if path.startswith(scheme):
-            return False
+    if any(path.startswith(scheme) for scheme in _URL_SCHEMES):
+        return False
 
     # Local paths (absolute or relative) are considered local
     return True
 
 
-def find_files_recursive(abs_path, filter_fn=lambda a: True):
+def find_files_recursive(abs_path: list, filter_fn: object = lambda a: True):
     """Recursively list all files under given path(s) that match the filter function.
 
     Args:
@@ -208,35 +212,37 @@ def find_filtered_files(
         current_path, current_depth = remaining_folders.pop()
 
         result, entries = omni.client.list(current_path)
-        if result == Result.OK:
-            for entry in entries:
-                entry_path = path_join(current_path, entry.relative_path)
+        if result != Result.OK:
+            carb.log_warn(f"Could not list path '{current_path}': {result}")
+            continue
+        for entry in entries:
+            entry_path = path_join(current_path, entry.relative_path)
 
-                # Check if it's a file (not a directory)
-                if (entry.flags & 4) == 0:  # 4 is the directory flag
-                    # Apply USD file validation and filtering
-                    if is_valid_usd_file(entry_path, filepath_excludes):
-                        # Apply pattern filters if provided
-                        if filter_patterns:
-                            if match_all:  # ALL patterns must match
-                                if all(pattern.search(entry_path) for pattern in compiled_patterns):
-                                    usd_files.add(entry_path)
-                            else:  # ANY pattern can match (default)
-                                if any(pattern.search(entry_path) for pattern in compiled_patterns):
-                                    usd_files.add(entry_path)
-                        else:
-                            # No pattern filters, just add valid USD file
-                            usd_files.add(entry_path)
+            # Check if it's a file (not a directory)
+            if (entry.flags & 4) == 0:  # 4 is the directory flag
+                # Apply USD file validation and filtering
+                if is_valid_usd_file(entry_path, filepath_excludes):
+                    # Apply pattern filters if provided
+                    if filter_patterns:
+                        if match_all:  # ALL patterns must match
+                            if all(pattern.search(entry_path) for pattern in compiled_patterns):
+                                usd_files.add(entry_path)
+                        else:  # ANY pattern can match (default)
+                            if any(pattern.search(entry_path) for pattern in compiled_patterns):
+                                usd_files.add(entry_path)
+                    else:
+                        # No pattern filters, just add valid USD file
+                        usd_files.add(entry_path)
 
-                # If it's a directory and we haven't exceeded max depth, add to queue
-                elif (entry.flags & 4) > 0:
-                    if max_depth is None or current_depth < max_depth:
-                        remaining_folders.append((entry_path, current_depth + 1))
+            # If it's a directory and we haven't exceeded max depth, add to queue
+            elif (entry.flags & 4) > 0:
+                if max_depth is None or current_depth < max_depth:
+                    remaining_folders.append((entry_path, current_depth + 1))
 
     return usd_files
 
 
-def get_stage_references(stage_path, resolve_relatives=True):
+def get_stage_references(stage_path: str, resolve_relatives: bool = True):
     """List all references in a USD stage.
 
     Args:
@@ -256,7 +262,7 @@ def get_stage_references(stage_path, resolve_relatives=True):
         >>> refs
         ['/path/to/material.usd', '/path/to/mesh.usd']
     """
-    (all_layers, all_assets, unresolved_paths) = UsdUtils.ComputeAllDependencies(stage_path)
+    all_layers, all_assets, unresolved_paths = UsdUtils.ComputeAllDependencies(stage_path)
     paths = []
 
     def add_path(path):
@@ -272,7 +278,7 @@ def get_stage_references(stage_path, resolve_relatives=True):
     return paths
 
 
-def is_absolute_path(path):
+def is_absolute_path(path: str):
     """Check if a path is absolute, including Omniverse URLs.
 
     Handles standard filesystem absolute paths as well as omniverse://,
@@ -367,7 +373,7 @@ def is_mdl_file(item: str) -> bool:
     return ext in [".mdl"]
 
 
-async def find_absolute_paths_in_usds(base_path):
+async def find_absolute_paths_in_usds(base_path: str):
     """Check for absolute paths in USD files.
 
     Recursively searches for USD files and identifies any absolute path references
@@ -435,7 +441,7 @@ def is_path_external(path: str, base_path: str) -> bool:
         raise Exception("Error comparing paths")
 
 
-async def find_external_references(base_path):
+async def find_external_references(base_path: str):
     """Check for external references in USD files.
 
     Recursively searches for USD files and identifies references that point
@@ -469,7 +475,7 @@ async def find_external_references(base_path):
     return abs_items
 
 
-async def count_asset_references(base_path):
+async def count_asset_references(base_path: str):
     """Get reference counts for all assets in a base path.
 
     Recursively searches for all files and counts how many times each file
@@ -507,7 +513,7 @@ async def count_asset_references(base_path):
     return items
 
 
-def find_missing_references(base_path):
+def find_missing_references(base_path: str):
     """Check for missing references in USD files.
 
     Recursively searches for USD files and prints any files that have
@@ -527,7 +533,7 @@ def find_missing_references(base_path):
     """
     items = {item: 0 for item in find_files_recursive(base_path, lambda item: is_valid_usd_file(item, []))}
     for item in items.keys():
-        (all_layers, all_assets, unresolved_paths) = UsdUtils.ComputeAllDependencies(item)
+        all_layers, all_assets, unresolved_paths = UsdUtils.ComputeAllDependencies(item)
         if unresolved_paths:
             print(item, unresolved_paths)
 
@@ -606,7 +612,7 @@ def layer_has_missing_references(layer_identifier: str) -> bool:
     return False
 
 
-def prim_spec_has_missing_references(prim_spec) -> bool:
+def prim_spec_has_missing_references(prim_spec: object) -> bool:
     """Check if a prim specification has any missing references.
 
     Checks all references in the prim specification's reference list and
@@ -646,7 +652,7 @@ def prim_spec_has_missing_references(prim_spec) -> bool:
     return False
 
 
-def prim_has_missing_references(prim) -> bool:
+def prim_has_missing_references(prim: object) -> bool:
     """Check if a prim has any missing references.
 
     Checks all prim specs in the prim's stack for missing references.
@@ -889,7 +895,6 @@ async def find_filtered_files_async(
     Returns:
         A set of absolute paths to USD files discovered during traversal.
     """
-
     # Get filtered USD files with depth limit in one pass
     loop = asyncio.get_event_loop()
     with concurrent.futures.ThreadPoolExecutor() as executor:

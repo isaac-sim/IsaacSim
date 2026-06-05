@@ -1,10 +1,12 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
+#
 # http://www.apache.org/licenses/LICENSE-2.0
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -36,19 +38,19 @@ _UR10E_INTERFACE_USD = os.path.join(_TEST_DATA_INTERFACE_DIR, "payloads", "base.
 class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
     """Async tests for InterfaceConnectionRule."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Create temporary payload structure for tests."""
         self._tmpdir = tempfile.mkdtemp()
         # Create payloads directory with base layer from UR10e
         self._setup_test_structure()
         self._success = False
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Remove temporary directory after successful tests."""
         if self._success:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
 
-    def _setup_test_structure(self):
+    def _setup_test_structure(self) -> None:
         """Create a payloads directory populated with test assets."""
         # Create payloads directory with a flattened base layer
         # Copy the payloads directory from the UR10E_INTERFACE_USD to the temp directory
@@ -60,7 +62,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
             self.fail(f"Payloads directory not found: {src_payloads_dir}")
         self._base_usd_path = os.path.join(self._tmpdir, "payloads", "base.usda")
 
-    async def test_get_configuration_parameters(self):
+    async def test_get_configuration_parameters(self) -> None:
         """Verify configuration parameters are exposed."""
         stage = Usd.Stage.Open(_UR10E_INTERFACE_USD)
         rule = InterfaceConnectionRule(
@@ -82,7 +84,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
         self.assertIn("default_variant_selections", param_names)
         self._success = True
 
-    async def test_process_rule_creates_interface_layer(self):
+    async def test_process_rule_creates_interface_layer(self) -> None:
         """Verify interface layer is created from base layer."""
         stage = Usd.Stage.Open(_UR10E_INTERFACE_USD)
 
@@ -110,7 +112,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
         self.assertEqual(interface_layer.defaultPrim, "ur10e")
         self._success = True
 
-    async def test_process_rule_no_base_layer_skips(self):
+    async def test_process_rule_no_base_layer_skips(self) -> None:
         """Verify rule skips when base layer is missing."""
         stage = Usd.Stage.Open(_UR10E_INTERFACE_USD)
 
@@ -133,7 +135,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(any("No referenced files exist" in msg for msg in log))
         self._success = True
 
-    async def test_process_rule_reference_connection(self):
+    async def test_process_rule_reference_connection(self) -> None:
         """Verify reference connection is authored on interface layer."""
         stage = Usd.Stage.Open(_UR10E_INTERFACE_USD)
 
@@ -160,7 +162,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(prim_spec.hasReferences)
         self._success = True
 
-    async def test_process_rule_payload_connection(self):
+    async def test_process_rule_payload_connection(self) -> None:
         """Verify payload connection is authored on interface layer."""
         stage = Usd.Stage.Open(_UR10E_INTERFACE_USD)
 
@@ -187,7 +189,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(prim_spec.hasPayloads)
         self._success = True
 
-    async def test_process_rule_sublayer_connection(self):
+    async def test_process_rule_sublayer_connection(self) -> None:
         """Verify sublayer connection adds sublayer path."""
         stage = Usd.Stage.Open(_UR10E_INTERFACE_USD)
 
@@ -212,7 +214,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(len(interface_layer.subLayerPaths) > 0)
         self._success = True
 
-    async def test_process_rule_derives_interface_name_from_input(self):
+    async def test_process_rule_derives_interface_name_from_input(self) -> None:
         """Verify interface name derives from input stage path."""
         stage = Usd.Stage.Open(_UR10E_INTERFACE_USD)
 
@@ -236,7 +238,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(os.path.exists(interface_path))
         self._success = True
 
-    async def test_process_rule_invalid_connection_type_fallback(self):
+    async def test_process_rule_invalid_connection_type_fallback(self) -> None:
         """Verify invalid connection type falls back to reference."""
         stage = Usd.Stage.Open(_UR10E_INTERFACE_USD)
 
@@ -266,7 +268,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(prim_spec.hasReferences)
         self._success = True
 
-    async def test_process_rule_generate_folder_variants(self):
+    async def test_process_rule_generate_folder_variants(self) -> None:
         """Verify folder variants are generated from payloads directory."""
         stage = Usd.Stage.Open(_UR10E_INTERFACE_USD)
 
@@ -299,7 +301,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(any("variant set" in msg.lower() for msg in log))
         self._success = True
 
-    async def test_process_rule_affected_stages(self):
+    async def test_process_rule_affected_stages(self) -> None:
         """Verify affected stages list is populated."""
         stage = Usd.Stage.Open(_UR10E_INTERFACE_USD)
 
@@ -322,7 +324,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(len(affected) >= 1)
         self._success = True
 
-    async def test_process_rule_logs_completion(self):
+    async def test_process_rule_logs_completion(self) -> None:
         """Verify completion log entries are recorded."""
         stage = Usd.Stage.Open(_UR10E_INTERFACE_USD)
 
@@ -346,7 +348,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(any("InterfaceConnectionRule completed" in msg for msg in log))
         self._success = True
 
-    async def test_full_interface_configuration(self):
+    async def test_full_interface_configuration(self) -> None:
         """End-to-end test with full GenerateInterface configuration."""
         errors = []
 
@@ -472,7 +474,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_default_variant_selections(self):
+    async def test_default_variant_selections(self) -> None:
         """Validate default_variant_selections parameter sets variant selections."""
         errors = []
 
@@ -524,7 +526,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
-    async def test_connection_reference_type(self):
+    async def test_connection_reference_type(self) -> None:
         """Validate connections with Reference connection type."""
         errors = []
 
@@ -570,7 +572,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
             self.fail("\n".join(errors))
         self._success = True
 
-    async def test_connection_payload_type(self):
+    async def test_connection_payload_type(self) -> None:
         """Validate connections with Payload connection type."""
         errors = []
 
@@ -616,7 +618,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
             self.fail("\n".join(errors))
         self._success = True
 
-    async def test_connection_empty_asset_path_adds_to_interface(self):
+    async def test_connection_empty_asset_path_adds_to_interface(self) -> None:
         """Validate connection with empty asset_path adds to interface layer."""
         errors = []
 
@@ -662,7 +664,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
             self.fail("\n".join(errors))
         self._success = True
 
-    async def test_connection_invalid_connection_type_skipped(self):
+    async def test_connection_invalid_connection_type_skipped(self) -> None:
         """Validate connection with invalid connection_type is skipped."""
         errors = []
 
@@ -709,7 +711,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
             self.fail("\n".join(errors))
         self._success = True
 
-    async def test_connection_missing_target_path_skipped(self):
+    async def test_connection_missing_target_path_skipped(self) -> None:
         """Validate connection with missing target_path is skipped."""
         errors = []
 
@@ -747,7 +749,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
             self.fail("\n".join(errors))
         self._success = True
 
-    async def test_connection_nonexistent_target_skipped(self):
+    async def test_connection_nonexistent_target_skipped(self) -> None:
         """Validate connection with nonexistent target_path is skipped."""
         errors = []
 
@@ -786,7 +788,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
             self.fail("\n".join(errors))
         self._success = True
 
-    async def test_connection_non_dict_item_skipped(self):
+    async def test_connection_non_dict_item_skipped(self) -> None:
         """Validate non-dict items in connections list are skipped."""
         errors = []
 
@@ -829,7 +831,7 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
             self.fail("\n".join(errors))
         self._success = True
 
-    async def test_payloads_folder_not_found(self):
+    async def test_payloads_folder_not_found(self) -> None:
         """Validate generate_folder_variants with nonexistent payloads folder."""
         errors = []
 
