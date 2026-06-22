@@ -49,6 +49,9 @@ USER isaac-sim
 RUN mkdir -p /isaac-sim
 WORKDIR /isaac-sim
 COPY --chown=isaac-sim:isaac-sim . /isaac-sim/
+# Set group write and execute permissions so any user in isaac-sim group can
+# create, modify or execute files
+RUN chmod -R g+wsx /isaac-sim /tmp
 RUN mkdir -p /isaac-sim/.nvidia-omniverse/config
 
 # Copy /app from hub_workstation_cache
