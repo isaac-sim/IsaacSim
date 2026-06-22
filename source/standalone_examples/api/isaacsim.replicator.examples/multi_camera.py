@@ -20,6 +20,7 @@ from isaacsim import SimulationApp
 simulation_app = SimulationApp(launch_config={"headless": False})
 
 import os
+from typing import Any
 
 import carb.settings
 import omni.replicator.core as rep
@@ -31,7 +32,7 @@ from omni.replicator.core.functional import write_image
 NUM_FRAMES = 5
 
 
-def cube_color_randomizer():
+def cube_color_randomizer() -> Any:
     """Randomize cube color every frame using a graph-based replicator randomizer."""
     cube_prims = rep.get.prims(path_pattern="Cube")
     with cube_prims:
@@ -42,7 +43,7 @@ def cube_color_randomizer():
 class MyWriter(Writer):
     """Write RGB annotator data to disk from multiple render products."""
 
-    def __init__(self, rgb: bool = True):
+    def __init__(self, rgb: bool = True) -> None:
         # Organize data from render product perspective (legacy, annotator, renderProduct)
         self.data_structure = "renderProduct"
         self.annotators = []
@@ -55,7 +56,7 @@ class MyWriter(Writer):
         print(f"Writing writer data to {output_dir}")
         self.backend = DiskBackend(output_dir=output_dir, overwrite=True)
 
-    def write(self, data):
+    def write(self, data: dict[str, Any]) -> None:
         """Write RGB frames from each render product to disk."""
         if "renderProducts" in data:
             for rp_name, rp_data in data["renderProducts"].items():

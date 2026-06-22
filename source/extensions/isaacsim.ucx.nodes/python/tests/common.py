@@ -34,7 +34,14 @@ import ucxx._lib.libucxx as ucx_api
 
 
 def _read_tensor_f32(tensor: object) -> list:
-    """Read float32 values from a FlatBuffers Tensor's ubyte data vector."""
+    """Read float32 values from a FlatBuffers Tensor's ubyte data vector.
+
+    Args:
+        tensor: FlatBuffers Tensor object with ubyte data.
+
+    Returns:
+        Tensor data interpreted as float32 values.
+    """
     n_bytes = tensor.DataLength()
     raw = bytes(tensor.Data(i) for i in range(n_bytes))
     return np.frombuffer(raw, dtype=np.float32).tolist()
@@ -157,19 +164,22 @@ def unpack_image_message(buffer: object) -> tuple:
         buffer: Buffer containing the FlatBuffers-encoded Image message.
 
     Returns:
-        Tuple of (timestamp, width, height, encoding, step, image_data).
+        Tuple of (timestamp, width, height, encoding, step, image_data, shape).
         encoding is a lowercase string (e.g. "rgb8").
         step is derived as total_bytes / height.
         image_data is a bytes object containing the raw pixel data.
+        shape is the Tensor's shape vector as a tuple of int
+        (``(height, width, bytes_per_pixel)`` on both the CPU and the
+        GPU-direct metadata paths).
 
     Note:
         When the publisher uses the GPU-direct two-message protocol
         (``sendCudaBuffer=True``, the default for ``UCXCameraHelper``), this
         message carries only metadata: ``image_data`` is empty and ``step`` is
         derived from the ubyte vector length, which is 0. The expected pixel
-        byte count is encoded in the Tensor's ``shape[0]`` field — callers can
-        use :py:func:`get_image_pixel_data_size` to read it and post a second
-        ``tag_recv`` on the same tag for the raw pixel buffer.
+        byte count is the product of the Tensor's ``shape`` dimensions — callers
+        can use :py:func:`get_image_pixel_data_size` to compute it and post a
+        second ``tag_recv`` on the same tag for the raw pixel buffer.
     """
     from isaacsim.ucx.nodes.messages.isaac import Image as ImageFb
 
@@ -186,8 +196,9 @@ def unpack_image_message(buffer: object) -> tuple:
     image_data = bytes(tensor.Data(i) for i in range(n_bytes))
 
     step = n_bytes // height if height > 0 else 0
+    shape = tuple(int(tensor.Shape(i)) for i in range(tensor.ShapeLength()))
 
-    return timestamp, width, height, encoding, step, image_data
+    return timestamp, width, height, encoding, step, image_data, shape
 
 
 def get_image_pixel_data_size(buffer: object) -> int:
@@ -197,20 +208,25 @@ def get_image_pixel_data_size(buffer: object) -> int:
         buffer: Buffer containing the FlatBuffers-encoded Image message.
 
     Returns:
-        The pixel data size in bytes as recorded in ``Tensor.shape[0]``.
+        The pixel data size in bytes, computed as the product of the Tensor's
+        ``shape`` dimensions (``[height, width, bytes_per_pixel]``).
 
-    The publisher always sets the Tensor's shape vector to ``[dataSize]`` even
-    on the GPU-direct path where the embedded ``data`` ubyte vector is empty.
-    Receivers compare this against ``len(image_data)`` from
-    :py:func:`unpack_image_message`: when ``len(image_data) == 0`` and this
-    returns a non-zero value, the publisher used the two-message protocol and
-    the raw pixel buffer is the next message on the same UCX tag.
+    The publisher always sets the Tensor's shape vector even on the GPU-direct
+    path where the embedded ``data`` ubyte vector is empty. Receivers compare
+    this against ``len(image_data)`` from :py:func:`unpack_image_message`: when
+    ``len(image_data) == 0`` and this returns a non-zero value, the publisher
+    used the two-message protocol and the raw pixel buffer is the next message
+    on the same UCX tag.
     """
     from isaacsim.ucx.nodes.messages.isaac import Image as ImageFb
 
     buf = bytearray(buffer.tobytes())
     msg = ImageFb.Image.GetRootAs(buf, 0)
     tensor = msg.Data()
-    if tensor.ShapeLength() == 0:
+    n = tensor.ShapeLength()
+    if n == 0:
         return 0
-    return int(tensor.Shape(0))
+    total = 1
+    for i in range(n):
+        total *= int(tensor.Shape(i))
+    return total

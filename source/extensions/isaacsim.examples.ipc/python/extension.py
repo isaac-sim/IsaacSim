@@ -24,7 +24,11 @@ class ExamplesIpcExtension(omni.ext.IExt):
     """Extension entry point for isaacsim.examples.ipc."""
 
     def on_startup(self, ext_id: str) -> None:
-        """Acquire the native IPC plugin interface."""
+        """Acquire the native IPC plugin interface.
+
+        Args:
+            ext_id: Extension identifier assigned by Kit.
+        """
         carb.log_info("isaacsim.examples.ipc starting up")
         self._interface = acquire_example_ipc_interface()
         carb.log_info("isaacsim.examples.ipc started")

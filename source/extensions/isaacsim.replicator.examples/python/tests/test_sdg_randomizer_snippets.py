@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verify Replicator randomizer snippets for sphere scanning and physics-based pallet filling."""
+
 import tempfile
+from typing import Any
 
 import omni.kit
 import omni.usd
@@ -21,21 +24,33 @@ from isaacsim.test.utils.file_validation import validate_folder_contents
 
 
 class TestSDGRandomizerSnippets(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Runs camera, asset, texture, and physics randomization snippets and validates captures."""
+
+    async def setUp(self) -> None:
+        """Create a fresh stage before running randomizer snippets."""
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> Any:
+        """Let pending updates and asset loads settle before the next snippet test.
+
+        Returns:
+            None.
+        """
         for _ in range(10):
             await omni.kit.app.get_app().next_update_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_randomize_sequential_sphere_scan(self):
+    async def test_randomize_sequential_sphere_scan(self) -> Any:
+        """Move a camera along Fibonacci-sphere viewpoints while randomizing pallet/bin poses.
+
+        Returns:
+            None.
+        """
         import asyncio
         import itertools
-        import os
 
         import numpy as np
         import omni.replicator.core as rep
@@ -47,7 +62,7 @@ class TestSDGRandomizerSnippets(omni.kit.test.AsyncTestCase):
         print(f"Output directory: {sphere_scan_dir}")
 
         # Fibonacci sphere algorithm: https://arxiv.org/pdf/0912.4540
-        def next_point_on_sphere(idx, num_points, radius=1, origin=(0, 0, 0)):
+        def next_point_on_sphere(idx: Any, num_points: Any, radius: int = 1, origin: Any = (0, 0, 0)) -> None:
             offset = 2.0 / num_points
             inc = np.pi * (3.0 - np.sqrt(5.0))
             z = ((idx * offset) - 1) + (offset / 2)
@@ -58,8 +73,28 @@ class TestSDGRandomizerSnippets(omni.kit.test.AsyncTestCase):
             return [(x * radius) + origin[0], (y * radius) + origin[1], (z * radius) + origin[2]]
 
         async def run_randomizations_async(
-            num_frames, forklift_path, pallet_path, bin_path, dome_textures, write_data, delay=None
-        ):
+            num_frames: Any,
+            forklift_path: Any,
+            pallet_path: Any,
+            bin_path: Any,
+            dome_textures: Any,
+            write_data: Any,
+            delay: Any | None = None,
+        ) -> Any:
+            """Render perspective and sphere-scan views while cycling dome textures and object poses.
+
+            Args:
+                num_frames: Number of frames to run.
+                forklift_path: Asset-relative forklift path.
+                pallet_path: Asset-relative pallet path.
+                bin_path: Asset-relative bin path.
+                dome_textures: Asset-relative dome texture paths to cycle through.
+                write_data: Whether to write RGB data with BasicWriter.
+                delay: Optional delay between frames.
+
+            Returns:
+                None.
+            """
             assets_root_path = await get_assets_root_path_async()
 
             await omni.usd.get_context().new_stage_async()
@@ -205,8 +240,8 @@ class TestSDGRandomizerSnippets(omni.kit.test.AsyncTestCase):
         )
         self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {sphere_scan_dir}")
 
-    async def test_randomize_physics_based_volume_filling(self):
-        import os
+    async def test_randomize_physics_based_volume_filling(self) -> None:
+        """Stack random boxes on pallets with physics walls and validate a final BasicWriter capture."""
         import random
         from itertools import chain
 
@@ -222,7 +257,13 @@ class TestSDGRandomizerSnippets(omni.kit.test.AsyncTestCase):
         print(f"Output directory: {box_stacking_dir}")
 
         # Add transformation properties to the prim (if not already present)
-        def set_transform_attributes(prim, location=None, orientation=None, rotation=None, scale=None):
+        def set_transform_attributes(
+            prim: Any,
+            location: Any | None = None,
+            orientation: Any | None = None,
+            rotation: Any | None = None,
+            scale: Any | None = None,
+        ) -> None:
             if location is not None:
                 if not prim.HasAttribute("xformOp:translate"):
                     UsdGeom.Xformable(prim).AddTranslateOp()
@@ -241,7 +282,7 @@ class TestSDGRandomizerSnippets(omni.kit.test.AsyncTestCase):
                 prim.GetAttribute("xformOp:scale").Set(scale)
 
         # Enables collisions with the asset (without rigid body dynamics the asset will be static)
-        def add_colliders(prim):
+        def add_colliders(prim: Any) -> None:
             # Iterate descendant prims (including root) and add colliders to mesh or primitive types
             for desc_prim in Usd.PrimRange(prim):
                 if desc_prim.IsA(UsdGeom.Mesh) or desc_prim.IsA(UsdGeom.Gprim):
@@ -261,7 +302,9 @@ class TestSDGRandomizerSnippets(omni.kit.test.AsyncTestCase):
                     mesh_collision_api.CreateApproximationAttr().Set("convexHull")
 
         # Enables rigid body dynamics (physics simulation) on the prim (having valid colliders is recommended)
-        def add_rigid_body_dynamics(prim, disable_gravity=False, angular_damping=None):
+        def add_rigid_body_dynamics(
+            prim: Any, disable_gravity: bool = False, angular_damping: Any | None = None
+        ) -> Any:
             # Physics
             if not prim.HasAPI(UsdPhysics.RigidBodyAPI):
                 rigid_body_api = UsdPhysics.RigidBodyAPI.Apply(prim)
@@ -278,7 +321,15 @@ class TestSDGRandomizerSnippets(omni.kit.test.AsyncTestCase):
                 physx_rigid_body_api.CreateAngularDampingAttr().Set(angular_damping)
 
         # Create a new prim with the provided asset URL and transform properties
-        def create_asset(stage, asset_url, path, location=None, rotation=None, orientation=None, scale=None):
+        def create_asset(
+            stage: Any,
+            asset_url: Any,
+            path: Any,
+            location: Any | None = None,
+            rotation: Any | None = None,
+            orientation: Any | None = None,
+            scale: Any | None = None,
+        ) -> Any:
             prim_path = omni.usd.get_stage_next_free_path(stage, path, False)
             prim = stage.DefinePrim(prim_path, "Xform")
             prim.GetReferences().AddReference(asset_url)
@@ -287,14 +338,28 @@ class TestSDGRandomizerSnippets(omni.kit.test.AsyncTestCase):
 
         # Create a new prim with the provided asset URL and transform properties including colliders
         def create_asset_with_colliders(
-            stage, asset_url, path, location=None, rotation=None, orientation=None, scale=None
-        ):
+            stage: Any,
+            asset_url: Any,
+            path: Any,
+            location: Any | None = None,
+            rotation: Any | None = None,
+            orientation: Any | None = None,
+            scale: Any | None = None,
+        ) -> Any:
             prim = create_asset(stage, asset_url, path, location, rotation, orientation, scale)
             add_colliders(prim)
             return prim
 
         # Create collision walls around the top surface of the prim with the given height and thickness
-        def create_collision_walls(stage, prim, bbox_cache=None, height=2, thickness=0.3, material=None, visible=False):
+        def create_collision_walls(
+            stage: Any,
+            prim: Any,
+            bbox_cache: Any | None = None,
+            height: int = 2,
+            thickness: float = 0.3,
+            material: Any | None = None,
+            visible: bool = False,
+        ) -> None:
             # Use the untransformed axis-aligned bounding box to calculate the prim surface size and center
             if bbox_cache is None:
                 bbox_cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), includedPurposes=[UsdGeom.Tokens.default_])
@@ -346,7 +411,9 @@ class TestSDGRandomizerSnippets(omni.kit.test.AsyncTestCase):
             return collision_walls
 
         # Slide the assets independently in perpendicular directions and then pull them all together towards the given center
-        async def apply_forces_async(stage, boxes, pallet, strength=550, strength_center_multiplier=2):
+        async def apply_forces_async(
+            stage: Any, boxes: Any, pallet: Any, strength: int = 550, strength_center_multiplier: int = 2
+        ) -> Any:
             timeline = omni.timeline.get_timeline_interface()
             timeline.play()
             # Get the pallet center and forward vector to apply forces in the perpendicular directions and towards the center
@@ -390,8 +457,12 @@ class TestSDGRandomizerSnippets(omni.kit.test.AsyncTestCase):
 
         # Create a new stage and and run the example scenario
         async def stack_boxes_on_pallet_async(
-            pallet_prim, boxes_urls_and_weights, num_boxes, drop_height=1.5, drop_margin=0.2
-        ):
+            pallet_prim: Any,
+            boxes_urls_and_weights: Any,
+            num_boxes: Any,
+            drop_height: float = 1.5,
+            drop_margin: float = 0.2,
+        ) -> None:
             pallet_path = pallet_prim.GetPath()
             print(f"[BoxStacking] Running scenario for pallet {pallet_path} with {num_boxes} boxes..")
             stage = omni.usd.get_context().get_stage()
@@ -486,7 +557,9 @@ class TestSDGRandomizerSnippets(omni.kit.test.AsyncTestCase):
             return boxes
 
         # Run the example scenario
-        async def run_box_stacking_scenarios_async(num_pallets, env_url=None, write_data=False):
+        async def run_box_stacking_scenarios_async(
+            num_pallets: Any, env_url: Any | None = None, write_data: bool = False
+        ) -> None:
             # Get assets root path once for all asset loading operations
             assets_root_path = await get_assets_root_path_async()
 

@@ -13,12 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Demonstrate multi-robot Franka pick-and-place operations."""
-
-from __future__ import annotations
-
-"""
-This example demonstrates how to run two Franka robots performing pick-and-place operations.
+"""This example demonstrates how to run two Franka robots performing pick-and-place operations.
 
 The example serves to illustrate the following concepts:
 - How to set up multiple Franka pick-and-place tasks with unique robot and cube prims.
@@ -32,12 +27,15 @@ The source code is organized into 3 main sections:
 3. Example logic and simulation loop.
 """
 
-# 1. --------------------------------------------------------------------
+from __future__ import annotations
 
 # Parse any command-line arguments specific to the standalone application (only known arguments).
 import argparse
 
 import numpy as np
+
+# 1. --------------------------------------------------------------------
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--test", action="store_true", help="Run in test mode (exit after task completes)")

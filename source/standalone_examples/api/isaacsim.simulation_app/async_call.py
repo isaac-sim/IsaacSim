@@ -17,24 +17,11 @@
 
 from __future__ import annotations
 
-"""
-This example demonstrates how to run asynchronous functions in Python (``async`` and ``await`` syntax)
-using the Omniverse Kit's asynchronous task engine.
-
-The example serves to illustrate the following concepts:
-- How to call asynchronous functions in the Isaac Sim's standalone workflow (synchronous execution)
-  using the `SimulationApp.run_coroutine(...)` method.
-
-The source code is organized into the following main sections:
-1. Command-line argument parsing and SimulationApp launch (common to all standalone examples).
-2. Asynchronous function definitions.
-3. Example logic.
-"""
+# Parse any command-line arguments specific to the standalone application (only known arguments).
+import argparse
 
 # 1. --------------------------------------------------------------------
 
-# Parse any command-line arguments specific to the standalone application (only known arguments).
-import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--headless", action="store_true", help="Run in headless mode")
@@ -56,7 +43,7 @@ from omni.kit.usd.collect import Collector
 # 2. --------------------------------------------------------------------
 
 
-async def populate_stage():
+async def populate_stage() -> None:
     """Populate the stage with a Franka robot asynchronously."""
     print("Populating stage asynchronously:")
     print(" - Creating new stage...")

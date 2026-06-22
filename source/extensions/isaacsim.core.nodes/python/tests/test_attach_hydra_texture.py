@@ -14,6 +14,8 @@
 # limitations under the License.
 
 # Set to True to update golden images with test output, then set back to False
+"""Verifies the AttachHydraTexture node connects render products to Hydra texture output. Covers render var handling, disabled execution, invalid or missing prim inputs, non-render-product prims, and golden image output."""
+
 UPDATE_GOLDEN_IMAGES = False
 
 import os
@@ -37,7 +39,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
     GOLDEN_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data", "golden", "attach_hydra_texture")
     RGB_MEAN_DIFF_TOLERANCE = 5.0
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment, to be torn down when done."""
         await omni.usd.get_context().new_stage_async()
         self._timeline = omni.timeline.get_timeline_interface()
@@ -47,9 +49,8 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
         self._camera_path = "/World/TestCamera"
         UsdGeom.Camera.Define(self._stage, self._camera_path)
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Get rid of temporary data used by the test."""
-        pass
 
     async def _create_render_product(self, camera_path: str, resolution: tuple = (1280, 720)) -> str:
         """Create a render product prim for testing.
@@ -72,7 +73,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
         await omni.kit.app.get_app().next_update_async()
         return render_product_path
 
-    async def test_attach_hydra_texture_basic(self):
+    async def test_attach_hydra_texture_basic(self) -> None:
         """Test basic hydra texture attachment to existing render product."""
         # Create a render product
         render_product_path = await self._create_render_product(self._camera_path)
@@ -107,7 +108,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_attach_hydra_texture_with_render_vars(self):
+    async def test_attach_hydra_texture_with_render_vars(self) -> None:
         """Test hydra texture attachment with render vars."""
         # Create a render product
         render_product_path = await self._create_render_product(self._camera_path)
@@ -147,7 +148,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_attach_hydra_texture_disabled(self):
+    async def test_attach_hydra_texture_disabled(self) -> None:
         """Test that disabled node doesn't execute."""
         # Create a render product
         render_product_path = await self._create_render_product(self._camera_path)
@@ -181,7 +182,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_attach_hydra_texture_invalid_prim(self):
+    async def test_attach_hydra_texture_invalid_prim(self) -> None:
         """Test error handling for invalid render product prim."""
         # Create the action graph with invalid prim path
         test_graph, new_nodes, _, _ = og.Controller.edit(
@@ -211,7 +212,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_attach_hydra_texture_non_render_product_prim(self):
+    async def test_attach_hydra_texture_non_render_product_prim(self) -> None:
         """Test error handling when prim exists but is not a RenderProduct."""
         # Create a non-RenderProduct prim
         non_rp_path = "/World/SomeXform"
@@ -246,7 +247,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_attach_hydra_texture_no_prim_specified(self):
+    async def test_attach_hydra_texture_no_prim_specified(self) -> None:
         """Test error handling when no render product prim is specified."""
         # Create the action graph without specifying the prim
         test_graph, new_nodes, _, _ = og.Controller.edit(
@@ -273,7 +274,7 @@ class TestAttachHydraTexture(ogts.OmniGraphTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_attach_hydra_texture_golden_image(self):
+    async def test_attach_hydra_texture_golden_image(self) -> None:
         """Test IsaacAttachHydraTexture with golden image comparison.
 
         This test verifies the node's visual output by:

@@ -56,7 +56,7 @@ NUM_APP_UPDATES = 100
 VERBOSE = False
 
 
-def on_timeline_event(event: carb.eventdispatcher.Event):
+def on_timeline_event(event: carb.eventdispatcher.Event) -> None:
     """Handle timeline tick events."""
     global timeline_events
     timeline_events.append(event)
@@ -64,7 +64,7 @@ def on_timeline_event(event: carb.eventdispatcher.Event):
         print(f"  [timeline][{len(timeline_events)}] {event}")
 
 
-def on_physics_step(dt, context):
+def on_physics_step(dt: float, context: object) -> None:
     """Handle physics step events."""
     global physics_events
     physics_events.append(dt)
@@ -72,7 +72,7 @@ def on_physics_step(dt, context):
         print(f"  [physics][{len(physics_events)}] dt={dt}")
 
 
-def on_stage_render_event(event: carb.eventdispatcher.Event):
+def on_stage_render_event(event: carb.eventdispatcher.Event) -> None:
     """Handle stage render new frame events."""
     global stage_render_events
     stage_render_events.append(event.event_name)
@@ -80,7 +80,7 @@ def on_stage_render_event(event: carb.eventdispatcher.Event):
         print(f"  [stage render][{len(stage_render_events)}] {event.event_name}")
 
 
-def on_app_update(event: carb.eventdispatcher.Event):
+def on_app_update(event: carb.eventdispatcher.Event) -> None:
     """Handle application update events."""
     global app_update_events
     app_update_events.append(event.event_name)

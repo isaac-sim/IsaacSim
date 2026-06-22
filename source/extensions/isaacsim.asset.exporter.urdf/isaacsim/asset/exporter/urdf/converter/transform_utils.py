@@ -88,7 +88,15 @@ def matrix4_to_origin_and_scale(
 
 
 def is_unit_scale(scale: tuple[float, float, float], tol: float = 1e-6) -> bool:
-    """Return True when *scale* is effectively (1, 1, 1) within *tol*."""
+    """Return True when *scale* is effectively (1, 1, 1) within *tol*.
+
+    Args:
+        scale: Scale values to test.
+        tol: Comparison tolerance.
+
+    Returns:
+        The computed value.
+    """
     return all(abs(s - 1.0) < tol for s in scale)
 
 
@@ -223,5 +231,14 @@ def get_prim_name(prim: Usd.Prim) -> str:
 
 
 def is_origin_identity(xyz: tuple[float, float, float], rpy: tuple[float, float, float], tol: float = 1e-8) -> bool:
-    """Check if an origin is effectively identity (zero translation and rotation)."""
+    """Check if an origin is effectively identity (zero translation and rotation).
+
+    Args:
+        xyz: Translation values.
+        rpy: Roll-pitch-yaw rotation values.
+        tol: Comparison tolerance.
+
+    Returns:
+        The computed value.
+    """
     return all(abs(v) < tol for v in xyz) and all(abs(v) < tol for v in rpy)

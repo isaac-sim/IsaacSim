@@ -170,7 +170,13 @@ class TestTiledCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_len(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that the number of cameras in the tiled sensor matches the expected count."""
+        """Test that the number of cameras in the tiled sensor matches the expected count.
+
+        Args:
+            prim: Tiled camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         self.assertEqual(len(prim), num_prims, f"Invalid len ({num_prims} prims)")
 
     @parametrize(
@@ -179,7 +185,13 @@ class TestTiledCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_data(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that tiled camera sensor data is correctly retrieved for all annotators."""
+        """Test that tiled camera sensor data is correctly retrieved for all annotators.
+
+        Args:
+            prim: Tiled camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for i, path in enumerate(prim.camera.paths):
             ViewportManager.set_camera_view(path, eye=[3.0, 1.25, 0.25 + i], target=[0.0, 0.0, 0.25])
         # test cases
@@ -270,7 +282,13 @@ class TestTiledCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_tiled_data(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that tiled camera sensor data is correctly retrieved in tiled format for all annotators."""
+        """Test that tiled camera sensor data is correctly retrieved in tiled format for all annotators.
+
+        Args:
+            prim: Tiled camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for i, path in enumerate(prim.camera.paths):
             ViewportManager.set_camera_view(path, eye=[3.0, 1.25, 0.25 + i], target=[0.0, 0.0, 0.25])
         # get frame

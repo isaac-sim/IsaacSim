@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.3.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [2.3.2] - 2026-05-14
 ### Changed
 - Add missing type annotations across the UI builder, viewport scene, and transform listeners; replace bare `except` clauses, switch `set([...])` literals and `.format()` calls to modern equivalents, fix `!= None` comparisons, and import `Callable` from `collections.abc`

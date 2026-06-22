@@ -1,5 +1,5 @@
 [package]
-version = "1.8.8"
+version = "1.8.9"
 category = "Simulation"
 title = "Isaac Sim Core (Prims)"
 description = "The Core Prims extension provides a set of APIs to wrap one or more USD prims in the stage in order to manipulate (read/write) their attributes and perform other operations during the simulation."

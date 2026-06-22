@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.6.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [0.6.0] - 2026-05-08
 ### Added
 - Added coacd 1.0.7 for convex decomposition support

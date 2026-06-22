@@ -22,16 +22,16 @@ from pxr import Plug, Usd
 class MujocoSchemaTests(omni.kit.test.AsyncTestCaseFailOnLogError):
     """Mujoco schema tests."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures."""
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Tear down test fixtures."""
 
-    async def test_schema_api_types(self):
+    async def test_schema_api_types(self) -> None:
         """Test schema api types."""
         physics_plugin = Plug.Registry().GetPluginWithName("mjcPhysics")
-        self.assertTrue(physics_plugin != None)
+        self.assertTrue(physics_plugin is not None)
 
         reg = Usd.SchemaRegistry()
 

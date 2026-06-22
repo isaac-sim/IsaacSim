@@ -12,10 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ruff: noqa: N802, D107, ANN001, ANN201, ANN202, ANN204, ANN206
+# ruff: noqa: N802
 # Methods intentionally mirror the PascalCase generated USD schema API
-# (N802), skip an __init__ docstring in favour of the class docstring
-# (D107), and defer typing to the upstream pxr signatures (ANN00x/20x).
+# (N802)
 """Drop-in compatibility wrapper for omni.isaac.RangeSensorSchema.
 
 .. deprecated:: 6.2.0
@@ -25,6 +24,7 @@
 """
 
 import warnings
+from typing import Any
 
 from pxr import Sdf, Tf, Usd
 
@@ -39,12 +39,16 @@ warnings.warn(
 
 
 class RangeSensor:
-    """Compatibility wrapper for pxr::RangeSensorRangeSensor."""
+    """Compatibility wrapper for pxr::RangeSensorRangeSensor.
+
+    Args:
+        prim: Prim or prim-like object to wrap.
+    """
 
     _TYPE_NAME = "RangeSensor"
     _TF_TYPE_NAME = "RangeSensorRangeSensor"
 
-    def __init__(self, prim):
+    def __init__(self, prim: Usd.Prim) -> None:
         if isinstance(prim, Usd.Prim):
             self._prim = prim
         elif hasattr(prim, "GetPrim"):
@@ -53,76 +57,151 @@ class RangeSensor:
             self._prim = prim
 
     @classmethod
-    def Define(cls, stage: Usd.Stage, path: str):
-        """Create the underlying prim on `stage` at `path` and return the wrapper."""
+    def Define(cls, stage: Usd.Stage, path: str) -> "RangeSensor":
+        """Create the underlying prim on `stage` at `path` and return the wrapper.
+
+        Args:
+            stage: Stage that receives the new prim.
+            path: Path where the prim is defined.
+
+        Returns:
+            Wrapper bound to the defined prim.
+        """
         prim = stage.DefinePrim(path, cls._TYPE_NAME)
         return cls(prim)
 
     @classmethod
-    def _GetStaticTfType(cls):
-        """Return the TfType used by `Usd.Prim.HasAPI` when passed this class."""
+    def _GetStaticTfType(cls) -> Tf.Type:
+        """Return the TfType used by `Usd.Prim.HasAPI` when passed this class.
+
+        Returns:
+            Tf type used by USD schema checks.
+        """
         return Tf.Type.FindByName(cls._TF_TYPE_NAME)
 
     def GetPrim(self) -> Usd.Prim:
-        """Return the wrapped USD prim."""
+        """Return the wrapped USD prim.
+
+        Returns:
+            Wrapped USD prim.
+        """
         return self._prim
 
-    def GetPath(self):
-        """Return the wrapped prim's `Sdf.Path`."""
+    def GetPath(self) -> Sdf.Path:
+        """Return the wrapped prim's `Sdf.Path`.
+
+        Returns:
+            Wrapped prim path.
+        """
         return self._prim.GetPath()
 
     # --- RangeSensor attributes ---
 
-    def GetEnabledAttr(self):
-        """Return the `enabled` bool attribute."""
+    def GetEnabledAttr(self) -> Usd.Attribute:
+        """Return the `enabled` bool attribute.
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("enabled")
 
-    def CreateEnabledAttr(self, value=None):
-        """Create the `enabled` bool attribute and optionally set `value`."""
+    def CreateEnabledAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `enabled` bool attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("enabled", Sdf.ValueTypeNames.Bool)
         if value is not None:
             attr.Set(value)
         return attr
 
-    def GetDrawPointsAttr(self):
-        """Return the `drawPoints` bool attribute (debug-draw hit points)."""
+    def GetDrawPointsAttr(self) -> Usd.Attribute:
+        """Return the `drawPoints` bool attribute (debug-draw hit points).
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("drawPoints")
 
-    def CreateDrawPointsAttr(self, value=None):
-        """Create the `drawPoints` bool attribute and optionally set `value`."""
+    def CreateDrawPointsAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `drawPoints` bool attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("drawPoints", Sdf.ValueTypeNames.Bool)
         if value is not None:
             attr.Set(value)
         return attr
 
-    def GetDrawLinesAttr(self):
-        """Return the `drawLines` bool attribute (debug-draw rays)."""
+    def GetDrawLinesAttr(self) -> Usd.Attribute:
+        """Return the `drawLines` bool attribute (debug-draw rays).
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("drawLines")
 
-    def CreateDrawLinesAttr(self, value=None):
-        """Create the `drawLines` bool attribute and optionally set `value`."""
+    def CreateDrawLinesAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `drawLines` bool attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("drawLines", Sdf.ValueTypeNames.Bool)
         if value is not None:
             attr.Set(value)
         return attr
 
-    def GetMinRangeAttr(self):
-        """Return the `minRange` float attribute (near clip)."""
+    def GetMinRangeAttr(self) -> Usd.Attribute:
+        """Return the `minRange` float attribute (near clip).
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("minRange")
 
-    def CreateMinRangeAttr(self, value=None):
-        """Create the `minRange` float attribute and optionally set `value`."""
+    def CreateMinRangeAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `minRange` float attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("minRange", Sdf.ValueTypeNames.Float)
         if value is not None:
             attr.Set(value)
         return attr
 
-    def GetMaxRangeAttr(self):
-        """Return the `maxRange` float attribute (far clip)."""
+    def GetMaxRangeAttr(self) -> Usd.Attribute:
+        """Return the `maxRange` float attribute (far clip).
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("maxRange")
 
-    def CreateMaxRangeAttr(self, value=None):
-        """Create the `maxRange` float attribute and optionally set `value`."""
+    def CreateMaxRangeAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `maxRange` float attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("maxRange", Sdf.ValueTypeNames.Float)
         if value is not None:
             attr.Set(value)
@@ -137,89 +216,177 @@ class Lidar(RangeSensor):
 
     # --- Lidar-specific attributes ---
 
-    def GetYawOffsetAttr(self):
-        """Return the `yawOffset` float attribute (azimuthal starting angle)."""
+    def GetYawOffsetAttr(self) -> Usd.Attribute:
+        """Return the `yawOffset` float attribute (azimuthal starting angle).
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("yawOffset")
 
-    def CreateYawOffsetAttr(self, value=None):
-        """Create the `yawOffset` float attribute and optionally set `value`."""
+    def CreateYawOffsetAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `yawOffset` float attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("yawOffset", Sdf.ValueTypeNames.Float)
         if value is not None:
             attr.Set(value)
         return attr
 
-    def GetRotationRateAttr(self):
-        """Return the `rotationRate` float attribute (revolutions per second)."""
+    def GetRotationRateAttr(self) -> Usd.Attribute:
+        """Return the `rotationRate` float attribute (revolutions per second).
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("rotationRate")
 
-    def CreateRotationRateAttr(self, value=None):
-        """Create the `rotationRate` float attribute and optionally set `value`."""
+    def CreateRotationRateAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `rotationRate` float attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("rotationRate", Sdf.ValueTypeNames.Float)
         if value is not None:
             attr.Set(value)
         return attr
 
-    def GetHighLodAttr(self):
-        """Return the `highLod` bool attribute (high-resolution toggle)."""
+    def GetHighLodAttr(self) -> Usd.Attribute:
+        """Return the `highLod` bool attribute (high-resolution toggle).
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("highLod")
 
-    def CreateHighLodAttr(self, value=None):
-        """Create the `highLod` bool attribute and optionally set `value`."""
+    def CreateHighLodAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `highLod` bool attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("highLod", Sdf.ValueTypeNames.Bool)
         if value is not None:
             attr.Set(value)
         return attr
 
-    def GetHorizontalFovAttr(self):
-        """Return the `horizontalFov` float attribute (degrees)."""
+    def GetHorizontalFovAttr(self) -> Usd.Attribute:
+        """Return the `horizontalFov` float attribute (degrees).
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("horizontalFov")
 
-    def CreateHorizontalFovAttr(self, value=None):
-        """Create the `horizontalFov` float attribute and optionally set `value`."""
+    def CreateHorizontalFovAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `horizontalFov` float attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("horizontalFov", Sdf.ValueTypeNames.Float)
         if value is not None:
             attr.Set(value)
         return attr
 
-    def GetVerticalFovAttr(self):
-        """Return the `verticalFov` float attribute (degrees)."""
+    def GetVerticalFovAttr(self) -> Usd.Attribute:
+        """Return the `verticalFov` float attribute (degrees).
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("verticalFov")
 
-    def CreateVerticalFovAttr(self, value=None):
-        """Create the `verticalFov` float attribute and optionally set `value`."""
+    def CreateVerticalFovAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `verticalFov` float attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("verticalFov", Sdf.ValueTypeNames.Float)
         if value is not None:
             attr.Set(value)
         return attr
 
-    def GetHorizontalResolutionAttr(self):
-        """Return the `horizontalResolution` float attribute (degrees per sample)."""
+    def GetHorizontalResolutionAttr(self) -> Usd.Attribute:
+        """Return the `horizontalResolution` float attribute (degrees per sample).
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("horizontalResolution")
 
-    def CreateHorizontalResolutionAttr(self, value=None):
-        """Create the `horizontalResolution` float attribute and optionally set `value`."""
+    def CreateHorizontalResolutionAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `horizontalResolution` float attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("horizontalResolution", Sdf.ValueTypeNames.Float)
         if value is not None:
             attr.Set(value)
         return attr
 
-    def GetVerticalResolutionAttr(self):
-        """Return the `verticalResolution` float attribute (degrees per sample)."""
+    def GetVerticalResolutionAttr(self) -> Usd.Attribute:
+        """Return the `verticalResolution` float attribute (degrees per sample).
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("verticalResolution")
 
-    def CreateVerticalResolutionAttr(self, value=None):
-        """Create the `verticalResolution` float attribute and optionally set `value`."""
+    def CreateVerticalResolutionAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `verticalResolution` float attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("verticalResolution", Sdf.ValueTypeNames.Float)
         if value is not None:
             attr.Set(value)
         return attr
 
-    def GetEnableSemanticsAttr(self):
-        """Return the `enableSemantics` bool attribute (emit semantic labels)."""
+    def GetEnableSemanticsAttr(self) -> Usd.Attribute:
+        """Return the `enableSemantics` bool attribute (emit semantic labels).
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("enableSemantics")
 
-    def CreateEnableSemanticsAttr(self, value=None):
-        """Create the `enableSemantics` bool attribute and optionally set `value`."""
+    def CreateEnableSemanticsAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `enableSemantics` bool attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("enableSemantics", Sdf.ValueTypeNames.Bool)
         if value is not None:
             attr.Set(value)
@@ -234,23 +401,45 @@ class Generic(RangeSensor):
 
     # --- Generic-specific attributes ---
 
-    def GetSamplingRateAttr(self):
-        """Return the `samplingRate` int attribute (samples per second)."""
+    def GetSamplingRateAttr(self) -> Usd.Attribute:
+        """Return the `samplingRate` int attribute (samples per second).
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("samplingRate")
 
-    def CreateSamplingRateAttr(self, value=None):
-        """Create the `samplingRate` int attribute and optionally set `value`."""
+    def CreateSamplingRateAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `samplingRate` int attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("samplingRate", Sdf.ValueTypeNames.Int)
         if value is not None:
             attr.Set(value)
         return attr
 
-    def GetStreamingAttr(self):
-        """Return the `streaming` bool attribute (continuous output toggle)."""
+    def GetStreamingAttr(self) -> Usd.Attribute:
+        """Return the `streaming` bool attribute (continuous output toggle).
+
+        Returns:
+            Requested USD attribute.
+        """
         return self._prim.GetAttribute("streaming")
 
-    def CreateStreamingAttr(self, value=None):
-        """Create the `streaming` bool attribute and optionally set `value`."""
+    def CreateStreamingAttr(self, value: Any = None) -> Usd.Attribute:
+        """Create the `streaming` bool attribute and optionally set `value`.
+
+        Args:
+            value: Value to set on the attribute.
+
+        Returns:
+            Created USD attribute.
+        """
         attr = self._prim.CreateAttribute("streaming", Sdf.ValueTypeNames.Bool)
         if value is not None:
             attr.Set(value)

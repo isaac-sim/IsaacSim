@@ -146,7 +146,7 @@ class TestDriveGoalCarterv2(omni.kit.test.AsyncTestCase):
         )
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test environment and stop timeline."""
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
@@ -155,7 +155,7 @@ class TestDriveGoalCarterv2(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
 
     # Actual test, notice it is "async" function, so "await" can be used if needed
-    async def test_quintic_planner(self):
+    async def test_quintic_planner(self) -> None:
         """Test quintic polynomial path planner generates valid paths."""
         # Start Simulation and wait
         self._timeline.play()
@@ -181,7 +181,7 @@ class TestDriveGoalCarterv2(omni.kit.test.AsyncTestCase):
 
         print("quintic passed")
 
-    async def test_check_goal_2d(self):
+    async def test_check_goal_2d(self) -> None:
         """Test 2D goal checking detects when robot reaches target."""
         # Start Simulation and wait
         self._timeline.play()
@@ -224,7 +224,7 @@ class TestDriveGoalCarterv2(omni.kit.test.AsyncTestCase):
 
         print("check goal passed")
 
-    async def test_stanley_control_pid(self):
+    async def test_stanley_control_pid(self) -> None:
         """Test Stanley control provides valid steering commands."""
         # Start Simulation and wait
         self._timeline.play()

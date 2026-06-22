@@ -13,9 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 camera info utility functions."""
+"""Validate ROS 2 camera info utilities against RTX camera render products.
+
+The tests cover pinhole and fisheye camera models, OpenCV distortion fields,
+render-product scaling, unsupported distortion fallback, and stereo relative
+pose computation.
+"""
 
 from __future__ import annotations
+
+from typing import Any
 
 import numpy as np
 import omni.kit.app
@@ -34,9 +41,18 @@ _FISHEYE_COEFF_NAMES = ["k1", "k2", "k3", "k4"]
 
 
 def _apply_opencv_distortion(
-    prim, model: str, coefficients: list[float], coeff_names: list[str], image_size: tuple[int, int], **kwargs
+    prim: Any, model: str, coefficients: list[float], coeff_names: list[str], image_size: tuple[int, int], **kwargs: Any
 ) -> None:
-    """Apply an OmniLensDistortion schema and set distortion attributes on a camera prim."""
+    """Author OpenCV pinhole or fisheye distortion attributes on a USD camera prim.
+
+    Args:
+        prim: USD camera prim to author.
+        model: OpenCV distortion model token.
+        coefficients: Distortion coefficient values.
+        coeff_names: Attribute names corresponding to ``coefficients``.
+        image_size: Distortion image size as width and height.
+        **kwargs: Additional distortion attributes to author.
+    """
     schema = f"OmniLensDistortionOpenCv{'Pinhole' if model == 'opencvPinhole' else 'Fisheye'}API"
     prim.ApplyAPI(schema)
     prim.GetAttribute("omni:lensdistortion:model").Set(model)
@@ -48,10 +64,10 @@ def _apply_opencv_distortion(
 
 
 class TestCameraInfoUtils(ROS2TestCase):
-    """Test suite for camera info utils."""
+    """Exercise camera info conversion from Isaac Sim camera prims to ROS 2 messages."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh stage with an RTX camera, render product, and running timeline."""
         await super().setUp()
         await stage_utils.create_new_stage_async()
         await omni.kit.app.get_app().next_update_async()
@@ -76,14 +92,14 @@ class TestCameraInfoUtils(ROS2TestCase):
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Stop simulation and replace the stage so camera/render-product state does not leak."""
         self._timeline.stop()
         await stage_utils.create_new_stage_async()
         await super().tearDown()
 
-    async def test_read_camera_info_pinhole(self):
-        """Test reading camera info for a pinhole camera with no distortion."""
+    async def test_read_camera_info_pinhole(self) -> None:
+        """Verify default pinhole camera info has expected dimensions, matrices, and identity rectification."""
         camera_info, camera_prim = read_camera_info(self._render_product_path)
 
         self.assertIsNotNone(camera_info)
@@ -105,7 +121,7 @@ class TestCameraInfoUtils(ROS2TestCase):
         self.assertAlmostEqual(camera_info.p[2], self._width * 0.5, delta=1.0)
         self.assertAlmostEqual(camera_info.p[6], self._height * 0.5, delta=1.0)
 
-    async def test_read_camera_info_fisheye_unset_distortion(self):
+    async def test_read_camera_info_fisheye_unset_distortion(self) -> None:
         """Test that a camera with FTheta schema but no distortion attributes defaults to plumb_bob."""
         self._camera_prim.ApplyAPI("OmniLensDistortionFthetaAPI")
         UsdGeom.Camera(self._camera_prim).GetFocalLengthAttr().Set(24.0)
@@ -119,7 +135,7 @@ class TestCameraInfoUtils(ROS2TestCase):
         self.assertEqual(len(camera_info.d), 5)
         self.assertTrue(all(coef == 0.0 for coef in camera_info.d))
 
-    async def test_read_camera_info_fisheye_legacy_distortion_ignored(self):
+    async def test_read_camera_info_fisheye_legacy_distortion_ignored(self) -> None:
         """Test that legacy physicalDistortionModel attributes are ignored (defaults to plumb_bob)."""
         self._camera_prim.ApplyAPI("OmniLensDistortionFthetaAPI")
         UsdGeom.Camera(self._camera_prim).GetFocalLengthAttr().Set(24.0)
@@ -142,7 +158,7 @@ class TestCameraInfoUtils(ROS2TestCase):
         self.assertEqual(len(camera_info.d), 5)
         self.assertTrue(all(coef == 0.0 for coef in camera_info.d))
 
-    async def test_read_camera_info_unsupported_distortion_model(self):
+    async def test_read_camera_info_unsupported_distortion_model(self) -> None:
         """Test that an unsupported omni:lensdistortion:model falls back to plumb_bob."""
         self._camera_prim.ApplyAPI("OmniLensDistortionFthetaAPI")
         UsdGeom.Camera(self._camera_prim).GetFocalLengthAttr().Set(24.0)
@@ -156,8 +172,8 @@ class TestCameraInfoUtils(ROS2TestCase):
         self.assertEqual(len(camera_info.d), 5)
         self.assertTrue(all(coef == 0.0 for coef in camera_info.d))
 
-    async def test_read_camera_info_opencv_pinhole_distortion(self):
-        """Test reading camera info with OpenCV pinhole distortion (5 and 12 parameters)."""
+    async def test_read_camera_info_opencv_pinhole_distortion(self) -> None:
+        """Verify OpenCV pinhole distortion maps to plumb_bob and rational_polynomial coefficients."""
         cam = UsdGeom.Camera(self._camera_prim)
         focal_length = cam.GetFocalLengthAttr().Get()
         h_aperture = cam.GetHorizontalApertureAttr().Get()
@@ -215,8 +231,8 @@ class TestCameraInfoUtils(ROS2TestCase):
         for i, (e, a) in enumerate(zip(params_12, camera_info_12.d)):
             self.assertAlmostEqual(a, e, delta=1e-5, msg=f"Coefficient {i} mismatch (12 params)")
 
-    async def test_read_camera_info_opencv_fisheye_distortion(self):
-        """Test reading camera info with OpenCV fisheye distortion model."""
+    async def test_read_camera_info_opencv_fisheye_distortion(self) -> None:
+        """Verify OpenCV fisheye distortion maps to the ROS 2 equidistant model."""
         cam = UsdGeom.Camera(self._camera_prim)
         focal_length = cam.GetFocalLengthAttr().Get()
         h_aperture = cam.GetHorizontalApertureAttr().Get()
@@ -248,7 +264,7 @@ class TestCameraInfoUtils(ROS2TestCase):
         for i, (e, a) in enumerate(zip(expected, camera_info.d)):
             self.assertAlmostEqual(a, e, delta=1e-5, msg=f"Coefficient {i} mismatch")
 
-    async def test_read_camera_info_opencv_pinhole_scales_to_render_product(self):
+    async def test_read_camera_info_opencv_pinhole_scales_to_render_product(self) -> None:
         """OpenCV pinhole intrinsics should scale when render product differs from authored imageSize (NVBug 6039737)."""
         usd_width, usd_height = self._width, self._height
         usd_cx, usd_cy = usd_width / 2, usd_height / 2
@@ -290,7 +306,7 @@ class TestCameraInfoUtils(ROS2TestCase):
         self.assertAlmostEqual(camera_info.k[4], usd_fx * sx, delta=1e-3)  # fy (forced square)
         self.assertAlmostEqual(camera_info.k[5], usd_cy * sy, delta=1e-3)  # cy
 
-    async def test_read_camera_info_opencv_fisheye_scales_to_render_product(self):
+    async def test_read_camera_info_opencv_fisheye_scales_to_render_product(self) -> None:
         """OpenCV fisheye intrinsics should scale when render product differs from authored imageSize (NVBug 6039737)."""
         usd_width, usd_height = self._width, self._height
         usd_cx, usd_cy = usd_width / 2, usd_height / 2
@@ -329,8 +345,8 @@ class TestCameraInfoUtils(ROS2TestCase):
         self.assertAlmostEqual(camera_info.k[4], usd_fx * sx, delta=1e-3)  # fy (forced square)
         self.assertAlmostEqual(camera_info.k[5], usd_cy * sy, delta=1e-3)  # cy
 
-    async def test_compute_relative_pose(self):
-        """Test computing relative pose between two camera prims."""
+    async def test_compute_relative_pose(self) -> None:
+        """Verify relative pose recovers the 10 cm baseline between two unrotated cameras."""
         RtxCamera("/left_camera", positions=[[0, 0, 0]], orientations=[[1, 0, 0, 0]])
         RtxCamera("/right_camera", positions=[[0.1, 0, 0]], orientations=[[1, 0, 0, 0]])
         await omni.kit.app.get_app().next_update_async()

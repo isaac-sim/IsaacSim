@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.4] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.2.3] - 2026-05-19
 ### Changed
 - MoveIt extension and standalone samples: feed `ROS2PublishJointState` from a dedicated `IsaacReadJointState` node and use its `sensorTime` for the published timestamp

@@ -113,6 +113,7 @@ class SimulationApp:
         "max_volume_bounces": 15,
         "open_usd": None,
         "fast_shutdown": True,
+        "shutdown_watchdog_timeout": 120.0,
         "profiler_backend": [],
         "create_new_stage": True,
         "extra_args": [],
@@ -165,6 +166,7 @@ class SimulationApp:
         max_volume_bounces (int): Maximum number of bounces for volumetric materials, used for `PathTracing` (defaults to 64) and 'RealTimePathTracing' (defaults to 15).
         open_usd (str): This is the name of the usd to open when the app starts. It will not be saved over. Default is None and an empty stage is created on startup.
         fast_shutdown (bool): True to exit process immediately, false to shutdown each extension. If running in a jupyter notebook this is forced to false.
+        shutdown_watchdog_timeout (float): Seconds to wait for the fast-shutdown process termination before force-exiting. Guards against Kit teardown deadlocks (e.g. carb.tasking GIL deadlocks) that would otherwise hang the process indefinitely. Set to 0 or None to disable. Only active when fast_shutdown is True. Defaults to 120.0.
         profiler_backend (list): List of profiler backends to enable currently only supports the following backends: ["tracy", "nvtx"]
         create_new_stage (bool): Set False to not create a new stage on application startup. Defaults to True, does not have an effect if open_usd is not None.
         extra_args: (list): List of extra command line arguments to pass down to the kit process
@@ -430,7 +432,7 @@ class SimulationApp:
                 # Forces kit to not render until all USD files are loaded
                 f'--/rtx/materialDb/syncLoads={self.config["sync_loads"]}',
                 f'--/rtx/hydra/materialSyncLoads={self.config["sync_loads"]}',
-                f'--/omni.kit.plugin/syncUsdLoads={self.config["sync_loads"]}',
+                f'--/omni/kit/plugin/syncUsdLoads={self.config["sync_loads"]}',
                 f'--/app/renderer/resolution/width={self.config["width"]}',
                 f'--/app/renderer/resolution/height={self.config["height"]}',
                 f'--/app/window/width={self.config["window_width"]}',
@@ -654,7 +656,7 @@ class SimulationApp:
         # Experimental, forces kit to not render until all USD files are loaded
         set_carb_setting(self._carb_settings, rtx_mode + "/materialDb/syncLoads", self.config["sync_loads"])
         set_carb_setting(self._carb_settings, rtx_mode + "/hydra/materialSyncLoads", self.config["sync_loads"])
-        set_carb_setting(self._carb_settings, "/omni.kit.plugin/syncUsdLoads", self.config["sync_loads"])
+        set_carb_setting(self._carb_settings, "/omni/kit/plugin/syncUsdLoads", self.config["sync_loads"])
         carb.log_info("SimulationApp._set_render_settings: Completed render settings configuration")
 
     def _prepare_ui(self) -> None:
@@ -902,6 +904,7 @@ class SimulationApp:
             _logging = carb.logging.acquire_logging()
             _logging.set_log_enabled(False)
             self._flush_stdio()
+            self._arm_shutdown_watchdog()
             self._app.shutdown()
             return
         try:
@@ -957,7 +960,37 @@ class SimulationApp:
         # immediately.  When false it performs full extension teardown and returns;
         # the framework/plugin unload is left to process exit.
         self._flush_stdio()
+        self._arm_shutdown_watchdog()
         self._app.shutdown()
+
+    def _arm_shutdown_watchdog(self) -> None:
+        """Guard against Kit teardown deadlocks during fast shutdown.
+
+        ``self._app.shutdown()`` with ``/app/fastShutdown`` enabled is expected to
+        terminate the process within seconds. A known class of deadlock (e.g. the
+        carb.tasking GIL deadlock referenced in ``close()``) can wedge it while
+        worker threads are joined, hanging the process until an external timeout
+        (such as a CI test runner) kills the whole job.
+
+        ``faulthandler`` runs its timer on a dedicated C thread that does not
+        require the GIL, so it can force-exit even when the main thread is blocked
+        while holding the GIL. It also dumps every thread's stack first, preserving
+        the evidence needed to debug the deadlock.
+
+        Only armed when ``fast_shutdown`` is enabled, since that path promises
+        near-immediate process termination; the graceful path may legitimately take
+        longer and is left untouched.
+        """
+        if not self.config.get("fast_shutdown", False):
+            return
+        timeout = self.config.get("shutdown_watchdog_timeout", 120.0)
+        if not timeout or timeout <= 0:
+            return
+        try:
+            self._flush_stdio()
+            faulthandler.dump_traceback_later(float(timeout), exit=True)
+        except Exception:
+            pass
 
     def is_running(self) -> bool:
         """Check if the simulation application is currently running.

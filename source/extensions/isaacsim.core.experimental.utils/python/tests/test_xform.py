@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for xform."""
+"""Verifies xform utilities compute world, local, and relative transforms from USD prims. Covers prim objects and path-based inputs."""
+
+from typing import Any
 
 import isaacsim.core.experimental.utils.backend as backend_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -25,22 +27,24 @@ import omni.kit.test
 class TestXform(omni.kit.test.AsyncTestCase):
     """Test xform."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # create new stage
         await stage_utils.create_new_stage_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
-    async def test_world_and_local_pose(self):
+    async def test_world_and_local_pose(self) -> None:
         """Test world and local pose."""
 
-        def _check_pose(pose, position, orientation, *, rtol: float = 1e-03, atol: float = 1e-05):
+        def _check_pose(
+            pose: Any, position: Any, orientation: Any, *, rtol: float = 1e-03, atol: float = 1e-05
+        ) -> None:
             np.testing.assert_allclose(pose[0].numpy(), position, rtol=rtol, atol=atol)
             np.testing.assert_allclose(pose[1].numpy(), orientation, rtol=rtol, atol=atol)
 
@@ -64,7 +68,7 @@ class TestXform(omni.kit.test.AsyncTestCase):
             # get local poses
             _check_pose(xform_utils.get_local_pose(path_b), [3.0, 3.0, -3.0], [0.0, 0.0, 0.7071, 0.7071])
 
-    async def test_get_relative_transform(self):
+    async def test_get_relative_transform(self) -> None:
         """Verify get_relative_transform resolves USD prims and returns a valid 4x4 matrix."""
         path_a = "/World/A"
         path_b = "/World/B"
@@ -78,7 +82,7 @@ class TestXform(omni.kit.test.AsyncTestCase):
         self.assertEqual(result.shape, (4, 4))
         np.testing.assert_allclose(xform_utils.get_relative_transform(path_a, path_a), np.eye(4), atol=1e-6)
 
-    async def test_get_relative_transform_accepts_prim_objects(self):
+    async def test_get_relative_transform_accepts_prim_objects(self) -> None:
         """get_relative_transform should accept Usd.Prim objects in addition to paths."""
         import omni.usd
 

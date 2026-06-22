@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.1] - 2026-06-12
+### Fixed
+- `occupancy_map`: defer the `cv2` import to first use.
+
 ## [0.3.0] - 2026-03-04
 ### Changed
 - Added Overview.md, python_api.md and updated docstrings

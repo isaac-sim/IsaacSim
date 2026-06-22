@@ -13,23 +13,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies the TimeSplitter OmniGraph node decomposes time values into component outputs. Covers graph execution and output propagation for split time fields."""
+
 import omni.graph.core as og
 import omni.graph.core.tests as ogts
 import omni.kit.test
 
 
 class TestTimeSplitter(ogts.OmniGraphTestCase):
-    async def setUp(self):
+    """Verify TimeSplitter output fields for several numeric input types."""
+
+    async def setUp(self) -> None:
         """Set up  test environment, to be torn down when done."""
         await omni.usd.get_context().new_stage_async()
 
     # ----------------------------------------------------------------------
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Get rid of temporary data used by the test."""
         # await omni.kit.stage_templates.new_stage_async()
 
     # ----------------------------------------------------------------------
-    async def test_time_splitter(self):
+    async def test_time_splitter(self) -> None:
+        """Verify seconds, milliseconds, microseconds, and nanoseconds are split from time inputs."""
         constant_tuples = [
             ("omni.graph.nodes.ConstantDouble", 1.012345678, (1, 12, 12345, 12345678)),
             ("omni.graph.nodes.ConstantFloat", 2.910123456, (2, 910, 910123, 910123348)),  # precision lost (ns)

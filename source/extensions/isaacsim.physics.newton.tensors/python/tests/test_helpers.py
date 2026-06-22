@@ -13,10 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Shared fixtures for Newton implementations of omni.physics.tensors tests.
+
+The helpers build small USD scenes, initialize Newton simulation views on CPU
+or CUDA, and convert NumPy test data to Warp arrays on the configured view
+device. They keep the articulation, rigid body, and contact tests aligned on
+the same stage layout and backend/device combinations.
+"""
+
 from __future__ import annotations
 
 import math
 import os
+from typing import Any
 
 import numpy as np
 import omni.kit.app
@@ -26,11 +35,15 @@ import omni.usd
 import warp as wp
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 
-from . import warp_utils
+from . import warp_utils as warp_utils
 
 
 def get_asset_root() -> str:
-    """Return the path to the data/usd directory shipped with this extension."""
+    """Return the path to the data/usd directory shipped with this extension.
+
+    Returns:
+        Absolute path to the extension's ``data/usd`` directory.
+    """
     tests_dir = os.path.dirname(__file__)
     ext_root = os.path.abspath(os.path.join(tests_dir, "..", "..", "..", "..", ".."))
     return os.path.join(ext_root, "data", "usd")
@@ -42,7 +55,17 @@ def create_actor_from_asset(
     asset_path: str,
     position: Gf.Vec3f = Gf.Vec3f(0.0),
 ) -> Usd.Prim:
-    """Load a USDA asset as a USD reference at the given path."""
+    """Load a USDA asset as a USD reference at the given path.
+
+    Args:
+        stage: USD stage to author.
+        actor_path: Prim path where the asset reference is added.
+        asset_path: Path to the USD asset to reference.
+        position: Translation offset for the actor.
+
+    Returns:
+        Prim containing the USD reference.
+    """
     prim = stage.OverridePrim(Sdf.Path(actor_path))
     prim.GetReferences().AddReference(asset_path)
     xf = UsdGeom.Xformable(prim)
@@ -61,7 +84,16 @@ def create_grid_scene(
 ) -> Sdf.Path:
     """Build an /envTemplate + /envs/envN grid using USD inherits.
 
-    Returns the template path and the number of envs actually created.
+    Args:
+        stage: USD stage to author.
+        asset_path: Path to the USD asset to reference.
+        actor_child_name: Child prim name under the environment template.
+        num_envs: Number of environment instances to create.
+        spacing: Distance between environment origins [m].
+        position: Translation offset for the actor within each environment.
+
+    Returns:
+        Environment template path.
     """
     env_template_path = Sdf.Path("/envTemplate")
     env_template_xform = UsdGeom.Xform.Define(stage, env_template_path)
@@ -129,12 +161,13 @@ class DeviceParams:
         view_device: Device for tensor API views and user-facing arrays.
     """
 
-    def __init__(self, sim_device: str, view_device: str):
+    def __init__(self, sim_device: str, view_device: str) -> None:
         self.sim_device = sim_device
         self.view_device = view_device
 
     @property
     def suffix(self) -> str:
+        """Return the generated test-class suffix for the sim/view device pair."""
         s = "G" if self.sim_device.startswith("cuda") else "C"
         v = "G" if self.view_device.startswith("cuda") else "C"
         return s + v
@@ -163,6 +196,7 @@ class NewtonTensorTestBase(omni.kit.test.AsyncTestCase):
     DEVICE = "cpu"
 
     async def setUp(self) -> None:
+        """Create a fresh z-up stage with a default gravity physics scene."""
         await omni.usd.get_context().new_stage_async()
         self.stage = omni.usd.get_context().get_stage()
         self._stage_id = omni.usd.get_context().get_stage_id()
@@ -177,6 +211,7 @@ class NewtonTensorTestBase(omni.kit.test.AsyncTestCase):
         self._sim = None
 
     async def tearDown(self) -> None:
+        """Reset tensor state and close the test stage."""
         if self._sim is not None:
             try:
                 tensors.reset()
@@ -189,7 +224,11 @@ class NewtonTensorTestBase(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
 
     async def create_sim(self) -> tensors.SimulationView:
-        """Create a Newton-backed simulation view for the current stage."""
+        """Create a Newton-backed simulation view for the current stage.
+
+        Returns:
+            Newton-backed simulation view for the current stage.
+        """
         await omni.kit.app.get_app().next_update_async()
 
         from isaacsim.physics.newton.impl.extension import acquire_stage as acquire_newton_stage
@@ -203,6 +242,15 @@ class NewtonTensorTestBase(omni.kit.test.AsyncTestCase):
         return self._sim
 
     def to_warp(self, numpy_arr: np.ndarray, dtype: type = wp.float32) -> wp.array:
+        """Convert NumPy data to a Warp array on the configured tensor view device.
+
+        Args:
+            numpy_arr: NumPy data to convert.
+            dtype: Warp dtype for the output array.
+
+        Returns:
+            Warp array allocated on ``self.DEVICE``.
+        """
         return wp.from_numpy(numpy_arr, dtype=dtype, device=self.DEVICE)
 
     def check_articulation_view(
@@ -212,12 +260,26 @@ class NewtonTensorTestBase(omni.kit.test.AsyncTestCase):
         expected_max_links: int,
         expected_max_dofs: int,
     ) -> None:
+        """Assert core articulation view dimensions match the expected tensor metadata.
+
+        Args:
+            view: Articulation view to inspect.
+            expected_count: Expected number of articulations.
+            expected_max_links: Expected maximum link count.
+            expected_max_dofs: Expected maximum DOF count.
+        """
         self.assertIsNotNone(view)
         self.assertEqual(view.count, expected_count)
         self.assertEqual(view.max_links, expected_max_links)
         self.assertEqual(view.max_dofs, expected_max_dofs)
 
     def check_rigid_body_view(self, view: tensors.RigidBodyView, expected_count: int) -> None:
+        """Assert a rigid body view exists and contains the expected body count.
+
+        Args:
+            view: Rigid body view to inspect.
+            expected_count: Expected number of rigid bodies.
+        """
         self.assertIsNotNone(view)
         self.assertEqual(view.count, expected_count)
 
@@ -230,7 +292,11 @@ class NewtonTensorTestBase(omni.kit.test.AsyncTestCase):
             newton_stage.playing = True
 
     def get_sim_dt(self) -> float:
-        """Return the physics timestep used by SimulationManager if available, otherwise newton_stage.sim_dt."""
+        """Return the physics timestep used by SimulationManager if available, otherwise newton_stage.sim_dt.
+
+        Returns:
+            Physics timestep [s].
+        """
         import sys
 
         if "isaacsim.core.simulation_manager" in sys.modules:
@@ -258,7 +324,14 @@ class NewtonTensorTestBase(omni.kit.test.AsyncTestCase):
             self._sim.step(dt)
 
     def setup_cartpole_grid(self, num_envs: int | None = None) -> int:
-        """Set up a grid of CartPole articulations from the USDA asset."""
+        """Set up a grid of CartPole articulations from the USDA asset.
+
+        Args:
+            num_envs: Number of environments. Defaults to ``self.NUM_ENVS``.
+
+        Returns:
+            Number of environments created.
+        """
         if num_envs is None:
             num_envs = self.NUM_ENVS
         asset_path = os.path.join(get_asset_root(), "CartPole.usda")
@@ -266,7 +339,14 @@ class NewtonTensorTestBase(omni.kit.test.AsyncTestCase):
         return num_envs
 
     def setup_ant_grid(self, num_envs: int | None = None) -> int:
-        """Set up a grid of Ant articulations from the USDA asset."""
+        """Set up a grid of Ant articulations from the USDA asset.
+
+        Args:
+            num_envs: Number of environments. Defaults to ``self.NUM_ENVS``.
+
+        Returns:
+            Number of environments created.
+        """
         if num_envs is None:
             num_envs = self.NUM_ENVS
         asset_path = os.path.join(get_asset_root(), "Ant.usda")
@@ -274,7 +354,14 @@ class NewtonTensorTestBase(omni.kit.test.AsyncTestCase):
         return num_envs
 
     def setup_humanoid_grid(self, num_envs: int | None = None) -> int:
-        """Set up a grid of Humanoid articulations from the USDA asset."""
+        """Set up a grid of Humanoid articulations from the USDA asset.
+
+        Args:
+            num_envs: Number of environments. Defaults to ``self.NUM_ENVS``.
+
+        Returns:
+            Number of environments created.
+        """
         if num_envs is None:
             num_envs = self.NUM_ENVS
         asset_path = os.path.join(get_asset_root(), "Humanoid.usda")
@@ -335,6 +422,13 @@ class NewtonTensorTestBase(omni.kit.test.AsyncTestCase):
     def check_rigid_contact_view(
         self, view: tensors.RigidContactView, expected_sensors: int, expected_filters: int
     ) -> None:
+        """Assert rigid contact view sensor and filter counts match the patterns.
+
+        Args:
+            view: Rigid contact view to inspect.
+            expected_sensors: Expected number of contact sensors.
+            expected_filters: Expected number of contact filters.
+        """
         self.assertIsNotNone(view)
         self.assertEqual(view.sensor_count, expected_sensors)
         self.assertEqual(view.filter_count, expected_filters)
@@ -442,7 +536,7 @@ def create_rigid_box(
     return prim
 
 
-def run_on_device_configs(configs: tuple[DeviceParams, ...] = ALL_DEVICE_CONFIGS):
+def run_on_device_configs(configs: tuple[DeviceParams, ...] = ALL_DEVICE_CONFIGS) -> Any:
     """Class decorator that generates a test class variant per :class:`DeviceParams`.
 
     For each config a new class is created with ``SIM_DEVICE`` and ``DEVICE``
@@ -455,10 +549,16 @@ def run_on_device_configs(configs: tuple[DeviceParams, ...] = ALL_DEVICE_CONFIGS
             ...
 
     This produces ``TestFooCC``, ``TestFooGC``, and ``TestFooGG``.
+
+    Args:
+        configs: Device configurations to generate variants for.
+
+    Returns:
+        Decorator that replaces the original class with the first generated variant.
     """
     import sys
 
-    def decorator(cls):
+    def decorator(cls: Any) -> Any:
         module = sys.modules[cls.__module__]
         first = None
         for cfg in configs:

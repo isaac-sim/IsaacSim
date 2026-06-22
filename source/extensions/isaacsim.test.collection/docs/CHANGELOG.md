@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.6.8] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [2.6.7] - 2026-05-21
 ### Fixed
 - Make Leatherback `test_cameras` resilient to multitick-rendering publisher-discovery latency by extending `wait_for_publishers_on_topic` timeout and draining additional frames before sampling pixels.

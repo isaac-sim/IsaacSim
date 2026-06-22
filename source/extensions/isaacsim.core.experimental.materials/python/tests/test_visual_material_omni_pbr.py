@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for visual material omni pbr."""
+"""Verifies OmniPbrMaterial properties and shader input wiring across supported prim backends. Covers length, material getters, expected input definitions, and authored input values."""
 
-from typing import Literal
+from typing import Any, Literal
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
@@ -38,18 +38,33 @@ from pxr import Sdf, UsdShade
 
 def parametrize(
     *,
-    devices: list[Literal["cpu", "cuda"]] = ["cpu", "cuda"],
-    backends: list[Literal["usd", "fabric", "tensor"]] = ["usd", "fabric", "tensor"],
-    instances: list[Literal["one", "many"]] = ["one", "many"],
-    operations: list[Literal["wrap", "create"]] = ["wrap", "create"],
+    devices: tuple[Literal["cpu", "cuda"], ...] = ("cpu", "cuda"),
+    backends: tuple[Literal["usd", "fabric", "tensor"], ...] = ("usd", "fabric", "tensor"),
+    instances: tuple[Literal["one", "many"], ...] = ("one", "many"),
+    operations: tuple[Literal["wrap", "create"], ...] = ("wrap", "create"),
     prim_class: type = OmniPbrMaterial,
-    prim_class_kwargs: dict = {},
+    prim_class_kwargs: dict | None = None,
     max_num_prims: int = 5,
-):
-    """Parametrize."""
+) -> Any:
+    """Parametrize.
 
-    def decorator(func):
-        async def wrapper(self):
+    Args:
+        devices: Simulation devices to test.
+        backends: Prim backends to test.
+        instances: Instance cardinalities to test.
+        operations: Prim setup operations to test.
+        prim_class: Material wrapper class to construct.
+        prim_class_kwargs: Keyword arguments passed to ``prim_class``.
+        max_num_prims: Maximum number of material prims in many-instance cases.
+
+    Returns:
+        Decorator that parametrizes an async test method.
+    """
+    if prim_class_kwargs is None:
+        prim_class_kwargs = {}
+
+    def decorator(func: Any) -> Any:
+        async def wrapper(self: Any) -> None:
             for device in devices:
                 for backend in backends:
                     for instance in instances:
@@ -98,24 +113,38 @@ def parametrize(
 class TestOmniPBR(omni.kit.test.AsyncTestCase):
     """Test omni p b r."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
     @parametrize(backends=["usd"])
-    async def test_len(self, prim, num_prims, device, backend):
-        """Test len."""
+    async def test_len(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Test len.
+
+        Args:
+            prim: Material wrapper under test.
+            num_prims: Number of material prims in the parametrized case.
+            device: Simulation device selected by the parametrized case.
+            backend: Prim backend selected by the parametrized case.
+        """
         self.assertEqual(len(prim), num_prims, f"Invalid len ({num_prims} prims)")
 
     @parametrize(backends=["usd"])
-    async def test_properties_and_getters(self, prim, num_prims, device, backend):
-        """Test properties and getters."""
+    async def test_properties_and_getters(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Test properties and getters.
+
+        Args:
+            prim: Material wrapper under test.
+            num_prims: Number of material prims in the parametrized case.
+            device: Simulation device selected by the parametrized case.
+            backend: Prim backend selected by the parametrized case.
+        """
         # test cases (properties)
         # - materials
         self.assertEqual(len(prim.materials), num_prims, f"Invalid materials len ({num_prims} prims)")
@@ -127,8 +156,15 @@ class TestOmniPBR(omni.kit.test.AsyncTestCase):
             self.assertTrue(isinstance(shader, UsdShade.Shader), f"Invalid shader")
 
     @parametrize(devices=["cpu"], backends=["usd"], instances=["one"], operations=["wrap", "create"])
-    async def test_input_definitions(self, prim, num_prims, device, backend):
-        """Test input definitions."""
+    async def test_input_definitions(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Test input definitions.
+
+        Args:
+            prim: Material wrapper under test.
+            num_prims: Number of material prims in the parametrized case.
+            device: Simulation device selected by the parametrized case.
+            backend: Prim backend selected by the parametrized case.
+        """
         mdl_path = prim.shaders[0].GetSourceAsset("mdl").resolvedPath
         self.assertTrue(mdl_path.endswith("OmniPBR.mdl"), f"Invalid MDL path: {mdl_path}")
         with open(mdl_path) as file:
@@ -137,8 +173,15 @@ class TestOmniPBR(omni.kit.test.AsyncTestCase):
             assert name in mdl_content, f"Wrong input: {name}"
 
     @parametrize(backends=["usd"])
-    async def test_input_values(self, prim, num_prims, device, backend):
-        """Test input values."""
+    async def test_input_values(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Test input values.
+
+        Args:
+            prim: Material wrapper under test.
+            num_prims: Number of material prims in the parametrized case.
+            device: Simulation device selected by the parametrized case.
+            backend: Prim backend selected by the parametrized case.
+        """
         cases = {
             # Albedo
             "diffuse_color_constant": lambda count: draw_sample(

@@ -32,6 +32,13 @@ def meq_for_drive_frequency(*, use_force_drive: bool, m_eq: float) -> float:
 
     Matches :class:`JointItem` behavior: acceleration drive uses ``1.0``;
     force drive uses ``m_eq`` with a fallback when zero.
+
+    Args:
+        use_force_drive: True when the joint drive uses force mode.
+        m_eq: Equivalent mass or inertia for the joint.
+
+    Returns:
+        Equivalent scalar used in the drive frequency calculation.
     """
     if not use_force_drive:
         return 1.0
@@ -47,6 +54,9 @@ def natural_frequency_hz_from_stiffness_revolute_position(
         stiffness_stored: Stiffness as stored on the joint / in the UI model.
         use_force_drive: True if drive type is force (uses ``m_eq``).
         m_eq: Equivalent inertia from the gain tuner pipeline (kg*m^2).
+
+    Returns:
+        Natural frequency in Hz.
     """
     m = meq_for_drive_frequency(use_force_drive=use_force_drive, m_eq=m_eq)
     stiffness_rad = stiffness_stored / DEG_TO_RAD
@@ -61,6 +71,15 @@ def damping_ratio_from_stiffness_damping_revolute_position(
     Uses the same radian-equivalent stiffness as :func:`natural_frequency_hz_from_stiffness_revolute_position`
     and :func:`stiffness_stored_and_damping_from_natural_frequency_revolute_position`
     (``K_rad = stiffness_stored / DEG_TO_RAD``), not ``sqrt(m * stiffness_stored)``.
+
+    Args:
+        damping: Drive damping value.
+        stiffness_stored: Stiffness as stored on the joint / in the UI model.
+        use_force_drive: True when the joint drive uses force mode.
+        m_eq: Equivalent inertia from the gain tuner pipeline (kg*m^2).
+
+    Returns:
+        Damping ratio for the drive.
     """
     if stiffness_stored <= 0:
         return 0.0
@@ -73,6 +92,12 @@ def stiffness_stored_and_damping_from_natural_frequency_revolute_position(
     natural_freq_hz: float, damping_ratio: float, *, use_force_drive: bool, m_eq: float
 ) -> tuple[float, float]:
     """Compute stored stiffness and damping from ``f_n`` and ``zeta`` (natural-frequency mode).
+
+    Args:
+        natural_freq_hz: Target natural frequency in Hz.
+        damping_ratio: Target damping ratio.
+        use_force_drive: True when the joint drive uses force mode.
+        m_eq: Equivalent inertia from the gain tuner pipeline (kg*m^2).
 
     Returns:
         ``(stiffness_stored, damping)`` matching :meth:`JointItem.compute_drive_stiffness`
@@ -88,7 +113,17 @@ def stiffness_stored_and_damping_from_natural_frequency_revolute_position(
 def damping_from_damping_ratio_revolute_position(
     damping_ratio: float, stiffness_stored: float, *, use_force_drive: bool, m_eq: float
 ) -> float:
-    """Damping from damping ratio given current stored stiffness (uses ``sqrt(m * K_rad)``)."""
+    """Damping from damping ratio given current stored stiffness (uses ``sqrt(m * K_rad)``).
+
+    Args:
+        damping_ratio: Target damping ratio.
+        stiffness_stored: Stiffness as stored on the joint / in the UI model.
+        use_force_drive: True when the joint drive uses force mode.
+        m_eq: Equivalent inertia from the gain tuner pipeline (kg*m^2).
+
+    Returns:
+        Drive damping value.
+    """
     m = meq_for_drive_frequency(use_force_drive=use_force_drive, m_eq=m_eq)
     stiffness_rad = stiffness_stored / DEG_TO_RAD
     return damping_ratio * (2.0 * math.sqrt(m * stiffness_rad))

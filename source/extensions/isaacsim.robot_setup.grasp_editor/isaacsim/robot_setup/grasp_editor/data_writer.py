@@ -40,7 +40,7 @@ class DataWriter:
         rb_frame_name: Name of the rigid body frame that serves as the object reference frame.
     """
 
-    def __init__(self, gripper_frame_name: str, rb_frame_name: str):
+    def __init__(self, gripper_frame_name: str, rb_frame_name: str) -> None:
         self.data = OrderedDict()
         self.data["format"] = "isaac_grasp"
         self.data["format_version"] = 1.0
@@ -91,7 +91,7 @@ class DataWriter:
         self.data["grasps"][name] = grasp_dict
         return name
 
-    def recursive_cast_to_float(self, d: dict):
+    def recursive_cast_to_float(self, d: dict) -> None:
         """Recursively converts string values to floats in a nested dictionary structure.
 
         Args:
@@ -104,7 +104,7 @@ class DataWriter:
                 try:
                     f = float(v)
                     d[k] = f
-                except:
+                except ValueError:
                     pass
             elif isinstance(v, dict):
                 self.recursive_cast_to_float(v)
@@ -115,7 +115,7 @@ class DataWriter:
                     if isinstance(item, str):
                         try:
                             f = float(item)
-                        except:
+                        except ValueError:
                             pass
                     l.append(f)
                 d[k] = l
@@ -129,7 +129,7 @@ class DataWriter:
         Returns:
             Parsed YAML data as a dictionary, or empty dictionary if loading fails.
         """
-        with open(path, "r") as stream:
+        with open(path) as stream:
             try:
                 parsed_file = yaml.safe_load(stream)
             except yaml.YAMLError as exc:
@@ -189,13 +189,13 @@ class DataWriter:
             f: Open file handle to write to.
         """
 
-        def write_array(f, pre_string, array, end_string):
+        def write_array(f: object, pre_string: object, array: object, end_string: object) -> None:
             f.write(f"{pre_string}[")
             for v in array[:-1]:
                 f.write(f"{v}, ")
             f.write(f"{array[-1]}]{end_string}")
 
-        def s(num_spaces):
+        def s(num_spaces: object) -> object:
             return "   " * num_spaces
 
         x = self.data
@@ -217,7 +217,7 @@ class DataWriter:
             f.write(f"{s(3)}{key}: {val}\n")
         f.write("\n")
 
-    def _write_first_grasp_to_file(self, grasp_name: str, file_path: str):
+    def _write_first_grasp_to_file(self, grasp_name: str, file_path: str) -> None:
         """Writes the first grasp to a new YAML file with full header information.
 
         Args:

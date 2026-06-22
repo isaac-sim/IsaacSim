@@ -16,7 +16,7 @@
   - def set_seed(self, seed: dict[str, float] | np.ndarray | list[float] | None)
   - def solve_ik(self, target: Transform, seed: dict[str, float] | np.ndarray | list[float] | None = None, **solver_kwargs: Any) -> PoseResult
   - def joints_to_native_values(self, joint_dict: dict[str, float]) -> list[float]
-  - def apply_pose(self, joint_dict: dict[str, float])
+  - def apply_pose(self, joint_dict: dict[str, float] | PoseResult)
   - class def apply_pose_by_target(cls, stage: Usd.Stage, robot_prim: Usd.Prim, start_prim: Usd.Prim, end_prim: Usd.Prim, target: Transform, seed: VecN | None = None) -> PoseResult
 
 - class PoseResult

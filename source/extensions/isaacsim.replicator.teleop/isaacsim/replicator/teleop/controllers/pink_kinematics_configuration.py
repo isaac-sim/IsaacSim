@@ -110,9 +110,7 @@ class PinkKinematicsConfiguration(Configuration):
         """Update both models with a new joint-position vector.
 
         Args:
-            q: ALL joints in Pinocchio order (length == number of joints in
-               the full model).  Controlled joints are extracted automatically.
-               Pass ``None`` to re-run FK on the current configuration.
+            q: ALL joints in Pinocchio order (length == number of joints in the full model).  Controlled joints are extracted automatically. Pass ``None`` to re-run FK on the current configuration.
 
         Raises:
             ValueError: If *q* length does not match the full model.
@@ -136,7 +134,14 @@ class PinkKinematicsConfiguration(Configuration):
             pin.updateFramePlacements(self.full_model, self.full_data)
 
     def get_frame_jacobian(self, frame: str) -> np.ndarray:
-        """Frame Jacobian from the full model, columns for controlled joints only."""
+        """Frame Jacobian from the full model, columns for controlled joints only.
+
+        Args:
+            frame: Value for frame.
+
+        Returns:
+            The requested value.
+        """
         if not self.full_model.existFrame(frame):
             raise FrameNotFound(frame, self.full_model.frames)
         frame_id = self.full_model.getFrameId(frame)
@@ -148,6 +153,12 @@ class PinkKinematicsConfiguration(Configuration):
 
         Overrides the default PINK implementation which only uses the reduced
         model and therefore assumes non-controlled joints stay at q0.
+
+        Args:
+            frame: Value for frame.
+
+        Returns:
+            The requested value.
         """
         frame_id = self.full_model.getFrameId(frame)
         try:
@@ -156,7 +167,12 @@ class PinkKinematicsConfiguration(Configuration):
             raise FrameNotFound(frame, self.full_model.frames) from exc
 
     def check_limits(self, tol: float = 1e-6, safety_break: bool = True) -> None:
-        """Only enforce limits when *safety_break* is enabled."""
+        """Only enforce limits when *safety_break* is enabled.
+
+        Args:
+            tol: Value for tol.
+            safety_break: Value for safety break.
+        """
         if safety_break:
             super().check_limits(tol, safety_break)
 
@@ -166,10 +182,18 @@ class PinkKinematicsConfiguration(Configuration):
 
     @property
     def controlled_joint_names_pinocchio_order(self) -> list[str]:
-        """Controlled joint names in Pinocchio traversal order."""
+        """Controlled joint names in Pinocchio traversal order.
+
+        Returns:
+            The requested value.
+        """
         return [self._all_joint_names[i] for i in self._controlled_joint_indices]
 
     @property
     def all_joint_names_pinocchio_order(self) -> list[str]:
-        """All joint names in Pinocchio traversal order."""
+        """All joint names in Pinocchio traversal order.
+
+        Returns:
+            The requested value.
+        """
         return list(self._all_joint_names)

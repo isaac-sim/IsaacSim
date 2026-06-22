@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .impl.converter import URDFImporter, URDFImporterConfig
+from .impl.converter import URDFImporter as URDFImporter
+from .impl.converter import URDFImporterConfig as URDFImporterConfig
 
 try:
     from .impl.extension import *

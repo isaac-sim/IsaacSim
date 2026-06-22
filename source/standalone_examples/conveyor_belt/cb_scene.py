@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Build the USD scene for the conveyor belt example."""
+
 import math
 
 import warp as wp
@@ -57,7 +59,6 @@ def create_scene(
         velocity_field_visualizer: Optional visualizer for rendering velocity field markers;
             pass ``None`` to disable visualization.
     """
-
     # The material for the conveyor belt geometry.
     # The friction is set to zero and the friction combine mode to "min" since
     # friction will be handled by custom logic.

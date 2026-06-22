@@ -37,7 +37,11 @@ TEST_OBJECT_PRIM_PATH = "/test_obj"
 
 # -- TRANSITION FOR SUPPORTING BOTH VP1 AND VP2
 def is_viewport_legacy() -> bool:
-    """Check if the active viewport is a legacy viewport."""
+    """Check if the active viewport is a legacy viewport.
+
+    Returns:
+        True if the active viewport exposes the legacy window API.
+    """
     viewport_api = get_active_viewport()
     return hasattr(viewport_api, "legacy_window")
 
@@ -262,7 +266,13 @@ def create_test_object(
     prim_type: str = "IsaacContactSensor",
     attrs: dict[str, object] | None = None,
 ) -> None:
-    """Create a test object prim with an icon position attribute."""
+    """Create a test object prim with an icon position attribute.
+
+    Args:
+        prim_path: Path where the test prim should be created.
+        prim_type: USD prim type to create.
+        attrs: Optional default attributes to pass to the create command.
+    """
     kwargs = {"prim_type": prim_type, "prim_path": prim_path}
     if attrs:
         kwargs["attributes"] = attrs

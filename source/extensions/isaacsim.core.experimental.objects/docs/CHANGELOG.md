@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.8.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [0.8.0] - 2026-03-10
 ### Added
 - Add the `templates` parameter to GroundPlane to apply visual templates and set the default to `"wireframe-blue"`

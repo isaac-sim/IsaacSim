@@ -1,5 +1,5 @@
 [package]
-version = "0.7.14"
+version = "0.8.1"
 category = "Simulation"
 title = "Isaac Sim Newton Physics"
 description = "Extension for simulating physics with Newton and connecting with Fabric. Includes tensor interface (isaacsim.physics.newton.tensors) for NumPy/PyTorch/Warp frontends."
@@ -37,10 +37,10 @@ name = "startup"
 timeout = 3600
 enabled = false
 dependencies = [
-    "isaacsim.physics.newton.tensors",
-    "isaacsim.test.utils", # Used to suppress NumPy coverage errors
+    "isaacsim.asset.importer.mjcf",
     "isaacsim.asset.importer.urdf",
-    "isaacsim.asset.importer.mjcf"
+    "isaacsim.physics.newton.tensors",
+    "isaacsim.test.utils" # Used to suppress NumPy coverage errors
 ]
 
 stdoutFailPatterns.exclude = [

@@ -24,7 +24,7 @@ from .ycb_video_writer import *
 
 
 # Register writers and add them to the default writers for Replicator telemetry tracking
-def register_writers():
+def register_writers() -> None:
     """Register all Isaac Sim Replicator writers with the WriterRegistry.
 
     Registers DataVisualizationWriter, DOPEWriter, PoseWriter, PytorchWriter, and YCBVideoWriter

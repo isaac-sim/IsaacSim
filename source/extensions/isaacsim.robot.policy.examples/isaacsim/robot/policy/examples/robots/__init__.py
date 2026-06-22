@@ -17,8 +17,8 @@
 
 """Provides example robot policies including terrain navigation and manipulation tasks for Anymal, Franka, H1, and Spot robots."""
 
-from isaacsim.robot.policy.examples.robots.anymal import AnymalFlatTerrainPolicy
-from isaacsim.robot.policy.examples.robots.franka import FrankaOpenDrawerPolicy
-from isaacsim.robot.policy.examples.robots.go2 import Go2FlatTerrainPolicy
-from isaacsim.robot.policy.examples.robots.h1 import H1FlatTerrainPolicy
-from isaacsim.robot.policy.examples.robots.spot import SpotFlatTerrainPolicy
+from isaacsim.robot.policy.examples.robots.anymal import AnymalFlatTerrainPolicy as AnymalFlatTerrainPolicy
+from isaacsim.robot.policy.examples.robots.franka import FrankaOpenDrawerPolicy as FrankaOpenDrawerPolicy
+from isaacsim.robot.policy.examples.robots.go2 import Go2FlatTerrainPolicy as Go2FlatTerrainPolicy
+from isaacsim.robot.policy.examples.robots.h1 import H1FlatTerrainPolicy as H1FlatTerrainPolicy
+from isaacsim.robot.policy.examples.robots.spot import SpotFlatTerrainPolicy as SpotFlatTerrainPolicy

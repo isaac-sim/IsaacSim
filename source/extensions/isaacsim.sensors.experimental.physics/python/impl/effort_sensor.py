@@ -115,7 +115,11 @@ class EffortSensor(_PhysicsSensorRuntimeBase):
         return _get_invalid_effort_reading()
 
     def _stage_open_callback_fn(self, event: Any = None) -> None:
-        """Handle stage open by releasing subscriptions."""
+        """Handle stage open by releasing subscriptions.
+
+        Args:
+            event: Stage-open event payload.
+        """
         self._stage_open_sub = None
 
     def on_timeline_stop(self) -> None:

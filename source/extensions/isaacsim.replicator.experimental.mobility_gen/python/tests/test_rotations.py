@@ -13,7 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test Mobility Gen robot rotation and cached pose handling.
+
+These tests cover 2D yaw application, RZ-RY-RX chase camera composition,
+zero-tilt behavior, physics-valid state updates, and pose buffer reads.
+"""
+
 import math
+from typing import Any
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -23,13 +30,15 @@ from isaacsim.replicator.experimental.mobility_gen.impl.robot import MobilityGen
 
 
 class TestRotationFixes(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
-        pass
+    """MobilityGenRobot rotation and cached-state regression tests."""
 
-    async def tearDown(self):
-        pass
+    async def setUp(self) -> None:
+        """Prepare the async fixture for rotation and state tests."""
 
-    async def test_set_pose_2d_theta_is_yaw(self):
+    async def tearDown(self) -> None:
+        """Clean up the async fixture for rotation and state tests."""
+
+    async def test_set_pose_2d_theta_is_yaw(self) -> None:
         """set_pose_2d must apply theta as yaw (Z-axis rotation), not roll (X-axis rotation).
 
         The former bug passed theta at index 0 ([theta, 0, 0]), which with extrinsic=True
@@ -60,7 +69,7 @@ class TestRotationFixes(omni.kit.test.AsyncTestCase):
             "Yaw and roll quaternions must not be equal for non-zero theta",
         )
 
-    async def test_chase_camera_extrinsic_true_is_rz_ry_rx(self):
+    async def test_chase_camera_extrinsic_true_is_rz_ry_rx(self) -> None:
         """Chase/front camera must use extrinsic=True to match deprecated prim_rotate_x/y/z ordering.
 
         The deprecated code called prim_rotate_x, prim_rotate_y, prim_rotate_z each with
@@ -98,7 +107,7 @@ class TestRotationFixes(omni.kit.test.AsyncTestCase):
             f"extrinsic=True [45,0,-90]° expected {expected}, got {q_extrinsic}",
         )
 
-    async def test_chase_camera_zero_tilt_is_pure_rz(self):
+    async def test_chase_camera_zero_tilt_is_pure_rz(self) -> None:
         """With zero tilt, both extrinsic conventions agree and the result is a pure Rz(-90°).
 
         This confirms the -90° Z rotation that aligns the camera to look forward is
@@ -124,22 +133,25 @@ class TestRotationFixes(omni.kit.test.AsyncTestCase):
             f"Pure Rz(-90°) expected {expected_rz}, got {q_true}",
         )
 
-    async def test_update_state_skips_when_physics_not_valid(self):
+    async def test_update_state_skips_when_physics_not_valid(self) -> Any:
         """update_state must be a no-op when the articulation physics tensor is not yet valid.
 
         Before the fix, calling update_state before physics initialized would raise an
         AssertionError from get_dof_positions().  The fix adds an early-return guard on
         is_physics_tensor_entity_valid().
+
+        Returns:
+            None.
         """
 
         class _ConcreteRobot(MobilityGenRobot):
             z_offset = 0.0
 
             @classmethod
-            def build(cls, prim_path):
+            def build(cls, prim_path: Any) -> None:
                 pass
 
-            def write_action(self, step_size):
+            def write_action(self, step_size: Any) -> None:
                 pass
 
         mock_articulation = MagicMock()
@@ -159,17 +171,21 @@ class TestRotationFixes(omni.kit.test.AsyncTestCase):
         self.assertIsNone(robot.position.get_value())
         self.assertIsNone(robot.joint_positions.get_value())
 
-    async def test_update_state_reads_state_when_physics_valid(self):
-        """update_state must populate all state buffers when physics is valid."""
+    async def test_update_state_reads_state_when_physics_valid(self) -> Any:
+        """update_state must populate all state buffers when physics is valid.
+
+        Returns:
+            None.
+        """
 
         class _ConcreteRobot(MobilityGenRobot):
             z_offset = 0.0
 
             @classmethod
-            def build(cls, prim_path):
+            def build(cls, prim_path: Any) -> None:
                 pass
 
-            def write_action(self, step_size):
+            def write_action(self, step_size: Any) -> None:
                 pass
 
         mock_articulation = MagicMock()
@@ -200,17 +216,21 @@ class TestRotationFixes(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(robot.linear_velocity.get_value(), lin_vel[0]))
         self.assertTrue(np.allclose(robot.angular_velocity.get_value(), ang_vel[0]))
 
-    async def test_get_pose_2d_reads_cached_buffers(self):
-        """get_pose_2d reads position/orientation buffers set by update_state and recovers yaw correctly."""
+    async def test_get_pose_2d_reads_cached_buffers(self) -> Any:
+        """get_pose_2d reads position/orientation buffers set by update_state and recovers yaw correctly.
+
+        Returns:
+            None.
+        """
 
         class _ConcreteRobot(MobilityGenRobot):
             z_offset = 0.0
 
             @classmethod
-            def build(cls, prim_path):
+            def build(cls, prim_path: Any) -> None:
                 pass
 
-            def write_action(self, step_size):
+            def write_action(self, step_size: Any) -> None:
                 pass
 
         mock_articulation = MagicMock()

@@ -1,5 +1,5 @@
 [package]
-version = "1.9.2"
+version = "1.9.3"
 category = "Simulation"
 title = "Isaac Sim Native Storage"
 description = "Provides utilities for accessing Isaac Sim assets from Nucleus servers or S3 buckets, including path resolution, asset downloading, and version verification."

@@ -41,7 +41,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import omni
 import omni.usd
-from isaacsim.core.experimental.objects import Cube
 from isaacsim.core.experimental.utils.stage import is_stage_loading, open_stage
 from isaacsim.sensors.experimental.rtx import CameraSensor, RtxCamera
 from isaacsim.storage.native import get_assets_root_path

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tutorial 9, Part 4: Pick and Place (cuMotion RMPflow)
+"""Tutorial 9, Part 4: Pick and Place (cuMotion RMPflow).
 
 A self-contained pick-and-place controller using cuMotion RMPflow and an 8-phase state machine.
 """
@@ -359,9 +359,11 @@ class UR10ePickPlace:
         return True
 
     def is_done(self) -> bool:
+        """Return whether all pick-and-place phases have completed."""
         return self._event >= len(self.events_dt)
 
     def reset(self) -> None:
+        """Reset the pick-and-place phase state."""
         self._event = 0
         self._step = 0
         self._t = 0.0
@@ -375,6 +377,7 @@ class UR10ePickPlace:
 
 
 def main(args: argparse.Namespace, app: SimulationApp) -> None:
+    """Run the cuMotion pick-and-place tutorial."""
     SimulationManager.setup_simulation(dt=1.0 / 60.0, device=args.device)
 
     scenario = UR10ePickPlace(xrdf_dir=args.xrdf_dir, urdf_filename=args.urdf, xrdf_filename=args.xrdf)

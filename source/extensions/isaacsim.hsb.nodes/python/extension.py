@@ -36,7 +36,11 @@ class HsbNodesExtension(omni.ext.IExt):
         self.registered_annotators = []
 
     def on_startup(self, ext_id: str) -> None:
-        """Called when the extension is loaded."""
+        """Called when the extension is loaded.
+
+        Args:
+            ext_id: Extension identifier provided by Kit.
+        """
         carb.log_info("HSB Nodes Extension starting up")
 
         from .bindings._hsb_nodes import acquire_interface

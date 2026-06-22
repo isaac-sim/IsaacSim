@@ -21,8 +21,8 @@
             },
             "tag": {
                 "type": "uint64",
-                "description": "UCX tag to publish",
-                "default": 10
+                "description": "UCX tag for message identification. Default is FNV-1a 32-bit hash of 'isaac.Image'.",
+                "default": 270059627
             },
             "renderProductPath": {
                 "type": "token",

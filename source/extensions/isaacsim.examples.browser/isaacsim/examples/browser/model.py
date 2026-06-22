@@ -17,7 +17,7 @@
 
 import asyncio
 import os
-from typing import List, Optional
+from typing import Optional
 
 import carb.settings
 import omni.kit.app
@@ -75,7 +75,7 @@ class ExampleCategoryItem(CategoryItem):
     def __init__(self, name: str) -> None:
         super().__init__(name)
         # Examples registered directly at this category (excluding descendants).
-        self.examples: List["ExampleDetailItem"] = []
+        self.examples: list["ExampleDetailItem"] = []
 
     def add_child(self, child_name: str) -> "ExampleCategoryItem":
         """Adds a child category item to the current category.
@@ -99,8 +99,12 @@ class ExampleCategoryItem(CategoryItem):
 
         return child_category
 
-    def collect_examples(self) -> List["ExampleDetailItem"]:
-        """Returns examples registered at this category and recursively at all descendants."""
+    def collect_examples(self) -> list["ExampleDetailItem"]:
+        """Returns examples registered at this category and recursively at all descendants.
+
+        Returns:
+            List of example detail items registered at this category and its descendants.
+        """
         items = list(self.examples)
         for child in self.children:
             if isinstance(child, ExampleCategoryItem):
@@ -137,7 +141,7 @@ class ExampleFolderDetailItem(DetailItem):
         thumbnail: Optional path to a folder icon used as the tile thumbnail.
     """
 
-    def __init__(self, category_path: str, name: str, thumbnail: Optional[str] = None):
+    def __init__(self, category_path: str, name: str, thumbnail: Optional[str] = None) -> None:
         super().__init__(name, "", thumbnail)
         self.category_path = category_path
         # Property delegates iterate selected items and call `item.ui_hook()` to render extra UI; folder
@@ -168,8 +172,12 @@ class ExampleBrowserModel(TreeFolderBrowserModel):
             **kwargs,
         )
 
-    def set_widget(self, widget) -> None:
-        """Register the BrowserWidget so folder tiles can drive tree navigation on double-click."""
+    def set_widget(self, widget: object) -> None:
+        """Register the BrowserWidget so folder tiles can drive tree navigation on double-click.
+
+        Args:
+            widget: Browser widget used for tree selection updates.
+        """
         self._widget = widget
 
     def register_example(self, **kwargs: object) -> None:
@@ -200,7 +208,7 @@ class ExampleBrowserModel(TreeFolderBrowserModel):
         Returns:
             List of category items organized hierarchically.
         """
-        category_items: List[ExampleCategoryItem] = []
+        category_items: list[ExampleCategoryItem] = []
         for category, examples in self._examples.items():
             parts = category.split("/")
 
@@ -220,7 +228,7 @@ class ExampleBrowserModel(TreeFolderBrowserModel):
         self.sort_items(category_items)
         return category_items
 
-    def get_detail_items(self, item: ExampleCategoryItem) -> List[DetailItem]:
+    def get_detail_items(self, item: ExampleCategoryItem) -> list[DetailItem]:
         """Override to get list of detail items.
 
         Returns the directly-registered examples at ``item``, plus a folder tile per sub-category. This
@@ -236,7 +244,7 @@ class ExampleBrowserModel(TreeFolderBrowserModel):
         """
         if item.name == self.SUMMARY_FOLDER_NAME:
             # Summary still shows everything flattened, matching the pre-existing convention.
-            detail_items: List[DetailItem] = [example for examples in self._examples.values() for example in examples]
+            detail_items: list[DetailItem] = [example for examples in self._examples.values() for example in examples]
         elif isinstance(item, ExampleCategoryItem):
             detail_items = list(item.examples)
             parent_path = self._category_path(item)
@@ -281,8 +289,15 @@ class ExampleBrowserModel(TreeFolderBrowserModel):
                 example.execute_entrypoint()
 
     def _category_path(self, item: "ExampleCategoryItem") -> str:
-        """Reconstruct the slash-separated path for a category by walking its parent chain."""
-        parts: List[str] = []
+        """Reconstruct the slash-separated path for a category by walking its parent chain.
+
+        Args:
+            item: Category item whose path should be reconstructed.
+
+        Returns:
+            Slash-separated category path from the root category to ``item``.
+        """
+        parts: list[str] = []
         current: Optional[ExampleCategoryItem] = item
         while current is not None:
             parts.append(current.name)
@@ -290,7 +305,14 @@ class ExampleBrowserModel(TreeFolderBrowserModel):
         return "/".join(reversed(parts))
 
     def _find_category_by_path(self, path: str) -> Optional["ExampleCategoryItem"]:
-        """Look up the live category instance matching ``path`` in the most recently built tree."""
+        """Look up the live category instance matching ``path`` in the most recently built tree.
+
+        Args:
+            path: Slash-separated category path to find.
+
+        Returns:
+            Matching category item if found, None otherwise.
+        """
         roots = getattr(self, "_category_root", None) or self.get_category_items(None)
         parts = path.split("/")
         current = next((c for c in roots if c.name == parts[0]), None)

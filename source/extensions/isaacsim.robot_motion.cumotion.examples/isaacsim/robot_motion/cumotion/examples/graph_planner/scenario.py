@@ -129,17 +129,29 @@ class FrankaGraphPlannerExample:
     # --------------------------------------------------------------- UI helpers
 
     def is_robot_config_loaded(self) -> bool:
-        """True once :meth:`load_robot_config` has populated the cuMotion robot."""
+        """Check whether :meth:`load_robot_config` has populated the cuMotion robot.
+
+        Returns:
+            True if the cuMotion robot config is loaded, otherwise False.
+        """
         return self._cumotion_robot is not None
 
     def get_controlled_joint_names(self) -> list[str]:
-        """Names of joints the planner controls."""
+        """Get the names of joints the planner controls.
+
+        Returns:
+            Joint names controlled by the planner, or an empty list if the robot config is not loaded.
+        """
         if self._cumotion_robot is None:
             return []
         return self._cumotion_robot.controlled_joint_names
 
     def get_joint_limits(self) -> tuple[np.ndarray, np.ndarray]:
-        """Return ``(lower, upper)`` joint limits for all controlled joints."""
+        """Get joint limits for all controlled joints.
+
+        Returns:
+            Lower and upper joint limit arrays, or empty arrays if the robot config is not loaded.
+        """
         if self._cumotion_robot is None:
             return np.empty(0), np.empty(0)
         kinematics = self._cumotion_robot.kinematics
@@ -149,7 +161,11 @@ class FrankaGraphPlannerExample:
         return lower, upper
 
     def get_default_target_configuration(self) -> np.ndarray:
-        """Default slider/target values: cuMotion default cspace configuration with joints 0/1 nudged."""
+        """Get the default slider target configuration.
+
+        Returns:
+            cuMotion default cspace configuration with joints 0 and 1 adjusted.
+        """
         default_q = self._cumotion_robot.robot_description.default_cspace_configuration().copy()
         default_q[0] = np.pi / 2
         default_q[1] = -np.pi / 3
@@ -291,7 +307,15 @@ class FrankaGraphPlannerExample:
         return None
 
     def _path_to_trajectory(self, path: Any, robot_config: Any) -> Any:
-        """Convert a planned Path to a minimal-time joint trajectory."""
+        """Convert a planned path to a minimal-time joint trajectory.
+
+        Args:
+            path: Planned path returned by the graph-based motion planner.
+            robot_config: cuMotion robot configuration used to map active joints.
+
+        Returns:
+            Minimal-time joint trajectory for the planned path.
+        """
         # Reasonable velocity / acceleration limits for the Franka.
         max_velocities = np.array([2.0, 2.0, 2.0, 2.0, 2.5, 2.5, 2.5])
         max_accelerations = np.array([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0])
@@ -309,6 +333,9 @@ class FrankaGraphPlannerExample:
 
         Safe to call before a trajectory has been planned or while the
         articulation's physics tensors are not yet valid; both are no-ops.
+
+        Args:
+            dt: Physics time step in seconds.
         """
         if self._trajectory is None or self._articulation is None:
             return

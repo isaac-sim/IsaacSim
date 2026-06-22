@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Attach render vars and a Hydra texture to an existing USD render product from OmniGraph."""
+
 import uuid
+from typing import Any
 
 import carb
 import carb.eventdispatcher
@@ -29,7 +32,7 @@ from pxr import Sdf, Usd, UsdRender
 class OgnIsaacAttachHydraTextureInternalState(BaseResetNode):
     """Internal state for the OgnIsaacAttachHydraTexture node."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.hydra_texture = None
         self.applied_render_vars = set()
         self.rp_sub_stop = None
@@ -40,14 +43,22 @@ class OgnIsaacAttachHydraTextureInternalState(BaseResetNode):
         self.is_async = settings.get("/app/asyncRendering") or False
         super().__init__(initialize=False)
 
-    def on_timeline_stop(self, event: carb.eventdispatcher.Event):
-        """Timeline stop event callback - disable hydra texture updates."""
+    def on_timeline_stop(self, event: carb.eventdispatcher.Event) -> None:
+        """Disable hydra texture updates when the timeline stops.
+
+        Args:
+            event: Timeline stop event.
+        """
         if self.hydra_texture:
             self.hydra_texture.set_updates_enabled(False)
         self.initialized = False
 
-    def on_timeline_play(self, event: carb.eventdispatcher.Event):
-        """Timeline play event callback - enable hydra texture updates."""
+    def on_timeline_play(self, event: carb.eventdispatcher.Event) -> None:
+        """Enable hydra texture updates when the timeline plays.
+
+        Args:
+            event: Timeline play event.
+        """
         if self.hydra_texture:
             self.hydra_texture.set_updates_enabled(True)
 
@@ -56,8 +67,12 @@ class OgnIsaacAttachHydraTexture:
     """Isaac Sim node that attaches render vars and a hydra texture to an existing render product."""
 
     @staticmethod
-    def internal_state():
-        """Create internal state for the node instance."""
+    def internal_state() -> OgnIsaacAttachHydraTextureInternalState:
+        """Create internal state for the node instance.
+
+        Returns:
+            Internal state for the node instance.
+        """
         return OgnIsaacAttachHydraTextureInternalState()
 
     @staticmethod
@@ -100,7 +115,7 @@ class OgnIsaacAttachHydraTexture:
         return True, ""
 
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
         """Compute method for the node.
 
         Args:
@@ -222,8 +237,13 @@ class OgnIsaacAttachHydraTexture:
         return True
 
     @staticmethod
-    def release_instance(node, graph_instance_id):
-        """Release resources when the node instance is destroyed."""
+    def release_instance(node: Any, graph_instance_id: Any) -> None:
+        """Release resources when the node instance is destroyed.
+
+        Args:
+            node: OmniGraph node instance.
+            graph_instance_id: Graph instance identifier.
+        """
         try:
             state = OgnIsaacAttachHydraTextureDatabase.per_instance_internal_state(node)
         except Exception:

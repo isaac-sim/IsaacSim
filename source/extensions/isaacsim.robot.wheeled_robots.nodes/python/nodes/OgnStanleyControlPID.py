@@ -74,18 +74,35 @@ class OgnStanleyControlPID:
 
     @staticmethod
     def init_instance(node: og.Node, graph_instance_id: int) -> None:
-        """Initialize the per-instance state for this node."""
+        """Initialize the per-instance state for this node.
+
+        Args:
+            node: OmniGraph node instance.
+            graph_instance_id: Graph instance identifier.
+        """
         state = OgnStanleyControlPIDDatabase.get_internal_state(node, graph_instance_id)
         state.node = node
 
     @staticmethod
     def internal_state() -> OgnStanleyControlPIDInternalState:
-        """Return a new internal state instance."""
+        """Return a new internal state instance.
+
+        Returns:
+            Per-instance Stanley control PID state.
+        """
         return OgnStanleyControlPIDInternalState()
 
     @staticmethod
     def compute(db: OgnStanleyControlPIDDatabase) -> bool:
-        """Compute linear and angular velocity outputs using Stanley control and PID."""
+        """Compute linear and angular velocity outputs using Stanley control and PID.
+
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            True when velocity outputs are updated, False when required wheel base or
+            step inputs are invalid.
+        """
         state = db.per_instance_state
 
         # save thresholds if changed

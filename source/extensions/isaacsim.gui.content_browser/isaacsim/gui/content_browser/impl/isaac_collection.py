@@ -104,7 +104,14 @@ class IsaacCollection(CollectionItem):
         return IsaacConnectionItem(name, path)
 
     def _resolve_path(self, path: str) -> str:
-        """Resolve a path, prepending the asset root if it is a relative suffix."""
+        """Resolve a path, prepending the asset root if it is a relative suffix.
+
+        Args:
+            path: Path or relative asset-root suffix to resolve.
+
+        Returns:
+            The resolved absolute asset path or original URL.
+        """
         if path.startswith(("http://", "https://", "omniverse://")):
             return path
         return self._asset_root + path

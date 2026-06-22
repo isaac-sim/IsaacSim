@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test physics fetch_results for deadlock detection."""
+"""Verifies that initializing and simulating PhysX with an on-step callback does not deadlock during fetch-results-style physics warmup."""
+
+from typing import Any
 
 from isaacsim import SimulationApp
 
@@ -33,7 +35,7 @@ physx_scene_api = PhysxSchema.PhysxSceneAPI.Apply(scene.GetPrim())
 kit.update()
 
 
-def test_callback(step, context):
+def test_callback(step: float, context: Any) -> None:
     """Print a message when the physics step callback fires."""
     print("callback")
 

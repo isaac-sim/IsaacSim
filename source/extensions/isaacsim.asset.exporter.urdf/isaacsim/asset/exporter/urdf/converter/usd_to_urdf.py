@@ -80,7 +80,6 @@ class UsdToUrdfConverter:
         visualize_collision_meshes: bool = False,
         variant_selections: dict[str, str] | None = None,
     ) -> None:
-        """Initialize the converter; see class docstring for parameter descriptions."""
         if isinstance(stage, (str, os.PathLike)):
             usd_path = str(stage)
             stage = Usd.Stage.Open(usd_path)
@@ -101,6 +100,12 @@ class UsdToUrdfConverter:
         For stages loaded from ``omniverse://`` URLs, ``omni.client`` is used
         to parse the source path; if the source is remote the current working
         directory is used as the output location.
+
+        Args:
+            output_path: URDF output file path.
+
+        Returns:
+            Path to the written URDF file.
 
         Raises:
             ValueError: If *output_path* is ``None`` and no source path can
@@ -214,7 +219,11 @@ class UsdToUrdfConverter:
         return output_path
 
     def _resolve_default_output_path(self) -> str:
-        """Derive a ``.urdf`` output path from the stage's source layer."""
+        """Derive a ``.urdf`` output path from the stage's source layer.
+
+        Returns:
+            Default URDF output path.
+        """
         layer = self._stage.GetRootLayer()
         real_path = layer.realPath
         identifier = layer.identifier
@@ -279,6 +288,12 @@ def _split_omniverse_url(url: str) -> tuple[str, str]:
 
     Uses ``omni.client.break_url`` / ``make_url`` when available, falling
     back to naive string splitting otherwise.
+
+    Args:
+        url: Omniverse URL to split.
+
+    Returns:
+        Directory URL and basename.
     """
     try:
         import omni.client
@@ -307,7 +322,15 @@ def _process_element_geometry(
     root_prim: Usd.Prim,
     mesh_exporter: MeshExporter,
 ) -> None:
-    """Compute origin and export mesh data for a single visual/collision element."""
+    """Compute origin and export mesh data for a single visual/collision element.
+
+    Args:
+        element: Visual or collision element to process.
+        link_path: Link prim path.
+        urdf_frames: Mapping from link prim paths to URDF frames.
+        root_prim: Robot root prim.
+        mesh_exporter: Mesh exporter used for mesh files.
+    """
     geom = element.geometry
     if geom is None:
         return
@@ -333,6 +356,14 @@ def _compose_local_offset(
 
     The local offset is a translation in the geometry prim's local frame.
     In the URDF link frame it becomes ``R(rpy) @ offset + xyz``.
+
+    Args:
+        origin_xyz: Origin translation to compose.
+        origin_rpy: Origin rotation to compose.
+        local_offset: Local-frame offset to compose.
+
+    Returns:
+        Composed translation.
     """
     r, p, y = origin_rpy
     cr, sr = math.cos(r), math.sin(r)
@@ -355,7 +386,15 @@ def _export_procedural_cone(
     root_prim: Usd.Prim,
     mesh_exporter: MeshExporter,
 ) -> None:
-    """Generate a cone mesh OBJ procedurally and assign it to the element."""
+    """Generate a cone mesh OBJ procedurally and assign it to the element.
+
+    Args:
+        element: Visual or collision element to process.
+        link_path: Link prim path.
+        urdf_frames: Mapping from link prim paths to URDF frames.
+        root_prim: Robot root prim.
+        mesh_exporter: Mesh exporter used for mesh files.
+    """
     geom = element.geometry
     params = geom.original_params
     name = params.get("source_prim_name", "cone")
@@ -382,6 +421,12 @@ def _build_actuator_map(root_prim: Usd.Prim) -> dict[str, Usd.Prim]:
     Traverses the subtree under *root_prim* looking for ``MjcActuator``
     prims and resolves their ``mjc:target`` relationship to identify the
     target joint.  Returns an empty dict when no actuators are present.
+
+    Args:
+        root_prim: Robot root prim.
+
+    Returns:
+        Mapping from joint prim paths to actuator prims.
     """
     actuator_map: dict[str, Usd.Prim] = {}
     for prim in Usd.PrimRange(root_prim, Usd.TraverseInstanceProxies()):
@@ -397,7 +442,14 @@ def _build_actuator_map(root_prim: Usd.Prim) -> dict[str, Usd.Prim]:
 
 
 def _is_instance_proxy(prim: Usd.Prim) -> bool:
-    """Check if a prim is a USD instance proxy (lives inside an instanceable subtree)."""
+    """Check if a prim is a USD instance proxy (lives inside an instanceable subtree).
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        True if the prim is an instance proxy, False otherwise.
+    """
     if prim.IsInstanceProxy():
         return True
     current = prim.GetParent()
@@ -422,6 +474,13 @@ def _export_mesh_geometry(
     The mesh-to-link placement is expressed via the URDF origin instead.
 
     Non-instanced meshes are baked as before (origin = identity).
+
+    Args:
+        element: Visual or collision element to process.
+        link_path: Link prim path.
+        urdf_frames: Mapping from link prim paths to URDF frames.
+        root_prim: Robot root prim.
+        mesh_exporter: Mesh exporter used for mesh files.
     """
     geom = element.geometry
     mesh_prim = geom.mesh_prim

@@ -12,13 +12,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+# ruff: noqa: N802
+# Methods intentionally mirror the PascalCase generated USD schema API
+# (N802)
 """Robot schema helpers and applied schema utilities."""
 
 from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Iterable
 from enum import Enum
 from functools import lru_cache
 
@@ -32,7 +35,11 @@ _SCHEMA_USDA_PATH = os.path.join(os.path.dirname(__file__), "RobotSchema.usda")
 
 @lru_cache(maxsize=None)
 def _get_schema_layer() -> Sdf.Layer | None:
-    """Open the RobotSchema.usda file as an Sdf layer (cached)."""
+    """Open the RobotSchema.usda file as an Sdf layer.
+
+    Returns:
+        Schema layer if it can be opened, None otherwise.
+    """
     return Sdf.Layer.FindOrOpen(_SCHEMA_USDA_PATH)
 
 
@@ -199,7 +206,7 @@ class Attributes(Enum):
         return self.value[1]
 
     @property
-    def type(self):
+    def type(self) -> pxr.Sdf.ValueTypeName:
         """USD attribute type token.
 
         Returns:
@@ -268,7 +275,7 @@ class Relations(Enum):
         return self.value[1]
 
 
-def _create_attributes(prim: pxr.Usd.Prim, attributes, write_sparsely: bool = True):
+def _create_attributes(prim: pxr.Usd.Prim, attributes: Iterable[Attributes], write_sparsely: bool = True) -> None:
     """Create attributes on a prim from attribute descriptors.
 
     Args:
@@ -281,7 +288,7 @@ def _create_attributes(prim: pxr.Usd.Prim, attributes, write_sparsely: bool = Tr
         prim.CreateAttribute(attr.name, attr.type, write_sparsely)
 
 
-def _create_relationships(prim: pxr.Usd.Prim, relationships, custom: bool = True):
+def _create_relationships(prim: pxr.Usd.Prim, relationships: Iterable[Relations], custom: bool = True) -> None:
     """Create relationships on a prim from relationship descriptors.
 
     Args:
@@ -298,11 +305,11 @@ def _apply_api(
     prim: pxr.Usd.Prim,
     schema: Classes,
     *,
-    attributes=(),
-    relationships=(),
+    attributes: Iterable[Attributes] = (),
+    relationships: Iterable[Relations] = (),
     write_sparsely: bool = True,
     relationships_custom: bool = True,
-):
+) -> None:
     """Apply a schema API and create related attributes and relationships.
 
     No-op when ``prim`` already has ``schema`` applied anywhere in its layer
@@ -327,7 +334,7 @@ def _apply_api(
     _create_relationships(prim, relationships, relationships_custom)
 
 
-def ApplyRobotAPI(prim: pxr.Usd.Prim):
+def ApplyRobotAPI(prim: pxr.Usd.Prim) -> None:
     """Apply the Robot API schema and populate robot relationships.
 
     Args:
@@ -352,7 +359,7 @@ def ApplyRobotAPI(prim: pxr.Usd.Prim):
         _robot_schema_utils.PopulateRobotSchemaFromArticulation(stage, prim, prim)
 
 
-def ApplyLinkAPI(prim: pxr.Usd.Prim):
+def ApplyLinkAPI(prim: pxr.Usd.Prim) -> None:
     """Apply the Link API schema to a prim.
 
     Args:
@@ -368,7 +375,7 @@ def ApplyLinkAPI(prim: pxr.Usd.Prim):
     _apply_api(prim, Classes.LINK_API)
 
 
-def ApplySiteAPI(prim: pxr.Usd.Prim):
+def ApplySiteAPI(prim: pxr.Usd.Prim) -> None:
     """Apply the IsaacSiteAPI schema to a prim.
 
     Args:
@@ -384,7 +391,7 @@ def ApplySiteAPI(prim: pxr.Usd.Prim):
     _apply_api(prim, Classes.SITE_API)
 
 
-def ApplyReferencePointAPI(prim: pxr.Usd.Prim):
+def ApplyReferencePointAPI(prim: pxr.Usd.Prim) -> None:
     """Apply the deprecated ReferencePoint API schema to a prim.
 
     Args:
@@ -403,7 +410,7 @@ def ApplyReferencePointAPI(prim: pxr.Usd.Prim):
     #     prim.CreateAttribute(attr.name, attr.type, True)
 
 
-def ApplyJointAPI(prim: pxr.Usd.Prim):
+def ApplyJointAPI(prim: pxr.Usd.Prim) -> None:
     """Apply the Joint API schema to a prim.
 
     Args:
@@ -462,7 +469,7 @@ def CreateSurfaceGripper(stage: pxr.Usd.Stage, prim_path: str) -> pxr.Usd.Prim:
     return prim
 
 
-def ApplyAttachmentPointAPI(prim: pxr.Usd.Prim):
+def ApplyAttachmentPointAPI(prim: pxr.Usd.Prim) -> None:
     """Apply the Attachment Point API schema to a prim.
 
     Args:

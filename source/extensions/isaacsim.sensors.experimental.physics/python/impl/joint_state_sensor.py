@@ -124,7 +124,11 @@ class JointStateSensor(_PhysicsSensorRuntimeBase):
         return _get_invalid_reading()
 
     def _stage_open_callback_fn(self, event: Any = None) -> None:
-        """Handle stage open by releasing subscriptions."""
+        """Handle stage open by releasing subscriptions.
+
+        Args:
+            event: Stage-open event payload.
+        """
         self._stage_open_sub = None
 
     def get_sensor_reading(self) -> JointStateSensorReading:

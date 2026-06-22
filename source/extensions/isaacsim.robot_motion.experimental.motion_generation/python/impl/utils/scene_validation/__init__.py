@@ -15,4 +15,4 @@
 
 """Scene validation utilities for validating USD stage transform hierarchies."""
 
-from .validate_ancestor_scaling import find_all_invalid_ancestors
+from .validate_ancestor_scaling import find_all_invalid_ancestors as find_all_invalid_ancestors

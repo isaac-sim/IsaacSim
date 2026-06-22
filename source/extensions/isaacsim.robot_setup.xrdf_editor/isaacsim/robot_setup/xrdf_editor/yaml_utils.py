@@ -65,7 +65,7 @@ def safe_load_yaml(path: str | os.PathLike[str]) -> dict[str, Any]:
         Parsed YAML content as a dictionary. Returns an empty dict if the
         file cannot be parsed.
     """
-    with open(path, "r") as stream:
+    with open(path) as stream:
         try:
             parsed_file = yaml.safe_load(stream)
         except yaml.YAMLError as exc:

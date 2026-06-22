@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Export USD robot assets to URDF format."""
+
 import argparse
 import os
 import sys
@@ -133,7 +135,7 @@ def _validate_urdf(output_path: str) -> bool:
     return True
 
 
-def main():
+def main() -> int:
     """Run the URDF export workflow with CLI configuration.
 
     Returns:

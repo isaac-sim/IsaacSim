@@ -182,6 +182,9 @@ def _drop_malformed_mimic(joint_elem: ET.Element) -> bool:
 def _normalize_joint(joint_elem: ET.Element) -> bool:
     """Apply every joint-scoped urdfdom-compatibility fixup to ``joint_elem``.
 
+    Args:
+        joint_elem: URDF joint element to normalize.
+
     Returns:
         ``True`` if the joint was modified by any fixup, ``False`` otherwise.
     """

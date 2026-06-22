@@ -39,6 +39,9 @@ def _build_stage_antipodal_quaternions(stage: Usd.Stage) -> None:
 
     Same physical joint pose (position and orientation), but the two body paths
     produce antipodal quaternions so the validator must not report a rotation error.
+
+    Args:
+        stage: Stage to populate with the antipodal quaternion test scene.
     """
     robot = UsdGeom.Xform.Define(stage, "/Robot")
     stage.SetDefaultPrim(robot.GetPrim())

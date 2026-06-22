@@ -1,5 +1,5 @@
 [package]
-version = "1.0.17"
+version = "1.0.18"
 category = "Robotics"
 title = "Omni Isaac Cortex"
 description = "Isaac Cortex is a framework within NVIDIA's Isaac Sim that integrates various robotics tools into a unified system, facilitating the development of collaborative robotic applications. It emphasizes reactivity and adaptability, enabling robots to operate safely alongside humans without the need for physical barriers."
@@ -86,7 +86,9 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]

@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for isaacsim.physics.newton.tensors articulation view."""
+"""Verifies the Newton articulation view implementation against loaded articulated assets and live simulation stepping. The tests cover transforms, velocities, DOF state and limits, mass and inertia properties, force application, path metadata, and validity checks."""
+
+from typing import Any
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import isaacsim.physics.newton
@@ -28,8 +30,12 @@ from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.storage.native import get_assets_root_path_async
 
 
-async def wait_for_stage_loading():
-    """Wait until USD stage loading is complete."""
+async def wait_for_stage_loading() -> Any:
+    """Wait until USD stage loading is complete.
+
+    Returns:
+        None.
+    """
     while omni.usd.get_context().get_stage_loading_status()[2] > 0:
         await omni.kit.app.get_app().next_update_async()
 
@@ -37,7 +43,7 @@ async def wait_for_stage_loading():
 class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
     """Tests for Newton articulation view tensor API."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment."""
         self.use_gpu = True
         self.wp_device = "cuda:0" if self.use_gpu else "cpu"
@@ -66,13 +72,13 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             frontend_name="warp", stage_id=-1, newton_stage=self.newton_stage
         )
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after test."""
         self.timeline.pause()
         await omni.kit.app.get_app().next_update_async()
         await omni.usd.get_context().close_stage_async()
 
-    async def test_articulation_view_creation(self):
+    async def test_articulation_view_creation(self) -> None:
         """Test creating articulation view and basic properties."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
 
@@ -82,7 +88,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
         self.assertGreater(articulations.max_dofs, 0, "Articulation should have DOFs")
         self.assertEqual(articulations.max_dofs, 21, f"Expected 21 DOFs, got {articulations.max_dofs}")
 
-    async def test_metatype_info(self):
+    async def test_metatype_info(self) -> None:
         """Test articulation metatype information."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         mt = articulations.get_metatype(0)
@@ -97,7 +103,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
         self.assertTrue(hasattr(mt, "fixed_base"), "Metatype should have fixed_base attribute")
         self.assertIsInstance(mt.fixed_base, bool, "fixed_base should be boolean")
 
-    async def test_root_transforms(self):
+    async def test_root_transforms(self) -> None:
         """Test getting and setting root transforms."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -128,7 +134,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             f"Z position should have changed from {initial_transforms_np[0, 2]}",
         )
 
-    async def test_root_velocities(self):
+    async def test_root_velocities(self) -> None:
         """Test getting and setting root velocities."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -170,7 +176,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             f"Root velocity (after step) should be close to {modified_vel[0, 0]}, got {stepped_vel[0, 0]}",
         )
 
-    async def test_dof_velocities(self):
+    async def test_dof_velocities(self) -> None:
         """Test getting and setting DOF velocities."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -213,7 +219,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             "All DOF velocities (after step) should be close to set values",
         )
 
-    async def test_dof_limits(self):
+    async def test_dof_limits(self) -> None:
         """Test getting DOF limits."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
 
@@ -233,7 +239,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
         )
 
     # @unittest.skip("Issue after upgrading to mujoco 3.5.0")
-    async def test_dof_positions(self):
+    async def test_dof_positions(self) -> None:
         """Test getting and setting DOF positions."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -280,7 +286,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             "All DOF positions (after step) should be close to set values",
         )
 
-    async def test_dof_stiffness_and_damping(self):
+    async def test_dof_stiffness_and_damping(self) -> None:
         """Test setting and getting DOF stiffness and damping."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -355,7 +361,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             "All dampings (after step) should remain unchanged",
         )
 
-    async def test_dof_position_targets(self):
+    async def test_dof_position_targets(self) -> None:
         """Test setting and getting DOF position targets."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -395,7 +401,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             "All position targets (after step) should remain unchanged",
         )
 
-    async def test_dof_actuation_forces(self):
+    async def test_dof_actuation_forces(self) -> None:
         """Test getting DOF actuation forces."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
 
@@ -409,7 +415,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             f"Forces shape should be ({articulations.count}, {articulations.max_dofs})",
         )
 
-    async def test_mass_properties(self):
+    async def test_mass_properties(self) -> None:
         """Test getting and setting articulation masses."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -449,7 +455,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             "All masses (after step) should remain unchanged",
         )
 
-    async def test_inertia_properties(self):
+    async def test_inertia_properties(self) -> None:
         """Test getting and setting articulation inertias."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -507,7 +513,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             "All inertias (after step) should remain unchanged",
         )
 
-    async def test_simulation_stepping(self):
+    async def test_simulation_stepping(self) -> None:
         """Test that simulation can step with articulations."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
 
@@ -520,7 +526,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(current_pos, "Should still be able to get positions after stepping")
         self.assertEqual(current_pos.shape, initial_pos.shape, "Shape should remain consistent")
 
-    async def test_articulation_properties(self):
+    async def test_articulation_properties(self) -> None:
         """Test articulation view properties match expected humanoid structure."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
 
@@ -547,7 +553,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
         self.assertEqual(mass_matrix_shape[0], mass_matrix_shape[1], "Mass matrix should be square")
         self.assertGreaterEqual(mass_matrix_shape[0], articulations.max_dofs, "Mass matrix size should be >= max_dofs")
 
-    async def test_paths_and_names(self):
+    async def test_paths_and_names(self) -> None:
         """Test articulation path and name properties contain expected humanoid structure."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
 
@@ -644,7 +650,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
         dof_paths = articulations.dof_paths[0]
         self.assertEqual(list(dof_paths), expected_dof_paths, "DOF paths mismatch")
 
-    async def test_inv_masses(self):
+    async def test_inv_masses(self) -> None:
         """Test inverse masses are consistent with masses."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
 
@@ -665,7 +671,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
                     msg=f"inv_mass[{i}]={inv_masses[0, i]} should be 1/mass={expected_inv}",
                 )
 
-    async def test_coms(self):
+    async def test_coms(self) -> None:
         """Test centers of mass have valid quaternion orientations and can be modified."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -699,7 +705,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             f"COM x positions should be offset by {offset}",
         )
 
-    async def test_inv_inertias(self):
+    async def test_inv_inertias(self) -> None:
         """Test getting inverse inertias."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
 
@@ -711,7 +717,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
         self.assertEqual(inv_inertias_np.shape[0], articulations.count, "First dimension should be count")
         self.assertEqual(inv_inertias_np.shape[1], articulations.max_links, "Second dimension should be max_links")
 
-    async def test_dof_armatures(self):
+    async def test_dof_armatures(self) -> None:
         """Test getting and setting DOF armatures."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -741,7 +747,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             "Armatures should match set values",
         )
 
-    async def test_dof_velocity_targets(self):
+    async def test_dof_velocity_targets(self) -> None:
         """Test getting and setting DOF velocity targets."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -769,7 +775,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             "Velocity targets should match set values",
         )
 
-    async def test_set_dof_actuation_forces(self):
+    async def test_set_dof_actuation_forces(self) -> None:
         """Test setting DOF actuation forces."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -789,7 +795,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             "Actuation forces should match set values",
         )
 
-    async def test_dof_max_forces(self):
+    async def test_dof_max_forces(self) -> None:
         """Test getting and setting DOF max forces (effort limits)."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -819,7 +825,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             "Max forces should match set values",
         )
 
-    async def test_set_dof_limits(self):
+    async def test_set_dof_limits(self) -> None:
         """Test setting DOF limits."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -843,7 +849,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             "DOF limits should match set values",
         )
 
-    async def test_dof_max_velocities(self):
+    async def test_dof_max_velocities(self) -> None:
         """Test getting and setting DOF max velocities."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -873,7 +879,7 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             "Max velocities should match set values",
         )
 
-    async def test_apply_forces_and_torques(self):
+    async def test_apply_forces_and_torques(self) -> None:
         """Test applying forces and torques to articulation links."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -895,14 +901,14 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
         # Step simulation to apply forces
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_check_method(self):
+    async def test_check_method(self) -> None:
         """Test the check method returns correct state."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
 
         result = articulations.check()
         self.assertTrue(result, "check() should return True for valid articulation view")
 
-    async def test_effort_causes_velocity_change(self):
+    async def test_effort_causes_velocity_change(self) -> None:
         """Test that set_dof_actuation_forces produces joint motion."""
         articulations = self.sim.create_articulation_view("/nv_humanoid/torso*")
         indices = wp.from_numpy(np.arange(articulations.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)

@@ -194,11 +194,12 @@ print(f"{'='*60}")
 class GmoMaterialInspectWriter(Writer):
     """Writer that parses GenericModelOutput and prints intensity stats."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.data_structure = "renderProduct"
         self.annotators = [rep.annotators.get("GenericModelOutput")]
 
-    def write(self, data):
+    def write(self, data: dict[str, object]) -> None:
+        """Inspect GenericModelOutput material intensity data."""
         if "renderProducts" not in data:
             return
         for _rp_name, rp_data in data["renderProducts"].items():

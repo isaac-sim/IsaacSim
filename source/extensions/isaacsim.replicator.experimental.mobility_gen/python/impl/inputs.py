@@ -99,7 +99,11 @@ class KeyboardDriver(object):
 
     @staticmethod
     def connect() -> "KeyboardDriver":
-        """Connect the keyboard driver and return the singleton instance."""
+        """Connect the keyboard driver and return the singleton instance.
+
+        Returns:
+            The connected singleton keyboard driver.
+        """
         instance = KeyboardDriver.instance()
         instance._connect()
         return instance
@@ -114,13 +118,21 @@ class KeyboardDriver(object):
 
     @staticmethod
     def instance() -> "KeyboardDriver":
-        """Return the singleton KeyboardDriver instance, creating it if needed."""
+        """Return the singleton KeyboardDriver instance, creating it if needed.
+
+        Returns:
+            The singleton keyboard driver.
+        """
         if KeyboardDriver._instance is None:
             KeyboardDriver._instance = KeyboardDriver()
         return KeyboardDriver._instance
 
     def get_button_values(self) -> np.ndarray:
-        """Return a boolean array of current button states."""
+        """Return a boolean array of current button states.
+
+        Returns:
+            Boolean array of current button states.
+        """
         return np.array([b.value for b in self.buttons])
 
 
@@ -212,7 +224,11 @@ class GamepadDriver(object):
 
     @staticmethod
     def connect() -> "GamepadDriver":
-        """Connect the gamepad driver and return the singleton instance."""
+        """Connect the gamepad driver and return the singleton instance.
+
+        Returns:
+            The connected singleton gamepad driver.
+        """
         instance = GamepadDriver.instance()
         instance._connect()
         return instance
@@ -227,17 +243,29 @@ class GamepadDriver(object):
 
     @staticmethod
     def instance() -> "GamepadDriver":
-        """Return the singleton GamepadDriver instance, creating it if needed."""
+        """Return the singleton GamepadDriver instance, creating it if needed.
+
+        Returns:
+            The singleton gamepad driver.
+        """
         if GamepadDriver._instance is None:
             GamepadDriver._instance = GamepadDriver()
         return GamepadDriver._instance
 
     def get_axis_values(self) -> np.ndarray:
-        """Return an array of current axis values."""
+        """Return an array of current axis values.
+
+        Returns:
+            Array of current axis values.
+        """
         return np.array([axis.value for axis in self.axes])
 
     def get_button_values(self) -> np.ndarray:
-        """Return an array of current button values."""
+        """Return an array of current button values.
+
+        Returns:
+            Empty array because gamepad button tracking is not implemented.
+        """
         return np.array([])
 
 

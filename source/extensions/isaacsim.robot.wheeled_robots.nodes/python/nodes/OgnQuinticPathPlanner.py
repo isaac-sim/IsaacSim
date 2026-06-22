@@ -52,18 +52,34 @@ class OgnQuinticPathPlanner:
 
     @staticmethod
     def init_instance(node: og.Node, graph_instance_id: int) -> None:
-        """Initialize the per-instance state for this node."""
+        """Initialize the per-instance state for this node.
+
+        Args:
+            node: OmniGraph node instance.
+            graph_instance_id: Graph instance identifier.
+        """
         state = OgnQuinticPathPlannerDatabase.get_internal_state(node, graph_instance_id)
         state.node = node
 
     @staticmethod
     def internal_state() -> OgnQuinticPathPlannerInternalState:
-        """Return a new internal state instance."""
+        """Return a new internal state instance.
+
+        Returns:
+            Per-instance quintic path planner state.
+        """
         return OgnQuinticPathPlannerInternalState()
 
     @staticmethod
     def compute(db: OgnQuinticPathPlannerDatabase) -> bool:
-        """Plan a quintic polynomial path and output path arrays and target data."""
+        """Plan a quintic polynomial path and output path arrays and target data.
+
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            True after path arrays and target outputs are updated.
+        """
         state = db.per_instance_state
 
         # calculate and save relevant target data from inputs, will be None if target has not changed

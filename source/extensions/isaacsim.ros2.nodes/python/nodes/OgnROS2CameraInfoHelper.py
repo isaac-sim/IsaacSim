@@ -18,9 +18,9 @@
 from __future__ import annotations
 
 import contextlib
+from typing import Any
 
 import carb
-import cv2 as cv
 import numpy as np
 import omni
 import omni.replicator.core as rep
@@ -42,7 +42,6 @@ class OgnROS2CameraInfoHelperInternalState(BaseWriterNode):
     """Internal state for the ROS2CameraInfoHelper OmniGraph node."""
 
     def __init__(self) -> None:
-        """Initialize the ROS2 camera info helper internal state."""
         self.viewport = None
         self.viewport_name = ""
         self.rv = ""
@@ -61,8 +60,13 @@ class OgnROS2CameraInfoHelperInternalState(BaseWriterNode):
         cleanup_srtx_camera_info_state(self)
         super().custom_reset()
 
-    def post_attach(self, writer, render_product) -> None:
-        """Configure writer attributes after attaching to a render product."""
+    def post_attach(self, writer: Any, render_product: Any) -> None:
+        """Configure writer attributes after attaching to a render product.
+
+        Args:
+            writer: Writer attached to the render product.
+            render_product: Render product path or prim.
+        """
         try:
             if self.rv != "":
                 omni.syntheticdata.SyntheticData.Get().set_node_attributes(
@@ -81,7 +85,11 @@ class OgnROS2CameraInfoHelperInternalState(BaseWriterNode):
 
 
 def cleanup_srtx_camera_info_state(state: OgnROS2CameraInfoHelperInternalState) -> None:
-    """Unregister SRTX camera info callbacks owned by a CameraInfo helper state."""
+    """Unregister SRTX camera info callbacks owned by a CameraInfo helper state.
+
+    Args:
+        state: Camera info helper state to clean up.
+    """
     handles = getattr(state, "_srtx_callback_handles", [])
     sensor_sets = getattr(state, "_srtx_callback_sensor_sets", [])
     fallback_sensor_set = getattr(state, "_srtx_sensor_set", None)
@@ -108,8 +116,16 @@ def cleanup_srtx_camera_info_state(state: OgnROS2CameraInfoHelperInternalState) 
     state._srtx_sensor_set = None
 
 
-def get_srtx_camera_info_callback_output(stage, render_product_path: str) -> str | None:
-    """Return an existing RenderVar path to use as the CameraInfo timing source."""
+def get_srtx_camera_info_callback_output(stage: Any, render_product_path: str) -> str | None:
+    """Return an existing RenderVar path to use as the CameraInfo timing source.
+
+    Args:
+        stage: USD stage containing the render product.
+        render_product_path: Render product path to inspect.
+
+    Returns:
+        RenderVar path to use, or None if no suitable output exists.
+    """
     rp_prim = stage.GetPrimAtPath(render_product_path)
     if not rp_prim or not rp_prim.IsValid():
         return None
@@ -158,14 +174,27 @@ class OgnROS2CameraInfoHelper:
 
     @staticmethod
     def internal_state() -> OgnROS2CameraInfoHelperInternalState:
-        """Return the internal state object for this node."""
+        """Return the internal state object for this node.
+
+        Returns:
+            Internal state object for this node.
+        """
         return OgnROS2CameraInfoHelperInternalState()
 
     @staticmethod
     def add_camera_info_writer(
-        db, frameId, topicName, camera_info, render_product_path: str, time_type: str = ""
+        db: Any, frameId: Any, topicName: Any, camera_info: Any, render_product_path: str, time_type: str = ""
     ) -> None:
-        """Add a camera info writer for the given render product."""
+        """Add a camera info writer for the given render product.
+
+        Args:
+            db: OmniGraph database for the node.
+            frameId: Frame identifier for the message header.
+            topicName: ROS 2 topic name.
+            camera_info: Camera info data to publish.
+            render_product_path: Render product path to attach.
+            time_type: Timestamp mode suffix for the writer.
+        """
         writer = rep.writers.get(f"ROS2{time_type}PublishCameraInfo")
         writer.initialize(
             frameId=frameId,
@@ -187,19 +216,36 @@ class OgnROS2CameraInfoHelper:
 
     @staticmethod
     def add_srtx_camera_info_publisher(
-        state,
-        stage,
-        srtx_instance,
-        sensor_set_name,
-        frameId,
-        topicName,
-        nodeNamespace,
-        queueSize,
-        qosProfile,
-        camera_info,
+        state: Any,
+        stage: Any,
+        srtx_instance: Any,
+        sensor_set_name: Any,
+        frameId: Any,
+        topicName: Any,
+        nodeNamespace: Any,
+        queueSize: Any,
+        qosProfile: Any,
+        camera_info: Any,
         render_product_path: str,
     ) -> bool:
-        """Add an SRTX callback-backed camera info publisher for the given render product."""
+        """Add an SRTX callback-backed camera info publisher for the given render product.
+
+        Args:
+            state: Camera info helper state to update.
+            stage: USD stage containing the render product.
+            srtx_instance: SRTX runtime instance.
+            sensor_set_name: Sensor-set name for the callback.
+            frameId: Frame identifier for the message header.
+            topicName: ROS 2 topic name.
+            nodeNamespace: ROS 2 node namespace.
+            queueSize: ROS 2 publisher queue size.
+            qosProfile: ROS 2 QoS profile.
+            camera_info: Camera info data to publish.
+            render_product_path: Render product path to attach.
+
+        Returns:
+            True if the publisher was registered, otherwise False.
+        """
         from isaacsim.ros2.nodes.bindings._ros2_nodes import create_camera_info_publisher_capsule
 
         render_var_path = get_srtx_camera_info_callback_output(stage, render_product_path)
@@ -234,8 +280,15 @@ class OgnROS2CameraInfoHelper:
         return True
 
     @staticmethod
-    def compute(db) -> bool:
-        """Compute the node outputs."""
+    def compute(db: Any) -> bool:
+        """Configure ROS 2 CameraInfo publishing for mono or stereo render products.
+
+        Args:
+            db: OmniGraph database for the node.
+
+        Returns:
+            True if the node was configured or can retry later, otherwise False.
+        """
         state = db.per_instance_state
         if not db.inputs.enabled:
             if state.initialized:
@@ -312,7 +365,9 @@ class OgnROS2CameraInfoHelper:
                     left_camera_prim=camera_left, right_camera_prim=camera_right
                 )
 
-                # Compute stereo rectification parameters
+                # Compute stereo rectification parameters.
+                import cv2 as cv
+
                 if distortion_model_left == "equidistant":
                     (
                         R1,
@@ -458,8 +513,13 @@ class OgnROS2CameraInfoHelper:
         return True
 
     @staticmethod
-    def release_instance(node, graph_instance_id) -> None:
-        """Release resources for a graph instance."""
+    def release_instance(node: Any, graph_instance_id: Any) -> None:
+        """Release resources for a graph instance.
+
+        Args:
+            node: OmniGraph node being released.
+            graph_instance_id: Graph instance identifier.
+        """
         try:
             state = OgnROS2CameraInfoHelperInternalState.per_instance_internal_state(node)
         except Exception:

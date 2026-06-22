@@ -177,6 +177,9 @@ class FrankaRmpFlowExample:
 
         Safe to call before :meth:`setup` has run or while the articulation's
         physics tensors are not yet valid; both cases are no-ops.
+
+        Args:
+            dt: Physics time step in seconds.
         """
         if self._articulation is None or self._controller is None or self._world_binding is None:
             return

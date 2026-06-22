@@ -493,7 +493,7 @@ def resolve_scale_issues_with_metrics_assembler() -> None:
     get_metrics_assembler_interface().resolve_stage(stage_id)
 
 
-def get_matching_prim_location(match_string, root_path=None):
+def get_matching_prim_location(match_string: str, root_path: str | None = None) -> tuple[float, float, float]:
     """Return the translation of the first prim matching the given string."""
     prim = find_matching_prims(
         match_strings=[match_string], root_path=root_path, prim_type="Xform", first_match_only=True

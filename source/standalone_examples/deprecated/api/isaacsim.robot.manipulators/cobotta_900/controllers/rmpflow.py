@@ -45,7 +45,7 @@ class RMPFlowController(mg.MotionPolicyController):
         )
         return
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset the controller and restore the robot base pose."""
         mg.MotionPolicyController.reset(self)
         self._motion_policy.set_robot_base_pose(

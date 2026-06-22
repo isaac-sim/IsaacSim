@@ -72,8 +72,6 @@ main() {
         exit 1
     fi
 
-    local DOCKER=$(which docker >& /dev/null)
-
     if [[ -f /etc/os-release ]]; then
         . /etc/os-release
         if [[ "x$NAME" == "xUbuntu" ]]; then

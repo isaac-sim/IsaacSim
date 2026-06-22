@@ -13,9 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test physics raycast sensor functionality."""
+"""Verifies raycast sensor attachment, beam endpoints, body-relative directions, authoring and runtime data, lifecycle resets, invalid frames, configuration conflicts, and disabled invalid ray layouts."""
 
 from __future__ import annotations
+
+from typing import Any
 
 import numpy as np
 import omni.kit.test
@@ -33,20 +35,20 @@ from .common import step_simulation
 class TestRaycastSensor(omni.kit.test.AsyncTestCase):
     """Test physics raycast sensor on dynamic rigid bodies."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh stage and timeline for raycast-on-rigid-body tests."""
         self._timeline = omni.timeline.get_timeline_interface()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Stop playback and invalidate physics after raycast-on-rigid-body tests."""
         if self._timeline.is_playing():
             self._timeline.stop()
         SimulationManager.invalidate_physics()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_sensor_follows_falling_rigid_body(self):
+    async def test_sensor_follows_falling_rigid_body(self) -> None:
         """Verify beam origins track a rigid body falling under gravity."""
         stage = omni.usd.get_context().get_stage()
         UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
@@ -107,7 +109,7 @@ class TestRaycastSensor(omni.kit.test.AsyncTestCase):
             "Beam origin should have moved below the starting height",
         )
 
-    async def test_beam_endpoints_hit_ground(self):
+    async def test_beam_endpoints_hit_ground(self) -> None:
         """Verify beam end points reach the ground when a sensor falls toward it."""
         stage = omni.usd.get_context().get_stage()
         UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
@@ -157,7 +159,7 @@ class TestRaycastSensor(omni.kit.test.AsyncTestCase):
         end_z = reading.ray_end_points_world[0][2]
         self.assertAlmostEqual(end_z, 0.0, delta=0.15, msg="Beam end point Z should be near ground level")
 
-    async def test_sensor_direction_follows_rotated_body(self):
+    async def test_sensor_direction_follows_rotated_body(self) -> None:
         """Verify ray directions rotate with the parent rigid body."""
         stage = omni.usd.get_context().get_stage()
         UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
@@ -222,8 +224,12 @@ class TestRaycastSensor(omni.kit.test.AsyncTestCase):
         )
 
 
-async def _create_basic_scene():
-    """Create a minimal scene with physics and collision geometry."""
+async def _create_basic_scene() -> Any:
+    """Create a minimal scene with physics and collision geometry.
+
+    Returns:
+        The current USD stage containing the authored test scene.
+    """
     stage = omni.usd.get_context().get_stage()
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
     UsdGeom.SetStageMetersPerUnit(stage, 1.0)
@@ -249,18 +255,20 @@ async def _create_basic_scene():
 class TestRaycastSensorRuntimeData(omni.kit.test.AsyncTestCase):
     """Test RaycastSensor runtime data helpers."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Create a fresh stage and timeline for raycast runtime data tests."""
         self._timeline = omni.timeline.get_timeline_interface()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Stop playback and invalidate physics after raycast runtime data tests."""
         if self._timeline.is_playing():
             self._timeline.stop()
         SimulationManager.invalidate_physics()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_create_authoring_sensor(self):
+    async def test_create_authoring_sensor(self) -> None:
         """Raycast.create() + RaycastSensor() creates a new prim when the path does not exist."""
         await _create_basic_scene()
 
@@ -283,7 +291,7 @@ class TestRaycastSensorRuntimeData(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(prim.GetAttribute("minRange").Get(), 0.5, places=5)
         self.assertAlmostEqual(prim.GetAttribute("maxRange").Get(), 50.0, places=5)
 
-    async def test_wrap_existing_sensor(self):
+    async def test_wrap_existing_sensor(self) -> None:
         """RaycastSensor wraps an existing prim and applies overrides."""
         await _create_basic_scene()
 
@@ -314,7 +322,7 @@ class TestRaycastSensorRuntimeData(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(prim.GetAttribute("maxRange").Get(), 25.0, places=5)
         self.assertEqual(prim.GetAttribute("outputFrameOfReference").Get(), "WORLD")
 
-    async def test_get_data(self):
+    async def test_get_data(self) -> None:
         """get_data returns dict with expected keys and valid data after simulation."""
         await _create_basic_scene()
 
@@ -340,7 +348,7 @@ class TestRaycastSensorRuntimeData(omni.kit.test.AsyncTestCase):
         self.assertIsInstance(frame["physics_step"], int)
         self.assertGreater(len(frame["depths"]), 0, "Should have depth data")
 
-    async def test_get_sensor_reading(self):
+    async def test_get_sensor_reading(self) -> None:
         """get_sensor_reading returns a C++ reading struct."""
         await _create_basic_scene()
 
@@ -363,7 +371,7 @@ class TestRaycastSensorRuntimeData(omni.kit.test.AsyncTestCase):
         self.assertTrue(reading.is_valid, "Reading should be valid after simulation")
         self.assertEqual(reading.ray_count, 1)
 
-    async def test_physics_only_step_outputs_raycast_data(self):
+    async def test_physics_only_step_outputs_raycast_data(self) -> None:
         """RaycastSensor produces data when stepping physics without app/render updates."""
         await _create_basic_scene()
 
@@ -397,7 +405,7 @@ class TestRaycastSensorRuntimeData(omni.kit.test.AsyncTestCase):
                 self._timeline.stop()
                 await omni.kit.app.get_app().next_update_async()
 
-    async def test_invalid_frame_before_play(self):
+    async def test_invalid_frame_before_play(self) -> None:
         """get_data returns empty arrays before simulation starts."""
         await _create_basic_scene()
 
@@ -413,7 +421,7 @@ class TestRaycastSensorRuntimeData(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(frame["depths"]), 0)
         self.assertEqual(frame["hit_positions"].shape, (0, 3))
 
-    async def test_position_and_translation_conflict(self):
+    async def test_position_and_translation_conflict(self) -> None:
         """Specifying both positions and translations raises ValueError."""
         await _create_basic_scene()
 
@@ -426,7 +434,7 @@ class TestRaycastSensorRuntimeData(omni.kit.test.AsyncTestCase):
                 translations=np.array([[1.0, 0.0, 0.0]]),
             )
 
-    async def test_mismatched_origins_directions_raises(self):
+    async def test_mismatched_origins_directions_raises(self) -> None:
         """Mismatched ray_origins and ray_directions lengths raises ValueError."""
         await _create_basic_scene()
 
@@ -441,19 +449,21 @@ class TestRaycastSensorRuntimeData(omni.kit.test.AsyncTestCase):
 class TestRaycastSensorLifecycle(omni.kit.test.AsyncTestCase):
     """Test RaycastSensor lifecycle: remove, reset, timeline stop."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Create a fresh stage and timeline for raycast lifecycle tests."""
         self._timeline = omni.timeline.get_timeline_interface()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Stop playback and invalidate physics after raycast lifecycle tests."""
         if self._timeline.is_playing():
             self._timeline.stop()
         SimulationManager.invalidate_physics()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_remove_sensor(self):
-        """removeSensor stops future readings from being valid."""
+    async def test_remove_sensor(self) -> None:
+        """RemoveSensor stops future readings from being valid."""
         await _create_basic_scene()
 
         sensor_path = "/World/Sensors/RemoveSensor"
@@ -488,8 +498,8 @@ class TestRaycastSensorLifecycle(omni.kit.test.AsyncTestCase):
         reading_after = iface.get_sensor_reading(sensor_path)
         self.assertFalse(reading_after.is_valid, "Reading should be invalid after remove")
 
-    async def test_sensor_reset(self):
-        """sensor reset() removes the C++ sensor and clears state."""
+    async def test_sensor_reset(self) -> None:
+        """Sensor reset() removes the C++ sensor and clears state."""
         await _create_basic_scene()
 
         sensor_path = "/World/Sensors/ResetSensor"
@@ -518,7 +528,7 @@ class TestRaycastSensorLifecycle(omni.kit.test.AsyncTestCase):
         backend.reset()
         self.assertFalse(backend._sensor_created, "reset() should clear _sensor_created")
 
-    async def test_sensor_on_timeline_stop(self):
+    async def test_sensor_on_timeline_stop(self) -> None:
         """on_timeline_stop clears interface and sensor state."""
         await _create_basic_scene()
 
@@ -549,8 +559,8 @@ class TestRaycastSensorLifecycle(omni.kit.test.AsyncTestCase):
         self.assertFalse(backend._sensor_created)
         self.assertIsNone(backend._iface)
 
-    async def test_create_sensor_invalid_prim(self):
-        """createSensor with a non-existent prim returns false."""
+    async def test_create_sensor_invalid_prim(self) -> None:
+        """CreateSensor with a non-existent prim returns false."""
         await _create_basic_scene()
 
         self._timeline.play()
@@ -565,8 +575,8 @@ class TestRaycastSensorLifecycle(omni.kit.test.AsyncTestCase):
         result = iface.create_sensor("/World/NonExistent/FakeSensor")
         self.assertFalse(result, "createSensor should return false for non-existent prim")
 
-    async def test_get_reading_nonexistent_sensor(self):
-        """getSensorReading for a non-existent sensor returns invalid reading."""
+    async def test_get_reading_nonexistent_sensor(self) -> None:
+        """GetSensorReading for a non-existent sensor returns invalid reading."""
         await _create_basic_scene()
 
         self._timeline.play()
@@ -581,7 +591,7 @@ class TestRaycastSensorLifecycle(omni.kit.test.AsyncTestCase):
         reading = iface.get_sensor_reading("/World/NonExistent/FakeSensor")
         self.assertFalse(reading.is_valid, "Reading should be invalid for non-existent sensor")
 
-    async def test_mismatched_origins_vs_numrays_disables_sensor(self):
+    async def test_mismatched_origins_vs_numrays_disables_sensor(self) -> None:
         """Sensor with rayOrigins length != numRays produces invalid readings."""
         stage = omni.usd.get_context().get_stage()
         UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
@@ -605,7 +615,7 @@ class TestRaycastSensorLifecycle(omni.kit.test.AsyncTestCase):
         reading = backend.get_sensor_reading()
         self.assertFalse(reading.is_valid, "rayOrigins length != numRays should produce invalid reading")
 
-    async def test_numrays_zero_disables_sensor(self):
+    async def test_numrays_zero_disables_sensor(self) -> None:
         """Sensor with numRays=0 produces invalid readings."""
         stage = omni.usd.get_context().get_stage()
         UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
@@ -625,7 +635,7 @@ class TestRaycastSensorLifecycle(omni.kit.test.AsyncTestCase):
         reading = backend.get_sensor_reading()
         self.assertFalse(reading.is_valid, "numRays=0 should produce invalid reading")
 
-    async def test_mismatched_time_offsets_disables_sensor(self):
+    async def test_mismatched_time_offsets_disables_sensor(self) -> None:
         """Sensor with rayTimeOffsets length != numRays produces invalid readings."""
         stage = omni.usd.get_context().get_stage()
         UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)

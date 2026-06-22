@@ -48,7 +48,7 @@ ASSETS_CONFIG = [
 ]
 
 
-def run_example(assets_config: list[tuple[str, int, str, float, float]]):
+def run_example(assets_config: list[tuple[str, int, str, float, float]]) -> None:
     """Run deformable drop simulation and capture frames on trigger height."""
     omni.usd.get_context().new_stage()
     assets_root_path = get_assets_root_path()

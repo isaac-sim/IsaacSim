@@ -36,11 +36,13 @@ class TestTeleopResolver(omni.kit.test.AsyncTestCase):
     """Verify teleop profile validation against current stage state."""
 
     async def setUp(self) -> None:
+        """Set up the test fixture."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
 
     async def tearDown(self) -> None:
+        """Tear down the test fixture."""
         usd_context = omni.usd.get_context()
         if usd_context.get_stage() is not None:
             usd_context.close_stage()

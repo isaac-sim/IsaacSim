@@ -59,6 +59,7 @@ _EXPECTED_CLASSES_PER_SUBSET_FALSE = frozenset(
 
 
 def run_example(run_test: bool) -> None:
+    """Run per-subset semantic segmentation capture and optional validation."""
     omni.usd.get_context().new_stage()
     stage = omni.usd.get_context().get_stage()
     carb_settings = carb.settings.get_settings()

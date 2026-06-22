@@ -39,7 +39,7 @@ from omni.kit.viewport.utility import get_active_viewport
 class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
     """Validate environment USD assets against golden reference images."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures."""
         self._assets_root_path = await get_assets_root_path_async()
         if self._assets_root_path is None:
@@ -56,17 +56,17 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
         self._viewport_api = get_active_viewport()
         self._usd_selection = omni.usd.get_context().get_selection()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Tear down test fixtures."""
         await self._wait_for_stage_loading()
 
-    async def _wait_for_stage_loading(self):
+    async def _wait_for_stage_loading(self) -> None:
         while stage_utils.is_stage_loading():
             await omni.kit.app.get_app().next_update_async()
         await omni.kit.material.library.get_mdl_list_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def _wait_n_frames(self, n: int = 10):
+    async def _wait_n_frames(self, n: int = 10) -> None:
         for _ in range(n):
             await omni.kit.app.get_app().next_update_async()
 
@@ -77,7 +77,7 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
         golden_img_name: str,
         eye: list[float] | None = None,
         target: list[float] | None = None,
-    ):
+    ) -> None:
         """Add an environment asset as a reference and compare the viewport to a golden image.
 
         Args:
@@ -151,7 +151,7 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
                 f"Captured image saved to {self._golden_img_dir / captured_name}"
             )
 
-    async def test_black_grid(self):
+    async def test_black_grid(self) -> None:
         """Validate the Black Grid environment against its golden image."""
         await self._validate_environment(
             "/Isaac/Environments/Grid/gridroom_black.usd",
@@ -159,7 +159,7 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
             "Black Grid.png",
         )
 
-    async def test_curved_grid(self):
+    async def test_curved_grid(self) -> None:
         """Validate the Curved Grid environment against its golden image."""
         await self._validate_environment(
             "/Isaac/Environments/Grid/gridroom_curved.usd",
@@ -167,7 +167,7 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
             "Curved Grid.png",
         )
 
-    async def test_flat_grid(self):
+    async def test_flat_grid(self) -> None:
         """Validate the Flat Grid environment against its golden image."""
         await self._validate_environment(
             "/Isaac/Environments/Grid/default_environment.usd",
@@ -175,7 +175,7 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
             "Flat Grid.png",
         )
 
-    async def test_full_warehouse(self):
+    async def test_full_warehouse(self) -> None:
         """Validate the Full Warehouse environment against its golden image."""
         await self._validate_environment(
             "/Isaac/Environments/Simple_Warehouse/full_warehouse.usd",
@@ -185,7 +185,7 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
             target=[0, 0, 1],
         )
 
-    async def test_hospital(self):
+    async def test_hospital(self) -> None:
         """Validate the Hospital environment against its golden image."""
         await self._validate_environment(
             "/Isaac/Environments/Hospital/hospital.usd",
@@ -195,7 +195,7 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
             target=[0, 0, 1],
         )
 
-    async def test_jetracer_track(self):
+    async def test_jetracer_track(self) -> None:
         """Validate the Jetracer Track environment against its golden image."""
         await self._validate_environment(
             "/Isaac/Environments/Jetracer/jetracer_track_solid.usd",
@@ -203,7 +203,7 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
             "Jetracer Track.png",
         )
 
-    async def test_office(self):
+    async def test_office(self) -> None:
         """Validate the Office environment against its golden image."""
         await self._validate_environment(
             "/Isaac/Environments/Office/office.usd",
@@ -213,7 +213,7 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
             target=[0, 0, 1],
         )
 
-    async def test_simple_room(self):
+    async def test_simple_room(self) -> None:
         """Validate the Simple Room environment against its golden image."""
         await self._validate_environment(
             "/Isaac/Environments/Simple_Room/simple_room.usd",
@@ -221,7 +221,7 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
             "Simple Room.png",
         )
 
-    async def test_small_warehouse(self):
+    async def test_small_warehouse(self) -> None:
         """Validate the Small Warehouse environment against its golden image."""
         await self._validate_environment(
             "/Isaac/Environments/Simple_Warehouse/warehouse.usd",
@@ -231,7 +231,7 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
             target=[0, 0, 1],
         )
 
-    async def test_small_warehouse_digital_twin(self):
+    async def test_small_warehouse_digital_twin(self) -> None:
         """Validate the Small Warehouse Digital Twin environment against its golden image."""
         await self._validate_environment(
             "/Isaac/Environments/Digital_Twin_Warehouse/small_warehouse_digital_twin.usd",
@@ -241,7 +241,7 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
             target=[0, 0, 1],
         )
 
-    async def test_small_warehouse_with_forklifts(self):
+    async def test_small_warehouse_with_forklifts(self) -> None:
         """Validate the Small Warehouse With Forklifts environment against its golden image."""
         await self._validate_environment(
             "/Isaac/Environments/Simple_Warehouse/warehouse_with_forklifts.usd",
@@ -251,7 +251,7 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
             target=[0, 0, 1],
         )
 
-    async def test_small_warehouse_with_multiple_shelves(self):
+    async def test_small_warehouse_with_multiple_shelves(self) -> None:
         """Validate the Small Warehouse With Multiple Shelves environment against its golden image."""
         await self._validate_environment(
             "/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd",

@@ -337,7 +337,11 @@ class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
 
     @patch("isaacsim.asset.importer.heightmap.importer.np.array")
     def test_generate_occupied_positions_propagates_image_processing_errors(self, mock_np_array: object) -> None:
-        """Test unexpected image processing failures are propagated to the caller."""
+        """Test unexpected image processing failures are propagated to the caller.
+
+        Args:
+            mock_np_array: Mock for np.array.
+        """
         mock_np_array.side_effect = RuntimeError("boom")
         test_image = Image.new("RGBA", (2, 2), color=(255, 255, 255, 255))
 
@@ -347,7 +351,13 @@ class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
         self.assertIn("Failed to generate occupied positions", str(context.exception))
 
     def _stub_bbox_cache(self, mock_usd_geom: object, min_pt: tuple, max_pt: tuple) -> None:
-        """Configure ``UsdGeom.BBoxCache`` to return the given world-space extents."""
+        """Configure ``UsdGeom.BBoxCache`` to return the given world-space extents.
+
+        Args:
+            mock_usd_geom: Mock for the UsdGeom module.
+            min_pt: Minimum bbox point.
+            max_pt: Maximum bbox point.
+        """
         mock_bbox_range = MagicMock()
         mock_bbox_range.IsEmpty.return_value = False
         mock_bbox_range.GetMin.return_value = Gf.Vec3d(*min_pt)
@@ -364,7 +374,13 @@ class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
     def test_create_ground_plane_sizes_to_square_bounds(
         self, mock_usd_geom: object, _mock_usd: object, mock_ground_plane: object
     ) -> None:
-        """Ground plane size for a square heightmap is dim + 2 * margin, centered on bbox."""
+        """Ground plane size for a square heightmap is dim + 2 * margin, centered on bbox.
+
+        Args:
+            mock_usd_geom: Mock for the UsdGeom module.
+            _mock_usd: Mock for the Usd module.
+            mock_ground_plane: Mock for the GroundPlane class.
+        """
         # 10x10 heightmap occupying X:[0,10], Y:[-10,0]
         self._stub_bbox_cache(mock_usd_geom, min_pt=(0.0, -10.0, 0.0), max_pt=(10.0, 0.0, 1.0))
 
@@ -387,7 +403,13 @@ class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
     def test_create_ground_plane_uses_max_dim_for_wide_bounds(
         self, mock_usd_geom: object, _mock_usd: object, mock_ground_plane: object
     ) -> None:
-        """A wider-than-tall heightmap sizes the (square) ground plane to the longer dimension."""
+        """A wider-than-tall heightmap sizes the (square) ground plane to the longer dimension.
+
+        Args:
+            mock_usd_geom: Mock for the UsdGeom module.
+            _mock_usd: Mock for the Usd module.
+            mock_ground_plane: Mock for the GroundPlane class.
+        """
         # X width = 20, Y height = 5 — wider than tall.
         self._stub_bbox_cache(mock_usd_geom, min_pt=(0.0, -5.0, 0.0), max_pt=(20.0, 0.0, 1.0))
 
@@ -403,7 +425,13 @@ class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
     def test_create_ground_plane_uses_max_dim_for_tall_bounds(
         self, mock_usd_geom: object, _mock_usd: object, mock_ground_plane: object
     ) -> None:
-        """A taller-than-wide heightmap sizes the (square) ground plane to the longer dimension."""
+        """A taller-than-wide heightmap sizes the (square) ground plane to the longer dimension.
+
+        Args:
+            mock_usd_geom: Mock for the UsdGeom module.
+            _mock_usd: Mock for the Usd module.
+            mock_ground_plane: Mock for the GroundPlane class.
+        """
         # X width = 4, Y height = 30 — taller than wide.
         self._stub_bbox_cache(mock_usd_geom, min_pt=(0.0, -30.0, 0.0), max_pt=(4.0, 0.0, 1.0))
 
@@ -419,7 +447,13 @@ class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
     def test_create_ground_plane_handles_off_origin_bounds(
         self, mock_usd_geom: object, _mock_usd: object, mock_ground_plane: object
     ) -> None:
-        """Ground plane center follows the bbox midpoint even when bounds don't start at the origin."""
+        """Ground plane center follows the bbox midpoint even when bounds don't start at the origin.
+
+        Args:
+            mock_usd_geom: Mock for the UsdGeom module.
+            _mock_usd: Mock for the Usd module.
+            mock_ground_plane: Mock for the GroundPlane class.
+        """
         # Heightmap shifted into positive Y as well: X:[10, 20], Y:[5, 15]
         self._stub_bbox_cache(mock_usd_geom, min_pt=(10.0, 5.0, 0.0), max_pt=(20.0, 15.0, 1.0))
 
@@ -440,7 +474,14 @@ class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
         mock_ground_plane: object,
         mock_carb: object,
     ) -> None:
-        """If the occupancy map has no occupied cells, the bbox is empty and the plane is skipped."""
+        """If the occupancy map has no occupied cells, the bbox is empty and the plane is skipped.
+
+        Args:
+            mock_usd_geom: Mock for the UsdGeom module.
+            _mock_usd: Mock for the Usd module.
+            mock_ground_plane: Mock for the GroundPlane class.
+            mock_carb: Mock for the carb module.
+        """
         mock_world_bound = MagicMock()
         empty_range = MagicMock()
         empty_range.IsEmpty.return_value = True
@@ -465,7 +506,15 @@ class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
         _mock_stage_utils: object,
         _mock_usd_physics: object,
     ) -> None:
-        """No ground plane is created when ``create_ground_plane=False``."""
+        """No ground plane is created when ``create_ground_plane=False``.
+
+        Args:
+            _mock_usd_lux: Mock for the UsdLux module.
+            mock_ground_plane: Mock for the GroundPlane class.
+            mock_usd_geom: Mock for the UsdGeom module.
+            _mock_stage_utils: Mock for the stage_utils module.
+            _mock_usd_physics: Mock for the UsdPhysics module.
+        """
         test_image = Image.new("RGBA", (3, 3), color=(0, 0, 0, 255))
         self.mock_stage.GetPrimAtPath.return_value = MagicMock()
         self.mock_stage.DefinePrim.return_value = MagicMock()

@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies the articulation state OmniGraph node reads joint state for full and selected joints. Covers joint selection by name and index, including single-joint and full-array outputs."""
+
 import asyncio
 
 import carb
@@ -27,7 +29,9 @@ from isaacsim.storage.native import get_assets_root_path_async
 
 
 class TestArticulationStateNode(ogts.OmniGraphTestCase):
-    async def setUp(self):
+    """Verify articulation state outputs for full and selected Franka joints."""
+
+    async def setUp(self) -> None:
         """Set up  test environment, to be torn down when done."""
         await omni.usd.get_context().new_stage_async()
         # add franka robot for test
@@ -38,7 +42,7 @@ class TestArticulationStateNode(ogts.OmniGraphTestCase):
         await stage_utils.open_stage_async(assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd")
 
     # ----------------------------------------------------------------------
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Get rid of temporary data used by the test."""
         await omni.kit.app.get_app().next_update_async()
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
@@ -48,7 +52,8 @@ class TestArticulationStateNode(ogts.OmniGraphTestCase):
         return
 
     # ----------------------------------------------------------------------
-    async def test_joint_name_ogn(self):
+    async def test_joint_name_ogn(self) -> None:
+        """Verify state arrays are returned for joints selected by name."""
         test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
@@ -113,7 +118,8 @@ class TestArticulationStateNode(ogts.OmniGraphTestCase):
         self.assertIsNone(assert_array_almost_equal(joint_efforts, robot_measured_joint_efforts[[1, 2]], decimal=3))
 
     # ----------------------------------------------------------------------
-    async def test_joint_index_ogn(self):
+    async def test_joint_index_ogn(self) -> None:
+        """Verify state arrays are returned for joints selected by index."""
         test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
@@ -181,7 +187,8 @@ class TestArticulationStateNode(ogts.OmniGraphTestCase):
         self.assertIsNone(assert_array_almost_equal(joint_efforts, robot_measured_joint_efforts[[1, 2]], decimal=3))
 
     # ----------------------------------------------------------------------
-    async def test_full_array_no_index_ogn(self):
+    async def test_full_array_no_index_ogn(self) -> None:
+        """Verify all joint names and state arrays are returned when no selection is provided."""
         test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
@@ -237,7 +244,8 @@ class TestArticulationStateNode(ogts.OmniGraphTestCase):
         self.assertIsNone(assert_array_almost_equal(joint_efforts, robot_measured_joint_efforts, decimal=3))
 
     # ----------------------------------------------------------------------
-    async def test_single_joint_name_ogn(self):
+    async def test_single_joint_name_ogn(self) -> None:
+        """Verify state output for a single joint selected by name."""
         test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
@@ -299,7 +307,8 @@ class TestArticulationStateNode(ogts.OmniGraphTestCase):
         self.assertIsNone(assert_array_almost_equal(joint_efforts, robot_measured_joint_efforts[[2]], decimal=3))
 
     # ----------------------------------------------------------------------
-    async def test_single_joint_index_ogn(self):
+    async def test_single_joint_index_ogn(self) -> None:
+        """Verify state output for a single joint selected by index."""
         test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {

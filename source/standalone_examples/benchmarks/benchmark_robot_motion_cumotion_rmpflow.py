@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 parser = argparse.ArgumentParser()
@@ -77,7 +78,9 @@ class _PhysicsStepTimingRecorder:
     enabled: bool = False
 
 
-def _make_physics_pre_step(scenario: FrankaRmpFlowExample, recorder: _PhysicsStepTimingRecorder):
+def _make_physics_pre_step(
+    scenario: FrankaRmpFlowExample, recorder: _PhysicsStepTimingRecorder
+) -> Callable[[float, object], None]:
     """Build callback for SimulationManager.register_callback(PHYSICS_PRE_STEP)."""
 
     def on_physics_pre_step(step_dt: float, context: object) -> None:

@@ -52,7 +52,11 @@ class _FakePluginImpl:
 
 
 class _FakePlugin:
-    """Fake ``carb._carb.PluginDesc`` shape for UI tests."""
+    """Fake ``carb._carb.PluginDesc`` shape for UI tests.
+
+    Args:
+        name: Name suffix used to populate fake descriptor fields.
+    """
 
     def __init__(self, name: str) -> None:
         self.libPath = "Lib Path " + name
@@ -69,6 +73,7 @@ class TestFormatPluginTooltip(omni.kit.test.AsyncTestCase):
     """
 
     async def test_full_plugin_renders_all_three_lines(self) -> None:
+        """Verify a complete plugin renders description, interfaces, and library."""
         plugin = _FakePlugin("Full")
         text = _format_plugin_tooltip(plugin)
         self.assertEqual(
@@ -77,6 +82,7 @@ class TestFormatPluginTooltip(omni.kit.test.AsyncTestCase):
         )
 
     async def test_empty_description_omits_description_line(self) -> None:
+        """Verify empty plugin descriptions are omitted."""
         plugin = _FakePlugin("Bare")
         plugin.impl.description = ""
         text = _format_plugin_tooltip(plugin)
@@ -85,6 +91,7 @@ class TestFormatPluginTooltip(omni.kit.test.AsyncTestCase):
         self.assertIn("Library: Lib Path Bare", text)
 
     async def test_none_description_omits_description_line(self) -> None:
+        """Verify ``None`` plugin descriptions are omitted."""
         plugin = _FakePlugin("NoneDesc")
         plugin.impl.description = None
         text = _format_plugin_tooltip(plugin)
@@ -92,6 +99,7 @@ class TestFormatPluginTooltip(omni.kit.test.AsyncTestCase):
         self.assertTrue(text.startswith("Implements:"))
 
     async def test_empty_interfaces_falls_back_to_none_token(self) -> None:
+        """Verify empty interface lists render the explicit none token."""
         plugin = _FakePlugin("NoIface")
         plugin.interfaces = []
         text = _format_plugin_tooltip(plugin)
@@ -100,6 +108,7 @@ class TestFormatPluginTooltip(omni.kit.test.AsyncTestCase):
         self.assertIn("Implements: (none)", text)
 
     async def test_multiple_interfaces_are_joined_with_comma(self) -> None:
+        """Verify multiple interfaces are joined in one tooltip row."""
         plugin = _FakePlugin("Multi")
         plugin.interfaces = [_FakeInterfaceDesc("IFoo"), _FakeInterfaceDesc("IBar")]
         text = _format_plugin_tooltip(plugin)
@@ -144,8 +153,10 @@ class TestAboutWindow(OmniUiTest):
             carb.log_warn(f"Could not run test because carb::windowing is not available: {e}")
 
     async def test_menu_callback_keeps_window_alive(self) -> None:
-        """The menu action discards ``menu_show_about``'s return value, so the extension
-        itself must retain a strong reference to the window — otherwise the ``ui.Window``
+        """Verify the menu callback keeps the created About window alive.
+
+        The menu action discards ``menu_show_about``'s return value, so the extension
+        itself must retain a strong reference to the window. Otherwise the ``ui.Window``
         is garbage-collected before it renders and Help -> About appears to do nothing.
         """
         about = isaacsim.app.about.get_instance()
@@ -185,8 +196,10 @@ class TestAboutWindow(OmniUiTest):
             await omni.kit.app.get_app().next_update_async()
 
     async def test_about_clipboard_format(self) -> None:
-        """The clipboard string emitted by the invisible right-click overlay must include
-        ``"Kit SDK Version: "`` (with the colon-space separator).
+        """Verify the clipboard text includes the Kit SDK version row.
+
+        The clipboard string emitted by the invisible right-click overlay must include
+        ``"Kit SDK Version: "`` with the colon-space separator.
         """
         about = isaacsim.app.about.get_instance()
         self.assertIsNotNone(about, "isaacsim.app.about extension is not loaded")

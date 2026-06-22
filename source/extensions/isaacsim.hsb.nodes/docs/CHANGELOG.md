@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.0.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.0.2] - 2026-05-14
 ### Changed
 - Address ruff lint errors: add type annotations and docstrings to `OgnHSBCameraHelper`, extension lifecycle methods, and tests; rewrite `dict()` call as a dict literal.

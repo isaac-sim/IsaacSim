@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for the interactive bin filling example."""
+
 from __future__ import annotations
 
 import isaacsim.core.experimental.utils.app as app_utils
@@ -25,13 +27,13 @@ from isaacsim.robot.experimental.manipulators.examples.interactive.bin_filling i
 class TestBinFillingExampleExtension(omni.kit.test.AsyncTestCase):
     """Test suite for the bin filling interactive example."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment before each test."""
         self._sample = BinFilling()
         await self._sample.load_world_async()
         await app_utils.update_app_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after each test."""
         if app_utils.is_playing():
             app_utils.stop()
@@ -39,7 +41,7 @@ class TestBinFillingExampleExtension(omni.kit.test.AsyncTestCase):
         await app_utils.update_app_async()
         self._sample = None
 
-    async def test_bin_filling_task(self):
+    async def test_bin_filling_task(self) -> None:
         """Test bin filling simulation runs and robot operates correctly."""
         await self._sample.reset_async()
         await app_utils.update_app_async()
@@ -58,7 +60,7 @@ class TestBinFillingExampleExtension(omni.kit.test.AsyncTestCase):
 
         self.assertGreaterEqual(self._sample._event, 1)
 
-    async def test_reset(self):
+    async def test_reset(self) -> None:
         """Test reset functionality during bin filling."""
         await self._sample.reset_async()
         await app_utils.update_app_async()
@@ -78,25 +80,25 @@ class TestBinFillingExampleExtension(omni.kit.test.AsyncTestCase):
 
         await app_utils.update_app_async(steps=500)
 
-    async def test_smooth_target_generation_state(self):
+    async def test_smooth_target_generation_state(self) -> None:
         """Test cached pick position and smooth target generation."""
 
         class FakeTensor:
-            def __init__(self, value):
+            def __init__(self, value: object) -> None:
                 self._value = np.asarray(value)
 
-            def numpy(self):
+            def numpy(self) -> np.ndarray:
                 return self._value
 
         class FakeBin:
-            def __init__(self, position):
+            def __init__(self, position: object) -> None:
                 self.position = np.asarray(position, dtype=float)
 
-            def get_world_poses(self):
+            def get_world_poses(self) -> tuple[FakeTensor, None]:
                 return FakeTensor([self.position.copy()]), None
 
         class FakeRobot:
-            def close_gripper(self):
+            def close_gripper(self) -> None:
                 pass
 
         targets = []
@@ -125,7 +127,7 @@ class TestBinFillingExampleExtension(omni.kit.test.AsyncTestCase):
         self._sample._reset_state_machine()
         self.assertIsNone(self._sample._pick_position)
 
-    async def test_tool_orientation_uses_ee_link_target_orientation(self):
+    async def test_tool_orientation_uses_ee_link_target_orientation(self) -> None:
         """Test cuMotion tool0 orientation is derived from the desired ee_link orientation."""
         ee_orientation = euler_angles_to_quaternion([np.pi, 0.0, -np.pi / 2.0], extrinsic=False).numpy()
         tool_orientation = self._sample._get_tool_orientation_from_ee_orientation(ee_orientation)

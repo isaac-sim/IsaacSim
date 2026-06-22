@@ -113,14 +113,14 @@ class TestForkliftArticulations(omni.kit.test.AsyncTestCase):
         )
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test environment and stop timeline."""
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_forklift_forward(self):
+    async def test_forklift_forward(self) -> None:
         """Test forklift moves forward when positive wheel velocity is applied."""
         body_prim = RigidPrim("/World/Forklift/body")
 
@@ -145,7 +145,7 @@ class TestForkliftArticulations(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(pos[1], new_pos[1], delta=1)
         self.assertAlmostEqual(pos[2], new_pos[2], delta=1)
 
-    async def test_forklift_reverse(self):
+    async def test_forklift_reverse(self) -> None:
         """Test forklift moves backward when negative wheel velocity is applied."""
         body_prim = RigidPrim("/World/Forklift/body")
 
@@ -170,7 +170,7 @@ class TestForkliftArticulations(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(pos[1], new_pos[1], delta=1)
         self.assertAlmostEqual(pos[2], new_pos[2], delta=1)
 
-    async def test_forklift_reverse_turn(self):
+    async def test_forklift_reverse_turn(self) -> None:
         """Test forklift turns while reversing with steering angle applied."""
         body_prim = RigidPrim("/World/Forklift/body")
 
@@ -195,7 +195,7 @@ class TestForkliftArticulations(omni.kit.test.AsyncTestCase):
         self.assertNotAlmostEqual(pos[1], new_pos[1], delta=1)
         self.assertAlmostEqual(pos[2], new_pos[2], delta=1)
 
-    async def test_forklift_lift(self):
+    async def test_forklift_lift(self) -> None:
         """Test forklift lift mechanism raises when position target is set."""
         lift_prim = RigidPrim("/World/Forklift/lift")
 

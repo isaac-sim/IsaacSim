@@ -13,13 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test running Isaac Sim simulation in a separate process."""
+"""Verifies that Isaac Sim can launch, run, request quit, and close cleanly inside a child multiprocessing process without hanging on unsaved stage shutdown."""
 
 import multiprocessing
 import sys
 
 
-def run_simulation():
+def run_simulation() -> None:
     """Run the Isaac Sim simulation in a separate process.
 
     This function contains the main simulation logic that will be executed

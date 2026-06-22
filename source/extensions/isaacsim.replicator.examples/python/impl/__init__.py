@@ -15,6 +15,6 @@
 
 """Example implementations for Isaac Sim Replicator functionality."""
 
-from .extension import Extension
+from .extension import Extension as Extension
 
 __all__ = []

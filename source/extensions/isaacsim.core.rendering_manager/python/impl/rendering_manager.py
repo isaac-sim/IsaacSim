@@ -175,7 +175,6 @@ class RenderingManager:
             >>>
             >>> RenderingManager.set_dt(1 / 120.0)  # 120 Hz
         """
-
         if dt <= 0:
             raise ValueError(f"Rendering dt must be positive, got {dt}")
 

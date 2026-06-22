@@ -16,9 +16,10 @@
 # Import extension python module we are testing with absolute import path, as if we are external user (other extension)
 # from isaacsim.robot.surface_gripper._surface_gripper import Surface_Gripper, Surface_Gripper_Properties
 
-"""Tests for surface gripper functionality and the GripperView interface in Isaac Sim."""
+"""Verifies the GripperView interface for initializing surface grippers, reading status and properties, and applying single- and multi-joint gripper actions."""
 
 import time
+from typing import Any
 
 import numpy as np
 
@@ -52,7 +53,7 @@ class TestSurfaceGripperView(omni.kit.test.AsyncTestCase):
     the expected behavior through the GripperView interface.
     """
 
-    async def createRigidCube(
+    async def create_rigid_cube(
         self,
         boxActorPath: str,
         mass: float,
@@ -60,7 +61,7 @@ class TestSurfaceGripperView(omni.kit.test.AsyncTestCase):
         position: list[float],
         rotation: list[float],
         color: list[float],
-    ):
+    ) -> None:
         """Creates a rigid cube actor in the USD stage with physics properties.
 
         Args:
@@ -98,10 +99,13 @@ class TestSurfaceGripperView(omni.kit.test.AsyncTestCase):
         UsdPhysics.CollisionAPI(cubePrim)
 
     # Helper for setting up the physics stage
-    async def setup_physics(self):
+    async def setup_physics(self) -> Any:
         """Sets up the physics environment for testing.
 
         Creates a physics scene with lighting, sets stage units and up-axis, and adds a ground plane.
+
+        Returns:
+            None.
         """
         # Set Up Physics scene
         distantLight = UsdLux.DistantLight.Define(self.stage, Sdf.Path("/DistantLight"))
@@ -112,12 +116,15 @@ class TestSurfaceGripperView(omni.kit.test.AsyncTestCase):
         add_ground_plane(self.stage, "/World/groundPlane", "Z", 100, Gf.Vec3f(0, 0, 0), Gf.Vec3f(1.0))
 
     # Helper for setting up the surface gripper
-    async def setup_gripper(self, count: int, num_joints: int = 1):
+    async def setup_gripper(self, count: int, num_joints: int = 1) -> Any:
         """Sets up multiple surface gripper test environments.
 
         Args:
             count: Number of gripper environments to create.
             num_joints: Number of attachment joints per gripper.
+
+        Returns:
+            None.
         """
         for i in range(count):
             env_path = "/env" + str(i)
@@ -139,8 +146,8 @@ class TestSurfaceGripperView(omni.kit.test.AsyncTestCase):
 
             djoint_paths = []
 
-            await self.createRigidCube(*box0_props)
-            await self.createRigidCube(*box1_props)
+            await self.create_rigid_cube(*box0_props)
+            await self.create_rigid_cube(*box1_props)
 
             for j in range(num_joints):
                 d6Joint_path = Sdf.Path(box1_path + "/d6Joint" + str(j))
@@ -172,7 +179,7 @@ class TestSurfaceGripperView(omni.kit.test.AsyncTestCase):
         )
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Sets up the test environment before each test.
 
         Creates a new USD stage and initializes the timeline interface.
@@ -181,25 +188,20 @@ class TestSurfaceGripperView(omni.kit.test.AsyncTestCase):
         self.stage = omni.usd.get_context().get_stage()
         self._timeline = omni.timeline.get_timeline_interface()
 
-        pass
-
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Cleans up after each test."""
         await omni.kit.app.get_app().next_update_async()
-        pass
 
-    async def test_initialize_surface_gripper(self):
+    async def test_initialize_surface_gripper(self) -> None:
         """Tests basic surface gripper initialization and simulation setup."""
-
         await self.setup_physics()
         await self.setup_gripper(2)
         self._timeline.play()
         for _ in range(8):
             await omni.kit.app.get_app().next_update_async()
-        pass
 
-    async def test_get_surface_gripper_status(self):
+    async def test_get_surface_gripper_status(self) -> None:
         """Tests getting and setting surface gripper status values.
 
         Verifies that gripper status can be retrieved correctly after applying actions,
@@ -243,9 +245,7 @@ class TestSurfaceGripperView(omni.kit.test.AsyncTestCase):
         self.assertEqual(GripperStatus(status[0]), status_new_exp[0])
         self.assertEqual(GripperStatus(status[1]), status_new_exp[1])
 
-        pass
-
-    async def test_surface_gripper_properties(self):
+    async def test_surface_gripper_properties(self) -> None:
         """Tests getting and setting surface gripper properties.
 
         Verifies that gripper properties (max grip distance, force limits, retry interval)
@@ -340,9 +340,7 @@ class TestSurfaceGripperView(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(shear_force_limit[1], shear_force_limit_new_exp[1])
         self.assertAlmostEqual(retry_interval[1], retry_interval_new_exp[1])
 
-        pass
-
-    async def test_surface_gripper_apply_action(self, gripper_count: int = 9 * 100, num_joints: int = 1):
+    async def test_surface_gripper_apply_action(self, gripper_count: int = 9 * 100, num_joints: int = 1) -> None:
         """Tests performance of applying gripper actions to multiple grippers.
 
         Args:
@@ -367,9 +365,8 @@ class TestSurfaceGripperView(omni.kit.test.AsyncTestCase):
         print(f"post simulate time: {post_elapsed_time- new_elapsed_time} seconds")
         self.assertTrue((np.array(status) == int(GripperStatus.Closed)).all())
         # self.assertTrue((status == GripperStatus.Closed).all())
-        pass
 
-    async def test_surface_gripper_apply_action_multi_joints(self):
+    async def test_surface_gripper_apply_action_multi_joints(self) -> None:
         """Tests gripper action application with multiple joints per gripper.
 
         Runs the gripper action test with 100 grippers having 9 joints each.

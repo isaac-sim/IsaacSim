@@ -22,18 +22,18 @@ ships with ``omni.kit.profiler.tracy``.
 Typical usage from the build directory::
 
     # Select a benchmark by short name and forward benchmark-specific args
-    ./python.sh tools/benchmark/tracy_capture.py \\
+    ./python.sh tools/profiling/tracy_capture.py \\
         --benchmark camera \\
         --output-dir /tmp/tracy_output \\
         -- --num-cameras 2 --num-frames 300
 
     # Or provide a full path
-    ./python.sh tools/benchmark/tracy_capture.py \\
+    ./python.sh tools/profiling/tracy_capture.py \\
         --benchmark standalone_examples/benchmarks/benchmark_camera.py \\
         -- --num-cameras 2
 
     # List all available benchmarks
-    ./python.sh tools/benchmark/tracy_capture.py \\
+    ./python.sh tools/profiling/tracy_capture.py \\
         --list-benchmarks
 
 The script:

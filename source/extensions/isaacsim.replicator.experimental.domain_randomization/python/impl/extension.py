@@ -15,6 +15,8 @@
 
 """Define the extension lifecycle management for the Isaac Sim Replicator experimental domain randomization implementation."""
 
+from typing import Any
+
 import omni.ext
 import omni.usd
 from isaacsim.replicator.experimental.domain_randomization.scripts import physics_view
@@ -36,6 +38,6 @@ class Extension(omni.ext.IExt):
         self._stage_event_sub = None
         physics_view.cleanup()
 
-    def _on_stage_event(self, event) -> None:
+    def _on_stage_event(self, event: Any) -> None:
         if event.type == int(omni.usd.StageEventType.CLOSING):
             physics_view.cleanup()

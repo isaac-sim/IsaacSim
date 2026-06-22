@@ -15,6 +15,8 @@
 
 """Context management for domain randomization triggers and tendon execution in Isaac Sim replicator."""
 
+from typing import Any
+
 import omni.graph.core as og
 from omni.replicator.core.utils import utils
 
@@ -29,7 +31,7 @@ class ReplicatorIsaacContext:
         action_graph_entry_node: Entry node for the action graph that handles randomization execution.
     """
 
-    def __init__(self, num_envs, action_graph_entry_node):
+    def __init__(self, num_envs: Any, action_graph_entry_node: Any) -> None:
         self._num_envs = num_envs
         self._action_graph_entry_node = action_graph_entry_node
         self._reset_inds = None
@@ -39,7 +41,7 @@ class ReplicatorIsaacContext:
         self._graph = controller.graph(utils.GRAPH_PATH)
         self._tendon_attribute_stack = [None]
 
-    def trigger_randomization(self, reset_inds):
+    def trigger_randomization(self, reset_inds: Any) -> None:
         """Trigger randomization for the given reset indices.
 
         Args:
@@ -51,7 +53,7 @@ class ReplicatorIsaacContext:
         self._graph.evaluate()
 
     @property
-    def reset_inds(self):
+    def reset_inds(self) -> Any:
         """Current reset indices.
 
         Returns:
@@ -59,7 +61,7 @@ class ReplicatorIsaacContext:
         """
         return self._reset_inds
 
-    def get_tendon_exec_context(self):
+    def get_tendon_exec_context(self) -> Any:
         """Get the current tendon execution context node.
 
         Returns:
@@ -67,7 +69,7 @@ class ReplicatorIsaacContext:
         """
         return self._tendon_attribute_stack[-1]
 
-    def add_tendon_exec_context(self, node):
+    def add_tendon_exec_context(self, node: Any) -> None:
         """Add a node to the tendon execution context stack.
 
         Args:
@@ -76,7 +78,7 @@ class ReplicatorIsaacContext:
         self._tendon_attribute_stack.append(node)
 
 
-def initialize_context(num_envs, action_graph_entry_node):
+def initialize_context(num_envs: Any, action_graph_entry_node: Any) -> None:
     """Initialize the global context for domain randomization.
 
     Args:
@@ -87,7 +89,7 @@ def initialize_context(num_envs, action_graph_entry_node):
     _context = ReplicatorIsaacContext(num_envs, action_graph_entry_node)
 
 
-def get_reset_inds():
+def get_reset_inds() -> Any:
     """Get the current reset indices from the global context.
 
     Returns:
@@ -96,8 +98,13 @@ def get_reset_inds():
     return _context.reset_inds
 
 
-def resolve_context():
-    """Return the active context, falling back to the deprecated module's context."""
+def resolve_context() -> Any:
+    """Return the active context, falling back to the deprecated module's context.
+
+    Returns:
+        Active domain-randomization context, deprecated context, or None if no
+        context is available.
+    """
     if _context is not None:
         return _context
     try:
@@ -108,7 +115,7 @@ def resolve_context():
         return None
 
 
-def trigger_randomization(reset_inds):
+def trigger_randomization(reset_inds: Any) -> None:
     """Trigger randomization for the given reset indices.
 
     Args:

@@ -13,11 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verify ROS 2 RTX sensor publishing.
+
+Covers lidar and radar point cloud or laser scan output, simulation and system
+timestamps, metadata gating, frame transform behavior, and optional intensity fields.
+"""
+
 import asyncio
 import json
 import math
 import time
-from typing import List
+from typing import Any
 from uuid import uuid4
 
 import carb
@@ -40,8 +46,9 @@ from .common import create_sarcophagus, get_qos_profile
 
 
 class _GmoCollectorWriter(Writer):
-    """Replicator Writer that captures every ``GenericModelOutput`` in arrival order,
-    deduped by ``gmo.timestampNs`` (the lidar's authoritative scan-start time).
+    """Replicator Writer that captures every ``GenericModelOutput`` in arrival order.
+
+    Frames are deduped by ``gmo.timestampNs`` (the lidar's authoritative scan-start time).
 
     A Writer is used instead of per-frame annotator polling so every GMO produced by
     the SD pipeline is observed in lockstep with the publisher writers on the same
@@ -53,7 +60,7 @@ class _GmoCollectorWriter(Writer):
         self.version = "0.0.1"
         self.data_structure = "renderProduct"
         self.annotators = [rep.annotators.get("GenericModelOutput")]
-        self.snapshots: List[dict] = []
+        self.snapshots: list[dict] = []
         self._seen_timestamp_ns: set = set()
 
     def write(self, data: dict) -> None:
@@ -91,11 +98,13 @@ class _GmoCollectorWriter(Writer):
 
 
 class TestROS2SensorMsgRTX(ROS2TestCase):
+    """Base fixture for RTX sensor publisher tests using ROS 2 subscriptions."""
 
     _ros_msg_type = None
     _helper_type = None
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Create the test scene, ROS 2 subscriptions, and object ID map listener."""
         await super().setUp()
 
         self._sensor_prim_path = None
@@ -117,7 +126,7 @@ class TestROS2SensorMsgRTX(ROS2TestCase):
         self._ros_msg_timestamp_prev = None
         self._is_full_scan = False
 
-        def ros_callback(data):
+        def ros_callback(data: Any) -> None:
             self._ros_msg_data = data
             self._ros_msg_count += 1
 
@@ -139,7 +148,7 @@ class TestROS2SensorMsgRTX(ROS2TestCase):
         self._ros_object_id_map_count = 0
         self._ros_object_id_map_timestamp_prev = None
 
-        def ros_callback_object_id_map(data):
+        def ros_callback_object_id_map(data: Any) -> None:
             self._ros_object_id_map_data = data
             self._ros_object_id_map_count += 1
             prim_paths = json.loads(data.data)["id_to_labels"].values()
@@ -154,7 +163,8 @@ class TestROS2SensorMsgRTX(ROS2TestCase):
             get_qos_profile(depth=10),
         )
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Detach RTX annotators before the ROS 2 test case cleanup runs."""
         if self._annotator_rtx is not None:
             self._annotator_rtx.detach()
         if self._annotator_timestamp is not None:
@@ -168,8 +178,8 @@ class TestROS2SensorMsgRTX(ROS2TestCase):
         variant: str = None,
         aux_output_level: str = "NONE",
         accumulate_outputs: bool = True,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         self._sensor_type = sensor_type
 
         if sensor_type == "radar":
@@ -202,8 +212,10 @@ class TestROS2SensorMsgRTX(ROS2TestCase):
         self._render_product_path = self._render_product.path
 
     async def _create_omnigraph(
-        self, enable_full_scan: bool = False, use_system_time: bool = False, metadata: List[str] = []
-    ):
+        self, enable_full_scan: bool = False, use_system_time: bool = False, metadata: list[str] | None = None
+    ) -> None:
+        if metadata is None:
+            metadata = []
         # Create the basic Omnigraph for the sensor
         create_nodes = [
             ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
@@ -248,20 +260,26 @@ class TestROS2SensorMsgRTX(ROS2TestCase):
         except Exception as e:
             self.fail(f"Failed to create OmniGraph for {self._sensor_type}: {e}")
 
-    def _get_expected_message_count(self, full_scan: bool = False, test_duration_s: float = 1.5):
+    def _get_expected_message_count(self, full_scan: bool = False, test_duration_s: float = 1.5) -> Any:
         if self._sensor_type == "lidar":
             return test_duration_s * 10 * (1 if full_scan else 6) - 1
         elif self._sensor_type == "radar":
             # The first 4 frames are warmup frames, so we don't get messages from them
             return test_duration_s * 60 - 4
 
-    def _get_closest_timestamp(self, message_timestamp):
+    def _get_closest_timestamp(self, message_timestamp: Any) -> Any:
         """Return the snapshot whose annotator-observed wall-clock is closest to *message_timestamp*.
 
         Snapshots are keyed by ``gmo.timestampNs`` (scan identity) and each entry tracks
         every annotator-side timestamp at which the scan was observed; we search across
         all observations so a snapshot still matches if the GMO annotator and the
         publisher latched the same scan on different simulation frames.
+
+        Args:
+            message_timestamp: Message timestamp to match.
+
+        Returns:
+            Closest matching timestamp.
         """
         best_key = None
         best_diff = float("inf")
@@ -273,7 +291,9 @@ class TestROS2SensorMsgRTX(ROS2TestCase):
                     best_key = scan_key
         return self._mapped_annotator_data[best_key]
 
-    async def _test_message_data(self, full_scan: bool = False, test_duration_s: float = 1.5, metadata: List[str] = []):
+    async def _test_message_data(
+        self, full_scan: bool = False, test_duration_s: float = 1.5, metadata: list[str] | None = None
+    ) -> None:
         raise NotImplementedError("Subclasses must implement this method.")
 
     async def _test_sensor(
@@ -282,11 +302,12 @@ class TestROS2SensorMsgRTX(ROS2TestCase):
         aux_output_level: str = "NONE",
         full_scan: bool = False,
         use_system_time: bool = False,
-        metadata: List[str] = [],
+        metadata: list[str] | None = None,
         test_duration_s: float = 1.5,
-        **kwargs,
-    ):
-
+        **kwargs: Any,
+    ) -> Any:
+        if metadata is None:
+            metadata = []
         self._is_full_scan = full_scan
         await self._create_sensor(
             sensor_type, aux_output_level=aux_output_level, accumulate_outputs=full_scan, **kwargs
@@ -333,8 +354,15 @@ class TestROS2SensorMsgRTX(ROS2TestCase):
         if self._sensor_type == "radar":
             _AUX_FIELDS[gmo_utils.AuxType.BASIC] = [("radialVelocityMS", "rv_ms")]
 
-        def _aux_fields_for_level(aux_type):
-            """Return the list of (snapshot_key, gmo_attr) pairs available at *aux_type*."""
+        def _aux_fields_for_level(aux_type: Any) -> Any:
+            """Return the list of (snapshot_key, gmo_attr) pairs available at *aux_type*.
+
+            Args:
+                aux_type: Auxiliary metadata level.
+
+            Returns:
+                Snapshot key and GMO attribute pairs.
+            """
             fields = []
             for level in (gmo_utils.AuxType.BASIC, gmo_utils.AuxType.EXTRA, gmo_utils.AuxType.FULL):
                 if aux_type == gmo_utils.AuxType.NONE:
@@ -344,7 +372,7 @@ class TestROS2SensorMsgRTX(ROS2TestCase):
                     break
             return fields
 
-        def spin():
+        def spin() -> None:
             # Drive ROS callbacks and snapshot the latest GMO, deduping repeat frames
             # by gmo.timestampNs (scan identity) while still recording every observed
             # annotator wall-clock for _get_closest_timestamp(). Arrays are copied
@@ -387,7 +415,7 @@ class TestROS2SensorMsgRTX(ROS2TestCase):
 
         system_time_start = time.time() if use_system_time else None
 
-        def message_ready():
+        def message_ready() -> Any:
             if self._ros_msg_data is None:
                 return False
 
@@ -442,12 +470,21 @@ class TestROS2SensorMsgRTX(ROS2TestCase):
 
 
 class TestROS2PointCloudRTX(TestROS2SensorMsgRTX):
+    """Verify RTX lidar PointCloud2 output against GenericModelOutput data."""
+
     _ros_msg_type = PointCloud2
     _helper_type = "point_cloud"
 
     @staticmethod
-    def _snapshot_to_cartesian(snapshot):
-        """Convert a GMO snapshot dict to Cartesian xyz, handling both coordinate types."""
+    def _snapshot_to_cartesian(snapshot: Any) -> Any:
+        """Convert a GMO snapshot dict to Cartesian xyz, handling both coordinate types.
+
+        Args:
+            snapshot: GMO snapshot to convert.
+
+        Returns:
+            Cartesian point coordinates.
+        """
         x_data = snapshot["x"]
         y_data = snapshot["y"]
         z_data = snapshot["z"]
@@ -467,7 +504,9 @@ class TestROS2PointCloudRTX(TestROS2SensorMsgRTX):
         cart_z[mask] = 0.0
         return np.stack([cart_x, cart_y, cart_z], axis=1)
 
-    async def _test_message_data(self, full_scan: bool = False, test_duration_s: float = 1.5, metadata: List[str] = []):
+    async def _test_message_data(
+        self, full_scan: bool = False, test_duration_s: float = 1.5, metadata: list[str] | None = None
+    ) -> None:
         self.assertIsNotNone(self._ros_msg_data)
         message_timestamp = self._ros_msg_data.header.stamp.sec + self._ros_msg_data.header.stamp.nanosec / 1e9
         snap = self._get_closest_timestamp(message_timestamp)
@@ -483,10 +522,10 @@ class TestROS2PointCloudRTX(TestROS2SensorMsgRTX):
         msg_points = read_points(self._ros_msg_data)
 
         def test_match(
-            message_data: List[np.ndarray],
+            message_data: list[np.ndarray],
             annotator_data: np.ndarray,
             field_name: str = None,
-        ):
+        ) -> None:
             message_data = np.concatenate([m[..., None] for m in message_data], axis=1)
             if len(annotator_data.shape) == 1:
                 annotator_data = annotator_data[..., None]
@@ -551,12 +590,14 @@ class TestROS2PointCloudRTX(TestROS2SensorMsgRTX):
         if "radialVelocityMS" in metadata:
             self.fail("Radial velocity MS is not supported for Lidar")
 
-    async def test_rtx_lidar_full_scan_simulation_time_no_metadata(self):
+    async def test_rtx_lidar_full_scan_simulation_time_no_metadata(self) -> None:
+        """Verify full-scan lidar PointCloud2 output with simulation time and no metadata."""
         await self._test_sensor(
             sensor_type="lidar", full_scan=True, use_system_time=False, metadata=[], test_duration_s=0.5
         )
 
-    async def test_rtx_lidar_full_scan_simulation_time_partial_metadata(self):
+    async def test_rtx_lidar_full_scan_simulation_time_partial_metadata(self) -> None:
+        """Verify full-scan lidar PointCloud2 output with simulation time and echo metadata."""
         await self._test_sensor(
             sensor_type="lidar",
             full_scan=True,
@@ -566,7 +607,8 @@ class TestROS2PointCloudRTX(TestROS2SensorMsgRTX):
             test_duration_s=0.5,
         )
 
-    async def test_rtx_lidar_full_scan_simulation_time_full_metadata(self):
+    async def test_rtx_lidar_full_scan_simulation_time_full_metadata(self) -> None:
+        """Verify full-scan lidar PointCloud2 output with simulation time and all metadata fields."""
         await self._test_sensor(
             sensor_type="lidar",
             full_scan=True,
@@ -588,7 +630,8 @@ class TestROS2PointCloudRTX(TestROS2SensorMsgRTX):
             test_duration_s=0.5,
         )
 
-    async def test_rtx_lidar_full_scan_system_time_full_metadata(self):
+    async def test_rtx_lidar_full_scan_system_time_full_metadata(self) -> None:
+        """Verify full-scan lidar PointCloud2 output with system time and all metadata fields."""
         await self._test_sensor(
             sensor_type="lidar",
             full_scan=True,
@@ -612,12 +655,15 @@ class TestROS2PointCloudRTX(TestROS2SensorMsgRTX):
 
 
 class TestROS2LaserScanRTX(TestROS2SensorMsgRTX):
+    """Verify RTX lidar LaserScan output against captured GenericModelOutput scans."""
+
     _ros_msg_type = LaserScan
     _helper_type = "laser_scan"
 
     _writer_registered = False
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Replace the base subscriber with a buffered LaserScan subscriber and GMO writer."""
         await super().setUp()
 
         # Re-subscribe with a list-appending callback routed through a background
@@ -625,10 +671,10 @@ class TestROS2LaserScanRTX(TestROS2SensorMsgRTX):
         # create_subscription so the new sub binds to the executor's
         # ReentrantCallbackGroup; the base tearDown shuts the executor down.
         self.destroy_subscription(self._ros_node, self._ros_sub)
-        self._ros_messages: List[LaserScan] = []
+        self._ros_messages: list[LaserScan] = []
         self.start_async_spinning(self._ros_node)
 
-        def ros_callback(data):
+        def ros_callback(data: Any) -> None:
             self._ros_messages.append(data)
             self._ros_msg_count += 1
             self._ros_msg_data = data  # keep for base-class introspection
@@ -648,13 +694,14 @@ class TestROS2LaserScanRTX(TestROS2SensorMsgRTX):
             rep.WriterRegistry.register(_GmoCollectorWriter)
             TestROS2LaserScanRTX._writer_registered = True
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Detach the GMO writer before shared RTX sensor cleanup runs."""
         if self._gmo_writer is not None:
             self._gmo_writer.detach()
             self._gmo_writer = None
         await super().tearDown()
 
-    def _assert_match_with_bin_tolerance(self, expected, actual, atol, name):
+    def _assert_match_with_bin_tolerance(self, expected: Any, actual: Any, atol: Any, name: Any) -> Any:
         """Elementwise match with ±1 slot tolerance.
 
         The publisher's per-ray binning uses the original float32 prim attributes
@@ -662,13 +709,22 @@ class TestROS2LaserScanRTX(TestROS2SensorMsgRTX):
         from the message's deg→rad-converted ``angle_min`` / ``angle_increment``. The
         round-trip can shift the integer bin by 1 for rays within one ULP of a
         boundary; the tolerance accepts that without letting data go missing.
+
+        Args:
+            expected: Expected per-bin values.
+            actual: Actual per-bin values.
+            atol: Absolute tolerance for comparisons.
+            name: Field name used in assertion messages.
+
+        Returns:
+            None.
         """
         expected = np.asarray(expected)
         actual = np.asarray(actual)
         n = len(expected)
         self.assertEqual(len(actual), n, f"{name}: array length mismatch")
 
-        def _find_mismatches(a, b):
+        def _find_mismatches(a: Any, b: Any) -> Any:
             mismatches = []
             for i in range(n):
                 lo = max(i - 1, 0)
@@ -693,10 +749,12 @@ class TestROS2LaserScanRTX(TestROS2SensorMsgRTX):
         aux_output_level: str = "NONE",
         full_scan: bool = False,
         use_system_time: bool = False,
-        metadata: List[str] = [],
+        metadata: list[str] | None = None,
         test_duration_s: float = 1.5,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
+        if metadata is None:
+            metadata = []
         """Writer-driven LaserScan validation.
 
         A ``_GmoCollectorWriter`` captures every GMO from the SD pipeline and the
@@ -753,13 +811,23 @@ class TestROS2LaserScanRTX(TestROS2SensorMsgRTX):
 
     async def _test_message_data(
         self,
-        snapshots: List[dict],
-        messages: List[LaserScan],
+        snapshots: list[dict],
+        messages: list[LaserScan],
         full_scan: bool = False,
         test_duration_s: float = 1.5,
-        metadata: List[str] = [],
-    ):
-        """Compare the final published LaserScan against the final captured GMO."""
+        metadata: list[str] | None = None,
+    ) -> None:
+        """Compare the final published LaserScan against the final captured GMO.
+
+        Args:
+            snapshots: Captured GMO snapshots.
+            messages: Received LaserScan messages.
+            full_scan: Whether the helper is configured for full scans.
+            test_duration_s: Test duration.
+            metadata: Selected metadata fields.
+        """
+        if metadata is None:
+            metadata = []
         msg = messages[-1]
         snap = snapshots[-1]
 
@@ -798,12 +866,14 @@ class TestROS2LaserScanRTX(TestROS2SensorMsgRTX):
         self._assert_match_with_bin_tolerance(expected_ranges, ros_ranges, atol=1e-5, name="ranges")
         self._assert_match_with_bin_tolerance(expected_intensities, ros_intensities, atol=1e-5, name="intensities")
 
-    async def test_rtx_lidar_full_scan_simulation_time(self):
+    async def test_rtx_lidar_full_scan_simulation_time(self) -> None:
+        """Verify SICK nanoScan3 LaserScan output with simulation time."""
         await self._test_sensor(
             sensor_type="lidar", use_system_time=False, test_duration_s=0.5, config="SICK_nanoScan3"
         )
 
-    async def test_rtx_lidar_full_scan_system_time(self):
+    async def test_rtx_lidar_full_scan_system_time(self) -> None:
+        """Verify SICK nanoScan3 LaserScan output with system time."""
         await self._test_sensor(sensor_type="lidar", use_system_time=True, test_duration_s=0.5, config="SICK_nanoScan3")
 
 
@@ -813,12 +883,15 @@ class TestROS2RadarPointCloudRTX(TestROS2SensorMsgRTX):
     _ros_msg_type = PointCloud2
     _helper_type = "point_cloud"
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Enable Motion BVH before creating RTX radar sensors."""
         await super().setUp()
         # Enable Motion BVH required by radar
         carb.settings.get_settings().set("/renderer/raytracingMotion/enabled", True)
 
-    async def _test_message_data(self, full_scan: bool = False, test_duration_s: float = 1.5, metadata: List[str] = []):
+    async def _test_message_data(
+        self, full_scan: bool = False, test_duration_s: float = 1.5, metadata: list[str] | None = None
+    ) -> None:
         self.assertIsNotNone(self._ros_msg_data)
 
         self.assertGreater(
@@ -848,7 +921,7 @@ class TestROS2RadarPointCloudRTX(TestROS2SensorMsgRTX):
                 f"Radial velocity should be near zero for static scene, max={np.max(np.abs(rv_data)):.4f}",
             )
 
-    async def test_rtx_radar_point_cloud_no_metadata(self):
+    async def test_rtx_radar_point_cloud_no_metadata(self) -> None:
         """Test basic radar point cloud publishing without metadata."""
         kwargs = {"omni:sensor:WpmDmat:outputFrameOfReference": "WORLD"}
         await self._test_sensor(
@@ -860,7 +933,7 @@ class TestROS2RadarPointCloudRTX(TestROS2SensorMsgRTX):
             **kwargs,
         )
 
-    async def test_rtx_radar_point_cloud_basic_metadata(self):
+    async def test_rtx_radar_point_cloud_basic_metadata(self) -> None:
         """Test radar point cloud with radial velocity metadata."""
         kwargs = {"omni:sensor:WpmDmat:outputFrameOfReference": "WORLD"}
         await self._test_sensor(
@@ -874,8 +947,9 @@ class TestROS2RadarPointCloudRTX(TestROS2SensorMsgRTX):
 
 
 class TestROS2RtxHelperDoTransform(ROS2TestCase):
-    """Verify the lidar/radar helpers pass the correct ``doTransform`` value to the
-    debug-draw writer based on the sensor's ``outputFrameOfReference`` attribute.
+    """Verify the lidar/radar helpers pass the correct ``doTransform`` value.
+
+    The debug-draw writer is configured based on the sensor's ``outputFrameOfReference`` attribute.
 
     The expected mapping is:
       * ``WORLD`` frame  -> ``doTransform=False`` (points are already in world coords)
@@ -883,19 +957,30 @@ class TestROS2RtxHelperDoTransform(ROS2TestCase):
     """
 
     @staticmethod
-    def _find_debug_writer(state, marker: str):
+    def _find_debug_writer(state: Any, marker: str) -> Any:
         """Return the writer in ``state._writers`` whose node_type_id contains *marker*.
 
         Compares against ``DebugDrawPointCloud`` (the underlying OG node type) so we
         match both ``RtxLidarDebugDrawPointCloudBuffer`` and ``RtxSensorDebugDrawPointCloud``.
+
+        Args:
+            state: Helper internal state containing writers.
+            marker: Node type marker to find.
+
+        Returns:
+            Matching writer, or None if no writer matches.
         """
         return next(
             (w for w in getattr(state, "_writers", []) if marker in getattr(w, "node_type_id", "")),
             None,
         )
 
-    async def _setup_lidar_helper(self, frame_of_reference: str | None):
-        """Create a Lidar with the given outputFrameOfReference and a helper OG node."""
+    async def _setup_lidar_helper(self, frame_of_reference: str | None) -> None:
+        """Create a Lidar with the given outputFrameOfReference and a helper OG node.
+
+        Args:
+            frame_of_reference: Output frame of reference to configure.
+        """
         attributes = {}
         if frame_of_reference is not None:
             attributes["omni:sensor:Core:outputFrameOfReference"] = frame_of_reference
@@ -926,8 +1011,12 @@ class TestROS2RtxHelperDoTransform(ROS2TestCase):
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
 
-    async def _setup_radar_helper(self, frame_of_reference: str):
-        """Create a Radar with the given outputFrameOfReference and a helper OG node."""
+    async def _setup_radar_helper(self, frame_of_reference: str) -> None:
+        """Create a Radar with the given outputFrameOfReference and a helper OG node.
+
+        Args:
+            frame_of_reference: Output frame of reference to configure.
+        """
         from isaacsim.sensors.experimental.rtx import Radar
 
         # Radar requires Motion BVH.
@@ -960,7 +1049,7 @@ class TestROS2RtxHelperDoTransform(ROS2TestCase):
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
 
-    async def _assert_lidar_debug_dotransform(self, frame_of_reference: str | None, expected: bool):
+    async def _assert_lidar_debug_dotransform(self, frame_of_reference: str | None, expected: bool) -> None:
         from isaacsim.ros2.nodes.ogn.OgnROS2RtxLidarHelperDatabase import OgnROS2RtxLidarHelperDatabase
 
         await self._setup_lidar_helper(frame_of_reference)
@@ -977,7 +1066,7 @@ class TestROS2RtxHelperDoTransform(ROS2TestCase):
             f"Expected doTransform={expected} for outputFrameOfReference={frame_of_reference!r}",
         )
 
-    async def _assert_radar_debug_dotransform(self, frame_of_reference: str, expected: bool):
+    async def _assert_radar_debug_dotransform(self, frame_of_reference: str, expected: bool) -> None:
         from isaacsim.ros2.nodes.ogn.OgnROS2RtxRadarHelperDatabase import OgnROS2RtxRadarHelperDatabase
 
         await self._setup_radar_helper(frame_of_reference)
@@ -994,28 +1083,34 @@ class TestROS2RtxHelperDoTransform(ROS2TestCase):
             f"Expected doTransform={expected} for outputFrameOfReference={frame_of_reference!r}",
         )
 
-    async def test_lidar_world_frame_disables_transform(self):
+    async def test_lidar_world_frame_disables_transform(self) -> None:
+        """Verify lidar debug draw leaves WORLD-frame points untransformed."""
         await self._assert_lidar_debug_dotransform("WORLD", expected=False)
 
-    async def test_lidar_sensor_frame_enables_transform(self):
+    async def test_lidar_sensor_frame_enables_transform(self) -> None:
+        """Verify lidar debug draw transforms SENSOR-frame points into world space."""
         await self._assert_lidar_debug_dotransform("SENSOR", expected=True)
 
-    async def test_lidar_unauthored_frame_enables_transform(self):
+    async def test_lidar_unauthored_frame_enables_transform(self) -> None:
         # When the attribute is not authored, GetAttribute().Get() returns None,
         # which is `!= "WORLD"` -> doTransform must default to True (matches the
         # writer's registered default and avoids points landing at the origin).
+        """Verify lidar debug draw transforms points when no frame attribute is authored."""
         await self._assert_lidar_debug_dotransform(None, expected=True)
 
-    async def test_radar_world_frame_disables_transform(self):
+    async def test_radar_world_frame_disables_transform(self) -> None:
+        """Verify radar debug draw leaves WORLD-frame points untransformed."""
         await self._assert_radar_debug_dotransform("WORLD", expected=False)
 
-    async def test_radar_sensor_frame_enables_transform(self):
+    async def test_radar_sensor_frame_enables_transform(self) -> None:
+        """Verify radar debug draw transforms SENSOR-frame points into world space."""
         await self._assert_radar_debug_dotransform("SENSOR", expected=True)
 
 
 class TestROS2PCLMetadataGating(TestROS2SensorMsgRTX):
-    """Verify ``ROS2PublishPointCloud`` only includes optional fields when both the
-    pointer input *and* the matching ``output*`` flag are provided.
+    """Verify ``ROS2PublishPointCloud`` optional field gating.
+
+    Optional fields are included only when both the pointer input *and* the matching ``output*`` flag are provided.
 
     Coverage:
       * Helper-driven path: when ``selectedMetadata`` is empty, the helper does not
@@ -1030,7 +1125,11 @@ class TestROS2PCLMetadataGating(TestROS2SensorMsgRTX):
     _ros_msg_type = PointCloud2
     _helper_type = "point_cloud"
 
-    async def _test_message_data(self, full_scan: bool = False, test_duration_s: float = 1.5, metadata: List[str] = []):
+    async def _test_message_data(
+        self, full_scan: bool = False, test_duration_s: float = 1.5, metadata: list[str] | None = None
+    ) -> None:
+        if metadata is None:
+            metadata = []
         self.assertIsNotNone(self._ros_msg_data)
         self.assertGreater(self._ros_msg_count, 0, "No PointCloud2 messages received")
 
@@ -1070,7 +1169,7 @@ class TestROS2PCLMetadataGating(TestROS2SensorMsgRTX):
             f"Fields {missing} were selected (metadata={metadata}) but missing from the PointCloud2 ({msg_field_names})",
         )
 
-    async def test_intensity_excluded_when_flag_not_set(self):
+    async def test_intensity_excluded_when_flag_not_set(self) -> None:
         """metadata=[] means outputIntensity stays False, so the message has no intensity."""
         await self._test_sensor(
             sensor_type="lidar",
@@ -1081,7 +1180,7 @@ class TestROS2PCLMetadataGating(TestROS2SensorMsgRTX):
             test_duration_s=0.5,
         )
 
-    async def test_intensity_included_when_flag_set(self):
+    async def test_intensity_included_when_flag_set(self) -> None:
         """When intensity is requested, it must appear in the published PointCloud2."""
         await self._test_sensor(
             sensor_type="lidar",

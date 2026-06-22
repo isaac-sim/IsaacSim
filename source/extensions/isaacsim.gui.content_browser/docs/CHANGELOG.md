@@ -1,4 +1,9 @@
 # Changelog
+
+## [0.4.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [0.4.2] - 2026-05-28
 ### Added
 - Added the Robot Multiphysics folder

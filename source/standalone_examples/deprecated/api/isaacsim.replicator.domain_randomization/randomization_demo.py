@@ -112,7 +112,7 @@ args, _ = parser.parse_known_args()
 
 while simulation_app.is_running():
     if world.is_playing():
-        reset_inds = list()
+        reset_inds = []
         if frame_idx % 200 == 0:
             # triggers reset every 200 steps
             reset_inds = np.arange(num_envs)

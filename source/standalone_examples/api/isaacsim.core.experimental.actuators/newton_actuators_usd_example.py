@@ -13,13 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-================================================================================
+"""Author, save, and discover Newton actuators from USD.
+
 This file contains code snippets that are displayed in the Newton Actuators
 "Authoring and Parsing Actuators from USD" tutorial.  Keep the
 ``<start-...-snippet>`` / ``<end-...-snippet>`` markers in sync with
 ``docs/isaacsim/newton_actuators_tutorials/newton_actuators_usd.rst``.
-================================================================================
 
 Runs end-to-end as a standalone script:
 
@@ -96,13 +95,13 @@ def author_actuators_on_franka(franka_path: str) -> None:
 
     # Per-joint kp, kd, and effort limits
     JOINT_PARAMS = {
-        "panda_joint1": dict(kp=67.0, kd=8.0, max_effort=1000.0),
-        "panda_joint2": dict(kp=66.0, kd=8.0, max_effort=1000.0),
-        "panda_joint3": dict(kp=65.0, kd=8.0, max_effort=1000.0),
-        "panda_joint4": dict(kp=64.0, kd=8.0, max_effort=1000.0),
-        "panda_joint5": dict(kp=63.0, kd=8.0, max_effort=1000.0),
-        "panda_joint6": dict(kp=62.0, kd=8.0, max_effort=1000.0),
-        "panda_joint7": dict(kp=61.0, kd=8.0, max_effort=1000.0),
+        "panda_joint1": {"kp": 67.0, "kd": 8.0, "max_effort": 1000.0},
+        "panda_joint2": {"kp": 66.0, "kd": 8.0, "max_effort": 1000.0},
+        "panda_joint3": {"kp": 65.0, "kd": 8.0, "max_effort": 1000.0},
+        "panda_joint4": {"kp": 64.0, "kd": 8.0, "max_effort": 1000.0},
+        "panda_joint5": {"kp": 63.0, "kd": 8.0, "max_effort": 1000.0},
+        "panda_joint6": {"kp": 62.0, "kd": 8.0, "max_effort": 1000.0},
+        "panda_joint7": {"kp": 61.0, "kd": 8.0, "max_effort": 1000.0},
     }
 
     for joint_name, p in JOINT_PARAMS.items():
@@ -201,6 +200,7 @@ def round_trip_demo(out_path: pathlib.Path) -> None:
 
 
 def main() -> None:
+    """Run the USD actuator round-trip example."""
     SimulationManager.set_physics_dt(1.0 / 60.0)
     # Use the platform-specific temp directory so this works on Linux and Windows.
     out_path = pathlib.Path(tempfile.gettempdir()) / "franka_with_actuators.usda"

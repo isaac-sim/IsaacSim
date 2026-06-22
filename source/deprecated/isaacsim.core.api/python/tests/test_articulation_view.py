@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for articulation view."""
+"""Verifies the deprecated Articulation view API across torch, numpy, and warp backends. Covers poses, velocities, joint targets, drive properties, dynamics tensors, tendon properties, and physics lifecycle behavior."""
 
 import os
 import unittest
@@ -828,7 +828,7 @@ class TestArticulationView(CoreTestCase):
             _default_kps = np.array([[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]], dtype=np.float32)
             _default_kds = np.array([[10.0, 20.0, 30.0, 40.0], [50.0, 60.0, 70.0, 80.0]], dtype=np.float32)
 
-            def get_gains(self, indices, joint_indices, clone):
+            def get_gains(self, indices: Any, joint_indices: Any, clone: Any) -> Any:
                 return (
                     np.array([[100.0, 200.0]], dtype=np.float32),
                     np.array([[300.0, 400.0]], dtype=np.float32),
@@ -877,7 +877,7 @@ class TestArticulationView(CoreTestCase):
                 self._current_kps = wp.array([[0.0, 100.0, 0.0, 200.0]], dtype=wp.float32, device=device)
                 self._current_kds = wp.array([[0.0, 300.0, 0.0, 400.0]], dtype=wp.float32, device=device)
 
-            def get_gains(self, indices, joint_indices, clone):
+            def get_gains(self, indices: Any, joint_indices: Any, clone: Any) -> Any:
                 return (
                     wp.indexedarray(self._current_kps, [None, joint_indices]),
                     wp.indexedarray(self._current_kds, [None, joint_indices]),

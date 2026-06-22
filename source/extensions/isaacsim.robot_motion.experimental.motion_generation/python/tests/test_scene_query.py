@@ -13,7 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test suite for scene query functionality in robot motion generation."""
+"""Verify scene queries used to discover motion-generation obstacles.
+
+The tests cover box and plane intersection checks, rotated plane bounds,
+physics rigid-body versus collision API filtering, motion-generation collision
+API filtering, robot discovery, include/exclude path filters, and invalid AABB
+input handling.
+"""
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 
@@ -40,7 +46,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
     """Test scene query operations for detecting prims in the USD stage."""
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment before each test."""
         await stage_utils.create_new_stage_async()
 
@@ -50,7 +56,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         self._timeline = omni.timeline.get_timeline_interface()
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test environment after each test."""
         # Stop timeline if running
         if self._timeline.is_playing():
@@ -62,7 +68,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
 
         await get_app().next_update_async()
 
-    async def test_scene_query_with_box_prim(self):
+    async def test_scene_query_with_box_prim(self) -> None:
         """Test scene query detection of a box prim with collision API."""
         # Add a Cube to the scene:
         cube_path = "/World/Cube"
@@ -156,7 +162,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         )
         self.assertTrue(cube_path in prim_list)
 
-    async def test_scene_query_with_unrotated_plane_prim(self):
+    async def test_scene_query_with_unrotated_plane_prim(self) -> None:
         """Test scene query detection of an unrotated plane prim."""
         # Add a Plane to the scene:
         plane_path = "/World/Plane"
@@ -275,7 +281,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         )
         self.assertTrue(plane_path in prim_list)
 
-    async def test_scene_query_with_rotated_plane_prim(self):
+    async def test_scene_query_with_rotated_plane_prim(self) -> None:
         """Test scene query detection of a rotated plane prim."""
         # Add a Plane to the scene:
         plane_path = "/World/Plane"
@@ -338,7 +344,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         )
         self.assertTrue(plane_path in prim_list)
 
-    async def test_different_searchable_apis(self):
+    async def test_different_searchable_apis(self) -> None:
         """Test scene query with different searchable API types."""
         # Add a dynamic cube, and a collision cube:
         dynamic_cube_path = "/World/DynamicCube"
@@ -391,7 +397,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
             tracked_api=MyForcedApi.MOTION_PLANNING_COLLISION,
         )
 
-    async def test_motion_generation_collision_api(self):
+    async def test_motion_generation_collision_api(self) -> None:
         """Test scene query with the motion generation collision API."""
         # Test the new motion generation collision API
         motion_planning_cube_path = "/World/MotionPlanningCube"
@@ -447,7 +453,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         self.assertTrue(physics_cube_path in physics_prims)
         self.assertTrue(motion_planning_cube_path not in physics_prims)
 
-    async def test_search_bounds(self):
+    async def test_search_bounds(self) -> None:
         """Test scene query with various search box bounds and positions."""
         scene_query = SceneQuery()
 
@@ -582,7 +588,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
             tracked_api=TrackableApi.PHYSICS_COLLISION,
         )
 
-    async def test_robot_search(self):
+    async def test_robot_search(self) -> None:
         """Test scene query for finding robots in the stage."""
         # Add a robot to the stage:
         usd_path = f"{get_assets_root_path()}/Isaac/Robots/IsaacSim/SimpleArticulation/simple_articulation.usd"
@@ -595,7 +601,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
 
         self.assertTrue(len(robot_paths) == 10)
 
-    async def test_robot_prim_tracking(self):
+    async def test_robot_prim_tracking(self) -> None:
         """Test scene query with robot prim exclusion for collision detection."""
         usd_path = f"{get_assets_root_path()}/Isaac/Robots/IsaacSim/SimpleArticulation/simple_articulation.usd"
 
@@ -616,7 +622,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
         self.assertTrue(len(collision_prims) > 0)
         print(f"Collision prims that we found are: {collision_prims}")
 
-    async def test_include_exclude_paths(self):
+    async def test_include_exclude_paths(self) -> None:
         """Test scene query include and exclude path filtering."""
         cube_paths = ["/World/Group1/Cube", "/World/Group2/Cube", "/World/Group3/Cube"]
         sphere_paths = ["/World/Group1/Sphere", "/World/Group2/Sphere", "/World/Group3/Sphere"]
@@ -636,7 +642,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
             search_box_maximum=[100] * 3,
             tracked_api=TrackableApi.PHYSICS_COLLISION,
         )
-        self.assertTrue(set([*cube_paths, *sphere_paths]) == set(collision_prims))
+        self.assertTrue({*cube_paths, *sphere_paths} == set(collision_prims))
 
         # If I exlclude a group, it is not there:
         collision_prims = scene_query.get_prims_in_aabb(
@@ -647,7 +653,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
             exclude_prim_paths=["/World/Group1"],
         )
         self.assertTrue(
-            set(["/World/Group2/Cube", "/World/Group2/Sphere", "/World/Group3/Cube", "/World/Group3/Sphere"])
+            {"/World/Group2/Cube", "/World/Group2/Sphere", "/World/Group3/Cube", "/World/Group3/Sphere"}
             == set(collision_prims)
         )
 
@@ -660,7 +666,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
             exclude_prim_paths="/World/Group1",
         )
         self.assertTrue(
-            set(["/World/Group2/Cube", "/World/Group2/Sphere", "/World/Group3/Cube", "/World/Group3/Sphere"])
+            {"/World/Group2/Cube", "/World/Group2/Sphere", "/World/Group3/Cube", "/World/Group3/Sphere"}
             == set(collision_prims)
         )
 
@@ -673,7 +679,7 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
             exclude_prim_paths=["/World/Group2"],
         )
         self.assertTrue(
-            set(["/World/Group1/Cube", "/World/Group1/Sphere", "/World/Group3/Cube", "/World/Group3/Sphere"])
+            {"/World/Group1/Cube", "/World/Group1/Sphere", "/World/Group3/Cube", "/World/Group3/Sphere"}
             == set(collision_prims)
         )
 
@@ -697,12 +703,10 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
             include_prim_paths=["/World/Group2"],
         )
         self.assertTrue(
-            set(
-                [
-                    "/World/Group2/Cube",
-                    "/World/Group2/Sphere",
-                ]
-            )
+            {
+                "/World/Group2/Cube",
+                "/World/Group2/Sphere",
+            }
             == set(collision_prims)
         )
 
@@ -715,16 +719,14 @@ class TestSceneQuery(omni.kit.test.AsyncTestCase):
             include_prim_paths="/World/Group2",
         )
         self.assertTrue(
-            set(
-                [
-                    "/World/Group2/Cube",
-                    "/World/Group2/Sphere",
-                ]
-            )
+            {
+                "/World/Group2/Cube",
+                "/World/Group2/Sphere",
+            }
             == set(collision_prims)
         )
 
-    async def test_include_exclude_invalid_paths(self):
+    async def test_include_exclude_invalid_paths(self) -> None:
         """Test scene query behavior with invalid include and exclude paths."""
         cube_paths = ["/World/Group1/Cube", "/World/Group2/Cube"]
         Cube(paths=cube_paths, sizes=5.0)

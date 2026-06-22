@@ -97,6 +97,35 @@ def _fake_replicator_capture(
             setattr(omni, "replicator", previous_replicator_attr)
 
 
+@contextlib.contextmanager
+def _async_toggle_asset_loading_probe() -> Generator[dict, None, None]:
+    """Model the Kit behavior where flipping ``/app/asyncRendering`` False->True emits a one-sided asset load.
+
+    Toggling async rendering can emit an ``ASSETS_LOADING`` event with no matching ``ASSETS_LOADED`` (NVBug-6169678).
+    A later Replicator step then stalls for ``maxAssetLoadingTime`` (30s) waiting on the orphaned load. This probe
+    watches ``/app/asyncRendering`` and increments an in-flight counter on each False->True transition so tests can
+    assert the throttling extension never produces such a toggle while Replicator owns the setting.
+
+    Yields:
+        A dict with ``loading`` (number of False->True toggles) and ``in_flight`` (orphaned loads) counters.
+    """
+    settings = carb.settings.get_settings()
+    state = {"last": bool(settings.get("/app/asyncRendering")), "loading": 0, "in_flight": 0}
+
+    def _on_change(*_args: object) -> None:
+        value = bool(settings.get("/app/asyncRendering"))
+        if value and not state["last"]:
+            state["loading"] += 1
+            state["in_flight"] += 1
+        state["last"] = value
+
+    subscription = settings.subscribe_to_node_change_events("/app/asyncRendering", _on_change)
+    try:
+        yield state
+    finally:
+        subscription = None  # noqa: F841 - drop subscription to unsubscribe
+
+
 class TestIsaacThrottling(omni.kit.test.AsyncTestCase):
     """Validate throttling reactions to timeline and Replicator state changes."""
 
@@ -301,3 +330,96 @@ class TestIsaacThrottling(omni.kit.test.AsyncTestCase):
 
                 self.assertFalse(self._settings.get("/app/asyncRendering"))
                 self.assertFalse(self._settings.get("/app/asyncRenderingLowLatency"))
+
+    async def test_async_rendering_not_toggled_while_replicator_pipeline_attached_but_stopped(self) -> None:
+        """Verify throttling defers to Replicator across the STOPPED window between steps.
+
+        Replicator leaves async rendering disabled and the orchestrator ``STOPPED`` between ``step_async`` calls while
+        its writers/annotators stay attached. The throttling extension must not re-enable async rendering during that
+        window; doing so previously fired a one-sided ``ASSETS_LOADING`` (NVBug-6169678) that stalled the next step.
+        """
+        for action_name in ("pause", "stop"):
+            with self.subTest(timeline_action=action_name):
+                self._settings.set("/exts/isaacsim.core.throttling/enable_async", True)
+                self._settings.set("/app/asyncRendering", False)
+                self._settings.set("/app/asyncRenderingLowLatency", False)
+
+                # status="STOPPED" reproduces the gap between steps; the pipeline (annotators) is still attached.
+                with _fake_replicator_capture(status="STOPPED", has_attached_annotators=True):
+                    self._timeline.play()
+                    await omni.kit.app.get_app().next_update_async()
+                    self.assertFalse(self._settings.get("/app/asyncRendering"))
+
+                    getattr(self._timeline, action_name)()
+                    await omni.kit.app.get_app().next_update_async()
+
+                    # Poll well past the 10-frame re-enable delay; async rendering must never flip back on.
+                    for frame in range(1, 16):
+                        await omni.kit.app.get_app().next_update_async()
+                        self.assertFalse(
+                            self._settings.get("/app/asyncRendering"),
+                            f"async rendering must stay disabled at frame {frame} while a Replicator "
+                            f"pipeline is attached (after {action_name})",
+                        )
+
+                self.assertFalse(self._settings.get("/app/asyncRendering"))
+                self.assertFalse(self._settings.get("/app/asyncRenderingLowLatency"))
+
+    async def test_async_rendering_reenables_when_replicator_present_but_idle(self) -> None:
+        """Verify throttling still re-enables async rendering when no Replicator pipeline is attached.
+
+        With Replicator loaded but idle (no attached annotators), the throttling extension owns async rendering and
+        should restore it after the stop-frame delay, preserving the editing-time performance benefit.
+        """
+        self._settings.set("/exts/isaacsim.core.throttling/enable_async", True)
+        self._settings.set("/app/asyncRendering", False)
+        self._settings.set("/app/asyncRenderingLowLatency", False)
+
+        with _fake_replicator_capture(status="STOPPED", has_attached_annotators=False):
+            self._timeline.play()
+            await omni.kit.app.get_app().next_update_async()
+            self.assertFalse(self._settings.get("/app/asyncRendering"))
+
+            self._timeline.stop()
+            await omni.kit.app.get_app().next_update_async()
+
+            for frame in range(1, 10):
+                await omni.kit.app.get_app().next_update_async()
+                self.assertFalse(
+                    self._settings.get("/app/asyncRendering"), f"async rendering should be disabled at frame {frame}"
+                )
+
+            await omni.kit.app.get_app().next_update_async()
+            self.assertTrue(
+                self._settings.get("/app/asyncRendering"),
+                "async rendering should be re-enabled after the delay when Replicator has no attached annotators",
+            )
+
+    async def test_attached_pipeline_prevents_spurious_asset_loading_on_stop(self) -> None:
+        """Verify a teleop-style stop with an attached pipeline never emits a one-sided asset-loading toggle.
+
+        Mirrors the reported hang: a script calls ``timeline.stop()`` mid-SDG with writers attached. Throttling must
+        leave ``/app/asyncRendering`` untouched so no orphaned ``ASSETS_LOADING`` (NVBug-6169678) is produced.
+        """
+        self._settings.set("/exts/isaacsim.core.throttling/enable_async", True)
+        self._settings.set("/app/asyncRendering", False)
+        self._settings.set("/app/asyncRenderingLowLatency", False)
+
+        with _fake_replicator_capture(status="STOPPED", has_attached_annotators=True):
+            with _async_toggle_asset_loading_probe() as probe:
+                self._timeline.play()
+                await omni.kit.app.get_app().next_update_async()
+
+                self._timeline.stop()
+                await omni.kit.app.get_app().next_update_async()
+
+                for _ in range(15):
+                    await omni.kit.app.get_app().next_update_async()
+
+                self.assertEqual(
+                    probe["in_flight"],
+                    0,
+                    "throttling must not toggle async rendering on while a Replicator pipeline is attached; the "
+                    "False->True toggle emits a one-sided ASSETS_LOADING that stalls the next Replicator step",
+                )
+                self.assertFalse(self._settings.get("/app/asyncRendering"))

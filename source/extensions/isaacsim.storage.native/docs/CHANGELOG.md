@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.9.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.9.2] - 2026-05-04
 ### Fixed
 - `path_join`: treat any URL-scheme path (including `file://`) as forward-slash on Windows

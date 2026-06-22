@@ -40,10 +40,10 @@ def parse_env_config(env_config_path: str = "env.yaml") -> dict[str, Any]:
     """
 
     class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
-        def ignore_unknown(self, node) -> None:
+        def ignore_unknown(self, node: object) -> None:
             return None
 
-        def tuple_constructor(loader, node) -> tuple:
+        def tuple_constructor(loader, node: object) -> tuple:
             # The node is expected to be a sequence node
             return tuple(loader.construct_sequence(node))
 

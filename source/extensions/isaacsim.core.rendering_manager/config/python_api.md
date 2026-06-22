@@ -2,9 +2,6 @@
 
 ## Classes
 
-- class RenderingEvent(Enum)
-  - NEW_FRAME: str
-
 - class RenderingManager
   - class def render(cls)
   - class async def render_async(cls)
@@ -13,6 +10,13 @@
   - class def register_callback(cls, event: RenderingEvent) -> int
   - class def deregister_callback(cls, uid: int)
   - class def deregister_all_callbacks(cls)
+
+- class Extension(omni.ext.IExt)
+  - def on_startup(self, ext_id: str)
+  - def on_shutdown(self)
+
+- class RenderingEvent(Enum)
+  - NEW_FRAME: str
 
 - class ViewportManager
   - class def wait_for_viewport(cls) -> tuple[bool, int]

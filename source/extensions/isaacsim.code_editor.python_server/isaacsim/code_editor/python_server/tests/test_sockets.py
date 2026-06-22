@@ -49,7 +49,15 @@ async def _send_and_receive(port: int, source: str) -> dict:
 
 
 async def _send_raw_payload(port: int, payload: str) -> dict:
-    """Send a payload exactly as provided and return the parsed JSON response."""
+    """Send a payload exactly as provided and return the parsed JSON response.
+
+    Args:
+        port: The TCP port to connect to.
+        payload: The raw payload to send without adding authentication.
+
+    Returns:
+        The parsed JSON response dictionary.
+    """
     reader, writer = await asyncio.open_connection(_HOST, port)
     writer.write(payload.encode())
     writer.write_eof()

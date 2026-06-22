@@ -17,7 +17,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Generic, TypeVar
+from collections.abc import Callable
+from typing import Any, Generic, NoReturn, TypeVar
 
 import isaacsim.core.experimental.utils.backend as backend_utils
 import isaacsim.core.experimental.utils.prim as prim_utils
@@ -74,7 +75,7 @@ def _add_sphere_from_prim(
     obstacle_configuration: ObstacleConfiguration,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
     collision_api: TrackableApi,
-):
+) -> None:
     """Add a sphere prim to the planning world interface.
 
     Args:
@@ -110,7 +111,7 @@ def _add_cube_from_prim(
     obstacle_configuration: ObstacleConfiguration,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
     collision_api: TrackableApi,
-):
+) -> None:
     """Add a cube prim to the planning world interface.
 
     Args:
@@ -146,7 +147,7 @@ def _add_cone_from_prim(
     obstacle_configuration: ObstacleConfiguration,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
     collision_api: TrackableApi,
-):
+) -> None:
     """Add a cone prim to the planning world interface.
 
     Args:
@@ -185,7 +186,7 @@ def _add_plane_from_prim(
     obstacle_configuration: ObstacleConfiguration,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
     collision_api: TrackableApi,
-):
+) -> None:
     """Add a plane prim to the planning world interface.
 
     Args:
@@ -224,7 +225,7 @@ def _add_capsule_from_prim(
     obstacle_configuration: ObstacleConfiguration,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
     collision_api: TrackableApi,
-):
+) -> None:
     """Add a capsule prim to the planning world interface.
 
     Args:
@@ -263,7 +264,7 @@ def _add_cylinder_from_prim(
     obstacle_configuration: ObstacleConfiguration,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
     collision_api: TrackableApi,
-):
+) -> None:
     """Add a cylinder prim to the planning world interface.
 
     Args:
@@ -302,7 +303,7 @@ def _add_mesh_from_prim(
     obstacle_configuration: ObstacleConfiguration,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
     collision_api: TrackableApi,
-):
+) -> None:
     """Add a mesh prim to the planning world interface.
 
     Args:
@@ -345,7 +346,7 @@ def _add_triangulated_mesh_from_prim(
     obstacle_configuration: ObstacleConfiguration,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
     collision_api: TrackableApi,
-):
+) -> None:
     """Add a triangulated mesh prim to the planning world interface.
 
     Args:
@@ -397,7 +398,7 @@ def _add_oriented_bounding_box_from_prim(
     obstacle_configuration: ObstacleConfiguration,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
     collision_api: TrackableApi,
-):
+) -> None:
     """Add an oriented bounding box representation to the planning world interface.
 
     Args:
@@ -489,7 +490,7 @@ def _update_prim_collision_enables(
     prim_paths: list[str],
     world_interface: WorldInterface,
     collision_api: TrackableApi,
-):
+) -> None:
     """Update collision enable states for a batch of tracked prims that have changed.
 
     Args:
@@ -507,7 +508,7 @@ def _update_prim_collision_enables(
 def _update_prim_scales(
     prim_paths: list[str],
     world_interface: WorldInterface,
-):
+) -> None:
     """Update scales for a batch of tracked prims that have changed.
 
     Args:
@@ -526,7 +527,7 @@ def _update_sphere_properties_from_prim(
     prim: usdrt.Usd.Prim,
     world_interface: WorldInterface,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
-):
+) -> None:
     """Update sphere properties in the planning world interface.
 
     Args:
@@ -556,7 +557,7 @@ def _update_cube_properties_from_prim(
     prim: usdrt.Usd.Prim,
     world_interface: WorldInterface,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
-):
+) -> None:
     """Update cube properties in the planning world interface.
 
     Args:
@@ -586,7 +587,7 @@ def _update_cone_properties_from_prim(
     prim: usdrt.Usd.Prim,
     world_interface: WorldInterface,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
-):
+) -> None:
     """Update cone properties in the planning world interface.
 
     Args:
@@ -626,7 +627,7 @@ def _update_plane_properties_from_prim(
     prim: usdrt.Usd.Prim,
     world_interface: WorldInterface,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
-):
+) -> None:
     """Update plane properties in the planning world interface.
 
     Args:
@@ -666,7 +667,7 @@ def _update_capsule_properties_from_prim(
     prim: usdrt.Usd.Prim,
     world_interface: WorldInterface,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
-):
+) -> None:
     """Update capsule properties in the planning world interface.
 
     Args:
@@ -706,7 +707,7 @@ def _update_cylinder_properties_from_prim(
     prim: usdrt.Usd.Prim,
     world_interface: WorldInterface,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
-):
+) -> None:
     """Update cylinder properties in the planning world interface.
 
     Args:
@@ -746,7 +747,7 @@ def _update_mesh_properties_from_prim(
     prim: usdrt.Usd.Prim,
     world_interface: WorldInterface,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
-):
+) -> NoReturn:
     """Update mesh properties in the planning world interface.
 
     Args:
@@ -766,7 +767,7 @@ def _update_triangulated_mesh_properties_from_prim(
     prim: usdrt.Usd.Prim,
     world_interface: WorldInterface,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
-):
+) -> NoReturn:
     """Update triangulated mesh properties in the planning world interface.
 
     Args:
@@ -786,7 +787,7 @@ def _update_oriented_bounding_box_properties_from_prim(
     prim: usdrt.Usd.Prim,
     world_interface: WorldInterface,
     rt_change_tracker: usdrt.Rt.ChangeTracker,
-):
+) -> NoReturn:
     """Update oriented bounding box properties in the planning world interface.
 
     Args:
@@ -865,7 +866,7 @@ class WorldBinding(Generic[TWorldInterface]):
         obstacle_strategy: ObstacleStrategy,
         tracked_prims: list[str],
         tracked_collision_api: TrackableApi,
-    ):
+    ) -> None:
         if tracked_collision_api not in _COLLISION_APIS:
             raise ValueError(
                 f"Unsupported collision API: {tracked_collision_api}. Supported APIs: {list(_COLLISION_APIS.keys())}"
@@ -921,7 +922,7 @@ class WorldBinding(Generic[TWorldInterface]):
             return
 
         # Check that all of the tracked prims have the necessary APIs applied:
-        if not all([prim_utils.has_api(p, _COLLISION_APIS[self._tracked_collision_api]) for p in self._tracked_prims]):
+        if not all(prim_utils.has_api(p, _COLLISION_APIS[self._tracked_collision_api]) for p in self._tracked_prims):
             prims_without_collision_api = [
                 p
                 for p in self._tracked_prims
@@ -985,7 +986,7 @@ class WorldBinding(Generic[TWorldInterface]):
 
         self._initialized = True
 
-    def synchronize(self):
+    def synchronize(self) -> None:
         """Synchronize both transforms and properties of tracked prims into the planning world.
 
         This is a convenience method that calls both `synchronize_transforms()` and
@@ -1075,7 +1076,7 @@ class WorldBinding(Generic[TWorldInterface]):
         # ========================================================================
         # SECTION 1: Setup and token map initialization
         # ========================================================================
-        def _make_update_func(api: TrackableApi):
+        def _make_update_func(api: TrackableApi) -> Callable[[list[str], WorldInterface], None]:
             return lambda prim_paths, world_interface: _update_prim_collision_enables(prim_paths, world_interface, api)
 
         # Build token map dynamically - only add the token for the API we're actually tracking

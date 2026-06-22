@@ -1,5 +1,5 @@
 [package]
-version = "1.0.1"
+version = "1.0.2"
 category = "Simulation"
 title = "IPC OmniGraph Node Examples"
 description = "Example OmniGraph nodes (C++ and Python) for inter-process communication over TCP/IP, for use in tutorials."

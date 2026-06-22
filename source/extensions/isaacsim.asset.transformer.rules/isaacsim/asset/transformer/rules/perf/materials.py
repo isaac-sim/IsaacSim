@@ -1174,9 +1174,13 @@ class MaterialsRoutingRule(RuleInterface):
         def normalize_unmapped(asset_path: str) -> str | None:
             """Normalize an asset path that is not in ``path_mapping``.
 
-            Returns a forward-slash, relative path, or ``None`` if the path
-            does not need to be rewritten (already relative + forward slashes,
-            remote, or a built-in MDL).
+            Args:
+                asset_path: Asset path value authored on the material.
+
+            Returns:
+                A forward-slash, relative path, or ``None`` if the path does
+                not need to be rewritten.
+
             """
             if not asset_path:
                 return None

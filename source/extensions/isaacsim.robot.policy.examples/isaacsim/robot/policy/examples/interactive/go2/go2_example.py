@@ -108,7 +108,7 @@ class Go2Example(BaseSample):
             binding_api = UsdShade.MaterialBindingAPI.Apply(ground_geom)
             binding_api.Bind(material)
 
-    async def load_world_async(self):
+    async def load_world_async(self) -> None:
         """Load world with desired physics engine."""
         await super().load_world_async()
 
@@ -227,13 +227,13 @@ class Go2Example(BaseSample):
                 )
         return True
 
-    def _unsubscribe_keyboard(self):
+    def _unsubscribe_keyboard(self) -> None:
         """Unsubscribe from keyboard events if currently subscribed."""
         if self._sub_keyboard is not None:
             self._input.unsubscribe_to_keyboard_events(self._keyboard, self._sub_keyboard)
             self._sub_keyboard = None
 
-    def physics_cleanup(self):
+    def physics_cleanup(self) -> None:
         """Clean up physics resources."""
         # Deregister physics callback
         if self._physics_callback_id is not None:

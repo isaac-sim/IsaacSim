@@ -70,7 +70,7 @@ for annotator in [
     "instance_id_segmentation",
     "instance_segmentation",
 ]:
-    getattr(camera, "add_{}_to_frame".format(annotator))()
+    getattr(camera, f"add_{annotator}_to_frame")()
 
 for _ in range(5):
     simulation_app.update()

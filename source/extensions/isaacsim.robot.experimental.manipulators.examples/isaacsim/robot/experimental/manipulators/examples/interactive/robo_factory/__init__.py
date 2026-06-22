@@ -17,7 +17,7 @@
 
 from isaacsim.robot.experimental.manipulators.examples.interactive.robo_factory.robo_factory import RoboFactory
 from isaacsim.robot.experimental.manipulators.examples.interactive.robo_factory.robo_factory_extension import (
-    RoboFactoryExtension,
+    RoboFactoryExtension as RoboFactoryExtension,
 )
 
 __all__ = ["RoboFactory"]

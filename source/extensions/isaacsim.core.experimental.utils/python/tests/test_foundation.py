@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for foundation."""
+"""Verifies foundation utilities resolve USD value type names in both directions. Covers listing known value type names and resolving names to value type objects."""
 
 import isaacsim.core.experimental.utils.foundation as foundation_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -25,19 +25,19 @@ from pxr import Sdf
 class TestFoundation(omni.kit.test.AsyncTestCase):
     """Test foundation."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # create new stage
         await stage_utils.create_new_stage_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
-    async def test_get_value_type_names(self):
+    async def test_get_value_type_names(self) -> None:
         """Test get value type names."""
         [self.assertIsInstance(item, str) for item in foundation_utils.get_value_type_names(format=str)]
         [
@@ -49,7 +49,7 @@ class TestFoundation(omni.kit.test.AsyncTestCase):
             for item in foundation_utils.get_value_type_names(format=usdrt.Sdf.ValueTypeNames)
         ]
 
-    async def test_resolve_value_type_name(self):
+    async def test_resolve_value_type_name(self) -> None:
         """Test resolve value type name."""
         # str
         for item in foundation_utils.get_value_type_names(format=str):
@@ -80,7 +80,7 @@ class TestFoundation(omni.kit.test.AsyncTestCase):
             if isinstance(getattr(usdrt.Sdf.ValueTypeNames, item), usdrt.Sdf.ValueTypeName)
         ]
         for item in value_type_names:
-            if not item.GetAsToken().startswith("tag") and not item.GetAsToken() == "double6":
+            if not item.GetAsToken().startswith("tag") and item.GetAsToken() != "double6":
                 value_type_name = foundation_utils.resolve_value_type_name(item, backend="usd")
                 self.assertIsInstance(value_type_name, Sdf.ValueTypeName)
                 value_type_name = foundation_utils.resolve_value_type_name(item, backend="usdrt")

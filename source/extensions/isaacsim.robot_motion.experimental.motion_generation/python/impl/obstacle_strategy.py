@@ -16,7 +16,6 @@
 """Provides obstacle representation strategies and configurations for robot motion planning."""
 
 from enum import StrEnum, auto
-from typing import Type
 
 from isaacsim.core.experimental.objects import (
     Capsule,
@@ -77,7 +76,7 @@ class ObstacleRepresentation(StrEnum):
 # This is the set of legal conversions:
 # TODO: SHOULD ALLOW FOR ADDITIONAL CONVERSIONS. FOR EXAMPLE,
 # OBJECTS COULD BE GENERALLY CONVERTABLE TO A MESH REPRESENTATION.
-_LEGAL_REPRESENTATIONS: dict[Type[Shape], list[ObstacleRepresentation]] = {
+_LEGAL_REPRESENTATIONS: dict[type[Shape], list[ObstacleRepresentation]] = {
     Sphere: [
         ObstacleRepresentation.SPHERE,
         ObstacleRepresentation.OBB,
@@ -144,7 +143,7 @@ class ObstacleConfiguration:
         True
     """
 
-    def __init__(self, representation: ObstacleRepresentation | str, safety_tolerance: float):
+    def __init__(self, representation: ObstacleRepresentation | str, safety_tolerance: float) -> None:
         if not isinstance(representation, (ObstacleRepresentation, str)):
             raise ValueError("representation must be either ObstacleRepresentation or str")
 
@@ -167,7 +166,7 @@ class ObstacleStrategy:
         >>> strategy = ObstacleStrategy()
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.__default_configurations = {
             Sphere: ObstacleConfiguration(representation=ObstacleRepresentation.SPHERE, safety_tolerance=0.0),
             Cone: ObstacleConfiguration(representation=ObstacleRepresentation.CONE, safety_tolerance=0.0),
@@ -187,8 +186,8 @@ class ObstacleStrategy:
         self.__prim_configuration_overrides = {}
 
     def set_default_configuration(
-        self, prim_type: Type[Shape], configuration: ObstacleConfiguration, allow_negative_tolerance: bool = False
-    ):
+        self, prim_type: type[Shape], configuration: ObstacleConfiguration, allow_negative_tolerance: bool = False
+    ) -> None:
         """Set the default configuration for a given prim type.
 
         Args:
@@ -231,7 +230,7 @@ class ObstacleStrategy:
 
         self.__shape_configuration_overrides[prim_type] = configuration
 
-    def set_default_safety_tolerance(self, safety_tolerance: float, allow_negative_tolerance: bool = False):
+    def set_default_safety_tolerance(self, safety_tolerance: float, allow_negative_tolerance: bool = False) -> None:
         """Set the safety tolerance on the default configuration for all prim types.
 
         Args:
@@ -260,7 +259,7 @@ class ObstacleStrategy:
 
     def set_configuration_overrides(
         self, configurations: dict[str, ObstacleConfiguration], allow_negative_tolerance: bool = False
-    ):
+    ) -> None:
         """Set the configuration overrides for a given set of prim paths.
 
         Args:

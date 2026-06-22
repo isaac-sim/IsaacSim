@@ -14,7 +14,7 @@
 # limitations under the License.
 
 
-"""Test for transform."""
+"""Verifies transform math utilities for rotations, quaternions, look-at transforms, and relative transforms. Covers radians and degrees, intrinsic and extrinsic conversions, quaternion algebra, batch handling, collinearity fallbacks, and list, NumPy, and Warp inputs."""
 
 import isaacsim.core.experimental.utils.transform as transform_utils
 import numpy as np
@@ -25,7 +25,7 @@ import warp as wp
 class TestTransform(omni.kit.test.AsyncTestCase):
     """Test transform."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # ---------------
@@ -33,7 +33,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         # ---------------
         self.tolerance = 1e-6
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         # ------------------
         # Do custom tearDown
@@ -42,7 +42,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
 
     # --------------------------------------------------------------------
 
-    async def test_rotation_matrix_to_quaternion(self):
+    async def test_rotation_matrix_to_quaternion(self) -> None:
         """Test rotation_matrix_to_quaternion with single and batch inputs."""
         # Test identity matrix with different input types
         identity_inputs = [
@@ -76,7 +76,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         expected_norms = np.ones(2)
         self.assertTrue(np.allclose(norms, expected_norms, atol=self.tolerance))
 
-    async def test_euler_angles_to_rotation_matrix(self):
+    async def test_euler_angles_to_rotation_matrix(self) -> None:
         """Test euler_angles_to_rotation_matrix with single and batch inputs."""
         # Test zero rotation with different input types
         euler_inputs = [
@@ -111,7 +111,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
             det = np.linalg.det(result_batch_np[i])
             self.assertAlmostEqual(det, 1.0, places=5)
 
-    async def test_euler_angles_to_quaternion(self):
+    async def test_euler_angles_to_quaternion(self) -> None:
         """Test euler_angles_to_quaternion with single and batch inputs."""
         # Test zero rotation with different input types
         euler_inputs = [
@@ -146,7 +146,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         expected_norms = np.ones(2)
         self.assertTrue(np.allclose(norms, expected_norms, atol=self.tolerance))
 
-    async def test_degrees_vs_radians(self):
+    async def test_degrees_vs_radians(self) -> None:
         """Test that degrees and radians produce consistent results."""
         # Test conversion consistency for zero rotation
         euler_deg = [0.0, 0.0, 0.0]
@@ -164,7 +164,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
 
         self.assertTrue(np.allclose(result_deg.numpy(), result_rad.numpy(), atol=self.tolerance))
 
-    async def test_basic_mathematical_properties(self):
+    async def test_basic_mathematical_properties(self) -> None:
         """Test basic mathematical properties of the results."""
         # Test identity rotation
         euler = [0.0, 0.0, 0.0]
@@ -189,7 +189,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         norm = np.linalg.norm(q)
         self.assertAlmostEqual(norm, 1.0, places=5)
 
-    async def test_quaternion_multiplication(self):
+    async def test_quaternion_multiplication(self) -> None:
         """Test quaternion_multiplication with single and batch inputs."""
         # Test identity quaternion multiplication with different input types
         quaternion_inputs = [
@@ -224,7 +224,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         expected_norms = np.ones(2)
         self.assertTrue(np.allclose(norms, expected_norms, atol=self.tolerance))
 
-    async def test_quaternion_conjugate(self):
+    async def test_quaternion_conjugate(self) -> None:
         """Test quaternion_conjugate with single and batch inputs."""
         # Test with a rotation around X axis using different input types
         quaternion_inputs = [
@@ -262,7 +262,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         expected_norms = np.ones(2)
         self.assertTrue(np.allclose(norms, expected_norms, atol=self.tolerance))
 
-    async def test_quaternion_to_rotation_matrix(self):
+    async def test_quaternion_to_rotation_matrix(self) -> None:
         """Test quaternion_to_rotation_matrix with single and batch inputs, including round-trip validation."""
         # Test identity quaternion with different input types
         quaternion_inputs = [
@@ -364,7 +364,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         expected = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
         self.assertTrue(np.allclose(R, expected, atol=self.tolerance))
 
-    async def test_quaternion_multiplication_associativity(self):
+    async def test_quaternion_multiplication_associativity(self) -> None:
         """Test that quaternion multiplication is associative."""
         # Test (first_quaternion * second_quaternion) * third_quaternion = first_quaternion * (second_quaternion * third_quaternion)
         first_quaternion = np.array([0.7071, 0.7071, 0.0, 0.0])  # 90 deg around X
@@ -384,7 +384,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
             np.allclose(quaternion_result_left.numpy(), quaternion_result_right.numpy(), atol=self.tolerance)
         )
 
-    async def test_quaternion_to_euler_angles(self):
+    async def test_quaternion_to_euler_angles(self) -> None:
         """Test quaternion_to_euler_angles with single and batch inputs."""
         # Test identity quaternion with different input types
         quaternion_inputs = [
@@ -418,7 +418,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         expected_batch = np.zeros((2, 3))
         self.assertTrue(np.allclose(result_batch_np, expected_batch, atol=self.tolerance))
 
-    async def test_quaternion_to_euler_angles_degrees(self):
+    async def test_quaternion_to_euler_angles_degrees(self) -> None:
         """Test quaternion_to_euler_angles with degrees output."""
         # Identity quaternion should produce zero angles in both radians and degrees
         identity = np.array([1.0, 0.0, 0.0, 0.0])
@@ -442,7 +442,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(result_rad.numpy()[0], np.pi / 2, atol=self.tolerance))
         self.assertTrue(np.allclose(result_deg.numpy()[0], 90.0, atol=self.tolerance))
 
-    async def test_quaternion_to_euler_angles_intrinsic(self):
+    async def test_quaternion_to_euler_angles_intrinsic(self) -> None:
         """Test quaternion_to_euler_angles with intrinsic convention."""
         # Identity quaternion should produce zero angles
         identity = np.array([1.0, 0.0, 0.0, 0.0])
@@ -463,7 +463,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(result_90y_np[1], np.pi / 2, atol=self.tolerance))
         self.assertTrue(np.allclose(result_90y_np[[0, 2]], np.zeros(2), atol=self.tolerance))
 
-    async def test_quaternion_to_euler_angles_intrinsic_degrees(self):
+    async def test_quaternion_to_euler_angles_intrinsic_degrees(self) -> None:
         """Test quaternion_to_euler_angles with intrinsic convention in degrees."""
         # 90 degree rotation around Z should be [0, 0, 90] in intrinsic [X, Y, Z] order
         quat_90z = np.array([0.7071067811865476, 0.0, 0.0, 0.7071067811865476])
@@ -472,7 +472,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(result_deg_np[2], 90.0, atol=self.tolerance))
         self.assertTrue(np.allclose(result_deg_np[:2], np.zeros(2), atol=self.tolerance))
 
-    async def test_quaternion_to_euler_angles_batch_intrinsic(self):
+    async def test_quaternion_to_euler_angles_batch_intrinsic(self) -> None:
         """Test quaternion_to_euler_angles batch path with intrinsic convention."""
         sqrt_half = np.sqrt(0.5)
         quaternion_batch = np.array(
@@ -508,7 +508,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(result_np[3, 2], np.pi / 2, atol=self.tolerance))
         self.assertTrue(np.allclose(result_np[3, :2], np.zeros(2), atol=self.tolerance))
 
-    async def test_euler_quaternion_roundtrip(self):
+    async def test_euler_quaternion_roundtrip(self) -> None:
         """Test round-trip conversion: euler -> quaternion -> euler."""
         # Test various euler angles
         test_angles = [
@@ -532,7 +532,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
                 f"Round-trip failed for {euler_original}: got {euler_back.numpy()}",
             )
 
-    async def test_quaternion_euler_roundtrip(self):
+    async def test_quaternion_euler_roundtrip(self) -> None:
         """Test round-trip conversion: quaternion -> euler -> quaternion."""
         # Test various quaternions (all unit quaternions)
         test_quaternions = [
@@ -561,7 +561,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
                 f"Round-trip failed for {quat_original}: got {quat_back_np}",
             )
 
-    async def test_euler_quaternion_roundtrip_intrinsic(self):
+    async def test_euler_quaternion_roundtrip_intrinsic(self) -> None:
         """Test round-trip conversion with intrinsic convention."""
         test_angles = [
             np.array([0.0, 0.0, 0.0]),
@@ -579,7 +579,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
                 f"Intrinsic round-trip failed for {euler_original}: got {euler_back.numpy()}",
             )
 
-    async def test_quaternion_euler_roundtrip_intrinsic(self):
+    async def test_quaternion_euler_roundtrip_intrinsic(self) -> None:
         """Test round-trip conversion: quaternion -> euler -> quaternion with intrinsic convention."""
         test_quaternions = [
             np.array([1.0, 0.0, 0.0, 0.0]),  # Identity
@@ -601,7 +601,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
                 f"Intrinsic round-trip failed for {quat_original}: got {quat_back_np}",
             )
 
-    async def test_quaternion_to_euler_angles_batch(self):
+    async def test_quaternion_to_euler_angles_batch(self) -> None:
         """Test quaternion_to_euler_angles with batch of different rotations."""
         quaternion_batch = np.array(
             [
@@ -638,7 +638,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
     # look_at_quaternion
     # ----------------------------------------------------------------
 
-    async def test_look_at_quaternion_single(self):
+    async def test_look_at_quaternion_single(self) -> None:
         """Test look_at_quaternion with a single eye/target pair."""
         eye = np.array([5.0, 5.0, 5.0])
         target = np.array([0.0, 0.0, 0.0])
@@ -651,7 +651,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         q = result.numpy()
         self.assertAlmostEqual(float(np.linalg.norm(q)), 1.0, places=5)
 
-    async def test_look_at_quaternion_z_aligned_fallback(self):
+    async def test_look_at_quaternion_z_aligned_fallback(self) -> None:
         """Test that looking straight down uses the up-vector fallback."""
         eye = np.array([0.0, 0.0, 10.0])
         target = np.array([0.0, 0.0, 0.0])
@@ -660,7 +660,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         q = result.numpy()
         self.assertAlmostEqual(float(np.linalg.norm(q)), 1.0, places=5)
 
-    async def test_look_at_quaternion_batch(self):
+    async def test_look_at_quaternion_batch(self) -> None:
         """Test look_at_quaternion with batched inputs."""
         eyes = np.array([[5, 5, 5], [10, 0, 0], [0, 10, 0]], dtype=np.float32)
         targets = np.zeros((3, 3), dtype=np.float32)
@@ -673,7 +673,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         for i in range(3):
             self.assertAlmostEqual(float(np.linalg.norm(quats[i])), 1.0, places=5)
 
-    async def test_look_at_quaternion_custom_up(self):
+    async def test_look_at_quaternion_custom_up(self) -> None:
         """Test look_at_quaternion with a custom up vector."""
         eye = np.array([5.0, 5.0, 5.0])
         target = np.array([0.0, 0.0, 0.0])
@@ -683,7 +683,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         # Different up vectors should produce different orientations
         self.assertFalse(np.allclose(result_z.numpy(), result_y.numpy(), atol=1e-4))
 
-    async def test_look_at_quaternion_roundtrip(self):
+    async def test_look_at_quaternion_roundtrip(self) -> None:
         """Test that look_at quaternion produces correct forward direction."""
         eye = np.array([10.0, 0.0, 0.0], dtype=np.float32)
         target = np.array([0.0, 0.0, 0.0], dtype=np.float32)
@@ -697,7 +697,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         expected = np.array([-1.0, 0.0, 0.0])
         self.assertTrue(np.allclose(forward, expected, atol=1e-4))
 
-    async def test_look_at_quaternion_shape_mismatch(self):
+    async def test_look_at_quaternion_shape_mismatch(self) -> None:
         """Test that mismatched eye/target shapes raise ValueError."""
         eye = np.array([[5, 5, 5], [10, 0, 0]], dtype=np.float32)
         target = np.array([[0, 0, 0]], dtype=np.float32)
@@ -708,7 +708,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
     # look_at_matrix — equivalence with Gf.Matrix4d.SetLookAt
     # ----------------------------------------------------------------
 
-    async def test_look_at_matrix_matches_gf_set_look_at(self):
+    async def test_look_at_matrix_matches_gf_set_look_at(self) -> None:
         """Test that look_at_matrix produces the same result as Gf.Matrix4d.SetLookAt.GetInverse."""
         from pxr import Gf
 
@@ -735,7 +735,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
                         msg=f"Mismatch at [{row}][{col}] for eye={eye}, target={target}, up={up}",
                     )
 
-    async def test_look_at_matrix_with_numpy_inputs(self):
+    async def test_look_at_matrix_with_numpy_inputs(self) -> None:
         """Test that look_at_matrix accepts numpy arrays and matches Gf.SetLookAt."""
         from pxr import Gf
 
@@ -754,7 +754,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
             for col in range(4):
                 self.assertAlmostEqual(result_np[row][col], result_gf[row][col], places=10)
 
-    async def test_look_at_matrix_with_list_inputs(self):
+    async def test_look_at_matrix_with_list_inputs(self) -> None:
         """Test that look_at_matrix accepts Python lists and matches Gf.SetLookAt."""
         from pxr import Gf
 
@@ -765,7 +765,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
             for col in range(4):
                 self.assertAlmostEqual(result_list[row][col], expected[row][col], places=10)
 
-    async def test_look_at_matrix_default_up_is_z(self):
+    async def test_look_at_matrix_default_up_is_z(self) -> None:
         """Test that omitting the up parameter defaults to Z-up and matches Gf.SetLookAt."""
         from pxr import Gf
 
@@ -780,14 +780,14 @@ class TestTransform(omni.kit.test.AsyncTestCase):
             for col in range(4):
                 self.assertAlmostEqual(result_default[row][col], expected[row][col], places=10)
 
-    async def test_look_at_matrix_returns_gf_matrix4d(self):
+    async def test_look_at_matrix_returns_gf_matrix4d(self) -> None:
         """Test that look_at_matrix returns a Gf.Matrix4d instance."""
         from pxr import Gf
 
         result = transform_utils.look_at_matrix([5, 5, 5], [0, 0, 0])
         self.assertIsInstance(result, Gf.Matrix4d)
 
-    async def test_look_at_matrix_collinearity_fallback(self):
+    async def test_look_at_matrix_collinearity_fallback(self) -> None:
         """Test that look_at_matrix handles collinear forward/up without error."""
         from pxr import Gf
 
@@ -799,7 +799,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(translation[1], 0.0, places=5)
         self.assertAlmostEqual(translation[2], 10.0, places=5)
 
-    async def test_look_at_matrix_translation_is_eye_position(self):
+    async def test_look_at_matrix_translation_is_eye_position(self) -> None:
         """Test that the translation component of the returned matrix equals the eye position."""
         from pxr import Gf
 
@@ -821,7 +821,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
                     msg=f"Translation[{i}] mismatch for eye={eye}",
                 )
 
-    async def test_look_at_matrix_negative_z_points_toward_target(self):
+    async def test_look_at_matrix_negative_z_points_toward_target(self) -> None:
         """Test that the -Z axis of the result matrix points toward the target."""
         from pxr import Gf
 
@@ -839,19 +839,19 @@ class TestTransform(omni.kit.test.AsyncTestCase):
     # compute_relative_transform
     # ----------------------------------------------------------------
 
-    async def test_compute_relative_transform_identity_inputs(self):
+    async def test_compute_relative_transform_identity_inputs(self) -> None:
         """Both transforms are identity — result should be identity."""
         result = transform_utils.compute_relative_transform(np.eye(4), np.eye(4))
         np.testing.assert_allclose(result, np.eye(4), atol=1e-10)
 
-    async def test_compute_relative_transform_same_transform(self):
+    async def test_compute_relative_transform_same_transform(self) -> None:
         """Same non-trivial transform for source and target — result should be identity."""
         t = np.eye(4)
         t[3, :3] = [5.0, -3.0, 2.0]  # row-major translation
         result = transform_utils.compute_relative_transform(t, t)
         np.testing.assert_allclose(result, np.eye(4), atol=1e-10)
 
-    async def test_compute_relative_transform_translation_only(self):
+    async def test_compute_relative_transform_translation_only(self) -> None:
         """Pure translation offset between source and target."""
         source = np.eye(4)
         source[3, :3] = [1.0, 2.0, 3.0]
@@ -863,7 +863,7 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         np.testing.assert_allclose(result[:3, 3], [-3.0, -4.0, -5.0], atol=1e-10)
         np.testing.assert_allclose(result[:3, :3], np.eye(3), atol=1e-10)
 
-    async def test_compute_relative_transform_inverse(self):
+    async def test_compute_relative_transform_inverse(self) -> None:
         """A->B composed with B->A should give identity."""
         source = np.eye(4)
         source[3, :3] = [1.0, 0.0, 0.0]
@@ -882,14 +882,14 @@ class TestTransform(omni.kit.test.AsyncTestCase):
         ba = transform_utils.compute_relative_transform(target, source)
         np.testing.assert_allclose(ab @ ba, np.eye(4), atol=1e-10)
 
-    async def test_compute_relative_transform_accepts_list(self):
+    async def test_compute_relative_transform_accepts_list(self) -> None:
         """Should accept plain Python lists."""
         source = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [3, 0, 0, 1]]
         target = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         result = transform_utils.compute_relative_transform(source, target)
         np.testing.assert_allclose(result[:3, 3], [3.0, 0.0, 0.0], atol=1e-10)
 
-    async def test_compute_relative_transform_accepts_warp(self):
+    async def test_compute_relative_transform_accepts_warp(self) -> None:
         """Should accept warp arrays."""
         source_np = np.eye(4)
         source_np[3, :3] = [1.0, 2.0, 3.0]

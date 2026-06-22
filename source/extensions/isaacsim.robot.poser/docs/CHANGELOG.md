@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.1.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.1.2] - 2026-05-22
 ### Fixed
 - `RobotPoser.solve_ik` cold-start (no `seed=` and no cached `_last_solution`) now seeds the Levenberg-Marquardt solver from a prioritized ladder — joint-limit midpoint, deterministic random restarts within joint limits, and finally zeros — instead of always starting from the all-zero configuration. This fixes silent `success=False` failures on redundant arms (e.g. Franka Panda 7-DOF) where the zero configuration is in the wrong convergence basin.

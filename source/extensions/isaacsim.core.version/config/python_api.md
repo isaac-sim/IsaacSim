@@ -8,4 +8,4 @@
 ## Functions
 
 - def parse_version(full_version: str) -> Version
-- def get_version() -> typing.Tuple[str, str, str, str, str, str, str, str]
+- def get_version() -> tuple[str, str, str, str, str, str, str, str]

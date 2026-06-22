@@ -46,15 +46,15 @@ from isaacsim.benchmark.services.metrics import measurements
 class IsaacSimNucleusKPIRecorder(interface.MeasurementDataRecorder):
     """Record Nucleus asset counts as KPI measurements."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.assets_root_path = get_assets_root_path()
         self._loop = asyncio.get_event_loop()
 
-    def _get_num_usds_in_path(self, path: str):
+    def _get_num_usds_in_path(self, path: str) -> int:
         files = self._loop.run_until_complete(recursive_list_folder(path))
         return len([f for f in files if f.endswith(".usd")])
 
-    def get_data(self):
+    def get_data(self) -> interface.MeasurementData:
         """Collect and return Nucleus asset count measurements."""
         measurements_out = []
 

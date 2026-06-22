@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test rtx lidar sensor functionality via Writer-based GMO validation."""
+"""Verify LidarSensor GMO writer integration, stable IDs, object IDs, and auxiliary output channels."""
+
+from typing import Any
 
 import carb
 import isaacsim.core.experimental.utils.prim as prim_utils
@@ -62,9 +64,14 @@ class TestLidarSensor(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
 
     class _GmoTestWriter(Writer):
-        """Custom Writer that validates GenericModelOutput data each frame."""
+        """Custom Writer that validates GenericModelOutput data each frame.
 
-        def __init__(self, test_instance=None, sensor_prim=None):
+        Args:
+            test_instance: Test case instance used for assertions.
+            sensor_prim: Sensor prim used to derive timing expectations.
+        """
+
+        def __init__(self, test_instance: Any = None, sensor_prim: Any = None) -> None:
             self.data_structure = "renderProduct"
             self.annotators = [
                 rep.annotators.get("GenericModelOutput"),
@@ -89,7 +96,7 @@ class TestLidarSensor(omni.kit.test.AsyncTestCase):
 
         # -- frame callback ------------------------------------------
 
-        def write(self, data):
+        def write(self, data: Any) -> None:
             if "renderProducts" not in data:
                 return
             for _rp_name, rp_data in data["renderProducts"].items():
@@ -134,8 +141,12 @@ class TestLidarSensor(omni.kit.test.AsyncTestCase):
 
         # -- per-field validators -------------------------------------
 
-        def _test_point_cloud(self, gmo):
-            """Validate sensor returns against expected range from sarcophagus geometry."""
+        def _test_point_cloud(self, gmo: Any) -> None:
+            """Validate sensor returns against expected range from sarcophagus geometry.
+
+            Args:
+                gmo: Parsed GenericModelOutput data.
+            """
             unit_vecs = np.stack(
                 [np.cos(np.radians(gmo.x)), np.sin(np.radians(gmo.x)), np.sin(np.radians(gmo.y))],
                 axis=1,
@@ -170,10 +181,10 @@ class TestLidarSensor(omni.kit.test.AsyncTestCase):
             cube_idx[np.bitwise_and(octant % 2 == 1, plane_idx == 2)] += 1
             self._cube_prim_paths = cube_idx
 
-        def _test_intensity(self, gmo):
+        def _test_intensity(self, gmo: Any) -> None:
             self._test.assertTrue(np.all(gmo.scalar >= 0), "Intensities must be non-negative.")
 
-        def _test_timestamp(self, gmo):
+        def _test_timestamp(self, gmo: Any) -> None:
             self._test.assertEqual(np.min(gmo.timeOffsetNs), 0, "Time offsets must be non-negative.")
             self._test.assertLessEqual(
                 np.max(gmo.timeOffsetNs), self._scan_period_ns, "Time offsets must be less than scan period."
@@ -181,15 +192,15 @@ class TestLidarSensor(omni.kit.test.AsyncTestCase):
             max_gap = np.max(np.diff(np.sort(gmo.timeOffsetNs)))
             self._test.assertLessEqual(max_gap, self._tick_period_ns, "Time offsets must be less than tick period.")
 
-        def _test_emitter_id(self, gmo):
+        def _test_emitter_id(self, gmo: Any) -> None:
             self._test.assertTrue(np.all(gmo.emitterId >= 0), "Emitter IDs must be non-negative.")
             self._test.assertTrue(np.all(gmo.emitterId < 1024), "Emitter IDs must be < 1024.")
 
-        def _test_channel_id(self, gmo):
+        def _test_channel_id(self, gmo: Any) -> None:
             self._test.assertTrue(np.all(gmo.channelId >= 0), "Channel IDs must be non-negative.")
             self._test.assertTrue(np.all(gmo.channelId < 1024), "Channel IDs must be < 1024.")
 
-        def _test_material_id(self, gmo):
+        def _test_material_id(self, gmo: Any) -> None:
             self._test.assertEqual(len(gmo.matId), len(self._cube_prim_paths))
             if self._expected_material_ids is None:
                 self._expected_material_ids = np.array(
@@ -203,10 +214,10 @@ class TestLidarSensor(omni.kit.test.AsyncTestCase):
             failure_pct = (failures / checked * 100) if checked > 0 else 0
             self._test.assertLess(failure_pct, 1.0, f"{failures}/{checked} material-ID mismatches.")
 
-        def _test_velocity(self, gmo):
+        def _test_velocity(self, gmo: Any) -> None:
             self._test.assertTrue(np.allclose(gmo.velocities, 0, atol=5e-3), "Velocities should be ~0.")
 
-        def _test_object_id(self, gmo):
+        def _test_object_id(self, gmo: Any) -> None:
             if self._stable_id_map is None:
                 return
             self._test.assertGreater(len(self._stable_id_map), 0)
@@ -223,10 +234,10 @@ class TestLidarSensor(omni.kit.test.AsyncTestCase):
             failure_pct = (failures / checked * 100) if checked > 0 else 0
             self._test.assertLess(failure_pct, 1.0, f"{failures}/{checked} object-ID mismatches.")
 
-        def _test_echo_id(self, gmo):
+        def _test_echo_id(self, gmo: Any) -> None:
             self._test.assertTrue(np.all(gmo.echoId == 0), "Echo IDs should be 0.")
 
-        def _test_tick_state(self, gmo):
+        def _test_tick_state(self, gmo: Any) -> None:
             self._test.assertTrue(np.all(gmo.tickStates == 0), "Tick states should be 0.")
 
     # ------------------------------------------------------------------
@@ -235,7 +246,8 @@ class TestLidarSensor(omni.kit.test.AsyncTestCase):
 
     _writer_registered = False
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Create sarcophagus geometry and register the lidar GMO validation writer."""
         super().setUp()
         await stage_utils.create_new_stage_async()
         await ViewportManager.wait_for_viewport_async()
@@ -245,7 +257,8 @@ class TestLidarSensor(omni.kit.test.AsyncTestCase):
             rep.WriterRegistry.register(TestLidarSensor._GmoTestWriter)
             TestLidarSensor._writer_registered = True
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Stop lidar playback and flush one app update after each runtime test."""
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
         super().tearDown()
@@ -254,7 +267,7 @@ class TestLidarSensor(omni.kit.test.AsyncTestCase):
     # Tests
     # ------------------------------------------------------------------
 
-    async def test_gmo_writer(self):
+    async def test_gmo_writer(self) -> None:
         """Validate GenericModelOutput via a Writer attached to a LidarSensor."""
         COLLECTION_SECONDS = 3.0
 
@@ -266,7 +279,7 @@ class TestLidarSensor(omni.kit.test.AsyncTestCase):
             aux_output_level="FULL",
         )
         sensor = LidarSensor(lidar, annotators=["generic-model-output"])
-        sensor.attach_writer(
+        writer = sensor.attach_writer(
             "_GmoTestWriter",
             test_instance=self,
             sensor_prim=lidar.prims[0],
@@ -279,13 +292,12 @@ class TestLidarSensor(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
         self._timeline.stop()
 
-        writer = sensor._writers["_GmoTestWriter"]
         carb.log_warn(f"numElements==0 frames: {writer.num_elements_zero_count}")
         carb.log_warn(f"valid frames: {writer.valid_frame_count}")
 
         self.assertGreater(writer.valid_frame_count, 0, "Expected at least one valid GMO frame.")
 
-    async def test_aux_output_level_sets_channels_attribute(self):
+    async def test_aux_output_level_sets_channels_attribute(self) -> None:
         """Verify aux_output_level sets the channels attribute on the sensor prim."""
         for level in ("NONE", "BASIC", "EXTRA", "FULL"):
             await stage_utils.create_new_stage_async()
@@ -305,12 +317,12 @@ class TestLidarSensor(omni.kit.test.AsyncTestCase):
             del sensor
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_aux_output_level_default_is_none(self):
+    async def test_aux_output_level_default_is_none(self) -> None:
         """Verify the default aux_output_level is NONE."""
         lidar = Lidar("/World/lidar")
         self.assertEqual(lidar.aux_output_level, "NONE")
 
-    async def test_aux_output_level_invalid_raises(self):
+    async def test_aux_output_level_invalid_raises(self) -> None:
         """Verify invalid aux_output_level raises ValueError."""
         with self.assertRaises(ValueError):
             Lidar("/World/lidar", aux_output_level="INVALID")

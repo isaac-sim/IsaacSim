@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test suite for the surface gripper functionality in Isaac Sim."""
+"""Verifies surface gripper creation, configuration, close/open behavior, break-force thresholds, retry timing, and multi-gripper interactions in simulated gantry scenes."""
 
 import os
+from typing import Any
 
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -60,10 +61,13 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
     while ensuring reliable grasping operations.
     """
 
-    async def load_gantry_scene(self):
+    async def load_gantry_scene(self) -> Any:
         """Loads the gantry scene with surface gripper from USD file.
 
         Loads the SurfaceGripper_gantry.usda scene file and sets it as the default prim in the stage.
+
+        Returns:
+            None.
         """
         usd_path = os.path.abspath(
             os.path.join(
@@ -74,7 +78,7 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
         self._stage.SetDefaultPrim(self._stage.GetPrimAtPath("/World"))
         await omni.kit.app.get_app().next_update_async()
 
-    async def setup_gripper_view(self, count: int):
+    async def setup_gripper_view(self, count: int) -> Any:
         """Sets up surface gripper view with specified number of grippers.
 
         Creates surface gripper prims, configures their attachment points, and initializes a GripperView
@@ -82,6 +86,9 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
 
         Args:
             count: Number of surface grippers to create and configure.
+
+        Returns:
+            None.
         """
         # Create and configure the surface gripper(s)
         for i in range(count):
@@ -106,7 +113,9 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
             retry_interval=[1.0] * count,
         )
 
-    async def update_joint_target_positions(self, joint_x_target: float, joint_y_target: float, joint_z_target: float):
+    async def update_joint_target_positions(
+        self, joint_x_target: float, joint_y_target: float, joint_z_target: float
+    ) -> Any:
         """Updates the target positions for gantry joints and simulates movement.
 
         Sets target positions for x, y, and z joints sequentially, then simulates for 1 second
@@ -116,6 +125,9 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
             joint_x_target: Target position for the x-axis joint.
             joint_y_target: Target position for the y-axis joint.
             joint_z_target: Target position for the z-axis joint.
+
+        Returns:
+            None.
         """
         joint_x = self._stage.GetPrimAtPath("/World/Joints/x_joint")
         joint_x.GetAttribute("drive:linear:physics:targetPosition").Set(joint_x_target)
@@ -130,7 +142,7 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
         for _ in range(60):
             await omni.kit.app.get_app().next_update_async()
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Sets up the test environment before each test case.
 
         Creates a new stage with meter units, loads the gantry scene, and initializes
@@ -144,7 +156,7 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
         await self.load_gantry_scene()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Cleans up the test environment after each test case.
 
         Waits for stage loading to complete and performs necessary cleanup operations
@@ -158,7 +170,7 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
                 await omni.kit.app.get_app().next_update_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_create_surface_gripper(self):
+    async def test_create_surface_gripper(self) -> None:
         """Tests the creation of a surface gripper.
 
         Verifies that a single surface gripper can be created and initialized properly
@@ -169,9 +181,8 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
         self._timeline.play()
         for _ in range(8):
             await omni.kit.app.get_app().next_update_async()
-        pass
 
-    async def test_configure_surface_gripper(self):
+    async def test_configure_surface_gripper(self) -> None:
         """Tests surface gripper property configuration.
 
         Verifies that surface gripper properties (max grip distance, coaxial force limit,
@@ -189,7 +200,7 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(shear_force_limit[0], expected_properties[2])
         self.assertAlmostEqual(retry_interval[0], expected_properties[3])
 
-    async def test_close_open_close_surface_gripper(self):
+    async def test_close_open_close_surface_gripper(self) -> None:
         """Tests the complete close-open-close cycle of surface gripper operation.
 
         Positions the gripper over an object, tests closing to grip the object,
@@ -235,7 +246,7 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(gripped_object_list[0]), 1)
         self.assertEqual(gripped_object_list[0][0], "/World/Boxes/Cube_28")
 
-    async def test_multi_object_close(self):
+    async def test_multi_object_close(self) -> None:
         """Tests surface gripper ability to grip multiple objects simultaneously.
 
         Positions the gripper to interact with multiple objects, verifies it can
@@ -282,7 +293,7 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(gripped_object_list[0]), 2)
         self.assertTrue(sorted(set(gripped_object_list[0])) == sorted(set(expected_gripped_object_list)))
 
-    async def test_close_threshold(self):
+    async def test_close_threshold(self) -> None:
         """Tests surface gripper behavior when objects are beyond grip threshold.
 
         Positions the gripper at a distance where objects are too far to be gripped,
@@ -325,7 +336,7 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
         gripped_object_list = self.gripper_view.get_gripped_objects()
         self.assertEqual(len(gripped_object_list[0]), 0)
 
-    async def test_retry_interval(self):
+    async def test_retry_interval(self) -> None:
         """Test the retry interval functionality of the surface gripper.
 
         Verifies that a gripper in closing state will continue attempting to grip objects when moved into range
@@ -357,7 +368,7 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(gripped_object_list[0]), 1)
         self.assertEqual(gripped_object_list[0][0], "/World/Boxes/Cube_28")
 
-    async def test_shear_break_forces(self):
+    async def test_shear_break_forces(self) -> None:
         """Test the shear force breaking functionality of the surface gripper.
 
         Verifies that the gripper releases objects when shear forces exceed the configured limit.
@@ -396,7 +407,7 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
         gripped_object_list = self.gripper_view.get_gripped_objects()
         self.assertEqual(len(gripped_object_list[0]), 0)
 
-    async def test_coaxial_break_force(self):
+    async def test_coaxial_break_force(self) -> None:
         """Test the coaxial force breaking functionality of the surface gripper.
 
         Verifies that the gripper releases objects when coaxial forces exceed the configured limit.
@@ -439,7 +450,7 @@ class TestSurfaceGripper(omni.kit.test.AsyncTestCase):
         gripped_object_list = self.gripper_view.get_gripped_objects()
         self.assertEqual(len(gripped_object_list[0]), 0)
 
-    async def test_multi_gripper_scene(self):
+    async def test_multi_gripper_scene(self) -> None:
         """Test multiple surface grippers operating simultaneously in the same scene.
 
         Verifies that two surface grippers can independently grip and release objects with different statuses.

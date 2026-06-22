@@ -16,6 +16,7 @@
 """Demonstrate logging and saving robot simulation data."""
 
 import sys
+from typing import Any
 
 from isaacsim import SimulationApp
 
@@ -47,7 +48,7 @@ my_world.reset()
 data_logger = my_world.get_data_logger()
 
 
-def frame_logging_func(tasks, scene):
+def frame_logging_func(tasks: Any, scene: Any) -> dict[str, list[float]]:
     """Return joint position data for the current simulation frame."""
     return {
         "joint_positions": scene.get_object("my_franka_1").get_joint_positions().tolist(),

@@ -61,7 +61,15 @@ def set_status(
     emit_terminal: bool = False,
     side: str | None = None,
 ) -> None:
-    """Set the status label text and color for this panel."""
+    """Set the status label text and color for this panel.
+
+    Args:
+        label: Label widget to update.
+        text: Status text to display.
+        color: Label text color.
+        emit_terminal: Whether to print the status change to the terminal.
+        side: Optional controller side for terminal log tagging.
+    """
     _set_status_base(label, text, color, source=_LOG_NAMESPACE, emit_terminal=emit_terminal, side=side)
 
 
@@ -85,7 +93,13 @@ class _SideState:
 
 
 class GraspPanel:
-    """Independent grasp panel with per-side configure and enable state."""
+    """Independent grasp panel with per-side configure and enable state.
+
+    Args:
+        grasp_controller: Controller backing grasp tracking.
+        teleop_manager: Shared teleop manager for tracking state.
+        collapsed_states: Mutable panel collapsed-state cache.
+    """
 
     def __init__(
         self,
@@ -372,7 +386,11 @@ class GraspPanel:
         self._sync_side_controls(side)
 
     def _on_clear(self, side: str) -> None:
-        """Destroy grasp resources for a side (paths preserved)."""
+        """Destroy grasp resources for a side.
+
+        Args:
+            side: Controller side to clear.
+        """
         if self._is_playing:
             return
         ss = self._ss(side)
@@ -389,7 +407,11 @@ class GraspPanel:
         self._tm.set_grasp_tracking(self._gc.has_any_side_tracking_enabled)
 
     def collect_profile(self) -> GraspControllerProfile:
-        """Collect the current grasp-controller state into a teleop profile section."""
+        """Collect the current grasp-controller state into a teleop profile section.
+
+        Returns:
+            Grasp-controller profile section.
+        """
 
         def _collect_side(side: str) -> GraspSideProfile:
             ss = self._ss(side)
@@ -408,7 +430,12 @@ class GraspPanel:
         )
 
     def apply_profile(self, profile: GraspControllerProfile, resolve_stage: bool) -> None:
-        """Apply a grasp-controller teleop profile section."""
+        """Apply a grasp-controller teleop profile section.
+
+        Args:
+            profile: Grasp-controller profile section to apply.
+            resolve_stage: Whether to validate profile paths against the active stage.
+        """
         for side, side_profile in (("left", profile.left), ("right", profile.right)):
             ss = self._ss(side)
             self._gc.set_side_tracking_enabled(side, False)

@@ -23,7 +23,7 @@ registration and lookup of solver implementations.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -72,7 +72,7 @@ class IKSolver(ABC):
         chain: KinematicChain,
         target: Transform,
         q0: VecN | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> VecN:
         """Solve IK for the given kinematic chain.
 

@@ -15,6 +15,8 @@
 
 """Benchmark Nova Carter robot with ROS2 bridge performance."""
 
+from __future__ import annotations
+
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -120,7 +122,7 @@ benchmark = BaseIsaacBenchmark(
 
 
 # Generate Twist message
-def move_cmd_msg(x, y, z, ax, ay, az):
+def move_cmd_msg(x: float, y: float, z: float, ax: float, ay: float, az: float) -> Twist:
     """Generate a Twist message with the given linear and angular velocities."""
     msg = Twist()
     msg.linear.x = x

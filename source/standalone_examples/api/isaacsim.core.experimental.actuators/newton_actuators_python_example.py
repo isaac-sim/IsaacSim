@@ -13,13 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-================================================================================
+"""Run the Newton actuators Python tutorial snippets end to end.
+
 This file contains code snippets that are displayed in the Newton Actuators
 "Adding Actuators from Python" tutorial.  Keep the
 ``<start-...-snippet>`` / ``<end-...-snippet>`` markers in sync with
 ``docs/isaacsim/newton_actuators_tutorials/newton_actuators_python.rst``.
-================================================================================
 
 Runs end-to-end as a standalone script:
 
@@ -54,10 +53,8 @@ from isaacsim import SimulationApp
 simulation_app = SimulationApp({"headless": False})
 
 import isaacsim.core.experimental.utils.stage as stage_utils
-import numpy as np
 import omni.kit.app
 import omni.timeline
-import warp as wp
 from isaacsim.core.experimental.utils.stage import add_reference_to_stage
 from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.storage.native import get_assets_root_path_async
@@ -197,7 +194,7 @@ def construct_articulation_actuators_non_ideal() -> ArticulationActuators:
 # ============================================================================
 # 5. Driving the robot to a position target
 # ============================================================================
-def drive_to_target(actuated, num_steps: int = 240) -> None:
+def drive_to_target(actuated: ArticulationActuators, num_steps: int = 240) -> None:
     """Set position targets and step the simulation to watch the robot converge."""
     # <start-drive-to-target-snippet>
     articulation = actuated.articulation
@@ -237,6 +234,7 @@ def drive_to_target(actuated, num_steps: int = 240) -> None:
 # Entry point
 # ============================================================================
 def main() -> None:
+    """Run the selected actuator tutorial workflow."""
     SimulationManager.set_physics_dt(1.0 / 60.0)
     simulation_app.run_coroutine(setup_stage_with_franka())
     if args.non_ideal:

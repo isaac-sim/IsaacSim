@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies ViewportManager camera, viewport, render product, and resolution utilities against live USD viewport state. The tests cover camera selection and pose updates, viewport window discovery, and render product lookup."""
+
+from typing import Any
+
 import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import isaacsim.core.experimental.utils.xform as xform_utils
@@ -25,14 +29,16 @@ _SETTING_RATE_LIMIT_ENABLED = "/app/runLoops/main/rateLimitEnabled"
 
 
 class TestViewportManager(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Tests viewport, render product, camera, and resolution helper APIs."""
+
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # ---------------
         await stage_utils.create_new_stage_async()
         # ---------------
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         # ------------------
         stage_utils.close_stage()
@@ -41,7 +47,8 @@ class TestViewportManager(omni.kit.test.AsyncTestCase):
 
     # --------------------------------------------------------------------
 
-    async def test_00_wait_for_viewport(self):  # 00 ensures that this test is run first
+    async def test_00_wait_for_viewport(self) -> None:  # 00 ensures that this test is run first
+        """Test waiting for viewport readiness."""
         # test cases
         # - no frames are waited for
         result = await ViewportManager.wait_for_viewport_async(max_frames=0)
@@ -53,7 +60,8 @@ class TestViewportManager(omni.kit.test.AsyncTestCase):
         status, frames = await ViewportManager.wait_for_viewport_async()
         self.assertTrue(status, f"Viewport not ready after {frames} frames")
 
-    async def test_set_camera(self):
+    async def test_set_camera(self) -> None:
+        """Set cameras through each supported viewport and render product source."""
         status, frames = await ViewportManager.wait_for_viewport_async()
         self.assertTrue(status, f"Viewport not ready after {frames} frames")
         # test conditions
@@ -80,7 +88,8 @@ class TestViewportManager(omni.kit.test.AsyncTestCase):
         with self.assertRaisesRegex(ValueError, "not a valid USD Camera prim"):
             ViewportManager.set_camera("/Invalid/Source")
 
-    async def test_get_camera(self):
+    async def test_get_camera(self) -> None:
+        """Resolve USD cameras from each supported viewport and render product source."""
         status, frames = await ViewportManager.wait_for_viewport_async()
         self.assertTrue(status, f"Viewport not ready after {frames} frames")
         # test conditions
@@ -97,11 +106,13 @@ class TestViewportManager(omni.kit.test.AsyncTestCase):
             camera = ViewportManager.get_camera(source)
             self.assertIsInstance(camera, UsdGeom.Camera)
 
-    async def test_get_viewport_and_render_product(self):
-        def _check_viewport(source):
+    async def test_get_viewport_and_render_product(self) -> None:
+        """Resolve viewport APIs and USD render products from supported source types."""
+
+        def _check_viewport(source: Any) -> None:
             self.assertIn("ViewportAPI", ViewportManager.get_viewport_api(source).__class__.__name__)
 
-        def _check_render_product(source):
+        def _check_render_product(source: Any) -> None:
             self.assertIsInstance(ViewportManager.get_render_product(source), UsdRender.Product)
 
         status, frames = await ViewportManager.wait_for_viewport_async()
@@ -134,7 +145,8 @@ class TestViewportManager(omni.kit.test.AsyncTestCase):
         self.assertIsNone(ViewportManager.get_viewport_api("/Invalid/Source"))
         self.assertIsNone(ViewportManager.get_render_product("/Invalid/Source"))
 
-    async def test_get_resolution(self):
+    async def test_get_resolution(self) -> None:
+        """Read viewport resolution through each supported source type."""
         status, frames = await ViewportManager.wait_for_viewport_async()
         self.assertTrue(status, f"Viewport not ready after {frames} frames")
         # test cases
@@ -167,7 +179,8 @@ class TestViewportManager(omni.kit.test.AsyncTestCase):
         with self.assertRaisesRegex(ValueError, "Unable to get resolution: unknown"):
             resolution = ViewportManager.get_resolution("/Invalid/Source")
 
-    async def test_set_resolution(self):
+    async def test_set_resolution(self) -> None:
+        """Set and verify viewport resolution through each supported source type."""
         status, frames = await ViewportManager.wait_for_viewport_async()
         self.assertTrue(status, f"Viewport not ready after {frames} frames")
         # test conditions
@@ -198,7 +211,8 @@ class TestViewportManager(omni.kit.test.AsyncTestCase):
         with self.assertRaisesRegex(ValueError, "Unable to set resolution: unknown"):
             ViewportManager.set_resolution(resolution, render_product_or_viewport="/Invalid/Source")
 
-    async def test_viewport_windows(self):
+    async def test_viewport_windows(self) -> None:
+        """Create, list, filter, and destroy viewport windows by title patterns."""
         # test cases
         # - default window
         windows = ViewportManager.get_viewport_windows()
@@ -259,16 +273,18 @@ class TestViewportManager(omni.kit.test.AsyncTestCase):
         destroyed_window_titles = ViewportManager.destroy_viewport_windows()
         self.assertEqual(len(ViewportManager.get_viewport_windows()), 0)
 
-    async def test_camera_view(self):
+    async def test_camera_view(self) -> None:
+        """Set camera eye, target, center of interest, and collinear look directions."""
+
         def _check_camera(
-            camera,
-            position,
-            orientation,
-            coi=None,
+            camera: Any,
+            position: Any,
+            orientation: Any,
+            coi: Any = None,
             *,
             rtol: float = 1e-03,
             atol: float = 1e-05,
-        ):
+        ) -> None:
             pose = xform_utils.get_world_pose(camera)
             np.testing.assert_allclose(pose[0].numpy(), np.array(position), rtol=rtol, atol=atol)
             np.testing.assert_allclose(
@@ -278,7 +294,7 @@ class TestViewportManager(omni.kit.test.AsyncTestCase):
                 attribute = prim_utils.get_prim_at_path(camera).GetAttribute("omni:kit:centerOfInterest")
                 np.testing.assert_allclose(attribute.Get(), np.array(coi), rtol=rtol, atol=atol)
 
-        def _reset_pose(prim):
+        def _reset_pose(prim: Any) -> None:
             omni.kit.commands.execute(
                 "TransformPrimSRTCommand",
                 path=prim_utils.get_prim_path(prim),

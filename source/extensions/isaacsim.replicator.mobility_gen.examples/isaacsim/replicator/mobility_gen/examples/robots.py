@@ -55,8 +55,7 @@ class WheeledMobilityGenRobot(MobilityGenRobot):
 
     Args:
         prim_path: USD prim path where the robot is located in the stage.
-        robot: The wheeled robot instance providing the physical robot interface.
-        articulation_view: Articulation view for managing the robot's joint system.
+        articulation: Articulation for managing the robot's joint system.
         controller: Differential controller for wheel-based movement control.
         front_camera: Optional camera module for front-facing visual perception.
     """
@@ -132,8 +131,7 @@ class PolicyMobilityGenRobot(MobilityGenRobot):
 
     Args:
         prim_path: USD path where the robot prim is located in the stage.
-        robot: The robot instance that provides the physical representation and control interface.
-        articulation_view: View object for managing the robot's articulated joints and degrees of freedom.
+        articulation: Articulation for managing the robot's joints and degrees of freedom.
         controller: Policy controller that determines robot movement and behavior. Supports both H1 humanoid
             and Spot quadruped terrain navigation policies.
         front_camera: Optional camera module attached to the robot for perception and data collection.
@@ -160,6 +158,9 @@ class PolicyMobilityGenRobot(MobilityGenRobot):
 
         Args:
             prim_path: USD prim path for the robot.
+
+        Returns:
+            Policy controller for the robot.
         """
         ...
 
@@ -700,6 +701,9 @@ class PolicyMultiSensorRobot(MobilityGenMultiSensorRobot):
 
         Args:
             prim_path: USD prim path of the robot.
+
+        Returns:
+            Locomotion policy controller for the robot.
         """
         ...
 
@@ -772,7 +776,14 @@ class H1MultiSensorRobot(PolicyMultiSensorRobot):
 
     @classmethod
     def build_policy(cls, prim_path: str) -> H1FlatTerrainPolicy:
-        """Build and return an H1FlatTerrainPolicy controller at the given prim path."""
+        """Build an H1 policy controller.
+
+        Args:
+            prim_path: USD prim path of the robot.
+
+        Returns:
+            H1 locomotion policy controller.
+        """
         return H1FlatTerrainPolicy(prim_path=prim_path, position=np.array([0.0, 0.0, cls.controller_z_offset]))
 
 
@@ -784,5 +795,12 @@ class SpotMultiSensorRobot(PolicyMultiSensorRobot):
 
     @classmethod
     def build_policy(cls, prim_path: str) -> SpotFlatTerrainPolicy:
-        """Build and return a SpotFlatTerrainPolicy controller at the given prim path."""
+        """Build a Spot policy controller.
+
+        Args:
+            prim_path: USD prim path of the robot.
+
+        Returns:
+            Spot locomotion policy controller.
+        """
         return SpotFlatTerrainPolicy(prim_path=prim_path, position=np.array([0.0, 0.0, cls.controller_z_offset]))

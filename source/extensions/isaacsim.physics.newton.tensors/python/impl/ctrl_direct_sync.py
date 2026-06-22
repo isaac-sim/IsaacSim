@@ -49,7 +49,15 @@ def _sync_ctrl_direct_targets(
     # output
     mujoco_ctrl: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
 ) -> None:
-    """Sync joint_target_pos to control.mujoco.ctrl for CTRL_DIRECT joint actuators."""
+    """Sync joint_target_pos to control.mujoco.ctrl for CTRL_DIRECT joint actuators.
+
+    Args:
+        dof_to_act: Mapping from DOF indices to CTRL_DIRECT actuator indices.
+        joint_target_pos: Flattened per-world joint position targets.
+        dofs_per_world: Number of DOFs in each world.
+        ctrls_per_world: Number of MuJoCo controls in each world.
+        mujoco_ctrl: Flattened MuJoCo control buffer to update.
+    """
     world, dof = wp.tid()  # type: ignore[misc]
     act_idx = dof_to_act[dof]
     if act_idx < 0:
@@ -68,7 +76,15 @@ def _sync_ctrl_direct_gains(
     actuator_gainprm: wp.array(dtype=vec10),  # type: ignore[valid-type]
     actuator_biasprm: wp.array(dtype=vec10),  # type: ignore[valid-type]
 ) -> None:
-    """Sync joint_target_ke/kd to actuator gainprm/biasprm for CTRL_DIRECT joint actuators."""
+    """Sync joint_target_ke/kd to actuator gainprm/biasprm for CTRL_DIRECT joint actuators.
+
+    Args:
+        dof_to_act: Mapping from DOF indices to CTRL_DIRECT actuator indices.
+        joint_target_ke: Per-DOF stiffness targets.
+        joint_target_kd: Per-DOF damping targets.
+        actuator_gainprm: MuJoCo actuator gain parameters to update.
+        actuator_biasprm: MuJoCo actuator bias parameters to update.
+    """
     dof = wp.tid()
     act_idx = dof_to_act[dof]
     if act_idx < 0:

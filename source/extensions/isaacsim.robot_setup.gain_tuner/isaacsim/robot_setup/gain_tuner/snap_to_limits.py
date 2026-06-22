@@ -136,7 +136,13 @@ class SnapToLimitsTest(RobotTest):
         Yields once per physics step.  On completion, returns a
         :class:`TestResult` with recorded trajectories and per-joint
         pass/fail metrics.
-        """
+
+        Yields:
+            None, after each physics step.
+
+        Returns:
+            TestResult with recorded trajectories and per-joint metrics.
+        """  # noqa: DOC405
         articulation = self._articulation
         if articulation is None:
             return TestResult(
@@ -354,7 +360,11 @@ class SnapToLimitsTest(RobotTest):
     # ------------------------------------------------------------------
 
     def _disable_max_velocities(self, articulation: Articulation) -> None:
-        """Save current max velocities and set them to a very large value."""
+        """Save current max velocities and set them to a very large value.
+
+        Args:
+            articulation: Articulation whose velocity limits should be overridden.
+        """
         if not self._disable_velocity_limits:
             return
         self._original_max_velocities = articulation.get_dof_max_velocities().numpy()[0].copy()
@@ -381,7 +391,19 @@ class SnapToLimitsTest(RobotTest):
         obs_vel_list: list,
         time_list: list,
     ) -> None:
-        """Append one data sample to the recording lists."""
+        """Append one data sample to the recording lists.
+
+        Args:
+            articulation: Articulation to sample.
+            position_targets: Current position target array.
+            velocity_targets: Current velocity target array.
+            time: Timestamp for the sample.
+            pos_cmd_list: List receiving position command samples.
+            vel_cmd_list: List receiving velocity command samples.
+            obs_pos_list: List receiving observed position samples.
+            obs_vel_list: List receiving observed velocity samples.
+            time_list: List receiving sample timestamps.
+        """
         pos_cmd_list.append(position_targets.copy())
         vel_cmd_list.append(velocity_targets.copy())
         obs_pos_list.append(articulation.get_dof_positions().numpy()[0].copy())

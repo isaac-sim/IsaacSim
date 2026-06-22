@@ -1,60 +1,47 @@
 # Overview
 
-To enable this extension, go to the Extension Manager menu and enable isaacsim.asset.importer.mjcf.ui extension.
-This extension provides a graphical user interface for importing MJCF files through the Asset Importer window.
+The MJCF Importer UI extension adds a graphical import workflow for MuJoCo MJCF files in Isaac Sim. Use it from **File > Import** to convert an MJCF XML file into USD and place the model on the stage. Core parsing and conversion are handled by the companion **isaacsim.asset.importer.mjcf** extension.
 
+![MJCF Importer UI](../data/preview.png)
 
-## High Level Code Overview
+## Dependencies
 
-### Python
-The `MJCF Importer UI` extension provides a user interface for the MJCF importer. It depends on
-`isaacsim.asset.importer.mjcf` for the core import functionality and uses `MJCFImporterConfig` and
-`MJCFImporter` classes.
+- **isaacsim.asset.importer.mjcf** — converts MJCF files to USD
 
-The extension registers itself with the Asset Importer system (`omni.kit.tool.asset_importer`) to handle
-`.xml` files. When a user selects an MJCF file through the UI, the extension:
+## Usage
 
-1. Creates a `MJCFImporterConfig` instance to store import settings
-2. Provides UI widgets (in `python/impl/option_widget.py`) that allow users to configure:
-   - Collision type (Convex Hull, Convex Decomposition, Bounding Sphere, Bounding Cube)
-   - Merge mesh option
-   - Debug mode
-   - Collision from visuals
-   - Allow self-collision
-3. Uses `MJCFImporter` from the core extension to perform the actual import
-4. Opens the resulting USD file in the current stage
+### Accessing the MJCF Importer
 
+1. In **Window > Extensions**, enable **isaacsim.asset.importer.mjcf.ui** if it is not already loaded.
+2. Choose **File > Import** and select an MJCF `.xml` file.
+3. Adjust settings in the panel on the right side of the import window.
+4. Click **Import** to add the model to the stage.
 
-### UI Options
+### Import settings
 
-The MJCF importer UI provides several configuration options in the right panel of the Asset Importer window.
-See `../data/preview.png` for a visual reference of the interface.
+The options panel is organized into three sections you can expand or collapse:
 
-#### Output Options
+#### Output
 
-- **USD Output**: Specifies where the generated USD file will be saved. By default, this is set to "Same as Imported Model(Default)",
-  which saves the USD file in the same directory as the source MJCF file. Users can click the folder icon to select a different
-  output location.
+- **USD Output** — Where to save the generated USD. The default **Same as Imported Model (Default)** saves next to your MJCF file. Click **Select File** to pick another folder.
 
-#### Colliders Options
+#### Colliders
 
-- **Collision From Visuals**: When enabled, collision geometry is generated from the visual meshes in the MJCF file. This is useful
-  when the MJCF file doesn't have explicit collision geometry defined. When this option is checked, the Collision Type dropdown
-  becomes visible.
+- **Collision From Visuals** — Builds collision shapes from visual meshes instead of collision geometry in the MJCF. When checked, **Collision Type** appears below.
+- **Collision Type** — How to approximate collision when generating from visuals:
+  - **Convex Hull**
+  - **Convex Decomposition**
+  - **Bounding Sphere**
+  - **Bounding Cube**
+- **Allow Self-Collision** — Lets parts of the model collide with each other. Turn this off if the simulation becomes unstable or parts interpenetrate at rest.
 
-- **Collision Type**: This dropdown appears when "Collision From Visuals" is enabled. It allows users to select the type of
-  collision approximation to use:
-  - **Convex Hull**: Creates a convex hull around the visual mesh
-  - **Convex Decomposition**: Decomposes the mesh into multiple convex pieces for more accurate collision detection
-  - **Bounding Sphere**: Uses a simple bounding sphere approximation
-  - **Bounding Cube**: Uses a simple bounding box approximation
+#### Options
 
-#### General Options
-- **Allow Self-Collision**: When enabled, allows the robot model to collide with itself. This can be useful for certain simulation
-  scenarios but may cause instability if collision meshes between links are self-intersecting.
-
-
-- **Merge Mesh**: When enabled, merges meshes where possible to optimize the model. This can reduce the number of prims in the
-  resulting USD file and improve performance.
-
-- **Debug Mode**: When enabled, activates debug mode to preserve the intemediate files and asset transformer reports
+- **Robot Type** — Category label for the imported robot (for example Manipulator, Humanoid, or Quadruped). Choose **Default** if unsure.
+- **Base Type** — Whether the model is fixed in the world or free to move:
+  - **Source** — Keep the MJCF as authored.
+  - **Fixed** — Bolt the base to the world.
+  - **Mobile** — Allow the base to move and rotate.
+- **Import Scene** — Includes MJCF simulation settings with the model. Enabled by default.
+- **Merge Mesh** — Combines meshes where possible for a lighter, faster asset.
+- **Debug Mode** — Keeps extra output files and log detail for troubleshooting imports.

@@ -1,5 +1,5 @@
 [package]
-version = "4.1.6"
+version = "4.1.7"
 category = "Simulation"
 title = "Isaac Sim Utilities"
 description = "The Core Utils extension provides useful utilities for USD, physics, math, rendering and carb."
@@ -83,8 +83,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 

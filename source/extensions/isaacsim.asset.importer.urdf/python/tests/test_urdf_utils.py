@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test urdf_utils merge_fixed_joints functionality."""
+"""Verifies fixed-joint merging for URDF models. Covers link removal, visual and collision transform composition, downstream joint reparenting, mass and inertia accumulation, and preservation of non-fixed joints."""
 
 import math
 import os
@@ -414,7 +414,7 @@ class TestUrdfUtils(omni.kit.test.AsyncTestCase):
     # -- chains of fixed joints ----------------------------------------------
 
     async def test_chain_of_two_fixed_joints(self) -> None:
-        """base --(fixed)--> mid --(fixed)--> tip should collapse to just base."""
+        """Base --(fixed)--> mid --(fixed)--> tip should collapse to just base."""
         urdf = textwrap.dedent("""\
             <robot name="test">
               <link name="base"/>
@@ -483,7 +483,7 @@ class TestUrdfUtils(omni.kit.test.AsyncTestCase):
         self._success = True
 
     async def test_chain_with_trailing_revolute(self) -> None:
-        """base --(fixed)--> mid --(fixed)--> adapter --(revolute)--> end."""
+        """Base --(fixed)--> mid --(fixed)--> adapter --(revolute)--> end."""
         urdf = textwrap.dedent("""\
             <robot name="test">
               <link name="base"/>
@@ -691,7 +691,7 @@ class TestUrdfUtils(omni.kit.test.AsyncTestCase):
     # -- mixed topology ------------------------------------------------------
 
     async def test_fixed_between_two_revolutes(self) -> None:
-        """base --(revolute)--> A --(fixed)--> B --(revolute)--> C."""
+        """Base --(revolute)--> A --(fixed)--> B --(revolute)--> C."""
         urdf = textwrap.dedent("""\
             <robot name="test">
               <link name="base"/>

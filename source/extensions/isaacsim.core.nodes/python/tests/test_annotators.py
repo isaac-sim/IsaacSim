@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies core annotator OmniGraph nodes for time reads and image data conversions. Covers no-op execution, render time outputs, RGBA-to-RGB conversion, and depth-to-point-cloud conversion."""
+
 import time
 
 import isaacsim.core.experimental.utils.app as app_utils
@@ -27,7 +29,9 @@ from isaacsim.core.simulation_manager import _simulation_manager
 
 
 class TestAnnotators(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Exercise annotator nodes against a simple lit render product."""
+
+    async def setUp(self) -> None:
         """Set up  test environment, to be torn down when done."""
         await omni.usd.get_context().new_stage_async()
         self._render_product_path = prim_utils.get_prim_path(ViewportManager.get_render_product())
@@ -39,11 +43,12 @@ class TestAnnotators(omni.kit.test.AsyncTestCase):
         await app_utils.update_app_async()
 
     # ----------------------------------------------------------------------
-    async def tearDown(self):
-        pass
+    async def tearDown(self) -> None:
+        """Leave annotator cleanup to each test after detaching from the render product."""
 
     # ----------------------------------------------------------------------
-    async def test_noop(self):
+    async def test_noop(self) -> None:
+        """Verify the no-op annotator can attach, tick during playback, and detach cleanly."""
         annotator = rep.AnnotatorRegistry.get_annotator("IsaacNoop")
         annotator.attach([self._render_product_path])
         app_utils.play()
@@ -60,7 +65,8 @@ class TestAnnotators(omni.kit.test.AsyncTestCase):
     #     self.assertAlmostEqual(data["focalLength"], 18.14756202697754)
     #     annotator.detach()
 
-    async def test_read_times(self):
+    async def test_read_times(self) -> None:
+        """Verify simulation and system time annotators report the rendered frame time."""
         annotator_read_sim_time = rep.AnnotatorRegistry.get_annotator("IsaacReadSimulationTime")
         annotator_read_sim_time.initialize(resetOnStop=True)
         annotator_read_sim_time.attach([self._render_product_path])
@@ -94,7 +100,8 @@ class TestAnnotators(omni.kit.test.AsyncTestCase):
         annotator_read_system_time.detach()
         fabric_time_annotator.detach()
 
-    async def test_convert_rgba_to_rgb(self):
+    async def test_convert_rgba_to_rgb(self) -> None:
+        """Verify the RGBA-to-RGB annotator emits bright RGB data for the rendered scene."""
         import omni.syntheticdata._syntheticdata as sd
 
         rv = omni.syntheticdata.SyntheticData.convert_sensor_type_to_rendervar(sd.SensorType.Rgb.name)
@@ -107,7 +114,8 @@ class TestAnnotators(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.all(data["data"] > 150))
         annotator.detach()
 
-    async def test_convert_depth_to_point_cloud(self):
+    async def test_convert_depth_to_point_cloud(self) -> None:
+        """Verify the depth-to-point-cloud annotator emits nonzero 3D points."""
         import omni.syntheticdata._syntheticdata as sd
 
         rv = omni.syntheticdata.SyntheticData.convert_sensor_type_to_rendervar(sd.SensorType.DistanceToImagePlane.name)

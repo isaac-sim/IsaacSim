@@ -13,23 +13,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Trigger domain randomization from explicit RL frame steps."""
+
+from typing import Any
+
 import numpy as np
 import omni.graph.core as og
 from isaacsim.replicator.experimental.domain_randomization.scripts import context
 
 
 class OgnOnRLFrameInternalState:
-    """Internal state for tracking frame counts per environment."""
+    """Per-node frame counters, one counter per RL environment."""
 
-    def __init__(self):
+    def __init__(self) -> Any:
         self.frame_count = None
 
 
 class OgnOnRLFrame:
-    """OmniGraph node triggered every frame in an RL setting."""
+    """OmniGraph source node for RL-domain-randomization execution."""
 
     @staticmethod
-    def internal_state():
+    def internal_state() -> Any:
         """Create the internal state for this node instance.
 
         Returns:
@@ -38,14 +42,17 @@ class OgnOnRLFrame:
         return OgnOnRLFrameInternalState()
 
     @staticmethod
-    def compute(db) -> bool:
-        """Compute the node logic for each frame in an RL setting.
+    def compute(db: Any) -> bool:
+        """Advance frame counters only when the randomization context fires.
 
         Args:
-            :param db: OmniGraph database interface for node inputs/outputs.
+            db: OmniGraph database interface with ``inputs:num_envs`` and
+                ``outputs:execOut``, ``outputs:resetInds``, and
+                ``outputs:frameNum``.
 
         Returns:
-            True if computation completed successfully.
+            True after either disabling execution for an idle frame or emitting
+            the current frame counts for an active randomization step.
         """
         ctx = context.resolve_context()
 

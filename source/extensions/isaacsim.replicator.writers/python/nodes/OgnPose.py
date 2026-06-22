@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""OmniGraph node implementation for OgnPose."""
+
 import json
+from typing import Any
 
 import isaacsim.core.experimental.utils.transform as transform_utils
 import numpy as np
@@ -29,7 +32,21 @@ class OgnPose:
     """OmniGraph node for a Pose annotator, allowing the poses of assets with semantic labels to be retrieved."""
 
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
+        """Compute semantic pose data for the deprecated Pose OmniGraph annotator.
+
+        Build the semantic ID mapping, filter occluded prims when requested,
+        transform prim poses into the desired camera frame, and optionally
+        output image-space centers.
+
+        Args:
+            db: OmniGraph database object supplying semantic, camera, extent,
+                and output attributes.
+
+        Returns:
+            True when pose data or an empty output buffer is written, False when
+            no semantic types are requested.
+        """
         db.log_warn("Deprecation warning: OgnPose has been deprecated and will be removed in the next major release.")
 
         include_occluded_prims = db.inputs.includeOccludedPrims
@@ -111,7 +128,7 @@ class OgnPose:
                 self_labels = semantic_token_map[i * num_semantic_tokens : (i + 1) * num_semantic_tokens]
                 parent_labels = []
 
-                if i in id_to_parents.keys():
+                if i in id_to_parents:
                     for parent_semantic_id in id_to_parents[i]:
                         parent_labels.extend(
                             semantic_token_map[

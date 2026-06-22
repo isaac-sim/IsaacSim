@@ -42,6 +42,14 @@ def _rotations_match_orientation(qa: Gf.Quatd, qb: Gf.Quatd, tol: float) -> bool
 
     q and -q are treated as the same rotation. Uses abs(dot) >= 1.0 - tol,
     matching physics_joint_pose_fix._pose_equal.
+
+    Args:
+        qa: First quaternion to compare.
+        qb: Second quaternion to compare.
+        tol: Allowed tolerance from an absolute dot product of 1.0.
+
+    Returns:
+        True if the quaternions represent the same orientation, False otherwise.
     """
     qa_n = qa.GetNormalized()
     qb_n = qb.GetNormalized()
@@ -50,7 +58,15 @@ def _rotations_match_orientation(qa: Gf.Quatd, qb: Gf.Quatd, tol: float) -> bool
 
 
 def _rotation_error_magnitude(qa: Gf.Quatd, qb: Gf.Quatd) -> float:
-    """Return 1.0 - abs(dot) for two quaternions; 0 when same or antipodal, up to 2 when opposite."""
+    """Return the orientation mismatch magnitude between two quaternions.
+
+    Args:
+        qa: First quaternion to compare.
+        qb: Second quaternion to compare.
+
+    Returns:
+        The value ``1.0 - abs(dot)`` for normalized quaternions.
+    """
     qa_n = qa.GetNormalized()
     qb_n = qb.GetNormalized()
     dot = qa_n.GetReal() * qb_n.GetReal() + Gf.Dot(qa_n.GetImaginary(), qb_n.GetImaginary())
@@ -224,7 +240,6 @@ class JointHasJointStateAPI(DedupBaseRuleChecker):
         """Apply the appropriate JointStateAPI to a joint prim.
 
         Args:
-            _: Unused; reserved for API consistency with other validators.
             joint_prim: The joint prim to apply the API to.
         """
         actuator_type = None

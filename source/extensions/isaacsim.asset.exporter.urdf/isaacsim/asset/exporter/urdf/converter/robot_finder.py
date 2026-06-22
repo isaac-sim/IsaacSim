@@ -100,7 +100,15 @@ def find_robot(stage: Usd.Stage, root_prim_path: str | None = None) -> RobotDesc
 
 
 def _resolve_root_prim(stage: Usd.Stage, root_prim_path: str | None) -> Usd.Prim:
-    """Resolve the root prim for robot search."""
+    """Resolve the root prim for robot search.
+
+    Args:
+        stage: USD stage to read.
+        root_prim_path: Optional root prim path.
+
+    Returns:
+        Resolved root prim.
+    """
     if root_prim_path:
         path = root_prim_path if root_prim_path.startswith("/") else f"/{root_prim_path}"
         prim = stage.GetPrimAtPath(Sdf.Path(path))
@@ -125,6 +133,9 @@ def _select_physics_variant(prim: Usd.Prim) -> None:
 
     Only sets a selection when none is currently active. Never overrides
     an existing selection.
+
+    Args:
+        prim: USD prim to read.
     """
     vsets = prim.GetVariantSets()
     if not vsets.HasVariantSet("Physics"):
@@ -154,6 +165,10 @@ def _ensure_robot_schema(stage: Usd.Stage, root_prim: Usd.Prim) -> None:
 
     This ensures robot_schema utilities (GetJointPose, GenerateRobotLinkTree, etc.)
     work correctly on assets that don't already have the schema applied.
+
+    Args:
+        stage: USD stage to read.
+        root_prim: Robot root prim.
     """
     try:
         from usd.schema.isaac.robot_schema import ApplyRobotAPI, Classes
@@ -172,7 +187,14 @@ def _ensure_robot_schema(stage: Usd.Stage, root_prim: Usd.Prim) -> None:
 
 
 def _find_articulation_root(prim: Usd.Prim) -> Usd.Prim | None:
-    """Find ArticulationRootAPI on prim or in its subtree (including instance proxies)."""
+    """Find ArticulationRootAPI on prim or in its subtree (including instance proxies).
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Articulation root prim, or None if absent.
+    """
     if prim.HasAPI(UsdPhysics.ArticulationRootAPI):
         return prim
     for child in Usd.PrimRange(prim, Usd.TraverseInstanceProxies()):
@@ -182,7 +204,14 @@ def _find_articulation_root(prim: Usd.Prim) -> Usd.Prim | None:
 
 
 def _find_articulation_root_stage_wide(stage: Usd.Stage) -> Usd.Prim | None:
-    """Search the entire stage for an ArticulationRootAPI prim (including instance proxies)."""
+    """Search the entire stage for an ArticulationRootAPI prim (including instance proxies).
+
+    Args:
+        stage: USD stage to read.
+
+    Returns:
+        Articulation root prim, or None if absent.
+    """
     for prim in stage.TraverseAll():
         if prim.HasAPI(UsdPhysics.ArticulationRootAPI):
             return prim
@@ -190,7 +219,15 @@ def _find_articulation_root_stage_wide(stage: Usd.Stage) -> Usd.Prim | None:
 
 
 def _get_joint_body(joint_prim: Usd.Prim, body_index: int) -> Sdf.Path | None:
-    """Get the body relationship target for a joint."""
+    """Get the body relationship target for a joint.
+
+    Args:
+        joint_prim: USD joint prim to read.
+        body_index: Body relationship index to read.
+
+    Returns:
+        Joint body target path, or None if absent.
+    """
     joint = UsdPhysics.Joint(joint_prim)
     if not joint:
         return None
@@ -229,7 +266,6 @@ def _discover_articulation(
 
     body_to_joints: dict[str, list[tuple[Usd.Prim, int]]] = {}
     all_body_paths: set[str] = set()
-    child_body_paths: set[str] = set()
 
     for j in all_joints:
         body0 = _get_joint_body(j, 0)
@@ -242,7 +278,6 @@ def _discover_articulation(
             key = str(body1)
             body_to_joints.setdefault(key, []).append((j, 1))
             all_body_paths.add(key)
-            child_body_paths.add(key)
 
     root_link = art_root
     root_joint = None
@@ -253,9 +288,31 @@ def _discover_articulation(
         if candidate:
             root_link = stage.GetPrimAtPath(candidate)
     elif not art_root.HasAPI(UsdPhysics.RigidBodyAPI):
-        root_candidates = all_body_paths - child_body_paths
+        rigid_body_paths: set[str] = set()
+        for path in all_body_paths:
+            prim = stage.GetPrimAtPath(Sdf.Path(path))
+            if prim and prim.HasAPI(UsdPhysics.RigidBodyAPI):
+                rigid_body_paths.add(path)
+
+        rigid_child_paths: set[str] = set()
+        for j in all_joints:
+            body0 = _get_joint_body(j, 0)
+            body1 = _get_joint_body(j, 1)
+            if not body1:
+                continue
+            body1_key = str(body1)
+            if body1_key not in rigid_body_paths:
+                continue
+            if not body0:
+                continue
+            body0_prim = stage.GetPrimAtPath(body0)
+            if body0_prim and body0_prim.HasAPI(UsdPhysics.RigidBodyAPI):
+                rigid_child_paths.add(body1_key)
+
+        root_candidates = rigid_body_paths - rigid_child_paths
         if not root_candidates:
-            root_candidates = all_body_paths
+            root_candidates = rigid_body_paths or all_body_paths
+
         art_root_path = str(art_root.GetPath())
         best = None
         for c in root_candidates:
@@ -324,6 +381,14 @@ def _detect_fixed_base(stage: Usd.Stage, root_link: Usd.Prim, joints: list[Usd.P
     A robot is fixed-base if there is a FixedJoint connecting the root link to:
     - A body0 with no target (world)
     - A body0 targeting a non-RigidBody prim (e.g. the default prim / scene root)
+
+    Args:
+        stage: USD stage to read.
+        root_link: Value to use.
+        joints: Joint data or prims to process.
+
+    Returns:
+        True if the robot has a fixed base, False otherwise.
     """
     root_path = str(root_link.GetPath())
 
@@ -366,6 +431,13 @@ def _build_joint_body_map(
 
     Uses _get_joint_body_unchecked for loop joints (excludeFromArticulation=true)
     so their body relationships are still captured.
+
+    Args:
+        stage: USD stage to read.
+        joints: Joint data or prims to process.
+
+    Returns:
+        Mapping from joint paths to body target paths.
     """
     result = {}
     for j in joints:
@@ -376,7 +448,15 @@ def _build_joint_body_map(
 
 
 def _get_joint_body_unchecked(joint_prim: Usd.Prim, body_index: int) -> Sdf.Path | None:
-    """Get body relationship target ignoring excludeFromArticulation."""
+    """Get body relationship target ignoring excludeFromArticulation.
+
+    Args:
+        joint_prim: USD joint prim to read.
+        body_index: Body relationship index to read.
+
+    Returns:
+        Joint body target path, or None if absent.
+    """
     joint = UsdPhysics.Joint(joint_prim)
     if not joint:
         return None
@@ -389,7 +469,15 @@ def _get_joint_body_unchecked(joint_prim: Usd.Prim, body_index: int) -> Sdf.Path
 
 
 def _collect_loop_joints(stage: Usd.Stage, robot_prim: Usd.Prim) -> list[Usd.Prim]:
-    """Collect joints with physics:excludeFromArticulation = true (loop/closed-chain joints)."""
+    """Collect joints with physics:excludeFromArticulation = true (loop/closed-chain joints).
+
+    Args:
+        stage: USD stage to read.
+        robot_prim: Robot root prim.
+
+    Returns:
+        Loop joint prims.
+    """
     loop_joints = []
     instance_pred = Usd.TraverseInstanceProxies()
     for prim in Usd.PrimRange(robot_prim, instance_pred):
@@ -407,6 +495,12 @@ def _collect_sites(links: list[Usd.Prim]) -> list[SiteInfo]:
 
     These are child Xforms that represent reference frames (sensor mounts,
     end-effector offsets, etc.) and map to ghost links + fixed joints in URDF.
+
+    Args:
+        links: Link prims to inspect.
+
+    Returns:
+        Site prims and their parent links.
     """
     sites = []
     instance_pred = Usd.TraverseInstanceProxies()

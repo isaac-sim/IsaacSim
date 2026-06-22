@@ -32,7 +32,8 @@ class AckermannController:
         front_wheel_radius: Radius of front wheels in m.
         back_wheel_radius: Radius of back wheels in m.
         max_wheel_velocity: Maximum angular velocity of wheels in rad/s. Ignored if 0.
-        invert_steering: True for rear wheel steering.
+        invert_steering: True for rear-wheel-steered robots such as forklifts, where the
+            rear axle carries the steering joints and the front wheels stay fixed in heading.
         max_wheel_rotation_angle: Maximum steering angle in rad. Ignored if 0.
         max_acceleration: Maximum linear acceleration in m/s^2. Ignored if 0.
         max_steering_angle_velocity: Maximum steering rate in rad/s. Ignored if 0.

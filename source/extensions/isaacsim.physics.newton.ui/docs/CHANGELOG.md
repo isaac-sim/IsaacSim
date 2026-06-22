@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.3.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.3.0] - 2026-03-10
 ### Changed
 - Compatible with isaacsim.physics.newton 0.6.0 (Newton 1.0.0).

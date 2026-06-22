@@ -52,6 +52,10 @@ def _add_if_absent(recorder: "EpisodeRecorder", recordable: "Recordable") -> Non
     Keeps the teleop injector idempotent across multiple ``TeleopManager``
     instances and defends against callers that pre-added a ``teleop/*`` group
     manually.
+
+    Args:
+        recorder: Value for recorder.
+        recordable: Value for recordable.
     """
     group = recordable.group
     for existing in recorder.recordables():
@@ -69,6 +73,12 @@ def install_teleop_session_injector(teleop_manager: Any) -> Callable[[], None]:
     injectors survive after teardown. Safe to call when the episode_recorder
     extension is not loaded — import failure is silently swallowed and a
     no-op handle is returned so teleop continues to function.
+
+    Args:
+        teleop_manager: Value for teleop manager.
+
+    Returns:
+        The requested value.
     """
     try:
         from isaacsim.replicator.episode_recorder import register_session_injector

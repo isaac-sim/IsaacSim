@@ -79,15 +79,15 @@ See https://docs.jax.dev/en/latest/installation.html.
 
 Warning: JAX 0.6.0 or higher (built with CuDNN v9.8)
 is incompatible with Isaac Sim's PyTorch 2.7.0
-(built with CuDNN v9.7) and is therefore 
+(built with CuDNN v9.7) and is therefore
 not supported for this example.
 
  * Isaac Sim - Binary installation (Linux: ./python.sh, Windows: python.bat):
 
     ./python.sh -m pip install "jax[cuda12]<0.6.0"
-  
+
  * Isaac Sim - Python Package (PIP) installation:
-  
+
     pip install "jax[cuda12]<0.6.0"
 
 -----------------------------------------------------
@@ -146,7 +146,7 @@ def singular_value_decomposition_method(
 ) -> jax.Array:
     """Compute delta DOF positions using adaptive SVD-based pseudoinverse."""
     U, S, Vh = jnp.linalg.svd(jacobian)
-    inv_s = jnp.where(S > min_singular_value, 1.0 / S, jnp.zeros_like(S))
+    inv_s = jnp.where(min_singular_value < S, 1.0 / S, jnp.zeros_like(S))
     pseudoinverse = jnp.swapaxes(Vh, 1, 2)[:, :, :6] @ jnp.diagflat(inv_s) @ jnp.swapaxes(U, 1, 2)
     return (scale * pseudoinverse @ error).squeeze(-1)
 
@@ -180,9 +180,10 @@ def differential_inverse_kinematics(
     goal_position: jax.Array,
     goal_orientation: jax.Array | None = None,
     method: str = "damped-least-squares",
-    method_cfg: dict[str, float] = {"scale": 1.0, "damping": 0.05, "min_singular_value": 1e-5},
+    method_cfg: dict[str, float] | None = None,
 ) -> jax.Array:
     """Compute delta DOF positions via differential inverse kinematics."""
+    method_cfg = {"scale": 1.0, "damping": 0.05, "min_singular_value": 1e-5} if method_cfg is None else method_cfg
     scale = method_cfg.get("scale", 1.0)
     # Compute velocity error
     goal_orientation = current_orientation if goal_orientation is None else goal_orientation

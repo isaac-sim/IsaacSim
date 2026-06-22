@@ -399,7 +399,11 @@ class Extension(omni.ext.IExt):
     """Extension providing the ROS 2 waypoint follower example."""
 
     def on_startup(self, ext_id: str) -> None:
-        """Initialize the extension."""
+        """Initialize the extension.
+
+        Args:
+            ext_id: Extension identifier provided by Kit.
+        """
         self._ext_id = ext_id
         """Initialize extension and UI elements"""
         self._timeline = omni.timeline.get_timeline_interface()

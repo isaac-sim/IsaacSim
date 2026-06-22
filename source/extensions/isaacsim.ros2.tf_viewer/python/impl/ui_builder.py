@@ -67,7 +67,11 @@ class UIBuilder:
         return self._update_frequency
 
     def show_window(self, value: bool) -> None:
-        """Show or hide the TF Viewer window."""
+        """Show or hide the TF Viewer window.
+
+        Args:
+            value: Whether the window should be visible.
+        """
         self._build_ui()
         self._window.visible = value
 
@@ -351,7 +355,11 @@ class UIBuilder:
             self._window.set_visibility_changed_fn(self._on_visibility_changed)
 
     def update(self, frames: set[str]) -> None:
-        """Update the UI with the current TF frames."""
+        """Update the UI with the current TF frames.
+
+        Args:
+            frames: TF frame names to display.
+        """
         # TODO: update only if different
         frames = sorted(frames)
         root_frame = self._root_frame

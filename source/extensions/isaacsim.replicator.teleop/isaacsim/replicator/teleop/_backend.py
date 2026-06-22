@@ -49,6 +49,9 @@ def get_teleop_backend() -> str:
 
     If an explicit override has been set via :func:`set_teleop_backend`,
     that value is returned.  Otherwise defaults to ``"usd"``.
+
+    Returns:
+        The requested value.
     """
     if _override is not None:
         return _override
@@ -61,6 +64,9 @@ def set_teleop_backend(backend: Literal["usd", "usdrt", "fabric"] | None) -> Non
     Pass ``None`` to clear the override and return to the default (USD).
     ``"usdrt"`` and ``"fabric"`` require Fabric Scene Delegate (FSD);
     if FSD is not enabled the override is rejected and a warning is printed.
+
+    Args:
+        backend: Value for backend.
     """
     global _override
     if backend is None:

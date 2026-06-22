@@ -21,7 +21,12 @@ from .extension import Extension, discover_rule_classes, register_all_rules  # n
 
 
 def _resolve_default_profile_path() -> str:
-    """Locate the profile JSON, preferring the wheel layout over Kit's."""
+    """Locate the profile JSON, preferring the wheel layout over Kit's.
+
+    Returns:
+        Absolute path to the default profile JSON.
+
+    """
     here = _Path(__file__).parent
     name = "isaacsim_structure.json"
     # Wheel layout: <package>/data/  (symlink to ../../../../data at wheel-build).

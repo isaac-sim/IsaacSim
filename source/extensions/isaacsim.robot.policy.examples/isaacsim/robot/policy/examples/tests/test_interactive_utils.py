@@ -36,7 +36,7 @@ class TestInteractiveUtils(omni.kit.test.AsyncTestCase):
     ``PxArticulationJointReducedCoordinate::setDriveTarget`` errors.
     """
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Create a fresh stage and capture the current physics state for restoration."""
         await stage_utils.create_new_stage_async()
         self._initial_device, self._initial_fabric = snapshot_physics_simulation_state()
@@ -44,12 +44,12 @@ class TestInteractiveUtils(omni.kit.test.AsyncTestCase):
         SimulationManager.set_physics_sim_device("cpu")
         SimulationManager.enable_fabric(False)
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Restore the pre-test physics state so this test doesn't leak global flags."""
         restore_physics_simulation_state(self._initial_device, self._initial_fabric)
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_snapshot_returns_current_state(self):
+    async def test_snapshot_returns_current_state(self) -> None:
         """``snapshot_physics_simulation_state`` returns the live device and fabric flag."""
         SimulationManager.set_physics_sim_device("cpu")
         SimulationManager.enable_fabric(False)
@@ -57,7 +57,7 @@ class TestInteractiveUtils(omni.kit.test.AsyncTestCase):
         self.assertEqual(device, "cpu")
         self.assertFalse(fabric_enabled)
 
-    async def test_restore_applies_device_and_fabric(self):
+    async def test_restore_applies_device_and_fabric(self) -> None:
         """``restore_physics_simulation_state`` puts the device and fabric flag back."""
         # Flip into the "GPU-like" state that the interactive examples leave behind.
         SimulationManager.enable_fabric(True)
@@ -69,7 +69,7 @@ class TestInteractiveUtils(omni.kit.test.AsyncTestCase):
         self.assertEqual(SimulationManager.get_physics_sim_device(), "cpu")
         self.assertFalse(SimulationManager.is_fabric_enabled())
 
-    async def test_restore_with_none_is_noop(self):
+    async def test_restore_with_none_is_noop(self) -> None:
         """``None`` snapshot fields leave the corresponding live state untouched."""
         SimulationManager.set_physics_sim_device("cpu")
         SimulationManager.enable_fabric(True)
@@ -81,7 +81,7 @@ class TestInteractiveUtils(omni.kit.test.AsyncTestCase):
         self.assertEqual(SimulationManager.get_physics_sim_device(), device_before)
         self.assertEqual(SimulationManager.is_fabric_enabled(), fabric_before)
 
-    async def test_snapshot_then_restore_roundtrip(self):
+    async def test_snapshot_then_restore_roundtrip(self) -> None:
         """``snapshot`` followed by ``restore`` reverses any intermediate mutation."""
         SimulationManager.set_physics_sim_device("cpu")
         SimulationManager.enable_fabric(False)
@@ -107,20 +107,24 @@ class TestInteractiveExamplePhysicsStateRoundtrip(omni.kit.test.AsyncTestCase):
     without loading any robot assets.
     """
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Establish a known baseline (CPU + fabric off) before each test."""
         await stage_utils.create_new_stage_async()
         self._initial_device, self._initial_fabric = snapshot_physics_simulation_state()
         SimulationManager.set_physics_sim_device("cpu")
         SimulationManager.enable_fabric(False)
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Put the global physics state back to whatever the previous test left it as."""
         restore_physics_simulation_state(self._initial_device, self._initial_fabric)
         await omni.kit.app.get_app().next_update_async()
 
-    def _run_roundtrip(self, example) -> None:
-        """Simulate ``setup_scene`` + ``physics_cleanup`` and assert state is restored."""
+    def _run_roundtrip(self, example: object) -> None:
+        """Simulate ``setup_scene`` + ``physics_cleanup`` and assert state is restored.
+
+        Args:
+            example: Interactive example instance to exercise.
+        """
         before_device, before_fabric = snapshot_physics_simulation_state()
 
         # Mirror the snapshot performed at the top of ``setup_scene``.
@@ -139,14 +143,14 @@ class TestInteractiveExamplePhysicsStateRoundtrip(omni.kit.test.AsyncTestCase):
         self.assertEqual(after_device, before_device)
         self.assertEqual(after_fabric, before_fabric)
 
-    async def test_quadruped_example_restores_physics_state(self):
+    async def test_quadruped_example_restores_physics_state(self) -> None:
         """``QuadrupedExample`` cleanup must restore the prior device and fabric flag."""
         self._run_roundtrip(QuadrupedExample())
 
-    async def test_go2_example_restores_physics_state(self):
+    async def test_go2_example_restores_physics_state(self) -> None:
         """``Go2Example`` cleanup must restore the prior device and fabric flag."""
         self._run_roundtrip(Go2Example())
 
-    async def test_humanoid_example_restores_physics_state(self):
+    async def test_humanoid_example_restores_physics_state(self) -> None:
         """``HumanoidExample`` cleanup must restore the prior device and fabric flag."""
         self._run_roundtrip(HumanoidExample())

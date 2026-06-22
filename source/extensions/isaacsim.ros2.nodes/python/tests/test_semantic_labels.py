@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 semantic label publisher OmniGraph node."""
+"""Verifies ROS 2 semantic label publishing from Isaac Sim scene semantics."""
+
+from typing import Any
 
 import numpy as np
 import omni.graph.core as og
@@ -31,10 +33,10 @@ from .common import get_qos_profile
 
 
 class TestRos2SemanticLabels(ROS2TestCase):
-    """Test suite for ros2 semantic labels."""
+    """Verify semantic label messages published from labeled scene prims."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh stage and label dictionary for semantic label tests."""
         await super().setUp()
 
         await omni.usd.get_context().new_stage_async()
@@ -46,13 +48,11 @@ class TestRos2SemanticLabels(ROS2TestCase):
         viewport_api.set_texture_resolution((1280, 720))
         await omni.kit.app.get_app().next_update_async()
 
-        pass
-
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Clear semantic label test state after each test."""
         await super().tearDown()
 
-    async def test_semantic_labels(self):
+    async def test_semantic_labels(self) -> None:
         """Test semantic labels."""
         import json
         from collections import deque
@@ -104,7 +104,7 @@ class TestRos2SemanticLabels(ROS2TestCase):
 
         await omni.kit.app.get_app().next_update_async()
 
-        def clear_data():
+        def clear_data() -> None:
             self._clock_data = deque(maxlen=5)
             self._clock_callback_count = 0
             self._semantic_label_data = None
@@ -112,11 +112,11 @@ class TestRos2SemanticLabels(ROS2TestCase):
             self._semantic_labels_callback_count = 0
             self._semantic_labels_timestamp = None
 
-        def clock_callback(data):
+        def clock_callback(data: Any) -> None:
             self._clock_callback_count += 1
             self._clock_data.append(round(data.clock.sec + data.clock.nanosec / 1.0e9, 1))
 
-        def semantic_labels_callback(data):
+        def semantic_labels_callback(data: Any) -> None:
             self._semantic_labels_callback_count += 1
 
             # Test that the labels are correct
@@ -145,7 +145,7 @@ class TestRos2SemanticLabels(ROS2TestCase):
             node, String, "/semantic_labels", semantic_labels_callback, get_qos_profile()
         )
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         viewport_api = omni.kit.viewport.utility.get_active_viewport()
@@ -195,5 +195,3 @@ class TestRos2SemanticLabels(ROS2TestCase):
         self.assertGreater(self._clock_callback_count, 0)
         self.assertGreater(self._semantic_labels_callback_count, 0)
         self.assertIn(round(self._semantic_labels_timestamp, 1), self._clock_data)
-
-        pass

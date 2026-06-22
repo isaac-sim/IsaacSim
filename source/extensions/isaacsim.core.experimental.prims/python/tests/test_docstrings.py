@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for docstrings."""
+"""Verifies public prim wrapper classes have complete API docstring coverage. Covers Prim, XformPrim, GeomPrim, RigidPrim, Articulation, and DeformablePrim exports."""
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import isaacsim.test.docstring
@@ -28,7 +28,7 @@ from .test_deformable_prim import _define_tetmesh
 class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
     """Test extension docstrings."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # create new stage
@@ -37,11 +37,11 @@ class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
         # configure simulation
         SimulationManager.set_physics_sim_device("cpu")
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
-    async def test_prim_docstrings(self):
+    async def test_prim_docstrings(self) -> None:
         """Test prim docstrings."""
         # define prims
         for i in range(3):
@@ -49,7 +49,7 @@ class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
         # test case
         await self.assertDocTests(Prim)
 
-    async def test_xform_prim_docstrings(self):
+    async def test_xform_prim_docstrings(self) -> None:
         """Test xform prim docstrings."""
         # define prims
         for i in range(3):
@@ -57,7 +57,7 @@ class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
         # test case
         await self.assertDocTests(XformPrim)
 
-    async def test_geom_prim_docstrings(self):
+    async def test_geom_prim_docstrings(self) -> None:
         """Test geom prim docstrings."""
         # define prims
         for i in range(3):
@@ -67,7 +67,7 @@ class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
         await self.assertDocTests(GeomPrim)
 
     @common.requires_engines(supported_engines=["physx"])
-    async def test_rigid_prim_docstrings(self):
+    async def test_rigid_prim_docstrings(self) -> None:
         """Test rigid prim docstrings."""
         # define prims
         for i in range(3):
@@ -77,7 +77,7 @@ class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
         await self.assertDocTests(RigidPrim)
 
     @common.requires_engines(supported_engines=["physx"])
-    async def test_articulation_docstrings(self):
+    async def test_articulation_docstrings(self) -> None:
         """Test articulation docstrings."""
         # get assets root path
         assets_root_path = await get_assets_root_path_async()
@@ -92,7 +92,7 @@ class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
         await self.assertDocTests(Articulation, stop_on_failure=False)
 
     @common.requires_engines(supported_engines=["physx"])
-    async def test_deformable_prim_docstrings(self):
+    async def test_deformable_prim_docstrings(self) -> None:
         """Test deformable prim docstrings."""
         # define prims
         for i in range(3):

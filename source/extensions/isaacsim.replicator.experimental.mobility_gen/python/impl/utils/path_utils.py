@@ -55,10 +55,13 @@ def _nearest_point_on_segment(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> tu
 
 
 class PathHelper:
-    """Utility for querying path length, segment by distance, and nearest point on path."""
+    """Utility for querying path length, segment by distance, and nearest point on path.
+
+    Args:
+        points: Array of path points with shape ``(N, 2)`` or ``(N, 3)``.
+    """
 
     def __init__(self, points: np.ndarray) -> None:
-        """Initialize with an array of path points, shape (N, 2) or (N, 3)."""
         self._points = points
         self._init_point_distances()
 
@@ -73,13 +76,24 @@ class PathHelper:
         self._point_distances[1:] = np.cumsum(lengths)
 
     def get_path_length(self) -> float:
-        """Total length of the path. O(1) after initialization."""
+        """Total length of the path. O(1) after initialization.
+
+        Returns:
+            Total path length.
+        """
         if len(self._points) < 2:
             return 0.0
         return float(self._point_distances[-1])
 
     def _get_segment_by_distance(self, distance: float) -> tuple[int, int]:
-        """Return segment indices (i, i+1) such that distance lies in [d[i], d[i+1]). O(log n)."""
+        """Return segment indices (i, i+1) such that distance lies in [d[i], d[i+1]). O(log n).
+
+        Args:
+            distance: Distance along the path.
+
+        Returns:
+            Segment endpoint indices.
+        """
         n = len(self._points)
         if n < 2:
             return (0, 0)
@@ -93,7 +107,14 @@ class PathHelper:
         return (i, i + 1)
 
     def get_point_by_distance(self, distance: float) -> np.ndarray:
-        """Interpolated point at the given distance along the path."""
+        """Interpolated point at the given distance along the path.
+
+        Args:
+            distance: Distance along the path.
+
+        Returns:
+            Interpolated path point.
+        """
         a_idx, b_idx = self._get_segment_by_distance(distance)
         a, b = self._points[a_idx], self._points[b_idx]
         a_dist, b_dist = self._point_distances[a_idx], self._point_distances[b_idx]
@@ -103,6 +124,9 @@ class PathHelper:
 
     def find_nearest(self, point: np.ndarray) -> tuple[np.ndarray, float, tuple[int, int], float]:
         """Nearest point on the path to the given point.
+
+        Args:
+            point: Query point.
 
         Returns:
             (nearest_point, distance_along_path, segment_indices, distance_to_path).

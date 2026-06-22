@@ -16,7 +16,6 @@
 """Utilities for reading camera information and computing relative poses for ROS2 camera configurations."""
 
 import carb
-import cv2 as cv
 import numpy as np
 from isaacsim.core.experimental.utils import xform as xform_utils
 from isaacsim.core.rendering_manager import ViewportManager
@@ -151,6 +150,8 @@ def compute_relative_pose(left_camera_prim: Usd.Prim, right_camera_prim: Usd.Pri
         A tuple containing the translation vector and orientation (rotation matrix) from the left camera to the right
         camera.
     """
+    import cv2
+
     # Compute relative transform -> translation, orientation
     relative_transform = xform_utils.get_relative_transform(source_prim=left_camera_prim, target_prim=right_camera_prim)
     mat = Gf.Transform()
@@ -158,6 +159,6 @@ def compute_relative_pose(left_camera_prim: Usd.Prim, right_camera_prim: Usd.Pri
     rotation_vec = mat.GetRotation().Decompose(Gf.Vec3d.XAxis(), Gf.Vec3d.YAxis(), Gf.Vec3d.ZAxis())
     translation = np.array(mat.GetTranslation())
     orientation = np.ndarray(shape=[3, 3], dtype=float)
-    cv.Rodrigues(src=np.asarray([rotation_vec[0], rotation_vec[1], rotation_vec[2]]), dst=orientation)
+    cv2.Rodrigues(src=np.asarray([rotation_vec[0], rotation_vec[1], rotation_vec[2]]), dst=orientation)
 
     return (translation, orientation)

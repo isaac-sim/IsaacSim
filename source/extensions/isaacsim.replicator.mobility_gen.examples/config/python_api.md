@@ -3,8 +3,8 @@
 ## Classes
 
 - class HawkCamera(Module)
-  - usd_url: str
-  - resolution: Tuple[int, int]
+  - usd_path: str
+  - resolution: tuple[int, int]
   - left_camera_path: str
   - right_camera_path: str
   - def __init__(self, left: MobilityGenCamera, right: MobilityGenCamera)
@@ -12,7 +12,7 @@
   - class def attach(cls, prim_path: str) -> HawkCamera
 
 - class WheeledMobilityGenRobot(MobilityGenRobot)
-  - wheel_dof_names: List[str]
+  - wheel_dof_names: list[str]
   - usd_url: str
   - chassis_subpath: str
   - wheel_radius: float
@@ -24,9 +24,9 @@
 - class PolicyMobilityGenRobot(MobilityGenRobot)
   - usd_url: str
   - articulation_path: str
-  - def __init__(self, prim_path: str, articulation: Articulation, controller: Union[H1FlatTerrainPolicy, SpotFlatTerrainPolicy], front_camera: Module | None = None)
-  - class def build_policy(cls, prim_path: str)
-  - class def build(cls, prim_path: str)
+  - def __init__(self, prim_path: str, articulation: Articulation, controller: H1FlatTerrainPolicy | SpotFlatTerrainPolicy, front_camera: Module | None = None)
+  - class def build_policy(cls, prim_path: str) -> H1FlatTerrainPolicy | SpotFlatTerrainPolicy
+  - class def build(cls, prim_path: str) -> PolicyMobilityGenRobot
   - def write_action(self, step_size: float)
   - def set_pose_2d(self, pose: Pose2d)
 
@@ -50,8 +50,8 @@
   - keyboard_angular_velocity_gain: float
   - gamepad_linear_velocity_gain: float
   - gamepad_angular_velocity_gain: float
-  - random_action_linear_velocity_range: Tuple[float, float]
-  - random_action_angular_velocity_range: Tuple[float, float]
+  - random_action_linear_velocity_range: tuple[float, float]
+  - random_action_angular_velocity_range: tuple[float, float]
   - random_action_linear_acceleration_std: float
   - random_action_angular_acceleration_std: float
   - random_action_grid_pose_sampler_grid_size: float
@@ -60,7 +60,7 @@
   - path_following_stop_distance_threshold: float
   - path_following_forward_angle_threshold: Unknown
   - path_following_target_point_offset_meters: float
-  - wheel_dof_names: List[str]
+  - wheel_dof_names: list[str]
   - usd_url: str
   - chassis_subpath: str
   - wheel_base: float
@@ -86,8 +86,8 @@
   - keyboard_angular_velocity_gain: float
   - gamepad_linear_velocity_gain: float
   - gamepad_angular_velocity_gain: float
-  - random_action_linear_velocity_range: Tuple[float, float]
-  - random_action_angular_velocity_range: Tuple[float, float]
+  - random_action_linear_velocity_range: tuple[float, float]
+  - random_action_angular_velocity_range: tuple[float, float]
   - random_action_linear_acceleration_std: float
   - random_action_angular_acceleration_std: float
   - random_action_grid_pose_sampler_grid_size: float
@@ -96,7 +96,7 @@
   - path_following_stop_distance_threshold: float
   - path_following_forward_angle_threshold: Unknown
   - path_following_target_point_offset_meters: float
-  - wheel_dof_names: List[str]
+  - wheel_dof_names: list[str]
   - usd_url: str
   - chassis_subpath: str
   - wheel_base: float
@@ -122,8 +122,8 @@
   - keyboard_angular_velocity_gain: float
   - gamepad_linear_velocity_gain: float
   - gamepad_angular_velocity_gain: float
-  - random_action_linear_velocity_range: Tuple[float, float]
-  - random_action_angular_velocity_range: Tuple[float, float]
+  - random_action_linear_velocity_range: tuple[float, float]
+  - random_action_angular_velocity_range: tuple[float, float]
   - random_action_linear_acceleration_std: float
   - random_action_angular_acceleration_std: float
   - random_action_grid_pose_sampler_grid_size: float
@@ -135,7 +135,7 @@
   - usd_url: Unknown
   - articulation_path: str
   - controller_z_offset: float
-  - class def build_policy(cls, prim_path: str)
+  - class def build_policy(cls, prim_path: str) -> H1FlatTerrainPolicy
 
 - class SpotRobot(PolicyMobilityGenRobot)
   - physics_dt: float
@@ -157,8 +157,8 @@
   - keyboard_angular_velocity_gain: float
   - gamepad_linear_velocity_gain: float
   - gamepad_angular_velocity_gain: float
-  - random_action_linear_velocity_range: Tuple[float, float]
-  - random_action_angular_velocity_range: Tuple[float, float]
+  - random_action_linear_velocity_range: tuple[float, float]
+  - random_action_angular_velocity_range: tuple[float, float]
   - random_action_linear_acceleration_std: float
   - random_action_angular_acceleration_std: float
   - random_action_grid_pose_sampler_grid_size: float
@@ -172,12 +172,12 @@
   - controller_z_offset: float
   - class def build_policy(cls, prim_path: str) -> SpotFlatTerrainPolicy
 
-- class KeyboardTeleoperationScenario(MobilityGenScenario)
+- class KeyboardTeleoperationScenario(TeleoperationScenario)
   - def __init__(self, robot: MobilityGenRobot, occupancy_map: OccupancyMap)
   - def reset(self)
-  - def step(self, step_size: float)
+  - def step(self, step_size: float) -> bool
 
-- class GamepadTeleoperationScenario(MobilityGenScenario)
+- class GamepadTeleoperationScenario(TeleoperationScenario)
   - def __init__(self, robot: MobilityGenRobot, occupancy_map: OccupancyMap)
   - def reset(self)
   - def step(self, step_size: float) -> bool

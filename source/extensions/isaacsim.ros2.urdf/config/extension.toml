@@ -1,5 +1,5 @@
 [package]
-version = "2.3.6"
+version = "2.3.7"
 category = "Simulation"
 title = "Ros2 Robot Description URDF Importer"
 description = "This extensions expands the URDF Importer by enabling importing the robot description from a given ROS node"

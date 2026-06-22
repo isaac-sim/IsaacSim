@@ -17,6 +17,10 @@
 
 """Utilities for collision detection and geometric approximation including bounding volumes and mesh processing."""
 
-from .bounding_geometries import AABB, OBB, ConvexHull
-from .bounds import compute_obb, compute_world_aabb, create_bbox_cache
-from .triangulate_mesh import triangulate_mesh
+from .bounding_geometries import AABB as AABB
+from .bounding_geometries import OBB as OBB
+from .bounding_geometries import ConvexHull as ConvexHull
+from .bounds import compute_obb as compute_obb
+from .bounds import compute_world_aabb as compute_world_aabb
+from .bounds import create_bbox_cache as create_bbox_cache
+from .triangulate_mesh import triangulate_mesh as triangulate_mesh

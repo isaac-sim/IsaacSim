@@ -1,5 +1,5 @@
 [package]
-version = "2.3.3"
+version = "2.3.5"
 category = "Other"
 title = "Isaac Sim Throttling"
 description = "Control throttling behaviors for isaac sim"

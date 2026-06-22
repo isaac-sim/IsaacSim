@@ -1,5 +1,9 @@
 # Changelog
 
+## [4.1.7] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [4.1.6] - 2026-05-10
 ### Fixed
 - Preserve Warp quaternion conversion input device placement for CPU and CUDA arrays (6035739)

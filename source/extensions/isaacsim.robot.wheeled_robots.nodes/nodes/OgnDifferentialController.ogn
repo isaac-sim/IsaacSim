@@ -79,7 +79,7 @@
         "outputs":{
             "velocityCommand":{
                 "type": "double[]",
-                "description": ["Velocity commands", "Units:", "    linear (m/s)", "    angular (rad/s)"],
+                "description": ["Wheel joint angular velocity commands computed from desired linear velocity (m/s) and angular velocity (rad/s) inputs.", "Order:", "    left wheel angular velocity, right wheel angular velocity", "Units:", "    rad/s"],
                 "default": [0.0, 0.0]    
             }
         }

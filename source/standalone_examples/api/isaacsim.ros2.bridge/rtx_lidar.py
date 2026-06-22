@@ -51,7 +51,7 @@ stage_utils.add_reference_to_stage(
 simulation_app.update()
 
 
-def _read_laser_scan_metadata(prim) -> dict:
+def _read_laser_scan_metadata(prim: object) -> dict[str, float | list[float]]:
     """Read scan configuration from a rotary OmniLidar prim for LaserScan publishing.
 
     Mirrors the metadata extraction performed by ``OgnROS2RtxLidarHelper`` so the
@@ -64,13 +64,13 @@ def _read_laser_scan_metadata(prim) -> dict:
     firing_rate = int(prim.GetAttribute("omni:sensor:Core:patternFiringRateHz").Get() or 0)
     if rotation_rate <= 0 or firing_rate <= 0:
         raise RuntimeError("LaserScan: scanRateBaseHz or patternFiringRateHz is 0 on the lidar prim")
-    return dict(
-        horizontalFov=360.0,
-        horizontalResolution=360.0 * rotation_rate / firing_rate,
-        depthRange=[near_range, far_range],
-        rotationRate=rotation_rate,
-        azimuthRange=[-180.0, 180.0],
-    )
+    return {
+        "horizontalFov": 360.0,
+        "horizontalResolution": 360.0 * rotation_rate / firing_rate,
+        "depthRange": [near_range, far_range],
+        "rotationRate": rotation_rate,
+        "azimuthRange": [-180.0, 180.0],
+    }
 
 
 # Create the 3D rotating RTX Lidar. Example_Rotary scans at 10 Hz, so tick_rate must be 10

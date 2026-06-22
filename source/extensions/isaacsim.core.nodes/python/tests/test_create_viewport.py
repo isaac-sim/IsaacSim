@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies the CreateViewport OmniGraph node creates and registers a viewport through the rendering manager. Covers graph execution and viewport output creation."""
+
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.graph.core as og
@@ -23,7 +25,10 @@ from isaacsim.storage.native import get_assets_root_path_async
 
 
 class TestCreateViewport(ogts.OmniGraphTestCase):
-    async def setUp(self):
+    """Verify viewport graph creation and registration with the rendering manager."""
+
+    async def setUp(self) -> None:
+        """Create a fresh stage for viewport graph execution."""
         await omni.usd.get_context().new_stage_async()
         self._timeline = omni.timeline.get_timeline_interface()
         # add franka robot for test
@@ -34,7 +39,8 @@ class TestCreateViewport(ogts.OmniGraphTestCase):
         await stage_utils.open_stage_async(assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd")
 
     # ----------------------------------------------------------------------
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Close the viewport created by the test and reset the stage."""
         # cleanup extra viewports created in test
         ViewportManager.destroy_viewport_windows(exclude=["Viewport"])
         await omni.kit.app.get_app().next_update_async()
@@ -42,7 +48,8 @@ class TestCreateViewport(ogts.OmniGraphTestCase):
         await omni.kit.stage_templates.new_stage_async()
 
     # ----------------------------------------------------------------------
-    async def test_create_viewport(self):
+    async def test_create_viewport(self) -> None:
+        """Verify the node creates a viewport and publishes its title."""
         test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {

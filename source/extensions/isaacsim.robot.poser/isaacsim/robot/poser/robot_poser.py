@@ -482,7 +482,14 @@ class RobotPoser:
         tol_sq = tolerance * tolerance
 
         def _solve_one(q0: np.ndarray) -> tuple[np.ndarray, float]:
-            """Run a single solver attempt and return ``(q_sol, err_sq)``."""
+            """Run a single solver attempt and return ``(q_sol, err_sq)``.
+
+            Args:
+                q0: Initial joint configuration for the solver attempt.
+
+            Returns:
+                Solved joint configuration and squared pose error.
+            """
             q_sol = self._solver.solve(self._chain, target_local, q0, **solver_kwargs)
             T_final, _ = self._chain.compute_fk(q_sol)
             err = pose_error(target_local, T_final)
@@ -493,6 +500,9 @@ class RobotPoser:
 
             Returns the highest-priority converged result, or the lowest-error
             attempt if none converge.
+
+            Args:
+                candidate_seeds: Initial joint configurations to try.
 
             Returns:
                 ``(best_q, best_err_sq, success, winning_index)`` where

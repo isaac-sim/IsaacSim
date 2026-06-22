@@ -1,5 +1,5 @@
 [package]
-version = "0.14.6"
+version = "0.14.7"
 category = "Internal"
 title = "Isaac Sim Test Utils"
 description = "Provides testing utilities including image capture, comparison, and validation functions along with file validation helpers for automated test workflows."

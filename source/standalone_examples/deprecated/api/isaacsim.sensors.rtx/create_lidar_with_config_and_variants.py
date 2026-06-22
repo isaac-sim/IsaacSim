@@ -76,7 +76,7 @@ while is_stage_loading():
 # Configs with empty sets have no variants (single configuration).
 
 
-def _format_variant(variant):
+def _format_variant(variant: str | dict[str, str]) -> str:
     # Variants are either a flat string (single "sensor" variant set) or a
     # dict mapping variant-set names to selections (e.g. SICK family USDs).
     if isinstance(variant, dict):

@@ -2,12 +2,6 @@
 
 ## Classes
 
-- class UrdfExporter
-  - def __init__(self)
-  - def cleanup(self)
-  - def build_exporter_options(self)
-
-- class UrdfExporterDelegate(ExportOptionsDelegate)
-  - def __init__(self)
-  - def export(self, filename: str, dirname: str, extension: str = '', selections: list[str] | None = None)
-  - def cleanup(self)
+- class UsdToUrdfConverter
+  - def __init__(self, stage: Usd.Stage | str | os.PathLike, root_prim_path: str | None = None, mesh_dir_name: str = 'meshes', mesh_path_prefix: str = './', visualize_collision_meshes: bool = False, variant_selections: dict[str, str] | None = None)
+  - def convert(self, output_path: str | None = None) -> str

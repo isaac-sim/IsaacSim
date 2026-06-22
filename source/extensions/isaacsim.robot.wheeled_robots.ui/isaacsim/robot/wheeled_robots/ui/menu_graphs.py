@@ -51,8 +51,8 @@ class DifferentialControllerWindow(MenuHelperWindow):
         self._wheel_distance = 0.0
         self._left_joint_name = ""
         self._right_joint_name = ""
-        self._left_joint_index = 0
-        self._right_joint_index = 0
+        self._left_joint_index = -1
+        self._right_joint_index = -1
         self._use_keyboard = False
 
         # Build UI
@@ -84,10 +84,18 @@ class DifferentialControllerWindow(MenuHelperWindow):
             name="right_joint_name", label="Right Joint Name", type=ui.StringField, default=self._right_joint_name
         )
         left_joint_index_def = ParamWidget.FieldDef(
-            name="left_joint_index", label="Left Joint Index", type=ui.IntField, default=self._left_joint_index
+            name="left_joint_index",
+            label="Left Joint Index",
+            type=ui.IntField,
+            default=self._left_joint_index,
+            tooltip="0 or greater; leave -1 unset",
         )
         right_joint_index_def = ParamWidget.FieldDef(
-            name="right_joint_index", label="Right Joint Index", type=ui.IntField, default=self._right_joint_index
+            name="right_joint_index",
+            label="Right Joint Index",
+            type=ui.IntField,
+            default=self._right_joint_index,
+            tooltip="0 or greater; leave -1 unset",
         )
 
         # Populate the popup window
@@ -111,12 +119,12 @@ class DifferentialControllerWindow(MenuHelperWindow):
                     style={"font_size": 18, "color": 0xFFA8A8A8},
                 )
                 with ui.VStack(spacing=4):
-                    self.right_joint_name_input = ParamWidget(field_def=right_joint_name_def)
                     self.left_joint_name_input = ParamWidget(field_def=left_joint_name_def)
+                    self.right_joint_name_input = ParamWidget(field_def=right_joint_name_def)
                 ui.Label("    OR", height=0)
                 with ui.VStack(spacing=4):
-                    self.right_joint_index_input = ParamWidget(field_def=right_joint_index_def)
                     self.left_joint_index_input = ParamWidget(field_def=left_joint_index_def)
+                    self.right_joint_index_input = ParamWidget(field_def=right_joint_index_def)
                 ui.Spacer(height=5)
                 with ui.HStack():
                     ui.Label("Use Keyboard Control (WASD)", width=ui.Percent(30))
@@ -208,7 +216,7 @@ class DifferentialControllerWindow(MenuHelperWindow):
         )
 
         # if user input used joint indices
-        if self._left_joint_index and self._right_joint_index:
+        if self._left_joint_index >= 0 and self._right_joint_index >= 0:
             og.Controller.edit(
                 graph_handle,
                 {
@@ -218,8 +226,8 @@ class DifferentialControllerWindow(MenuHelperWindow):
                     ],
                     keys.SET_VALUES: [
                         ("ArrayNames.inputs:arrayType", "int[]"),
-                        ("ArrayNames.inputs:input0", self._right_joint_index),
-                        ("ArrayNames.inputs:input1", self._left_joint_index),
+                        ("ArrayNames.inputs:input0", self._left_joint_index),
+                        ("ArrayNames.inputs:input1", self._right_joint_index),
                         ("ArrayNames.inputs:arraySize", 2),
                     ],
                 },
@@ -240,8 +248,8 @@ class DifferentialControllerWindow(MenuHelperWindow):
                     ],
                     keys.SET_VALUES: [
                         ("ArrayNames.inputs:arrayType", "token[]"),
-                        ("ArrayNames.inputs:input0", self._right_joint_name),
-                        ("ArrayNames.inputs:input1", self._left_joint_name),
+                        ("ArrayNames.inputs:input0", self._left_joint_name),
+                        ("ArrayNames.inputs:input1", self._right_joint_name),
                         ("ArrayNames.inputs:arraySize", 2),
                     ],
                 },
@@ -327,10 +335,10 @@ class DifferentialControllerWindow(MenuHelperWindow):
         self._robot_prim_path = self.robot_prim_input.get_value()
         self._wheel_radius = self.wheel_radius_input.get_value()
         self._wheel_distance = self.wheel_distance_input.get_value()
-        self._right_joint_name = self.right_joint_name_input.get_value()
         self._left_joint_name = self.left_joint_name_input.get_value()
-        self._right_joint_index = self.right_joint_index_input.get_value()
+        self._right_joint_name = self.right_joint_name_input.get_value()
         self._left_joint_index = self.left_joint_index_input.get_value()
+        self._right_joint_index = self.right_joint_index_input.get_value()
 
         param_check = self._check_params()
         if param_check:

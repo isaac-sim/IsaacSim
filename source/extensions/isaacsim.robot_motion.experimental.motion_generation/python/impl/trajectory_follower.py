@@ -33,13 +33,15 @@ class TrajectoryFollower(BaseController):
     and trajectory are cleared and None is returned.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._trajectory = None
 
         # Time when the trajectory starts to run in the sim/real world.
         self._start_time = None
 
-    def reset(self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs) -> bool:
+    def reset(
+        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
+    ) -> bool:
         """Set the trajectory start time for the current trajectory.
 
         Sets the start time for the current trajectory to the provided time `t`. This
@@ -63,7 +65,7 @@ class TrajectoryFollower(BaseController):
         return True
 
     def forward(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs
+        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
     ) -> Optional[RobotState]:
         """Compute the desired robot state from the trajectory at the current time.
 
@@ -105,7 +107,7 @@ class TrajectoryFollower(BaseController):
         # read the trajectory, and return the desired joint states.
         return self._trajectory.get_target_state(trajectory_time)
 
-    def set_trajectory(self, trajectory: Trajectory):
+    def set_trajectory(self, trajectory: Trajectory) -> None:
         """Set the trajectory to follow.
 
         Sets the trajectory and clears the start time. Call `reset()` after setting

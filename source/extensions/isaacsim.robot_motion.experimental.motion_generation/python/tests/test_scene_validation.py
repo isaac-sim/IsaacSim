@@ -13,21 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Tests for scene validation utilities.
+"""Verify scene validation for ancestor scaling before world binding.
 
-These tests verify that scene validation correctly detects invalid ancestor transforms when:
-1. Parent prims have non-identity scaling (any non-[1,1,1] scaling)
-2. Nested hierarchies contain scaling at any level
-3. Multiple prims are validated simultaneously
-
-The validation is performed by the scene_validation.find_all_invalid_ancestors() utility
-and used by WorldBinding during initialization to ensure all tracked prims have valid
-reference frames where local_scale == world_scale.
-
-Note: The validation requires identity scaling [1,1,1] on all ancestors rather than
-allowing uniform scaling (alpha * [1,1,1]) because the experimental core API does not
-provide a get_world_scales() method, only get_local_scales().
+The tests ensure scaled ancestors are rejected in flat and nested hierarchies,
+including uniform and negative scale, while local scale on tracked prims,
+identity-scaled parents, and parentless prims remain valid.
 """
 
 import omni.kit.test
@@ -41,7 +31,7 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
     """Test class for scene validation of ancestor transforms and scaling."""
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment before each test."""
         await create_new_stage_async()
         await get_app().next_update_async()
@@ -50,7 +40,7 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
         self._timeline = omni.timeline.get_timeline_interface()
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after each test."""
         # Stop timeline if running
         if self._timeline.is_playing():
@@ -58,7 +48,7 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
 
         await get_app().next_update_async()
 
-    async def test_scene_validation_detects_scaled_parent(self):
+    async def test_scene_validation_detects_scaled_parent(self) -> None:
         """Test that scene validation detects when a parent has non-identity scaling."""
         # Create a parent Xform with scaling
         parent_xform = Sphere(
@@ -86,7 +76,7 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
         self.assertGreater(len(invalid_ancestors), 0)
         self.assertIn("/World/ParentXform", invalid_ancestors)
 
-    async def test_scene_validation_detects_both_parent_and_local_scaling(self):
+    async def test_scene_validation_detects_both_parent_and_local_scaling(self) -> None:
         """Test detection when both parent AND child have scaling."""
         # Parent with scaling
         parent_xform = Cube(
@@ -114,7 +104,7 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
         self.assertGreater(len(invalid_ancestors), 0)
         self.assertIn("/World/Parent", invalid_ancestors)
 
-    async def test_scene_validation_accepts_identity_parent_scaling(self):
+    async def test_scene_validation_accepts_identity_parent_scaling(self) -> None:
         """Test that scene validation accepts a prim when parent has identity scaling."""
         # Create parent with identity scaling
         parent_xform = Sphere(
@@ -141,7 +131,7 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
         # Should NOT detect any invalid ancestors
         self.assertEqual(len(invalid_ancestors), 0)
 
-    async def test_scene_validation_accepts_prim_without_parent(self):
+    async def test_scene_validation_accepts_prim_without_parent(self) -> None:
         """Test that scene validation accepts a prim at the root level (no parent Xform)."""
         # Create sphere directly under /World
         sphere = Sphere(
@@ -160,7 +150,7 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
         # Should NOT detect any invalid ancestors
         self.assertEqual(len(invalid_ancestors), 0)
 
-    async def test_scene_validation_detects_nested_hierarchy_with_scaling(self):
+    async def test_scene_validation_detects_nested_hierarchy_with_scaling(self) -> None:
         """Test detection with multiple levels of hierarchy where scaling.
 
         occurs at an intermediate level (not direct parent).
@@ -210,7 +200,7 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
         self.assertGreater(len(invalid_ancestors), 0)
         self.assertIn("/World/Root/Parent", invalid_ancestors)
 
-    async def test_scene_validation_detects_uniform_parent_scaling(self):
+    async def test_scene_validation_detects_uniform_parent_scaling(self) -> None:
         """Test that even uniform parent scaling is detected.
 
         ANY parent scaling (uniform or non-uniform) is invalid.
@@ -241,7 +231,7 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
         self.assertGreater(len(invalid_ancestors), 0)
         self.assertIn("/World/UniformParent", invalid_ancestors)
 
-    async def test_scene_validation_detects_negative_scale_in_parent(self):
+    async def test_scene_validation_detects_negative_scale_in_parent(self) -> None:
         """Test that negative scaling in parent (mirrored/left-handed coordinate system).
 
         is detected as invalid.
@@ -272,7 +262,7 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
         self.assertGreater(len(invalid_ancestors), 0)
         self.assertIn("/World/MirroredParent", invalid_ancestors)
 
-    async def test_scene_validation_with_multiple_prims(self):
+    async def test_scene_validation_with_multiple_prims(self) -> None:
         """Test validation with multiple prims at once, some valid and some with invalid ancestors."""
         # Create first hierarchy with valid ancestors
         valid_parent = Sphere(
@@ -316,7 +306,7 @@ class TestSceneValidation(omni.kit.test.AsyncTestCase):
         self.assertIn("/World/InvalidParent", invalid_ancestors)
         self.assertNotIn("/World/ValidParent", invalid_ancestors)
 
-    async def test_scene_validation_caches_checked_ancestors(self):
+    async def test_scene_validation_caches_checked_ancestors(self) -> None:
         """Test that validation efficiently caches checked ancestors when validating.
 
         multiple prims that share ancestors.

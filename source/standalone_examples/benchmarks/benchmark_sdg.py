@@ -16,6 +16,7 @@
 """Benchmark synthetic data generation performance in Isaac Sim."""
 
 import argparse
+from typing import Any
 
 VALID_ANNOTATORS = {
     "rgb",
@@ -105,7 +106,7 @@ with_functional_randomization = not args.with_og_randomization
 wait_for_render = args.wait_for_render
 replicator_write_to_fabric = not args.no_replicator_write_to_fabric
 if "all" in args.annotators:
-    annotators_kwargs = {annotator: True for annotator in VALID_ANNOTATORS}
+    annotators_kwargs = dict.fromkeys(VALID_ANNOTATORS, True)
 else:
     annotators_kwargs = {annotator: True for annotator in args.annotators if annotator in VALID_ANNOTATORS}
 
@@ -158,12 +159,12 @@ from isaacsim.benchmark.services.metrics import measurements
 class FPSWriter(Writer):
     """Lightweight writer that tracks replicator step speed (FPS)."""
 
-    def __init__(self, annotators=None):
+    def __init__(self, annotators: list[str] | None = None) -> None:
         self._last_frame_time = None
         self._times_per_frame = []
         self.annotators = annotators if annotators else ["rgb"]
 
-    def write(self, data):
+    def write(self, data: dict[str, Any]) -> None:
         """Record the time between consecutive replicator steps."""
         if self._last_frame_time is None:
             self._last_frame_time = time.time()
@@ -185,21 +186,19 @@ class ReplicatorFPSRecorder(MeasurementDataRecorder):
     the benchmark metrics system.
     """
 
-    def __init__(self, context=None):
+    def __init__(self, context: Any = None) -> None:
         self.context = context
         self._fps_writer = None
 
-    def set_fps_writer(self, fps_writer: FPSWriter):
+    def set_fps_writer(self, fps_writer: FPSWriter) -> None:
         """Attach an FPSWriter instance to read data from."""
         self._fps_writer = fps_writer
 
-    def start_collecting(self):
+    def start_collecting(self) -> None:
         """Start collecting FPS measurements."""
-        pass
 
-    def stop_collecting(self):
+    def stop_collecting(self) -> None:
         """Stop collecting FPS measurements."""
-        pass
 
     def get_data(self) -> MeasurementData:
         """Get Replicator FPS measurements from the attached FPSWriter."""

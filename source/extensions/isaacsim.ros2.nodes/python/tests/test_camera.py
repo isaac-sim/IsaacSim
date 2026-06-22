@@ -13,13 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 camera helper OmniGraph node."""
+"""Verify ROS 2 camera publishing.
+
+Covers RGB, compressed H.264, moving-camera sequences, transform frames,
+semantic labels, enable gating, tick-rate throttling, and depth point clouds.
+"""
 
 import math
 import os
 import shutil
 import time
-import unittest
+from typing import Any
 
 # NOTE:
 #   omni.kit.test - std python's unittest module with additional wrapping to add support for async/await tests
@@ -40,7 +44,6 @@ from isaacsim.core.experimental.prims import RigidPrim, XformPrim
 from isaacsim.core.experimental.utils import semantics as semantics_utils
 from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.core.experimental.utils import transform as transform_utils
-from isaacsim.core.rendering_manager import ViewportManager
 from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.ros2.core.impl.ros2_image_test_utils import ros2_image_to_buffer
 from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
@@ -53,28 +56,48 @@ from sensor_msgs.msg import Image
 from .common import add_carter_ros, add_cube, get_qos_profile
 
 
-def _camera_orientation_at_angle_deg(angle_deg: float):
+def _camera_orientation_at_angle_deg(angle_deg: float) -> Any:
     """Return quaternion (w,x,y,z) for camera at center looking at angle_deg in XY (0° = +X), up = world +Z.
 
     Camera local -Z is the view direction. Extrinsic ZYX Euler: Rz(angle-90) * Ry(0) * Rx(90)
     maps camera -Z to (cos(angle), sin(angle), 0) and camera +Y to world +Z.
+
+    Args:
+        angle_deg: Camera view angle in the XY plane.
+
+    Returns:
+        Camera orientation quaternion.
     """
     quat = transform_utils.euler_angles_to_quaternion([90.0, 0.0, angle_deg - 90.0], degrees=True, extrinsic=True)
     return quat.numpy().tolist()
 
 
-def _view_angle_deg_from_quat_wxyz(quat_wxyz):
+def _view_angle_deg_from_quat_wxyz(quat_wxyz: Any) -> Any:
     """Angle in XY plane (degrees [0, 360)) that the camera is looking, from quat (w,x,y,z).
 
     Inverse of _camera_orientation_at_angle_deg: extract the extrinsic yaw and undo the -90° offset.
+
+    Args:
+        quat_wxyz: Camera orientation quaternion.
+
+    Returns:
+        Camera view angle in the XY plane.
     """
     euler = transform_utils.quaternion_to_euler_angles(quat_wxyz, degrees=True, extrinsic=True)
     yaw = float(euler.numpy()[2])  # output order is [roll, pitch, yaw] = [X, Y, Z]
     return (yaw + 90.0 + 360.0) % 360.0
 
 
-def _create_rgb_camera_graph(graph_path, camera_path, topic_name, width, height):
-    """Create an OmniGraph that publishes RGB images from a camera via ROS2."""
+def _create_rgb_camera_graph(graph_path: Any, camera_path: Any, topic_name: Any, width: Any, height: Any) -> None:
+    """Create an OmniGraph that publishes RGB images from a camera via ROS2.
+
+    Args:
+        graph_path: OmniGraph path to create.
+        camera_path: Camera prim path to render.
+        topic_name: ROS 2 topic name.
+        width: Render product width.
+        height: Render product height.
+    """
     og.Controller.edit(
         {"graph_path": graph_path, "evaluator_name": "execution"},
         {
@@ -100,7 +123,7 @@ def _create_rgb_camera_graph(graph_path, camera_path, topic_name, width, height)
     )
 
 
-def _match_buffered_images(image_buffer, sim_times, timestamp_tolerance, label=""):
+def _match_buffered_images(image_buffer: Any, sim_times: Any, timestamp_tolerance: Any, label: Any = "") -> Any:
     """Match buffered (timestamp, image) pairs to target sim_times by closest timestamp.
 
     Args:
@@ -146,10 +169,10 @@ def _match_buffered_images(image_buffer, sim_times, timestamp_tolerance, label="
 
 
 class TestRos2Camera(ROS2TestCase):
-    """Test suite for ros2 camera."""
+    """Verify ROS 2 camera image, label, TF, and point cloud publication graphs."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a ROS 2 camera test stage with a fixed viewport resolution."""
         await super().setUp()
 
         # acquire the viewport window
@@ -158,7 +181,7 @@ class TestRos2Camera(ROS2TestCase):
         viewport_api.set_texture_resolution((1280, 720))
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_camera(self):
+    async def test_camera(self) -> None:
         """Test camera."""
         scene_path = "/Isaac/Environments/Grid/default_environment.usd"
         await stage_utils.open_stage_async(self._assets_root_path + scene_path)
@@ -229,19 +252,19 @@ class TestRos2Camera(ROS2TestCase):
         self._instance_segmentation = None
         self._semantic_segmentation = None
 
-        def rgb_callback(data):
+        def rgb_callback(data: Any) -> None:
             self._rgb = data
 
-        def depth_callback(data):
+        def depth_callback(data: Any) -> None:
             self._depth = data
 
-        def depth_pcl_callback(data):
+        def depth_pcl_callback(data: Any) -> None:
             self._depth_pcl = data
 
-        def instance_segmentation_callback(data):
+        def instance_segmentation_callback(data: Any) -> None:
             self._instance_segmentation = data
 
-        def semantic_segmentation_callback(data):
+        def semantic_segmentation_callback(data: Any) -> None:
             self._semantic_segmentation = data
 
         node = self.create_node("camera_tester")
@@ -265,7 +288,7 @@ class TestRos2Camera(ROS2TestCase):
         #     "ChangeProperty", prop_path=Sdf.Path("/OmniverseKit_Persp.verticalAperture"), value=4.5, prev=0
         # )
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         import time
@@ -302,7 +325,7 @@ class TestRos2Camera(ROS2TestCase):
         self.assertGreaterEqual(self._instance_segmentation.header.stamp.sec, system_time)
         self.assertGreaterEqual(self._semantic_segmentation.header.stamp.sec, system_time)
 
-    async def test_rgb_golden_image_comparison(self):
+    async def test_rgb_golden_image_comparison(self) -> None:
         """Subscribe to an RGB image topic and compare received buffer against a golden image."""
         # Retrieve golden image from data/tests/golden_img folder
         golden_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data", "golden")
@@ -323,7 +346,7 @@ class TestRos2Camera(ROS2TestCase):
         # Setup ROS2 subscriber for the RGB image topic
         self._received_rgb_image = None
 
-        def rgb_callback(data):
+        def rgb_callback(data: Any) -> None:
             self._received_rgb_image = data
 
         node = self.create_node("rgb_image_test_node")
@@ -331,7 +354,7 @@ class TestRos2Camera(ROS2TestCase):
             node, Image, "/front_stereo_camera/left/image_raw", rgb_callback, get_qos_profile()
         )
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         await omni.kit.app.get_app().next_update_async()
@@ -383,8 +406,12 @@ class TestRos2Camera(ROS2TestCase):
         )
         self.assertTrue(results["passed"], f"Image comparison failed: {results}")
 
-    async def test_rgb_h264_compressed_golden_image_comparison(self):
-        """Subscribe to a compressed RGB H264 image topic, decode with PyNvVideoCodec, and compare against golden image."""
+    async def test_rgb_h264_compressed_golden_image_comparison(self) -> Any:
+        """Subscribe to compressed RGB H.264, decode it, and compare against the golden image.
+
+        Returns:
+            None.
+        """
         try:
             import PyNvVideoCodec as nvc
         except ImportError:
@@ -428,7 +455,7 @@ class TestRos2Camera(ROS2TestCase):
         # Setup ROS2 subscriber for the compressed image topic
         self._received_compressed_image = None
 
-        def compressed_callback(data):
+        def compressed_callback(data: Any) -> None:
             self._received_compressed_image = data
 
         node = self.create_node("rgb_h264_test_node")
@@ -440,7 +467,7 @@ class TestRos2Camera(ROS2TestCase):
             get_qos_profile(),
         )
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         await omni.kit.app.get_app().next_update_async()
@@ -470,12 +497,12 @@ class TestRos2Camera(ROS2TestCase):
         # Decode H264 using PyNvVideoCodec (core Decoder + buffer demuxer)
         # Buffer feeder serves raw H264 elementary stream bytes to the demuxer
         class H264BufferFeeder:
-            def __init__(self, data):
+            def __init__(self, data: Any) -> None:
                 self._buffer = bytearray(data)
                 self._pos = 0
                 self._remaining = len(self._buffer)
 
-            def feed_chunk(self, demuxer_buffer):
+            def feed_chunk(self, demuxer_buffer: Any) -> Any:
                 chunk = min(self._remaining, len(demuxer_buffer))
                 if chunk == 0:
                     return 0
@@ -528,7 +555,7 @@ class TestRos2Camera(ROS2TestCase):
         )
         self.assertTrue(results["passed"], f"H264 compressed image comparison failed: {results}")
 
-    async def test_spinning_camera_golden_images(self):
+    async def test_spinning_camera_golden_images(self) -> None:
         """Two cameras on one spinning rigid body: compare physics images to golden images.
 
         Camera 1 is a Camera prim that also carries the RigidBodyAPI and spins at 90 deg/s.
@@ -596,7 +623,7 @@ class TestRos2Camera(ROS2TestCase):
         # Buffer all received ROS2 images with their timestamps
         image_buffer = []  # list of (timestamp, ROS2 Image message)
 
-        def rgb_callback(data):
+        def rgb_callback(data: Any) -> None:
             ts = data.header.stamp.sec + data.header.stamp.nanosec / 1e9
             image_buffer.append((ts, data))
 
@@ -624,7 +651,7 @@ class TestRos2Camera(ROS2TestCase):
         stage_fps = self._timeline.get_time_codes_per_second()
         ros_drain_delay_sec = 1.0 / stage_fps
 
-        async def _simulate_frames_with_ros_drain(max_frames, per_frame_callback=None):
+        async def _simulate_frames_with_ros_drain(max_frames: Any, per_frame_callback: Any = None) -> None:
             for _ in range(max_frames):
                 await omni.kit.app.get_app().next_update_async()
                 if per_frame_callback is not None:
@@ -651,7 +678,7 @@ class TestRos2Camera(ROS2TestCase):
 
         print(f"Starting physics-based rotation capture ({rotation_speed_deg_per_sec} deg/s)...")
 
-        def _record_angles_step():
+        def _record_angles_step() -> None:
             if len(recorded_sim_times) < len(keyframe_angles_deg):
                 sim_time = SimulationManager.get_simulation_time()
                 _, orientations = camera_rigid.get_world_poses()
@@ -706,7 +733,7 @@ class TestRos2Camera(ROS2TestCase):
 
         image_buffer_2 = []
 
-        def rgb_callback_2(data):
+        def rgb_callback_2(data: Any) -> None:
             ts = data.header.stamp.sec + data.header.stamp.nanosec / 1e9
             image_buffer_2.append((ts, data))
 
@@ -733,7 +760,7 @@ class TestRos2Camera(ROS2TestCase):
 
         print("[STEP 1b] Both cameras rotating (same rig)...")
 
-        def _record_angles_1b_step():
+        def _record_angles_1b_step() -> None:
             if len(recorded_sim_times_1b) < len(keyframe_angles_deg):
                 sim_time = SimulationManager.get_simulation_time()
                 _, orientations = camera_rigid.get_world_poses()
@@ -777,8 +804,8 @@ class TestRos2Camera(ROS2TestCase):
 
         # Keep common timestamps in the log because missing common frames are useful
         # evidence, but do not require common timestamps for image comparison.
-        cam1_by_ts = {ts: img for ts, img in image_buffer}
-        cam2_by_ts = {ts: img for ts, img in image_buffer_2}
+        cam1_by_ts = dict(image_buffer)
+        cam2_by_ts = dict(image_buffer_2)
         cam1_timestamps = sorted(cam1_by_ts.keys())
         cam2_timestamps = sorted(cam2_by_ts.keys())
         common_timestamps = sorted(set(cam1_timestamps) & set(cam2_timestamps))
@@ -962,13 +989,16 @@ class TestRos2Camera(ROS2TestCase):
                 f"Camera 2 image comparison failed at {target_angle}°: {results}",
             )
 
-    async def test_dual_camera_moving_cube(self):
+    async def test_dual_camera_moving_cube(self) -> Any:
         """Two co-located cameras must produce matching images of a laterally moving cube.
 
         Both cameras share the same position and orientation. A cube is placed
         in front of them and teleported 0.5 m laterally each frame for 30 frames.
         Images from both cameras are collected via ROS2, matched by their
         simulation-time timestamps, and compared to verify identical output.
+
+        Returns:
+            None.
         """
         save_debug_images = False
         num_frames = 10
@@ -1013,7 +1043,7 @@ class TestRos2Camera(ROS2TestCase):
         image_buffer_1 = []
         image_buffer_2 = []
 
-        def _to_image_array(image_msg):
+        def _to_image_array(image_msg: Any) -> Any:
             return ros2_image_to_buffer(
                 image_msg,
                 normalize_color_order=True,
@@ -1021,11 +1051,11 @@ class TestRos2Camera(ROS2TestCase):
                 copy=True,
             )
 
-        def rgb_callback_1(data):
+        def rgb_callback_1(data: Any) -> None:
             ts = data.header.stamp.sec + data.header.stamp.nanosec / 1e9
             image_buffer_1.append((ts, data))
 
-        def rgb_callback_2(data):
+        def rgb_callback_2(data: Any) -> None:
             ts = data.header.stamp.sec + data.header.stamp.nanosec / 1e9
             image_buffer_2.append((ts, data))
 
@@ -1094,8 +1124,8 @@ class TestRos2Camera(ROS2TestCase):
 
         # Compare only timestamps present in both cameras. Randomly dropped frames
         # should not fail the test as long as enough exact same-frame pairs remain.
-        cam1_by_ts = {ts: img for ts, img in image_buffer_1}
-        cam2_by_ts = {ts: img for ts, img in image_buffer_2}
+        cam1_by_ts = dict(image_buffer_1)
+        cam2_by_ts = dict(image_buffer_2)
         common_timestamps = sorted(set(cam1_by_ts) & set(cam2_by_ts))
         cam1_only = sorted(set(cam1_by_ts) - set(cam2_by_ts))
         cam2_only = sorted(set(cam2_by_ts) - set(cam1_by_ts))
@@ -1141,7 +1171,7 @@ class TestRos2Camera(ROS2TestCase):
             f"{comparison_failures[0][1] if comparison_failures else 'N/A'}",
         )
 
-    async def test_camera_tf_includes_180_x_rotation(self):
+    async def test_camera_tf_includes_180_x_rotation(self) -> None:
         """Camera prims in the TF tree must include a 180-deg x-axis rotation.
 
         Verifies the USD camera convention (-Z forward, +Y up) to ROS optical
@@ -1173,7 +1203,7 @@ class TestRos2Camera(ROS2TestCase):
 
         self._camera_tf_data = None
 
-        def tf_callback(data: TFMessage):
+        def tf_callback(data: TFMessage) -> None:
             self._camera_tf_data = data
 
         node = self.create_node("camera_tf_tester")
@@ -1214,7 +1244,7 @@ class TestRos2Camera(ROS2TestCase):
         except Exception as e:
             print(e)
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         self._timeline.play()
@@ -1278,7 +1308,7 @@ class TestRos2Camera(ROS2TestCase):
         self._timeline.stop()
         spin()
 
-    async def test_semantic_labels_publishing(self):
+    async def test_semantic_labels_publishing(self) -> None:
         """Verify enableSemanticLabels publishes semantic labels on a separate topic."""
         Cube("/World/cube", sizes=1.0, positions=[2.0, 0.0, 0.0])
         semantics_utils.add_labels("/World/cube", labels=["TestCube"])
@@ -1320,7 +1350,7 @@ class TestRos2Camera(ROS2TestCase):
         node = self.create_node("test_semantic_labels")
         self.start_async_spinning(node)
 
-        def on_label(msg):
+        def on_label(msg: Any) -> None:
             nonlocal label_data
             label_data = msg.data
 
@@ -1336,7 +1366,7 @@ class TestRos2Camera(ROS2TestCase):
 
         self.assertTrue(condition_met, f"testcube not found in semantic labels. Last received: {label_data}")
 
-    async def test_enabled_input_disables_publishing(self):
+    async def test_enabled_input_disables_publishing(self) -> None:
         """Verify setting enabled=False stops message publishing."""
         Cube("/World/cube", sizes=1.0, positions=[2.0, 0.0, 0.0])
 
@@ -1373,7 +1403,7 @@ class TestRos2Camera(ROS2TestCase):
         node = self.create_node("test_enabled")
         self.start_async_spinning(node)
 
-        def on_image(msg):
+        def on_image(msg: Any) -> None:
             nonlocal msg_count
             msg_count += 1
 
@@ -1385,7 +1415,7 @@ class TestRos2Camera(ROS2TestCase):
 
         self.assertEqual(msg_count, 0, "Expected no messages when enabled=False")
 
-    async def test_tick_rate_reduces_publish_frequency(self):
+    async def test_tick_rate_reduces_publish_frequency(self) -> None:
         """Verify that omni:sensor:tickRate throttles render product output and reduces publish rate.
 
         Creates two cameras: one at 10 Hz tickRate, one at autotrigger (0 = every frame).
@@ -1469,7 +1499,7 @@ class TestRos2Camera(ROS2TestCase):
         node = self.create_node("test_tick_rate")
         self.start_async_spinning(node)
 
-        def _save_frame(msg, directory, count):
+        def _save_frame(msg: Any, directory: Any, count: Any) -> None:
             try:
                 import numpy as _np
                 from PIL import Image as PILImage
@@ -1479,14 +1509,14 @@ class TestRos2Camera(ROS2TestCase):
             except Exception:
                 pass
 
-        def on_slow(msg):
+        def on_slow(msg: Any) -> None:
             nonlocal slow_count
             slow_count += 1
             slow_unique_hashes.add(hashlib.md5(bytes(msg.data)).hexdigest())
             if SAVE_DEBUG_FRAMES:
                 _save_frame(msg, slow_debug_dir, slow_count)
 
-        def on_fast(msg):
+        def on_fast(msg: Any) -> None:
             nonlocal fast_count
             fast_count += 1
             fast_unique_hashes.add(hashlib.md5(bytes(msg.data)).hexdigest())
@@ -1525,7 +1555,7 @@ class TestRos2Camera(ROS2TestCase):
                 f"Expected slow ~{len(fast_unique_hashes) * 10 // 60} unique frames at 10 Hz.",
             )
 
-    async def test_camera_depth_to_pcl(self):
+    async def test_camera_depth_to_pcl(self) -> None:
         """Test camera depth to pcl."""
         from sensor_msgs.msg import PointCloud2
 
@@ -1568,13 +1598,13 @@ class TestRos2Camera(ROS2TestCase):
 
         self._point_cloud_data = None
 
-        def point_cloud_callback(data: PointCloud2):
+        def point_cloud_callback(data: PointCloud2) -> None:
             self._point_cloud_data = data
 
         node = self.create_node("depth_point_cloud_tester")
         self.create_subscription(node, PointCloud2, "point_cloud_left", point_cloud_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         self._timeline.play()

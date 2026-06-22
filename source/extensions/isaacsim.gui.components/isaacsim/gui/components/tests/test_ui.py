@@ -68,7 +68,7 @@ class TestUI(omni.kit.test.AsyncTestCase):
         # on_open_folder_clicked(os.path.dirname(__file__)) # TODO: this test fails on TC due to permissions
         on_docs_link_clicked("https://docs.omniverse.nvidia.com")
 
-    async def test_search_list_item_model_accepts_sequence_filter_text(self):
+    async def test_search_list_item_model_accepts_sequence_filter_text(self) -> None:
         """Test search list filtering with list and tuple text input."""
         for search_text in (["find", "this"], ("find", "this")):
             with self.subTest(search_text=search_text):

@@ -43,7 +43,11 @@ _extension_instance: Extension | None = None
 
 
 def get_instance() -> Extension | None:
-    """Get the current extension instance."""
+    """Get the current extension instance.
+
+    Returns:
+        Current extension instance, or None if the extension is not started.
+    """
     return _extension_instance
 
 
@@ -55,7 +59,11 @@ class Extension(omni.ext.IExt):
     """
 
     def on_startup(self, ext_id: str) -> None:
-        """Initialize the extension and add File menu entry."""
+        """Initialize the extension and add File menu entry.
+
+        Args:
+            ext_id: Extension identifier provided by the extension manager.
+        """
         global _extension_instance
         _extension_instance = self
         self._export_options = None
@@ -115,7 +123,14 @@ class UrdfExporterDelegate(ExportOptionsDelegate):
             self._option_widget.build()
 
     def export(self, filename: str, dirname: str, extension: str = "", selections: list[str] | None = None) -> None:
-        """Export the current stage to URDF."""
+        """Export the current stage to URDF.
+
+        Args:
+            filename: Output filename without the directory path.
+            dirname: Output directory path.
+            extension: File extension selected by the file exporter.
+            selections: Selected USD prim paths from the file exporter, or None when no selections are provided.
+        """
         result = self._do_export(dirname, filename)
         if result:
             print("Export to URDF successful")
@@ -194,7 +209,11 @@ class UrdfExporterDelegate(ExportOptionsDelegate):
 
 
 def _write_physx_inertia(stage: Usd.Stage) -> None:
-    """Query PhysX for inertia data and write to MassAPI where not authored."""
+    """Query PhysX for inertia data and write to MassAPI where not authored.
+
+    Args:
+        stage: Stage containing rigid bodies to query.
+    """
     try:
         import numpy as np
         from omni.physx import get_physx_property_query_interface
@@ -266,10 +285,13 @@ def _write_physx_inertia(stage: Usd.Stage) -> None:
 
 
 def _get_stage_source_dir_and_stem() -> tuple[str, str]:
-    """Return ``(directory, stem)`` from the current stage's source layer.
+    """Get the directory and stem from the current stage's source layer.
 
     For ``omniverse://`` URLs, uses ``omni.client`` to parse the path.
-    Returns ``("", "")`` when no source can be determined.
+
+    Returns:
+        Tuple containing the source directory and filename stem. Both values are empty when no source can be
+        determined.
     """
     stage = omni.usd.get_context().get_stage()
     if stage is None:
@@ -309,6 +331,9 @@ def _derive_filename_url_from_stage() -> str | None:
     Returns ``<directory>/<stem>`` (no extension) so the dialog pre-fills
     both directory and filename.  Returns ``None`` when the stage has no
     determinable source.
+
+    Returns:
+        Filename URL for the file exporter dialog, or None when the stage has no determinable source.
     """
     dirname, stem = _get_stage_source_dir_and_stem()
     if not stem:

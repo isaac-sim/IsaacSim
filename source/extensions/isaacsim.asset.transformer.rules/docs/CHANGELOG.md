@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.7.10] - 2026-06-10
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
+## [1.7.9] - 2026-06-09
+### Fixed
+- `GeometriesRoutingRule` no longer fails with `PermissionError: [WinError 5] Access is denied` when converting `base.usd` to `.usda` on Windows. Manager-owned working files are now deleted via `RuleInterface.request_deletion` after the manager releases its stage handle, instead of in-rule `os.remove`.
+- `GeometriesRoutingRule.process_rule` releases the rule-owned `.tmp.usda` layer handle before deleting it on the `save_base_as_usda = False` path.
+- `_create_visual_materials_scope` anchors source-layer references on `realPath` instead of `identifier`, so the `.usd` -> `.usda` rewrite on Windows updates `instances.usda` material references correctly.
+
 ## [1.7.8] - 2026-05-27
 ### Fixed
 - `FlattenRule.process_rule` no longer mutates any caller-owned USD state. Previously the rule deleted entries from `prim_spec.variantSelections` on the input stage's root layer and called `Reload()` on it twice; this fired change notifications on every other Stage observing the same layer through USD's process-wide layer cache. When the Asset Transformer was run against the editor's active stage, those notifications invalidated Hydra render product prims mid-frame and crashed `librtx.hydra` with `Unable to find RP Prim from previous update pass!`. The rule now ignores any `args["input_stage"]` passed by the caller and opens a fresh, private `Usd.Stage` from `args["input_stage_path"]`. Variant blocks and selections are authored to that private stage's session layer via `Usd.EditContext`; `Stage.Flatten()` composes the overrides into the output identically to the prior behavior. The private stage is garbage-collected on return, so no explicit cleanup is needed and no caller state (notably the editor's session layer, which carries user-driven overrides such as visibility toggles, purpose settings, and camera opinions) is ever touched.

@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test cortex framework bringup with a follow-state decider network."""
+"""Verifies that CortexWorld can bring up a Franka robot with a decider network that repeatedly commands the end effector toward a visual follow target."""
+
+from typing import Any
 
 from isaacsim import SimulationApp
 
@@ -38,28 +40,28 @@ class FollowState(DfState):
     """
 
     @property
-    def robot(self):
+    def robot(self) -> Any:
         """Return the robot from the context."""
         return self.context.robot
 
     @property
-    def follow_sphere(self):
+    def follow_sphere(self) -> Any:
         """Return the follow sphere attached to the robot."""
         return self.context.robot.follow_sphere
 
-    def enter(self):
+    def enter(self) -> None:
         """Close the gripper and place the follow sphere at the end-effector."""
         self.robot.gripper.close()
         self.follow_sphere.set_world_pose(*self.robot.arm.get_fk_pq().as_tuple())
 
-    def step(self):
+    def step(self) -> Any:
         """Send the end-effector toward the follow sphere position."""
         target_position, _ = self.follow_sphere.get_world_pose()
         self.robot.arm.send_end_effector(target_position=target_position)
         return self  # Always transition back to this state.
 
 
-def main():
+def main() -> None:
     """Run the cortex bringup test with a follow-state decider network."""
     world = CortexWorld()
     robot = world.add_robot(add_franka_to_stage(name="franka", prim_path="/World/Franka"))

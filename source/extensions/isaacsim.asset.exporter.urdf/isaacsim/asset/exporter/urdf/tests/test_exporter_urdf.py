@@ -53,7 +53,14 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
 
     async def _open_robot(self, robot_path: str) -> Usd.Stage:
-        """Open a robot USD from the assets server."""
+        """Open a robot USD from the assets server.
+
+        Args:
+            robot_path: Robot asset path relative to the assets root.
+
+        Returns:
+            Opened USD stage.
+        """
         assets_root = get_assets_root_path() + "/"
         full_path = os.path.join(assets_root, robot_path)
         await stage_utils.open_stage_async(full_path)
@@ -62,7 +69,17 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
     async def _export_and_validate_urdf(
         self, stage: Usd.Stage, root_prim: str | None, expected_links: int, expected_joints: int
     ) -> str:
-        """Export a robot to URDF and validate basic structure."""
+        """Export a robot to URDF and validate basic structure.
+
+        Args:
+            stage: USD stage to read.
+            root_prim: Robot root prim.
+            expected_links: Minimum expected link count.
+            expected_joints: Minimum expected joint count.
+
+        Returns:
+            Path to the exported URDF file.
+        """
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
             output_path = os.path.join(temp_dir, "robot.urdf")
 
@@ -109,7 +126,17 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
     async def _export_to_urdf(
         self, stage: Usd.Stage, temp_dir: str, root_prim: str | None = None, **converter_kwargs: Any  # noqa: ANN401
     ) -> tuple[str, ET.Element]:
-        """Export robot to URDF, parse XML, and return (output_path, xml_root)."""
+        """Export robot to URDF, parse XML, and return (output_path, xml_root).
+
+        Args:
+            stage: USD stage to read.
+            temp_dir: Temporary output directory.
+            root_prim: Robot root prim.
+            **converter_kwargs: Additional converter keyword arguments.
+
+        Returns:
+            URDF output path and parsed XML root.
+        """
         output_path = os.path.join(temp_dir, "robot.urdf")
         kwargs: dict[str, Any] = {
             "stage": stage,
@@ -128,7 +155,14 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
 
     @staticmethod
     def _parse_xyz(text: str) -> list[float]:
-        """Parse a space-separated xyz or rpy string into a list of floats."""
+        """Parse a space-separated xyz or rpy string into a list of floats.
+
+        Args:
+            text: Value to use.
+
+        Returns:
+            Parsed numeric values.
+        """
         return [float(v) for v in text.strip().split()]
 
     # ------------------------------------------------------------------
@@ -436,6 +470,9 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         Builds a two-link robot (base -> child) with a revolute joint that
         has ONLY mjc:* attributes -- no urdf:* custom attrs, no DriveAPI,
         no PhysxJointAPI.  Also creates an MjcActuator targeting the joint.
+
+        Returns:
+            Generated in-memory USD stage.
         """
         from pxr import Sdf, UsdGeom
 
@@ -487,7 +524,15 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         return stage
 
     def _export_mjc_stage(self, stage: Usd.Stage, temp_dir: str) -> ET.Element:
-        """Export an in-memory stage to URDF and return the parsed XML root."""
+        """Export an in-memory stage to URDF and return the parsed XML root.
+
+        Args:
+            stage: USD stage to read.
+            temp_dir: Temporary output directory.
+
+        Returns:
+            Parsed URDF XML root.
+        """
         output_path = os.path.join(temp_dir, "mjc_robot.urdf")
         converter = UsdToUrdfConverter(stage=stage, mesh_dir_name="meshes", mesh_path_prefix="./")
         converter.convert(output_path)
@@ -606,7 +651,11 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
 
     @staticmethod
     def _build_multi_dof_stage() -> Usd.Stage:
-        """Create a stage with a SphericalJoint and a D6Joint for round-trip testing."""
+        """Create a stage with a SphericalJoint and a D6Joint for round-trip testing.
+
+        Returns:
+            Generated in-memory USD stage.
+        """
         from pxr import Gf, Sdf, UsdGeom
 
         stage = Usd.Stage.CreateInMemory()
@@ -706,7 +755,11 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
 
     @staticmethod
     def _build_drive_stage() -> Usd.Stage:
-        """Create a stage with a RevoluteJoint that has DriveAPI and armature."""
+        """Create a stage with a RevoluteJoint that has DriveAPI and armature.
+
+        Returns:
+            Generated in-memory USD stage.
+        """
         from pxr import PhysxSchema, Sdf, UsdGeom
 
         stage = Usd.Stage.CreateInMemory()
@@ -993,6 +1046,9 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
 
         The variant selection is left empty so the caller can set it via
         ``variant_selections``.
+
+        Returns:
+            Generated in-memory USD stage.
         """
         from pxr import Sdf, UsdGeom
 
@@ -1076,6 +1132,12 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
 
         The reference target lives in the same stage as a hidden class
         ``/_Proto/geom`` so the test stays self-contained.
+
+        Args:
+            geometry_scale: Scale to author on the instanceable geometry.
+
+        Returns:
+            Generated in-memory USD stage.
         """
         from pxr import Gf, Sdf, UsdGeom
 

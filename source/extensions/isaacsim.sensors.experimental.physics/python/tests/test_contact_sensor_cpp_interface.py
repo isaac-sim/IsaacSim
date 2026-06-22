@@ -13,11 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for C++-only contact sensor interface (IContactSensor).
-
-These tests exercise the C++ contact processing path directly, verifying that
-readings and raw contact data are produced without any Python callback relay.
-"""
+"""Verifies the C++ contact sensor interface directly produces nonzero readings and raw contacts during collisions. The tests also cover reading equivalence and invalid sensor behavior without relying on Python callback relays."""
 
 import asyncio
 
@@ -28,7 +24,7 @@ import omni.timeline
 from isaacsim.core.experimental.objects import Cube, GroundPlane
 from isaacsim.core.experimental.prims import GeomPrim, RigidPrim
 from isaacsim.core.simulation_manager import SimulationManager
-from isaacsim.sensors.experimental.physics import Contact, ContactSensor
+from isaacsim.sensors.experimental.physics import Contact
 from isaacsim.sensors.experimental.physics.impl.extension import get_contact_sensor_interface
 from pxr import PhysxSchema
 
@@ -38,8 +34,8 @@ from .common import step_simulation
 class TestContactSensorCppInterface(omni.kit.test.AsyncTestCase):
     """Validate IContactSensor C++ interface produces correct readings/raw data."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a cube-ground contact scene for direct IContactSensor interface reads."""
         await stage_utils.create_new_stage_async()
         self._physics_rate = 60
         SimulationManager.setup_simulation(dt=1.0 / self._physics_rate)
@@ -59,8 +55,8 @@ class TestContactSensorCppInterface(omni.kit.test.AsyncTestCase):
         )
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Stop playback, invalidate physics, and wait for stage loading to finish."""
         if self._timeline.is_playing():
             self._timeline.stop()
         SimulationManager.invalidate_physics()
@@ -69,7 +65,7 @@ class TestContactSensorCppInterface(omni.kit.test.AsyncTestCase):
             await asyncio.sleep(1.0)
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_cpp_reading_nonzero_during_contact(self):
+    async def test_cpp_reading_nonzero_during_contact(self) -> None:
         """Verify C++ IContactSensor reports non-zero values during ground contact."""
         iface = get_contact_sensor_interface()
         self.assertIsNotNone(iface)
@@ -86,7 +82,7 @@ class TestContactSensorCppInterface(omni.kit.test.AsyncTestCase):
         self.assertNotEqual(reading.value, 0.0)
         self.assertTrue(reading.in_contact)
 
-    async def test_cpp_raw_contacts_available(self):
+    async def test_cpp_raw_contacts_available(self) -> None:
         """Verify C++ IContactSensor provides raw contact data during contact."""
         iface = get_contact_sensor_interface()
         self.assertIsNotNone(iface)
@@ -110,7 +106,7 @@ class TestContactSensorCppInterface(omni.kit.test.AsyncTestCase):
         self.assertIn("dt", contact)
         self.assertGreater(float(contact["dt"]), 0.0)
 
-    async def test_cpp_sensor_reading_matches(self):
+    async def test_cpp_sensor_reading_matches(self) -> None:
         """Verify ContactSensor returns same results as direct C++ call."""
         from isaacsim.sensors.experimental.physics import ContactSensor
 
@@ -124,7 +120,7 @@ class TestContactSensorCppInterface(omni.kit.test.AsyncTestCase):
         self.assertNotEqual(reading.value, 0.0)
         self.assertTrue(reading.in_contact)
 
-    async def test_cpp_sensor_raw_data(self):
+    async def test_cpp_sensor_raw_data(self) -> None:
         """Verify ContactSensor.get_raw_data() returns C++ raw contacts."""
         from isaacsim.sensors.experimental.physics import ContactSensor
 
@@ -137,7 +133,7 @@ class TestContactSensorCppInterface(omni.kit.test.AsyncTestCase):
         self.assertGreater(len(raw_data), 0)
         self.assertIn("impulse", raw_data[0])
 
-    async def test_invalid_sensor_returns_empty(self):
+    async def test_invalid_sensor_returns_empty(self) -> None:
         """Verify invalid sensor paths return empty/invalid results."""
         iface = get_contact_sensor_interface()
         self.assertIsNotNone(iface)

@@ -15,14 +15,12 @@
 
 """Triangulates mesh faces into triangle index arrays for collision approximation in robot motion generation."""
 
-from typing import List
-
 import numpy as np
 from isaacsim.core.experimental.objects import Mesh
 from pxr import UsdGeom
 
 
-def triangulate_mesh(mesh_input: Mesh) -> List[np.ndarray[int]]:
+def triangulate_mesh(mesh_input: Mesh) -> list[np.ndarray[int]]:
     """Triangulate mesh faces into triangle index arrays.
 
     Args:

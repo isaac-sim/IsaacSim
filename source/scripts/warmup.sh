@@ -32,6 +32,7 @@ set +e # Workaround post-install script failure
     --/persistent/renderer/startupMessageDisplayed=true \
     --ext-folder "$SCRIPT_DIR/exts" \
     --ext-folder "$SCRIPT_DIR/apps" \
+    --/app/extensions/excluded/2='omni.kit.telemetry' \
     --/app/settings/persistent=0 \
     --/app/settings/loadUserConfig=0 \
     --/structuredLog/enable=0 \
@@ -39,7 +40,7 @@ set +e # Workaround post-install script failure
     --/crashreporter/skipOldDumpUpload=1 \
     --/app/content/emptyStageOnStart=1 \
     --/rtx/materialDb/syncLoads=1 \
-    --/omni.kit.plugin/syncUsdLoads=1 \
+    --/omni/kit/plugin/syncUsdLoads=1 \
     --/rtx/hydra/materialSyncLoads=1 \
     --/app/asyncRendering=0 \
     --/app/quitAfter=1000 \
@@ -48,7 +49,8 @@ set +e # Workaround post-install script failure
     --/app/warmupMode=0 \
     --/exts/omni.kit.registry.nucleus/registries/0/name=0 \
     --/log/flushStandardStreamOutput=1 \
-    --/plugins/carb.tasking.plugin/threadCount=$TASKING_THREAD_CNT
+    --/plugins/carb.tasking.plugin/threadCount=$TASKING_THREAD_CNT \
+    "$@"
 echo "Shader cache is warmed up."
 
 # Warm up shader cache for Python app
@@ -56,7 +58,7 @@ echo "Shader cache is warmed up."
     --portable-root "$PORTABLE_ROOT" \
     --/log/flushStandardStreamOutput=1 \
     --no-window \
-    --silent \
+    --silent
 echo "Python app shader cache is warmed up."
 
 set -e

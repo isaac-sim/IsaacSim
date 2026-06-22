@@ -36,16 +36,28 @@ class EndEffectorValidationResult:
         self.warnings: list[str] = []
 
     def add_error(self, message: str) -> None:
-        """Add an error and marks result as invalid."""
+        """Add an error and marks result as invalid.
+
+        Args:
+            message: Value for message.
+        """
         self.errors.append(message)
         self.is_valid = False
 
     def add_warning(self, message: str) -> None:
-        """Add a warning without invalidating the result."""
+        """Add a warning without invalidating the result.
+
+        Args:
+            message: Value for message.
+        """
         self.warnings.append(message)
 
     def get_summary(self) -> str:
-        """Return a formatted summary of validation results."""
+        """Return a formatted summary of validation results.
+
+        Returns:
+            The requested value.
+        """
         lines = []
         if self.errors:
             lines.append("Errors:")
@@ -61,7 +73,14 @@ class EndEffectorValidationResult:
 
 
 def find_owning_articulation_root(prim_path: str) -> str | None:
-    """Find the ArticulationRootAPI prim that owns a given prim path."""
+    """Find the ArticulationRootAPI prim that owns a given prim path.
+
+    Args:
+        prim_path: Value for prim path.
+
+    Returns:
+        The requested value.
+    """
     try:
         art_paths = Articulation.fetch_articulation_root_api_prim_paths(prim_path)
         if art_paths:

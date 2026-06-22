@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.3.6] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.3.5] - 2026-05-07
 ### Fixed
 - Repaired failing validator dedup mixin test.

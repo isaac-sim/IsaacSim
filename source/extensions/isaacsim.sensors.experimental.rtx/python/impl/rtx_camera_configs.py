@@ -158,6 +158,12 @@ def _camera_vendor(config_path: str) -> str:
     and run through ``_VENDOR_DISPLAY_OVERRIDES`` to handle CamelCase folder
     names that should display with spaces (e.g. ``LeopardImaging`` -> ``"Leopard Imaging"``).
     Returns an empty string when *config_path* is not a conventional Isaac Sim asset path.
+
+    Args:
+        config_path: Registered camera asset path.
+
+    Returns:
+        Display vendor name.
     """
     parts = pathlib.Path(config_path).parts
     raw = parts[3] if len(parts) > 3 else ""
@@ -170,6 +176,12 @@ def _camera_prim_prefix(config_path: str) -> str:
     Derived from the USD file stem with hyphens and dots replaced by underscores
     so the result is a valid USD prim name. Each registered asset has a unique
     stem, so the resulting prefixes are also unique and stable across runs.
+
+    Args:
+        config_path: Registered camera asset path.
+
+    Returns:
+        Default stage prim path prefix.
     """
     return "/" + pathlib.Path(config_path).stem.replace("-", "_").replace(".", "_")
 

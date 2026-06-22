@@ -55,6 +55,9 @@ def open_dir(path: str | None) -> None:
     """Open ``path`` (or its parent, if it's a file) in the OS file explorer.
 
     Warns via ``carb.log_warn`` when the resolved path does not exist on disk.
+
+    Args:
+        path: Directory or file path to reveal.
     """
     if not path:
         carb.log_warn(f"{_LOG_TAG} open_dir called with empty path.")
@@ -76,6 +79,12 @@ def set_status(
     """Set a status label's text / color, optionally echoing to the terminal.
 
     Skips redundant updates when the label already shows the same text.
+
+    Args:
+        label: Label to update, or None to only emit terminal output.
+        text: Status text to display.
+        color: Label text color.
+        emit_terminal: Whether to print non-empty text to the terminal.
     """
     if label is not None:
         if label.text == text:

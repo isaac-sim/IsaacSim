@@ -15,13 +15,11 @@
 
 """Utilities for determining USD prim shape types in the Isaac Sim robot motion generation system."""
 
-from typing import Type
-
 # TODO: Does something in the core experimental API already do this?
 from isaacsim.core.experimental.objects import Capsule, Cone, Cube, Cylinder, Mesh, Plane, Shape, Sphere
 
 
-def get_shape_type(prim_path: str) -> Type[Shape]:
+def get_shape_type(prim_path: str) -> type[Shape]:
     """Return the supported Shape type for a prim path.
 
     Args:

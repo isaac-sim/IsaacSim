@@ -1,5 +1,5 @@
 [package]
-version = "1.2.3"
+version = "1.2.5"
 category = "Simulation"
 title = "Isaac Sim Asset Transformer"
 description = "Python-only extension providing asset transformation utilities"

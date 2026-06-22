@@ -15,6 +15,7 @@
 
 """About dialog extension and helper accessors."""
 
+from collections.abc import Callable
 from typing import Any
 
 import carb
@@ -71,6 +72,9 @@ def _format_plugin_tooltip(plugin: Any) -> str:
 
     Args:
         plugin: A ``carb._carb.PluginDesc`` (or a test fake matching its shape).
+
+    Returns:
+        Tooltip text containing the plugin description, interfaces, and library path.
     """
     description = (plugin.impl.description or "").strip()
     # ``"(none)"`` rather than an empty string so an interface-less plugin still shows
@@ -85,8 +89,15 @@ def _format_plugin_tooltip(plugin: Any) -> str:
     return "\n".join(lines)
 
 
-def _make_plugin_tooltip_fn(plugin: Any):
-    """Return a ``tooltip_fn`` callback that renders the plugin tooltip body."""
+def _make_plugin_tooltip_fn(plugin: Any) -> Callable[[], None]:
+    """Return a ``tooltip_fn`` callback that renders the plugin tooltip body.
+
+    Args:
+        plugin: Plugin descriptor used to format the tooltip body.
+
+    Returns:
+        Callback that builds the plugin tooltip UI.
+    """
     text = _format_plugin_tooltip(plugin)
 
     def _build() -> None:

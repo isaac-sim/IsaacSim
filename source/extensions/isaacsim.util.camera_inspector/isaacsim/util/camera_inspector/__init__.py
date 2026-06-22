@@ -17,4 +17,4 @@
 
 from .extension import *
 
-__all__: list[str] = []
+__all__ = []

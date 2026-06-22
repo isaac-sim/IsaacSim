@@ -13,7 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""generate_sensor_rigs.py — Discover sensors in robot USDs and update robot YAML configs.
+"""Discover sensors in robot USDs and update robot YAML configs.
 
 Two modes:
 
@@ -52,7 +52,7 @@ Usage
 
 import argparse
 import os
-import sys
+from typing import Any
 
 from isaacsim import SimulationApp
 
@@ -129,10 +129,10 @@ def _render_sensor_rig_yaml(entries: list) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _open_stage_for_yaml(yaml_path: str):
+def _open_stage_for_yaml(yaml_path: str) -> Any:
     import time
 
-    with open(yaml_path, "r") as f:
+    with open(yaml_path) as f:
         cfg = yaml.safe_load(f)
     asset_path = cfg.get("asset_path", "")
     if not asset_path:
@@ -172,7 +172,8 @@ def _print_sensor_table(entries: list) -> None:
 # ---------------------------------------------------------------------------
 
 
-def main():
+def main() -> None:
+    """Exercise main."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("yaml_files", nargs="+", help="Robot YAML file(s) to process")
     parser.add_argument("--list", action="store_true", help="Print discovered sensors only; do not write files")
@@ -206,7 +207,7 @@ def main():
             output_path = yaml_path
 
         try:
-            with open(yaml_path, "r") as f:
+            with open(yaml_path) as f:
                 robot_cfg = yaml.safe_load(f)
             robot_cfg.pop("sensor_rig", None)
             with open(output_path, "w") as f:

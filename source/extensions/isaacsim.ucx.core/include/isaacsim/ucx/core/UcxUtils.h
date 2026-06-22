@@ -69,14 +69,15 @@ enum class UcxReceiveResult
  * @brief Wait for a UCX request to complete with timeout.
  * @details
  * Polls the request status until it completes, fails, or the timeout expires.
- * If timeoutMs is g_kUcxInfiniteTimeout (UINT32_MAX), waits indefinitely until completion or failure.
+ * If timeoutMs is 0 or g_kUcxInfiniteTimeout (UINT32_MAX), waits indefinitely until
+ * completion or failure.
  *
  * The function uses a configurable polling interval which provides a balance
  * between responsiveness and CPU usage. The default interval (1ms) is suitable
  * for most real-time simulation scenarios.
  *
  * @param[in] request UCX request to wait for (must not be null)
- * @param[in] timeoutMs Timeout in milliseconds (g_kUcxInfiniteTimeout = infinite wait)
+ * @param[in] timeoutMs Timeout in milliseconds (0 or g_kUcxInfiniteTimeout = infinite wait)
  * @param[out] errorMessage String for storing error messages from checkError()
  * @param[in] pollIntervalUs Polling interval in microseconds (default: 1000)
  * @return UcxRequestWaitResult indicating the outcome:

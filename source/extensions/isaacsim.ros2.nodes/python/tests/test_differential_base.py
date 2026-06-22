@@ -13,9 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 differential base OmniGraph node."""
+"""Verify ROS 2 differential base command and odometry graphs.
+
+Covers Carter, Nova Carter, and scratch-built differential-drive setups.
+"""
 
 from copy import deepcopy
+from typing import Any
 
 import carb
 import omni.graph.core as og
@@ -38,10 +42,10 @@ from .common import (
 
 
 class TestRos2DifferentialBase(ROS2TestCase):
-    """Test suite for ros2 differential base."""
+    """Verify differential-drive command, TF, and odometry ROS 2 graphs."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh stage and ROS 2 node for differential-drive graph tests."""
         await super().setUp()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
@@ -55,8 +59,8 @@ class TestRos2DifferentialBase(ROS2TestCase):
 
         self.node = self.create_node("isaac_sim_test_diff_drive")
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Clear differential-drive callback state and the ROS 2 test node."""
         self.node = None
 
         # Reset class members
@@ -65,22 +69,42 @@ class TestRos2DifferentialBase(ROS2TestCase):
 
         await super().tearDown()
 
-    def spin(self):
+    def spin(self) -> None:
         """Spin the ROS2 node once with a timeout."""
         import rclpy
 
         rclpy.spin_once(self.node, timeout_sec=0.1)
 
-    def tf_callback(self, data):
-        """Handle tf callback."""
+    def tf_callback(self, data: Any) -> None:
+        """Handle tf callback.
+
+        Args:
+            data: Transform tree message.
+        """
         self._trans = data.transforms[-1]
 
-    def odom_callback(self, data):
-        """Handle odom callback."""
+    def odom_callback(self, data: Any) -> None:
+        """Handle odom callback.
+
+        Args:
+            data: Odometry message.
+        """
         self._odom_data = data.pose.pose
 
-    def move_cmd_msg(self, x, y, z, ax, ay, az):
-        """Create a move cmd msg message."""
+    def move_cmd_msg(self, x: Any, y: Any, z: Any, ax: Any, ay: Any, az: Any) -> Any:
+        """Create a move cmd msg message.
+
+        Args:
+            x: Linear x command.
+            y: Linear y command.
+            z: Linear z command.
+            ax: Angular x command.
+            ay: Angular y command.
+            az: Angular z command.
+
+        Returns:
+            Twist command message.
+        """
         from geometry_msgs.msg import Twist
 
         msg = Twist()
@@ -92,7 +116,7 @@ class TestRos2DifferentialBase(ROS2TestCase):
         msg.angular.z = az
         return msg
 
-    async def test_carter_differential_base(self):
+    async def test_carter_differential_base(self) -> None:
         """Test carter differential base."""
         if SimulationManager.get_active_physics_engine() == "newton":
             self.skipTest("Odometry node not yet supported by Newton backend")
@@ -234,10 +258,9 @@ class TestRos2DifferentialBase(ROS2TestCase):
 
         self._timeline.stop()
         self.spin()
-        pass
 
     # add carter and ROS topic from scratch
-    async def test_differential_base_scratch(self):
+    async def test_differential_base_scratch(self) -> None:
         """Test differential base scratch."""
         if SimulationManager.get_active_physics_engine() == "newton":
             self.skipTest("Odometry node not yet supported by Newton backend")
@@ -324,9 +347,8 @@ class TestRos2DifferentialBase(ROS2TestCase):
 
         self._timeline.stop()
         self.spin()
-        pass
 
-    async def test_nova_carter_differential_base(self):
+    async def test_nova_carter_differential_base(self) -> None:
         """Test nova carter differential base."""
         from geometry_msgs.msg import Twist
         from nav_msgs.msg import Odometry
@@ -473,9 +495,8 @@ class TestRos2DifferentialBase(ROS2TestCase):
 
         self._timeline.stop()
         self.spin()
-        pass
 
-    def check_pose(self, expected_trans, expected_odom, tolerance=1, delta=None):
+    def check_pose(self, expected_trans: Any, expected_odom: Any, tolerance: Any = 1, delta: Any = None) -> None:
         """Verify robot pose against expected transform and odometry values.
 
         Args:
@@ -485,7 +506,7 @@ class TestRos2DifferentialBase(ROS2TestCase):
             delta: Absolute tolerance for assertAlmostEqual (overrides tolerance).
         """
 
-        def _assert_close(actual, expected, msg=""):
+        def _assert_close(actual: Any, expected: Any, msg: Any = "") -> None:
             if delta is not None:
                 self.assertAlmostEqual(actual, expected, delta=delta, msg=msg)
             else:
@@ -516,8 +537,16 @@ class TestRos2DifferentialBase(ROS2TestCase):
                 _assert_close(odom_data.orientation.z, expected_odom[5])
                 _assert_close(odom_data.orientation.w, expected_odom[6])
 
-    def add_differential_drive(self, graph_path, robot_path):
-        """Add differential drive to the test scene."""
+    def add_differential_drive(self, graph_path: Any, robot_path: Any) -> Any:
+        """Add differential drive to the test scene.
+
+        Args:
+            graph_path: OmniGraph path to create.
+            robot_path: Robot prim path to control.
+
+        Returns:
+            Created graph and nodes.
+        """
         try:
             keys = og.Controller.Keys
             graph, nodes, _, _ = og.Controller.edit(

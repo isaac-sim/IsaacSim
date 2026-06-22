@@ -145,7 +145,13 @@ class CumotionWorldInterfaceExample:
     # --------------------------------------------------------------- per-tick
 
     def step(self, dt: float) -> None:
-        """Per-physics-step update.  No-op when no world binding has been built yet."""
+        """Run the per-physics-step world interface update.
+
+        No-op when no world binding has been built yet.
+
+        Args:
+            dt: Physics time step in seconds.
+        """
         if self._world_binding is None:
             return
         self.update(dt)

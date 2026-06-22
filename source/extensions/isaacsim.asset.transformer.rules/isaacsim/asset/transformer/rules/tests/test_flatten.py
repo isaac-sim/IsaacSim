@@ -350,7 +350,13 @@ class TestFlattenRule(omni.kit.test.AsyncTestCase):
         changed_identifiers: list[str] = []
 
         def on_layers_changed(notice: Sdf.Notice.LayersDidChange, sender: Sdf.Layer) -> None:
-            """Record every layer reported as changed during process_rule()."""
+            """Record every layer reported as changed during process_rule().
+
+            Args:
+                notice: USD notice containing the set of changed layers.
+                sender: Layer sender supplied by USD notice dispatch.
+
+            """
             for layer in notice.GetLayers():
                 if layer is None:
                     continue

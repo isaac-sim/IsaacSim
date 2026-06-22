@@ -1,5 +1,5 @@
 [package]
-version = "1.18.11"
+version = "1.18.13"
 category = "Simulation"
 title = "ROS 2 Nodes"
 description = "The ROS 2 Nodes extension provides OmniGraph nodes for ROS 2 communication. It contains publisher, subscriber, and service nodes that can be used in Action graphs to interface with ROS 2 systems. This extension depends on the isaacsim.ros2.core extension for underlying ROS 2 functionality."

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from typing import Any
 from unittest.mock import patch
 
 import omni.ui as ui
@@ -43,7 +44,7 @@ MENU_PATH = f"{TeleopUIExtension.MENU_GROUP}/{TeleopUIExtension.WINDOW_NAME}"
 class TestTeleopUIIKPinkQPFilter(MenuUITestCase):
     """Validate that the IK panel hides PINK QP solver backends that cannot be imported."""
 
-    async def _open_window(self, tmp_dir: str):
+    async def _open_window(self, tmp_dir: str) -> Any:
         await self.menu_click_with_retry(MENU_PATH, window_name=WINDOW_TITLE)
         window = ui.Workspace.get_window(WINDOW_TITLE)
         self.assertIsNotNone(window, "Teleop window should exist after opening via the menu")
@@ -53,7 +54,7 @@ class TestTeleopUIIKPinkQPFilter(MenuUITestCase):
         await self.wait_n_frames(5)
         return window
 
-    async def test_dropdown_lists_only_available_pink_qp_solvers(self):
+    async def test_dropdown_lists_only_available_pink_qp_solvers(self) -> None:
         """The exposed list must match each solver's reported availability."""
         window = None
         with tempfile.TemporaryDirectory(prefix="teleop_ui_ik_") as tmp_dir:
@@ -95,7 +96,7 @@ class TestTeleopUIIKPinkQPFilter(MenuUITestCase):
                     window._last_profile_path = os.path.join(tmp_dir, "last_profile.yaml")
                     window.destroy()
 
-    async def test_combo_tooltip_summarises_hidden_solvers(self):
+    async def test_combo_tooltip_summarises_hidden_solvers(self) -> None:
         """When solvers are filtered out, the combo tooltip must enumerate them."""
         window = None
         with tempfile.TemporaryDirectory(prefix="teleop_ui_ik_") as tmp_dir:
@@ -126,7 +127,7 @@ class TestTeleopUIIKPinkQPFilter(MenuUITestCase):
                     window._last_profile_path = os.path.join(tmp_dir, "last_profile.yaml")
                     window.destroy()
 
-    async def test_panel_survives_when_all_pink_qp_solvers_unavailable(self):
+    async def test_panel_survives_when_all_pink_qp_solvers_unavailable(self) -> None:
         """If no QP backend imports, the panel must not raise on init or callbacks."""
         window = None
         with tempfile.TemporaryDirectory(prefix="teleop_ui_ik_") as tmp_dir:

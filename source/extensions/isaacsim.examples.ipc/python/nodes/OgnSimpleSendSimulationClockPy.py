@@ -45,12 +45,23 @@ class OgnSimpleSendSimulationClockPy:
 
     @staticmethod
     def internal_state() -> OgnSimpleSendSimulationClockPyInternalState:
-        """Create per-instance state for the node."""
+        """Create per-instance state for the node.
+
+        Returns:
+            Per-instance TCP client state.
+        """
         return OgnSimpleSendSimulationClockPyInternalState()
 
     @staticmethod
     def compute(db: object) -> bool:
-        """Send one simulation clock value without changing graph behavior."""
+        """Send one simulation clock value without changing graph behavior.
+
+        Args:
+            db: OmniGraph database object for the current node evaluation.
+
+        Returns:
+            True when the clock value is sent, otherwise False.
+        """
         state = db.per_instance_state
         uri = db.inputs.uri
         if state.sock is not None and state.uri != uri:

@@ -1,4 +1,14 @@
 # Changelog
+
+## [1.4.4] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
+## [1.4.3] - 2026-06-03
+### Fixed
+- `waitForRequestWithTimeout` now treats `timeoutMs = 0` as "wait indefinitely", matching the documented OGN-node default (`"If 0, waits indefinitely"`). Previously only `g_kUcxInfiniteTimeout` (`UINT32_MAX`) was treated as the infinite sentinel; `timeoutMs = 0` fell through the polling loop on the first iteration and returned "Request timed out", causing intermittent send-side timeouts in any UCX OGN node using the default value.
+- Added a `TEST_CASE` covering `timeoutMs = 0` explicitly; renamed the existing `"infinite timeout (zero)"` case to `"infinite timeout (UINT32_MAX sentinel)"` since it actually passed `UINT32_MAX`.
+
 ## [1.4.2] - 2026-05-14
 ### Changed
 - Add return type and docstring annotations to Python binding tests to satisfy ruff lint rules.

@@ -36,6 +36,11 @@ class FollowTargetExtension(omni.ext.IExt):
     """
 
     def on_startup(self, ext_id: str) -> None:
+        """Register the Follow Target example with the examples browser.
+
+        Args:
+            ext_id: Extension identifier provided by Kit.
+        """
         self.example_name = "Follow Target (cuMotion)"
         self.category = "Manipulation"
 
@@ -62,6 +67,7 @@ class FollowTargetExtension(omni.ext.IExt):
         )
 
     def on_shutdown(self) -> None:
+        """Deregister the Follow Target example from the examples browser."""
         get_browser_instance().deregister_example(name=self.example_name, category=self.category)
 
 
@@ -69,12 +75,17 @@ class FollowTargetUI(BaseSampleUITemplate):
     """UI for the Follow Target example.
 
     Provides task control buttons (start/stop following, add/remove obstacles).
+
+    Args:
+        *args: Variable length argument list passed to the parent class.
+        **kwargs: Additional keyword arguments passed to the parent class.
     """
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
 
     def build_extra_frames(self) -> None:
+        """Build the task-control frame for the Follow Target UI."""
         extra_stacks = self.get_extra_frames_handle()
         self.task_ui_elements = {}
 
@@ -103,6 +114,7 @@ class FollowTargetUI(BaseSampleUITemplate):
             self.task_ui_elements["Remove Obstacle"].enabled = False
 
     def post_reset_button_event(self) -> None:
+        """Reset task-control button states after reset."""
         self.task_ui_elements["Follow Target"].enabled = True
         self.task_ui_elements["Remove Obstacle"].enabled = False
         self.task_ui_elements["Add Obstacle"].enabled = True
@@ -110,10 +122,12 @@ class FollowTargetUI(BaseSampleUITemplate):
             self.task_ui_elements["Follow Target"].text = "START"
 
     def post_load_button_event(self) -> None:
+        """Enable task controls after scene load."""
         self.task_ui_elements["Follow Target"].enabled = True
         self.task_ui_elements["Add Obstacle"].enabled = True
 
     def post_clear_button_event(self) -> None:
+        """Disable task controls after scene clear."""
         self.task_ui_elements["Follow Target"].enabled = False
         self.task_ui_elements["Remove Obstacle"].enabled = False
         self.task_ui_elements["Add Obstacle"].enabled = False
@@ -121,6 +135,7 @@ class FollowTargetUI(BaseSampleUITemplate):
             self.task_ui_elements["Follow Target"].text = "START"
 
     def build_task_controls_ui(self) -> None:
+        """Build controls for following a target and managing obstacles."""
         with ui.VStack(spacing=5):
             self.task_ui_elements["Follow Target"] = state_btn_builder(
                 label="Follow Target",

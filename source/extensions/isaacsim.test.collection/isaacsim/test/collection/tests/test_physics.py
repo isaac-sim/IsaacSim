@@ -30,7 +30,7 @@ from pxr import Gf, Sdf, UsdGeom, UsdPhysics
 class TestPhysics(omni.kit.test.AsyncTestCase):
     """Tests for physics simulation behavior and USD integration."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment with new stage and physics settings."""
         await omni.usd.get_context().new_stage_async()
         self._stage = omni.usd.get_context().get_stage()
@@ -40,7 +40,7 @@ class TestPhysics(omni.kit.test.AsyncTestCase):
         for _ in range(10):
             await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test environment and wait for assets to load."""
         for _ in range(10):
             await omni.kit.app.get_app().next_update_async()
@@ -48,7 +48,7 @@ class TestPhysics(omni.kit.test.AsyncTestCase):
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_usd_updates(self):
+    async def test_usd_updates(self) -> None:
         """Test that physics updates propagate to USD when enabled."""
         carb.settings.get_settings().set_int("physics/updateToUsd", True)
         # Create cube geometry with collision and rigid body physics
@@ -74,7 +74,7 @@ class TestPhysics(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(position[2], 25.0, 0)
         carb.settings.get_settings().set_int("physics/updateToUsd", True)
 
-    async def test_rigid_body(self):
+    async def test_rigid_body(self) -> None:
         """Test rigid body physics equations of motion under gravity."""
         dt = 1.0 / self._physics_rate
 
@@ -122,7 +122,7 @@ class TestPhysics(omni.kit.test.AsyncTestCase):
             time_elapsed += dt
         omni.timeline.get_timeline_interface().stop()
 
-    async def test_reparenting(self):
+    async def test_reparenting(self) -> None:
         """Test that prim reparenting works during simulation."""
         timeline = omni.timeline.get_timeline_interface()
         omni.kit.commands.execute("CreatePrim", prim_type="Xform")
@@ -133,7 +133,7 @@ class TestPhysics(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
         await omni.usd.get_context().new_stage_async()
 
-    async def test_stage_up_axis(self):
+    async def test_stage_up_axis(self) -> None:
         """Test gravity direction changes with stage up axis setting."""
         timeline = omni.timeline.get_timeline_interface()
         # Make a new stage Z up
@@ -169,7 +169,7 @@ class TestPhysics(omni.kit.test.AsyncTestCase):
         position = positions.numpy()[0]
         self.assertAlmostEqual(position[1], -4.9867, delta=0.01)
 
-    async def test_stage_units(self):
+    async def test_stage_units(self) -> None:
         """Test physics behavior is consistent across different stage units."""
         timeline = omni.timeline.get_timeline_interface()
         # Make a new stage Z up
@@ -205,7 +205,7 @@ class TestPhysics(omni.kit.test.AsyncTestCase):
         position = positions.numpy()[0]
         self.assertAlmostEqual(position[2], -4.9867, delta=0.01)
 
-    async def test_articulation_reference(self):
+    async def test_articulation_reference(self) -> None:
         """Test articulation maintains consistent pose across timeline resets."""
         assets_root_path = await get_assets_root_path_async()
         asset_path = assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd"
@@ -235,7 +235,7 @@ class TestPhysics(omni.kit.test.AsyncTestCase):
 
         self.assertAlmostEqual(np.linalg.norm(trans_a - trans_b), 0, delta=0.03)
 
-    async def test_articulation_drive(self):
+    async def test_articulation_drive(self) -> None:
         """Test articulation drive behavior with and without articulation root."""
         timeline = omni.timeline.get_timeline_interface()
         extension_path = get_extension_path("isaacsim.test.collection")

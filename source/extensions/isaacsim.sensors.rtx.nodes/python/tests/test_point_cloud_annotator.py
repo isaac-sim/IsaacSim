@@ -13,16 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the OgnIsaacExtractRTXSensorPointCloud node.
+"""Verifies the RTX sensor point cloud annotator converts spherical sensor output to Cartesian coordinates and passes Cartesian data through unchanged."""
 
-Validates that the node correctly converts GenericModelOutput data from
-spherical to Cartesian coordinates and wires auxiliary outputs based on
-what is available in the GMO buffer.  Uses a custom Replicator Writer
-that asserts on each frame of output, with LidarSensor managing the
-render product.
-"""
+from typing import Any
 
-import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
 import omni.kit.test
@@ -44,9 +38,14 @@ class TestIsaacExtractRTXSensorPointCloud(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
 
     class _PointCloudTestWriter(Writer):
-        """Writer that validates extracted point cloud against raw GMO each frame."""
+        """Writer that validates extracted point cloud against raw GMO each frame.
 
-        def __init__(self, test_instance=None, coords_type=None):
+        Args:
+            test_instance: Test case used for assertions.
+            coords_type: Coordinate type expected in the GMO buffer.
+        """
+
+        def __init__(self, test_instance: Any = None, coords_type: Any = None) -> None:
             self.data_structure = "renderProduct"
             self.annotators = [
                 rep.annotators.get("GenericModelOutput"),
@@ -57,7 +56,7 @@ class TestIsaacExtractRTXSensorPointCloud(omni.kit.test.AsyncTestCase):
             self.num_empty_frames = 0
             self.valid_frame_count = 0
 
-        def write(self, data):
+        def write(self, data: Any) -> None:
             if "renderProducts" not in data:
                 return
             for _rp_name, rp_data in data["renderProducts"].items():
@@ -101,10 +100,16 @@ class TestIsaacExtractRTXSensorPointCloud(omni.kit.test.AsyncTestCase):
                 if self._coords_type == "SPHERICAL":
                     self._validate_spherical_to_cartesian(gmo, pc_points, n)
                 elif self._coords_type == "CARTESIAN":
-                    self._validate_cartesian_passthrough(pc_points, n)
+                    self._validate_cartesian_passthrough(gmo, pc_points, n)
 
-        def _validate_spherical_to_cartesian(self, gmo, pc_points, n):
-            """Validate the node's spherical-to-Cartesian conversion against reference."""
+        def _validate_spherical_to_cartesian(self, gmo: Any, pc_points: Any, n: Any) -> None:
+            """Validate the node's spherical-to-Cartesian conversion against reference.
+
+            Args:
+                gmo: GenericModelOutput buffer with spherical coordinate arrays.
+                pc_points: Cartesian point cloud produced by the annotator.
+                n: Number of points to validate.
+            """
             az = np.ctypeslib.as_array(gmo.x, shape=(n,)).copy()
             el = np.ctypeslib.as_array(gmo.y, shape=(n,)).copy()
             dist = np.ctypeslib.as_array(gmo.z, shape=(n,)).copy()
@@ -125,10 +130,21 @@ class TestIsaacExtractRTXSensorPointCloud(omni.kit.test.AsyncTestCase):
             np.testing.assert_allclose(pc_points[:, 1], expected_y, atol=ABS_TOL, err_msg="Y mismatch")
             np.testing.assert_allclose(pc_points[:, 2], expected_z, atol=ABS_TOL, err_msg="Z mismatch")
 
-        def _validate_cartesian_passthrough(self, pc_points, n):
-            """Validate Cartesian data is passed through with non-zero content."""
+        def _validate_cartesian_passthrough(self, gmo: Any, pc_points: Any, n: Any) -> None:
+            """Validate Cartesian data is passed through unchanged (no coordinate conversion).
+
+            Args:
+                gmo: GenericModelOutput buffer with Cartesian coordinate arrays.
+                pc_points: Cartesian point cloud produced by the annotator.
+                n: Number of points expected in the cloud.
+            """
             self._test.assertEqual(pc_points.shape[0], n)
-            self._test.assertGreater(np.count_nonzero(pc_points), 0, "Point cloud is all zeros")
+            x = np.ctypeslib.as_array(gmo.x, shape=(n,)).copy()
+            y = np.ctypeslib.as_array(gmo.y, shape=(n,)).copy()
+            z = np.ctypeslib.as_array(gmo.z, shape=(n,)).copy()
+            np.testing.assert_allclose(pc_points[:, 0], x, atol=ABS_TOL, err_msg="X mismatch (cartesian passthrough)")
+            np.testing.assert_allclose(pc_points[:, 1], y, atol=ABS_TOL, err_msg="Y mismatch (cartesian passthrough)")
+            np.testing.assert_allclose(pc_points[:, 2], z, atol=ABS_TOL, err_msg="Z mismatch (cartesian passthrough)")
 
     # ------------------------------------------------------------------
     # Test lifecycle
@@ -136,13 +152,15 @@ class TestIsaacExtractRTXSensorPointCloud(omni.kit.test.AsyncTestCase):
 
     _writer_registered = False
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Register the custom writer that compares GMO and point-cloud annotator output."""
         super().setUp()
         if not TestIsaacExtractRTXSensorPointCloud._writer_registered:
             WriterRegistry.register(TestIsaacExtractRTXSensorPointCloud._PointCloudTestWriter)
             TestIsaacExtractRTXSensorPointCloud._writer_registered = True
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Run the base async-test cleanup after point-cloud writer assertions."""
         super().tearDown()
 
     # ------------------------------------------------------------------
@@ -150,7 +168,11 @@ class TestIsaacExtractRTXSensorPointCloud(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
 
     async def _run_sensor_test(self, coords_type: str) -> None:
-        """Create a lidar, attach the comparison writer, and run simulation."""
+        """Create a lidar, attach the comparison writer, and run simulation.
+
+        Args:
+            coords_type: Coordinate type used by the lidar output.
+        """
         await stage_utils.create_new_stage_async()
         await ViewportManager.wait_for_viewport_async()
 
@@ -165,7 +187,7 @@ class TestIsaacExtractRTXSensorPointCloud(omni.kit.test.AsyncTestCase):
             aux_output_level="BASIC",
         )
         sensor = LidarSensor(lidar, annotators=["generic-model-output"])
-        sensor.attach_writer(
+        writer = sensor.attach_writer(
             "_PointCloudTestWriter",
             test_instance=self,
             coords_type=coords_type,
@@ -179,8 +201,6 @@ class TestIsaacExtractRTXSensorPointCloud(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
         timeline.stop()
 
-        writer = sensor._writers["_PointCloudTestWriter"]
-
         self.assertGreater(writer.valid_frame_count, 0, f"No valid frames (coords_type={coords_type})")
 
         del sensor
@@ -190,10 +210,10 @@ class TestIsaacExtractRTXSensorPointCloud(omni.kit.test.AsyncTestCase):
     # Tests
     # ------------------------------------------------------------------
 
-    async def test_spherical_to_cartesian(self):
+    async def test_spherical_to_cartesian(self) -> None:
         """Node correctly converts spherical GMO data to Cartesian each frame."""
         await self._run_sensor_test("SPHERICAL")
 
-    async def test_cartesian_passthrough(self):
+    async def test_cartesian_passthrough(self) -> None:
         """Node handles Cartesian GMO data each frame."""
         await self._run_sensor_test("CARTESIAN")

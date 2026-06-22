@@ -82,7 +82,9 @@ from pxr import Gf, Sdf, UsdGeom
 global_stress_range = [np.inf, 0.0]
 
 
-def set_vertex_display_colors(deformable_prim, *, stress_range: tuple[float, float] | None = None):
+def set_vertex_display_colors(
+    deformable_prim: DeformablePrim, *, stress_range: tuple[float, float] | None = None
+) -> None:
     """Compute and visualize per-vertex von Mises stress as a color gradient."""
     geom_prim = UsdGeom.TetMesh(prim_utils.get_prim_at_path(deformable_prim.simulation_mesh_paths[0]))
     surface_indices = UsdGeom.TetMesh.ComputeSurfaceFaces(geom_prim)

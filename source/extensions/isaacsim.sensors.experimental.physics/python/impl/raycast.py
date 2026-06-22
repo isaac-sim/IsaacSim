@@ -88,6 +88,8 @@ class Raycast(_PhysicsSensorAuthoring):
         positions: World-frame positions (shape ``(N, 3)``). Mutually exclusive with ``translations``.
         translations: Local-frame translations (shape ``(N, 3)``).
         orientations: Orientations as ``wxyz`` quaternions (shape ``(N, 4)``).
+        scales: Local scales forwarded to ``XformPrim``.
+        reset_xform_op_properties: Whether to reset existing xform op properties.
         min_range: Minimum detection range in stage length units. When wrapping
             an existing prim, applied as an override; ``None`` leaves the prim unchanged.
         max_range: Maximum detection range in stage length units. When wrapping
@@ -174,7 +176,21 @@ class Raycast(_PhysicsSensorAuthoring):
         report_hit_prim_paths: bool | None = None,
         **_: Any,
     ) -> IsaacSensorSchema.IsaacRaycastSensor:
-        """Create a new IsaacRaycastSensor prim with default ray attributes applied."""
+        """Create a new IsaacRaycastSensor prim with default ray attributes applied.
+
+        Args:
+            min_range: Minimum detection range in stage length units.
+            max_range: Maximum detection range in stage length units.
+            ray_origins: Per-ray origin translations as Nx3 array.
+            ray_directions: Per-ray direction vectors as Nx3 array.
+            ray_time_offsets: Per-ray time offsets in seconds.
+            output_frame: Output coordinate frame.
+            report_hit_prim_paths: Whether to resolve hit prim USD paths.
+            **_: Additional keyword arguments ignored by this hook.
+
+        Returns:
+            The schema-wrapped raycast sensor prim.
+        """
         if ray_origins is None or ray_directions is None:
             raise ValueError(
                 "Raycast.create requires both 'ray_origins' and 'ray_directions' "
@@ -231,7 +247,18 @@ class Raycast(_PhysicsSensorAuthoring):
         report_hit_prim_paths: bool | None = None,
         **_: Any,
     ) -> None:
-        """Apply user-provided attribute overrides when wrapping an existing prim."""
+        """Apply user-provided attribute overrides when wrapping an existing prim.
+
+        Args:
+            min_range: Minimum detection range in stage length units, or ``None`` to leave unchanged.
+            max_range: Maximum detection range in stage length units, or ``None`` to leave unchanged.
+            ray_origins: Per-ray origin translations as Nx3 array, or ``None`` to leave unchanged.
+            ray_directions: Per-ray direction vectors as Nx3 array, or ``None`` to leave unchanged.
+            ray_time_offsets: Per-ray time offsets in seconds, or ``None`` to leave unchanged.
+            output_frame: Output coordinate frame, or ``None`` to leave unchanged.
+            report_hit_prim_paths: Whether to resolve hit prim USD paths, or ``None`` to leave unchanged.
+            **_: Additional keyword arguments ignored by this hook.
+        """
         if min_range is not None:
             self._isaac_sensor_prim.CreateMinRangeAttr(min_range)
         if max_range is not None:

@@ -52,6 +52,7 @@ class TestTeleopUIFloatingController(MenuUITestCase):
     """Drive the floating controller from debug markers in the live Teleop window."""
 
     async def tearDown(self) -> None:
+        """Stop the timeline and release floating controller fixtures."""
         omni.timeline.get_timeline_interface().stop()
         await super().tearDown()
 
@@ -66,13 +67,24 @@ class TestTeleopUIFloatingController(MenuUITestCase):
         self._define_dynamic_cube(_RIGHT_CUBE, _RIGHT_INITIAL)
 
     def _define_dynamic_cube(self, path: str, position: tuple[float, float, float]) -> None:
-        """Create a small dynamic rigid-body cube through experimental core wrappers."""
+        """Create a small dynamic rigid-body cube through experimental core wrappers.
+
+        Args:
+            path: Cube prim path.
+            position: Initial cube position.
+        """
         Cube(path, sizes=0.15, positions=position)
         GeomPrim(path, apply_collision_apis=True)
         RigidPrim(path, masses=[1.0])
 
     def _configure_floating_side(self, window, side: str, prim_path: str) -> None:  # noqa: ANN001
-        """Configure and enable one side through the live floating panel."""
+        """Configure and enable one side through the live floating panel.
+
+        Args:
+            window: Teleop window containing the floating panel.
+            side: Controller side to configure.
+            prim_path: Rigid-body prim path to track.
+        """  # noqa: DOC107
         panel = window._floating_panel
         widgets = panel._widgets[side]
         widgets["path"].model.set_value(prim_path)
@@ -87,7 +99,15 @@ class TestTeleopUIFloatingController(MenuUITestCase):
         self.assertTrue(panel._desired_enabled[side], f"{side} floating side should be enabled")
 
     def _runtime_position_x(self, window, side: str) -> float:  # noqa: ANN001
-        """Read the live runtime rigid-body x position for a side."""
+        """Read the live runtime rigid-body x position for a side.
+
+        Args:
+            window: Teleop window containing the floating controller.
+            side: Controller side to inspect.
+
+        Returns:
+            Runtime x position, or negative infinity if the handle is missing.
+        """  # noqa: DOC107
         controller = window._floating_controller
         handle = controller._left_rigid_prim if side == "left" else controller._right_rigid_prim
         if handle is None:

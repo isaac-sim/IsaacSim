@@ -13,13 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test synchronization between TF and camera timestamps in ROS2 bridge."""
+"""Verifies that ROS 2 TF and camera image messages published from a zero-delay Isaac Sim graph carry synchronized simulation timestamps. Measures timestamp deltas after startup settling and fails on multi-frame ordering delays."""
 
 import argparse
 import logging
 import os
 import time
 from collections import deque
+from typing import Any
 
 import numpy as np
 from isaacsim import SimulationApp
@@ -71,7 +72,7 @@ tf_queue = deque()
 img_queue = deque()
 
 
-def tf_callback(msg):
+def tf_callback(msg: Any) -> None:
     """Handle incoming TF messages and record their timestamps."""
     global tf_msg, tf_recv_time, tf_recv_count
     tf_msg = msg
@@ -87,7 +88,7 @@ def tf_callback(msg):
     )
 
 
-def img_callback(msg):
+def img_callback(msg: Any) -> None:
     """Handle incoming image messages and record their timestamps."""
     global img_msg, img_recv_time, img_recv_count
     img_msg = msg
@@ -102,7 +103,7 @@ def img_callback(msg):
     )
 
 
-def clear_message_state():
+def clear_message_state() -> None:
     """Reset all message state and clear queues."""
     global tf_msg, img_msg, tf_recv_time, img_recv_time
     tf_msg = None
@@ -113,7 +114,9 @@ def clear_message_state():
     img_queue.clear()
 
 
-def collect_latest_pair(max_wait_steps=20):
+def collect_latest_pair(
+    max_wait_steps: int = 20,
+) -> tuple[int, int, Any, Any, float, float, int, float, int, int] | None:
     """Collect the latest TF and image message pair by spinning the ROS node."""
     wait_count = 0
     spin_start = time.perf_counter()

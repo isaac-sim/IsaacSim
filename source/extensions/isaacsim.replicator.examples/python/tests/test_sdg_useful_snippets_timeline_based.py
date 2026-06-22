@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verify timeline-based snippets for sensor-rate capture and event subscription cleanup."""
+
 import tempfile
+from typing import Any
 
 import carb.settings
 import omni.kit
@@ -23,7 +26,10 @@ from isaacsim.test.utils.file_validation import validate_folder_contents
 
 
 class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Runs fixed-rate writer/annotator capture and timeline, physics, render, and app event checks."""
+
+    async def setUp(self) -> None:
+        """Create a clean stage and save render and timeline settings changed by these snippets."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
@@ -33,7 +39,8 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         self.original_timeline_looping = timeline.is_looping()
         self.original_timeline_end_time = timeline.get_end_time()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Restore timeline and render settings, close the stage, and wait for pending loads."""
         # Set the timeline to the original states after the test
         timeline = omni.timeline.get_timeline_interface()
         timeline.stop()
@@ -48,9 +55,8 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
         carb.settings.get_settings().set("rtx/post/dlss/execMode", self.original_dlss_exec_mode)
 
-    async def test_sdg_snippet_custom_fps_writer_annotator(self):
-        import os
-
+    async def test_sdg_snippet_custom_fps_writer_annotator(self) -> None:
+        """Capture RGB writer frames at a 10 Hz sensor rate on a 100 Hz fixed-step timeline."""
         import carb.settings
         import omni.kit.app
         import omni.replicator.core as rep
@@ -69,7 +75,12 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         out_dir_rgb = tempfile.mkdtemp(prefix="test_writer_fps_rgb_")
         print(f"Output directory: {out_dir_rgb}")
 
-        async def run_custom_fps_example_async(duration_seconds):
+        async def run_custom_fps_example_async(duration_seconds: Any) -> None:
+            """Enable the render product only at sensor ticks while reading depth annotator data.
+
+            Args:
+                duration_seconds: Timeline duration to simulate.
+            """
             # Create a new stage
             await omni.usd.get_context().new_stage_async()
 
@@ -177,7 +188,8 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         folder_contents_success = validate_folder_contents(path=out_dir_rgb, expected_counts={"png": NUM_CAPTURES})
         self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {out_dir_rgb}")
 
-    async def test_sdg_snippet_subscribers_and_events(self):
+    async def test_sdg_snippet_subscribers_and_events(self) -> None:
+        """Subscribe to timeline, physics, stage-render, and app-update events and verify cleanup."""
         import time
 
         import carb.eventdispatcher
@@ -214,26 +226,26 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         # Print the captured events
         VERBOSE = False
 
-        async def run_subscribers_and_events_async():
-            def on_timeline_event(event: carb.eventdispatcher.Event):
+        async def run_subscribers_and_events_async() -> None:
+            def on_timeline_event(event: carb.eventdispatcher.Event) -> None:
                 nonlocal timeline_events
                 timeline_events.append(event)
                 if VERBOSE:
                     print(f"  [timeline][{len(timeline_events)}] {event}")
 
-            def on_physics_step(dt: float, context):
+            def on_physics_step(dt: float, context: Any) -> None:
                 nonlocal physics_events
                 physics_events.append(dt)
                 if VERBOSE:
                     print(f"  [physics][{len(physics_events)}] dt={dt}")
 
-            def on_stage_render_event(event: carb.eventdispatcher.Event):
+            def on_stage_render_event(event: carb.eventdispatcher.Event) -> None:
                 nonlocal stage_render_events
                 stage_render_events.append(event.event_name)
                 if VERBOSE:
                     print(f"  [stage render][{len(stage_render_events)}] {event.event_name}")
 
-            def on_app_update(event: carb.eventdispatcher.Event):
+            def on_app_update(event: carb.eventdispatcher.Event) -> None:
                 nonlocal app_update_events
                 app_update_events.append(event.event_name)
                 if VERBOSE:

@@ -1,4 +1,9 @@
 # Changelog
+
+## [2.2.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [2.2.0] - 2026-04-21
 ### Added
 - Add `IsaacRaycastSensor` to recognized sensor types for icon display

@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.6.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [3.6.1] - 2026-05-22
 ### Changed
 - Info paragraphs to prioritize cuMotion over Lula.

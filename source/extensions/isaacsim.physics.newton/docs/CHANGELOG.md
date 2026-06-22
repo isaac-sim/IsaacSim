@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
+## [0.8.0] - 2026-06-05
+### Changed
+- Upgraded Newton pip package from 1.2.0 to 1.2.1
+
 ## [0.7.14] - 2026-05-27
 ### Added
 - Perform device check before running simulation in simulation_manager to prevent double initialization when device changes

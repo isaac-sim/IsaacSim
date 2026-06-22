@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verify deformable SDG captures triggered by simulated asset drops against golden outputs."""
+
 import json
 import tempfile
 
@@ -25,17 +27,20 @@ from isaacsim.test.utils.image_comparison import compare_images_in_directories
 
 
 class TestSDGDeformables(omni.kit.test.AsyncTestCase):
+    """Runs the deformable-object drop workflow and validates RGB and semantic label data."""
 
     RGB_MEAN_DIFF_TOLERANCE = 5
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Create a clean stage and save render and physics-device settings changed by the test."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
         self.original_dlss_exec_mode = carb.settings.get_settings().get("rtx/post/dlss/execMode")
         self.original_physics_sim_device = SimulationManager.get_device()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Close the stage, wait for pending loads, and restore render and physics-device settings."""
         omni.usd.get_context().close_stage()
         await omni.kit.app.get_app().next_update_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
@@ -45,7 +50,8 @@ class TestSDGDeformables(omni.kit.test.AsyncTestCase):
         # Make sure to reset the physics sim device to the original state for the following tests
         SimulationManager.set_physics_sim_device(self.original_physics_sim_device)
 
-    async def test_sdg_snippet_deformables(self):
+    async def test_sdg_snippet_deformables(self) -> None:
+        """Drop deformable YCB assets into a crate and capture frames when each mesh crosses a height."""
         import os
         import random
 
@@ -77,7 +83,7 @@ class TestSDGDeformables(omni.kit.test.AsyncTestCase):
             ("large_marker", 5, "/Isaac/Props/YCB/Axis_Aligned/040_large_marker.usd", 9_000_000, 0.5),
         ]
 
-        async def run_example_async(assets_config: list[tuple[str, int, str, float, float]]):
+        async def run_example_async(assets_config: list[tuple[str, int, str, float, float]]) -> None:
             await omni.usd.get_context().new_stage_async()
             assets_root_path = await get_assets_root_path_async()
             rng = random.Random(RNG_SEED)

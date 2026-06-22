@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.6.6] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.6.5] - 2026-05-24
 ### Fixed
 - `GetSimulatorFeatures` advertises the subset of constants present in the installed `simulation_interfaces` instead of returning an empty list when a constant is missing.

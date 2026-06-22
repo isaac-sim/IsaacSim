@@ -63,7 +63,12 @@ _OVERVIEW = (
 
 
 class InfoPanel:
-    """Renders the static header / overview text for the extension window."""
+    """Static header and overview text for the extension window.
+
+    Args:
+        ext_id: Owning extension identifier.
+        source_file: Path to the source file used for UI header setup.
+    """
 
     def __init__(self, ext_id: str, source_file: str) -> None:
         self._ext_id = ext_id

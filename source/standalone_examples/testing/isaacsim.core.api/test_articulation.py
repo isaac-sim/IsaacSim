@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test articulation root orientation, determinism, and tensor API handles."""
+"""Verifies articulation root orientation, deterministic Franka convergence, and tensor API handle validity across physics callbacks in standalone SimulationApp runs."""
 
 from isaacsim import SimulationApp
 
@@ -41,7 +41,7 @@ def setup_clean_stage() -> None:
         simulation_app.update()
 
 
-def test_articulation_root():
+def test_articulation_root() -> bool:
     """Test articulation root orientation bug fix."""
     print("Running test_articulation_root...")
     setup_clean_stage()
@@ -68,13 +68,13 @@ def test_articulation_root():
     return True
 
 
-def test_articulation_determinism():
+def test_articulation_determinism() -> bool:
     """Test Franka articulation convergence determinism."""
     print("Running test_articulation_determinism...")
 
     assets_root_path = get_assets_root_path()
 
-    def test_franka_slow_convergence():
+    def test_franka_slow_convergence() -> bool:
         setup_clean_stage()
         robot_prim_path = "/panda"
         add_reference_to_stage(
@@ -148,7 +148,7 @@ def test_articulation_determinism():
     return True
 
 
-def test_tensor_api_handles():
+def test_tensor_api_handles() -> bool:
     """Test tensor API handles with physics callbacks."""
     print("Running test_tensor_api_handles...")
     setup_clean_stage()
@@ -162,7 +162,7 @@ def test_tensor_api_handles():
 
     velocities = []
 
-    def step_callback_1(step_size, context):
+    def step_callback_1(step_size: float, context: object) -> None:
         b = articulated_system_1.get_joint_velocities()
         velocities.append(b)
 

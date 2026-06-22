@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the deprecated CreateConveyorBelt command."""
+"""Verifies the deprecated CreateConveyorBelt command. Covers conveyor prim creation with and without physics, plus convex hull collision setup for mesh-backed conveyors."""
 
 import omni.kit.commands
 import omni.kit.test
@@ -79,7 +79,8 @@ class TestCreateConveyorBeltCommand(omni.kit.test.AsyncTestCase):
         self.assertFalse(cube_prim.HasAPI(UsdPhysics.MeshCollisionAPI))
 
     async def test_create_conveyor_belt_command_on_mesh_sets_convex_hull(self) -> None:
-        """Regression: a UsdGeomMesh without RigidBodyAPI must receive
+        """Regression: a UsdGeomMesh without RigidBodyAPI must receive.
+
         ``MeshCollisionAPI`` with the ``convexHull`` approximation so PhysX does
         not reject the triangle-mesh collision on the resulting dynamic body.
 

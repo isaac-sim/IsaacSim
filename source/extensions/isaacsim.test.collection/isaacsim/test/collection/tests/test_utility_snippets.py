@@ -28,12 +28,12 @@ import omni.kit.test
 class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
     """Tests for utility code snippets from Isaac Sim documentation."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment with new stage."""
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test environment and wait for assets to load."""
         for _ in range(10):
             await omni.kit.app.get_app().next_update_async()
@@ -42,7 +42,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
 
     # simple fastcache smoke test
-    async def test_physics_scene(self):
+    async def test_physics_scene(self) -> None:
         """Test physics scene creation with gravity and PhysX settings."""
         ### Code Start
 
@@ -82,7 +82,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
 
         ### Code End
 
-    async def test_enable_physics_collision_convex(self):
+    async def test_enable_physics_collision_convex(self) -> None:
         """Test enabling physics collision with convex hull approximation."""
         ###
         import omni
@@ -99,7 +99,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
 
         ###
 
-    async def test_enable_physics_collision_decomp(self):
+    async def test_enable_physics_collision_decomp(self) -> None:
         """Test enabling physics collision with convex decomposition."""
         ###
         import omni
@@ -115,7 +115,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
         utils.setRigidBody(cube_prim, "convexDecomposition", False)
         ###
 
-    async def test_mass_properties(self):
+    async def test_mass_properties(self) -> None:
         """Test setting mass and density properties on rigid bodies."""
         ###
         import omni
@@ -134,7 +134,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
         ### Alternatively set the density
         mass_api.CreateDensityAttr(1000)
 
-    async def test_traverse_assign_collision(self):
+    async def test_traverse_assign_collision(self) -> None:
         """Test traversing stage and assigning collision to all meshes."""
         import omni
         from omni.physx.scripts import utils
@@ -142,7 +142,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
 
         stage = omni.usd.get_context().get_stage()
 
-        def add_cube(stage, path, size: float = 10, offset: Gf.Vec3d = Gf.Vec3d(0, 0, 0)):
+        def add_cube(stage: object, path: object, size: float = 10, offset: Gf.Vec3d = Gf.Vec3d(0, 0, 0)) -> None:
             cubeGeom = UsdGeom.Cube.Define(stage, path)
             cubeGeom.CreateSizeAttr(size)
             cubeGeom.AddTranslateOp().Set(offset)
@@ -174,7 +174,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
                 # Can also use "convexDecomposition", "convexHull", "boundingSphere", "boundingCube"
                 utils.setCollider(prim, approximationShape="none")
 
-    async def test_material(self):
+    async def test_material(self) -> None:
         """Test creating and binding MDL material to a prim."""
         ###
         import omni
@@ -204,7 +204,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
         UsdShade.MaterialBindingAPI(cube_prim).Bind(cube_mat_shade, UsdShade.Tokens.strongerThanDescendants)
         ###
 
-    async def test_material_texture(self):
+    async def test_material_texture(self) -> None:
         """Test creating material with texture and binding to a prim."""
         ###
         import omni
@@ -239,7 +239,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
         UsdShade.MaterialBindingAPI(cube_prim).Bind(cube_mat_shade, UsdShade.Tokens.strongerThanDescendants)
         ###
 
-    async def test_add_transform(self):
+    async def test_add_transform(self) -> None:
         """Test adding transform operations to a prim."""
         ###
         import omni
@@ -258,7 +258,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
         transform.Set(mat)
         ###
 
-    async def test_align_prims(self):
+    async def test_align_prims(self) -> None:
         """Test aligning one prim's pose to another."""
         ###
         import omni
@@ -286,7 +286,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
         xform_prim_b.set_world_poses(positions, orientations)
         ###
 
-    async def test_get_world_transform(self):
+    async def test_get_world_transform(self) -> None:
         """Test getting world transform of selected prims."""
         ###
         import omni
@@ -323,7 +323,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
             print("Rotation (wxyz): ", quat[0], ",", quat[1], ",", quat[2], ",", quat[3])
         ###
 
-    async def test_async_task(self):
+    async def test_async_task(self) -> None:
         """Test using async tasks to pause simulation after a frame."""
         ###
         import asyncio
@@ -331,7 +331,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
         import omni
 
         # Async task that pauses simulation once the incoming task is complete
-        async def pause_sim(task):
+        async def pause_sim(task: object) -> None:
             done, pending = await asyncio.wait({task})
             if task in done:
                 print("Waited until next frame, pausing")
@@ -343,7 +343,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
         asyncio.ensure_future(pause_sim(task))
         ###
 
-    async def test_camera_intrinsics(self):
+    async def test_camera_intrinsics(self) -> None:
         """Test getting camera intrinsic parameters from viewport."""
         import math
 
@@ -376,7 +376,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
         center_x = height * 0.5
         center_y = width * 0.5
 
-    async def test_get_mesh_size(self):
+    async def test_get_mesh_size(self) -> None:
         """Test getting bounding box size of a mesh prim."""
         import omni
         from pxr import Usd, UsdGeom
@@ -392,7 +392,7 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
         prim_range = prim_bbox.ComputeAlignedRange()
         prim_size = prim_range.GetSize()
 
-    async def test_apply_semantics_on_entire_stage(self):
+    async def test_apply_semantics_on_entire_stage(self) -> None:
         """Test applying semantic labels to all meshes on the stage."""
         import omni.kit.commands
 
@@ -402,18 +402,18 @@ class TestUtilitySnippets(omni.kit.test.AsyncTestCase):
         import omni.usd
         from isaacsim.core.experimental.utils.semantics import add_labels
 
-        def remove_prefix(name, prefix):
+        def remove_prefix(name: object, prefix: object) -> object:
             if name.startswith(prefix):
                 return name[len(prefix) :]
             return name
 
-        def remove_numerical_suffix(name):
+        def remove_numerical_suffix(name: object) -> object:
             suffix = name.split("_")[-1]
             if suffix.isnumeric():
                 return name[: -len(suffix) - 1]
             return name
 
-        def remove_underscores(name):
+        def remove_underscores(name: object) -> object:
             return name.replace("_", "")
 
         stage = omni.usd.get_context().get_stage()

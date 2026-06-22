@@ -1,5 +1,9 @@
 # Changelog
 
+## [6.1.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [6.1.2] - 2026-05-05
 ### Changed
 - `JointState` and `SpatialState` build their per-row valid views (`positions`, `velocities`, `position_indices`, etc.) lazily on first property access, reusing zero-copy NumPy slices instead of eagerly allocating `wp.array`s in the constructor. Public API and semantics are unchanged.

@@ -13,16 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for GridPoseSampler block-containment correctness.
+"""Verifies GridPoseSampler block containment and mask sizing without requiring an Isaac Sim runtime. The tests ensure sampled poses stay inside column and row blocks and that block masks cover the expected area."""
 
-Runs standalone (no Isaac Sim runtime needed) by reading and exec-ing
-pose_samplers.py with the relative imports stripped and minimal stubs injected.
-"""
-
-import math
-import random
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import numpy as np
@@ -43,12 +38,16 @@ _STRIPPED = "\n".join(
 
 @dataclass
 class Point2d:
+    """Test point2d behavior."""
+
     x: float
     y: float
 
 
 @dataclass
 class Pose2d:
+    """Test pose2d behavior."""
+
     x: float
     y: float
     theta: float
@@ -63,19 +62,19 @@ GridPoseSampler = _globs["GridPoseSampler"]
 # Mock occupancy map: 100×100 all-free, 10 m × 10 m.
 # ---------------------------------------------------------------------------
 class _MockOccupancyMap:
-    def width_pixels(self):
+    def width_pixels(self) -> Any:
         return 100
 
-    def height_pixels(self):
+    def height_pixels(self) -> Any:
         return 100
 
-    def width_meters(self):
+    def width_meters(self) -> Any:
         return 10.0
 
-    def height_meters(self):
+    def height_meters(self) -> Any:
         return 10.0
 
-    def freespace_mask(self):
+    def freespace_mask(self) -> Any:
         return np.ones((100, 100), dtype=bool)
 
 
@@ -90,12 +89,12 @@ class TestGridPoseSamplerBlockContainment(omni.kit.test.AsyncTestCase):
     GRID_SIZE_M = 2.0  # 2 m cells → 20 px blocks in a 100 px / 10 m map
     BLOCK_SIZE_PX = 20  # 100 * 2.0 / 10.0
 
-    def _sample_n(self, block_x, block_y, n=300):
+    def _sample_n(self, block_x: Any, block_y: Any, n: int = 300) -> Any:
         omap = _MockOccupancyMap()
         sampler = GridPoseSampler(self.GRID_SIZE_M)
         call_count = [0]
 
-        def _fixed_randint(a, b):
+        def _fixed_randint(a: Any, b: Any) -> Any:
             call_count[0] += 1
             return block_x if call_count[0] % 2 == 1 else block_y
 
@@ -106,7 +105,7 @@ class TestGridPoseSamplerBlockContainment(omni.kit.test.AsyncTestCase):
                 poses.append(sampler.sample_px(omap))
         return poses
 
-    async def test_samples_within_block_column(self):
+    async def test_samples_within_block_column(self) -> None:
         """All sampled x coords must fall within the selected block column."""
         block_x, block_y = 1, 3
         x_min, x_max = block_x * self.BLOCK_SIZE_PX, (block_x + 1) * self.BLOCK_SIZE_PX
@@ -117,7 +116,7 @@ class TestGridPoseSamplerBlockContainment(omni.kit.test.AsyncTestCase):
             f"{len(out)}/300 samples outside x∈[{x_min},{x_max}): first offender x={out[0].x if out else '-'}",
         )
 
-    async def test_samples_within_block_row(self):
+    async def test_samples_within_block_row(self) -> None:
         """All sampled y coords must fall within the selected block row."""
         block_x, block_y = 1, 3
         y_min, y_max = block_y * self.BLOCK_SIZE_PX, (block_y + 1) * self.BLOCK_SIZE_PX
@@ -128,7 +127,7 @@ class TestGridPoseSamplerBlockContainment(omni.kit.test.AsyncTestCase):
             f"{len(out)}/300 samples outside y∈[{y_min},{y_max}): first offender y={out[0].y if out else '-'}",
         )
 
-    async def test_block_mask_area(self):
+    async def test_block_mask_area(self) -> None:
         """Fixed mask must cover exactly block_size² pixels (not two full-width strips)."""
         bsz = self.BLOCK_SIZE_PX
         block_x, block_y = 1, 3

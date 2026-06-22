@@ -96,9 +96,10 @@ def differential_inverse_kinematics(
     goal_position: np.ndarray,
     goal_orientation: np.ndarray | None = None,
     method: str = "damped-least-squares",
-    method_cfg: dict[str, float] = {"scale": 1.0, "damping": 0.05, "min_singular_value": 1e-5},
+    method_cfg: dict[str, float] | None = None,
 ) -> np.ndarray:
     """Compute delta DOF positions via differential inverse kinematics."""
+    method_cfg = {"scale": 1.0, "damping": 0.05, "min_singular_value": 1e-5} if method_cfg is None else method_cfg
     scale = method_cfg.get("scale", 1.0)
     # Compute velocity error
     goal_orientation = current_orientation if goal_orientation is None else goal_orientation
@@ -111,7 +112,7 @@ def differential_inverse_kinematics(
     if method == "singular-value-decomposition":
         min_singular_value = method_cfg.get("min_singular_value", 1e-5)
         U, S, Vh = np.linalg.svd(jacobian_end_effector)
-        inv_s = np.where(S > min_singular_value, 1.0 / S, np.zeros_like(S))
+        inv_s = np.where(min_singular_value < S, 1.0 / S, np.zeros_like(S))
         pseudoinverse = np.swapaxes(Vh, 1, 2)[:, :, :6] @ np.diagflat(inv_s) @ np.swapaxes(U, 1, 2)
         return (scale * pseudoinverse @ error).squeeze(-1)
     # - Moore-Penrose pseudoinverse

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for docstrings."""
+"""Verifies that SimulationManager and PhysxScene expose complete public API docstrings. The tests prepare a clean stage and run the shared docstring checker against the simulation manager classes."""
 
 import isaacsim.core.experimental.utils.impl.stage as stage_utils
 import isaacsim.test.docstring
@@ -26,21 +26,21 @@ wp.init()  # init warp to avoid undesired stdout output
 class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
     """Test extension docstrings."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # create new stage
         await stage_utils.create_new_stage_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
-    async def test_physx_scene_docstrings(self):
+    async def test_physx_scene_docstrings(self) -> None:
         """Test physx scene docstrings."""
         await self.assertDocTests(PhysxScene)
 
-    async def test_simulation_manager_docstrings(self):
+    async def test_simulation_manager_docstrings(self) -> None:
         """Test simulation manager docstrings."""
         if (SimulationManager.get_default_engine() or "").lower() == "newton":
             self.skipTest("Skipping SimulationManager docstrings test (engine: newton)")

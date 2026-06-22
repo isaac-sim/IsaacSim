@@ -10,7 +10,7 @@ These rules define the standard Doxygen documentation style for C++ code.
 ## Best Practices
 1. Use complete sentences ending with periods
 2. Be concise but descriptive in @brief tags
-3. Provide detailed explanations in @details when necessary
+3. Provide detailed explanations in @details when necessary (behavior/contract, not implementation walkthroughs or history — see "Documentation Content")
 4. Document all parameters, even if their purpose seems obvious
 5. Document exceptions that may be thrown
 6. Include units for numerical parameters/returns where applicable
@@ -18,6 +18,21 @@ These rules define the standard Doxygen documentation style for C++ code.
 8. Use @warning for potential pitfalls or dangerous usage
 9. Keep documentation up to date with code changes
 10. Use consistent terminology throughout documentation
+
+## Documentation Content (what to say, what to omit)
+
+Doxygen comments describe the **contract**, not the implementation or its history.
+
+1. **Intent and scope only**: what the code does, its inputs/outputs, and what the caller
+   needs to know to use it correctly (side effects, thrown exceptions, edge cases).
+2. **No internal implementation details**: how the work is done internally belongs in inline
+   comments in the body, not the Doxygen comment. Observable behavior that affects the caller
+   (e.g., "blocks until rendering completes", "synchronizes the GPU") IS in scope.
+3. **No history or rationale**: never write "was previously", "refactored", "now uses",
+   "instead of X", performance comparisons, or contrasts with alternatives. Use `@deprecated`
+   and `@since` for version/deprecation info; everything else lives in the commit/MR.
+4. **Plain language**: strip internal jargon and write as if the code always existed this way.
+   Describe the current behavior, not the change that produced it.
 
 ## Code Preservation
 1. Do not change any code style when adding documentation

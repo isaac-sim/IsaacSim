@@ -13,11 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for isaacsim.physics.newton.tensors rigid body view."""
+"""Verifies the Newton rigid body view implementation against authored rigid bodies and imported assets. The tests cover creation, paths, transforms, velocities, accelerations, mass and inertia properties, gravity flags, force application, simulation stepping, and validity checks."""
 
 import os
 import shutil
 import tempfile
+from typing import Any
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import isaacsim.physics.newton
@@ -34,8 +35,12 @@ from isaacsim.core.simulation_manager import SimulationManager
 from pxr import Gf, Sdf, UsdGeom, UsdPhysics
 
 
-async def wait_for_stage_loading():
-    """Wait until USD stage loading is complete."""
+async def wait_for_stage_loading() -> Any:
+    """Wait until USD stage loading is complete.
+
+    Returns:
+        None.
+    """
     while omni.usd.get_context().get_stage_loading_status()[2] > 0:
         await omni.kit.app.get_app().next_update_async()
 
@@ -44,11 +49,11 @@ _DEFAULT_VARIANT_TO_ENGINE = {"physx": "physx", "mujoco": "newton"}
 
 
 async def step_physics_variants(
-    prim,
-    timeline,
+    prim: Any,
+    timeline: Any,
     *,
-    variants=("physx", "mujoco"),
-    variant_to_engine=None,
+    variants: Any = ("physx", "mujoco"),
+    variant_to_engine: Any = None,
     num_frames: int = 30,
     settle_frames: int = 5,
 ) -> None:
@@ -95,7 +100,7 @@ async def step_physics_variants(
 class TestNewtonRigidBodyView(omni.kit.test.AsyncTestCase):
     """Tests for Newton rigid body view tensor API."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment with rigid bodies."""
         self.use_gpu = True
         self.wp_device = "cuda:0" if self.use_gpu else "cpu"
@@ -151,20 +156,20 @@ class TestNewtonRigidBodyView(omni.kit.test.AsyncTestCase):
             frontend_name="warp", stage_id=-1, newton_stage=self.newton_stage
         )
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after test."""
         self.timeline.pause()
         await omni.kit.app.get_app().next_update_async()
         await omni.usd.get_context().close_stage_async()
 
-    async def test_rigid_body_view_creation(self):
+    async def test_rigid_body_view_creation(self) -> None:
         """Test creating rigid body view and basic properties."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
 
         self.assertIsNotNone(bodies)
         self.assertEqual(bodies.count, self.num_bodies, f"Should have {self.num_bodies} rigid bodies")
 
-    async def test_body_paths_and_names(self):
+    async def test_body_paths_and_names(self) -> None:
         """Test rigid body paths and names match expected cube structure."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
 
@@ -181,7 +186,7 @@ class TestNewtonRigidBodyView(omni.kit.test.AsyncTestCase):
         for name in body_names:
             self.assertIn("Cube_", name, f"Name should contain 'Cube_', got: {name}")
 
-    async def test_transforms(self):
+    async def test_transforms(self) -> None:
         """Test transforms have correct format and values match scene setup."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
         indices = wp.from_numpy(np.arange(bodies.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -218,7 +223,7 @@ class TestNewtonRigidBodyView(omni.kit.test.AsyncTestCase):
                 msg=f"Body {i} z should be {expected_z}, got {updated_transforms[i, 2]}",
             )
 
-    async def test_velocities(self):
+    async def test_velocities(self) -> None:
         """Test velocities format and verify set values are applied."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
         indices = wp.from_numpy(np.arange(bodies.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -249,14 +254,14 @@ class TestNewtonRigidBodyView(omni.kit.test.AsyncTestCase):
                 immediate_vel[i, 5], target_angular_z, places=4, msg=f"Body {i} wz should be {target_angular_z}"
             )
 
-    async def test_accelerations_without_body_qdd(self):
+    async def test_accelerations_without_body_qdd(self) -> None:
         """get_accelerations returns None when body_qdd is not allocated."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
 
         accelerations = bodies.get_accelerations()
         self.assertIsNone(accelerations, "Accelerations should be None when body_qdd is not requested")
 
-    async def test_masses(self):
+    async def test_masses(self) -> None:
         """Test masses match scene setup and can be modified."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
         indices = wp.from_numpy(np.arange(bodies.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -285,7 +290,7 @@ class TestNewtonRigidBodyView(omni.kit.test.AsyncTestCase):
                 msg=f"Body {i} mass should be {expected_mass}, got {updated_masses[i, 0]}",
             )
 
-    async def test_inv_masses(self):
+    async def test_inv_masses(self) -> None:
         """Test inverse masses are consistent with masses (inv_mass = 1/mass)."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
 
@@ -303,7 +308,7 @@ class TestNewtonRigidBodyView(omni.kit.test.AsyncTestCase):
                     msg=f"inv_mass[{i}]={inv_masses[i, 0]} should be 1/mass={expected_inv}",
                 )
 
-    async def test_coms(self):
+    async def test_coms(self) -> None:
         """Test centers of mass have valid format and can be modified."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
         indices = wp.from_numpy(np.arange(bodies.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -342,7 +347,7 @@ class TestNewtonRigidBodyView(omni.kit.test.AsyncTestCase):
                 f"Body {i} COM position should be {expected_pos}, got {updated_coms[i, 0:3]}",
             )
 
-    async def test_inertias(self):
+    async def test_inertias(self) -> None:
         """Test inertias have correct format and diagonal elements for uniform cubes."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
         indices = wp.from_numpy(np.arange(bodies.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -383,7 +388,7 @@ class TestNewtonRigidBodyView(omni.kit.test.AsyncTestCase):
             "Inertias should match scaled values",
         )
 
-    async def test_inv_inertias(self):
+    async def test_inv_inertias(self) -> None:
         """Test inverse inertias are consistent with inertias."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
 
@@ -405,21 +410,21 @@ class TestNewtonRigidBodyView(omni.kit.test.AsyncTestCase):
                         msg=f"Body {i} inv_inertia[{diag_idx}] should be 1/inertia",
                     )
 
-    async def test_disable_simulations(self):
+    async def test_disable_simulations(self) -> None:
         """Test getting disable simulation flags."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
 
         disable_sims = bodies.get_disable_simulations()
         self.assertIsNotNone(disable_sims, "Disable simulations should not be None")
 
-    async def test_disable_gravities(self):
+    async def test_disable_gravities(self) -> None:
         """Test getting disable gravity flags."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
 
         disable_gravities = bodies.get_disable_gravities()
         self.assertIsNotNone(disable_gravities, "Disable gravities should not be None")
 
-    async def test_apply_forces_and_torques(self):
+    async def test_apply_forces_and_torques(self) -> None:
         """Test applying forces and torques to rigid bodies."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
         indices = wp.from_numpy(np.arange(bodies.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -441,7 +446,7 @@ class TestNewtonRigidBodyView(omni.kit.test.AsyncTestCase):
         # Step simulation to apply forces
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_apply_forces_at_position(self):
+    async def test_apply_forces_at_position(self) -> None:
         """Test applying forces at specific positions."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
         indices = wp.from_numpy(np.arange(bodies.count, dtype=np.int32), dtype=wp.int32, device=self.wp_device)
@@ -463,7 +468,7 @@ class TestNewtonRigidBodyView(omni.kit.test.AsyncTestCase):
         # Step simulation to apply forces
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_simulation_stepping(self):
+    async def test_simulation_stepping(self) -> None:
         """Test bodies fall under gravity during simulation."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
 
@@ -490,14 +495,14 @@ class TestNewtonRigidBodyView(omni.kit.test.AsyncTestCase):
         avg_fall = np.mean(initial_z_positions - current_z_positions)
         self.assertGreater(avg_fall, 0.1, f"Average fall distance should be > 0.1m, got {avg_fall}")
 
-    async def test_check_method(self):
+    async def test_check_method(self) -> None:
         """Test the check method returns correct state."""
         bodies = self.sim.create_rigid_body_view("/World/Cube_*")
 
         result = bodies.check()
         self.assertTrue(result, "check() should return True for valid rigid body view")
 
-    async def test_ur10(self):
+    async def test_ur10(self) -> None:
         """Import the UR10 URDF and run a few simulation frames in both physx and mujoco variants."""
         # Stop the timeline started in setUp before swapping the stage to avoid
         # stepping a stage we're about to replace.
@@ -547,7 +552,7 @@ class TestNewtonRigidBodyView(omni.kit.test.AsyncTestCase):
             await wait_for_stage_loading()
             shutil.rmtree(tmpdir, ignore_errors=True)
 
-    async def test_mjcf_humanoid(self):
+    async def test_mjcf_humanoid(self) -> None:
         """Import the humanoid MJCF and run a few simulation frames in both physx and mujoco variants."""
         # Stop the timeline started in setUp before swapping the stage to avoid
         # stepping a stage we're about to replace.

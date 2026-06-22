@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies physics step OmniGraph nodes fire on simulation physics updates. Covers single-node and multi-node graph configurations."""
+
 import carb
 import omni.graph.core as og
 import omni.kit.test
@@ -21,17 +23,20 @@ from pxr import Sdf
 
 
 class TestPhysicsStep(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Verify physics-step trigger nodes drive downstream graph execution."""
+
+    async def setUp(self) -> None:
         """Set up  test environment, to be torn down when done."""
         self._timeline = omni.timeline.get_timeline_interface()
         await omni.usd.get_context().new_stage_async()
 
     # ----------------------------------------------------------------------
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Get rid of temporary data used by the test."""
         await omni.kit.stage_templates.new_stage_async()
 
-    async def test_physics_step_node(self):
+    async def test_physics_step_node(self) -> None:
+        """Verify one physics-step node triggers an Isaac test node while simulation plays."""
         carb.settings.get_settings().set_bool("/app/player/useFixedTimeStepping", True)
 
         stage = omni.usd.get_context().get_stage()
@@ -78,7 +83,7 @@ class TestPhysicsStep(omni.kit.test.AsyncTestCase):
 
         self._timeline.stop()
 
-    async def test_physics_step_two_nodes(self):
+    async def test_physics_step_two_nodes(self) -> None:
         """Verify two OnPhysicsStep nodes in one graph share a single subscription and both fire."""
         carb.settings.get_settings().set_bool("/app/player/useFixedTimeStepping", True)
 

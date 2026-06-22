@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.5.2] - 2026-04-30
 ### Changed
 - Migrated OGN test fixture (`AntConfig`) and OGN tests to the new `isaacsim.sensors.experimental.physics` 3.0.0 API: call `Contact.create()` / `IMU.create()` (the authoring classes) directly instead of the removed runtime `XSensor.create()` class methods, and use plural `translations` numpy arrays.

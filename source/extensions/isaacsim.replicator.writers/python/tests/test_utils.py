@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies Replicator writer projection utilities for pinhole and fisheye polynomial camera math. The tests cover homogeneous-divisor fallback behavior and convergence warning behavior during fisheye inversion."""
+
 from unittest import mock
 
 import numpy as np

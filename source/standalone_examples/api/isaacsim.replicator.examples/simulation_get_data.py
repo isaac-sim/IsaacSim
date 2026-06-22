@@ -20,6 +20,7 @@ from isaacsim import SimulationApp
 simulation_app = SimulationApp(launch_config={"headless": False})
 
 import os
+from typing import Any
 
 import carb.settings
 import numpy as np
@@ -31,7 +32,7 @@ from omni.replicator.core.functional import write_image, write_json
 from pxr import UsdPhysics
 
 
-def write_sem_data(sem_data, file_path):
+def write_sem_data(sem_data: dict[str, Any], file_path: str) -> None:
     """Save semantic segmentation data as JSON labels and PNG image."""
     id_to_labels = sem_data["info"]["idToLabels"]
     write_json(path=file_path + ".json", data=id_to_labels)

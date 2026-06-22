@@ -13,12 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test importer utils functionality."""
+"""Verifies common importer utilities for stage cleanup, physics schema application, self-collision enablement, and robot name parsing. Covers invalid paths, hidden files, dotted names, and warning behavior."""
 
 import omni.kit.test
 import omni.usd
 from isaacsim.asset.importer.utils.impl import importer_utils
-from isaacsim.asset.importer.utils.impl.physx_types import PhysxAttr, PhysxSchema
+from isaacsim.asset.importer.utils.impl.physx_types import PhysxSchema
 from pxr import Usd, UsdGeom, UsdPhysics
 
 
@@ -119,8 +119,10 @@ class TestImporterUtils(omni.kit.test.AsyncTestCase):
             importer_utils.parse_robot_name("/tmp/humanoid.urdf", expected_extension=".xml")
 
     async def test_parse_robot_name_dotfile_only_raises(self) -> None:
-        """A bare dotfile basename (e.g. ``.urdf``) is treated by ``os.path.splitext`` as
-        a hidden filename with no extension, so it fails the extension check."""
+        """A bare dotfile basename (e.g. ``.urdf``) is treated by ``os.path.splitext`` as.
+
+        a hidden filename with no extension, so it fails the extension check.
+        """
         with self.assertRaisesRegex(ValueError, "no extension"):
             importer_utils.parse_robot_name("/tmp/.urdf", expected_extension=".urdf")
 

@@ -26,7 +26,15 @@ import numpy as np
 
 
 def _is_path_in_scope(path: str, root_path: str) -> bool:
-    """Whether *path* is at or below *root_path*."""
+    """Whether *path* is at or below *root_path*.
+
+    Args:
+        path: Value for path.
+        root_path: Value for root path.
+
+    Returns:
+        The requested value.
+    """
     return path == root_path or path.startswith(f"{root_path}/")
 
 
@@ -37,6 +45,13 @@ def _resolve_converter_root(stage: Any, articulation_path: str) -> str:
     root-joint prim (e.g. ``.../ur3e/root_joint``). The custom PINK exporter
     expects the robot subtree root instead, so export from the parent prim
     (``.../ur3e``) when the articulation root resolves to a joint prim.
+
+    Args:
+        stage: Value for stage.
+        articulation_path: Value for articulation path.
+
+    Returns:
+        The requested value.
     """
     from pxr import UsdPhysics
 
@@ -53,12 +68,27 @@ def _resolve_converter_root(stage: Any, articulation_path: str) -> str:
 
 
 def _format_urdf_floats(values: tuple[float, ...] | list[float]) -> str:
-    """Format float tuples for URDF attributes."""
+    """Format float tuples for URDF attributes.
+
+    Args:
+        values: Value for values.
+
+    Returns:
+        The requested value.
+    """
     return " ".join(f"{float(value):.9g}" for value in values)
 
 
 def _relative_export_parts(path: str, root_path: str) -> list[str]:
-    """Return path parts under the export root, keeping names useful for URDF."""
+    """Return path parts under the export root, keeping names useful for URDF.
+
+    Args:
+        path: Value for path.
+        root_path: Value for root path.
+
+    Returns:
+        The requested value.
+    """
     path_parts = [part for part in path.split("/") if part]
     root_parts = [part for part in root_path.split("/") if part]
     if len(path_parts) < len(root_parts) or path_parts[: len(root_parts)] != root_parts:
@@ -71,12 +101,28 @@ def _relative_export_parts(path: str, root_path: str) -> list[str]:
 
 
 def _make_export_name(path: str, root_path: str) -> str:
-    """Build a stable URDF-safe name for a prim path."""
+    """Build a stable URDF-safe name for a prim path.
+
+    Args:
+        path: Value for path.
+        root_path: Value for root path.
+
+    Returns:
+        The requested value.
+    """
     return "_".join(_relative_export_parts(path, root_path))
 
 
 def _build_export_name_map(paths: list[str], root_path: str) -> dict[str, str]:
-    """Build unique export names for the provided paths."""
+    """Build unique export names for the provided paths.
+
+    Args:
+        paths: Value for paths.
+        root_path: Value for root path.
+
+    Returns:
+        The requested value.
+    """
     name_map = {path: _make_export_name(path, root_path) for path in paths}
     collisions: dict[str, list[str]] = {}
     for path, name in name_map.items():
@@ -88,7 +134,14 @@ def _build_export_name_map(paths: list[str], root_path: str) -> dict[str, str]:
 
 
 def _quat_to_rpy_xyz(quat: Any) -> tuple[float, float, float]:
-    """Convert a USD quaternion to URDF XYZ fixed-axis roll/pitch/yaw."""
+    """Convert a USD quaternion to URDF XYZ fixed-axis roll/pitch/yaw.
+
+    Args:
+        quat: Value for quat.
+
+    Returns:
+        The requested value.
+    """
     imag = quat.GetImaginary()
     x = float(imag[0])
     y = float(imag[1])
@@ -112,7 +165,14 @@ def _quat_to_rpy_xyz(quat: Any) -> tuple[float, float, float]:
 
 
 def _joint_origin_from_parent(joint: Any) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-    """Read a joint origin in the parent-link frame from USD joint local attrs."""
+    """Read a joint origin in the parent-link frame from USD joint local attrs.
+
+    Args:
+        joint: Value for joint.
+
+    Returns:
+        The requested value.
+    """
     pos_attr = joint.GetLocalPos0Attr()
     rot_attr = joint.GetLocalRot0Attr()
 
@@ -125,7 +185,14 @@ def _joint_origin_from_parent(joint: Any) -> tuple[tuple[float, float, float], t
 
 
 def _axis_attr_to_xyz(axis_value: Any) -> tuple[float, float, float]:
-    """Map USD axis tokens to URDF axis vectors."""
+    """Map USD axis tokens to URDF axis vectors.
+
+    Args:
+        axis_value: Value for axis value.
+
+    Returns:
+        The requested value.
+    """
     axis_map = {
         "X": (1.0, 0.0, 0.0),
         "Y": (0.0, 1.0, 0.0),
@@ -138,7 +205,14 @@ def _axis_attr_to_xyz(axis_value: Any) -> tuple[float, float, float]:
 
 
 def _joint_type_and_limits(joint_prim: Any) -> tuple[str, tuple[float, float, float] | None, dict[str, str] | None]:
-    """Convert a USD joint prim into URDF joint metadata."""
+    """Convert a USD joint prim into URDF joint metadata.
+
+    Args:
+        joint_prim: Value for joint prim.
+
+    Returns:
+        The requested value.
+    """
     from pxr import UsdPhysics
 
     limit_defaults = {"effort": "1000", "velocity": "1000"}
@@ -185,7 +259,15 @@ def _joint_type_and_limits(joint_prim: Any) -> tuple[str, tuple[float, float, fl
 
 
 def _collect_minimal_urdf_graph(stage: Any, export_root_path: str) -> tuple[str, list[str], list[dict], dict[str, str]]:
-    """Collect an in-scope kinematic graph for minimal URDF export."""
+    """Collect an in-scope kinematic graph for minimal URDF export.
+
+    Args:
+        stage: Value for stage.
+        export_root_path: Value for export root path.
+
+    Returns:
+        The requested value.
+    """
     from pxr import Usd, UsdPhysics
 
     root_prim = stage.GetPrimAtPath(export_root_path)
@@ -283,7 +365,15 @@ def _write_minimal_urdf(
     ordered_joints: list[dict],
     link_name_by_path: dict[str, str],
 ) -> None:
-    """Write a minimal kinematic URDF for Pinocchio."""
+    """Write a minimal kinematic URDF for Pinocchio.
+
+    Args:
+        urdf_path: Value for urdf path.
+        robot_name: Value for robot name.
+        ordered_link_paths: Value for ordered link paths.
+        ordered_joints: Value for ordered joints.
+        link_name_by_path: Value for link name by path.
+    """
     robot_el = ET.Element("robot", name=robot_name)
 
     for link_path in ordered_link_paths:
@@ -328,6 +418,13 @@ def _export_minimal_urdf(
     attributes. The generic USD exporter can omit those attributes for teleop
     assets, so teleop maintains this minimal exporter to produce a small,
     deterministic URDF that Pinocchio accepts.
+
+    Args:
+        articulation_path: Value for articulation path.
+        export_root_path: Value for export root path.
+
+    Returns:
+        The requested value.
     """
     import omni.usd
     from pxr import Sdf
@@ -369,7 +466,15 @@ def _export_urdf(
     articulation_path: str,
     export_root_path: str | None = None,
 ) -> tuple[str, str, str]:
-    """Export the custom URDF used by PINK."""
+    """Export the custom URDF used by PINK.
+
+    Args:
+        articulation_path: Value for articulation path.
+        export_root_path: Value for export root path.
+
+    Returns:
+        The requested value.
+    """
     return _export_minimal_urdf(
         articulation_path=articulation_path,
         export_root_path=export_root_path,

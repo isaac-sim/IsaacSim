@@ -1,5 +1,5 @@
 [package]
-version = "5.2.12"
+version = "5.2.13"
 category = "Simulation"
 title = "Isaac Sim Core"
 description = "The Core extension provides a set of APIs to control the Simulation State as well as the physics scene. It also provides wrappers for USD objects, physics and visual materials."
@@ -106,8 +106,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 

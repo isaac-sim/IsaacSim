@@ -33,7 +33,11 @@ class ValidationResult:
 
     @property
     def is_valid(self) -> bool:
-        """Return True when no errors are present."""
+        """Return True when no errors are present.
+
+        Returns:
+            The requested value.
+        """
         return not self.errors
 
 
@@ -57,7 +61,14 @@ def _validate_prim_exists(prim_path: str) -> tuple[Usd.Prim | None, ValidationRe
 
 
 def validate_floating_end_effector(prim_path: str) -> ValidationResult:
-    """Validate a prim for floating rigid-body controller usage."""
+    """Validate a prim for floating rigid-body controller usage.
+
+    Args:
+        prim_path: Value for prim path.
+
+    Returns:
+        The requested value.
+    """
     prim, result = _validate_prim_exists(prim_path)
     if not prim:
         return result
@@ -79,7 +90,14 @@ def validate_floating_end_effector(prim_path: str) -> ValidationResult:
 
 
 def validate_marker_path(prim_path: str) -> ValidationResult:
-    """Validate a marker path for live tracking."""
+    """Validate a marker path for live tracking.
+
+    Args:
+        prim_path: Value for prim path.
+
+    Returns:
+        The requested value.
+    """
     prim, result = _validate_prim_exists(prim_path)
     if not prim:
         return result

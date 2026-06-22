@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies the articulation controller OmniGraph node applies valid joint commands and rejects invalid ones safely. Covers name and index selection, command shape mismatches, NaN filtering, partial target prevention, and actionable initialization errors."""
+
 import asyncio
+from typing import Any
 
 import carb
 import isaacsim.core.experimental.utils.app as app_utils
@@ -31,8 +34,12 @@ from isaacsim.storage.native import get_assets_root_path_async
 
 
 class TestArticulationControllerWrapper(omni.kit.test.AsyncTestCase):
+    """Verify controller compute errors without building a full OmniGraph."""
+
     # ----------------------------------------------------------------------
-    async def test_initialization_exception_logs_error_with_prim_path(self):
+    async def test_initialization_exception_logs_error_with_prim_path(self) -> None:
+        """Test that initialization errors include the prim path."""
+
         class FakeInputs:
             robotPath = "/BadRobot"
             targetPrim = []
@@ -46,20 +53,20 @@ class TestArticulationControllerWrapper(omni.kit.test.AsyncTestCase):
             initialized = False
             prim_path = None
 
-            def initialize_controller(self):
+            def initialize_controller(self) -> None:
                 raise RuntimeError("init failed")
 
         class FakeDb:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.inputs = FakeInputs()
                 self.per_instance_state = FakeState()
                 self.errors = []
                 self.warnings = []
 
-            def log_error(self, message):
+            def log_error(self, message: Any) -> None:
                 self.errors.append(message)
 
-            def log_warn(self, message):
+            def log_warn(self, message: Any) -> None:
                 self.warnings.append(message)
 
         db = FakeDb()
@@ -71,7 +78,9 @@ class TestArticulationControllerWrapper(omni.kit.test.AsyncTestCase):
         self.assertIn("init failed", db.errors[0])
 
     # ----------------------------------------------------------------------
-    async def test_command_mismatch_logs_actionable_error_and_does_not_apply_partial_targets(self):
+    async def test_command_mismatch_logs_actionable_error_and_does_not_apply_partial_targets(self) -> None:
+        """Verify a width mismatch rejects the whole command instead of applying partial targets."""
+
         class FakeInputs:
             robotPath = "/Robot"
             targetPrim = []
@@ -82,31 +91,31 @@ class TestArticulationControllerWrapper(omni.kit.test.AsyncTestCase):
             effortCommand = [0.3]
 
         class FakeArticulation:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.position_targets = []
                 self.velocity_targets = []
                 self.efforts = []
 
-            def set_dof_position_targets(self, *args, **kwargs):
+            def set_dof_position_targets(self, *args: Any, **kwargs: Any) -> None:
                 self.position_targets.append((args, kwargs))
 
-            def set_dof_velocity_targets(self, *args, **kwargs):
+            def set_dof_velocity_targets(self, *args: Any, **kwargs: Any) -> None:
                 self.velocity_targets.append((args, kwargs))
 
-            def set_dof_efforts(self, *args, **kwargs):
+            def set_dof_efforts(self, *args: Any, **kwargs: Any) -> None:
                 self.efforts.append((args, kwargs))
 
         class FakeDb:
-            def __init__(self, state):
+            def __init__(self, state: Any) -> None:
                 self.inputs = FakeInputs()
                 self.per_instance_state = state
                 self.errors = []
                 self.warnings = []
 
-            def log_error(self, message):
+            def log_error(self, message: Any) -> None:
                 self.errors.append(message)
 
-            def log_warn(self, message):
+            def log_warn(self, message: Any) -> None:
                 self.warnings.append(message)
 
         state = OgnIsaacArticulationControllerInternalState.__new__(OgnIsaacArticulationControllerInternalState)
@@ -131,7 +140,9 @@ class TestArticulationControllerWrapper(omni.kit.test.AsyncTestCase):
 
 
 class TestArticulationControllerNode(ogts.OmniGraphTestCase):
-    async def setUp(self):
+    """Verify articulation controller graph behavior on a loaded Franka articulation."""
+
+    async def setUp(self) -> None:
         """Set up  test environment, to be torn down when done."""
         await omni.usd.get_context().new_stage_async()
         # add franka robot for test
@@ -142,7 +153,7 @@ class TestArticulationControllerNode(ogts.OmniGraphTestCase):
         await stage_utils.open_stage_async(assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd")
 
     # ----------------------------------------------------------------------
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Get rid of temporary data used by the test."""
         await omni.kit.app.get_app().next_update_async()
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
@@ -152,7 +163,8 @@ class TestArticulationControllerNode(ogts.OmniGraphTestCase):
         return
 
     # ----------------------------------------------------------------------
-    async def test_joint_name_ogn(self):
+    async def test_joint_name_ogn(self) -> None:
+        """Verify position commands are applied to joints selected by name."""
         test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
@@ -199,7 +211,8 @@ class TestArticulationControllerNode(ogts.OmniGraphTestCase):
         self.assertAlmostEqual(robot.get_dof_positions().numpy()[0, 2], 1.2, delta=0.002)
 
     # ----------------------------------------------------------------------
-    async def test_joint_index_ogn(self):
+    async def test_joint_index_ogn(self) -> None:
+        """Verify position commands are applied to joints selected by index."""
         test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
@@ -249,7 +262,8 @@ class TestArticulationControllerNode(ogts.OmniGraphTestCase):
         self.assertAlmostEqual(robot.get_dof_positions().numpy()[0, 2], 1.2, delta=0.002)
 
     # ----------------------------------------------------------------------
-    async def test_short_command_fails_for_explicit_joint_selection_mismatch(self):
+    async def test_short_command_fails_for_explicit_joint_selection_mismatch(self) -> None:
+        """Verify a command shorter than the explicit joint selection fails with a mismatch error."""
         state = OgnIsaacArticulationControllerInternalState.__new__(OgnIsaacArticulationControllerInternalState)
         state.initialized = True
         state.joint_indices = [1, 2]
@@ -262,20 +276,22 @@ class TestArticulationControllerNode(ogts.OmniGraphTestCase):
         self.assertFalse(state.apply_action(command, [], []))
 
     # ----------------------------------------------------------------------
-    async def test_invalid_command_does_not_apply_partial_targets(self):
+    async def test_invalid_command_does_not_apply_partial_targets(self) -> None:
+        """Verify an invalid command input prevents other command targets from being written."""
+
         class FakeArticulation:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.position_targets = []
                 self.velocity_targets = []
                 self.efforts = []
 
-            def set_dof_position_targets(self, *args, **kwargs):
+            def set_dof_position_targets(self, *args: Any, **kwargs: Any) -> None:
                 self.position_targets.append((args, kwargs))
 
-            def set_dof_velocity_targets(self, *args, **kwargs):
+            def set_dof_velocity_targets(self, *args: Any, **kwargs: Any) -> None:
                 self.velocity_targets.append((args, kwargs))
 
-            def set_dof_efforts(self, *args, **kwargs):
+            def set_dof_efforts(self, *args: Any, **kwargs: Any) -> None:
                 self.efforts.append((args, kwargs))
 
         state = OgnIsaacArticulationControllerInternalState.__new__(OgnIsaacArticulationControllerInternalState)
@@ -289,7 +305,8 @@ class TestArticulationControllerNode(ogts.OmniGraphTestCase):
         self.assertEqual(state.articulation.efforts, [])
 
     # ----------------------------------------------------------------------
-    async def test_nan_command_filters_to_finite_entries(self):
+    async def test_nan_command_filters_to_finite_entries(self) -> None:
+        """Verify NaN command entries are skipped while finite entries are applied."""
         state = OgnIsaacArticulationControllerInternalState.__new__(OgnIsaacArticulationControllerInternalState)
         command = np.array([0.1, np.nan, 0.3])
 
@@ -299,7 +316,8 @@ class TestArticulationControllerNode(ogts.OmniGraphTestCase):
         self.assertTrue(np.array_equal(resolved_indices, np.array([1, 3])))
 
     # ----------------------------------------------------------------------
-    async def test_full_array_no_index_ogn(self):
+    async def test_full_array_no_index_ogn(self) -> None:
+        """Verify full-width commands apply to all DOFs when no joint selection is provided."""
         test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
@@ -340,7 +358,8 @@ class TestArticulationControllerNode(ogts.OmniGraphTestCase):
         self.assertAlmostEqual(robot.get_dof_positions().numpy()[0, 2], 1.2, delta=0.003)
 
     # ----------------------------------------------------------------------
-    async def test_single_joint_name_ogn(self):
+    async def test_single_joint_name_ogn(self) -> None:
+        """Verify a one-element command applies to a single joint selected by name."""
         test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
@@ -380,7 +399,8 @@ class TestArticulationControllerNode(ogts.OmniGraphTestCase):
         self.assertGreater(abs(robot.get_dof_positions().numpy()[0, 3] - 1.7), 0.1)
 
     # ----------------------------------------------------------------------
-    async def test_single_joint_index_ogn(self):
+    async def test_single_joint_index_ogn(self) -> None:
+        """Verify a one-element command applies to a single joint selected by index."""
         test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {
@@ -420,7 +440,8 @@ class TestArticulationControllerNode(ogts.OmniGraphTestCase):
         self.assertGreater(abs(robot.get_dof_positions().numpy()[0, 3] - 1.7), 0.002)
 
     # ----------------------------------------------------------------------
-    async def test_joint_indices_different_shape(self):
+    async def test_joint_indices_different_shape(self) -> None:
+        """Verify differently shaped joint index inputs still select the intended DOFs."""
         test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
             {

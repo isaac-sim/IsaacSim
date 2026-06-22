@@ -619,6 +619,9 @@ class AssetTransformerWindow(MenuHelperWindow):
         Only meaningful when "Active Stage" is selected; the "From File"
         mode operates on a user-chosen file regardless of the active stage's
         save state.
+
+        Returns:
+            True if the active stage must be saved before the transformer runs.
         """
         use_stage = self._file_type_radio_collection and self._file_type_radio_collection.model.get_value_as_int() == 0
         if not use_stage:

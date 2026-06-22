@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.6.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [3.6.1] - 2026-05-21
 ### Fixed
 - `SurfaceGripperComponent` now defaults the joint forward axis to ``X`` everywhere (cache initialization, per-joint parse fallback, and `_getJointForwardAxis` out-of-range fallback) to match the ``isaac:forwardAxis`` schema default. The header docstring is updated accordingly. Previously the three C++ fallbacks returned ``Z`` while the schema default was ``X``, producing inconsistent behavior on attachments whose joint was missing the attribute.

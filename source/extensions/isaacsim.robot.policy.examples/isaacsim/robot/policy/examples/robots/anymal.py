@@ -156,7 +156,7 @@ class AnymalFlatTerrainPolicy(PolicyController):
         self.robot.set_dof_efforts(wp.from_torch(joint_torques))
         self._policy_counter += 1
 
-    def initialize(self):
+    def initialize(self) -> None:
         """Initialize the articulation interface and set up drive mode."""
         super().initialize(control_mode="effort")
 

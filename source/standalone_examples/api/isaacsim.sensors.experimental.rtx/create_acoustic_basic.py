@@ -33,7 +33,6 @@ pair on each channel. The GenericModelOutput fields have different meanings:
 
 import argparse
 import os
-import sys
 
 from isaacsim import SimulationApp
 
@@ -115,13 +114,14 @@ print("Created AcousticSensor")
 class GmoAcousticBasicWriter(Writer):
     """Writer that parses GenericModelOutput and prints first-data-received info."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.data_structure = "renderProduct"
         self.annotators = [rep.annotators.get("GenericModelOutput")]
         self._frame_count = 0
         self._data_received = False
 
-    def write(self, data):
+    def write(self, data: dict[str, object]) -> None:
+        """Inspect acoustic GenericModelOutput data."""
         if "renderProducts" not in data:
             return
         for _rp_name, rp_data in data["renderProducts"].items():

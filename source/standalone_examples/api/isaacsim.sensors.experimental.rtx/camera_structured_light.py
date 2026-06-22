@@ -79,7 +79,6 @@ import omni.replicator.core as rep
 import omni.usd
 from isaacsim.core.experimental.materials import OmniPbrMaterial
 from isaacsim.core.experimental.objects import Cube
-from isaacsim.core.experimental.utils.transform import euler_angles_to_quaternion
 from isaacsim.sensors.experimental.rtx import CameraSensor, StructuredLightCamera
 from pxr import Gf, UsdLux
 

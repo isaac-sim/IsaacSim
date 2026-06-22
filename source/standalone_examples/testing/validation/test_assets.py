@@ -13,11 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Asset validation test script that checks USD assets for common issues."""
+"""Validates Isaac Sim USD assets for missing, absolute, external, deleted, and out-of-scope references, deprecated graph nodes, and non-anonymous render deltas. Optionally runs the Omniverse ValidationEngine and writes text and CSV reports."""
 
 import argparse
 import csv
-from typing import List
 
 # Initialize simulation app first
 from isaacsim import SimulationApp
@@ -63,7 +62,7 @@ from pxr import PhysxSchema, Sdf, Usd, UsdGeom
 class AssetValidator:
     """Class to handle USD asset validation logic."""
 
-    def __init__(self, root_path: str, use_validation_engine: bool = False):
+    def __init__(self, root_path: str, use_validation_engine: bool = False) -> None:
         """Initialize the AssetValidator.
 
         Args:
@@ -73,7 +72,7 @@ class AssetValidator:
         self._root_path = root_path
         self._use_validation_engine = use_validation_engine
 
-    def validate(self, usd_path: str) -> List[str]:
+    def validate(self, usd_path: str) -> list[str]:
         """Validate a single USD file against all validation checks.
 
         Args:
@@ -117,7 +116,7 @@ class AssetValidator:
 
         return file_results
 
-    def run_validation_engine(self, usd_path: str) -> List[str]:
+    def run_validation_engine(self, usd_path: str) -> list[str]:
         """Run Omniverse ValidationEngine on a USD file.
 
         Args:
@@ -142,7 +141,7 @@ class AssetValidator:
 
         return errors
 
-    def check_stage_units(self, stage: Usd.Stage) -> List[str]:
+    def check_stage_units(self, stage: Usd.Stage) -> list[str]:
         """Check if stage units are in meters.
 
         Args:
@@ -156,7 +155,7 @@ class AssetValidator:
             return ["stage has units which are not in meters"]
         return []
 
-    def check_physics_schema(self) -> List[str]:
+    def check_physics_schema(self) -> list[str]:
         """Check if physics schema is up to date.
 
         Returns:
@@ -166,7 +165,7 @@ class AssetValidator:
             return ["stage has an old physics schema"]
         return []
 
-    def check_missing_ref(self, prim: Usd.Prim) -> List[str]:
+    def check_missing_ref(self, prim: Usd.Prim) -> list[str]:
         """Check if prim has missing references.
 
         Args:
@@ -179,7 +178,7 @@ class AssetValidator:
             return [f"stage has missing references for {prim.GetPath()}"]
         return []
 
-    def check_external_refs(self, usd_path: str) -> List[str]:
+    def check_external_refs(self, usd_path: str) -> list[str]:
         """Check if USD file has external references.
 
         Args:
@@ -195,7 +194,7 @@ class AssetValidator:
             return [f"stage has external references {ext_refs}"]
         return []
 
-    def check_abs_refs(self, usd_path: str) -> List[str]:
+    def check_abs_refs(self, usd_path: str) -> list[str]:
         """Check if USD file has absolute references.
 
         Args:
@@ -209,7 +208,7 @@ class AssetValidator:
             return [f"stage has absolute references {abs_refs}"]
         return []
 
-    def check_rel_refs_scope(self, usd_path: str) -> List[str]:
+    def check_rel_refs_scope(self, usd_path: str) -> list[str]:
         """Check if USD file has relative references that are outside of our asset server.
 
         Args:
@@ -228,7 +227,7 @@ class AssetValidator:
                 return [f"stage: has relative references outside of asset server {rel_refs_outside_asset_server}"]
         return []
 
-    def check_properties(self, usd_path: str, prim: Usd.Prim) -> List[str]:
+    def check_properties(self, usd_path: str, prim: Usd.Prim) -> list[str]:
         """Check if prim properties contain absolute references.
 
         Args:
@@ -254,7 +253,7 @@ class AssetValidator:
             carb.log_error(f"{e} fail to check {usd_path}, {prim.GetPath()}")
             return []
 
-    def check_deleted_ref(self, prim: Usd.Prim) -> List[str]:
+    def check_deleted_ref(self, prim: Usd.Prim) -> list[str]:
         """Check if prim has deleted references.
 
         Args:
@@ -271,7 +270,7 @@ class AssetValidator:
                 return [f"stage has deleted references {references_info.deletedItems}"]
         return []
 
-    def check_deleted_payload(self, prim: Usd.Prim) -> List[str]:
+    def check_deleted_payload(self, prim: Usd.Prim) -> list[str]:
         """Check if prim has deleted payloads.
 
         Args:
@@ -289,7 +288,7 @@ class AssetValidator:
                     return [f"stage has deleted payload {payload_info.deletedItems}"]
         return []
 
-    def check_physics_scene(self, prim: Usd.Prim) -> List[str]:
+    def check_physics_scene(self, prim: Usd.Prim) -> list[str]:
         """Check if physics scene has valid configuration.
 
         Args:
@@ -309,7 +308,7 @@ class AssetValidator:
                 )
         return errors
 
-    def check_deprecated_og(self, prim: Usd.Prim) -> List[str]:
+    def check_deprecated_og(self, prim: Usd.Prim) -> list[str]:
         """Check if prim uses deprecated Omniverse Graph nodes.
 
         Args:
@@ -325,7 +324,7 @@ class AssetValidator:
                 return [f"stage has node {prim.GetPath()} of type omni.graph.nodes.MakeArray"]
         return []
 
-    def check_incorrect_delta(self, stage: Usd.Stage) -> List[str]:
+    def check_incorrect_delta(self, stage: Usd.Stage) -> list[str]:
         """Check if prim uses incorrect delta.
 
         Args:
@@ -341,12 +340,12 @@ class AssetValidator:
             if prim is not None and prim.IsValid():
                 stack = prim.GetPrimStack()
 
-                if not all([s.layer.anonymous for s in stack]):
+                if not all(s.layer.anonymous for s in stack):
                     results.append(f"stage has delta for {path} on non-anonymous layer")
         return results
 
 
-def main():
+def main() -> None:
     """Main entry point for the asset validation script."""
     # Wait for simulator to initialize
     for _ in range(10):

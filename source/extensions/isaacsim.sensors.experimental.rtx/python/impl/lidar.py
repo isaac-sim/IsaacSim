@@ -212,8 +212,10 @@ class Lidar(_SensorAuthoring):
             accumulate_outputs: Set the ``omni:sensor:Core:accumulateOutputs`` attribute on the OmniLidar prim.
                 When ``None`` (the default), the attribute authored on the loaded asset is preserved.
                 Pass ``True``/``False`` to override.
+            aux_output_level: Auxiliary output level to author on the OmniLidar prim.
             tick_rate: Sensor tick rate in Hz. When ``None`` (the default), the asset's
                 ``omni:sensor:tickRate`` attribute is preserved. Pass an explicit value to override.
+            schemas: Optional schema API names to apply to the created OmniLidar prim.
             attributes: Attributes to set on the OmniLidar prim.
             positions: Positions in the world frame (shape ``(N, 3)``).
             translations: Translations in the local frame (shape ``(N, 3)``).

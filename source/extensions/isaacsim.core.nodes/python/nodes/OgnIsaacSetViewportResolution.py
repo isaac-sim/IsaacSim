@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Set the texture resolution for a named or active viewport from OmniGraph inputs."""
+
+from typing import Any
+
 import carb
 import omni
 from omni.kit.viewport.utility import get_active_viewport, get_viewport_from_window_name
@@ -22,7 +26,15 @@ class OgnIsaacSetViewportResolution:
     """Isaac Sim Set Viewport Resolution."""
 
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
+        """Apply the requested width and height when a viewport resolves, then enable `execOut`.
+
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            True after the node executes.
+        """
         viewport_name = db.inputs.viewport
         if viewport_name:
             viewport_api = get_viewport_from_window_name(viewport_name)

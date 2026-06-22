@@ -26,7 +26,7 @@ import omni.replicator.core as rep
 import omni.usd
 
 
-def run_example():
+def run_example() -> None:
     """Run a basic SDG pipeline capturing RGB and bounding box data."""
     # Create a new stage and disable capture on play
     omni.usd.get_context().new_stage()

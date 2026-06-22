@@ -209,7 +209,11 @@ class TestEffortSensor(omni.kit.test.AsyncTestCase):
             self.assertNotEqual(custom_reading.value, sensor_reading.value)
 
     def _make_mock_effort_sensor(self) -> object:
-        """Create a minimal object that can call EffortSensor.get_sensor_reading."""
+        """Create a minimal object that can call EffortSensor.get_sensor_reading.
+
+        Returns:
+            Mock effort sensor object configured with the attributes needed for reading.
+        """
 
         class MockEffortSensor:
             pass

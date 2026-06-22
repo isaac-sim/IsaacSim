@@ -47,7 +47,11 @@ SRTX_SENSOR_SET_RENDER_PRODUCT_PATHS_BY_NAME_SETTING = "/exts/omni.replicator.sr
 
 
 def is_srtx_supported_platform() -> bool:
-    """Return True when omni.replicator.srtx is expected to be available."""
+    """Return whether omni.replicator.srtx is expected to be available.
+
+    Returns:
+        True if SRTX is supported on the current platform, otherwise False.
+    """
     return sys.platform.startswith("linux")
 
 
@@ -76,7 +80,14 @@ class SrtxSensorSetConfig:
 
 
 def _get_srtx_string_setting(setting_name: str) -> str | None:
-    """Return a non-empty string value from an SRTX carb setting."""
+    """Return a non-empty string value from an SRTX carb setting.
+
+    Args:
+        setting_name: Carb setting name to read.
+
+    Returns:
+        Non-empty setting value, or None if the value is missing or invalid.
+    """
     settings = carb.settings.get_settings()
     if settings is None:
         return None
@@ -95,6 +106,9 @@ def _get_default_srtx_sensor_set_name() -> str:
     behavior for standalone Isaac Sim use). The host application is responsible
     for ensuring the value is valid for the SRTX server (lowercase letters,
     digits, hyphens, length 4-63, first char letter, last char letter/digit).
+
+    Returns:
+        Configured sensor-set name, or the default sensor-set name.
     """
     default = "default-sensor-set"
     override = _get_srtx_string_setting(SRTX_SENSOR_SET_NAME_SETTING)
@@ -102,7 +116,14 @@ def _get_default_srtx_sensor_set_name() -> str:
 
 
 def _get_srtx_json_object_setting(setting_name: str) -> dict[str, object] | None:
-    """Parse an SRTX carb setting as a JSON object, logging malformed values."""
+    """Parse an SRTX carb setting as a JSON object, logging malformed values.
+
+    Args:
+        setting_name: Carb setting name to parse.
+
+    Returns:
+        Parsed JSON object, or None if the setting is missing or invalid.
+    """
     raw_value = _get_srtx_string_setting(setting_name)
     if raw_value is None:
         return None
@@ -122,6 +143,12 @@ def get_srtx_sensor_set_config(render_product_path: str | None = None) -> SrtxSe
 
     If *render_product_path* is not mapped to a configured shared set, returns
     the historical per-bridge/default sensor-set name with no declaration paths.
+
+    Args:
+        render_product_path: Render product path to resolve.
+
+    Returns:
+        Sensor-set configuration for the render product.
     """
     default_name = _get_default_srtx_sensor_set_name()
     if not render_product_path:
@@ -167,12 +194,26 @@ def get_srtx_sensor_set_name(render_product_path: str | None = None) -> str:
     published by the host application. Otherwise it falls back to the
     historical process-wide override in :data:`SRTX_SENSOR_SET_NAME_SETTING`,
     then to ``"default-sensor-set"`` for standalone Isaac Sim use.
+
+    Args:
+        render_product_path: Render product path to resolve.
+
+    Returns:
+        Sensor-set name to use.
     """
     return get_srtx_sensor_set_config(render_product_path).name
 
 
 def prepare_srtx_sensor_set(srtx_instance: object, render_product_path: str) -> str | None:
-    """Resolve and, if configured, declare the SRTX sensor set for a render product."""
+    """Resolve and, if configured, declare the SRTX sensor set for a render product.
+
+    Args:
+        srtx_instance: SRTX runtime instance.
+        render_product_path: Render product path to prepare.
+
+    Returns:
+        Prepared sensor-set name, or None if preparation fails.
+    """
     try:
         from omni.replicator.srtx import prepare_configured_sensorset
     except ImportError:
@@ -220,7 +261,6 @@ class SrtxCaptureState:
     """
 
     def __init__(self) -> None:
-        """Initialize the SRTX capture state."""
         self._stage_id: str = ""
         self._output_paths: dict[str, list[str]] = {}
 

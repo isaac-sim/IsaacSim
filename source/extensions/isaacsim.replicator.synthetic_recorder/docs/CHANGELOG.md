@@ -1,4 +1,13 @@
 # Changelog
+
+## [2.4.5] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
+## [2.4.4] - 2026-06-08
+### Fixed
+- Remove extra new stage creation calls in tests
+
 ## [2.4.3] - 2026-05-20
 ### Fixed
 - "Use S3" UI checkbox now actually switches the backend; previously it was a no-op and recordings silently fell back to disk.

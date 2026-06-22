@@ -99,6 +99,12 @@ def _read_cube(prim: Usd.Prim) -> GeometryData:
 
     Newton convention: size=1.0 with scale XformOp for dimensions.
     General: size attribute * any scale.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Geometry data for the cube.
     """
     cube = UsdGeom.Cube(prim)
     size_attr = cube.GetSizeAttr()
@@ -112,7 +118,14 @@ def _read_cube(prim: Usd.Prim) -> GeometryData:
 
 
 def _read_sphere(prim: Usd.Prim) -> GeometryData:
-    """Read sphere geometry from a UsdGeomSphere."""
+    """Read sphere geometry from a UsdGeomSphere.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Geometry data for the sphere.
+    """
     sphere = UsdGeom.Sphere(prim)
     radius_attr = sphere.GetRadiusAttr()
     radius = float(radius_attr.Get()) if radius_attr and radius_attr.Get() is not None else 1.0
@@ -126,7 +139,14 @@ def _read_sphere(prim: Usd.Prim) -> GeometryData:
 
 
 def _read_cylinder(prim: Usd.Prim) -> GeometryData:
-    """Read cylinder geometry from a UsdGeomCylinder."""
+    """Read cylinder geometry from a UsdGeomCylinder.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Geometry data for the cylinder.
+    """
     cyl = UsdGeom.Cylinder(prim)
     radius_attr = cyl.GetRadiusAttr()
     height_attr = cyl.GetHeightAttr()
@@ -156,6 +176,12 @@ def _read_capsule(prim: Usd.Prim) -> list[GeometryData]:
     URDF has no capsule primitive, so decompose into a cylinder (the body)
     and two spheres (end caps).  Each piece carries ``original_type`` /
     ``original_params`` so the importer can reconstruct the capsule.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Geometry data for the capsule components.
     """
     capsule = UsdGeom.Capsule(prim)
     radius_attr = capsule.GetRadiusAttr()
@@ -227,6 +253,12 @@ def _read_cone(prim: Usd.Prim) -> GeometryData:
     URDF has no cone primitive, so it is exported as a procedurally
     tessellated mesh.  The original parameters are preserved in
     ``original_type`` / ``original_params`` for round-trip reconstruction.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Geometry data for the cone mesh placeholder.
     """
     cone = UsdGeom.Cone(prim)
     radius_attr = cone.GetRadiusAttr()
@@ -275,12 +307,25 @@ def _read_mesh(prim: Usd.Prim) -> GeometryData:
     from the Mesh prim's local xformOps misses the latter (common in
     Isaac Sim assets where ``<link>/geometry/<Mesh>`` carries scale on
     the intermediate ``geometry`` Xform).
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Geometry data for the mesh.
     """
     return GeometryData(geom_type="mesh", source_prim=prim, mesh_prim=prim)
 
 
 def _get_scale(prim: Usd.Prim) -> tuple[float, float, float]:
-    """Extract scale from a prim's XformOps."""
+    """Extract scale from a prim's XformOps.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Scale values authored on the prim.
+    """
     xformable = UsdGeom.Xformable(prim)
     if not xformable:
         return (1.0, 1.0, 1.0)

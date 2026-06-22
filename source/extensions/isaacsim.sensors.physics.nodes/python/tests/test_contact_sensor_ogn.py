@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies contact sensor OmniGraph nodes for valid and invalid inputs, stop-play lifecycle behavior, output reset, and nonzero readings on an Ant scene."""
+
 import asyncio
+from typing import Any
 
 import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -31,7 +34,10 @@ from .common import setup_ant_scene, step_simulation
 
 
 class TestContactSensorOgn(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Exercise the contact sensor read node on a simple cube-ground scene."""
+
+    async def setUp(self) -> None:
+        """Create the cube contact sensor scene and its OmniGraph reader node."""
         await stage_utils.create_new_stage_async()
         physics_rate = 60
         SimulationManager.setup_simulation(dt=1.0 / physics_rate)
@@ -39,7 +45,8 @@ class TestContactSensorOgn(omni.kit.test.AsyncTestCase):
         await self.setup_environment()
         await self.setup_ogn()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Stop playback, invalidate physics, and wait for stage loading to finish."""
         if self._timeline.is_playing():
             self._timeline.stop()
         SimulationManager.invalidate_physics()
@@ -49,7 +56,8 @@ class TestContactSensorOgn(omni.kit.test.AsyncTestCase):
             await asyncio.sleep(1.0)
         await omni.kit.app.get_app().next_update_async()
 
-    async def setup_environment(self):
+    async def setup_environment(self) -> None:
+        """Create a falling cube with collision, mass, contact report API, and contact sensor."""
         GroundPlane("/World/GroundPlane", positions=[0.0, 0.0, 0.0])
         Cube("/World/Cube", sizes=1.0, positions=[0.0, 0.0, 1.0])
         GeomPrim("/World/Cube", apply_collision_apis=True)
@@ -61,7 +69,8 @@ class TestContactSensorOgn(omni.kit.test.AsyncTestCase):
             max_threshold=10000000,
         )
 
-    async def setup_ogn(self):
+    async def setup_ogn(self) -> None:
+        """Create an OnPlaybackTick-driven IsaacReadContactSensor graph for the cube sensor."""
         self.graph_path = "/TestGraph"
         self.prim_path = "/World/Cube/contact_sensor"
 
@@ -92,7 +101,7 @@ class TestContactSensorOgn(omni.kit.test.AsyncTestCase):
             print(e)
 
     # verifying force value and sensor time are non-zero in valid case
-    async def test_valid_contact_sensor_ogn(self):
+    async def test_valid_contact_sensor_ogn(self) -> None:
         """Verify non-zero outputs for a valid contact sensor prim."""
         # must play, stop, and play simulation for force value to be properly recorded
         self._timeline.play()
@@ -106,7 +115,7 @@ class TestContactSensorOgn(omni.kit.test.AsyncTestCase):
         sensor_time = og.Controller.attribute(self.graph_path + "/ReadContactNode.outputs:sensorTime").get()
         self.assertNotEqual(sensor_time, 0.0)
 
-    async def test_contact_sensor_stop_play_lifecycle(self):
+    async def test_contact_sensor_stop_play_lifecycle(self) -> None:
         """Outputs recover valid data after a stop/play cycle."""
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
@@ -125,7 +134,7 @@ class TestContactSensorOgn(omni.kit.test.AsyncTestCase):
         force_after = og.Controller.attribute(self.graph_path + "/ReadContactNode.outputs:value").get()
         self.assertNotEqual(force_after, 0.0, "Should recover valid force after stop/play")
 
-    async def test_invalid_contact_sensor_ogn(self):
+    async def test_invalid_contact_sensor_ogn(self) -> None:
         """Verify outputs are zero for an invalid contact sensor prim."""
         og.Controller.set(
             og.Controller.attribute(self.graph_path + "/ReadContactNode.inputs:csPrim"), [usdrt.Sdf.Path("/World/Cube")]
@@ -142,13 +151,15 @@ class TestContactSensorOgn(omni.kit.test.AsyncTestCase):
 class TestContactSensorOgnWithAnt(omni.kit.test.AsyncTestCase):
     """OGN contact sensor tests using the ant robot scene."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Load the Ant scene used by contact sensor node output-reset tests."""
         self._physics_rate = 60
         self._timeline = omni.timeline.get_timeline_interface()
         self._ant_config = await setup_ant_scene(self._physics_rate)
         self._stage = stage_utils.get_current_stage()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Stop playback and clear physics state after Ant contact node tests."""
         await omni.kit.app.get_app().next_update_async()
         if self._timeline.is_playing():
             self._timeline.stop()
@@ -158,18 +169,21 @@ class TestContactSensorOgnWithAnt(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
 
     @property
-    def leg_paths(self):
+    def leg_paths(self) -> Any:
+        """Return Ant lower-arm link paths used as contact sensor parents."""
         return self._ant_config.leg_paths
 
     @property
-    def sensor_offsets(self):
+    def sensor_offsets(self) -> Any:
+        """Return per-leg contact sensor translation offsets for the Ant scene."""
         return self._ant_config.sensor_offsets
 
     @property
-    def color(self):
+    def color(self) -> Any:
+        """Return the per-leg contact sensor debug colors for the Ant scene."""
         return self._ant_config.colors
 
-    async def _add_sensor_prims(self):
+    async def _add_sensor_prims(self) -> None:
         """Helper to add contact sensors to ant legs."""
         for i in range(4):
             sensor = Contact.create(
@@ -182,8 +196,16 @@ class TestContactSensorOgnWithAnt(omni.kit.test.AsyncTestCase):
             )
             self.assertIsNotNone(sensor)
 
-    def _setup_contact_sensor_ogn_graph(self, sensor_path: str, graph_path: str = "/controller_graph"):
-        """Create the OGN graph that reads contact sensor outputs."""
+    def _setup_contact_sensor_ogn_graph(self, sensor_path: str, graph_path: str = "/controller_graph") -> Any:
+        """Create the OGN graph that reads contact sensor outputs.
+
+        Args:
+            sensor_path: Contact sensor prim path to read.
+            graph_path: OmniGraph path to create.
+
+        Returns:
+            Created contact sensor reader node.
+        """
         if self._stage.GetPrimAtPath(graph_path).IsValid():
             stage_utils.delete_prim(graph_path)
 
@@ -202,7 +224,7 @@ class TestContactSensorOgnWithAnt(omni.kit.test.AsyncTestCase):
         )
         return test_node
 
-    async def test_node_outputs_reset(self):
+    async def test_node_outputs_reset(self) -> None:
         """Ensure OGN node outputs reset after playback stops."""
         sensor = Contact.create(
             f"{self.leg_paths[0]}/sensor",
@@ -250,7 +272,7 @@ class TestContactSensorOgnWithAnt(omni.kit.test.AsyncTestCase):
 
         self._timeline.stop()
 
-    async def test_node_nonzero_outputs(self):
+    async def test_node_nonzero_outputs(self) -> None:
         """Ensure OGN node reports non-zero outputs during contact."""
         await self._add_sensor_prims()
         await omni.kit.app.get_app().next_update_async()

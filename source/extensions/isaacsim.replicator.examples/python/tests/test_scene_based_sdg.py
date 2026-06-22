@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verify the scene-based forklift SDG workflow writes the expected multi-camera dataset files."""
+
 import tempfile
+from typing import Any
 
 import carb.settings
 import omni.kit
@@ -22,14 +25,21 @@ from isaacsim.test.utils.file_validation import validate_folder_contents
 
 
 class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
+    """Runs the warehouse scene SDG example with physics settling and graph randomizers."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Open a clean stage and preserve the DLSS setting used by the SDG capture."""
         await omni.kit.app.get_app().next_update_async()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
         self.original_dlss_exec_mode = carb.settings.get_settings().get("rtx/post/dlss/execMode")
 
-    async def tearDown(self):
+    async def tearDown(self) -> Any:
+        """Close the stage, wait for asset loading to finish, and restore the DLSS setting.
+
+        Returns:
+            None.
+        """
         omni.usd.get_context().close_stage()
         await omni.kit.app.get_app().next_update_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
@@ -37,7 +47,12 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
         carb.settings.get_settings().set("rtx/post/dlss/execMode", self.original_dlss_exec_mode)
 
-    async def test_scene_based_sdg(self):
+    async def test_scene_based_sdg(self) -> Any:
+        """Generate forklift, pallet, box, cone, lighting, and camera randomizations and validate outputs.
+
+        Returns:
+            None.
+        """
         import math
         import os
 
@@ -60,7 +75,13 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
         from isaacsim.storage.native import get_assets_root_path_async
         from pxr import Gf, Usd, UsdGeom
 
-        def _create_prim(prim_path, position=None, orientation=None, usd_path=None, semantic_label=None):
+        def _create_prim(
+            prim_path: Any,
+            position: Any | None = None,
+            orientation: Any | None = None,
+            usd_path: Any | None = None,
+            semantic_label: Any | None = None,
+        ) -> Any:
             if usd_path is not None:
                 prim = add_reference_to_stage(usd_path, prim_path)
             else:
@@ -72,9 +93,16 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
             return prim
 
         def setup_writer(config: dict) -> rep.Writer | None:
-            """Setup and initialize writer with optional backend support."""
+            """Setup and initialize writer with optional backend support.
 
-            def normalize_output_dir(params):
+            Args:
+                config: Writer and backend configuration dictionary.
+
+            Returns:
+                Initialized writer, or None if the writer or backend configuration is invalid.
+            """
+
+            def normalize_output_dir(params: dict[str, Any]) -> None:
                 if "output_dir" in params and not os.path.isabs(params["output_dir"]):
                     params["output_dir"] = os.path.join(os.getcwd(), params["output_dir"])
 
@@ -131,7 +159,16 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
             num_boxes: int = 8,
             rng: np.random.Generator | None = None,
         ) -> None:
-            """Run physics simulation to drop boxes on pallet near forklift."""
+            """Run physics simulation to drop boxes on pallet near forklift.
+
+            Args:
+                forklift_prim: Forklift prim used as the placement reference.
+                assets_root_path: Root URL or path for Isaac Sim assets.
+                config: SDG asset configuration dictionary.
+                max_sim_steps: Maximum number of physics steps to simulate.
+                num_boxes: Number of boxes to spawn and drop.
+                rng: Random number generator for placement values, or None to create one.
+            """
             if rng is None:
                 rng = np.random.default_rng()
 
@@ -185,7 +222,17 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
         def setup_camera_bounds(
             pallet_prim: Usd.Prim, forklift_prim: Usd.Prim, pallet_tf: Gf.Matrix4d, forklift_tf: Gf.Matrix4d
         ) -> dict[str, dict[str, tuple[float, float, float]]]:
-            """Calculate camera randomization bounds for pallet, top view, and driver cameras."""
+            """Calculate camera randomization bounds for pallet, top view, and driver cameras.
+
+            Args:
+                pallet_prim: Pallet prim used to calculate pallet camera bounds.
+                forklift_prim: Forklift prim used to calculate top and driver camera bounds.
+                pallet_tf: World transform of the pallet.
+                forklift_tf: World transform of the forklift.
+
+            Returns:
+                Camera names mapped to minimum and maximum position bounds.
+            """
             pallet_pos = pallet_tf.ExtractTranslation()
             pallet_cam_bounds = {
                 "min": (pallet_pos[0] - 2, pallet_pos[1] - 2, 2),
@@ -213,7 +260,18 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
         def create_scatter_plane_for_prim(
             prim: Usd.Prim, prim_tf: Gf.Matrix4d, parent_path: str, scale_factor: float = 0.8, visible: bool = False
         ) -> Usd.Prim:
-            """Create scatter plane sized and aligned to prim surface."""
+            """Create scatter plane sized and aligned to prim surface.
+
+            Args:
+                prim: Prim whose bounds define the scatter plane.
+                prim_tf: World transform of the prim.
+                parent_path: Parent prim path for the scatter plane.
+                scale_factor: Multiplier applied to the prim footprint.
+                visible: Whether the scatter plane should be visible.
+
+            Returns:
+                Created scatter plane prim.
+            """
             bb_cache = create_bbox_cache()
             prim_bbox = bb_cache.ComputeLocalBound(prim)
             prim_bbox.Transform(prim_tf)
@@ -238,9 +296,18 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
             return scatter_plane
 
         def setup_cone_placement_corners(
-            forklift_prim: Usd.Prim, bb_cache=None, scale_factor: float = 1.3
+            forklift_prim: Usd.Prim, bb_cache: Any | None = None, scale_factor: float = 1.3
         ) -> tuple[list[list[float]], tuple[float, float, float]]:
-            """Calculate forklift OBB corners for cone placement."""
+            """Calculate forklift OBB corners for cone placement.
+
+            Args:
+                forklift_prim: Forklift prim used to compute an oriented bounding box.
+                bb_cache: Bounding box cache to reuse, or None to create one.
+                scale_factor: Multiplier applied to the forklift footprint.
+
+            Returns:
+                Cone placement corner positions and forklift rotation in degrees.
+            """
             if bb_cache is None:
                 bb_cache = create_bbox_cache()
 
@@ -268,7 +335,13 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
             return cone_placement_corners, forklift_rotation_deg
 
         def register_lights_graph_randomizer(forklift_prim: Usd.Prim, pallet_prim: Usd.Prim, event_name: str) -> None:
-            """Register graph randomizer for sphere lights."""
+            """Register graph randomizer for sphere lights.
+
+            Args:
+                forklift_prim: Forklift prim included in the lighting bounds.
+                pallet_prim: Pallet prim included in the lighting bounds.
+                event_name: Custom event name that triggers the randomizer.
+            """
             bb_cache = create_bbox_cache()
             combined_bounds = compute_combined_aabb([forklift_prim, pallet_prim], bbox_cache=bb_cache)
             light_pos_min = (combined_bounds[0], combined_bounds[1], 6)
@@ -287,7 +360,13 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
         def register_cardboxes_materials_graph_randomizer(
             cardboxes: list[Usd.Prim], cardbox_material_urls: list[str], event_name: str
         ) -> None:
-            """Register graph randomizer for cardbox materials."""
+            """Register graph randomizer for cardbox materials.
+
+            Args:
+                cardboxes: Cardbox prims whose mesh children receive randomized materials.
+                cardbox_material_urls: Material URLs to sample from.
+                event_name: Custom event name that triggers the randomizer.
+            """
             cardbox_mesh_paths = []
             for cardbox in cardboxes:
                 meshes = [child for child in cardbox.GetChildren() if child.IsA(UsdGeom.Mesh)]
@@ -298,7 +377,7 @@ class TestSceneBasedSDG(omni.kit.test.AsyncTestCase):
                 with cardbox_mesh_group_node:
                     rep.randomizer.materials(cardbox_material_urls)
 
-        async def run_example_async(config):
+        async def run_example_async(config: Any) -> None:
             assets_root_path = await get_assets_root_path_async()
             if assets_root_path is None:
                 print("[SDG] Could not get nucleus server path")

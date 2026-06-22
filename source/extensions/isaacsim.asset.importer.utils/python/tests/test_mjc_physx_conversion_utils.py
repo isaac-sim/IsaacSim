@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test mjc physx conversion utils functionality."""
+"""Verifies conversion utilities between MJCF actuator metadata and PhysX drive schemas. Covers limit propagation, actuator creation, overconstrained joint consolidation, property preservation, layer overrides, and mimic reference rewrites."""
 
 import os
 import tempfile
@@ -202,7 +202,20 @@ class TestMjcPhysxConversionUtils(omni.kit.test.AsyncTestCase):
         lower: float,
         upper: float,
     ) -> Usd.Prim:
-        """Helper to construct a UsdPhysics.RevoluteJoint with the given params."""
+        """Construct a ``UsdPhysics.RevoluteJoint`` with the given parameters.
+
+        Args:
+            stage: Stage on which to define the joint.
+            path: Prim path for the joint.
+            body0: Target path for the joint's body0 relationship.
+            body1: Target path for the joint's body1 relationship.
+            axis: Joint axis token.
+            lower: Lower limit authored on the joint.
+            upper: Upper limit authored on the joint.
+
+        Returns:
+            The authored revolute joint prim.
+        """
         joint = UsdPhysics.RevoluteJoint.Define(stage, path)
         joint.CreateBody0Rel().SetTargets([Sdf.Path(body0)])
         joint.CreateBody1Rel().SetTargets([Sdf.Path(body1)])
@@ -367,7 +380,8 @@ class TestMjcPhysxConversionUtils(omni.kit.test.AsyncTestCase):
             self.assertEqual(secondary_spec.GetInfo("active"), False)
 
     async def test_combine_overconstrained_joints_preserves_all_properties(self) -> None:
-        """3 revolute + 3 prismatic joints between the same body pair collapse
+        """3 revolute + 3 prismatic joints between the same body pair collapse.
+
         into a single D6 that preserves every per-axis limit/drive plus the
         primary's PhysxJointAPI/break/collision tuning.
         """
@@ -501,7 +515,8 @@ class TestMjcPhysxConversionUtils(omni.kit.test.AsyncTestCase):
             self.assertNotIn(prop_name, edit_spec.attributes, prop_name)
 
     async def test_combine_overconstrained_joints_promotes_primary_when_first_joint_dropped(self) -> None:
-        """A leading joint without a recognizable axis is dropped; the D6
+        """A leading joint without a recognizable axis is dropped; the D6.
+
         host is built at the path of the next joint with a valid axis. The
         dropped joint is deactivated; the new D6 host stays active.
         """

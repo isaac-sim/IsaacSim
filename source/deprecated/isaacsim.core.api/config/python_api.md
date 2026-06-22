@@ -3,19 +3,20 @@
 ## Classes
 
 - class PhysicsContext(object)
-  - def __init__(self, physics_dt: Optional[float] = None, prim_path: str = '/physicsScene', sim_params: dict = None, set_defaults: bool = True)
+  - def __init__(self, physics_dt: float | None = None, prim_path: str = '/physicsScene', sim_params: dict = None, set_defaults: bool = True)
   - [property] def prim_path(self) -> str
   - [property] def device(self) -> str
   - [property] def use_gpu_sim(self) -> bool
   - [property] def use_gpu_pipeline(self) -> bool
   - [property] def use_fabric(self) -> bool
   - def warm_start(self)
-  - def get_current_physics_scene_prim(self) -> Optional[Usd.Prim]
+  - def get_current_physics_scene_prim(self) -> Usd.Prim | None
   - def set_physics_dt(self, dt: float = 1.0 / 60.0, substeps: int = 1)
   - def get_physics_dt(self) -> float
-  - def enable_fabric(self, enable)
+  - def enable_fabric(self, enable: bool)
   - def enable_ccd(self, flag: bool)
   - def is_ccd_enabled(self) -> bool
+  - def enable_stabilization(self, flag: bool)
   - def enable_stablization(self, flag: bool)
   - def is_stablization_enabled(self) -> bool
   - def enable_gpu_dynamics(self, flag: bool)
@@ -25,9 +26,9 @@
   - def set_solver_type(self, solver_type: str)
   - def get_solver_type(self) -> str
   - def set_gravity(self, value: float)
-  - def get_gravity(self) -> Tuple[List, float]
-  - def set_physx_update_transformations_settings(self, update_to_usd: Optional[bool] = None, update_velocities_to_usd: Optional[bool] = None, output_velocities_local_space: Optional[bool] = None)
-  - def get_physx_update_transformations_settings(self) -> Tuple[bool, bool, bool, bool]
+  - def get_gravity(self) -> tuple[list, float]
+  - def set_physx_update_transformations_settings(self, update_to_usd: bool | None = None, update_velocities_to_usd: bool | None = None, output_velocities_local_space: bool | None = None)
+  - def get_physx_update_transformations_settings(self) -> tuple[bool, bool, bool]
   - def set_invert_collision_group_filter(self, invert_collision_group_filter: bool)
   - def get_invert_collision_group_filter(self) -> int
   - def set_bounce_threshold(self, value: float)
@@ -64,7 +65,7 @@
   - def get_solve_articulation_contact_last(self) -> bool
 
 - class SimulationContext
-  - def __init__(self, physics_dt: Optional[float] = None, rendering_dt: Optional[float] = None, stage_units_in_meters: Optional[float] = None, physics_prim_path: str = '/physicsScene', sim_params: dict = None, set_defaults: bool = True, backend: str = 'numpy', device: Optional[str] = None, stage: Optional[Usd.Stage] = None)
+  - def __init__(self, physics_dt: float | None = None, rendering_dt: float | None = None, stage_units_in_meters: float | None = None, physics_prim_path: str = '/physicsScene', sim_params: dict = None, set_defaults: bool = True, backend: str = 'numpy', device: str | None = None, stage: Usd.Stage | None = None)
   - class def instance(cls) -> SimulationContext
   - class def clear_instance(cls)
   - [property] def app(self) -> omni.kit.app.IApp
@@ -73,10 +74,10 @@
   - [property] def stage(self) -> Usd.Stage
   - [property] def backend(self) -> str
   - [property] def device(self) -> str
-  - [property] def backend_utils(self)
-  - [property] def physics_sim_view(self)
+  - [property] def backend_utils(self) -> object
+  - [property] def physics_sim_view(self) -> object
   - def get_physics_context(self) -> PhysicsContext
-  - def set_simulation_dt(self, physics_dt: Optional[float] = None, rendering_dt: Optional[float] = None)
+  - def set_simulation_dt(self, physics_dt: float | None = None, rendering_dt: float | None = None)
   - def get_physics_dt(self) -> float
   - def get_rendering_dt(self) -> float
   - def set_block_on_render(self, block: bool)
@@ -118,16 +119,16 @@
   - def skip_next_stage_open_callback(self)
 
 - class World(SimulationContext)
-  - def __init__(self, physics_dt: Optional[float] = None, rendering_dt: Optional[float] = None, stage_units_in_meters: Optional[float] = None, physics_prim_path: str = '/physicsScene', sim_params: dict = None, set_defaults: bool = True, backend: str = 'numpy', device: Optional[str] = None)
+  - def __init__(self, physics_dt: float | None = None, rendering_dt: float | None = None, stage_units_in_meters: float | None = None, physics_prim_path: str = '/physicsScene', sim_params: dict = None, set_defaults: bool = True, backend: str = 'numpy', device: str | None = None)
   - class def clear_instance(cls)
   - [property] def scene(self) -> Scene
   - def add_task(self, task: BaseTask)
   - def is_tasks_scene_built(self) -> bool
-  - def get_current_tasks(self) -> List[BaseTask]
+  - def get_current_tasks(self) -> list[BaseTask]
   - def get_task(self, name: str) -> BaseTask
-  - def get_observations(self, task_name: Optional[str] = None) -> dict
-  - def calculate_metrics(self, task_name: Optional[str] = None) -> dict
-  - def is_done(self, task_name: Optional[str] = None) -> bool
+  - def get_observations(self, task_name: str | None = None) -> dict
+  - def calculate_metrics(self, task_name: str | None = None) -> dict
+  - def is_done(self, task_name: str | None = None) -> bool
   - def get_data_logger(self) -> DataLogger
   - def initialize_physics(self)
   - def reset(self, soft: bool = False)
@@ -135,5 +136,5 @@
   - async def reset_async_no_set_up_scene(self, soft: bool = False)
   - async def reset_async(self, soft: bool = False)
   - def step(self, render: bool = True, step_sim: bool = True, update_fabric: bool = False)
-  - def step_async(self, step_size: Optional[float] = None)
+  - def step_async(self, step_size: float | None = None)
   - def clear(self)

@@ -13,13 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 camera info helper OmniGraph node."""
+"""Verify ROS 2 camera info publishing.
+
+Covers monocular and stereo cameras, OpenCV pinhole and fisheye distortion,
+system and simulation timestamps, stereo rectification, namespace collection,
+and depth point-cloud projection.
+"""
 
 import os
 import random
 import sys
 import unittest
-from typing import List, Tuple
+from typing import Any
 
 import carb
 import cv2
@@ -60,7 +65,7 @@ def _apply_opencv_distortion(
     coefficients: list[float],
     coeff_names: list[str],
     resolution: tuple[int, int] | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """Apply an OpenCV distortion model to a RtxCamera prim.
 
@@ -85,21 +90,39 @@ def _apply_opencv_distortion(
             prim.GetAttribute(f"omni:lensdistortion:{model}:{attr_name}").Set(float(attr_value))
 
 
-def _apply_opencv_pinhole(cam: RtxCamera, pinhole: list[float], resolution: tuple[int, int] | None = None, **kw):
-    """Apply OpenCV pinhole distortion to a RtxCamera prim."""
+def _apply_opencv_pinhole(
+    cam: RtxCamera, pinhole: list[float], resolution: tuple[int, int] | None = None, **kw: Any
+) -> None:
+    """Apply OpenCV pinhole distortion to a RtxCamera prim.
+
+    Args:
+        cam: Camera prim wrapper to configure.
+        pinhole: Pinhole distortion coefficients.
+        resolution: Optional calibration image size.
+        **kw: Additional distortion attributes to set.
+    """
     _apply_opencv_distortion(cam, "opencvPinhole", pinhole, _PINHOLE_COEFF_NAMES, resolution, **kw)
 
 
-def _apply_opencv_fisheye(cam: RtxCamera, fisheye: list[float], resolution: tuple[int, int] | None = None, **kw):
-    """Apply OpenCV fisheye distortion to a RtxCamera prim."""
+def _apply_opencv_fisheye(
+    cam: RtxCamera, fisheye: list[float], resolution: tuple[int, int] | None = None, **kw: Any
+) -> None:
+    """Apply OpenCV fisheye distortion to a RtxCamera prim.
+
+    Args:
+        cam: Camera prim wrapper to configure.
+        fisheye: Fisheye distortion coefficients.
+        resolution: Optional calibration image size.
+        **kw: Additional distortion attributes to set.
+    """
     _apply_opencv_distortion(cam, "opencvFisheye", fisheye, _FISHEYE_COEFF_NAMES, resolution, **kw)
 
 
 class TestRos2CameraInfo(ROS2TestCase):
-    """Test suite for ros2 camera info."""
+    """Verify ROS 2 CameraInfo messages and camera projection behavior."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh camera-info test stage with deterministic viewport settings."""
         await super().setUp()
 
         self._visualize = False
@@ -112,14 +135,12 @@ class TestRos2CameraInfo(ROS2TestCase):
         viewport_api.set_texture_resolution((1280, 720))
         await omni.kit.app.get_app().next_update_async()
 
-        pass
-
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Clear camera-info stage state after each test."""
         self._timeline.stop()
         await super().tearDown()
 
-    def imgmsg_to_cv2(self, img_msg):
+    def imgmsg_to_cv2(self, img_msg: Any) -> Any:
         """Convert ROS image message to numpy array.
 
         Converts a ROS sensor_msgs/Image message to a numpy array, handling different
@@ -169,7 +190,7 @@ class TestRos2CameraInfo(ROS2TestCase):
         return im
 
     @unittest.expectedFailure  # TODO: Hawk asset uses legacy physicalDistortionModel, needs migration to OmniLensDistortionOpenCvPinholeAPI
-    async def test_monocular_camera_info(self):
+    async def test_monocular_camera_info(self) -> None:
         """Test monocular camera info."""
         camera_path = "/Isaac/Sensors/LeopardImaging/Hawk/hawk_v1.1_nominal.usd"
         stage_utils.add_reference_to_stage(usd_path=self._assets_root_path + camera_path, path="/Hawk")
@@ -207,7 +228,7 @@ class TestRos2CameraInfo(ROS2TestCase):
         self._camera_info = None
         self._camera_info_timestamp_prev = None
 
-        def camera_info_callback(data):
+        def camera_info_callback(data: Any) -> None:
             self._camera_info = data
             self.assertEqual(self._camera_info.width, 1920)
             self.assertEqual(self._camera_info.height, 1200)
@@ -251,7 +272,7 @@ class TestRos2CameraInfo(ROS2TestCase):
 
         await omni.kit.app.get_app().next_update_async()
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         for num in range(3):
@@ -273,18 +294,18 @@ class TestRos2CameraInfo(ROS2TestCase):
             self._camera_info = None
             self._camera_info_timestamp_prev = None
 
-    def _add_light(self, name: str, position: List[float]) -> None:
+    def _add_light(self, name: str, position: list[float]) -> None:
         sphereLight = UsdLux.SphereLight.Define(stage_utils.get_current_stage(), Sdf.Path(f"/World/SphereLight_{name}"))
         sphereLight.CreateRadiusAttr(6)
         sphereLight.CreateIntensityAttr(10000)
         XformPrim(str(sphereLight.GetPath()), reset_xform_op_properties=True).set_world_poses(position)
 
-    def _add_checkerboard(self, position: List[float]) -> None:
+    def _add_checkerboard(self, position: list[float]) -> None:
         checkerboard_path = self._assets_root_path + "/Isaac/Props/Camera/checkerboard_6x10.usd"
         stage_utils.add_reference_to_stage(usd_path=checkerboard_path, path="/calibration_target")
         XformPrim("/calibration_target", reset_xform_op_properties=True, positions=position)
 
-    def _get_rectified_image(self, image_msg_raw, camera_info_msg, side):
+    def _get_rectified_image(self, image_msg_raw: Any, camera_info_msg: Any, side: Any) -> Any:
         # Convert ROS2 image message data buffer to CV2 image
         image_raw = self.imgmsg_to_cv2(image_msg_raw)
         if self._visualize:
@@ -317,24 +338,24 @@ class TestRos2CameraInfo(ROS2TestCase):
     def _prepare_scene_for_stereo_camera(
         self,
         baseline: float,
-        resolution: Tuple[int, int],
+        resolution: tuple[int, int],
         focal_length: float,
         focus_distance: float,
         use_system_time: bool = False,
         reset_simulation_time_on_stop: bool = True,
-    ) -> Tuple[RtxCamera, RtxCamera]:
+    ) -> tuple[RtxCamera, RtxCamera]:
         """Add a stereo camera, checkerboard, and lights to the scene.
 
         Args:
-            baseline (float): Baseline distance between the two cameras
-            resolution (Tuple[int, int]): Resolution of the cameras
-            focal_length (float): Focal length of the cameras
-            focus_distance (float): Focus distance of the cameras
-            use_system_time (bool, optional): Whether to use system time for timestamps. Defaults to False.
-            reset_simulation_time_on_stop (bool, optional): Whether to reset_simulation_time_on_stop. Defaults to True.
+            baseline: Baseline distance between the two cameras.
+            resolution: Resolution of the cameras.
+            focal_length: Focal length of the cameras.
+            focus_distance: Focus distance of the cameras.
+            use_system_time: Whether to use system time for timestamps.
+            reset_simulation_time_on_stop: Whether to reset simulation time on stop.
 
         Returns:
-            Tuple[RtxCamera, RtxCamera]: The left and right cameras
+            The left and right cameras.
 
         """
         # Orientation (90, -90, 0) degrees intrinsic XYZ = camera looking down +X axis
@@ -431,14 +452,14 @@ class TestRos2CameraInfo(ROS2TestCase):
         return left_camera, right_camera
 
     async def _test_get_stereo_camera_messages(
-        self, opencv_distortion_model: str, ros2_distortion_model: str, distortion_coefficients: List[float]
-    ):
+        self, opencv_distortion_model: str, ros2_distortion_model: str, distortion_coefficients: list[float]
+    ) -> None:
         """Get the camera info and images from the stereo camera.
 
         Args:
-            opencv_distortion_model (str): OpenCV distortion model to test.
-            ros2_distortion_model (str): ROS2 distortion model to test.
-            distortion_coefficients (List[float]): Distortion coefficients to test.
+            opencv_distortion_model: OpenCV distortion model to test.
+            ros2_distortion_model: ROS2 distortion model to test.
+            distortion_coefficients: Distortion coefficients to test.
 
         """
         import rclpy
@@ -458,16 +479,16 @@ class TestRos2CameraInfo(ROS2TestCase):
         )
 
         # Subscribe to camera topics
-        def camera_info_left_callback(msg):
+        def camera_info_left_callback(msg: Any) -> None:
             self._camera_info_left = msg
 
-        def camera_info_right_callback(msg):
+        def camera_info_right_callback(msg: Any) -> None:
             self._camera_info_right = msg
 
-        def image_left_callback(msg):
+        def image_left_callback(msg: Any) -> None:
             self._image_left = msg
 
-        def image_right_callback(msg):
+        def image_right_callback(msg: Any) -> None:
             self._image_right = msg
 
         # Create subscriptions
@@ -486,10 +507,10 @@ class TestRos2CameraInfo(ROS2TestCase):
         self._image_right = None
 
         # Start spinning the nodes
-        def spin_left():
+        def spin_left() -> None:
             rclpy.spin_once(node_left, timeout_sec=0.01)
 
-        def spin_right():
+        def spin_right() -> None:
             rclpy.spin_once(node_right, timeout_sec=0.01)
 
         # Wait for camera info and images to be received — run a fixed 30 frames
@@ -531,11 +552,11 @@ class TestRos2CameraInfo(ROS2TestCase):
         # Stop timeline
         self._timeline.stop()
 
-    async def _test_stereo_rectification(self, opencv_distortion_model):
+    async def _test_stereo_rectification(self, opencv_distortion_model: Any) -> None:
         """Test stereo rectification.
 
         Args:
-            opencv_distortion_model (str): OpenCV distortion model to test.
+            opencv_distortion_model: OpenCV distortion model to test.
 
         """
         left_image_rect = self._get_rectified_image(self._image_left, self._camera_info_left, "left")
@@ -612,7 +633,7 @@ class TestRos2CameraInfo(ROS2TestCase):
             f"Epipolar lines are not parallel for {opencv_distortion_model}!",
         )
 
-    async def test_stereo_camera_opencv_pinhole(self):
+    async def test_stereo_camera_opencv_pinhole(self) -> None:
         """Test stereo camera opencv pinhole."""
         left_camera, right_camera = self._prepare_scene_for_stereo_camera(
             baseline=0.15, resolution=(2048, 1024), focal_length=1.8, focus_distance=400
@@ -633,7 +654,7 @@ class TestRos2CameraInfo(ROS2TestCase):
         # Test stereo rectification
         await self._test_stereo_rectification(opencv_distortion_model="opencvPinhole")
 
-    async def test_stereo_camera_opencv_fisheye(self):
+    async def test_stereo_camera_opencv_fisheye(self) -> None:
         """Test stereo camera opencv fisheye."""
         left_camera, right_camera = self._prepare_scene_for_stereo_camera(
             baseline=0.15, resolution=(2048, 1024), focal_length=1.8, focus_distance=400
@@ -654,7 +675,7 @@ class TestRos2CameraInfo(ROS2TestCase):
         # Test stereo rectification
         await self._test_stereo_rectification(opencv_distortion_model="opencvFisheye")
 
-    async def test_camera_info_system_time(self):
+    async def test_camera_info_system_time(self) -> None:
         """Test camera info system time."""
         import time
 
@@ -668,7 +689,7 @@ class TestRos2CameraInfo(ROS2TestCase):
 
         self._camera_info_system_time = None
 
-        def camera_info_system_time_callback(data):
+        def camera_info_system_time_callback(data: Any) -> None:
             self._camera_info_system_time = data
 
         node_system = self.create_node("camera_system_time_tester")
@@ -676,7 +697,7 @@ class TestRos2CameraInfo(ROS2TestCase):
             node_system, CameraInfo, "camera_info_left", camera_info_system_time_callback, get_qos_profile()
         )
 
-        def spin_system_time():
+        def spin_system_time() -> None:
             rclpy.spin_once(node_system, timeout_sec=0.01)
 
         self._timeline.play()
@@ -697,7 +718,7 @@ class TestRos2CameraInfo(ROS2TestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_camera_info_sim_time(self):
+    async def test_camera_info_sim_time(self) -> None:
         """Test camera info sim time."""
         import rclpy
         from sensor_msgs.msg import CameraInfo
@@ -708,7 +729,7 @@ class TestRos2CameraInfo(ROS2TestCase):
 
         self._camera_info_sim_time = None
 
-        def camera_info_sim_time_callback(data):
+        def camera_info_sim_time_callback(data: Any) -> None:
             self._camera_info_sim_time = data
 
         node_sim = self.create_node("camera_sim_time_tester")
@@ -716,7 +737,7 @@ class TestRos2CameraInfo(ROS2TestCase):
             node_sim, CameraInfo, "camera_info_left", camera_info_sim_time_callback, get_qos_profile()
         )
 
-        def spin_sim_time():
+        def spin_sim_time() -> None:
             rclpy.spin_once(node_sim, timeout_sec=0.01)
 
         self._timeline.play()
@@ -757,7 +778,7 @@ class TestRos2CameraInfo(ROS2TestCase):
         # scheduler-induced one-frame difference can exceed any tight ratio).
         self.assertLessEqual(sim_timestamp, 1.0, "Simulation time should reset close to zero after stop")
 
-    async def test_camera_info_sim_time_monotonic(self):
+    async def test_camera_info_sim_time_monotonic(self) -> None:
         """Test camera info sim time monotonic."""
         import rclpy
         from sensor_msgs.msg import CameraInfo
@@ -773,7 +794,7 @@ class TestRos2CameraInfo(ROS2TestCase):
 
         self._camera_info_sim_time = None
 
-        def camera_info_sim_time_callback(data):
+        def camera_info_sim_time_callback(data: Any) -> None:
             self._camera_info_sim_time = data
 
         node_sim = self.create_node("camera_sim_time_monotonic_tester")
@@ -781,7 +802,7 @@ class TestRos2CameraInfo(ROS2TestCase):
             node_sim, CameraInfo, "camera_info_left", camera_info_sim_time_callback, get_qos_profile()
         )
 
-        def spin_sim_time():
+        def spin_sim_time() -> None:
             rclpy.spin_once(node_sim, timeout_sec=0.01)
 
         self._timeline.play()
@@ -820,7 +841,7 @@ class TestRos2CameraInfo(ROS2TestCase):
             sim_timestamp, (prev_sim_timestamp + 10.0), "Simulation time should be within an elapsed max time of 10s"
         )
 
-    async def test_depth_pointcloud_projection(self):
+    async def test_depth_pointcloud_projection(self) -> None:
         """Test that depth pointcloud can be projected back to depth image using camera intrinsics.
 
         This test verifies that a depth pointcloud published by ROS2CameraHelper can be projected
@@ -1029,7 +1050,7 @@ class TestRos2CameraInfo(ROS2TestCase):
 
         return projected_depth
 
-    def _setup_ros2_message_capture(self, node_name: str, topic_prefix: str = ""):
+    def _setup_ros2_message_capture(self, node_name: str, topic_prefix: str = "") -> Any:
         """Set up ROS2 node and message callbacks for depth pointcloud projection tests.
 
         Creates a ROS2 node with subscribers for depth image, pointcloud, and camera info messages.
@@ -1061,13 +1082,13 @@ class TestRos2CameraInfo(ROS2TestCase):
         camera_info_msg = [None]
 
         # Set up message callbacks
-        def depth_image_callback(msg: Image):
+        def depth_image_callback(msg: Image) -> None:
             depth_image_msg[0] = msg
 
-        def pointcloud_callback(msg: PointCloud2):
+        def pointcloud_callback(msg: PointCloud2) -> None:
             pointcloud_msg[0] = msg
 
-        def camera_info_callback(msg: CameraInfo):
+        def camera_info_callback(msg: CameraInfo) -> None:
             camera_info_msg[0] = msg
 
         # Create subscribers
@@ -1084,8 +1105,8 @@ class TestRos2CameraInfo(ROS2TestCase):
         return node, depth_image_msg, pointcloud_msg, camera_info_msg
 
     async def _wait_for_ros2_messages(
-        self, node, depth_image_msg, pointcloud_msg, camera_info_msg, timeout_iterations: int = 50
-    ):
+        self, node: Any, depth_image_msg: Any, pointcloud_msg: Any, camera_info_msg: Any, timeout_iterations: int = 50
+    ) -> None:
         """Wait for ROS2 messages to be received.
 
         Spins the ROS2 node until all three message types are received or timeout is reached.
@@ -1111,7 +1132,7 @@ class TestRos2CameraInfo(ROS2TestCase):
         import rclpy
 
         # Spin ROS2 node to receive messages
-        def spin_and_check():
+        def spin_and_check() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         condition_met = await self.simulate_until_condition(
@@ -1133,7 +1154,7 @@ class TestRos2CameraInfo(ROS2TestCase):
         golden_dir: str,
         test_dir: str,
         suffix: str = "",
-    ):
+    ) -> None:
         """Save debug depth images for visual inspection.
 
         Uses the save_depth_image utility from isaacsim.test.utils.image_capture for proper
@@ -1173,7 +1194,7 @@ class TestRos2CameraInfo(ROS2TestCase):
         test_name: str = "",
         tolerance_mean: float = 0.1,
         tolerance_rmse: float = 0.5,
-    ):
+    ) -> None:
         """Compare depth images and assert they are within tolerance.
 
         Uses compute_difference_metrics to compare images and logs detailed metrics.
@@ -1214,7 +1235,7 @@ class TestRos2CameraInfo(ROS2TestCase):
             metrics["rmse"], tolerance_rmse, f"RMSE {metrics['rmse']} exceeds tolerance of {tolerance_rmse}"
         )
 
-    async def _setup_test_scene_with_objects(self):
+    async def _setup_test_scene_with_objects(self) -> None:
         """Set up test scene with simple room environment.
 
         Loads the Simple Room environment which provides sufficient depth variation
@@ -1234,7 +1255,7 @@ class TestRos2CameraInfo(ROS2TestCase):
 
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_depth_pointcloud_projection_low_level_api(self):
+    async def test_depth_pointcloud_projection_low_level_api(self) -> None:
         """Test depth pointcloud projection using low-level USD API.
 
         This test verifies that a depth pointcloud published by ROS2CameraHelper can be projected
@@ -1359,7 +1380,7 @@ class TestRos2CameraInfo(ROS2TestCase):
         # Cleanup
         node.destroy_node()
 
-    async def test_monocular_with_opencv_pinhole_distortion(self):
+    async def test_monocular_with_opencv_pinhole_distortion(self) -> None:
         """Verify CameraInfo intrinsics with OpenCV pinhole distortion on a monocular camera."""
         cam = RtxCamera(
             "/World/camera",
@@ -1408,7 +1429,7 @@ class TestRos2CameraInfo(ROS2TestCase):
         node = self.create_node("test_mono_distortion")
         self.start_async_spinning(node)
 
-        def on_camera_info(msg):
+        def on_camera_info(msg: Any) -> None:
             nonlocal camera_info_msg
             camera_info_msg = msg
 
@@ -1427,7 +1448,7 @@ class TestRos2CameraInfo(ROS2TestCase):
         self.assertEqual(camera_info_msg.width, 1280)
         self.assertEqual(camera_info_msg.height, 720)
 
-    async def test_stereo_without_distortion(self):
+    async def test_stereo_without_distortion(self) -> None:
         """Verify stereo CameraInfo works without any distortion model (baseline only)."""
         cam_orient = np.array([0.5, 0.5, -0.5, -0.5])  # wxyz, (90, -90, 0) intrinsic XYZ
         baseline = 0.15
@@ -1484,11 +1505,11 @@ class TestRos2CameraInfo(ROS2TestCase):
         node = self.create_node("test_stereo_no_distortion")
         self.start_async_spinning(node)
 
-        def on_left(msg):
+        def on_left(msg: Any) -> None:
             nonlocal left_info
             left_info = msg
 
-        def on_right(msg):
+        def on_right(msg: Any) -> None:
             nonlocal right_info
             right_info = msg
 
@@ -1510,21 +1531,21 @@ class TestRos2CameraInfo(ROS2TestCase):
         self.assertAlmostEqual(left_info.p[3], 0.0, places=3, msg="Left Tx should be 0")
         self.assertNotAlmostEqual(right_info.p[3], 0.0, places=1, msg="Right Tx should be non-zero")
 
-    async def test_collect_namespace_passthrough(self):
+    async def test_collect_namespace_passthrough(self) -> None:
         """When namespace_input is non-empty, collect_namespace returns it as-is."""
         from isaacsim.ros2.core import collect_namespace
 
         result = collect_namespace("my_robot", "/some/render/product")
         self.assertEqual(result, "my_robot")
 
-    async def test_collect_namespace_empty(self):
+    async def test_collect_namespace_empty(self) -> None:
         """When both inputs are empty, collect_namespace returns empty string."""
         from isaacsim.ros2.core import collect_namespace
 
         result = collect_namespace("", "")
         self.assertEqual(result, "")
 
-    async def test_collect_namespace_from_prim_hierarchy(self):
+    async def test_collect_namespace_from_prim_hierarchy(self) -> None:
         """Verify namespace is collected from isaac:namespace attributes on prim ancestors."""
         import omni.replicator.core as rep
         from isaacsim.ros2.core import collect_namespace

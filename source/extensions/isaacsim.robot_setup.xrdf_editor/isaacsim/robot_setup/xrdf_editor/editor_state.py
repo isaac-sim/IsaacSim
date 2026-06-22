@@ -23,7 +23,7 @@ through it. Tests construct one directly.
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import Callable
+from collections.abc import Callable
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
@@ -79,7 +79,11 @@ class EditorState:
     # Observer registration
     # ------------------------------------------------------------------
     def add_articulation_changed_callback(self, callback: Callable[[], None]) -> None:
-        """Register ``callback`` to be invoked after :meth:`select_articulation`."""
+        """Register ``callback`` to be invoked after :meth:`select_articulation`.
+
+        Args:
+            callback: Function to invoke after the selected articulation changes.
+        """
         self._articulation_changed_callbacks.append(callback)
 
     def _notify_articulation_changed(self) -> None:
@@ -95,6 +99,10 @@ class EditorState:
         Sizes per-DOF arrays to the new articulation, refreshes the link/mesh
         inventory, and notifies observers. Passing ``None`` or an empty path
         clears the selection.
+
+        Args:
+            prim_path: Path to the articulation prim to select, or None to clear
+                the selection.
         """
         if not prim_path or prim_path == "None":
             self.articulation_base_path = None
@@ -172,20 +180,35 @@ class EditorState:
     # Helpers exposed to UI / tests
     # ------------------------------------------------------------------
     def link_path(self, link_name: str) -> str:
-        """Return the absolute USD path for ``link_name`` under the articulation."""
+        """Return the absolute USD path for ``link_name`` under the articulation.
+
+        Args:
+            link_name: Link subpath relative to the articulation base path.
+
+        Returns:
+            Absolute USD path for the link.
+        """
         if self.articulation_base_path is None:
             raise RuntimeError("No articulation selected")
         return self.articulation_base_path + link_name
 
     def ignore_dict(self) -> dict[str, list[str]]:
-        """Return the self-collision ignore-rule dict for the current articulation."""
+        """Return the self-collision ignore-rule dict for the current articulation.
+
+        Returns:
+            Self-collision ignore rules for the selected articulation.
+        """
         if self.articulation is None or self.articulation_base_path is None:
             return {}
         return articulation_discovery.get_ignore_dict(self.articulation_base_path, list(self.articulation.link_names))
 
     def articulation_frames(self) -> set[str]:
-        """Return link names (without leading slash) for buffer-distance reconciliation."""
-        return {link_path[1:] for link_path in self.link_to_meshes.keys()}
+        """Return link names for buffer-distance reconciliation.
+
+        Returns:
+            Link names without leading slashes.
+        """
+        return {link_path[1:] for link_path in self.link_to_meshes}
 
     # ------------------------------------------------------------------
     # XRDF import / export
@@ -257,7 +280,11 @@ class EditorState:
     # Lula import / export
     # ------------------------------------------------------------------
     def export_lula(self, path: str) -> None:
-        """Serialise the current state as a Lula robot description YAML at ``path``."""
+        """Serialise the current state as a Lula robot description YAML at ``path``.
+
+        Args:
+            path: Destination path.
+        """
         if self.articulation is None or self.articulation_base_path is None:
             raise RuntimeError("Cannot export Lula description without a selected articulation")
 
@@ -275,7 +302,11 @@ class EditorState:
         lula_io.write_lula_robot_description_file(inputs)
 
     def import_lula(self, path: str) -> None:
-        """Load a Lula robot description YAML and update this state from it."""
+        """Load a Lula robot description YAML and update this state from it.
+
+        Args:
+            path: Path to the Lula robot description YAML file.
+        """
         if self.articulation is None or self.articulation_base_path is None:
             raise RuntimeError("Cannot import Lula description without a selected articulation")
 

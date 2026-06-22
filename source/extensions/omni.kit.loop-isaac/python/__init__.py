@@ -14,3 +14,5 @@
 # limitations under the License.
 
 from .bindings import _loop  # noqa: F401
+
+__all__ = ["_loop"]

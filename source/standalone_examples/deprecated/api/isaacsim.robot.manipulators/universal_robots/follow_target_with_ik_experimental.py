@@ -51,7 +51,7 @@ from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.robot.experimental.manipulators.examples.universal_robots import UR10FollowTarget
 
 
-def main():
+def main() -> None:
     """Main function to run the UR10 follow target example."""
     # Set physics simulation device
     SimulationManager.set_physics_sim_device(args.device)

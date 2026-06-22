@@ -41,7 +41,7 @@ last_frametime_timestamp_ns = 0.0
 app_update_time_s = 0.0
 
 
-def update_event_callback(event: carb.events.IEvent):
+def update_event_callback(event: carb.events.IEvent) -> None:
     """Record the wall-clock time of each app update event."""
     global last_frametime_timestamp_ns, app_update_time_s
     timestamp_ns = time.perf_counter_ns()

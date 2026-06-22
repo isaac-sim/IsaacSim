@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for visual material."""
+"""Verifies VisualMaterial instance discovery from USD shade materials. Covers fetching visual material wrappers from authored stage prims."""
 
 from typing import Literal
 
@@ -28,7 +28,12 @@ from isaacsim.core.experimental.materials import (
 
 
 async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"]) -> None:
-    """Populate stage."""
+    """Populate stage.
+
+    Args:
+        max_num_prims: Maximum number of material prims to pre-author.
+        operation: Prim setup operation requested by the parametrized test.
+    """
     # create new stage
     await stage_utils.create_new_stage_async()
     # define prims
@@ -46,17 +51,17 @@ async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"
 class TestVisualMaterial(omni.kit.test.AsyncTestCase):
     """Test visual material."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
-    async def test_fetch_instances(self):
+    async def test_fetch_instances(self) -> None:
         """Test fetch instances."""
         await stage_utils.create_new_stage_async()
         # create materials

@@ -13,12 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test module for RTX-based LiDAR sensor functionality."""
+"""Verifies the deprecated LidarRtx wrapper for RTX lidar prim construction and runtime access. Covers render product paths, annotator and writer attachment, frame reads during timeline playback, and behavior after detach."""
 
 import asyncio
 from typing import Any
 
-import carb
 import numpy as np
 import omni.kit.test
 import omni.timeline

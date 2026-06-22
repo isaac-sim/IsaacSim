@@ -13,22 +13,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verify Replicator snippets for multi-camera, simulation, event, writer, and motion-blur capture."""
+
 import tempfile
+from typing import Any
 
 import carb.settings
 import omni.kit
 import omni.usd
-from isaacsim.test.utils.file_validation import validate_folder_contents
+from isaacsim.test.utils.file_validation import get_folder_file_summary, validate_folder_contents
 
 
 class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Runs representative SDG snippets and checks the files each capture path writes."""
+
+    async def setUp(self) -> None:
+        """Create a clean stage and preserve the DLSS setting used by capture snippets."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
         self.original_dlss_exec_mode = carb.settings.get_settings().get("rtx/post/dlss/execMode")
 
-    async def tearDown(self):
+    async def tearDown(self) -> Any:
+        """Close the stage, wait for pending loads, and restore the DLSS setting.
+
+        Returns:
+            None.
+        """
         omni.usd.get_context().close_stage()
         await omni.kit.app.get_app().next_update_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
@@ -36,7 +47,12 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
         carb.settings.get_settings().set("rtx/post/dlss/execMode", self.original_dlss_exec_mode)
 
-    async def test_sdg_snippet_multi_camera(self):
+    async def test_sdg_snippet_multi_camera(self) -> Any:
+        """Capture three camera views through both direct RGB annotators and a custom writer.
+
+        Returns:
+            None.
+        """
         import os
 
         import carb.settings
@@ -51,7 +67,7 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         print(f"Test output root: {mc_test_root}")
 
         # Randomize cube color every frame using a graph-based replicator randomizer
-        def cube_color_randomizer():
+        def cube_color_randomizer() -> None:
             cube_prims = rep.get.prims(path_pattern="Cube")
             with cube_prims:
                 rep.randomizer.color(colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1)))
@@ -59,7 +75,7 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
 
         # Example of custom writer class to access the annotator data
         class MyWriter(Writer):
-            def __init__(self, rgb: bool = True):
+            def __init__(self, rgb: bool = True) -> None:
                 # Organize data from render product perspective (legacy, annotator, renderProduct)
                 self.data_structure = "renderProduct"
                 self.annotators = []
@@ -72,7 +88,7 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
                 print(f"Writing writer data to {writer_dir}")
                 self.backend = DiskBackend(output_dir=writer_dir, overwrite=True)
 
-            def write(self, data):
+            def write(self, data: Any) -> None:
                 if "renderProducts" in data:
                     for rp_name, rp_data in data["renderProducts"].items():
                         if "rgb" in rp_data:
@@ -135,7 +151,8 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         print(f"Writing annotator data to {output_dir_annot}")
         os.makedirs(output_dir_annot)
 
-        async def run_example_async():
+        async def run_example_async() -> None:
+            """Step color-randomized captures and write each render product through both paths."""
             for i in range(NUM_FRAMES):
                 print(f"Step {i}")
                 # The step function triggers registered graph-based randomizers, collects data from annotators,
@@ -172,7 +189,8 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
             folder_contents_success_writer, f"Output directory contents validation failed for {writer_output_dir}"
         )
 
-    async def test_sdg_snippet_simulation_get_data(self):
+    async def test_sdg_snippet_simulation_get_data(self) -> None:
+        """Drop cubes with SimulationManager and capture writer and annotator data when each stops."""
         import os
 
         import carb.settings
@@ -185,7 +203,7 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         from pxr import UsdPhysics
 
         # Util function to save semantic segmentation annotator data
-        def write_sem_data(sem_data, file_path):
+        def write_sem_data(sem_data: Any, file_path: Any) -> None:
             id_to_labels = sem_data["info"]["idToLabels"]
             write_json(path=file_path + ".json", data=id_to_labels)
             sem_image_data = sem_data["data"]
@@ -237,7 +255,8 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         # Initialize the simulation manager
         SimulationManager.initialize_physics()
 
-        async def run_example_async():
+        async def run_example_async() -> None:
+            """Spawn rigid cubes, wait for low velocity, and write RGB plus semantic data."""
             # Spawn and drop a few cubes, capture data when they stop moving
             for i in range(5):
                 cube = rep.functional.create.cube(name=f"Cuboid_{i}", parent="/World")
@@ -283,9 +302,8 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         )
         self.assertTrue(folder_contents_success_writer, f"Output directory contents validation failed for {writer_dir}")
 
-    async def test_sdg_snippet_custom_event_and_write(self):
-        import os
-
+    async def test_sdg_snippet_custom_event_and_write(self) -> None:
+        """Trigger named graph randomizers and direct USD pose edits between BasicWriter captures."""
         import carb.settings
         import omni.replicator.core as rep
         import omni.usd
@@ -329,7 +347,8 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         writer.initialize(backend=backend, rgb=True)
         writer.attach(rp)
 
-        async def run_example_async():
+        async def run_example_async() -> None:
+            """Capture original, event-randomized, and directly moved cube states."""
             print(f"Capturing at original positions")
             await rep.orchestrator.step_async(rt_subframes=8)
 
@@ -361,7 +380,8 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         folder_contents_success = validate_folder_contents(path=out_dir, expected_counts={"png": 5})
         self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {out_dir}")
 
-    async def test_sdg_snippet_motion_blur_short(self):
+    async def test_sdg_snippet_motion_blur_short(self) -> None:
+        """Capture short motion-blur sequences for animated and physics assets in RT and path tracing."""
         import os
 
         import carb.settings
@@ -394,7 +414,7 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         SAMPLES_PER_PIXEL = [32, 128]
         MOTION_BLUR_SUBSAMPLES = [4, 16]
 
-        def setup_stage():
+        def setup_stage() -> None:
             """Create a new USD stage with animated and physics-enabled assets with synchronized motion."""
             omni.usd.get_context().new_stage()
             settings = carb.settings.get_settings()
@@ -450,9 +470,21 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
                 prim.GetAttribute("xformOp:translate").Set(end_location, time=end_keyframe_time)
 
         async def run_motion_blur_example_async(
-            num_frames, delta_time=None, use_path_tracing=True, motion_blur_subsamples=8, samples_per_pixel=64
-        ):
-            """Capture motion blur frames with the given delta time step and render mode."""
+            num_frames: Any,
+            delta_time: Any | None = None,
+            use_path_tracing: bool = True,
+            motion_blur_subsamples: int = 8,
+            samples_per_pixel: int = 64,
+        ) -> None:
+            """Capture motion blur frames with the given delta time step and render mode.
+
+            Args:
+                num_frames: Number of frames to capture.
+                delta_time: Optional frame delta time passed to the orchestrator.
+                use_path_tracing: Whether to use PathTracing instead of RealTimePathTracing.
+                motion_blur_subsamples: Number of path-traced motion blur subsamples.
+                samples_per_pixel: Number of path-traced samples per pixel.
+            """
             setup_stage()
             stage = omni.usd.get_context().get_stage()
             settings = carb.settings.get_settings()
@@ -482,6 +514,13 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
                 settings.set("/rtx/post/motionblur/exposureFraction", 1.0)
                 # (int): Number of samples to use in the filter. A higher number improves quality at the cost of performance.
                 settings.set("/rtx/post/motionblur/numSamples", 8)
+
+            # Warm up the renderer after switching the render mode so the first captured frame is fully resolved.
+            # Switching back to RealTimePathTracing after a PathTracing run needs extra updates before capture.
+            for _ in range(10):
+                await omni.kit.app.get_app().next_update_async()
+            # Drain any pending orchestrator/render work so the mode switch is fully applied before capture.
+            await rep.orchestrator.wait_until_complete_async()
 
             # Setup backend
             mode_str = f"pt_subsamples_{motion_blur_subsamples}_spp_{samples_per_pixel}" if use_path_tracing else "rt"
@@ -546,7 +585,9 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
             writer.detach()
             render_product.destroy()
 
-        async def run_motion_blur_examples_async(num_frames, delta_times, samples_per_pixel, motion_blur_subsamples):
+        async def run_motion_blur_examples_async(
+            num_frames: Any, delta_times: Any, samples_per_pixel: Any, motion_blur_subsamples: Any
+        ) -> None:
             print(
                 f"[MotionBlur] Running with delta_times={delta_times}, samples_per_pixel={samples_per_pixel}, motion_blur_subsamples={motion_blur_subsamples}"
             )
@@ -594,7 +635,12 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
             # RayTracing output directory
             out_dir = os.path.join(motion_blur_root, f"dt_{delta_time_str}_rt")
             folder_contents_success = validate_folder_contents(path=out_dir, expected_counts={"png": NUM_FRAMES})
-            self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {out_dir}")
+            summary = get_folder_file_summary(out_dir)
+            print(f"[MotionBlur] Validating {out_dir}: expected png={NUM_FRAMES}, found {summary}")
+            self.assertTrue(
+                folder_contents_success,
+                f"Output directory contents validation failed for {out_dir}: expected png={NUM_FRAMES}, found {summary}",
+            )
 
             # PathTracing output directories for all combinations of subsamples and samples_per_pixel
             for motion_blur_subsample in test_motion_blur_subsamples:
@@ -604,6 +650,10 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
                     folder_contents_success = validate_folder_contents(
                         path=out_dir, expected_counts={"png": NUM_FRAMES}
                     )
+                    summary = get_folder_file_summary(out_dir)
+                    print(f"[MotionBlur] Validating {out_dir}: expected png={NUM_FRAMES}, found {summary}")
                     self.assertTrue(
-                        folder_contents_success, f"Output directory contents validation failed for {out_dir}"
+                        folder_contents_success,
+                        f"Output directory contents validation failed for {out_dir}: "
+                        f"expected png={NUM_FRAMES}, found {summary}",
                     )

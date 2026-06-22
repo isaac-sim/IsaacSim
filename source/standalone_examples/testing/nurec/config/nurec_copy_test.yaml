@@ -1,0 +1,38 @@
+# Copy-vs-bind regression test for the SPG RenderProduct clone (copy_render_product /
+# RenderTargetFactory.clone).
+#
+# For each case it renders each camera's authored RenderProduct (bind) and a session-layer clone (copy)
+# at N random GT keyframes, then asserts:
+#   - sanity:   the clone scores against ground truth above the PSNR/SSIM gates (it renders correctly);
+#   - faithful: the clone matches the bind (mean absolute pixel diff ~ 0), since both render the same
+#               camera through the same PPISP graph.
+# The clone is a distinct RenderProduct with its own LdrColor AOV (proven structurally by the render.py
+# unit test), so it cannot alias the authored RP's output. GT layout: <gt_root>/<camera>/<ts_ns>.png.
+#
+# Loaded via load_config(), so it overlays config/nurec_config.yaml (the SPG carb overrides that
+# setup_for_rendering applies).
+
+keyframe_tolerance_us: 1000   # match a GT timestamp to the nearest rig keyframe within 1 ms
+num_samples: 5                # random GT keyframes sampled per camera (null = all)
+seed: 0                       # deterministic keyframe sampling
+warmup_steps: 800             # RTPT ticks per frame (bind and copy use the same; matches render-vs-GT)
+
+cases:
+  - name: particle
+    stage: /Isaac/Samples/NuRec/Galileo/NRE_26_06/PPISP_ON/particle_spg.usdz
+    gt_root: /Isaac/Samples/NuRec/Galileo/CI_Test_GT_Images/
+    cameras:
+      - front_stereo_camera_left
+    thresholds:
+      min_psnr: 24.0                          # clone vs GT (matches the render-vs-GT galileo gate)
+      min_ssim: 0.85
+      max_abs_clone_bind_diff_px: 3.0         # max mean abs clone-vs-bind pixel diff, 0-255 (RTPT noise margin)
+  - name: volume
+    stage: /Isaac/Samples/NuRec/Galileo/NRE_26_06/PPISP_ON/volume_spg.usdz
+    gt_root: /Isaac/Samples/NuRec/Galileo/CI_Test_GT_Images/
+    cameras:
+      - front_stereo_camera_left
+    thresholds:
+      min_psnr: 24.0
+      min_ssim: 0.89
+      max_abs_clone_bind_diff_px: 2.0

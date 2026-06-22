@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Read selected articulation DOF and joint-force state into OmniGraph outputs."""
+
+from typing import Any
+
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
 from isaacsim.core.experimental.prims import Articulation
@@ -24,7 +28,7 @@ from pxr import UsdPhysics
 class OgnIsaacArticulationStateInternalState(BaseResetNode):
     """Internal node state for queuing articulation state."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.robot_prim = None
         self.dof_names = None
         self.dof_indices = None
@@ -35,11 +39,18 @@ class OgnIsaacArticulationStateInternalState(BaseResetNode):
         self._articulation = None
         super().__init__(initialize=False)
 
-    def initialize_articulation(self):
+    def initialize_articulation(self) -> None:
+        """Create the articulation handle for the selected robot prim and mark the state initialized."""
         self._articulation = Articulation(self.robot_prim)
         self.initialized = True
 
-    def pick_dofs(self, dof_names, dof_indices):
+    def pick_dofs(self, dof_names: Any, dof_indices: Any) -> None:
+        """Resolve requested joint names or indices to DOF and link indices for state queries.
+
+        Args:
+            dof_names: Requested DOF names.
+            dof_indices: Requested DOF indices.
+        """
         self.dof_names = dof_names
         self.dof_indices = dof_indices
         # names given
@@ -63,10 +74,20 @@ class OgnIsaacArticulationStateInternalState(BaseResetNode):
             link_name = stage.GetPrimAtPath(joint.GetBody1Rel().GetTargets()[0]).GetName()
             self._link_indices.append(self._articulation.get_link_indices(link_name).numpy().item())
 
-    def get_dof_names(self):
+    def get_dof_names(self) -> list[str]:
+        """Return the resolved joint names that correspond to the current selection.
+
+        Returns:
+            Resolved joint names for the current selection.
+        """
         return self._dof_names
 
-    def get_articulation_state(self):
+    def get_articulation_state(self) -> tuple[Any, Any, Any, Any, Any]:
+        """Return positions, velocities, projected efforts, and incoming link forces for selected DOFs.
+
+        Returns:
+            Positions, velocities, efforts, forces, and torques for selected DOFs.
+        """
         positions, velocities, efforts, forces, torques = [], [], [], [], []
         if self.initialized:
             positions = self._articulation.get_dof_positions(dof_indices=self._dof_indices)
@@ -75,7 +96,8 @@ class OgnIsaacArticulationStateInternalState(BaseResetNode):
             forces, torques = self._articulation.get_link_incoming_joint_force(link_indices=self._link_indices)
         return positions.numpy()[0], velocities.numpy()[0], efforts.numpy()[0], forces.numpy()[0], torques.numpy()[0]
 
-    def custom_reset(self):
+    def custom_reset(self) -> None:
+        """Clear the cached articulation handle on node reset."""
         self._articulation = None
 
 
@@ -83,11 +105,28 @@ class OgnIsaacArticulationState:
     """Node for queuing articulation state."""
 
     @staticmethod
-    def internal_state():
+    def internal_state() -> OgnIsaacArticulationStateInternalState:
+        """Create the per-instance articulation state cache.
+
+        Returns:
+            Per-instance articulation state cache.
+        """
         return OgnIsaacArticulationStateInternalState()
 
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
+        """Resolve the robot and joint selection, then publish measured articulation state.
+
+        The node accepts either `robotPath` or `targetPrim`, outputs the resolved joint names plus
+        position, velocity, effort, force, and torque arrays, and returns False after logging when
+        the robot cannot be resolved or state reads fail.
+
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            True when articulation state is published successfully, False otherwise.
+        """
         state = db.per_instance_state
         try:
             if not state.initialized:
@@ -127,12 +166,17 @@ class OgnIsaacArticulationState:
         return True
 
     @staticmethod
-    def release_instance(node, graph_instance_id):
+    def release_instance(node: Any, graph_instance_id: Any) -> None:
+        """Reset per-instance articulation state when the OmniGraph node instance is released.
+
+        Args:
+            node: OmniGraph node instance.
+            graph_instance_id: Graph instance identifier.
+        """
         try:
             state = OgnIsaacArticulationStateDatabase.per_instance_internal_state(node)
         except Exception:
             state = None
-            pass
 
         if state is not None:
             state.reset()

@@ -1,4 +1,9 @@
 # Changelog
+
+## [1.2.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.2.1] - 2026-04-14
 ### Changed
 - Moved extension from `source/extensions` to `source/deprecated`.

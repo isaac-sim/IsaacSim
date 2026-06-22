@@ -13,22 +13,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies the scale-from-stage-units OmniGraph node can be created and evaluated. Covers graph construction for stage unit scale output."""
+
 import omni.graph.core as og
 import omni.kit.test
 
 
 class TestScaleFromStageUnit(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Verify the stage-unit scale node can be constructed in an action graph."""
+
+    async def setUp(self) -> None:
         """Set up  test environment, to be torn down when done."""
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
     # ----------------------------------------------------------------------
-    async def tearDown(self):
-        pass
+    async def tearDown(self) -> None:
+        """Leave stage cleanup to the next test stage initialization."""
 
     # ----------------------------------------------------------------------
-    async def test_create_scale_node(self):
+    async def test_create_scale_node(self) -> None:
+        """Verify an IsaacScaleToFromStageUnit node can be created and evaluated."""
         graph_path = "/ActionGraph"
         nodeName = "isaac_test_node"
 

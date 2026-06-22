@@ -54,7 +54,7 @@ robots = []
 
 
 # initialize robot on first step, run robot advance
-def on_physics_step(step_size, context) -> None:
+def on_physics_step(step_size: float, context: object) -> None:
     """Handle physics step for robot initialization, reset, and control."""
     global first_step
     global reset_needed

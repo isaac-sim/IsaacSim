@@ -35,13 +35,13 @@ add_reference_to_stage(asset_path, "/Franka")
 simulation_context.initialize_physics()
 
 
-def step_callback(step_size):
+def step_callback(step_size: float) -> None:
     """Print the physics step size on each simulation step."""
     print("simulate with step: ", step_size)
     return
 
 
-def render_callback(event):
+def render_callback(event: object) -> None:
     """Print the rendering delta time on each render update."""
     print("update app with step: ", event.payload["dt"])
 

@@ -15,6 +15,8 @@
 
 """Provides a writer for visualizing annotator data such as bounding boxes overlaid on background images."""
 
+from typing import Any
+
 import carb
 import numpy as np
 from omni.replicator.core import AnnotatorRegistry, BackendDispatch, Writer
@@ -70,7 +72,7 @@ class DataVisualizationWriter(Writer):
         bounding_box_3d: bool = False,
         bounding_box_3d_params: dict = None,
         frame_padding: int = 4,
-    ):
+    ) -> None:
         self.version = __version__
         self.data_structure = "renderProduct"
         self._output_dir = output_dir
@@ -121,7 +123,7 @@ class DataVisualizationWriter(Writer):
         for background in valid_backgrounds:
             self.annotators.append(AnnotatorRegistry.get_annotator(background))
 
-    def write(self, data: dict):
+    def write(self, data: dict) -> None:
         """Process annotation data and generates visualization images with overlays.
 
         Iterates through render products and applies visualization overlays (2D/3D bounding boxes)
@@ -185,7 +187,7 @@ class DataVisualizationWriter(Writer):
         # If no background is chosen use a transparent image as default
         return Image.new("RGBA", resolution, (0, 0, 0, 0))
 
-    def _draw_2d_bounding_boxes(self, draw: ImageDraw, annot_data: dict, write_params: dict):
+    def _draw_2d_bounding_boxes(self, draw: ImageDraw, annot_data: dict, write_params: dict) -> None:
         """Draw 2D bounding box rectangles on the image.
 
         Extracts bounding box coordinates from annotation data and renders rectangles
@@ -212,7 +214,9 @@ class DataVisualizationWriter(Writer):
                 [x_min, y_min, x_max, y_max], fill=fill_color, outline=rectangle_color, width=rectangle_width
             )
 
-    def _draw_3d_bounding_boxes(self, draw: ImageDraw, annot_data: dict, camera_params: dict, write_params: dict):
+    def _draw_3d_bounding_boxes(
+        self, draw: ImageDraw, annot_data: dict, camera_params: dict, write_params: dict
+    ) -> None:
         """Project and draws 3D bounding box edges on the image.
 
         Transforms 3D bounding box vertices from local space to screen coordinates using
@@ -311,7 +315,7 @@ class DataVisualizationWriter(Writer):
             )
             return False
 
-    def detach(self):
+    def detach(self) -> Any:
         """Reset the writer state and detaches from the backend.
 
         Resets the frame counter to zero and calls the parent class detach method

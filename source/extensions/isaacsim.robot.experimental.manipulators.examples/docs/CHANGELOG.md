@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [0.2.0] - 2026-05-27
 ### Fixed
 - Improve UR10 bin filling motion stability by allowing the lift phase to settle before moving the bin under the filling spout.

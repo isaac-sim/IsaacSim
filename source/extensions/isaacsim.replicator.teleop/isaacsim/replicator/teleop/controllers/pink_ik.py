@@ -59,7 +59,16 @@ _PINK_QP_SOLVER_IMPORTS = {
 
 
 def _resolve_name_from_candidates(name: str, candidates: list[str], kind: str) -> str:
-    """Resolve a USD name against prefixed URDF / Pinocchio names."""
+    """Resolve a USD name against prefixed URDF / Pinocchio names.
+
+    Args:
+        name: Value for name.
+        candidates: Value for candidates.
+        kind: Value for kind.
+
+    Returns:
+        The requested value.
+    """
     if name in candidates:
         return name
 
@@ -81,7 +90,15 @@ def _resolve_name_from_candidates(name: str, candidates: list[str], kind: str) -
 
 
 def _read_urdf_joint_names(urdf_path: str, movable_only: bool = True) -> list[str]:
-    """Read joint names from a URDF file."""
+    """Read joint names from a URDF file.
+
+    Args:
+        urdf_path: Value for urdf path.
+        movable_only: Value for movable only.
+
+    Returns:
+        The requested value.
+    """
     tree = ET.parse(urdf_path)
     root = tree.getroot()
     names: list[str] = []
@@ -97,7 +114,15 @@ def _read_urdf_joint_names(urdf_path: str, movable_only: bool = True) -> list[st
 
 
 def _freeze_uncontrolled_urdf_joints(urdf_path: str, controlled_joint_names: list[str]) -> list[str]:
-    """Convert all movable URDF joints not in *controlled_joint_names* to fixed."""
+    """Convert all movable URDF joints not in *controlled_joint_names* to fixed.
+
+    Args:
+        urdf_path: Value for urdf path.
+        controlled_joint_names: Value for controlled joint names.
+
+    Returns:
+        The requested value.
+    """
     tree = ET.parse(urdf_path)
     root = tree.getroot()
     controlled = set(controlled_joint_names)
@@ -133,8 +158,12 @@ def _resolve_frame_name(model: Any, ee_link_name: str) -> str:
     2. Suffix match (frame name ends with ``_<ee_link_name>``)
     3. Exact match on the last ``_``-segment (for deeply prefixed names)
 
+    Args:
+        model: Value for model.
+        ee_link_name: Value for ee link name.
+
     Returns:
-        The resolved frame name string.
+        The requested value.
 
     Raises:
         RuntimeError: If no matching frame is found.
@@ -150,7 +179,11 @@ def _resolve_frame_name(model: Any, ee_link_name: str) -> str:
 
 @lru_cache(maxsize=1)
 def _get_pink_backend_status() -> tuple[bool, str]:
-    """Check whether the optional PINK backend modules are importable."""
+    """Check whether the optional PINK backend modules are importable.
+
+    Returns:
+        The requested value.
+    """
     try:
         importlib.import_module("isaacsim.robot_motion.pink")
     except ModuleNotFoundError as exc:
@@ -179,7 +212,14 @@ def _get_pink_backend_status() -> tuple[bool, str]:
 
 @lru_cache(maxsize=None)
 def _get_pink_qp_solver_status(solver_name: str) -> tuple[bool, str]:
-    """Check whether a supported PINK QP solver backend is importable."""
+    """Check whether a supported PINK QP solver backend is importable.
+
+    Args:
+        solver_name: Value for solver name.
+
+    Returns:
+        The requested value.
+    """
     normalized = solver_name.lower()
     module_name = _PINK_QP_SOLVER_IMPORTS.get(normalized)
     if module_name is None:
@@ -218,11 +258,32 @@ class PinkIKController:
         set_target(position, orientation)
         compute() -> np.ndarray | None
         reset()
+
+    Args:
+        robot: Value for robot.
+        ee_link: Value for ee link.
+        ee_link_index: Value for ee link index.
+        num_arm_dofs: Value for num arm dofs.
+        ee_link_name: Value for ee link name.
+        articulation_path: Value for articulation path.
+        export_root_path: Value for export root path.
+        position_cost: Value for position cost.
+        orientation_cost: Value for orientation cost.
+        posture_cost: Value for posture cost.
+        lm_damping: Value for lm damping.
+        gain: Value for gain.
+        max_joint_step_rad: Value for max joint step rad.
+        vr_target_filter: Value for vr target filter.
+        solver: Value for solver.
     """
 
     @classmethod
     def get_backend_status(cls) -> tuple[bool, str]:
-        """Return whether the optional PINK backend is available."""
+        """Return whether the optional PINK backend is available.
+
+        Returns:
+            The requested value.
+        """
         available, reason = _get_pink_backend_status()
         if not available:
             return False, reason
@@ -237,12 +298,23 @@ class PinkIKController:
 
     @classmethod
     def supported_qp_solvers(cls) -> tuple[str, ...]:
-        """Return the ordered list of supported QP solver backends."""
+        """Return the ordered list of supported QP solver backends.
+
+        Returns:
+            The requested value.
+        """
         return tuple(_PINK_QP_SOLVER_IMPORTS)
 
     @classmethod
     def normalize_qp_solver_name(cls, solver_name: str) -> str:
-        """Normalizes and validates a user-provided QP solver name."""
+        """Normalizes and validates a user-provided QP solver name.
+
+        Args:
+            solver_name: Value for solver name.
+
+        Returns:
+            The requested value.
+        """
         normalized = solver_name.strip().lower()
         if normalized not in _PINK_QP_SOLVER_IMPORTS:
             supported = ", ".join(cls.supported_qp_solvers())
@@ -251,7 +323,14 @@ class PinkIKController:
 
     @classmethod
     def get_qp_solver_status(cls, solver_name: str) -> tuple[bool, str]:
-        """Return whether a specific PINK QP solver backend is available."""
+        """Return whether a specific PINK QP solver backend is available.
+
+        Args:
+            solver_name: Value for solver name.
+
+        Returns:
+            The requested value.
+        """
         try:
             normalized = cls.normalize_qp_solver_name(solver_name)
         except ValueError as exc:
@@ -276,29 +355,6 @@ class PinkIKController:
         vr_target_filter: float = 0.0,
         solver: str = "daqp",
     ) -> None:
-        """Initialise the PINK IK solver.
-
-        Args:
-            robot: Isaac Sim Articulation wrapper.
-            ee_link: End-effector RigidPrim.
-            ee_link_index: Index of the EE link in the articulation.
-            num_arm_dofs: Number of arm DOFs to control.
-            ee_link_name: Name of the EE link (resolved against URDF frames).
-            articulation_path: USD path of the articulation root.
-            export_root_path: USD path of the robot root to export to URDF.
-            position_cost: FrameTask position cost weight.
-            orientation_cost: FrameTask orientation cost weight.
-            posture_cost: PostureTask regularisation cost.
-            lm_damping: Levenberg-Marquardt damping on the FrameTask.
-            gain: FrameTask gain (low-pass, 0.1=very smooth, 1.0=instant).
-            max_joint_step_rad: Max joint change per step in radians. ``0`` disables the clamp.
-            vr_target_filter: EMA low-pass filter on the VR target (default 0=no filtering).
-            solver: QP solver backend name (``"daqp"`` or ``"osqp"``).
-
-        Raises:
-            ImportError: If pinocchio or pink are not installed.
-            RuntimeError: If URDF conversion or model loading fails.
-        """
         available, reason = self.get_backend_status()
         if not available:
             raise ImportError(reason)
@@ -419,70 +475,122 @@ class PinkIKController:
 
     @property
     def reachable(self) -> bool:
-        """Whether the last ``compute()`` produced a valid solution."""
+        """Whether the last ``compute()`` produced a valid solution.
+
+        Returns:
+            The requested value.
+        """
         return self._reachable
 
     @property
     def vr_target_filter(self) -> float:
-        """Return the EMA low-pass filter strength for VR targets."""
+        """Return the EMA low-pass filter strength for VR targets.
+
+        Returns:
+            The requested value.
+        """
         return float(self._vr_target_filter)
 
     @vr_target_filter.setter
     def vr_target_filter(self, value: float) -> None:
-        """Set the EMA low-pass filter strength for VR targets."""
+        """Set the EMA low-pass filter strength for VR targets.
+
+        Args:
+            value: Value for value.
+        """
         self._vr_target_filter = np.clip(value, 0.0, 0.99)
 
     @property
     def max_joint_step_rad(self) -> float:
-        """Return the maximum allowed joint change per step in radians."""
+        """Return the maximum allowed joint change per step in radians.
+
+        Returns:
+            The requested value.
+        """
         return float(self._max_joint_step_rad)
 
     @max_joint_step_rad.setter
     def max_joint_step_rad(self, value: float) -> None:
-        """Set the maximum allowed joint change per step in radians."""
+        """Set the maximum allowed joint change per step in radians.
+
+        Args:
+            value: Value for value.
+        """
         self._max_joint_step_rad = max(0.0, value)
 
     @property
     def task_gain(self) -> float:
-        """Return the PINK FrameTask gain."""
+        """Return the PINK FrameTask gain.
+
+        Returns:
+            The requested value.
+        """
         return float(self._task_gain)
 
     @task_gain.setter
     def task_gain(self, value: float) -> None:
-        """Set the PINK FrameTask gain."""
+        """Set the PINK FrameTask gain.
+
+        Args:
+            value: Value for value.
+        """
         self._task_gain = max(0.01, value)
         self._apply_task_tuning()
 
     @property
     def posture_cost(self) -> float:
-        """Return the PINK PostureTask regularisation cost."""
+        """Return the PINK PostureTask regularisation cost.
+
+        Returns:
+            The requested value.
+        """
         return float(self._posture_cost)
 
     @posture_cost.setter
     def posture_cost(self, value: float) -> None:
-        """Set the PINK PostureTask regularisation cost."""
+        """Set the PINK PostureTask regularisation cost.
+
+        Args:
+            value: Value for value.
+        """
         self._posture_cost = max(0.0, value)
         self._apply_task_tuning()
 
     @property
     def lm_damping(self) -> float:
-        """Return the Levenberg-Marquardt damping on the FrameTask."""
+        """Return the Levenberg-Marquardt damping on the FrameTask.
+
+        Returns:
+            The requested value.
+        """
         return float(self._lm_damping)
 
     @lm_damping.setter
     def lm_damping(self, value: float) -> None:
-        """Set the Levenberg-Marquardt damping on the FrameTask."""
+        """Set the Levenberg-Marquardt damping on the FrameTask.
+
+        Args:
+            value: Value for value.
+        """
         self._lm_damping = max(1e-6, value)
         self._apply_task_tuning()
 
     @property
     def qp_solver(self) -> str:
-        """Return the current QP solver backend name."""
+        """Return the current QP solver backend name.
+
+        Returns:
+            The requested value.
+        """
         return self._solver_name
 
     @qp_solver.setter
     def qp_solver(self, value: str) -> None:
-        """Set the QP solver backend by name."""
+        """Set the QP solver backend by name.
+
+        Args:
+            value: Value for value.
+        """
         normalized = self.normalize_qp_solver_name(value)
         available, reason = self.get_qp_solver_status(normalized)
         if not available:
@@ -498,7 +606,12 @@ class PinkIKController:
         position: tuple[float, float, float],
         orientation: tuple[float, float, float, float] | None,
     ) -> None:
-        """Set the 6-DOF goal pose (sim coordinates, xyzw quaternion)."""
+        """Set the 6-DOF goal pose (sim coordinates, xyzw quaternion).
+
+        Args:
+            position: Value for position.
+            orientation: Value for orientation.
+        """
         self._raw_position = np.array(position, dtype=np.float64)
         self._raw_orientation = np.array(orientation, dtype=np.float64) if orientation is not None else None
 
@@ -522,8 +635,7 @@ class PinkIKController:
         """Compute one IK step using PINK's QP solver.
 
         Returns:
-            Absolute joint positions for the first ``num_arm_dofs`` DOFs
-            (Isaac Sim order), or ``None`` if no target / physics not ready.
+            The requested value.
         """
         if self._filtered_position is None:
             return None
@@ -640,7 +752,11 @@ class PinkIKController:
                 pass
 
     def _get_root_link_world_pose(self) -> tuple[np.ndarray, np.ndarray]:
-        """Read the live root-link pose, preferring the articulation tensor state."""
+        """Read the live root-link pose, preferring the articulation tensor state.
+
+        Returns:
+            The requested value.
+        """
         pin = self._pin
 
         if self._robot is not None:
@@ -664,7 +780,11 @@ class PinkIKController:
         return self._get_root_link_world_pose_from_usd()
 
     def _get_root_link_world_pose_from_usd(self) -> tuple[np.ndarray, np.ndarray]:
-        """Fallback root-link pose read from authored USD transforms."""
+        """Fallback root-link pose read from authored USD transforms.
+
+        Returns:
+            The requested value.
+        """
         if not self._root_link_path:
             raise RuntimeError("Root link path is unavailable")
 
@@ -679,7 +799,15 @@ class PinkIKController:
         position_world: np.ndarray,
         orientation_xyzw: np.ndarray | None,
     ) -> Any:
-        """Convert a world-space target into the current URDF root-link frame."""
+        """Convert a world-space target into the current URDF root-link frame.
+
+        Args:
+            position_world: Value for position world.
+            orientation_xyzw: Value for orientation xyzw.
+
+        Returns:
+            The requested value.
+        """
         pin = self._pin
 
         if not self._root_link_path:
@@ -707,7 +835,15 @@ class PinkIKController:
         return pin.SE3(local_rot, local_pos.reshape(3, 1))
 
     def _xyzw_to_se3(self, position: np.ndarray, orientation_xyzw: np.ndarray | None) -> Any:
-        """Convert position + xyzw quaternion to ``pinocchio.SE3``."""
+        """Convert position + xyzw quaternion to ``pinocchio.SE3``.
+
+        Args:
+            position: Value for position.
+            orientation_xyzw: Value for orientation xyzw.
+
+        Returns:
+            The requested value.
+        """
         pin = self._pin
         if orientation_xyzw is not None:
             x, y, z, w = orientation_xyzw

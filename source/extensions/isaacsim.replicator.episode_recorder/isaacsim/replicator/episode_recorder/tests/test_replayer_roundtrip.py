@@ -47,7 +47,12 @@ _ECHO_TYPE_ID = "_test_echo_v2"
 
 
 class _EchoRecordable(Recordable):
-    """Records an externally-supplied value per tick and records what it was asked to apply."""
+    """Records an externally-supplied value per tick and records what it was asked to apply.
+
+    Args:
+        group: Recordable HDF5 group path.
+        value: Value to process.
+    """
 
     TYPE_ID = _ECHO_TYPE_ID
 
@@ -65,14 +70,14 @@ class _EchoRecordable(Recordable):
     def sample(self) -> dict[str, np.ndarray]:
         return {"value": np.full(3, self._value, dtype=np.float32)}
 
-    def apply(self, frame, *, policy: ReplayPolicy) -> None:
+    def apply(self, frame: object, *, policy: ReplayPolicy) -> None:
         self.applied_frames.append({k: np.asarray(v) for k, v in frame.items()})
 
     def to_manifest(self) -> dict[str, object]:
         return {"type": self.TYPE_ID, "group": self.group}
 
     @classmethod
-    def from_manifest(cls, entry):
+    def from_manifest(cls, entry: object) -> object:
         return cls(group=str(entry["group"]))
 
 
@@ -98,7 +103,10 @@ def _record_session(output_dir: str, rec: _EchoRecordable, values: list[float]) 
 
 
 class EpisodeReplayerRoundtripTests(omni.kit.test.AsyncTestCase):
+    """Define EpisodeReplayerRoundtripTests behavior."""
+
     async def setUp(self) -> None:
+        """Set up the test fixture."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
@@ -106,6 +114,7 @@ class EpisodeReplayerRoundtripTests(omni.kit.test.AsyncTestCase):
             register_recordable(_EchoRecordable)
 
     async def tearDown(self) -> None:
+        """Tear down the test fixture."""
         if _ECHO_TYPE_ID in registered_types():
             unregister_recordable(_ECHO_TYPE_ID)
         omni.usd.get_context().close_stage()
@@ -114,6 +123,7 @@ class EpisodeReplayerRoundtripTests(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
 
     async def test_manifest_frame_and_attrs_roundtrip(self) -> None:
+        """Run the manifest frame and attrs roundtrip test."""
         with tempfile.TemporaryDirectory(prefix="replayer_test_") as tmp_dir:
             values = [1.0, 2.5, -3.0, 4.25]
             path = _record_session(tmp_dir, _EchoRecordable(), values)
@@ -147,6 +157,7 @@ class EpisodeReplayerRoundtripTests(omni.kit.test.AsyncTestCase):
                 replayer.close()
 
     async def test_replay_episode_drives_every_frame(self) -> None:
+        """Run the replay episode drives every frame test."""
         with tempfile.TemporaryDirectory(prefix="replayer_test_") as tmp_dir:
             values = [0.1, 0.2, 0.3]
             path = _record_session(tmp_dir, _EchoRecordable(), values)
@@ -164,6 +175,7 @@ class EpisodeReplayerRoundtripTests(omni.kit.test.AsyncTestCase):
                 replayer.close()
 
     async def test_prepare_episode_async_prefetches_with_worker_reader(self) -> None:
+        """Run the prepare episode async prefetches with worker reader test."""
         with tempfile.TemporaryDirectory(prefix="replayer_test_") as tmp_dir:
             values = [5.0, 6.0]
             path = _record_session(tmp_dir, _EchoRecordable(), values)
@@ -181,6 +193,7 @@ class EpisodeReplayerRoundtripTests(omni.kit.test.AsyncTestCase):
                 replayer.close()
 
     async def test_prepare_episode_async_cancelled_prefetch_releases_state(self) -> None:
+        """Run the prepare episode async cancelled prefetch releases state test."""
         with tempfile.TemporaryDirectory(prefix="replayer_test_") as tmp_dir:
             path = _record_session(tmp_dir, _EchoRecordable(), [1.0])
 
@@ -199,6 +212,7 @@ class EpisodeReplayerRoundtripTests(omni.kit.test.AsyncTestCase):
                 replayer.close()
 
     async def test_replay_pose_batch_applies_xform_recordable(self) -> None:
+        """Run the replay pose batch applies xform recordable test."""
         stage_utils.define_prim("/World", "Xform")
         stage_utils.define_prim("/World/Replayed", "Xform")
 
@@ -243,6 +257,7 @@ class EpisodeReplayerRoundtripTests(omni.kit.test.AsyncTestCase):
                 replayer.close()
 
     async def test_best_effort_skips_unknown_recordable_type(self) -> None:
+        """Run the best effort skips unknown recordable type test."""
         with tempfile.TemporaryDirectory(prefix="replayer_test_") as tmp_dir:
             path = _record_session(tmp_dir, _EchoRecordable(), [1.0, 2.0])
             unregister_recordable(_ECHO_TYPE_ID)
@@ -257,6 +272,7 @@ class EpisodeReplayerRoundtripTests(omni.kit.test.AsyncTestCase):
                 register_recordable(_EchoRecordable)
 
     async def test_strict_mode_raises_on_unknown_type(self) -> None:
+        """Run the strict mode raises on unknown type test."""
         with tempfile.TemporaryDirectory(prefix="replayer_test_") as tmp_dir:
             path = _record_session(tmp_dir, _EchoRecordable(), [1.0])
             unregister_recordable(_ECHO_TYPE_ID)
@@ -271,6 +287,7 @@ class EpisodeReplayerRoundtripTests(omni.kit.test.AsyncTestCase):
                 register_recordable(_EchoRecordable)
 
     async def test_frame_index_out_of_range_raises(self) -> None:
+        """Run the frame index out of range raises test."""
         with tempfile.TemporaryDirectory(prefix="replayer_test_") as tmp_dir:
             path = _record_session(tmp_dir, _EchoRecordable(), [1.0, 2.0])
             replayer = EpisodeReplayer(path)
@@ -284,6 +301,7 @@ class EpisodeReplayerRoundtripTests(omni.kit.test.AsyncTestCase):
                 replayer.close()
 
     async def test_start_replay_empty_episode_releases_prepared_state(self) -> None:
+        """Run the start replay empty episode releases prepared state test."""
         with tempfile.TemporaryDirectory(prefix="replayer_test_") as tmp_dir:
             path = _record_session(tmp_dir, _EchoRecordable(), [])
             replayer = EpisodeReplayer(path)

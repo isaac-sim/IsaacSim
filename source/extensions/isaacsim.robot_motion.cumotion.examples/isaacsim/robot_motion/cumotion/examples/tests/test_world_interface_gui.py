@@ -40,7 +40,7 @@ def _obstacle_cube_prim_valid() -> bool:
 class TestWorldInterfaceGui(omni.kit.test.AsyncTestCase):
     """Test suite for the world interface example GUI."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up the UI builder before each test."""
         await omni.kit.app.get_app().next_update_async()
         await ensure_gui_class_warmup_once(
@@ -52,7 +52,7 @@ class TestWorldInterfaceGui(omni.kit.test.AsyncTestCase):
         self.ui_builder.build_ui()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up the UI builder after each test."""
         self.ui_builder.cleanup()
         await omni.kit.app.get_app().next_update_async()
@@ -68,12 +68,12 @@ class TestWorldInterfaceGui(omni.kit.test.AsyncTestCase):
         if not ok:
             raise AssertionError("Timed out waiting for world binding and obstacle cube after load")
 
-    async def test_widgets_built(self):
+    async def test_widgets_built(self) -> None:
         """Verify that all expected widgets are created."""
         self.assertIsNotNone(self.ui_builder._load_btn)
         self.assertIsNotNone(self.ui_builder._update_style_combo)
 
-    async def test_load_creates_all_expected_assets(self):
+    async def test_load_creates_all_expected_assets(self) -> None:
         """LOAD populates every expected scenario object and prim on the stage."""
         self.ui_builder._load_btn.trigger_click()
 
@@ -98,11 +98,11 @@ class TestWorldInterfaceGui(omni.kit.test.AsyncTestCase):
         for path in (_OBSTACLE_CUBE_PATH, _PHYSICS_SCENE_PATH):
             self.assertTrue(stage.GetPrimAtPath(path).IsValid(), f"Expected prim {path!r} on stage after LOAD")
 
-    async def test_load_initializes_world_binding(self):
+    async def test_load_initializes_world_binding(self) -> None:
         """Load completes world binding and places the obstacle cube on the stage."""
         await self._load_until_world_ready_on(self.ui_builder, timeout_sec=TEST_LOAD_TIMEOUT_SEC)
 
-    async def test_reset_stops_timeline(self):
+    async def test_reset_stops_timeline(self) -> None:
         """RESET calls timeline.stop() so simulation is stopped after reset."""
         self.ui_builder._load_btn.trigger_click()
         ok = await wait_until(
@@ -122,7 +122,7 @@ class TestWorldInterfaceGui(omni.kit.test.AsyncTestCase):
         ok_stop = await wait_until(app_utils.is_stopped, timeout_sec=10.0)
         self.assertTrue(ok_stop, "Timed out waiting for timeline to stop after RESET")
 
-    async def test_update_style_combo_switches_world_sync_mode(self):
+    async def test_update_style_combo_switches_world_sync_mode(self) -> None:
         """Update Style drives world-binding sync mode: ``synchronize``, ``synchronize_transforms``,.
 
         or ``synchronize_properties`` (via ``set_update_style`` on the scenario).

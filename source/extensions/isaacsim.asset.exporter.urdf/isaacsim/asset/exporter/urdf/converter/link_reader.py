@@ -138,6 +138,12 @@ def _iter_geometry_children(prim: Usd.Prim) -> Generator[Usd.Prim, None, None]:
     and joints to stay within the current link's scope.
 
     For instance proxies, reads from the prototype to ignore overrides.
+
+    Args:
+        prim: USD prim to read.
+
+    Yields:
+        Descendant geometry prims.
     """
     instance_pred = Usd.TraverseInstanceProxies()
 
@@ -159,6 +165,12 @@ def _resolve_prototype(prim: Usd.Prim) -> Usd.Prim:
     Overrides authored on instance proxy paths are erroneous and should
     be ignored. The prototype carries the authoritative data.
     For non-proxy prims, returns the prim itself.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Prototype prim for instance proxies, or the original prim.
     """
     if prim.IsInstanceProxy():
         proto = prim.GetPrimInPrototype()
@@ -171,6 +183,12 @@ def _is_collision_prim(prim: Usd.Prim) -> bool:
     """Check if prim is collision geometry.
 
     Reads from the prototype for instance proxies to ignore overrides.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        True if the prim is collision geometry, False otherwise.
     """
     source = _resolve_prototype(prim)
     if source.HasAPI(UsdPhysics.CollisionAPI):
@@ -184,6 +202,12 @@ def _is_visual_prim(prim: Usd.Prim) -> bool:
     """Check if prim is visual geometry (not exclusively collision).
 
     Reads from the prototype for instance proxies to ignore overrides.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        True if the prim is visual geometry, False otherwise.
     """
     source = _resolve_prototype(prim)
     imageable = UsdGeom.Imageable(source)
@@ -196,7 +220,15 @@ def _is_visual_prim(prim: Usd.Prim) -> bool:
 def _get_child_origin(
     child: Usd.Prim, parent: Usd.Prim
 ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-    """Compute the origin of a child geometry prim relative to its link prim."""
+    """Compute the origin of a child geometry prim relative to its link prim.
+
+    Args:
+        child: Child prim to evaluate.
+        parent: Parent XML element.
+
+    Returns:
+        Origin translation and rotation relative to the parent.
+    """
     from pxr import Gf, UsdGeom
 
     xfc = UsdGeom.XformCache()
@@ -208,7 +240,14 @@ def _get_child_origin(
 
 
 def _get_bound_material_name(prim: Usd.Prim) -> str | None:
-    """Get the name of the material bound to a prim, if any."""
+    """Get the name of the material bound to a prim, if any.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Bound material name, or None if no material is bound.
+    """
     binding_api = UsdShade.MaterialBindingAPI(prim)
     if not binding_api:
         return None

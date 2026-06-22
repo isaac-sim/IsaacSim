@@ -2964,7 +2964,14 @@ class Articulation(XFormPrim):
         indices: np.ndarray | list | torch.Tensor | wp.array | None = None,
         joint_indices: np.ndarray | list | torch.Tensor | wp.array | None = None,
     ) -> None:
-        """Update cached default gains for the selected articulations and joints."""
+        """Update cached default gains for the selected articulations and joints.
+
+        Args:
+            update_default_kps: Whether to update cached stiffness gains.
+            update_default_kds: Whether to update cached damping gains.
+            indices: Indices of articulations to update, or None for all articulations.
+            joint_indices: Indices of joints to update, or None for all joints.
+        """
         indices = self._backend_utils.resolve_indices(indices, self.count, self._device)
         joint_indices = self._backend_utils.resolve_indices(joint_indices, self.num_dof, self._device)
         kps, kds = self.get_gains(indices=indices, joint_indices=joint_indices, clone=True)

@@ -1,0 +1,52 @@
+# Render-vs-GT regression test for the SPG-runtime PPISP renderer.
+#
+# Loaded via load_config(), so it OVERLAYS config/nurec_config.yaml and inherits its override
+# sets (spg_pre_hydra_sync_overrides / no_spg_pre_hydra_sync_overrides). This file carries the
+# regression cases (particle + volume), per-case thresholds, and a wider keyframe match
+# tolerance. Pick a case with `--case particle|volume`.
+#
+# stage and gt_root are Isaac-relative paths (e.g. /Isaac/Samples/...). resolve_path() in
+# rendering_setup.py prepends get_assets_root_path() at runtime so they work against both
+# Nucleus and the production S3 mirror.
+# gt_root may also be a local path or an omniverse:// URL. All per-case keys (stage, gt_root,
+# cameras, num_samples, thresholds, ...) can be overridden per case; top-level keys serve as
+# defaults for cases that omit them.
+
+# Tolerance (us) for matching each GT timestamp to a sensor-rig keyframe. The cuSFM
+# keyframe time can differ from the rosbag stem by a sub-frame, so 1 ms matches reliably.
+keyframe_tolerance_us: 1000
+
+# Per-case pass/fail gates (aggregate PSNR/SSIM over the frames), enforced by
+# test_nurec_render_vs_gt.py with the torch metrics (PSNR data_range=1.0;
+# SSIM Gaussian 11x11/sigma=1.5), set conservatively below the measured means as drift margin.
+cases:
+  - name: particle_ppispon_sh
+    stage: /Isaac/Samples/NuRec/Galileo/NRE_26_06/PPISP_ON/particle_sh.usdz
+    gt_root: /Isaac/Samples/NuRec/Galileo/CI_Test_GT_Images/
+    cameras:
+      - front_stereo_camera_left
+    num_samples: null
+    output_parent_dir: ../_out/galileo
+    thresholds:
+      min_psnr: 15.0
+      min_ssim: 0.78
+  - name: particle_ppispon_spg
+    stage: /Isaac/Samples/NuRec/Galileo/NRE_26_06/PPISP_ON/particle_spg.usdz
+    gt_root: /Isaac/Samples/NuRec/Galileo/CI_Test_GT_Images/
+    cameras:
+      - front_stereo_camera_left
+    num_samples: null
+    output_parent_dir: ../_out/galileo
+    thresholds:
+      min_psnr: 24.0
+      min_ssim: 0.85
+  - name: volume_ppispon_spg
+    stage: /Isaac/Samples/NuRec/Galileo/NRE_26_06/PPISP_ON/volume_spg.usdz
+    gt_root: /Isaac/Samples/NuRec/Galileo/CI_Test_GT_Images/
+    cameras:
+      - front_stereo_camera_left
+    num_samples: null
+    output_parent_dir: ../_out/galileo
+    thresholds:
+      min_psnr: 24.0
+      min_ssim: 0.89

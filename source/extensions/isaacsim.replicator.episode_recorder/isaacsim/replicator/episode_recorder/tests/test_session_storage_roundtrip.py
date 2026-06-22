@@ -41,7 +41,12 @@ from isaacsim.replicator.episode_recorder import (
 
 
 class _DummyRec(Recordable):
-    """Minimal in-memory recordable for storage/registry tests."""
+    """Minimal in-memory recordable for storage/registry tests.
+
+    Args:
+        group: Recordable HDF5 group path.
+        dim: Channel dimension used by the test recordable.
+    """
 
     TYPE_ID = "_test_dummy_v2"
 
@@ -56,19 +61,22 @@ class _DummyRec(Recordable):
     def sample(self) -> dict[str, np.ndarray]:
         return {"value": np.zeros(self._dim, dtype=np.float32)}
 
-    def apply(self, frame, *, policy: ReplayPolicy) -> None:
+    def apply(self, frame: object, *, policy: ReplayPolicy) -> None:
         self._last_applied = {k: np.asarray(v) for k, v in frame.items()}
 
     def to_manifest(self) -> dict[str, object]:
         return {"type": self.TYPE_ID, "group": self.group, "dim": self._dim}
 
     @classmethod
-    def from_manifest(cls, entry):
+    def from_manifest(cls, entry: object) -> object:
         return cls(group=str(entry["group"]), dim=int(entry.get("dim", 3)))
 
 
 class SessionStorageRoundtripTests(omni.kit.test.AsyncTestCase):
+    """Define SessionStorageRoundtripTests behavior."""
+
     async def setUp(self) -> None:
+        """Set up the test fixture."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
@@ -76,6 +84,7 @@ class SessionStorageRoundtripTests(omni.kit.test.AsyncTestCase):
             register_recordable(_DummyRec)
 
     async def tearDown(self) -> None:
+        """Tear down the test fixture."""
         if _DummyRec.TYPE_ID in registered_types():
             unregister_recordable(_DummyRec.TYPE_ID)
         omni.usd.get_context().close_stage()
@@ -84,6 +93,7 @@ class SessionStorageRoundtripTests(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
 
     async def test_manifest_and_frame_roundtrip(self) -> None:
+        """Run the manifest and frame roundtrip test."""
         rec = _DummyRec(group="dummy", dim=4)
 
         with tempfile.TemporaryDirectory(prefix="session_storage_test_") as tmp_dir:
@@ -130,10 +140,12 @@ class SessionStorageRoundtripTests(omni.kit.test.AsyncTestCase):
                 reader.close()
 
     async def test_registry_rejects_unknown_type(self) -> None:
+        """Run the registry rejects unknown type test."""
         with self.assertRaises(KeyError):
             rehydrate({"type": "__nonexistent__", "group": "x"})
 
     async def test_append_frame_rejects_missing_channels(self) -> None:
+        """Run the append frame rejects missing channels test."""
         with tempfile.TemporaryDirectory(prefix="session_storage_test_") as tmp_dir:
             hdf5_path = os.path.join(tmp_dir, "roundtrip.hdf5")
             storage = SessionStorage(hdf5_path, buffer_frames=2)
@@ -147,6 +159,7 @@ class SessionStorageRoundtripTests(omni.kit.test.AsyncTestCase):
                 storage.close()
 
     async def test_multi_group_buffer_flush_keeps_channels_separate(self) -> None:
+        """Run the multi group buffer flush keeps channels separate test."""
         with tempfile.TemporaryDirectory(prefix="session_storage_test_") as tmp_dir:
             hdf5_path = os.path.join(tmp_dir, "roundtrip.hdf5")
             storage = SessionStorage(hdf5_path, buffer_frames=2)

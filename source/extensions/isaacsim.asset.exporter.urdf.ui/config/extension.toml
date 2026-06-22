@@ -1,5 +1,5 @@
 [package]
-version = "1.0.1"
+version = "1.0.2"
 category = "Simulation"
 title = "Isaac Sim USD to URDF Exporter UI"
 description = "UI for exporting USD articulated robots to URDF"

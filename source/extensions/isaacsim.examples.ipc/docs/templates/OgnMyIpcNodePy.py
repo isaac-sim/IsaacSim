@@ -43,12 +43,23 @@ class OgnMyIpcNodePy:
 
     @staticmethod
     def internal_state() -> OgnMyIpcNodePyState:
-        """Create per-instance state for the node."""
+        """Create per-instance state for the node.
+
+        Returns:
+            Per-instance node state.
+        """
         return OgnMyIpcNodePyState()
 
     @staticmethod
     def compute(db: object) -> bool:
-        """Evaluate one non-blocking IPC transfer step."""
+        """Evaluate one non-blocking IPC transfer step.
+
+        Args:
+            db: OmniGraph database object for the current node evaluation.
+
+        Returns:
+            True if the transfer completed successfully, otherwise False.
+        """
         state = db.per_instance_state
 
         uri = db.inputs.uri

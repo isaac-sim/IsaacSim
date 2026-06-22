@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test asset utils functionality."""
+"""Verifies importer asset utilities for joint selection, rigid-body density, fixed and floating base handling, articulation root relocation, drive authoring, and MJCF gain transfer. Covers scalar, per-joint, pattern, and regex configuration paths."""
 
 import math
+from typing import Any
 
 import omni.kit.test
 import omni.usd
@@ -113,7 +114,7 @@ class TestAssetUtils(omni.kit.test.AsyncTestCase):
         }
         calls = []
 
-        def fn(prim, inst, value):
+        def fn(prim: Any, inst: Any, value: Any) -> Any:
             calls.append((prim, inst, value))
 
         asset_utils._apply_to_joints(joints, 42, fn)
@@ -130,11 +131,11 @@ class TestAssetUtils(omni.kit.test.AsyncTestCase):
         }
         calls = []
 
-        def fn(prim, inst, value):
+        def fn(prim: Any, inst: Any, value: Any) -> Any:
             calls.append((prim, value))
 
         asset_utils._apply_to_joints(joints, {"shoulder": 10, "finger": 20}, fn)
-        values = {prim: val for prim, val in calls}
+        values = dict(calls)
         self.assertEqual(values["prim_a"], 10)
         self.assertEqual(values["prim_c"], 20)
         self.assertNotIn("prim_b", values)
@@ -148,7 +149,7 @@ class TestAssetUtils(omni.kit.test.AsyncTestCase):
         }
         calls = []
 
-        def fn(prim, inst, value):
+        def fn(prim: Any, inst: Any, value: Any) -> Any:
             calls.append(prim)
 
         asset_utils._apply_to_joints(joints, {".*revolute": 1}, fn)
@@ -172,11 +173,11 @@ class TestAssetUtils(omni.kit.test.AsyncTestCase):
         }
         kw_received = []
 
-        def fn(prim, inst, value, *, is_revolute=False):
+        def fn(prim: Any, inst: Any, value: Any, *, is_revolute: Any = False) -> Any:
             kw_received.append((prim, is_revolute))
 
         asset_utils._apply_to_joints(joints, 0, fn, pass_is_revolute=True)
-        revolute_flags = {p: r for p, r in kw_received}
+        revolute_flags = dict(kw_received)
         self.assertTrue(revolute_flags["prim_a"])
         self.assertFalse(revolute_flags["prim_c"])
 
@@ -239,7 +240,8 @@ class TestAssetUtils(omni.kit.test.AsyncTestCase):
             self.assertNotAlmostEqual(density_attr.Get(), 1000.0)
 
     async def test_density_applies_mass_api_when_missing(self) -> None:
-        """Rigid body links without MassAPI should have it applied and the
+        """Rigid body links without MassAPI should have it applied and the.
+
         density set in a single pass.
         """
         stage = _make_stage()

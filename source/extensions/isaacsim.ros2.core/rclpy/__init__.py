@@ -15,6 +15,7 @@
 
 import os
 import sys
+from typing import Any
 
 import carb
 import omni.ext
@@ -29,8 +30,12 @@ from isaacsim.ros2.core.impl.ros2_common import (
 class Extension(omni.ext.IExt):
     """Extension to load and configure rclpy for ROS 2."""
 
-    def on_startup(self, ext_id):
-        """Initialize the extension."""
+    def on_startup(self, ext_id: Any) -> None:
+        """Initialize the extension.
+
+        Args:
+            ext_id: Extension identifier provided by Kit.
+        """
         ros_distro = os.environ.get("ROS_DISTRO")
         if ros_distro is not None and os.path.join(f"{ros_distro}", "rclpy") in os.path.join(os.path.dirname(__file__)):
             omni.kit.app.get_app().print_and_log("Attempting to load system rclpy")
@@ -68,7 +73,7 @@ class Extension(omni.ext.IExt):
                     carb.log_warn("Could not import rclpy")
             return
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up resources when the extension shuts down."""
         rclpy_path = os.path.join(os.path.dirname(__file__))
         if rclpy_path in sys.path:

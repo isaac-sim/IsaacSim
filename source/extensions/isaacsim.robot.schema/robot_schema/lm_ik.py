@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 from .ik_solver import IKSolver, IKSolverRegistry, pose_error  # noqa: F401 -- re-exports pose_error
@@ -177,7 +179,7 @@ class IKSolverLM(IKSolver):
         chain: KinematicChain,
         target: Transform,
         q0: VecN | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> VecN:
         """Solve IK for the given kinematic chain. See class docstring for kwargs.
 

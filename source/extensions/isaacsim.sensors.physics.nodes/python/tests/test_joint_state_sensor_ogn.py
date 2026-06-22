@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies joint state sensor OmniGraph nodes for valid articulation input and invalid sensor configuration handling."""
+
 import asyncio
 
 import isaacsim.core.experimental.utils.prim as prim_utils
@@ -28,15 +30,19 @@ from .common import step_simulation
 
 
 class TestJointStateSensorOgn(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Exercise the joint-state read node on the SimpleArticulation asset."""
+
+    async def setUp(self) -> None:
+        """Load the articulation and create the joint-state OmniGraph reader."""
         await stage_utils.create_new_stage_async()
         physics_rate = 60
         SimulationManager.setup_simulation(dt=1.0 / physics_rate)
         self._timeline = omni.timeline.get_timeline_interface()
-        await self.setUp_environment()
+        await self.setup_environment()
         await self.setup_ogn()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Stop playback, invalidate physics, and wait for stage loading to finish."""
         if self._timeline.is_playing():
             self._timeline.stop()
         SimulationManager.invalidate_physics()
@@ -45,12 +51,14 @@ class TestJointStateSensorOgn(omni.kit.test.AsyncTestCase):
             await asyncio.sleep(1.0)
         await omni.kit.app.get_app().next_update_async()
 
-    async def setUp_environment(self):
+    async def setup_environment(self) -> None:
+        """Reference SimpleArticulation at /Articulation for joint-state reads."""
         assets_root_path = get_assets_root_path()
         asset_path = assets_root_path + "/Isaac/Robots/IsaacSim/SimpleArticulation/simple_articulation.usd"
         stage_utils.add_reference_to_stage(usd_path=asset_path, path="/Articulation")
 
-    async def setup_ogn(self):
+    async def setup_ogn(self) -> None:
+        """Create an OnPlaybackTick-driven IsaacReadJointState node graph."""
         self.graph_path = "/TestGraph"
         self._node_name = "ReadJointStateNode"
 
@@ -81,7 +89,7 @@ class TestJointStateSensorOgn(omni.kit.test.AsyncTestCase):
             print(e)
             self._node_path = self.graph_path + "/" + self._node_name
 
-    async def test_valid_joint_state_sensor_ogn(self):
+    async def test_valid_joint_state_sensor_ogn(self) -> None:
         """With articulation prim set, outputs have valid joint names, positions, velocities, efforts, dof types, and sensor time."""
         og.Controller.set(
             og.Controller.attribute(self.graph_path + "/ReadJointStateNode.inputs:prim"),
@@ -112,7 +120,7 @@ class TestJointStateSensorOgn(omni.kit.test.AsyncTestCase):
         self.assertGreater(sensor_time, 0.0, "sensorTime should be positive after stepping")
         self.assertGreater(stage_meters_per_unit, 0.0, "stageMetersPerUnit should be positive")
 
-    async def test_invalid_joint_state_sensor_ogn(self):
+    async def test_invalid_joint_state_sensor_ogn(self) -> None:
         """Outputs are empty and sensorTime is zero when no prim is set."""
         self._timeline.play()
         await step_simulation(0.5)

@@ -13,6 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test Mobility Gen path generation and path compression helpers.
+
+These tests cover diagonal and L-shaped route generation plus straight-line and
+bend-preserving compression.
+"""
+
 import numpy as np
 
 # NOTE:
@@ -24,17 +30,19 @@ from isaacsim.replicator.experimental.mobility_gen.impl.path_planner import comp
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
 class TestPathPlanner(omni.kit.test.AsyncTestCase):
+    """Test path planning helpers."""
+
     # Before running each test
-    async def setUp(self):
-        pass
+    async def setUp(self) -> None:
+        """Prepare the async fixture for path planner tests."""
 
     # After running each test
-    async def tearDown(self):
-        pass
+    async def tearDown(self) -> None:
+        """Clean up the async fixture for path planner tests."""
 
     # test to make sure this runs
-    async def test_generate_path_diagonal(self):
-
+    async def test_generate_path_diagonal(self) -> None:
+        """Verify generate_paths unrolls a free diagonal route."""
         start = (0, 0)
         end = (2, 2)
 
@@ -48,8 +56,8 @@ class TestPathPlanner(omni.kit.test.AsyncTestCase):
 
         self.assertTrue(np.allclose(path, ground_truth))
 
-    async def test_generate_path_l_shaped(self):
-
+    async def test_generate_path_l_shaped(self) -> None:
+        """Verify generate_paths routes around blocked cells with diagonal shortcuts."""
         start = (0, 0)
         end = (2, 2)
 
@@ -71,8 +79,8 @@ class TestPathPlanner(omni.kit.test.AsyncTestCase):
 
         self.assertTrue(np.allclose(path, ground_truth))
 
-    async def test_compress_path_line(self):
-
+    async def test_compress_path_line(self) -> None:
+        """Verify compress_path keeps only endpoints for a straight segment."""
         # 111 -> 1-1
         path = np.array([[0, 0], [0, 1], [0, 2]]).astype(np.float32)
 
@@ -82,8 +90,8 @@ class TestPathPlanner(omni.kit.test.AsyncTestCase):
 
         self.assertTrue(np.allclose(path_compressed, compressed_path_true))
 
-    async def test_compress_path_bend(self):
-
+    async def test_compress_path_bend(self) -> None:
+        """Verify compress_path preserves endpoints around a bend."""
         # 111----      1-1----
         # ---1---   => -------
         # ----111      ----1-1

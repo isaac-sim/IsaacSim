@@ -50,7 +50,13 @@ class TestRecorderData(omni.kit.test.AsyncTestCase):
         rep.functional.create.sphere(position=(1, 1, 0), semantics=[("class", "sphere")])
 
     async def run_recorder_capture(self, num_frames: int, play_timeline: bool, control_timeline: bool) -> None:
-        """Run a recording capture and validate timeline behavior and output frame count."""
+        """Run a recording capture and validate timeline behavior and output frame count.
+
+        Args:
+            num_frames: Number of frames to capture.
+            play_timeline: Whether to play the timeline before capture.
+            control_timeline: Whether the recorder controls timeline playback.
+        """
         test_name = f"_out_num_frames_{num_frames}_play_timeline_{play_timeline}_control_timeline_{control_timeline}"
         print(f"Starting test: {test_name}")
 

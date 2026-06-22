@@ -39,7 +39,7 @@ from .robot_helpers import (
 
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
-class TestIw_hub(omni.kit.test.AsyncTestCase):
+class TestIwHub(omni.kit.test.AsyncTestCase):
     """Tests for the iW Hub AMR transporter robot simulation."""
 
     # Before running each test
@@ -77,7 +77,7 @@ class TestIw_hub(omni.kit.test.AsyncTestCase):
         )
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test environment and stop timeline."""
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
@@ -85,7 +85,7 @@ class TestIw_hub(omni.kit.test.AsyncTestCase):
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_loading(self):
+    async def test_loading(self) -> None:
         """Test that the iW Hub robot loads and can move forward."""
         stage_utils.delete_prim("/ActionGraph")
         # Start Simulation and wait
@@ -102,7 +102,7 @@ class TestIw_hub(omni.kit.test.AsyncTestCase):
         self.ar.set_dof_velocity_targets(velocities=np.array([[1.0, 1.0]]), dof_indices=dof_indices)
 
         # simulate for 1 second
-        for frame in range(int(60)):
+        for frame in range(60):
             await omni.kit.app.get_app().next_update_async()
 
         current_pos, _ = self.ar.get_world_poses()
@@ -112,7 +112,7 @@ class TestIw_hub(omni.kit.test.AsyncTestCase):
         self.assertTrue(delta > 0.02)
 
     # general, slowly building up speed testcase
-    async def test_accel(self):
+    async def test_accel(self) -> None:
         """Test acceleration behavior with gradually increasing velocities."""
         odom_velocity = og.Controller.attribute("outputs:linearVelocity", self.odom_node)
         odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)
@@ -141,7 +141,7 @@ class TestIw_hub(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
 
     # braking from different init speeds
-    async def test_brake(self):
+    async def test_brake(self) -> None:
         """Test braking behavior from various initial velocities."""
         odom_velocity = og.Controller.attribute("outputs:linearVelocity", self.odom_node)
         odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)
@@ -174,7 +174,7 @@ class TestIw_hub(omni.kit.test.AsyncTestCase):
             self._timeline.stop()
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_spin(self):
+    async def test_spin(self) -> None:
         """Test spinning behavior at different angular velocities."""
         odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)
         # Start Simulation and wait
@@ -198,7 +198,7 @@ class TestIw_hub(omni.kit.test.AsyncTestCase):
         # self._timeline.stop()
 
     # go in circle
-    async def test_circle(self):
+    async def test_circle(self) -> None:
         """Test circular motion and verify return to starting position."""
         odom_velocity = og.Controller.attribute("outputs:linearVelocity", self.odom_node)
         odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)

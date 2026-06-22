@@ -21,7 +21,7 @@ It can be used to organize and restructure USD assets according to predefined ru
 Usage:
     ./python.sh source/standalone_examples/api/isaacsim.asset.transformer/run_asset_transformer.py \
 
-        
+
         --input /path/to/input.usd \
         --profile /path/to/profile.json \
         --output /path/to/output_package
@@ -217,7 +217,7 @@ def run_asset_transformer(
     print(f"  Output root: {output_package_root}")
 
     # Load the rule profile
-    with open(profile_json_path, "r", encoding="utf-8") as f:
+    with open(profile_json_path, encoding="utf-8") as f:
         profile = RuleProfile.from_json(f.read())
 
     print(f"\nProfile: {profile.profile_name} (v{profile.version or 'N/A'})")
@@ -272,7 +272,7 @@ def run_asset_transformer(
     return all_success
 
 
-def main():
+def main() -> int:
     """Main entry point for the standalone asset transformer."""
     global input_path, profile_path, output_path
 

@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Resolve a viewport window name to its current render product path."""
+
+from typing import Any
+
 import carb
 import omni
 from isaacsim.core.nodes.ogn.OgnIsaacGetViewportRenderProductDatabase import OgnIsaacGetViewportRenderProductDatabase
@@ -20,7 +24,9 @@ from omni.kit.viewport.utility import get_viewport_from_window_name
 
 
 class OgnIsaacGetViewportRenderProductInternalState:
-    def __init__(self):
+    """Per-instance cache for the viewport API resolved from the input window name."""
+
+    def __init__(self) -> None:
         viewport = None
 
 
@@ -28,16 +34,32 @@ class OgnIsaacGetViewportRenderProduct:
     """Isaac Sim Create Hydra Texture."""
 
     @staticmethod
-    def internal_state():
+    def internal_state() -> OgnIsaacGetViewportRenderProductInternalState:
+        """Create the per-instance viewport cache.
+
+        Returns:
+            Per-instance viewport cache.
+        """
         return OgnIsaacGetViewportRenderProductInternalState()
 
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
+        """Publish the render product path for the requested viewport.
+
+        The node reuses the cached viewport when available, returns False after warning when the
+        viewport cannot be found, and enables `execOut` when the render product path is written.
+
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            True when the render product path is written, False otherwise.
+        """
         state = db.per_instance_state
         viewport_api = get_viewport_from_window_name(db.inputs.viewport)
         if viewport_api:
             db.per_instance_state.viewport = viewport_api
-        if db.per_instance_state.viewport == None:
+        if db.per_instance_state.viewport is None:
             carb.log_warn("viewport name {db.inputs.viewport} not found")
             db.per_instance_state.initialized = False
             return False
@@ -48,12 +70,17 @@ class OgnIsaacGetViewportRenderProduct:
         return True
 
     @staticmethod
-    def release_instance(node, graph_instance_id):
+    def release_instance(node: Any, graph_instance_id: Any) -> None:
+        """Clear the cached viewport reference when the node instance is released.
+
+        Args:
+            node: OmniGraph node instance.
+            graph_instance_id: Graph instance identifier.
+        """
         try:
             state = OgnIsaacGetViewportRenderProductDatabase.per_instance_internal_state(node)
         except Exception:
             state = None
-            pass
 
         if state is not None:
             state.viewport = None

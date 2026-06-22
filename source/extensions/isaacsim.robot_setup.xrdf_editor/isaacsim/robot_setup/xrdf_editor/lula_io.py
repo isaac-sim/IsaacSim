@@ -29,13 +29,27 @@ from .yaml_utils import safe_load_yaml
 
 
 def is_yaml_file(path: str) -> bool:
-    """Return True if ``path`` has a ``.yaml`` or ``.yml`` extension."""
+    """Return True if ``path`` has a ``.yaml`` or ``.yml`` extension.
+
+    Args:
+        path: Path to check.
+
+    Returns:
+        True if the path has a YAML extension.
+    """
     _, ext = os.path.splitext(path.lower())
     return ext in (".yaml", ".yml")
 
 
 def on_filter_item(item: object) -> bool:
-    """File-browser filter showing YAML files and non-Omniverse folders."""
+    """Filter file-browser entries to YAML files and non-Omniverse folders.
+
+    Args:
+        item: File-browser item to evaluate.
+
+    Returns:
+        True if the item should be shown.
+    """
     if not item:
         return False
     if item.is_folder:

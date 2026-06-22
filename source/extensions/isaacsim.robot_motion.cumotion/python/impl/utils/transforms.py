@@ -194,6 +194,8 @@ def batch_compute_collider_transforms(
         num_colliders_per_object: List of length N where element i is the number of
             colliders for object i.
         device: Device to run the kernel on. Defaults to None.
+        collider_to_object_indices: Optional pre-built collider-to-object index mapping, shape (M,).
+        output: Optional pre-allocated output buffers reused when sized correctly.
 
     Returns:
         Structure containing positions and quaternions for colliders in both base and world frames.

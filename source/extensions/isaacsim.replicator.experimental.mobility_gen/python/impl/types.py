@@ -86,7 +86,14 @@ class CameraConfig:
 
     @classmethod
     def from_dict(cls, data: dict) -> "CameraConfig":
-        """Construct a CameraConfig from a parsed YAML sensor entry dict."""
+        """Construct a CameraConfig from a parsed YAML sensor entry dict.
+
+        Args:
+            data: Parsed YAML sensor entry dictionary.
+
+        Returns:
+            The constructed camera configuration.
+        """
         return cls(
             name=data["name"],
             sensor_prim_path=data.get("sensor_prim_path", ""),

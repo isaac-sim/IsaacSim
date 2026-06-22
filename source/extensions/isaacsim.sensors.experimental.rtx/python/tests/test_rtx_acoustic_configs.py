@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for validating all supported acoustic configurations and variants in the isaacsim.sensors.experimental.rtx extension."""
+"""Verifies every supported RTX acoustic configuration and variant by creating an Acoustic prim and validating its parameters with SensorCheckerUtil."""
 
 from pathlib import Path
+from typing import Any
 
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -43,7 +44,7 @@ class TestSupportedAcousticConfigs(omni.kit.test.AsyncTestCase):
     empty by default; OEM acoustic assets get added there and validation tests appear automatically.
     """
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Sets up the test environment for acoustic configuration testing.
 
         Creates a new USD stage, initializes a sarcophagus object with non-visual materials,
@@ -65,7 +66,7 @@ class TestSupportedAcousticConfigs(omni.kit.test.AsyncTestCase):
         self._checker = SensorCheckerUtil()
         self._checker.init(model_info)
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Cleans up the test environment after acoustic configuration testing.
 
         Removes the sensor checker, waits for any pending asset loading to complete,
@@ -77,7 +78,7 @@ class TestSupportedAcousticConfigs(omni.kit.test.AsyncTestCase):
         await app_utils.update_app_async()
 
 
-def _create_acoustic_parameters_test(config_path, variant):
+def _create_acoustic_parameters_test(config_path: Any, variant: Any) -> Any:
     """Creates a test function for validating acoustic sensor parameters with specified configuration and variant.
 
     Generates an async test function that creates an RTX acoustic sensor prim using Acoustic.create() with
@@ -91,7 +92,7 @@ def _create_acoustic_parameters_test(config_path, variant):
         An async test function that validates the acoustic sensor parameters.
     """
 
-    async def test_function(self):
+    async def test_function(self: Any) -> None:
         config_name = Path(config_path).stem
         acoustic = Acoustic.create(
             path="/asset",
@@ -125,7 +126,7 @@ def _create_acoustic_parameters_test(config_path, variant):
     return test_function
 
 
-def _variant_label(v):
+def _variant_label(v: Any) -> Any:
     if v is None:
         return "default"
     if isinstance(v, str):

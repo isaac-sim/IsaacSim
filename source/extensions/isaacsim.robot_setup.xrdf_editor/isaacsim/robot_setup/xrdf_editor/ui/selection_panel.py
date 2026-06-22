@@ -17,7 +17,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import omni.ui as ui
 from isaacsim.gui.components.ui_utils import add_line_rect_flourish, get_style
@@ -29,7 +30,14 @@ if TYPE_CHECKING:
 
 
 class SelectionPanel:
-    """Builds the 'Select Articulation' and 'Select Link' comboboxes."""
+    """Select Articulation and Select Link combobox panel.
+
+    Args:
+        state: Shared editor state.
+        on_articulation_selected: Callback invoked with the selected articulation path.
+        on_link_selected: Callback invoked with the selected link subpath.
+        find_articulation_paths: Callback returning articulation paths from the stage.
+    """
 
     def __init__(
         self,
@@ -145,7 +153,11 @@ class SelectionPanel:
         self._link_combobox.model.add_item_changed_fn(self._on_link_combobox)
 
     def get_selected_articulation_path(self) -> str:
-        """Return the prim path currently selected in the articulation combobox."""
+        """Return the prim path currently selected in the articulation combobox.
+
+        Returns:
+            Selected articulation path, or ``None`` as a string when there is no selection.
+        """
         if self._articulation_model is None:
             return "None"
         index = self._articulation_model.get_item_value_model().as_int
@@ -154,13 +166,21 @@ class SelectionPanel:
         return self.articulation_list[index]
 
     def get_selected_link_index(self) -> int:
-        """Return the currently-selected index in the link combobox (or 0)."""
+        """Return the currently-selected index in the link combobox.
+
+        Returns:
+            Selected link index, or 0 when there is no link model.
+        """
         if self._link_model is None:
             return 0
         return self._link_model.get_item_value_model().as_int
 
     def get_selected_link_name(self) -> str | None:
-        """Return the currently-selected link subpath, or ``None`` if no selection exists."""
+        """Return the currently-selected link subpath.
+
+        Returns:
+            Selected link subpath, or None if no selection exists.
+        """
         keys = list(self._state.link_to_meshes.keys())
         if not keys:
             return None
@@ -172,7 +192,7 @@ class SelectionPanel:
     # ------------------------------------------------------------------
     # Callbacks
     # ------------------------------------------------------------------
-    def _on_articulation_combobox(self, model=None, val=None) -> None:
+    def _on_articulation_combobox(self, model: object = None, val: object = None) -> None:
         if self._articulation_model is None:
             return
         index = self._articulation_model.get_item_value_model().as_int
@@ -181,7 +201,7 @@ class SelectionPanel:
             self._selected_articulation_path = self.articulation_list[index]
             self._on_articulation_selected(self.articulation_list[index])
 
-    def _on_link_combobox(self, model=None, val=None) -> None:
+    def _on_link_combobox(self, model: object = None, val: object = None) -> None:
         link_name = self.get_selected_link_name()
         if link_name is None:
             return

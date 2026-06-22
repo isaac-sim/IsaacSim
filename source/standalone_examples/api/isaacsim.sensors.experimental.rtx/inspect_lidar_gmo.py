@@ -34,7 +34,6 @@ Usage:
 
 import argparse
 import os
-import sys
 
 from isaacsim import SimulationApp
 
@@ -110,7 +109,7 @@ print("Created LidarSensor")
 # =============================================================================
 # GMO DATA INSPECTION FUNCTION
 # =============================================================================
-def inspect_lidar_gmo(frame: int, gmo) -> None:
+def inspect_lidar_gmo(frame: int, gmo: object) -> None:
     """Print GMO data fields based on the current auxiliary level.
 
     Args:
@@ -165,12 +164,13 @@ def inspect_lidar_gmo(frame: int, gmo) -> None:
 class GmoLidarInspectWriter(Writer):
     """Writer that parses GenericModelOutput and prints lidar GMO fields."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.data_structure = "renderProduct"
         self.annotators = [rep.annotators.get("GenericModelOutput")]
         self._frame_count = 0
 
-    def write(self, data):
+    def write(self, data: dict[str, object]) -> None:
+        """Inspect lidar GenericModelOutput data."""
         if "renderProducts" not in data:
             return
         for _rp_name, rp_data in data["renderProducts"].items():

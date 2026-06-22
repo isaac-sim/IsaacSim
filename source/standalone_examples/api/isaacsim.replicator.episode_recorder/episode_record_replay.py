@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""End-to-end record/replay demo for :class:`EpisodeRecorder` + :class:`EpisodeReplayer`.
+r"""End-to-end record/replay demo for :class:`EpisodeRecorder` + :class:`EpisodeReplayer`.
 
 This script demonstrates the two-phase SDG recording workflow:
 

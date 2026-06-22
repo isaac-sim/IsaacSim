@@ -14,12 +14,24 @@
 # limitations under the License.
 
 
+"""Echo a string input to an output for simple OmniGraph test graphs."""
+
+from typing import Any
+
+
 class OgnIsaacTestNode:
     """Test Isaac Sim Node."""
 
     @staticmethod
-    def compute(db) -> bool:
-        """Dummy Compute Function."""
+    def compute(db: Any) -> bool:
+        """Copy the input value to the output and report successful execution.
+
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            True after the value is copied.
+        """
         # copy input to output
         db.outputs.output = db.inputs.input
         return True

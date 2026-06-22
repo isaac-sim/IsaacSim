@@ -1598,13 +1598,26 @@ class DropDown(UIWidgetWrapper):
             self._on_selection_fn(self.get_selection())
 
     def _item_changed_fn_wrapper(self, model: object, val: object) -> None:
-        """Handle item selection changes in the combo box model."""
+        """Handle item selection changes in the combo box model.
+
+        Args:
+            model: Combo box model that stores the selected item index.
+            val: UI event value passed by the combo box model and not used.
+        """
         if self._on_selection_fn is not None:
             selected_item = self._items[model.get_item_value_model().as_int]
             self._on_selection_fn(selected_item)
 
     def _create_ui_widget(self, label: object, tooltip: object) -> object:
-        """Create the UI widget components for the DropDown."""
+        """Create the UI widget components for the DropDown.
+
+        Args:
+            label: Short descriptive text to the left of the DropDown.
+            tooltip: Text to appear when the mouse hovers over the DropDown.
+
+        Returns:
+            The containing frame with the DropDown UI elements.
+        """
         items = []
         combobox_model = DynamicComboBoxModel(items)
         containing_frame = Frame().frame
@@ -1619,7 +1632,14 @@ class DropDown(UIWidgetWrapper):
         return containing_frame
 
     def _find_all_usd_objects_of_type(self, obj_type: str) -> object:
-        """Find all USD objects of the specified type on the stage."""
+        """Find all USD objects of the specified type on the stage.
+
+        Args:
+            obj_type: USD object type to match against each prim path.
+
+        Returns:
+            A list of prim paths whose USD object type matches ``obj_type``.
+        """
         items = []
         stage = get_context().get_stage()
         if stage:

@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.3.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.3.0] - 2026-05-19
 ### Added
 - Token authentication for client requests via the `auth_token` JSON envelope field or the `# isaacsim-python-server-token:` raw-source header

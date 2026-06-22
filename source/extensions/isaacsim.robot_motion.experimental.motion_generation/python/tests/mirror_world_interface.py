@@ -13,7 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A mirror implementation of the WorldInterface that stores collision objects in memory for testing motion generation systems."""
+"""Mirror motion-generation collision objects in memory for tests.
+
+WorldBinding tests use this ``WorldInterface`` implementation to verify that
+USD geometry, poses, scales, safety tolerances, and enabled flags are translated
+correctly without invoking a planner backend.
+"""
 
 from __future__ import annotations
 
@@ -251,7 +256,7 @@ class MirrorWorldInterface(WorldInterface):
     and modified without the complexity of managing USD prims or physics simulation state.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.collision_objects: dict[str, Any] = {}
 
     def add_spheres(
@@ -262,7 +267,7 @@ class MirrorWorldInterface(WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> None:
         """Adds sphere collision objects to the mirror world interface.
 
         Args:
@@ -296,7 +301,7 @@ class MirrorWorldInterface(WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> None:
         """Adds cube collision objects to the mirror world interface.
 
         Args:
@@ -332,7 +337,7 @@ class MirrorWorldInterface(WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> None:
         """Adds cone collision objects to the mirror world interface.
 
         Args:
@@ -373,7 +378,7 @@ class MirrorWorldInterface(WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> None:
         """Adds plane collision objects to the mirror world interface.
 
         Args:
@@ -414,7 +419,7 @@ class MirrorWorldInterface(WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> None:
         """Adds capsule collision objects to the mirror world interface.
 
         Args:
@@ -455,7 +460,7 @@ class MirrorWorldInterface(WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> None:
         """Adds cylinder collision objects to the mirror world interface.
 
         Args:
@@ -497,7 +502,7 @@ class MirrorWorldInterface(WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> None:
         """Adds mesh collision objects to the mirror world interface.
 
         Args:
@@ -537,7 +542,7 @@ class MirrorWorldInterface(WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> None:
         """Adds triangulated mesh collision objects to the mirror world interface.
 
         Args:
@@ -574,7 +579,7 @@ class MirrorWorldInterface(WorldInterface):
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> None:
         """Adds oriented bounding box collision objects to the mirror world interface.
 
         Args:
@@ -610,7 +615,7 @@ class MirrorWorldInterface(WorldInterface):
         self,
         prim_paths: list[str],
         poses: tuple[wp.array, wp.array],
-    ):
+    ) -> None:
         """Updates the transform poses of existing obstacle collision objects.
 
         Args:
@@ -626,7 +631,7 @@ class MirrorWorldInterface(WorldInterface):
         self,
         prim_paths: list[str],
         enabled_array: wp.array,
-    ):
+    ) -> None:
         """Updates the enabled state of collision objects in the mirror world.
 
         Args:
@@ -641,7 +646,7 @@ class MirrorWorldInterface(WorldInterface):
         self,
         prim_paths: list[str],
         scales: wp.array,
-    ):
+    ) -> None:
         """Updates the scale values of collision objects in the mirror world.
 
         Args:
@@ -656,7 +661,7 @@ class MirrorWorldInterface(WorldInterface):
         self,
         prim_paths: list[str],
         radii: wp.array | None,
-    ):
+    ) -> None:
         """Updates the radius properties of sphere collision objects.
 
         Args:
@@ -672,7 +677,7 @@ class MirrorWorldInterface(WorldInterface):
         self,
         prim_paths: list[str],
         sizes: wp.array | None,
-    ):
+    ) -> None:
         """Updates the size properties of cube collision objects.
 
         Args:
@@ -690,7 +695,7 @@ class MirrorWorldInterface(WorldInterface):
         axes: list[Literal["X", "Y", "Z"]] | None,
         radii: wp.array | None,
         lengths: wp.array | None,
-    ):
+    ) -> None:
         """Updates the properties of cone collision objects.
 
         Args:
@@ -715,7 +720,7 @@ class MirrorWorldInterface(WorldInterface):
         axes: list[Literal["X", "Y", "Z"]] | None,
         lengths: wp.array | None,
         widths: wp.array | None,
-    ):
+    ) -> None:
         """Updates the properties of plane collision objects.
 
         Args:
@@ -740,7 +745,7 @@ class MirrorWorldInterface(WorldInterface):
         axes: list[Literal["X", "Y", "Z"]] | None,
         radii: wp.array | None,
         lengths: wp.array | None,
-    ):
+    ) -> None:
         """Updates the properties of capsule collision objects.
 
         Args:
@@ -765,7 +770,7 @@ class MirrorWorldInterface(WorldInterface):
         axes: list[Literal["X", "Y", "Z"]] | None,
         radii: wp.array | None,
         lengths: wp.array | None,
-    ):
+    ) -> None:
         """Updates the properties of cylinder collision objects.
 
         Args:
@@ -791,7 +796,7 @@ class MirrorWorldInterface(WorldInterface):
         face_vertex_indices: list[wp.array] | None,
         face_vertex_counts: list[wp.array] | None,
         normals: list[wp.array] | None,
-    ):
+    ) -> None:
         """Updates the mesh properties of mesh collision objects.
 
         Args:
@@ -818,7 +823,7 @@ class MirrorWorldInterface(WorldInterface):
         prim_paths: list[str],
         points: list[wp.array] | None,
         face_vertex_indices: list[wp.array] | None,
-    ):
+    ) -> None:
         """Updates the mesh properties of triangulated mesh collision objects.
 
         Args:
@@ -839,7 +844,7 @@ class MirrorWorldInterface(WorldInterface):
         centers: wp.array | None,
         rotations: wp.array | None,
         half_side_lengths: wp.array | None,
-    ):
+    ) -> None:
         """Updates the properties of oriented bounding box collision objects.
 
         Args:

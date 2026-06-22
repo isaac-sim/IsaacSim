@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import io
 
-import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import warp as wp
@@ -72,6 +71,8 @@ def draw_annotator_data_to_image(
         ... # save the image to a file
         >>> cv2.imwrite("motion_vectors.png", image)  # doctest: +SKIP
     """
+    import cv2
+
     data = data.numpy() if isinstance(data, wp.array) else data
     if frame is not None:
         frame = frame.numpy() if isinstance(frame, wp.array) else frame

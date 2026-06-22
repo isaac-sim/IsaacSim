@@ -72,7 +72,7 @@ If long paths are not enabled, follow these steps:
 3. **Restart Your System**
    - A system restart is required for the changes to take effect.
 
-**Note:** Long paths support requires Windows 10 version 1607 or later, or Windows 11.
+**Note:** Long paths support is available on Windows 11.
 
 ## Compiler Version Checking
 

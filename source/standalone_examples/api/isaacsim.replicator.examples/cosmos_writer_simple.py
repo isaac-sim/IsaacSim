@@ -20,6 +20,7 @@ from isaacsim import SimulationApp
 simulation_app = SimulationApp(launch_config={"headless": False})
 
 import os
+from typing import Any
 
 import carb.settings
 import omni.replicator.core as rep
@@ -34,7 +35,7 @@ SEGMENTATION_MAPPING = {
 NUM_FRAMES = 60
 
 
-def run_cosmos_example(num_frames, segmentation_mapping=None):
+def run_cosmos_example(num_frames: int, segmentation_mapping: dict[str, Any] | None = None) -> None:
     """Run a CosmosWriter example capturing physics simulation frames."""
     # Create a new stage
     omni.usd.get_context().new_stage()

@@ -1,5 +1,9 @@
 # Changelog
 
+## [4.16.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [4.16.0] - 2026-04-21
 ### Changed
 - Remove deprecated dependency extensions and migrate implementation to core experimental

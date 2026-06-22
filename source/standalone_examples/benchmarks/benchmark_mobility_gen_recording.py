@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Headless benchmark for MobilityGen trajectory recording performance.
+r"""Headless benchmark for MobilityGen trajectory recording performance.
 
 Runs the recording loop (physics step → scenario.step → write_state_dict_common)
 for N steps and reports per-phase timing via isaacsim.benchmark.services for
@@ -39,6 +39,7 @@ import argparse
 import os
 import tempfile
 import time
+from typing import Any
 
 DEFAULT_OMAP_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -108,7 +109,7 @@ args, _unknown = parser.parse_known_args()
 # ─────────────────────────────────────────────────────────────────────────────
 from isaacsim import SimulationApp
 
-simulation_app = SimulationApp(launch_config={"headless": True, "multi_gpu": False})
+simulation_app = SimulationApp(launch_config={"headless": True})
 
 import carb
 import isaacsim.core.experimental.utils.app as app_utils
@@ -151,19 +152,21 @@ from isaacsim.replicator.mobility_gen.examples import (
 class MobilityGenRecorder(MeasurementDataRecorder):
     """Records per-phase step timings from the MobilityGen recording loop."""
 
-    def __init__(self, context=None, **kwargs):
+    def __init__(self, context: Any = None, **kwargs: Any) -> None:
         self._results = None
 
-    def set_results(self, results: dict):
+    def set_results(self, results: dict) -> None:
+        """Set the timing results to report."""
         self._results = results
 
-    def start_collecting(self):
-        pass
+    def start_collecting(self) -> None:
+        """Start collecting benchmark measurements."""
 
-    def stop_collecting(self):
-        pass
+    def stop_collecting(self) -> None:
+        """Stop collecting benchmark measurements."""
 
     def get_data(self) -> MeasurementData:
+        """Return the collected benchmark measurements."""
         if not self._results:
             return MeasurementData()
 
@@ -399,7 +402,7 @@ for step_idx in range(N):
 # ─────────────────────────────────────────────────────────────────────────────
 # Report results
 # ─────────────────────────────────────────────────────────────────────────────
-def _ms(t):
+def _ms(t: float) -> float:
     return t * 1000.0 / N
 
 

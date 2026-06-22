@@ -45,7 +45,7 @@ def _scenario_loaded(ui_builder: UIBuilder) -> bool:
 class TestRmpFlowGui(omni.kit.test.AsyncTestCase):
     """Test suite for the RmpFlow GUI."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up the UI builder before each test."""
         await omni.kit.app.get_app().next_update_async()
         await ensure_gui_class_warmup_once(
@@ -57,7 +57,7 @@ class TestRmpFlowGui(omni.kit.test.AsyncTestCase):
         self.ui_builder.build_ui()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up the UI builder after each test."""
         self.ui_builder.cleanup()
         await omni.kit.app.get_app().next_update_async()
@@ -70,7 +70,7 @@ class TestRmpFlowGui(omni.kit.test.AsyncTestCase):
         if not ok:
             raise AssertionError("Timed out waiting for scenario load (target/articulation/controller)")
 
-    async def test_gui_layout(self):
+    async def test_gui_layout(self) -> None:
         """Checks that we have the correct buttons available."""
         self.assertIsNotNone(self.ui_builder._load_btn)
         self.assertIsNotNone(self.ui_builder._reset_btn)
@@ -79,7 +79,7 @@ class TestRmpFlowGui(omni.kit.test.AsyncTestCase):
         # The scenario state button should be disabled initially
         self.assertTrue(self.ui_builder._scenario_state_btn.is_in_a_state())
 
-    async def test_load_creates_all_expected_assets(self):
+    async def test_load_creates_all_expected_assets(self) -> None:
         """LOAD populates every expected scenario object and prim on the stage."""
         self.ui_builder._load_btn.trigger_click()
 
@@ -107,7 +107,7 @@ class TestRmpFlowGui(omni.kit.test.AsyncTestCase):
         for path in (_ROBOT_PATH, _TARGET_PATH, _OBSTACLE_PATH, _PHYSICS_SCENE_PATH):
             self.assertTrue(stage.GetPrimAtPath(path).IsValid(), f"Expected prim {path!r} on stage after LOAD")
 
-    async def test_load_button_creates_cube_and_articulation(self):
+    async def test_load_button_creates_cube_and_articulation(self) -> None:
         """After calling load button, there should be a cube and an Articulation added to the stage."""
         # There is initially no controller:
         self.assertIsNone(self.ui_builder._scenario._controller)
@@ -122,7 +122,7 @@ class TestRmpFlowGui(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(self.ui_builder._scenario._articulation)
         self.assertIsNotNone(self.ui_builder._scenario._controller)
 
-    async def test_physics_step_reads_valid_target_cube_pose(self):
+    async def test_physics_step_reads_valid_target_cube_pose(self) -> None:
         """During scenario update (physics), target cube world pose is XYZ + unit quaternion wxyz."""
         self.ui_builder._load_btn.trigger_click()
         await omni.kit.app.get_app().next_update_async()
@@ -133,7 +133,7 @@ class TestRmpFlowGui(omni.kit.test.AsyncTestCase):
         _orig_update = FrankaRmpFlowExample.update
         verified: dict[str, bool] = {"done": False}
 
-        def _update_check_target_pose(self, step: float) -> None:
+        def _update_check_target_pose(self: object, step: float) -> None:
             if self._controller is not None and self._target is not None:
                 target_positions, target_orientations = self._target.get_world_poses()
                 assert_xyz_and_unit_quaternion_wxyz(
@@ -150,7 +150,7 @@ class TestRmpFlowGui(omni.kit.test.AsyncTestCase):
             saw = await wait_until(lambda: verified["done"], timeout_sec=60.0)
             self.assertTrue(saw, "Expected a physics step to run scenario.update with controller and target")
 
-    async def test_button_clicks(self):
+    async def test_button_clicks(self) -> None:
         """After calling reset button, the scenario should be reset."""
         # First, load the scenario
         self.ui_builder._load_btn.trigger_click()

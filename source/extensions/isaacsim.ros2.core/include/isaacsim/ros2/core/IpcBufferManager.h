@@ -145,10 +145,30 @@ public:
      */
     ~IPCBufferManager()
     {
-        for (size_t i = 0; i < m_bufferSize; i++)
+        // Iterate over the actual number of allocated buffers rather than m_bufferSize so a
+        // default-constructed manager (empty vectors) tears down cleanly.
+        for (size_t i = 0; i < m_bufferPtrs.size(); i++)
         {
-            cuMemRelease(m_genericHandles[i]);
+            // Tear down in the reverse order of construction: unmap the virtual address range,
+            // release the backing allocation, then free the reserved address range. Calling
+            // cuMemRelease before cuMemUnmap (the previous order) is contrary to the documented
+            // CUDA VMM teardown sequence.
             cuMemUnmap(m_bufferPtrs[i], m_allocSize);
+            cuMemRelease(m_genericHandles[i]);
+            // cuMemAddressReserve must be balanced by cuMemAddressFree or the virtual address
+            // range is leaked for the lifetime of the process.
+            cuMemAddressFree(m_bufferPtrs[i], m_allocSize);
+        }
+
+        // Close the exported POSIX file descriptors. cuMemExportToShareableHandle hands back an
+        // fd per buffer that is otherwise leaked on every manager teardown (risking fd exhaustion
+        // when nodes are recreated).
+        for (const auto& handle : m_shareableHandles)
+        {
+            if (handle.size() > 1 && handle[1] >= 0)
+            {
+                close(handle[1]);
+            }
         }
     }
 

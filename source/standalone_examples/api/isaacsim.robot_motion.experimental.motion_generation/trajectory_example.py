@@ -67,7 +67,7 @@ class LinearTrajectory(mg.Trajectory):
         robot_joint_space: list[str],
         active_joints: list[str],
         time_per_segment: float = 1.0,
-    ):
+    ) -> None:
         """Initialize the linear trajectory.
 
         Args:
@@ -171,7 +171,7 @@ def get_estimated_state_from_robot(robot: Articulation, robot_joint_space: list[
     )
 
 
-def apply_desired_state_to_robot(robot: Articulation, desired_state: mg.RobotState):
+def apply_desired_state_to_robot(robot: Articulation, desired_state: mg.RobotState) -> None:
     """Apply the desired state to the robot.
 
     Args:
@@ -258,7 +258,9 @@ async def setup_scene() -> tuple[Articulation, list[str]]:
 # ============================================================================
 
 
-def run_trajectory_following_example(robot: Articulation, robot_joint_space: list[str], use_linear: bool = False):
+def run_trajectory_following_example(
+    robot: Articulation, robot_joint_space: list[str], use_linear: bool = False
+) -> None:
     """Run the trajectory following example.
 
     This demonstrates the complete cycle of using TrajectoryFollower:
@@ -407,7 +409,7 @@ def run_trajectory_following_example(robot: Articulation, robot_joint_space: lis
 # ============================================================================
 
 
-def main():
+def main() -> None:
     """Run the complete trajectory following workflow."""
     parser = argparse.ArgumentParser(description="Trajectory following example")
     parser.add_argument(

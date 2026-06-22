@@ -15,8 +15,8 @@
 
 """Public MJCF importer Python API."""
 
-from .impl.config import MJCFImporterConfig
-from .impl.converter import MJCFImporter
+from .impl.config import MJCFImporterConfig as MJCFImporterConfig
+from .impl.converter import MJCFImporter as MJCFImporter
 
 try:
     from .impl.extension import *

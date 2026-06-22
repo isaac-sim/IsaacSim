@@ -52,17 +52,22 @@ class _FakeTeleopManager:
     def __init__(self) -> None:
         self._observers: list = []
 
-    def add_controller_inputs_observer(self, observer) -> None:
+    def add_controller_inputs_observer(self, observer: object) -> None:
         self._observers.append(observer)
 
-    def remove_controller_inputs_observer(self, observer) -> None:
+    def remove_controller_inputs_observer(self, observer: object) -> None:
         try:
             self._observers.remove(observer)
         except ValueError:
             pass
 
-    def tick(self, left, right) -> None:
-        """Drive one frame of the observer chain with the provided controller snapshots."""
+    def tick(self, left: object, right: object) -> None:
+        """Drive one frame of the observer chain with the provided controller snapshots.
+
+        Args:
+            left: Value for left.
+            right: Value for right.
+        """
         for obs in list(self._observers):
             obs(left, right)
 
@@ -71,21 +76,23 @@ class TestVRRecordingButton(omni.kit.test.AsyncTestCase):
     """Rising-edge, event-dispatch, and detach semantics for :class:`VRRecordingButton`."""
 
     async def setUp(self) -> None:
+        """Set up the test fixture."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
 
     async def tearDown(self) -> None:
+        """Tear down the test fixture."""
         omni.usd.get_context().close_stage()
         await omni.kit.app.get_app().next_update_async()
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_rising_edge_dispatches_toggle_once_per_press(self):
+    async def test_rising_edge_dispatches_toggle_once_per_press(self) -> None:
         """Holding the button across frames only dispatches once; release + press dispatches again."""
         received_events: list[dict] = []
 
-        def capture_event(event) -> None:
+        def capture_event(event: object) -> None:
             received_events.append(dict(event.payload) if event.payload is not None else {})
 
         dispatcher = carb.eventdispatcher.get_eventdispatcher()
@@ -130,11 +137,11 @@ class TestVRRecordingButton(omni.kit.test.AsyncTestCase):
         finally:
             event_sub = None
 
-    async def test_right_primary_does_not_trigger_left_button(self):
+    async def test_right_primary_does_not_trigger_left_button(self) -> None:
         """A right-controller button press must not fire a left-bound :class:`VRRecordingButton`."""
         received_events: list[dict] = []
 
-        def capture_event(event) -> None:
+        def capture_event(event: object) -> None:
             received_events.append(dict(event.payload) if event.payload is not None else {})
 
         dispatcher = carb.eventdispatcher.get_eventdispatcher()
@@ -163,11 +170,11 @@ class TestVRRecordingButton(omni.kit.test.AsyncTestCase):
         finally:
             event_sub = None
 
-    async def test_detach_stops_dispatch(self):
+    async def test_detach_stops_dispatch(self) -> None:
         """After :meth:`detach`, further button presses do not dispatch events."""
         received_events: list[dict] = []
 
-        def capture_event(event) -> None:
+        def capture_event(event: object) -> None:
             received_events.append(dict(event.payload) if event.payload is not None else {})
 
         dispatcher = carb.eventdispatcher.get_eventdispatcher()
@@ -200,11 +207,11 @@ class TestVRRecordingButton(omni.kit.test.AsyncTestCase):
         finally:
             event_sub = None
 
-    async def test_custom_command_and_payload(self):
+    async def test_custom_command_and_payload(self) -> None:
         """Custom ``command`` and ``command_payload`` are forwarded verbatim in the event payload."""
         received_events: list[dict] = []
 
-        def capture_event(event) -> None:
+        def capture_event(event: object) -> None:
             received_events.append(dict(event.payload) if event.payload is not None else {})
 
         dispatcher = carb.eventdispatcher.get_eventdispatcher()
@@ -239,11 +246,11 @@ class TestVRRecordingButton(omni.kit.test.AsyncTestCase):
         finally:
             event_sub = None
 
-    async def test_session_id_getter_none_suppresses_dispatch(self):
+    async def test_session_id_getter_none_suppresses_dispatch(self) -> None:
         """A session-scoped button should stay quiet until a recorder session is available."""
         received_events: list[dict] = []
 
-        def capture_event(event) -> None:
+        def capture_event(event: object) -> None:
             received_events.append(dict(event.payload) if event.payload is not None else {})
 
         dispatcher = carb.eventdispatcher.get_eventdispatcher()
@@ -272,11 +279,11 @@ class TestVRRecordingButton(omni.kit.test.AsyncTestCase):
         finally:
             event_sub = None
 
-    async def test_attach_detach_dispatches_binding_lifecycle_events(self):
+    async def test_attach_detach_dispatches_binding_lifecycle_events(self) -> None:
         """Attach must broadcast an ``attach`` binding event; detach must broadcast ``detach``."""
         received_events: list[dict] = []
 
-        def capture_event(event) -> None:
+        def capture_event(event: object) -> None:
             received_events.append(dict(event.payload) if event.payload is not None else {})
 
         dispatcher = carb.eventdispatcher.get_eventdispatcher()

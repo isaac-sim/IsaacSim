@@ -1,5 +1,5 @@
 [package]
-version = "1.2.3"
+version = "1.2.4"
 category = "Simulation"
 title = "ROS 2 Examples"
 description = "This extension provides ROS 2 example scenes and demonstrations for Isaac Sim, including MoveIt integration, navigation samples, and waypoint following."

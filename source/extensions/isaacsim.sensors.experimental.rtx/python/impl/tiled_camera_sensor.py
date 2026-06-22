@@ -49,6 +49,7 @@ class TiledCameraSensor:
             Can include regular expressions for matching multiple prims.
         resolution: Resolution of each individual sensor (following OpenCV/NumPy convention: ``(height, width)``).
         annotators: Annotator/sensor types to configure.
+        render_vars: Render variables to pass to the render product.
 
     Raises:
         ValueError: If no prims are found matching the specified paths.
@@ -207,11 +208,14 @@ class TiledCameraSensor:
     Methods.
     """
 
-    def attach_annotators(self, annotators: str | list[str]) -> None:
+    def attach_annotators(self, annotators: str | list[str]) -> dict[str, Any]:
         """Attach annotators to the sensor.
 
         Args:
             annotators: Annotator/sensor types to attach.
+
+        Returns:
+            Mapping from annotator name to attached annotator instance.
 
         Raises:
             ValueError: If the specified annotator is not supported.
@@ -240,6 +244,8 @@ class TiledCameraSensor:
         # attach annotator instances to the hydra texture
         for annotator in annotators:
             self._annotators[annotator].attach(self._hydra_texture.path)
+
+        return {annotator: self._annotators[annotator] for annotator in annotators}
 
     def detach_annotators(self, annotators: str | list[str]) -> None:
         """Detach annotators from the sensor.

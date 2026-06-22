@@ -13,15 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Read file contents from an OmniGraph path input into a string output."""
+
 from os.path import exists
+from typing import Any
 
 
 class OgnIsaacReadFilePath:
     """look for file at path given, and return its contents."""
 
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
+        """Populate `fileContents` from the input path, returning False for empty or missing paths.
 
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            False when the input path is empty or missing.
+        """
         # Empty input:
         db.outputs.fileContents = ""
         if len(db.inputs.path) == 0:
@@ -31,5 +41,5 @@ class OgnIsaacReadFilePath:
             db.log_warn(f"Could not find file at {db.inputs.path}, returning empty string.")
             return False
         else:
-            with open(db.inputs.path, "r") as f:
+            with open(db.inputs.path) as f:
                 db.outputs.fileContents = f.read()

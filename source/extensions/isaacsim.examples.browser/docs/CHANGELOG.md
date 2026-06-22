@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [0.3.1] - 2026-05-13
 ### Fixed
 - Fixed nvbug 6130501: Example browser detail panel was empty when clicking a synthetic parent category (e.g. "ROS2") whose examples were only registered under sub-categories.

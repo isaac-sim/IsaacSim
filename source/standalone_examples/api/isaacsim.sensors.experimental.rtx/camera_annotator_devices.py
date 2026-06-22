@@ -27,6 +27,7 @@ for output comparison.
 
 import argparse
 import os
+from typing import Any
 
 parser = argparse.ArgumentParser(description="Camera annotator device validation example.")
 parser.add_argument("--test", default=False, action="store_true", help="Run in test mode.")
@@ -49,7 +50,9 @@ from isaacsim.core.experimental.utils.transform import euler_angles_to_quaternio
 from isaacsim.sensors.experimental.rtx import CameraSensor, RtxCamera
 
 
-def validate(test_name, data, expected_class, expected_dtype, expected_shape):
+def validate(
+    test_name: str, data: Any, expected_class: type[object], expected_dtype: object, expected_shape: tuple[int, ...]
+) -> bool:
     """Validate data against expected type, dtype, and shape."""
     print(f"{test_name}: data.shape: {data.shape}; dtype: {data.dtype}; type: {type(data)}")
     success = True

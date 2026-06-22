@@ -111,7 +111,11 @@ class ConveyorPreviewHighlight:
         self._group_id = None
 
     def _ensure_group(self) -> int:
-        """Lazily register the selection group and configure its green colours."""
+        """Lazily register the selection group and configure its green colours.
+
+        Returns:
+            Registered selection group id, or 0 if registration fails.
+        """
         if self._group_id is not None:
             return self._group_id
         ctx = omni.usd.get_context()

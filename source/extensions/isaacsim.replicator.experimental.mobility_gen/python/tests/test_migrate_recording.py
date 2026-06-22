@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for the _migrate_recording function in migrate_recordings.py."""
+"""Verifies recording migration from legacy .npy files to .npz archives. The tests cover empty directories, missing common subdirectories, key preservation, exclusion of None values, file counts, cleanup, and idempotency."""
 
 import os
 import tempfile
@@ -48,7 +48,15 @@ _migrate_recording = _globs["_migrate_recording"]
 
 
 def _make_legacy_recording(root: str, step_data: list[dict]) -> str:
-    """Write legacy .npy files (pickled dicts) under root/state/common/ and return root."""
+    """Write legacy .npy files (pickled dicts) under root/state/common/ and return root.
+
+    Args:
+        root: Recording root directory.
+        step_data: Per-step dictionaries to write.
+
+    Returns:
+        The recording root directory.
+    """
     common_dir = os.path.join(root, "state", "common")
     os.makedirs(common_dir, exist_ok=True)
     for i, data in enumerate(step_data):
@@ -59,11 +67,13 @@ def _make_legacy_recording(root: str, step_data: list[dict]) -> str:
 class TestMigrateRecordingNoFiles(omni.kit.test.AsyncTestCase):
     """_migrate_recording must return 0 when no .npy files are present."""
 
-    async def test_empty_directory(self):
+    async def test_empty_directory(self) -> None:
+        """Exercise test empty directory."""
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(_migrate_recording(tmp), 0)
 
-    async def test_directory_without_common_subdir(self):
+    async def test_directory_without_common_subdir(self) -> None:
+        """Exercise test directory without common subdir."""
         with tempfile.TemporaryDirectory() as tmp:
             os.makedirs(os.path.join(tmp, "state"))
             self.assertEqual(_migrate_recording(tmp), 0)
@@ -72,7 +82,8 @@ class TestMigrateRecordingNoFiles(omni.kit.test.AsyncTestCase):
 class TestMigrateRecordingSingleFile(omni.kit.test.AsyncTestCase):
     """_migrate_recording must convert one .npy to .npz and delete the original."""
 
-    async def test_npy_converted_to_npz(self):
+    async def test_npy_converted_to_npz(self) -> None:
+        """Exercise test npy converted to npz."""
         with tempfile.TemporaryDirectory() as tmp:
             data = {"pose_x": np.float32(1.0), "pose_y": np.float32(2.0)}
             _make_legacy_recording(tmp, [data])
@@ -90,7 +101,8 @@ class TestMigrateRecordingSingleFile(omni.kit.test.AsyncTestCase):
                 ".npz should be created",
             )
 
-    async def test_npz_contains_correct_keys(self):
+    async def test_npz_contains_correct_keys(self) -> None:
+        """Exercise test npz contains correct keys."""
         with tempfile.TemporaryDirectory() as tmp:
             data = {"pose_x": np.float32(3.0), "joint_vel": np.array([0.1, 0.2])}
             _make_legacy_recording(tmp, [data])
@@ -103,7 +115,7 @@ class TestMigrateRecordingSingleFile(omni.kit.test.AsyncTestCase):
                 np.testing.assert_allclose(npz["pose_x"], np.float32(3.0))
                 np.testing.assert_allclose(npz["joint_vel"], [0.1, 0.2])
 
-    async def test_none_values_excluded_from_npz(self):
+    async def test_none_values_excluded_from_npz(self) -> None:
         """None values in the legacy dict must be dropped (np.savez can't store None)."""
         with tempfile.TemporaryDirectory() as tmp:
             data = {"pose_x": np.float32(1.0), "optional": None}
@@ -118,7 +130,8 @@ class TestMigrateRecordingSingleFile(omni.kit.test.AsyncTestCase):
 class TestMigrateRecordingMultipleFiles(omni.kit.test.AsyncTestCase):
     """_migrate_recording must convert all .npy files in the directory."""
 
-    async def test_count_matches_file_count(self):
+    async def test_count_matches_file_count(self) -> None:
+        """Exercise test count matches file count."""
         with tempfile.TemporaryDirectory() as tmp:
             steps = [{"x": np.float32(i)} for i in range(5)]
             _make_legacy_recording(tmp, steps)
@@ -127,7 +140,8 @@ class TestMigrateRecordingMultipleFiles(omni.kit.test.AsyncTestCase):
 
             self.assertEqual(count, 5)
 
-    async def test_all_npy_removed_all_npz_created(self):
+    async def test_all_npy_removed_all_npz_created(self) -> None:
+        """Exercise test all npy removed all npz created."""
         with tempfile.TemporaryDirectory() as tmp:
             steps = [{"x": np.float32(i)} for i in range(3)]
             _make_legacy_recording(tmp, steps)
@@ -139,7 +153,7 @@ class TestMigrateRecordingMultipleFiles(omni.kit.test.AsyncTestCase):
             self.assertEqual(len(npy_files), 0, "All .npy files should be removed")
             self.assertEqual(len(npz_files), 3, "One .npz per original .npy")
 
-    async def test_idempotent_on_already_migrated(self):
+    async def test_idempotent_on_already_migrated(self) -> None:
         """A directory with no .npy files returns 0 (already migrated)."""
         with tempfile.TemporaryDirectory() as tmp:
             steps = [{"x": np.float32(i)} for i in range(2)]

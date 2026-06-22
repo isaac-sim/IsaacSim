@@ -33,9 +33,12 @@ UcxRequestWaitResult waitForRequestWithTimeout(std::shared_ptr<ucxx::Request> re
     }
 
     const auto startTime = std::chrono::steady_clock::now();
-    const bool hasTimeout = (timeoutMs != g_kUcxInfiniteTimeout);
+    // Both 0 and g_kUcxInfiniteTimeout (UINT32_MAX) mean "wait indefinitely". 0 is the
+    // user-facing sentinel exposed via OGN node defaults ("If 0, waits indefinitely");
+    // g_kUcxInfiniteTimeout is the internal sentinel used by direct C++ callers.
+    const bool hasTimeout = (timeoutMs != 0 && timeoutMs != g_kUcxInfiniteTimeout);
 
-    // Loop until timeout (if specified) or indefinitely if timeout is g_kUcxInfiniteTimeout
+    // Loop until timeout (if specified) or indefinitely if timeout is 0 / g_kUcxInfiniteTimeout
     while (!hasTimeout ||
            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startTime).count() <
                timeoutMs)

@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, get_args
+from typing import Any, Literal, get_args
 
 import carb
 import isaacsim.core.experimental.utils.prim as prim_utils
@@ -573,7 +573,7 @@ class SingleViewDepthCameraSensor(CameraSensor):
         return self._render_product_prim.GetAttribute("omni:rtx:post:depthSensor:sensorSizePixel").Get()
 
     @staticmethod
-    def add_template_render_product(parent_prim_path: str, camera_prim_path: str, **kwargs) -> Usd.Prim:
+    def add_template_render_product(parent_prim_path: str, camera_prim_path: str, **kwargs: Any) -> Usd.Prim:
         """Add a template render product for a depth sensor to the USD stage.
 
         Creates a ``RenderProduct`` prim with ``OmniSensorDepthSensorSingleViewAPI`` applied and a

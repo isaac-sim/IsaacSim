@@ -51,18 +51,15 @@ if ! [[ -z "${CONDA_PREFIX}" ]]; then
   echo "Warning: running in conda env, please deactivate before executing this script"
 fi
 
-# Check if we are running in a docker container
-if [ -f /.dockerenv ]; then
-  # Check for vulkan in docker container
-  if [[ -f "${SCRIPT_DIR}/vulkan_check.sh" ]]; then
-    ${SCRIPT_DIR}/vulkan_check.sh
-  fi
+# Check for vulkan when running in a docker container
+if [ -f /.dockerenv ] && [[ -f "${SCRIPT_DIR}/vulkan_check.sh" ]]; then
+  ${SCRIPT_DIR}/vulkan_check.sh
 fi
 
 # Show icon if not running headless
 export RESOURCE_NAME="IsaacSim"
-# WAR for missing libcarb.so
-export LD_PRELOAD=$SCRIPT_DIR/kit/libcarb.so
+# WAR for missing libcarb.so, while preserving any caller-provided LD_PRELOAD
+export LD_PRELOAD=$SCRIPT_DIR/kit/libcarb.so${LD_PRELOAD:+:$LD_PRELOAD}
 
 # Run with lldb if --lldb-debug flag was specified, otherwise run normally
 if [[ "$use_lldb" == true ]]; then

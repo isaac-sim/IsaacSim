@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-import carb
 import omni.replicator.core as rep
 import warp as wp
 
@@ -72,6 +71,8 @@ class CameraSensor(_SensorRuntime):
             If a string path is provided, a :class:`RtxCamera` instance is created internally.
         resolution: Resolution of the sensor (following OpenCV/NumPy convention: ``(height, width)``).
         annotators: Annotator/sensor types to configure.
+        writers: Writer types to attach.
+        render_vars: Render variables to pass to the render product.
 
     Raises:
         ValueError: If no prim is found matching the specified path.
@@ -119,7 +120,7 @@ class CameraSensor(_SensorRuntime):
         self.authoring_object.camera.enforce_square_pixels(self._resolution, modes="horizontal")
 
     @property
-    def camera(self):
+    def camera(self) -> Any:
         """Camera object for accessing optical parameters.
 
         Returns:
@@ -136,11 +137,14 @@ class CameraSensor(_SensorRuntime):
         """
         return self._resolution
 
-    def attach_annotators(self, annotators: str | list[str]) -> None:
+    def attach_annotators(self, annotators: str | list[str]) -> dict[str, Any]:
         """Attach annotators to the sensor.
 
         Args:
             annotators: Annotator/sensor types to attach.
+
+        Returns:
+            Mapping from annotator name to attached annotator instance.
 
         Raises:
             ValueError: If the specified annotator is not supported.
@@ -155,6 +159,8 @@ class CameraSensor(_SensorRuntime):
             )
         for annotator in annotators:
             self._annotators[annotator].attach(self._hydra_texture.path)
+
+        return {annotator: self._annotators[annotator] for annotator in annotators}
 
     def get_data(self, annotator: str, *, out: wp.array | None = None) -> tuple[wp.array | None, dict[str, Any]]:
         """Fetch the specified annotator/sensor data for the camera.
@@ -204,7 +210,12 @@ class CameraSensor(_SensorRuntime):
         return out, info
 
     def _initialize_sensor(self, annotators: str | list[str], *, render_vars: list[str] | None = None) -> None:
-        """Initialize sensor by creating a resolution-aware render product and attaching annotators."""
+        """Initialize sensor by creating a resolution-aware render product and attaching annotators.
+
+        Args:
+            annotators: Annotator/sensor types to attach.
+            render_vars: Render variables to pass to the render product.
+        """
         self._hydra_texture = rep.create.render_product(
             camera=self.authoring_object.paths[0],
             resolution=(self._resolution[1], self._resolution[0]),  # (width, height)

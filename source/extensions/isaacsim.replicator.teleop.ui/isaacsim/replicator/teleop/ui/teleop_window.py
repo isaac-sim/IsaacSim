@@ -57,6 +57,9 @@ class TeleopWindow(ui.Window):
     opened from that window via the session-injector hook registered by
     :func:`install_teleop_session_injector
     <isaacsim.replicator.teleop.install_teleop_session_injector>`.
+
+    Args:
+        title: Window title.
     """
 
     def __init__(self, title: str) -> None:
@@ -123,7 +126,11 @@ class TeleopWindow(ui.Window):
         self._grasp_panel.on_stage_closed()
 
     def _on_editor_quit_event(self, _event: object) -> None:
-        """Save the current teleop profile on app quit."""
+        """Save the current teleop profile on app quit.
+
+        Args:
+            _event: App quit event payload.
+        """
         self._save_last_profile()
 
     def _on_command_executed(self, command: TeleopCommand, success: bool, message: str) -> None:
@@ -131,6 +138,11 @@ class TeleopWindow(ui.Window):
 
         Keeps the desktop UI consistent when commands arrive from
         external sources (e.g. VR headset overlay).
+
+        Args:
+            command: Command that was executed.
+            success: Whether the command succeeded.
+            message: Result message from the command bus.
         """
         if command == TeleopCommand.DISCONNECT:
             self._reset_all_panels()
@@ -146,7 +158,11 @@ class TeleopWindow(ui.Window):
         self._grasp_panel.reset_ui()
 
     def collect_teleop_profile(self) -> TeleopProfile:
-        """Collect the current window state into a unified teleop profile."""
+        """Collect the current window state into a unified teleop profile.
+
+        Returns:
+            Unified teleop profile for all panels.
+        """
         return TeleopProfile(
             session=self._session_panel.collect_profile(),
             floating=self._floating_panel.collect_profile(),
@@ -156,7 +172,14 @@ class TeleopWindow(ui.Window):
         )
 
     def apply_teleop_profile(self, profile: TeleopProfile) -> tuple[bool, str]:
-        """Apply a unified teleop profile across all panels."""
+        """Apply a unified teleop profile across all panels.
+
+        Args:
+            profile: Unified teleop profile to apply.
+
+        Returns:
+            Tuple containing success state and a status message.
+        """
         stage_state = self._get_stage_state()
         resolve = stage_state == STAGE_STATE_READY
 
@@ -172,7 +195,11 @@ class TeleopWindow(ui.Window):
 
     @staticmethod
     def _get_stage_state() -> str:
-        """Return the current stage state using resolver constants."""
+        """Return the current stage state using resolver constants.
+
+        Returns:
+            Stage state resolver constant.
+        """
         usd_context = omni.usd.get_context()
         if usd_context.get_stage() is None:
             return STAGE_STATE_NO_STAGE

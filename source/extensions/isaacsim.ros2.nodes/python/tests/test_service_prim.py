@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 service prim OmniGraph nodes."""
+"""Verifies ROS 2 prim services for listing prims, reading attributes, and setting prim attributes."""
 
 import json
+from typing import Any
 
 import numpy as np
 import omni.graph.core as og
@@ -27,21 +28,28 @@ from pxr import Sdf
 
 
 class TestRos2ServicePrim(ROS2TestCase):
-    """Test suite for ros2 service prim."""
+    """Verify ROS 2 prim service operations against USD stage data."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh stage for prim service operation tests."""
         await super().setUp()
         await stage_utils.create_new_stage_async()
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Run shared ROS 2 cleanup after prim service tests."""
         await super().tearDown()
 
-    def createAttributes(self, prim_path):
-        """Handle createAttributes operation."""
+    def create_attributes(self, prim_path: Any) -> Any:
+        """Handle create_attributes operation.
 
-        def rand(size, dtype="float", as_list=False):
+        Args:
+            prim_path: USD prim path where attributes are created.
+
+        Returns:
+            Attribute names and expected values.
+        """
+
+        def rand(size: Any, dtype: Any = "float", as_list: Any = False) -> Any:
             # list
             if as_list:
                 return [rand(size, dtype, False) for _ in range(np.random.randint(1, 6))]
@@ -173,8 +181,13 @@ class TestRos2ServicePrim(ROS2TestCase):
             attributes.append((name, spec[1]))
         return attributes
 
-    def checkValues(self, a, b):
-        """Handle checkValues operation."""
+    def check_values(self, a: Any, b: Any) -> None:
+        """Handle check_values operation.
+
+        Args:
+            a: First serialized value.
+            b: Second serialized value.
+        """
         a = json.loads(a)
         b = json.loads(b)
         try:
@@ -183,7 +196,7 @@ class TestRos2ServicePrim(ROS2TestCase):
             self.assertEqual(a, b)
 
     # ----------------------------------------------------------------------
-    async def test_service_get_prims(self):
+    async def test_service_get_prims(self) -> None:
         """Test service get prims."""
         try:
             import isaac_ros2_messages.srv
@@ -211,7 +224,7 @@ class TestRos2ServicePrim(ROS2TestCase):
         ros2_node = self.create_node("isaac_sim_test_service")
         client = ros2_node.create_client(isaac_ros2_messages.srv.GetPrims, "/get_prims")
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(ros2_node, timeout_sec=0)
 
         self._timeline.play()
@@ -236,7 +249,7 @@ class TestRos2ServicePrim(ROS2TestCase):
         self.assertIn("/ActionGraph/ServicePrim", result.paths)
 
     # ----------------------------------------------------------------------
-    async def test_service_get_prim_attributes(self):
+    async def test_service_get_prim_attributes(self) -> None:
         """Test service get prim attributes."""
         try:
             import isaac_ros2_messages.srv
@@ -264,7 +277,7 @@ class TestRos2ServicePrim(ROS2TestCase):
         ros2_node = self.create_node("isaac_sim_test_service")
         client = ros2_node.create_client(isaac_ros2_messages.srv.GetPrimAttributes, "/get_prim_attributes")
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(ros2_node, timeout_sec=0)
 
         self._timeline.play()
@@ -288,7 +301,7 @@ class TestRos2ServicePrim(ROS2TestCase):
         self.assertIn("token", result.types)
 
     # ----------------------------------------------------------------------
-    async def test_service_get_set_prim_attribute(self):
+    async def test_service_get_set_prim_attribute(self) -> None:
         """Test service get set prim attribute."""
         try:
             import isaac_ros2_messages.srv
@@ -314,14 +327,14 @@ class TestRos2ServicePrim(ROS2TestCase):
 
         # create attributes for testing
         prim_path = "/Prim"
-        specs = self.createAttributes(prim_path)
+        specs = self.create_attributes(prim_path)
 
         # node and client
         ros2_node = self.create_node("isaac_sim_test_service")
         client_get = ros2_node.create_client(isaac_ros2_messages.srv.GetPrimAttribute, "/get_prim_attribute")
         client_set = ros2_node.create_client(isaac_ros2_messages.srv.SetPrimAttribute, "/set_prim_attribute")
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(ros2_node, timeout_sec=0)
 
         self._timeline.play()
@@ -372,4 +385,4 @@ class TestRos2ServicePrim(ROS2TestCase):
             self.assertEqual(result_get.message, "")
             json.loads(result_get.value)
 
-            self.checkValues(spec[1], result_get.value)
+            self.check_values(spec[1], result_get.value)

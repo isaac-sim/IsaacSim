@@ -29,7 +29,7 @@ assert torch.cuda.is_available()
 
 
 @torch.jit.script
-def add(a, b):
+def add(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """Add two tensors element-wise using torch.jit.script."""
     return a + b
 

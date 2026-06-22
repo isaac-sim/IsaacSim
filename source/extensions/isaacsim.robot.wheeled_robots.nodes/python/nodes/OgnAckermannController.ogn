@@ -77,7 +77,7 @@
             },
             "invertSteering": {
                 "type": "bool",
-                "description": "Flips the sign of the steering angle, Set to true for rear wheel steering",
+                "description": "Set to true for rear-wheel-steered robots such as forklifts, where the steering joints actuate the rear axle and the front wheels stay fixed in heading",
                 "default": false
             },
             "dt": {

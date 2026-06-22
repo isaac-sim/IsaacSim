@@ -13,19 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-The Kit extension system tests for Python has additional wrapping.
-
-to make test auto-discoverable add support for async/await tests.
-The easiest way to set up the test class is to have it derive from
-the omni.kit.test.AsyncTestCase class that implements them.
-
-Visit the next link for more details:
-  https://docs.omniverse.nvidia.com/kit/docs/kit-manual/latest/guide/testing_exts_python.html
-"""
+"""Verifies that the simulation manager extension loads, exposes its interface, and dispatches physics callbacks through the Kit test runtime. The tests exercise extension startup, timeline interaction, and Isaac event callback registration."""
 
 import os
 import unittest
+from typing import Any
 
 import omni.kit.app
 import omni.kit.test
@@ -37,14 +29,14 @@ from isaacsim.core.simulation_manager import IsaacEvents, SimulationManager
 class TestExtension(omni.kit.test.AsyncTestCase):
     """Test extension."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # ---------------
         # Do custom setUp
         # ---------------
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         # ------------------
         # Do custom tearDown
@@ -52,7 +44,7 @@ class TestExtension(omni.kit.test.AsyncTestCase):
         super().tearDown()
 
     # --------------------------------------------------------------------
-    async def test_extension(self):
+    async def test_extension(self) -> None:
         """Test extension."""
         # Kit extension system test for Python is based on the unittest module.
         # Visit https://docs.python.org/3/library/unittest.html to see the
@@ -73,17 +65,17 @@ class TestExtension(omni.kit.test.AsyncTestCase):
         for callback_id in self._callbacks:
             SimulationManager.deregister_callback(callback_id)
 
-    async def test_physics_callbacks(self):
+    async def test_physics_callbacks(self) -> None:
         """Test physics callbacks."""
         await create_new_stage_async()
         global var
         var = 1
 
-        def add_one(dt, context):
+        def add_one(dt: Any, context: Any) -> None:
             global var
             var += 1
 
-        def multiply_two(dt, context):
+        def multiply_two(dt: Any, context: Any) -> None:
             global var
             var *= 2
 
@@ -105,7 +97,7 @@ class TestExtension(omni.kit.test.AsyncTestCase):
 
     # TODO: ETM will always have 2 steps of simulation at start and not increment.
     @unittest.skipIf(os.getenv("ETM_ACTIVE"), "skipped in ETM. Physics steps are not handled the same way in ETM")
-    async def test_simulation_manager_interface(self):
+    async def test_simulation_manager_interface(self) -> None:
         """Test simulation manager interface."""
         timeline = omni.timeline.get_timeline_interface()
         await create_new_stage_async()

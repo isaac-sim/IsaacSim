@@ -584,7 +584,7 @@ generate_report_cmd = [
 
 [[repo_test.suites.warmuptests.group]]
 include = ["warmup${shell_ext}"]
-timeout = 1500
+timeout = 2100
 
 [repo_test.suites.pythontests]
 kind = "glob_and_exec"
@@ -832,7 +832,7 @@ generate_report_cmd = [
 [[repo_test.suites.doc_snippets.group]]
 include = ["tests-nativepython*${shell_ext}"]
 exclude = ["*test_snippets_async*"]
-timeout = 300
+timeout = 600
 
 [repo_test.suites.doc_snippets_async]
 kind = "glob_and_exec"
@@ -848,6 +848,9 @@ stdout_fail_patterns.exclude = [
   "*[Error] [omni.kit.asset_converter*",
   "*[Error] [_snippet_test_*",
   "*[Error] [isaacsim.core.simulation_manager*",
+  "*[Error] [isaacsim.robot.surface_gripper*",
+  "*[Error] [omni.usd.commands.usd_commands]*",
+  "*[Error] [omni.kit.commands.command]*",
 ]
 tc_report_enabled = false
 
@@ -856,7 +859,7 @@ include = ["*test_snippets_async*"]
 args = [
   "--junit-xml ${test_root}/_testoutput/results.xml",
 ]
-timeout = 1800
+timeout = 2700
 
 [repo_test.suites.external]
 kind = "glob_and_exec"

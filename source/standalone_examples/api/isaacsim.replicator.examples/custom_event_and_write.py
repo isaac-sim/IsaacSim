@@ -65,9 +65,9 @@ writer.initialize(backend=backend, rgb=True)
 writer.attach(rp)
 
 
-def run_example():
+def run_example() -> None:
     """Run custom event randomization and capture sequence."""
-    print(f"Capturing at original positions")
+    print("Capturing at original positions")
     rep.orchestrator.step(rt_subframes=8)
 
     print("Randomizing small cube rotation (graph-based) and capturing...")

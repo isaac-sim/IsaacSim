@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Run the interactive conveyor belt Warp simulation example."""
+
 from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
@@ -71,6 +73,7 @@ ENABLE_VELOCITY_FIELD_VISUALIZER = True
 
 
 class ConveyorBeltExample:
+    """Interactive conveyor belt example application."""
 
     def __init__(
         self,
@@ -117,8 +120,7 @@ class ConveyorBeltExample:
         self,
         device: str | None = None,
     ) -> None:
-        """Allocate (or re-allocate) a set of warp buffers needed for contact processing and
-        force computation.
+        """Allocate restart buffers for contact processing and force computation.
 
         The buffers created here are recreated when the sample is stopped and restarted.
 
@@ -126,7 +128,6 @@ class ConveyorBeltExample:
             device: Warp device string (e.g. ``"cuda:0"`` or ``"cpu"``). Uses the default
                 device when ``None``.
         """
-
         # Single element array to store the total elapsed simulation time.
         self._total_elapsed_time = wp.zeros(shape=1, dtype=wp.float32, device=device)
 
@@ -148,7 +149,6 @@ class ConveyorBeltExample:
             device: Warp device string (e.g. ``"cuda:0"`` or ``"cpu"``). Uses the default
                 device when ``None``.
         """
-
         self._velocity_field_actuator.create_buffers(device)
 
         self._conveyor_belt_manager.create_buffers(device)
@@ -198,7 +198,6 @@ class ConveyorBeltExample:
         self,
     ) -> None:
         """Build the simulation environment: lighting, camera, scene, data buffers, contact views, and callbacks."""
-
         # Add a dome light
         domeLight = UsdLux.DomeLight.Define(self._stage, "/World/DomeLight")
         domeLight.CreateIntensityAttr(800)
@@ -317,7 +316,6 @@ class ConveyorBeltExample:
             pair_contacts_count: (N, M) number of contacts per body-conveyor-belt pair.
             pair_contacts_start_indices: (N, M) start index into the contact forces/points/normals buffers per body-conveyor-belt pair.
         """
-
         max_thread_count = 4096
 
         #
@@ -480,7 +478,7 @@ class ConveyorBeltExample:
             device=self._world.device,
         )
 
-    def post_physics_step(self, dt: float, _context) -> None:
+    def post_physics_step(self, dt: float, _context: object) -> None:
         """Physics post-step callback: fetches contact data, computes conveyor forces, and applies them.
 
         Also updates the velocity-field visualizer markers if one is present.
@@ -489,7 +487,6 @@ class ConveyorBeltExample:
             dt: Elapsed simulation time for the current step in seconds.
             _context: Simulation event context (PhysicsStepContext) provided by the SimulationManager callback system.
         """
-
         #
         # Fetch the active simulation state and physical properties of the rigid bodies that
         # are to interact with the conveyor belts. Fetch the contact information between those
@@ -596,7 +593,6 @@ class ConveyorBeltExample:
         self,
     ) -> None:
         """Set up the environment and run the simulation loop until the application is closed."""
-
         self.make_env()
 
         reset_needed = False

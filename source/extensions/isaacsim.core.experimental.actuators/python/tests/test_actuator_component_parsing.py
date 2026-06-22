@@ -13,16 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Smoke tests verifying that every Newton actuator component type can be parsed from USD and run.
-
-Each test authors the minimum USD description for one component type (controller, clamping, or
-delay), constructs an `ArticulationActuators` over it, confirms the expected concrete class was
-instantiated, then runs physics for a handful of frames and asserts no exception is raised.
-
-One test per component type is sufficient here: combination coverage lives in the Newton library's
-own test suite.  The goal is to ensure the full USD → builder → `Actuator` pipeline is wired
-correctly for each supported schema.
-"""
+"""Verifies that Newton actuator controller, clamping, and delay components authored in USD can be discovered and executed. Covers PD, PID, max effort, DC motor, position-based clamping, and delay component parsing."""
 
 from __future__ import annotations
 
@@ -59,6 +50,7 @@ class TestActuatorComponentParsing(omni.kit.test.AsyncTestCase):
     """
 
     async def setUp(self) -> None:
+        """Prepare the actuator component parsing test stage."""
         super().setUp()
         await stage_utils.create_new_stage_async()
         stage_utils.define_prim("/World", "Xform")
@@ -68,6 +60,7 @@ class TestActuatorComponentParsing(omni.kit.test.AsyncTestCase):
         self._timeline = omni.timeline.get_timeline_interface()
 
     async def tearDown(self) -> None:
+        """Clean up the actuator component parsing test stage."""
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
         super().tearDown()

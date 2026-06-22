@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.3.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [2.3.0] - 2026-04-10
 ### Deprecated
 - Extension deprecated in favor of the `repo.sh template` CLI system (`./repo.sh template new`)

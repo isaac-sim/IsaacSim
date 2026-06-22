@@ -4,7 +4,7 @@ order = -1000
 reloadable = false
 
 [package]
-version = "5.3.0"
+version = "5.3.1"
 category = "Internal"
 title = "Isaac Sim Core Pip Archive"
 description = "Pip packages needed by isaac sim extensions"

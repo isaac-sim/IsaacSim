@@ -18,6 +18,7 @@
 import argparse
 import json
 import os
+from typing import Any
 
 import yaml
 from isaacsim import SimulationApp
@@ -143,7 +144,7 @@ parser.add_argument(
 args, unknown = parser.parse_known_args()
 args_config = {}
 if args.config and os.path.isfile(args.config):
-    with open(args.config, "r") as f:
+    with open(args.config) as f:
         if args.config.endswith(".json"):
             args_config = json.load(f)
         elif args.config.endswith(".yaml"):
@@ -171,7 +172,7 @@ from isaacsim.core.utils.viewports import set_camera_view
 
 
 # Run the SDG pipeline on the scenarios
-def run_sdg(config):
+def run_sdg(config: dict[str, Any]) -> None:
     """Run the synthetic data generation pipeline on the configured scenarios."""
     # Load the config parameters
     env_config = config.get("environments", {})

@@ -63,7 +63,7 @@ class TestSpotCPU(omni.kit.test.AsyncTestCase):
         """
         return torch.device("cpu")
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up the test environment with physics scene and ground plane.
 
         Initializes a new USD stage, configures physics simulation parameters, spawns a ground plane,
@@ -94,7 +94,7 @@ class TestSpotCPU(omni.kit.test.AsyncTestCase):
         self._stage = omni.usd.get_context().get_stage()
         self._timeline = omni.timeline.get_timeline_interface()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up the test environment.
 
         Stops the timeline, deregisters physics callbacks, and waits for all assets to finish loading
@@ -108,7 +108,7 @@ class TestSpotCPU(omni.kit.test.AsyncTestCase):
             await asyncio.sleep(1.0)
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_spot_add(self):
+    async def test_spot_add(self) -> None:
         """Test spawning a Spot robot and verify its configuration.
 
         Verifies that the robot has the expected 12 degrees of freedom and that the robot prim
@@ -131,7 +131,7 @@ class TestSpotCPU(omni.kit.test.AsyncTestCase):
             f"Articulation root prim at {articulation_root_path} should have ArticulationRootAPI",
         )
 
-    async def test_robot_move_forward_command(self):
+    async def test_robot_move_forward_command(self) -> None:
         """Test robot forward movement command.
 
         Commands the robot to move forward and verifies that it moves the expected distance
@@ -160,7 +160,7 @@ class TestSpotCPU(omni.kit.test.AsyncTestCase):
         self.assertGreater(delta, 0.5)
         self.assertLess(delta, 2.0)
 
-    async def test_robot_turn_command(self):
+    async def test_robot_turn_command(self) -> None:
         """Test robot turn command.
 
         Commands the robot to turn and verifies that it rotates at least 90 degrees
@@ -201,7 +201,7 @@ class TestSpotCPU(omni.kit.test.AsyncTestCase):
         # should have turned at least 90 deg
         self.assertGreater(heading_delta, 1.5)
 
-    async def spawn_spot(self, name: str = "spot"):
+    async def spawn_spot(self, name: str = "spot") -> None:
         """Spawn a Spot robot in the simulation.
 
         Creates a SpotFlatTerrainPolicy instance, starts the timeline, initializes the robot,
@@ -253,7 +253,7 @@ class TestSpotGPU(TestSpotCPU):
     and validation of GPU-accelerated robot policy implementations.
     """
 
-    def get_device(self):
+    def get_device(self) -> object:
         """Return the device to use for tensors.
 
         Returns:

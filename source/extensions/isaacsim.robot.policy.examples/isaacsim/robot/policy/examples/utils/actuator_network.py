@@ -28,7 +28,7 @@ class LstmSeaNetwork:
     Initializes the network with zeroed hidden and cell states for the LSTM.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
 
         # define the network
         self._network = None
@@ -48,7 +48,7 @@ class LstmSeaNetwork:
         else:
             return self._hidden_state[1].detach()
 
-    def setup(self, path_or_buffer: object, default_joint_pos: torch.Tensor):
+    def setup(self, path_or_buffer: object, default_joint_pos: torch.Tensor) -> None:
         """Set up the network by loading weights and configuring default positions.
 
         Args:
@@ -63,7 +63,7 @@ class LstmSeaNetwork:
         self._hidden_state = self._hidden_state.to(default_joint_pos.device)
         self._cell_state = self._cell_state.to(default_joint_pos.device)
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset the LSTM hidden and cell states to zeros."""
         with torch.no_grad():
             self._hidden_state[:, :, :] = 0.0
@@ -102,7 +102,7 @@ class SeaNetwork(torch.nn.Module):
     Initializes the MLP SEA network with 6-32-32-1 architecture.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
 
         super().__init__()
         # define layer architecture
@@ -132,7 +132,7 @@ class SeaNetwork(torch.nn.Module):
     Operations
     """
 
-    def setup(self, weights_path: str, default_joint_pos: torch.Tensor):
+    def setup(self, weights_path: str, default_joint_pos: torch.Tensor) -> None:
         """Initialize the SEA network by loading weights and setting default joint positions.
 
         Args:
@@ -144,7 +144,7 @@ class SeaNetwork(torch.nn.Module):
         # set the default joint position
         self._default_joint_pos = default_joint_pos
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset the joint position and velocity histories to zeros."""
         self._joint_pos_history.fill(0.0)
         self._joint_vel_history.fill(0.0)
@@ -167,7 +167,7 @@ class SeaNetwork(torch.nn.Module):
     Internal helpers.
     """
 
-    def _load_weights(self, weights_path: str):
+    def _load_weights(self, weights_path: str) -> None:
         """Load network weights from a CSV file and assign them to the MLP layers.
 
         Args:

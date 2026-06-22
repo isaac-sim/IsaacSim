@@ -156,12 +156,13 @@ print("Created LidarSensor with debug draw writer")
 class GmoRobotInspectWriter(Writer):
     """Writer that parses GenericModelOutput and prints point count periodically."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.data_structure = "renderProduct"
         self.annotators = [rep.annotators.get("GenericModelOutput")]
         self._frame_count = 0
 
-    def write(self, data):
+    def write(self, data: dict[str, object]) -> None:
+        """Inspect lidar GenericModelOutput data while the robot moves."""
         if "renderProducts" not in data:
             return
         for _rp_name, rp_data in data["renderProducts"].items():

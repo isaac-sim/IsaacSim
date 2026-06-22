@@ -1,5 +1,5 @@
 [package]
-version = "1.0.2"
+version = "1.0.3"
 category = "Simulation"
 title = "Holoscan Sensor Bridge Nodes"
 description = "OmniGraph nodes for the Holoscan Sensor Bridge (HSB) extension, providing HSBSend and RGBToVB1940 nodes for high-performance, low-latency sensor data transfer between Isaac Sim and external applications."

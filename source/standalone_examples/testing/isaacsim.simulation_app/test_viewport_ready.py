@@ -13,11 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test to verify that viewport rendering callbacks are triggered on the first frame."""
+"""Verifies that a viewport NEW_FRAME rendering event is delivered on the first SimulationApp update, with bounded waiting before shutdown if the callback is delayed."""
 
 import argparse
 import sys
 import time
+from typing import Any
 
 parser = argparse.ArgumentParser(description="Script to test viewport ready")
 parser.add_argument(
@@ -41,7 +42,7 @@ import omni.usd
 callback_called = False
 
 
-def data_acquisition_callback(event):
+def data_acquisition_callback(event: Any) -> None:
     """Callback function triggered on rendering events."""
     global callback_called
     print(f"Received render event: {event.event_name}")

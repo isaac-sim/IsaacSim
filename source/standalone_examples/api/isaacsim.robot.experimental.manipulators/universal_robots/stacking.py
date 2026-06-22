@@ -13,10 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import annotations
-
-"""
-This example demonstrates how to perform a stacking operation using the UR10 robot arm.
+"""This example demonstrates how to perform a stacking operation using the UR10 robot arm.
 
 The example serves to illustrate the following concepts:
 - How to set up a UR10 robot (with gripper) and multiple cubes for a stacking task using experimental APIs.
@@ -28,10 +25,13 @@ The source code is organized into 3 main sections:
 3. Example logic and simulation loop.
 """
 
-# 1. --------------------------------------------------------------------
+from __future__ import annotations
 
 # Parse any command-line arguments specific to the standalone application (only known arguments).
 import argparse
+
+# 1. --------------------------------------------------------------------
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--test", action="store_true", help="Run in test mode (exit after task completes)")

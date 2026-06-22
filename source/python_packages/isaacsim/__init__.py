@@ -190,7 +190,10 @@ def expose_api():
                 sys.modules["isaacsim.simulation_app.SimulationApp"] = SimulationApp
                 sys.modules["isaacsim.simulation_app.AppFramework"] = AppFramework
             else:
-                print(f"[Warning] Unable to expose 'isaacsim.simulation_app' API: Extension not found")
+                print(
+                    "[Warning] Unable to expose 'isaacsim.simulation_app' API: Extension not found. "
+                    "Please install 'isaacsim[all,extscache]' to install the full Isaac Sim bundle"
+                )
         except ImportError as e:
             print(f"[Warning] Unable to expose 'isaacsim.simulation_app' API: {e}")
     return AppFramework, SimulationApp

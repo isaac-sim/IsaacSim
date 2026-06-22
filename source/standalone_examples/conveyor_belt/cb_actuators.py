@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Define Warp kernels and actuator classes for conveyor belt contact forces."""
+
 import math
 
 import cb_utils as cb_utils
@@ -51,7 +53,6 @@ def compute_axis_impulse(
     Returns:
         Impulse (scalar) along the constraint axis to get relative velocity to zero.
     """
-
     delta_cross_constraint_axis = wp.cross(center_of_mass_to_point, constraint_axis)
 
     # angular response: (r x t)^T * I^-1 * (r x t)
@@ -104,7 +105,6 @@ def compute_point_impulse(
     Returns:
         Friction impulse vector (world space, tangential to the contact normal).
     """
-
     rel_vel = target_vel - current_vel
 
     basis_vectors = cb_utils.compute_basis_vectors(normal)
@@ -161,8 +161,7 @@ def compute_point_force(
     target_vel: wp.vec3,
     friction_coefficient: wp.float32,
 ) -> wp.spatial_vector:
-    """Compute the force and torque to apply to a rigid body such that the velocity at
-    a given contact point is brought towards ``target_vel``.
+    """Compute force and torque for a rigid body contact point.
 
     The force is clamped by friction using a simple Coulomb friction model:
     ``contact_force * friction_coefficient``.
@@ -186,7 +185,6 @@ def compute_point_force(
         Spatial vector whose first three components are the linear force and last three are the
         torque, both expressed in world space and intended to be applied at the center of mass.
     """
-
     contact_impulse = contact_force * dt
 
     center_of_mass_to_point = contact_position - body_to_world_transform.p
@@ -374,9 +372,7 @@ def velocity_field_compute_force(
 
 
 class VelocityFieldActuator:
-    """Actuator that uses velocity fields to define target velocities at contact points along
-    a contact surface and computes the force/torque to apply to the corresponding rigid bodies
-    to achieve those target velocities.
+    """Velocity-field actuator for conveyor contact forces.
 
     The computed forces are clamped based on a simple Coulomb friction model (friction coefficient
     times normal force).
@@ -414,7 +410,6 @@ class VelocityFieldActuator:
         Returns:
             Integer index of the newly registered velocity field instance.
         """
-
         index = len(self.constant_velocity_field_target_velocity_list)
 
         self.constant_velocity_field_target_velocity_list.append(target_velocity)
@@ -436,7 +431,6 @@ class VelocityFieldActuator:
         Returns:
             Integer index of the newly registered velocity field instance.
         """
-
         index = len(self.pivot_velocity_field_pivot_point_list)
 
         self.pivot_velocity_field_pivot_point_list.append(pivot_point)
@@ -453,7 +447,6 @@ class VelocityFieldActuator:
         Args:
             device: Warp device string. Uses the default device when ``None``.
         """
-
         #
         # constant velocity fields
         #
@@ -498,12 +491,11 @@ class VelocityFieldActuator:
         # output
         per_point_force_torque_buffer: wp.array(dtype=wp.spatial_vector),
         # input
-        max_thread_count=1000,
-        batch_size=5,
+        max_thread_count: int = 1000,
+        batch_size: int = 5,
         device: str | None = None,
     ) -> None:
-        """Compute per-contact forces for one step to have the velocities at contact points
-        converge towards the target velocities defined by the registered velocity fields.
+        """Compute per-contact forces for one simulation step.
 
         Args:
             dt: Simulation time-step in seconds.
@@ -528,7 +520,6 @@ class VelocityFieldActuator:
             batch_size: Number of contact points processed per thread per iteration.
             device: Warp device string. Uses the default device when ``None``.
         """
-
         parallel_contact_processing_count = min(max_thread_count, int(math.ceil(float(max_contact_count) / batch_size)))
 
         wp.launch(

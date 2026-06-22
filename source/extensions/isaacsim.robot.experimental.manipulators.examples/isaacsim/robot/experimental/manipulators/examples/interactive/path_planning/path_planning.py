@@ -230,7 +230,12 @@ class PathPlanning(BaseSample):
         )
 
     def _physics_step(self, dt: float, context: object) -> None:
-        """Sample the trajectory and apply joint position targets at each physics step."""
+        """Sample the trajectory and apply joint position targets at each physics step.
+
+        Args:
+            dt: Physics step size in seconds.
+            context: Callback context supplied by the simulation manager.
+        """
         if self._robot is None or self._trajectory is None:
             return
 
@@ -296,9 +301,17 @@ class PathPlanning(BaseSample):
         self._wall_count = 0
 
     def walls_exist(self) -> bool:
-        """Return whether any dynamically added walls remain."""
+        """Return whether any dynamically added walls remain.
+
+        Returns:
+            True if any dynamically added walls remain.
+        """
         return len(self._walls) > 0
 
     def is_trajectory_active(self) -> bool:
-        """Return whether a trajectory is currently being executed."""
+        """Return whether a trajectory is currently being executed.
+
+        Returns:
+            True if a trajectory is currently being executed.
+        """
         return self._trajectory is not None

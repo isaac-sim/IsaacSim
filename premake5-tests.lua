@@ -592,6 +592,12 @@ local function get_robot_tests()
             "standalone_examples/api/isaacsim.robot.policy.examples/spot_standalone.py",
             "--test",
         },
+        -- Surface Gripper
+        {
+            "tests-nativepython-isaacsim.robot.surface_gripper.gripper_grasp",
+            "standalone_examples/api/isaacsim.robot.surface_gripper/gripper_grasp.py",
+            "--test",
+        },
         -- Deprecated Manipulators (Franka)
         {
             "tests-nativepython-deprecated-isaacsim.robot.manipulators.franka.follow_target_with_ik",
@@ -1064,6 +1070,21 @@ local function get_replicator_tests()
             "standalone_examples/api/isaacsim.replicator.teleop/sdg_teleop_replay.py",
             "--test",
         })
+        table.insert(tests, {
+            "tests-nativepython-isaacsim.replicator.nurec_utils.test_nurec_render_vs_gt",
+            "standalone_examples/testing/nurec/test_nurec_render_vs_gt.py",
+            "--num-samples 5",
+        })
+        table.insert(tests, {
+            "tests-nativepython-isaacsim.replicator.nurec_utils.test_keyframe_pose_rendering_consistency",
+            "standalone_examples/testing/nurec/test_keyframe_pose_rendering_consistency.py",
+            "--num-samples 1",
+        })
+        table.insert(tests, {
+            "tests-nativepython-isaacsim.replicator.nurec_utils.test_copy_rp_render",
+            "standalone_examples/testing/nurec/test_copy_rp_render.py",
+            "--num-samples 5",
+        })
     end
 
     return tests
@@ -1266,8 +1287,13 @@ local function get_doc_snippets_tests()
         },
         -- robot_simulation/mobile_robot_controllers
         {
-            "doc_snippets/tests-nativepython-testing-doc_snippets.robot_simulation.mobile_robot_controllers.ackemann_controller",
-            "../../../docs/isaacsim/snippets/robot_simulation/mobile_robot_controllers/ackemann_controller.py",
+            "doc_snippets/tests-nativepython-testing-doc_snippets.robot_simulation.mobile_robot_controllers.ackermann_controller",
+            "../../../docs/isaacsim/snippets/robot_simulation/mobile_robot_controllers/ackermann_controller.py",
+            "--test",
+        },
+        {
+            "doc_snippets/tests-nativepython-testing-doc_snippets.robot_simulation.mobile_robot_controllers.ackermann_controller_forklift",
+            "../../../docs/isaacsim/snippets/robot_simulation/mobile_robot_controllers/ackermann_controller_forklift.py",
             "--test",
         },
         {
@@ -1384,7 +1410,7 @@ local function get_doc_snippets_tests()
         {
             "doc_snippets/tests-nativepython-testing-doc_snippets.test_snippets_async",
             "standalone_examples/testing/doc_snippets/test_snippets_async.py",
-            "--expected-failures-csv expected_failures.csv --experience-csv experiences.csv --excluded-snippets-csv excluded_snippets.csv --platform-constraints-csv platform_constraints.csv",
+            "--expected-failures-csv expected_failures.csv --experience-csv experiences.csv --excluded-snippets-csv excluded_snippets.csv --platform-constraints-csv platform_constraints.csv --snippet-timeout 300 --cleanup-timeout 180",
         },
     }
 end

@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for articulation trajectory bounds handling."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -82,6 +84,8 @@ def _load_articulation_trajectory_module() -> types.ModuleType:
 
 
 class TestArticulationTrajectory(_TEST_CASE_BASE):
+    """Test articulation trajectory behavior without requiring Isaac runtime modules."""
+
     async def _setup_case(self) -> None:
         self.module = _load_articulation_trajectory_module()
         self.articulation_trajectory = object.__new__(self.module.ArticulationTrajectory)
@@ -99,14 +103,17 @@ class TestArticulationTrajectory(_TEST_CASE_BASE):
     if _OMNI_KIT_TEST_AVAILABLE:
 
         async def setUp(self) -> None:
+            """Set up a mocked articulation trajectory test case."""
             await self._setup_case()
 
     else:
 
         async def asyncSetUp(self) -> None:
+            """Set up a mocked articulation trajectory test case."""
             await self._setup_case()
 
     async def test_get_action_at_time_raises_for_times_outside_trajectory_bounds(self) -> None:
+        """Verify out-of-bounds timestamps raise before querying joint targets."""
         cases = (
             (-0.5, "before the start time"),
             (10.0, "after the end time"),

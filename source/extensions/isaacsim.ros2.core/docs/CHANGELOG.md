@@ -1,4 +1,16 @@
 # Changelog
+## [1.9.4] - 2026-06-12
+### Fixed
+- `camera_info_utils.compute_relative_pose`: defer the `cv2` import to first use.
+
+## [1.9.3] - 2026-06-10
+### Fixed
+- `IPCBufferManager` destructor leaked one CUDA virtual address reservation (missing `cuMemAddressFree`) and one exported POSIX file descriptor per buffer on every teardown, and released allocation handles before unmapping them. Tear down in the documented VMM order (unmap, release, address-free) and close the exported file descriptors.
+- Dynamic ROS 2 message publishing leaked the previous sequence buffer every tick: `Ros2DynamicMessageImpl::_setArray` re-initialized variable-length array fields without finalizing the prior allocation. Finalize before re-initializing.
+
+## [1.9.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
 
 ## [1.9.1] - 2026-05-14
 ### Changed

@@ -1,5 +1,9 @@
 # Changelog
 
+## [6.3.7] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [6.3.6] - 2026-05-29
 ### Added
 - `GetAllRobotComponents` helper (C++ and Python): returns every prim in a robot's subtree that applies any Isaac robot-schema API (`IsaacRobotAPI`, `IsaacLinkAPI`, `IsaacJointAPI`, `IsaacSiteAPI`, `IsaacReferencePointAPI`). Lets consumers enumerate all schema-tagged frames in one call rather than walking `robotLinks` and re-scanning descendants per consumer.

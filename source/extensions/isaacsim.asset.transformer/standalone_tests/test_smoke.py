@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Standalone smoke tests for isaacsim-asset-transformer."""
+"""Verifies standalone importability and basic data-model behavior for isaacsim.asset.transformer. Covers public API availability, absence of Omni module dependencies, rule spec and profile round trips, and registry instantiation."""
 
 from __future__ import annotations
 
@@ -28,10 +28,6 @@ class TestSmoke(unittest.TestCase):
         """Verify core public API classes are importable."""
         from isaacsim.asset.transformer import AssetTransformerManager, RuleRegistry
         from isaacsim.asset.transformer.models import (
-            ExecutionReport,
-            RuleConfigurationParam,
-            RuleExecutionResult,
-            RuleProfile,
             RuleSpec,
         )
         from isaacsim.asset.transformer.rule_interface import RuleInterface

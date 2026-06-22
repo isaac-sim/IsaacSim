@@ -57,7 +57,7 @@ class TestUITemplate(omni.kit.test.AsyncTestCase):
         for frame in range(60):
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_window_content_is_scrollable(self):
+    async def test_window_content_is_scrollable(self) -> None:
         """Verify the example UI root content is wrapped in a scrolling frame."""
         extension = Extension()
         extension._ext_id = "isaacsim.examples.ui.tests"

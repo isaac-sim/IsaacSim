@@ -44,7 +44,15 @@ _FRANKA_REACH_POSTURE = {
 
 
 def _compute_hand_target_positions(target_positions: wp.array, target_orientations: wp.array) -> wp.array:
-    """Compute `panda_hand` targets from visible fingertip target poses."""
+    """Compute `panda_hand` targets from visible fingertip target poses.
+
+    Args:
+        target_positions: Visible fingertip target positions in world coordinates.
+        target_orientations: Visible fingertip target orientations in world coordinates.
+
+    Returns:
+        Target positions for the `panda_hand` frame.
+    """
     positions = target_positions.numpy() if hasattr(target_positions, "numpy") else np.asarray(target_positions)
     rotations = transform_utils.quaternion_to_rotation_matrix(target_orientations).numpy()
     offsets = rotations @ _FRANKA_HAND_TO_FINGERTIP_MIDPOINT
@@ -56,6 +64,12 @@ def _get_reach_posture(dof_names: list[str]) -> np.ndarray:
 
     The posture seeds the articulation away from the fully extended home pose
     and gives the controller's posture task a bent-arm regularization target.
+
+    Args:
+        dof_names: Articulation DOF names defining the output order.
+
+    Returns:
+        Nominal reach posture ordered to match `dof_names`.
     """
     return np.array([_FRANKA_REACH_POSTURE.get(name, 0.0) for name in dof_names], dtype=np.float32)
 
@@ -83,7 +97,7 @@ class FrankaPinkIKExample:
         """Load robot and target assets to the stage.
 
         Returns:
-            Tuple of (articulation, target_cube) prims.
+            Loaded robot articulation and target cube.
         """
         self._robot_prim_path = "/panda"
         path_to_robot_usd = await get_assets_root_path_async() + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd"

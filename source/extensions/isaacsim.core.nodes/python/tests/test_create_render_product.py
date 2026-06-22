@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies the CreateRenderProduct OmniGraph node creates a valid USD render product. Covers graph execution against a staged camera and render product output validation."""
+
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.graph.core as og
@@ -24,7 +26,9 @@ from pxr import UsdRender
 
 
 class TestCreateRenderProduct(ogts.OmniGraphTestCase):
-    async def setUp(self):
+    """Verify render product graph creation against a staged camera."""
+
+    async def setUp(self) -> None:
         """Set up  test environment, to be torn down when done."""
         await omni.usd.get_context().new_stage_async()
         self._timeline = omni.timeline.get_timeline_interface()
@@ -36,12 +40,13 @@ class TestCreateRenderProduct(ogts.OmniGraphTestCase):
         await stage_utils.open_stage_async(assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd")
 
     # ----------------------------------------------------------------------
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Get rid of temporary data used by the test."""
         # await omni.kit.stage_templates.new_stage_async()
 
     # ----------------------------------------------------------------------
-    async def test_create_render_product(self):
+    async def test_create_render_product(self) -> None:
+        """Verify the node outputs a valid render product path for the camera input."""
         rp_3 = rep.create.render_product("/OmniverseKit_Persp", (512, 512), name="RP3")
 
         test_graph, new_nodes, _, _ = og.Controller.edit(

@@ -145,7 +145,11 @@ class NewtonPropertyQueryInterface:
         return cls._instance
 
     def _invalidate_cache_for_stage(self, stage_id: int) -> None:
-        """Drop cached articulation responses for ``stage_id``."""
+        """Drop cached articulation responses for ``stage_id``.
+
+        Args:
+            stage_id: USD stage cache ID whose cached responses should be dropped.
+        """
         self._articulation_cache = {key: value for key, value in self._articulation_cache.items() if key[0] != stage_id}  # type: ignore[has-type]
 
     def _ensure_stage_event_subscription(self) -> None:
@@ -443,7 +447,11 @@ class NewtonPropertyQueryInterface:
 
     @staticmethod
     def _get_collapse_fixed_joints_setting() -> bool:
-        """Return the ``collapse_fixed_joints`` flag from the active ``NewtonStage`` config."""
+        """Return the ``collapse_fixed_joints`` flag from the active ``NewtonStage`` config.
+
+        Returns:
+            True if fixed joints should be collapsed, False otherwise.
+        """
         try:
             from . import extension as newton_extension
         except ImportError:

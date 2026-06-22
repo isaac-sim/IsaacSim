@@ -1,5 +1,5 @@
 [package]
-version = "3.10.0"
+version = "3.10.1"
 category = "Simulation"
 title = "MJCF Importer"
 description = "Core MJCF importer functionality - converts MuJoCo's MJCF (MuJoCo XML Format) robot description files into Omniverse USD scenes. UI provided by isaacsim.asset.importer.mjcf.ui."

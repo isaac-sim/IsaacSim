@@ -17,7 +17,7 @@
 
 import io
 import os
-from typing import Dict, List
+from typing import Any
 
 import carb
 import numpy as np
@@ -65,17 +65,17 @@ class YCBVideoWriter(Writer):
         self,
         output_dir: str,
         num_frames: int,
-        semantic_types: List[str] = None,
+        semantic_types: list[str] = None,
         rgb: bool = False,
         bounding_box_2d_tight: bool = False,
         semantic_segmentation: bool = False,
         distance_to_image_plane: bool = False,
         image_output_format: str = "png",
         pose: bool = False,
-        class_name_to_index_map: Dict = None,
+        class_name_to_index_map: dict = None,
         factor_depth: int = 10000,
         intrinsic_matrix: np.ndarray = None,
-    ):
+    ) -> None:
         carb.log_warn(
             "Deprecation warning: YCBVideoWriter has been deprecated and will be removed in the next major release."
         )
@@ -129,12 +129,12 @@ class YCBVideoWriter(Writer):
         self._create_output_folders()
         self._create_train_text_file()
 
-    def register_pose_annotator(config_data: dict):
+    def register_pose_annotator(config_data: dict) -> None:
         """Register the annotators for the specific writer.
 
         Args:
             config_data: A dictionary containing the configuration data for the current writer.
-        """
+        """  # noqa: DOC102,DOC103,DOC106
         AnnotatorRegistry.register_annotator_from_node(
             name="PoseSync",
             input_rendervars=[
@@ -198,13 +198,16 @@ class YCBVideoWriter(Writer):
             else None
         )
 
-    def setup_writer(config_data: dict, writer_config: dict):
+    def setup_writer(config_data: dict, writer_config: dict) -> Any:
         """Initialize writer and attach render product.
 
         Args:
             config_data: A dictionary containing the general configurations for the script.
             writer_config: A dictionary containing writer-specific configurations.
-        """
+
+        Returns:
+            Initialized YCB video writer instance.
+        """  # noqa: DOC102,DOC103
         writer = WriterRegistry.get("YCBVideoWriter")
         writer.initialize(
             output_dir=writer_config["output_folder"],
@@ -228,7 +231,7 @@ class YCBVideoWriter(Writer):
 
         return writer
 
-    def write(self, data: dict):
+    def write(self, data: dict) -> None:
         """Write function called from the OgnWriter node on every frame to process annotator output.
 
         Args:
@@ -238,7 +241,7 @@ class YCBVideoWriter(Writer):
             print(f"No training data in frame {self._frame_id} (object(s) fully occluded), skipping writing..")
             return
 
-        for annotator in data.keys():
+        for annotator in data:
             annotator_split = annotator.split("-")
             render_product_path = ""
             multi_render_prod = 0
@@ -273,19 +276,18 @@ class YCBVideoWriter(Writer):
 
         self._frame_id += 1
 
-    def save_mesh_vertices(mesh_prim: UsdGeom.Mesh, coord_prim: Usd.Prim, model_name: str, output_folder: str):
+    def save_mesh_vertices(mesh_prim: UsdGeom.Mesh, coord_prim: Usd.Prim, model_name: str, output_folder: str) -> None:
         """Create points.xyz file representing vertices of the mesh_prim, defined in the frame of the coord_prim. The.
 
         points.xyz file will be saved in the output_folder/data/models/model_name/ directory.
 
         Args:
-            mesh_prim (UsdGeom.Mesh): mesh prim to get the vertice points.
-            coord_prim (Usd.Prim): prim's coordinate used to define the vertices with respect to.
-            model_name (str): name of the part to get the vertices of. Note: This corresponds to the name used for
-                              the part in the YCB Video Dataset, and is unrelated to the name of the part in the scene.
-            output_folder (str): path of the base output directory.
-        """
-
+            mesh_prim: Mesh prim to get the vertex points from.
+            coord_prim: Prim whose coordinate frame defines the output vertices.
+            model_name: Name of the part to get the vertices of. This corresponds to the name used for the part in the
+                YCB Video Dataset, and is unrelated to the name of the part in the scene.
+            output_folder: Path of the base output directory.
+        """  # noqa: DOC102,DOC103
         file_path = os.path.join(output_folder, "data", "models", model_name, "points.xyz")
         dirname = os.path.dirname(file_path)
         os.makedirs(dirname, exist_ok=True)
@@ -293,34 +295,32 @@ class YCBVideoWriter(Writer):
         points = get_mesh_vertices_relative_to(mesh_prim, coord_prim)
         np.savetxt(file_path, points, fmt="%.6f", delimiter=" ", newline="\n")
 
-    def _write_rgb(self, data: dict, render_product_path: str, annotator: str):
+    def _write_rgb(self, data: dict, render_product_path: str, annotator: str) -> None:
         """Save a RGB image for the YCB Video Dataset.
 
         Args:
-            data (dict): A dictionary containing the annotator data for the current frame.
-            render_product_path (str): Directory name to save data to, corresponding to a specific render product.
-            annotator (str): Annotator name used as a key in the data dictionary, which can also be used to retrieve the
-                             annotator from the annotator registry.
+            data: A dictionary containing the annotator data for the current frame.
+            render_product_path: Directory name to save data to, corresponding to a specific render product.
+            annotator: Annotator name used as a key in the data dictionary, which can also be used to retrieve the
+                annotator from the annotator registry.
         """
-
-        image_id = "{:06d}".format(self._frame_id)
+        image_id = f"{self._frame_id:06d}"
 
         file_path = f"{self.vid_dir}/{render_product_path}{image_id}-color.{self._image_output_format}"
 
         self._backend.write_image(file_path, data[annotator])
 
-    def _write_distance_to_image_plane(self, data: dict, render_product_path: str, annotator: str):
+    def _write_distance_to_image_plane(self, data: dict, render_product_path: str, annotator: str) -> None:
         """Save a depth image for the YCB Video Dataset. Note: Depth images are only for visualization and testing, and.
 
            would need to be adapted to conform to the exact format used in the YCB Video Dataset.
 
         Args:
-            data (dict): A dictionary containing the annotator data for the current frame.
-            render_product_path (str): Directory name to save data to, corresponding to a specific render product.
-            annotator (str): Annotator name used as a key in the data dictionary, which can also be used to retrieve the
-                             annotator from the annotator registry.
+            data: A dictionary containing the annotator data for the current frame.
+            render_product_path: Directory name to save data to, corresponding to a specific render product.
+            annotator: Annotator name used as a key in the data dictionary, which can also be used to retrieve the
+                annotator from the annotator registry.
         """
-
         dis_to_img_plane_data = data[annotator]
         dis_to_img_plane_data = dis_to_img_plane_data.squeeze()
 
@@ -339,29 +339,28 @@ class YCBVideoWriter(Writer):
 
         depth_img = Image.fromarray((dis_to_img_plane_data * 255.0).astype(np.uint8))
 
-        image_id = "{:06d}".format(self._frame_id)
+        image_id = f"{self._frame_id:06d}"
         file_path = f"{self.vid_dir}/{render_product_path}{image_id}-depth.{self._image_output_format}"
 
         self._backend.write_image(file_path, depth_img)
 
-    def _write_semantic_segmentation(self, data: dict, render_product_path: str, annotator: str):
+    def _write_semantic_segmentation(self, data: dict, render_product_path: str, annotator: str) -> None:
         """Save a segmentation label image file for the YCB Video Dataset. Segmentation label is saved as a grayscale.
 
            image.
 
         Args:
-            data (dict): A dictionary containing the annotator data for the current frame.
-            render_product_path (str): Directory name to save data to, corresponding to a specific render product.
-            annotator (str): Annotator name used as a key in the data dictionary, which can also be used to retrieve the
-                             annotator from the annotator registry.
+            data: A dictionary containing the annotator data for the current frame.
+            render_product_path: Directory name to save data to, corresponding to a specific render product.
+            annotator: Annotator name used as a key in the data dictionary, which can also be used to retrieve the
+                annotator from the annotator registry.
         """
-
         semantic_seg_data = data[annotator]["data"]
 
         id_to_labels = data[annotator]["info"]["idToLabels"]
 
         max_semantic_id = 0
-        for semantic_id_str in id_to_labels.keys():
+        for semantic_id_str in id_to_labels:
             semantic_id = int(semantic_id_str)
             if semantic_id > max_semantic_id:
                 max_semantic_id = semantic_id
@@ -383,12 +382,12 @@ class YCBVideoWriter(Writer):
         # Save ground truth data as png
         img = Image.fromarray(np.uint8(segmentation_data_remapped)).convert("L")
 
-        image_id = "{:06d}".format(self._frame_id)
+        image_id = f"{self._frame_id:06d}"
         file_path = f"{self.vid_dir}/{render_product_path}{image_id}-label.{self._image_output_format}"
 
         self._backend.write_image(file_path, img)
 
-    def _write_bounding_box_data(self, data: dict, render_product_path: str, annotator: str):
+    def _write_bounding_box_data(self, data: dict, render_product_path: str, annotator: str) -> None:
         """Save a text file describing bounding boxes of semantically-labeled objects in view for the YCB Video.
 
            Dataset. Note: Lines of the bounding box text file consist of a class name and the position of the bounding
@@ -397,12 +396,11 @@ class YCBVideoWriter(Writer):
            corner, with +x to the right and +y down.
 
         Args:
-            data (dict): A dictionary containing the annotator data for the current frame.
-            render_product_path (str): Directory name to save data to, corresponding to a specific render product.
-            annotator (str): Annotator name used as a key in the data dictionary, which can also be used to retrieve the
-                             annotator from the annotator registry.
+            data: A dictionary containing the annotator data for the current frame.
+            render_product_path: Directory name to save data to, corresponding to a specific render product.
+            annotator: Annotator name used as a key in the data dictionary, which can also be used to retrieve the
+                annotator from the annotator registry.
         """
-
         bbox_data = data[annotator]["data"]
         id_to_labels = data[annotator]["info"]["idToLabels"]
 
@@ -418,12 +416,12 @@ class YCBVideoWriter(Writer):
 
             buf.write(bbox_str.encode())
 
-        image_id = "{:06d}".format(self._frame_id)
+        image_id = f"{self._frame_id:06d}"
         file_path = f"{self.vid_dir}/{render_product_path}{image_id}-box.txt"
 
         self._backend.write_blob(file_path, buf.getvalue())
 
-    def _write_pose(self, data: dict, render_product_path: str, annotator: str):
+    def _write_pose(self, data: dict, render_product_path: str, annotator: str) -> None:
         """Save a metadata ".mat" file for the YCB Video Dataset.
 
         The file contains:
@@ -437,12 +435,11 @@ class YCBVideoWriter(Writer):
              expressed relative to the top-left corner of the image, with +x to the right and +y down.
 
         Args:
-            data (dict): A dictionary containing the annotator data for the current frame.
-            render_product_path (str): Directory name to save data to, corresponding to a specific render product.
-            annotator (str): Annotator name used as a key in the data dictionary, which can also be used to retrieve the
-                             annotator from the annotator registry.
+            data: A dictionary containing the annotator data for the current frame.
+            render_product_path: Directory name to save data to, corresponding to a specific render product.
+            annotator: Annotator name used as a key in the data dictionary, which can also be used to retrieve the
+                annotator from the annotator registry.
         """
-
         pose_data = data[annotator]["data"]
 
         n = len(pose_data)
@@ -489,18 +486,17 @@ class YCBVideoWriter(Writer):
         buf = io.BytesIO()
         savemat(buf, meta_dict)
 
-        image_id = "{:06d}".format(self._frame_id)
+        image_id = f"{self._frame_id:06d}"
         file_path = f"{self.vid_dir}/{render_product_path}{image_id}-meta.mat"
 
         self._backend.write_blob(file_path, buf.getvalue())
 
-    def _create_output_folders(self):
+    def _create_output_folders(self) -> None:
         """Create an output directory structure (if necessary), similar to that used in the YCB Video Dataset. Note: A.
 
         single video directory is used to hold all the generated synthetic data, rather than several directories
         (each representing a separate video file, as in the YCB Video Dataset).
         """
-
         if not os.path.exists(self._output_dir):
             os.mkdir(self._output_dir)
 
@@ -520,7 +516,7 @@ class YCBVideoWriter(Writer):
         if not os.path.exists(self.vid_dir):
             os.mkdir(self.vid_dir)
 
-    def _create_train_text_file(self):
+    def _create_train_text_file(self) -> None:
         """Create a text file to specify the set of YCB Video Dataset samples to be used during training of a model.
 
         Lines include the video basename corresponding to the video that the sample is from, and the image ID of the
@@ -528,7 +524,6 @@ class YCBVideoWriter(Writer):
         create_output_folders()). Additionally, it is assumed data is generated only for model training (rather than
         for testing or validation).
         """
-
         train_filename = os.path.join(self.ycb_video_dir, "train.txt")
         with open(train_filename, "w") as f:
             vid_dir_basename = os.path.basename(os.path.normpath(self.vid_dir))

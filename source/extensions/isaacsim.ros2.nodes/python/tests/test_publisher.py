@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 generic publisher OmniGraph node."""
+"""Verifies generic ROS 2 publisher OmniGraph node behavior in the Isaac Sim ROS 2 test environment."""
 
 import json
+from typing import Any
 
 import numpy as np
 import omni.graph.core as og
@@ -25,24 +26,24 @@ from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 
 
 class TestRos2Publisher(ROS2TestCase):
-    """Test suite for ros2 publisher."""
+    """Verify generic ROS 2 publisher OmniGraph node message output."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh stage for generic publisher graph tests."""
         await super().setUp()
 
         await stage_utils.create_new_stage_async()
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Stop the timeline after generic publisher graph tests."""
         await super().tearDown()
 
     # ----------------------------------------------------------------------
-    def _callback(self, msg):
+    def _callback(self, msg: Any) -> None:
         self._ros_message = msg
         # print("  |--", msg)
 
-    async def test_publisher(self):
+    async def test_publisher(self) -> None:
         """Test publisher."""
         import builtin_interfaces.msg
         import geometry_msgs.msg
@@ -209,7 +210,7 @@ class TestRos2Publisher(ROS2TestCase):
             self._ros_message = None
             self._timeline.play()
 
-            def spin_callback():
+            def spin_callback() -> None:
                 rclpy.spin_once(ros2_node, timeout_sec=0)
 
             await self.wait_for_publishers_on_topic(ros2_node, "custom_topic", per_frame_callback=spin_callback)

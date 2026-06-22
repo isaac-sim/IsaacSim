@@ -157,7 +157,7 @@ class TestRecorderBasic(omni.kit.test.AsyncTestCase):
     async def setUp(self) -> None:
         """Set up a new stage before each test."""
         await omni.kit.app.get_app().next_update_async()
-        omni.usd.get_context().new_stage()
+        await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
     async def tearDown(self) -> None:
@@ -167,26 +167,19 @@ class TestRecorderBasic(omni.kit.test.AsyncTestCase):
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    async def setup_stage_empty_async(self) -> None:
-        """Create a new empty stage."""
-        await omni.usd.get_context().new_stage_async()
-
     async def setup_stage_with_no_semantics(self) -> None:
         """Create a stage with primitives but no semantic labels."""
-        await omni.usd.get_context().new_stage_async()
         rep.functional.create.cube()
         rep.functional.create.sphere(position=(1, 1, 0))
 
     async def setup_stage_with_semantics(self) -> None:
         """Create a stage with semantically labeled primitives."""
-        await omni.usd.get_context().new_stage_async()
         rep.functional.create.cube(semantics={"class": "my_cube"})
         rep.functional.create.sphere(position=(1, 1, 0), semantics={"class": "my_sphere"})
 
     async def setup_stage_with_skeleton_data(self) -> None:
         """Create a stage with a skeletal character asset."""
         SKELETAL_ASSET_PATH = "/NVIDIA/Assets/Characters/Reallusion/Worker/Worker.usd"
-        await omni.usd.get_context().new_stage_async()
         assets_root_path = await get_assets_root_path_async()
         asset_path = assets_root_path + SKELETAL_ASSET_PATH
         rep.functional.create.reference(asset_path, scale=(0.01, 0.01, 0.01), semantics={"class": "worker"})
@@ -194,7 +187,14 @@ class TestRecorderBasic(omni.kit.test.AsyncTestCase):
     async def run_recorder_loop_basic_writer_all_annotators_async(
         self, num_iterations: int, num_frames: int, out_dir: str, rp_data: object
     ) -> None:
-        """Run the recorder loop with the basic writer and all annotators enabled."""
+        """Run the recorder loop with the basic writer and all annotators enabled.
+
+        Args:
+            num_iterations: Number of recorder loop iterations to run.
+            num_frames: Number of frames to capture.
+            out_dir: Output directory for recorder data.
+            rp_data: Render product data used by the recorder.
+        """
         # Create a new instance of the SyntheticRecorder
         recorder = SyntheticRecorder()
         recorder.num_frames = num_frames
@@ -225,7 +225,6 @@ class TestRecorderBasic(omni.kit.test.AsyncTestCase):
 
     async def test_recorder_empty_stage(self) -> None:
         """Test recording on an empty stage produces expected output files."""
-        await self.setup_stage_empty_async()
         cam = rep.functional.create.camera(position=(0, 0, 5), look_at=(0, 0, 0), name="my_rep_camera")
         cam_path = cam.GetPath()
         rp_data = [
@@ -325,7 +324,6 @@ class TestRecorderBasic(omni.kit.test.AsyncTestCase):
 
     async def test_recorder_multiple_iterations(self) -> None:
         """Test recording multiple iterations with multiple render products."""
-        await self.setup_stage_empty_async()
         cam = rep.functional.create.camera(position=(0, 0, 5), look_at=(0, 0, 0), name="my_rep_camera")
         cam_path = cam.GetPath()
         rp_data = [
@@ -354,7 +352,6 @@ class TestRecorderBasic(omni.kit.test.AsyncTestCase):
 
     async def test_recorder_multiple_renders_products(self) -> None:
         """Test recording with multiple render products including named and unnamed."""
-        await self.setup_stage_empty_async()
         cam = rep.functional.create.camera(position=(0, 0, 5), look_at=(0, 0, 0), name="my_rep_camera")
         cam_path = cam.GetPath()
         rp_data = [

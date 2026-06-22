@@ -13,9 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Newton tensor backend rigid body tests.
+"""Validate Newton rigid body tensor views against omni.physics.tensors contracts.
 
-Ported from omni.physics.tensors.tests for the Newton backend.
+The tests cover view counts and paths, body mass/COM/inertia properties,
+transform and velocity get-set behavior including indexed writes,
+accelerations backed by ``body_qdd``, external force/torque integration, and
+the required ``[linear(3), angular(3)]`` spatial vector layout.
 """
 
 from __future__ import annotations
@@ -38,14 +41,16 @@ from .test_helpers import NewtonTensorTestBase, run_on_device_configs, warp_util
 class TestRigidBodyView(NewtonTensorTestBase):
     """Rigid body view: creation, counts, paths."""
 
-    async def test_rigid_body_view_counts(self):
+    async def test_rigid_body_view_counts(self) -> None:
+        """Verify a wildcard ball view reports one rigid body per environment."""
         num_envs = self.setup_ball_grid()
         sim = await self.create_sim()
 
         balls = sim.create_rigid_body_view("/envs/*/ball")
         self.check_rigid_body_view(balls, num_envs)
 
-    async def test_rigid_body_view_paths(self):
+    async def test_rigid_body_view_paths(self) -> None:
+        """Verify expanded rigid body view paths include every environment ball."""
         num_envs = self.setup_ball_grid()
         sim = await self.create_sim()
 
@@ -65,7 +70,8 @@ class TestRigidBodyView(NewtonTensorTestBase):
 class TestRigidBodyProperties(NewtonTensorTestBase):
     """Body-level properties: mass, inv mass, COM, inertia, inv inertia."""
 
-    async def test_body_masses(self):
+    async def test_body_masses(self) -> None:
+        """Verify rigid body masses can be written and read back for all balls."""
         num_envs = self.setup_ball_grid(num_envs=16)
         sim = await self.create_sim()
 
@@ -77,7 +83,8 @@ class TestRigidBodyProperties(NewtonTensorTestBase):
         balls.set_masses(self.to_warp(masses), all_indices)
         self.assertTrue(np.allclose(balls.get_masses().numpy(), masses))
 
-    async def test_body_inv_masses_shape(self):
+    async def test_body_inv_masses_shape(self) -> None:
+        """Verify inverse-mass output has one entry per rigid body."""
         num_envs = self.setup_ball_grid(num_envs=16)
         sim = await self.create_sim()
 
@@ -85,7 +92,8 @@ class TestRigidBodyProperties(NewtonTensorTestBase):
         inv_masses = balls.get_inv_masses().numpy()
         self.assertEqual(inv_masses.shape[0], num_envs)
 
-    async def test_body_coms(self):
+    async def test_body_coms(self) -> None:
+        """Verify center-of-mass transforms can be offset and read back."""
         num_envs = self.setup_ball_grid(num_envs=16)
         sim = await self.create_sim()
 
@@ -97,7 +105,8 @@ class TestRigidBodyProperties(NewtonTensorTestBase):
         balls.set_coms(self.to_warp(com), all_indices)
         self.assertTrue(np.allclose(balls.get_coms().numpy(), com))
 
-    async def test_body_inertias(self):
+    async def test_body_inertias(self) -> None:
+        """Verify flattened 3x3 inertia tensors can be modified and read back."""
         num_envs = self.setup_ball_grid(num_envs=16)
         sim = await self.create_sim()
 
@@ -109,7 +118,8 @@ class TestRigidBodyProperties(NewtonTensorTestBase):
         balls.set_inertias(self.to_warp(inertias), all_indices)
         self.assertTrue(np.allclose(balls.get_inertias().numpy(), inertias))
 
-    async def test_body_inv_inertias_shape(self):
+    async def test_body_inv_inertias_shape(self) -> None:
+        """Verify inverse inertia tensors are shaped as one 3x3 matrix per body."""
         num_envs = self.setup_ball_grid(num_envs=16)
         sim = await self.create_sim()
 
@@ -128,7 +138,8 @@ class TestRigidBodyProperties(NewtonTensorTestBase):
 class TestRigidBodyTransforms(NewtonTensorTestBase):
     """Set/get rigid body transforms."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Disable gravity so transform writes remain stable after stepping."""
         await super().setUp()
         scene = self.stage.GetPrimAtPath("/physicsScene")
         from pxr import Gf, UsdPhysics
@@ -137,7 +148,8 @@ class TestRigidBodyTransforms(NewtonTensorTestBase):
         physics_scene.CreateGravityDirectionAttr(Gf.Vec3f(0, 0, 0))
         physics_scene.CreateGravityMagnitudeAttr(0.0)
 
-    async def test_set_get_transforms(self):
+    async def test_set_get_transforms(self) -> None:
+        """Verify transform writes preserve submitted poses for every rigid body."""
         num_envs = self.setup_ball_grid(num_envs=16)
         sim = await self.create_sim()
 
@@ -155,7 +167,8 @@ class TestRigidBodyTransforms(NewtonTensorTestBase):
         result = balls.get_transforms().numpy().reshape(balls.count, 7)
         self.assertTrue(np.allclose(result, transforms, rtol=1e-3, atol=1e-4))
 
-    async def test_set_get_transforms_subset(self):
+    async def test_set_get_transforms_subset(self) -> None:
+        """Verify indexed transform writes move only the selected rigid bodies."""
         num_envs = self.setup_ball_grid(num_envs=16)
         sim = await self.create_sim()
 
@@ -186,7 +199,8 @@ class TestRigidBodyTransforms(NewtonTensorTestBase):
 class TestRigidBodyVelocities(NewtonTensorTestBase):
     """Set/get rigid body velocities."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Disable gravity so velocity writes persist without external acceleration."""
         await super().setUp()
         scene = self.stage.GetPrimAtPath("/physicsScene")
         from pxr import Gf, UsdPhysics
@@ -195,7 +209,8 @@ class TestRigidBodyVelocities(NewtonTensorTestBase):
         physics_scene.CreateGravityDirectionAttr(Gf.Vec3f(0, 0, 0))
         physics_scene.CreateGravityMagnitudeAttr(0.0)
 
-    async def test_set_get_velocities(self):
+    async def test_set_get_velocities(self) -> None:
+        """Verify linear/angular velocity tensors round-trip for every rigid body."""
         num_envs = self.setup_ball_grid(num_envs=16)
         sim = await self.create_sim()
 
@@ -215,7 +230,8 @@ class TestRigidBodyVelocities(NewtonTensorTestBase):
         result = balls.get_velocities().numpy().reshape(balls.count, 6)
         self.assertTrue(np.allclose(result, vels, rtol=1e-3, atol=1e-3))
 
-    async def test_set_get_velocities_subset(self):
+    async def test_set_get_velocities_subset(self) -> None:
+        """Verify indexed velocity writes update only the selected rigid bodies."""
         num_envs = self.setup_ball_grid(num_envs=16)
         sim = await self.create_sim()
 
@@ -251,7 +267,11 @@ class TestRigidBodyAccelerations(NewtonTensorTestBase):
     DT = 1.0 / 60.0
 
     async def _create_sim_with_body_qdd(self) -> "tensors.SimulationView":
-        """Create a simulation view with body_qdd allocated on the state."""
+        """Create a simulation view with body_qdd allocated on the state.
+
+        Returns:
+            Newton-backed simulation view with ``body_qdd`` state allocated.
+        """
         await omni.kit.app.get_app().next_update_async()
 
         from isaacsim.physics.newton.impl.extension import acquire_stage as acquire_newton_stage
@@ -276,7 +296,7 @@ class TestRigidBodyAccelerations(NewtonTensorTestBase):
         self.assertIsNotNone(self._sim)
         return self._sim
 
-    async def test_freefall_acceleration_is_gravity(self):
+    async def test_freefall_acceleration_is_gravity(self) -> None:
         """Free-falling bodies should have linear z acceleration close to -9.81."""
         num_envs = self.setup_ball_grid(num_envs=4, position=Gf.Vec3f(0, 0, 5.0))
         sim = await self._create_sim_with_body_qdd()
@@ -309,6 +329,7 @@ class TestRigidBodyApplyForces(NewtonTensorTestBase):
     DT = 1.0 / 60.0
 
     async def setUp(self) -> None:
+        """Disable gravity so force and torque assertions isolate applied wrenches."""
         await super().setUp()
         from pxr import Gf, UsdPhysics
 
@@ -333,7 +354,7 @@ class TestRigidBodyApplyForces(NewtonTensorTestBase):
     def _ball_sphere_inertia(self, mass: float, radius: float) -> float:
         return (2.0 / 5.0) * mass * radius * radius
 
-    async def test_apply_forces_global_linear_velocity(self):
+    async def test_apply_forces_global_linear_velocity(self) -> None:
         """Upward global force on zero-velocity body: vz = (F/m) * dt after one step."""
         self.setup_ball_grid(num_envs=4, radius=self.BALL_RADIUS)
         self._set_ball_masses(self.BALL_MASS)
@@ -356,7 +377,7 @@ class TestRigidBodyApplyForces(NewtonTensorTestBase):
         np.testing.assert_allclose(vels[:, 0:2], 0.0, atol=5e-3)
         np.testing.assert_allclose(vels[:, 3:6], 0.0, atol=5e-3)
 
-    async def test_apply_forces_subset_only_affects_selected_bodies(self):
+    async def test_apply_forces_subset_only_affects_selected_bodies(self) -> None:
         """Forces applied to a subset of bodies leave the other bodies at rest."""
         self.setup_ball_grid(num_envs=4, radius=self.BALL_RADIUS)
         self._set_ball_masses(self.BALL_MASS)
@@ -380,7 +401,7 @@ class TestRigidBodyApplyForces(NewtonTensorTestBase):
         np.testing.assert_allclose(vels[:n_subset, 2], v_expected, rtol=1e-2, atol=5e-3)
         np.testing.assert_allclose(vels[n_subset:, 2], 0.0, atol=5e-3)
 
-    async def test_apply_torques_angular_velocity(self):
+    async def test_apply_torques_angular_velocity(self) -> None:
         """Global torque about z produces wz = (tau/I_z) * dt after one step."""
         self.setup_ball_grid(num_envs=4, radius=self.BALL_RADIUS)
         self._set_ball_masses(self.BALL_MASS)
@@ -411,7 +432,7 @@ class TestRigidBodyApplyForces(NewtonTensorTestBase):
         np.testing.assert_allclose(vels[:, 0:3], 0.0, atol=5e-3)
         np.testing.assert_allclose(vels[:, 3:5], 0.0, atol=5e-3)
 
-    async def test_apply_force_accumulates_over_steps(self):
+    async def test_apply_force_accumulates_over_steps(self) -> None:
         """Re-applying the same force each step produces velocity growing linearly with steps."""
         self.setup_ball_grid(num_envs=4, radius=self.BALL_RADIUS)
         self._set_ball_masses(self.BALL_MASS)
@@ -451,6 +472,7 @@ class TestRigidBodySpatialLayout(NewtonTensorTestBase):
     DT = 1.0 / 60.0
 
     async def setUp(self) -> None:
+        """Create the base rigid-body spatial-layout fixture."""
         await super().setUp()
 
     def _ball_sphere_inertia(self, mass: float, radius: float) -> float:
@@ -469,7 +491,7 @@ class TestRigidBodySpatialLayout(NewtonTensorTestBase):
                 mass_api = UsdPhysics.MassAPI.Apply(prim)
             mass_api.CreateMassAttr().Set(float(mass_value))
 
-    async def test_freefall_velocity_is_linear_z(self):
+    async def test_freefall_velocity_is_linear_z(self) -> None:
         """Free-falling body under gravity should only have velocity in z (slots 0-2)."""
         self.setup_ball_grid(num_envs=4, radius=self.BALL_RADIUS, position=Gf.Vec3f(0, 0, 5.0))
         self._set_ball_masses(self.BALL_MASS)
@@ -487,7 +509,7 @@ class TestRigidBodySpatialLayout(NewtonTensorTestBase):
         np.testing.assert_allclose(vels[:, 0:2], 0.0, atol=1e-3)
         np.testing.assert_allclose(vels[:, 3:6], 0.0, atol=1e-3)
 
-    async def test_set_linear_velocity_produces_translation(self):
+    async def test_set_linear_velocity_produces_translation(self) -> None:
         """Setting velocity [vx,0,0,0,0,0] should translate the body in +x."""
         from pxr import UsdPhysics
 
@@ -518,7 +540,7 @@ class TestRigidBodySpatialLayout(NewtonTensorTestBase):
         expected_dx = vx * self.DT * n_steps
         np.testing.assert_allclose(delta_x, expected_dx, rtol=5e-2, atol=1e-2)
 
-    async def test_set_angular_velocity_produces_rotation(self):
+    async def test_set_angular_velocity_produces_rotation(self) -> None:
         """Setting velocity [0,0,0,0,0,wz] should rotate the body around z."""
         from pxr import UsdPhysics
 
@@ -548,7 +570,7 @@ class TestRigidBodySpatialLayout(NewtonTensorTestBase):
         np.testing.assert_allclose(np.abs(transforms[:, 5]), np.abs(expected_qz), rtol=5e-2, atol=1e-2)
         np.testing.assert_allclose(transforms[:, 3:5], 0.0, atol=1e-3)
 
-    async def test_apply_force_layout_linear(self):
+    async def test_apply_force_layout_linear(self) -> None:
         """Force applied via apply_forces affects linear velocity (slots 0-2) only."""
         from pxr import UsdPhysics
 
@@ -576,7 +598,7 @@ class TestRigidBodySpatialLayout(NewtonTensorTestBase):
         np.testing.assert_allclose(vels[:, 1:3], 0.0, atol=5e-3)
         np.testing.assert_allclose(vels[:, 3:6], 0.0, atol=5e-3)
 
-    async def test_apply_torque_layout_angular(self):
+    async def test_apply_torque_layout_angular(self) -> None:
         """Torque applied via apply_forces_and_torques_at_position affects angular velocity (slots 3-5) only."""
         from pxr import UsdPhysics
 

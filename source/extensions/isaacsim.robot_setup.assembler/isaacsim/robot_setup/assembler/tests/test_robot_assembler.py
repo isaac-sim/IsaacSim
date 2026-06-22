@@ -66,7 +66,12 @@ class TestRobotAssembler(omni.kit.test.AsyncTestCase):
         sphere_light.set_intensities(100000)
 
     def assertListsSame(self, l1: list, l2: list) -> None:  # noqa: N802
-        """Assert that two lists contain the same elements regardless of order."""
+        """Assert that two lists contain the same elements regardless of order.
+
+        Args:
+            l1: First list to compare.
+            l2: Second list to compare.
+        """
         for item in l1:
             self.assertTrue(item in l2, f"{l1}, {l2}")
 

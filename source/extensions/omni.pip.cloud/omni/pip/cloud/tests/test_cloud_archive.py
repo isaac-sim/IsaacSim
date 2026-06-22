@@ -13,14 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies that the cloud pip archive packages Azure, AWS, authentication, request, and platform-specific dependencies needed by the extension."""
+
 import sys
 
 import omni.kit.test
 
 
 class TestPipArchive(omni.kit.test.AsyncTestCase):
+    """TestPipArchive implementation."""
+
     # import all packages to make sure dependencies were not missed
-    async def test_import_all(self):
+    async def test_import_all(self) -> None:
+        """Verify import all."""
         # isort: off
         # Must be at the top so that dependencies later on work
         import typing_extensions

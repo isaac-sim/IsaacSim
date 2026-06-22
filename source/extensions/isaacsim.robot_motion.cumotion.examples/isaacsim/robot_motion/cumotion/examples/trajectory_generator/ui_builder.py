@@ -75,6 +75,9 @@ class UIBuilder:
 
         Skipped while a load is in flight (the load itself triggers stage
         events; resetting state mid-load would clobber it).
+
+        Args:
+            event: USD stage event payload supplied by Kit.
         """
         if self._load_task is not None and not self._load_task.done():
             return
@@ -84,7 +87,11 @@ class UIBuilder:
         self._reset_widgets()
 
     def on_timeline_event(self, event: Any) -> None:
-        """Reset all trajectory state buttons on timeline state changes."""
+        """Reset all trajectory state buttons on timeline state changes.
+
+        Args:
+            event: Timeline event payload supplied by Kit.
+        """
         for btn in (self._cspace_trajectory_btn, self._taskspace_trajectory_btn, self._hybrid_trajectory_btn):
             btn.reset()
             btn.enabled = False
@@ -207,7 +214,13 @@ class UIBuilder:
     # ------------------------------------------------------------ per-tick
 
     def _update_scenario(self, step: float, *args: Any, **kwargs: Any) -> None:
-        """Per-physics-step callback wired into the StateButtons."""
+        """Run the scenario's per-physics-step callback.
+
+        Args:
+            step: Physics time step in seconds.
+            *args: Extra callback arguments supplied by the StateButton.
+            **kwargs: Extra callback keyword arguments supplied by the StateButton.
+        """
         if self._scenario is not None:
             self._scenario.step(step)
 

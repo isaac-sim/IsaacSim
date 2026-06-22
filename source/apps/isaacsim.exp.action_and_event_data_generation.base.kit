@@ -25,12 +25,12 @@ template_name = "spatial_sdg_base"
 "isaacsim.anim.robot.core" = { version = "1.4.2", exact = true }
 "isaacsim.anim.robot.bt_nodes" = { version = "0.1.1", exact = true }
 "isaacsim.replicator.agent.schema" = { version = "0.1.1", exact = true }
-"isaacsim.replicator.agent.core" = { version = "1.6.7", exact = true }
+"isaacsim.replicator.agent.core" = { version = "1.6.8", exact = true }
 "isaacsim.replicator.caption.core" = { version = "0.7.10", exact = true }
 "isaacsim.replicator.incident.core" = { version = "0.11.8", exact = true }
 "isaacsim.replicator.object.core" = { version = "0.11.12", exact = true }
-"isaacsim.sensors.rtx.placement" = { version = "0.16.9", exact = true }
-"isaacsim.sensors.rtx.calibration" = { version = "0.3.9", exact = true }
+"isaacsim.sensors.rtx.placement" = { version = "0.16.10", exact = true }
+"isaacsim.sensors.rtx.calibration" = { version = "0.3.10", exact = true }
 
 # Optional: for benchmark_ira.py and other scripts using isaacsim.benchmark.services
 "isaacsim.benchmark.services" = {}
@@ -44,9 +44,6 @@ app.player.useFixedTimeStepping = true
 # Your application is using Extensions from your applications
 # Here they are setup into a single folder "exts" but you can have you own structure if you need
 # see we also dd the Extension from the Base application using their extscache
-[app.exts]
-folders = ["${app}/../exts", "${app}/../extscache", "${app}/../apps"]
-
 [app.extensions]
 # Don't create extension folders
 mkdirExtFolders = false

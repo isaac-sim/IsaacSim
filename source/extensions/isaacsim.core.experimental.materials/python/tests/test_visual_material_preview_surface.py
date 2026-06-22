@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for visual material preview surface."""
+"""Verifies PreviewSurfaceMaterial properties and shader input values across supported prim backends. Covers length, material getters, and authored USD Preview Surface input values."""
 
-from typing import Literal
+from typing import Any, Literal
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
@@ -34,8 +34,14 @@ from isaacsim.core.experimental.prims.tests.common import (
 from pxr import UsdShade
 
 
-async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"], **kwargs) -> None:
-    """Populate stage."""
+async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"], **kwargs: Any) -> None:
+    """Populate stage.
+
+    Args:
+        max_num_prims: Maximum number of material prims to pre-author.
+        operation: Prim setup operation requested by the parametrized test.
+        **kwargs: Additional populate-stage keyword arguments from the parametrized test.
+    """
     # create new stage
     stage = await stage_utils.create_new_stage_async()
     # define prims
@@ -49,24 +55,38 @@ async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"
 class TestPreviewSurface(omni.kit.test.AsyncTestCase):
     """Test preview surface."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
     @parametrize(backends=["usd"], prim_class=PreviewSurfaceMaterial, populate_stage_func=populate_stage)
-    async def test_len(self, prim, num_prims, device, backend):
-        """Test len."""
+    async def test_len(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Test len.
+
+        Args:
+            prim: Material wrapper under test.
+            num_prims: Number of material prims in the parametrized case.
+            device: Simulation device selected by the parametrized case.
+            backend: Prim backend selected by the parametrized case.
+        """
         self.assertEqual(len(prim), num_prims, f"Invalid len ({num_prims} prims)")
 
     @parametrize(backends=["usd"], prim_class=PreviewSurfaceMaterial, populate_stage_func=populate_stage)
-    async def test_properties_and_getters(self, prim, num_prims, device, backend):
-        """Test properties and getters."""
+    async def test_properties_and_getters(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Test properties and getters.
+
+        Args:
+            prim: Material wrapper under test.
+            num_prims: Number of material prims in the parametrized case.
+            device: Simulation device selected by the parametrized case.
+            backend: Prim backend selected by the parametrized case.
+        """
         # test cases (properties)
         # - materials
         self.assertEqual(len(prim.materials), num_prims, f"Invalid materials len ({num_prims} prims)")
@@ -78,8 +98,15 @@ class TestPreviewSurface(omni.kit.test.AsyncTestCase):
             self.assertTrue(isinstance(shader, UsdShade.Shader), f"Invalid shader")
 
     @parametrize(backends=["usd"], prim_class=PreviewSurfaceMaterial, populate_stage_func=populate_stage)
-    async def test_input_values(self, prim, num_prims, device, backend):
-        """Test input values."""
+    async def test_input_values(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Test input values.
+
+        Args:
+            prim: Material wrapper under test.
+            num_prims: Number of material prims in the parametrized case.
+            device: Simulation device selected by the parametrized case.
+            backend: Prim backend selected by the parametrized case.
+        """
         cases = {
             "diffuseColor": lambda count: draw_sample(
                 shape=(count, 3), dtype=wp.float32, low=-0.1, high=1.1

@@ -151,7 +151,7 @@ img = Image.fromarray(camera.get_rgba()[:, :, :3])
 
 
 # Optional step, draw the 3D points to the image plane using the OpenCV fisheye model
-def draw_points_opencv(points3d):
+def draw_points_opencv(points3d: np.ndarray) -> None:
     """Draw 3D points projected onto the image plane using OpenCV."""
     try:
         # To install, run python.sh -m pip install opencv-python
@@ -166,7 +166,7 @@ def draw_points_opencv(points3d):
             x, y = pt[0]
             print("Drawing point at: ", x, y)
             draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill="orange", outline="orange")
-    except:
+    except ImportError:
         print("OpenCV is not installed, skipping OpenCV overlay")
         print("To install OpenCV, run: python.sh -m pip install opencv-python")
 

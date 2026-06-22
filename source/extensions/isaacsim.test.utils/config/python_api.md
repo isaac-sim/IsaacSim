@@ -12,6 +12,7 @@
   - async def menu_click_with_retry(self, menu_path: str, delays: list[int] = None, window_name: str = None, wait_n_frames: int = 10) -> Any
   - async def find_widget_with_retry(self, query: str, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES, parent: Any = None) -> Any
   - async def find_enabled_widget_with_retry(self, query: str, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES, parent: Any = None) -> Any
+  - async def scroll_to_widget(self, widget_ref: Any, settle_frames: int = 3) -> bool
   - async def wait_for_widget_enabled(self, widget: Any, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES) -> bool
   - def count_prims_by_type(self, prim_type: str) -> int
   - async def run_timeline_frames(self, n: int = 50)
@@ -56,6 +57,7 @@
 - async def find_widget_with_retry(query: str, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES, parent: Any = None) -> Any
 - async def find_enabled_widget_with_retry(query: str, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES, parent: Any = None) -> Any
 - async def wait_for_widget_enabled(widget: Any, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES) -> bool
+- async def scroll_to_widget(widget_ref: Any, settle_frames: int = 3) -> bool
 - async def menu_click_with_retry(menu_path: str, delays: list[int] = None, window_name: str = None, wait_n_frames: int = 10) -> Any
 - def list_menu_paths(max_depth: int = 3) -> list[str]
 - async def perform_widget_action(query: str, action: str = 'click', text: str = '', max_frames: int = _DEFAULT_MAX_WAIT_FRAMES) -> dict

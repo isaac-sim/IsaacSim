@@ -66,7 +66,7 @@
 - class AssetTransformerManager
   - def __init__(self, registry: RuleRegistry | None = None)
   - [property] def registry(self) -> RuleRegistry
-  - def run(self, input_stage_path: str, profile: RuleProfile, package_root: str | None = None) -> ExecutionReport
+  - def run(self, input_stage: str | Usd.Stage, profile: RuleProfile, package_root: str | None = None) -> ExecutionReport
 
 - class RuleConfigurationParam
   - name: str

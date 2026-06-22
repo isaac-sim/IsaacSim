@@ -77,7 +77,7 @@ class UIBuilder:
     configuration, joint settings, grasp simulation, and data export/import.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Frames are sub-windows that can contain multiple UI elements
         self.frames = []
         # UI elements created using a UIElementWrapper instance
@@ -110,7 +110,7 @@ class UIBuilder:
     #           The Functions Below Are Called Automatically By extension.py
     ###################################################################################
 
-    def on_menu_callback(self):
+    def on_menu_callback(self) -> None:
         """Callback for when the UI is opened from the toolbar.
 
         This is called directly after build_ui().
@@ -125,7 +125,7 @@ class UIBuilder:
             event: Event Type
         """
 
-    def on_physics_step(self, step: float):
+    def on_physics_step(self, step: float) -> None:
         """Callback for Physics Step.
 
         Physics steps only occur when the timeline is playing.
@@ -134,11 +134,11 @@ class UIBuilder:
             step: Size of physics step
         """
 
-    def on_assets_loaded(self):
+    def on_assets_loaded(self) -> None:
         """Callback for when stage assets have finished loading."""
         self._gripper_selection_dropdown.repopulate()
 
-    def on_simulation_stop_play(self):
+    def on_simulation_stop_play(self) -> None:
         """Callback for when simulation is stopped or paused.
 
         When ``_suppress_stop_reset`` is set, the stop event is ignored so that
@@ -149,7 +149,7 @@ class UIBuilder:
         if self._timeline.is_stopped() and not self._suppress_stop_reset:
             self.reset_extension()
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Called when the stage is closed or the extension is hot reloaded.
 
         Perform any necessary cleanup such as removing active callback functions
@@ -158,7 +158,7 @@ class UIBuilder:
         for ui_elem in self.wrapped_ui_elements:
             ui_elem.cleanup()
 
-    def build_ui(self):
+    def build_ui(self) -> None:
         """Build a custom UI tool to run your extension.
 
         This function will be called any time the UI window is closed and reopened.
@@ -190,7 +190,7 @@ class UIBuilder:
 
     ############################### Frame Builder Functions #####################################
 
-    def build_selection_frame(self):
+    def build_selection_frame(self) -> None:
         """Builds the UI frame for selecting gripper articulation and rigid body objects.
 
         Includes dropdowns for gripper selection, rigid body selection, export path configuration,
@@ -210,7 +210,7 @@ class UIBuilder:
                 tooltip="Input a prim that should be converted to a rigid body for the sake of validating a grasp.",
             )
 
-            def show_warning_if_existing(file_path):
+            def show_warning_if_existing(file_path: object) -> None:
                 valid = is_yaml(file_path)
                 self._selection_ready_btn.enabled = valid
                 if not valid and file_path:
@@ -254,7 +254,7 @@ class UIBuilder:
         if self._articulation is None:
             return
 
-        def populate_subframes(prim, filter: StringField):
+        def populate_subframes(prim: object, filter: StringField) -> object:
             frames = [
                 str(p.GetPath())
                 for p in Usd.PrimRange(prim)
@@ -265,7 +265,7 @@ class UIBuilder:
             else:
                 return ["Select A Frame of Reference"] + frames
 
-        def on_subframe_selection(value):
+        def on_subframe_selection(value: object) -> None:
             if len(self._rb_subframe.get_items()) > 1 and self._rb_subframe.get_selection_index() == 0:
                 self._finalize_frame_btn.enabled = False
             elif len(self._gripper_subframe.get_items()) > 1 and self._gripper_subframe.get_selection_index() == 0:
@@ -273,7 +273,7 @@ class UIBuilder:
             else:
                 self._finalize_frame_btn.enabled = True
 
-        def on_highlight_gripper_subframe():
+        def on_highlight_gripper_subframe() -> None:
             if len(self._gripper_subframe.get_items()) == 1 or self._gripper_subframe.get_selection_index() > 0:
                 omni.kit.commands.execute(
                     "SelectPrimsCommand",
@@ -282,7 +282,7 @@ class UIBuilder:
                     expand_in_stage=True,
                 )
 
-        def on_highlight_rb_subframe():
+        def on_highlight_rb_subframe() -> None:
             if len(self._rb_subframe.get_items()) == 1 or self._rb_subframe.get_selection_index() > 0:
                 omni.kit.commands.execute(
                     "SelectPrimsCommand",
@@ -372,24 +372,24 @@ class UIBuilder:
             CollapsableFrame("Grasp Test Configuration", collapsed=True, enabled=False)
             return
 
-        def on_click_include_all_dofs():
+        def on_click_include_all_dofs() -> None:
             for dof_name in self._articulation.dof_names:
                 self._joint_settings_ui_state.set_active_dof(self._articulation, dof_name)
             for joint_frame in self._robot_joint_frames:
                 joint_frame.rebuild()
             self._test_frame.rebuild()
 
-        def on_click_exclude_all_dofs():
+        def on_click_exclude_all_dofs() -> None:
             for dof_name in self._articulation.dof_names:
                 self._joint_settings_ui_state.set_fixed_dof(self._articulation, dof_name)
             for joint_frame in self._robot_joint_frames:
                 joint_frame.rebuild()
             self._test_frame.rebuild()
 
-        def on_collapse_joint_frame():
+        def on_collapse_joint_frame() -> None:
             self._joint_settings_frame.collapsed = True
 
-        def on_click_cb(index, value):
+        def on_click_cb(index: object, value: object) -> None:
             dof_name = self._articulation.dof_names[index]
             if value:
                 self._joint_settings_ui_state.set_active_dof(self._articulation, dof_name)
@@ -399,7 +399,7 @@ class UIBuilder:
             self._robot_joint_frames[index].rebuild()
             self._test_frame.rebuild()
 
-        def on_change_joint_position(joint_index, value):
+        def on_change_joint_position(joint_index: object, value: object) -> None:
             dof_name = self._articulation.dof_names[joint_index]
             if self._joint_settings_ui_state.is_active(dof_name):
                 self._joint_settings_ui_state.set_open_position(dof_name, value)
@@ -408,26 +408,26 @@ class UIBuilder:
             self._articulation.set_dof_position_targets(value, dof_indices=joint_index)
             self._articulation.set_dof_velocity_targets(0, dof_indices=joint_index)
 
-        def on_change_close_position(joint_index, value):
+        def on_change_close_position(joint_index: object, value: object) -> None:
             dof_name = self._articulation.dof_names[joint_index]
             self._joint_settings_ui_state.set_close_position(dof_name, value)
 
-        def on_change_max_effort(joint_index, max_effort):
+        def on_change_max_effort(joint_index: object, max_effort: object) -> None:
             dof_name = self._articulation.dof_names[joint_index]
             self._joint_settings_ui_state.set_max_effort(dof_name, max_effort)
             self._articulation.set_dof_max_efforts(max_effort, dof_indices=joint_index)
 
-        def on_change_max_speed(joint_index, max_speed):
+        def on_change_max_speed(joint_index: object, max_speed: object) -> None:
             dof_name = self._articulation.dof_names[joint_index]
             self._joint_settings_ui_state.set_max_speed(dof_name, max_speed)
 
-        def on_mask_collisions():
+        def on_mask_collisions() -> None:
             self._collision_mask = mask_collisions(self._articulation.paths[0], self._rigid_body.paths[0])
 
-        def on_unmask_collisions():
+        def on_unmask_collisions() -> None:
             # Allow a frame for instantaneous deep collision to resolve, and then set rigid body velocty to zero.
             # This is repeated for good measure, as a miniscule residual velocity was observed after doing it once.
-            async def unmask_over_time():
+            async def unmask_over_time() -> None:
                 unmask_collisions(self._collision_mask)
                 self._collision_mask = None
 
@@ -439,7 +439,7 @@ class UIBuilder:
 
             asyncio.ensure_future(unmask_over_time())
 
-        def on_build_joint_frame(joint_index):
+        def on_build_joint_frame(joint_index: object) -> None:
             if self._articulation is None:
                 return
 
@@ -639,7 +639,7 @@ class UIBuilder:
 
         self.wrapped_ui_elements.append(self._test_state_btn)
 
-    def build_export_frame(self):
+    def build_export_frame(self) -> None:
         """Builds the UI frame for exporting grasps to file.
 
         Creates controls for setting grasp confidence and exporting the tested grasp to a YAML file.
@@ -664,14 +664,14 @@ class UIBuilder:
 
             self._export_txt = TextBlock("README", "Ready To Export Grasp", num_lines=1)
 
-    def build_import_frame(self):
+    def build_import_frame(self) -> None:
         """Builds the UI frame for importing grasps from file.
 
         Creates controls for loading grasp configurations from YAML files and applying them to the current
         articulation and rigid body setup.
         """
 
-        def on_import_grasps():
+        def on_import_grasps() -> None:
             if not is_yaml(self._import_path.get_value()):
                 return
             self._import_data_editor = DataWriter(
@@ -695,15 +695,15 @@ class UIBuilder:
             if prev_sel == self._grasp_dropdown.get_selection():
                 self._grasp_dropdown.trigger_on_selection_fn_with_current_selection()
 
-        def grasp_populate_fn():
+        def grasp_populate_fn() -> object:
             if self._import_data_editor is None:
                 return []
             return list(self._import_data_editor.data["grasps"].keys())
 
-        def on_grasp_selection(val):
+        def on_grasp_selection(val: object) -> None:
             grasp = self._import_data_editor.data["grasps"][val]
 
-            async def load_grasp(grasp):
+            async def load_grasp(grasp: object) -> None:
                 dof_indices = self._articulation.get_dof_indices(list(grasp["cspace_position"].keys()))
                 for dof_name in self._articulation.dof_names:
                     if dof_name in grasp["cspace_position"]:
@@ -771,7 +771,7 @@ class UIBuilder:
 
             asyncio.ensure_future(load_grasp(grasp))
 
-        def on_next_grasp_clicked():
+        def on_next_grasp_clicked() -> None:
             num_items = len(self._grasp_dropdown.get_items())
             if num_items == 1:
                 self._grasp_dropdown.trigger_on_selection_fn_with_current_selection()
@@ -797,7 +797,7 @@ class UIBuilder:
                     Button("Next Grasp", "NEXT", on_click_fn=on_next_grasp_clicked)
 
     ############################# UI Control Functions ########################################
-    def _on_reset_selection_frame(self):
+    def _on_reset_selection_frame(self) -> None:
         """Handles the reset button click in the selection frame.
 
         Re-enables the selection UI elements and resets the extension state.
@@ -843,7 +843,7 @@ class UIBuilder:
         # Ensure that stage units are in meters to give meaning to the effort and velocity values.
         stage_utils.set_stage_units(meters_per_unit=1.0)
 
-        async def initialize_objects():
+        async def initialize_objects() -> None:
             self._timeline.play()
 
             await app_utils.update_app_async()
@@ -869,7 +869,7 @@ class UIBuilder:
 
         asyncio.ensure_future(initialize_objects())
 
-    def _finalize_reference_frame_selection(self):
+    def _finalize_reference_frame_selection(self) -> None:
         """Finalizes the reference frame selection and advances to settings configuration.
 
         Creates the data writer with selected frames, initializes joint UI state, and enables the settings
@@ -885,7 +885,7 @@ class UIBuilder:
 
         self._test_frame.rebuild()
 
-    def _populate_settings_frame(self):
+    def _populate_settings_frame(self) -> None:
         """Populates and enables the settings frame after reference frame selection.
 
         Enables the settings frame for joint configuration and the test frame for grasp simulation,
@@ -904,7 +904,7 @@ class UIBuilder:
 
         self._import_frame.enabled = True
 
-    def reset_extension(self):
+    def reset_extension(self) -> None:
         """Resets the extension to its initial state.
 
         Clears all objects, resets UI states, re-enables selection controls, and unmasks any active collision masks.
@@ -953,7 +953,7 @@ class UIBuilder:
         show_physics_colliders(False)
 
     ##################################### Grasp Test ###############################################
-    def get_current_grasp_test_settings(self):
+    def get_current_grasp_test_settings(self) -> object:
         """Retrieves the current grasp test configuration from the UI.
 
         Returns:
@@ -1014,7 +1014,7 @@ class UIBuilder:
             self._last_grasp_test_results = result
             self.ready_to_export_grasp(result.suggested_confidence, "Ready To Export Grasp")
 
-    def _on_run_test_a_text(self):
+    def _on_run_test_a_text(self) -> None:
         """Handle the simulate action for the grasp test button.
 
         Stores the initial rigid body pose, ensures collisions are enabled, and initializes
@@ -1032,7 +1032,7 @@ class UIBuilder:
         self._export_frame.collapsed = True
         self._export_frame.enabled = False
 
-    def _on_run_test_b_text(self):
+    def _on_run_test_b_text(self) -> None:
         """Handle the reset action for the grasp test button.
 
         Opens the gripper, stops the rigid body motion, and resets the UI state to allow for
@@ -1041,7 +1041,7 @@ class UIBuilder:
 
         # Open the gripper and make sure that the object is not moved while this happens from
         # the contact forces.
-        async def open_gripper():
+        async def open_gripper() -> None:
             open_position = [
                 self._joint_settings_ui_state.get_joint_position(dof_name) for dof_name in self._articulation.dof_names
             ]
@@ -1067,7 +1067,7 @@ class UIBuilder:
 
         asyncio.ensure_future(open_gripper())
 
-    def _export_without_simulating(self):
+    def _export_without_simulating(self) -> None:
         """Export the current gripper state as a grasp without running physics simulation.
 
         Sets up the grasp test results using the current joint positions as both open and closed
@@ -1136,7 +1136,7 @@ class UIBuilder:
         if self._suggest_confidence_cb.get_value():
             self._confidence_field.set_value(suggested_confidence)
 
-    def export_to_file(self):
+    def export_to_file(self) -> None:
         """Export the last grasp test results to the specified file path.
 
         Writes the grasp data with the configured confidence value to the YAML file and
@@ -1173,7 +1173,7 @@ class UIBuilder:
 
     #################################### Shared Util ##############################################
 
-    def stop_rigid_body(self):
+    def stop_rigid_body(self) -> None:
         """Stop the rigid body by setting its velocities to zero and removing applied forces."""
         self._rigid_body.set_velocities(np.zeros(3), np.zeros(3))
         self._rigid_body.apply_forces_and_torques_at_pos(np.zeros(3), np.zeros(3))
@@ -1194,7 +1194,7 @@ class JointFrameUIState:
         articulation: The articulation to store joint frame UI state for.
     """
 
-    def __init__(self, articulation: object):
+    def __init__(self, articulation: object) -> None:
         self._fixed_dof_settings = {}
         self._active_dof_settings = {}
 

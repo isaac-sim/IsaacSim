@@ -57,7 +57,14 @@ def is_mjcf_file(path: str) -> bool:
 
 
 def _normalize_path_key(path: str) -> str:
-    """Return a canonical ``_per_file_state`` key (case-insensitive on Windows)."""
+    """Return a canonical ``_per_file_state`` key (case-insensitive on Windows).
+
+    Args:
+        path: File path to normalize.
+
+    Returns:
+        Normalized path key for per-file state lookup.
+    """
     return os.path.normcase(os.path.normpath(path))
 
 

@@ -13,12 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Demonstrate UR10 follow-target task with inverse kinematics."""
-
-from __future__ import annotations
-
-"""
-This example demonstrates how to run a UR10 follow-target task.
+"""This example demonstrates how to run a UR10 follow-target task.
 
 The example serves to illustrate the following concepts:
 - How to set up a UR10 robot for following a target pose with inverse kinematics.
@@ -32,10 +27,13 @@ The source code is organized into 3 main sections:
 3. Example logic and simulation loop.
 """
 
-# 1. --------------------------------------------------------------------
+from __future__ import annotations
 
 # Parse any command-line arguments specific to the standalone application (only known arguments).
 import argparse
+
+# 1. --------------------------------------------------------------------
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--test", action="store_true", help="Run in test mode (exit after N frames)")

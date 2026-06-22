@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.1.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.1.1] - 2026-05-22
 ### Fixed
 - `AssetTransformerWindow._run_actions()` no longer returns silently when the active stage is unsaved, when no actions are configured, when the output directory is unset, or when `AssetTransformerManager.run()` raises. Each failure now opens a modal dialog inside the Asset Transformer window in addition to the existing `carb.log_error` developer-console entry.

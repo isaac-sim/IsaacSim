@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.3.7] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [2.3.6] - 2026-05-18
 ### Added
 - "Base Type" dropdown in the Options frame with three choices (Source / Fixed / Mobile) that drives the tri-state `URDFImporterConfig.fix_base` field.

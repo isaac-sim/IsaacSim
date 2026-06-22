@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Write randomized values into the registered physics simulation context."""
+
+from typing import Any
+
 import carb
 import numpy as np
 import omni.graph.core as og
@@ -22,17 +26,19 @@ from isaacsim.replicator.experimental.domain_randomization import physics_view a
 OPERATION_TYPES = ["direct", "additive", "scaling"]
 
 
-def apply_randomization_operation(operation, attribute_name, samples, on_reset):
-    """Apply randomization operation for simulation context values.
+def apply_randomization_operation(operation: Any, attribute_name: Any, samples: Any, on_reset: Any) -> Any:
+    """Return the simulation-context value to write for the requested operation.
 
     Args:
-        :param operation: Type of operation ("direct", "additive", or "scaling").
-        :param attribute_name: Name of the attribute being randomized.
-        :param samples: Sample values to apply.
-        :param on_reset: Whether this is called during a reset operation.
+        operation: Type of operation ("direct", "additive", or "scaling").
+        attribute_name: Name of the attribute being randomized.
+        samples: Sample values to apply.
+        on_reset: Whether this is called during a reset operation. Reset writes
+            return the stored reset value without applying the current sample.
 
     Returns:
-        The computed randomized values based on the operation type.
+        The direct sample, additive/scaled value relative to the stored reset
+        value, or the stored reset value when ``on_reset`` is true.
     """
     if on_reset:
         return physics._simulation_context_reset_values[attribute_name]
@@ -44,13 +50,13 @@ def apply_randomization_operation(operation, attribute_name, samples, on_reset):
         return samples
 
 
-def modify_initial_values(operation, attribute_name, samples):
-    """Modify initial values based on operation type.
+def modify_initial_values(operation: Any, attribute_name: Any, samples: Any) -> None:
+    """Update the stored reset value for a simulation-context attribute.
 
     Args:
-        :param operation: Type of operation ("direct", "additive", or "scaling").
-        :param attribute_name: Name of the attribute being modified.
-        :param samples: Sample values to use for modification.
+        operation: Type of operation ("direct", "additive", or "scaling").
+        attribute_name: Name of the attribute being modified.
+        samples: Sample values to use for modification.
     """
     if operation == "additive":
         physics._simulation_context_reset_values[attribute_name] = (
@@ -65,14 +71,25 @@ def modify_initial_values(operation, attribute_name, samples):
 
 
 class OgnWritePhysicsSimulationContext:
-    """OmniGraph node that writes physics attributes to SimulationContext.
-
-    Handles randomization of physics simulation context parameters such as gravity
-    by applying different operation types (direct, additive, scaling).
-    """
+    """OmniGraph writer for global physics simulation-context attributes."""
 
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
+        """Apply a sampled global physics value.
+
+        The node expects an attribute from ``SIMULATION_CONTEXT_ATTRIBUTES`` and
+        currently writes the first sampled gravity vector through the registered
+        physics simulation view. Empty indices keep ``execOut`` enabled but
+        perform no write. Invalid context state, attributes, or operations log
+        an error, disable ``execOut``, and return ``False``.
+
+        Args:
+            db: Database object containing node inputs and outputs.
+
+        Returns:
+            True when the simulation-context value is written, False when inputs
+            are empty or invalid.
+        """
         attribute_name = db.inputs.attribute
         operation = db.inputs.operation
         values = db.inputs.values

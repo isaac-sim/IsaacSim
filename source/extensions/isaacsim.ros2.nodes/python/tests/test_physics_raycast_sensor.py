@@ -13,10 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 publishers driven by a physics raycast sensor.
+"""Verify physics raycast sensor ROS 2 publishers.
 
-Covers point cloud (ROS2PublishPointCloud) and laser scan (ROS2PublishLaserScan)
-publishing from an IsaacReadRaycastSensor OmniGraph node.
+Covers point cloud and laser scan output for 2D, 3D, full-scan, intensity, and
+depth-accuracy cases.
 """
 
 import omni.graph.core as og
@@ -24,7 +24,6 @@ import omni.kit
 import usdrt.Sdf
 from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
-from pxr import Gf
 from sensor_msgs_py.point_cloud2 import read_points
 
 from .common import add_cube, create_raycast_lidar_sensor, get_qos_profile
@@ -35,11 +34,11 @@ NUM_RAYS = int(HORIZONTAL_FOV / HORIZONTAL_RESOLUTION)
 
 
 class TestRos2PhysicsRaycastSensor(ROS2TestCase):
-    """Test suite for ROS 2 publishers using the physics raycast sensor."""
+    """Verify raycast sensor point cloud and LaserScan ROS 2 publishers."""
 
     # -- Point Cloud tests --------------------------------------------------
 
-    async def test_point_cloud_3d(self):
+    async def test_point_cloud_3d(self) -> None:
         """Test 3D point cloud from a multi-elevation raycast sensor."""
         import rclpy
         from sensor_msgs.msg import PointCloud2
@@ -93,13 +92,13 @@ class TestRos2PhysicsRaycastSensor(ROS2TestCase):
 
         self._point_cloud_data = None
 
-        def point_cloud_callback(data: PointCloud2):
+        def point_cloud_callback(data: PointCloud2) -> None:
             self._point_cloud_data = data
 
         node = self.create_node("point_cloud_tester")
         self.create_subscription(node, PointCloud2, "point_cloud", point_cloud_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         self._timeline.play()
@@ -129,7 +128,7 @@ class TestRos2PhysicsRaycastSensor(ROS2TestCase):
         self._timeline.stop()
         spin()
 
-    async def test_point_cloud_2d(self):
+    async def test_point_cloud_2d(self) -> None:
         """Test 2D point cloud from a single-elevation raycast sensor."""
         import rclpy
         from sensor_msgs.msg import PointCloud2
@@ -180,13 +179,13 @@ class TestRos2PhysicsRaycastSensor(ROS2TestCase):
 
         self._point_cloud_data = None
 
-        def point_cloud_callback(data: PointCloud2):
+        def point_cloud_callback(data: PointCloud2) -> None:
             self._point_cloud_data = data
 
         node = self.create_node("flat_point_cloud_tester")
         self.create_subscription(node, PointCloud2, "point_cloud", point_cloud_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         self._timeline.play()
@@ -213,7 +212,7 @@ class TestRos2PhysicsRaycastSensor(ROS2TestCase):
         self._timeline.stop()
         spin()
 
-    async def test_point_cloud_full_scan(self):
+    async def test_point_cloud_full_scan(self) -> None:
         """Test full-scan point cloud with 900 horizontal rays."""
         import rclpy
         from sensor_msgs.msg import PointCloud2
@@ -262,13 +261,13 @@ class TestRos2PhysicsRaycastSensor(ROS2TestCase):
 
         self._point_cloud_data = None
 
-        def point_cloud_callback(data: PointCloud2):
+        def point_cloud_callback(data: PointCloud2) -> None:
             self._point_cloud_data = data
 
         node = self.create_node("depth_point_cloud_tester")
         self.create_subscription(node, PointCloud2, "point_cloud", point_cloud_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         self._timeline.play()
@@ -300,7 +299,7 @@ class TestRos2PhysicsRaycastSensor(ROS2TestCase):
 
     # -- Laser Scan tests ---------------------------------------------------
 
-    async def test_laser_scan(self):
+    async def test_laser_scan(self) -> None:
         """Test laser scan publishing from a physics raycast sensor."""
         import rclpy
         from sensor_msgs.msg import LaserScan
@@ -355,7 +354,7 @@ class TestRos2PhysicsRaycastSensor(ROS2TestCase):
         self._lidar_data = None
         self._lidar_callback_count = 0
 
-        def lidar_callback(data: LaserScan):
+        def lidar_callback(data: LaserScan) -> None:
             self._lidar_callback_count += 1
             self._lidar_data = data
             self.assertGreater(data.angle_max, data.angle_min)
@@ -365,7 +364,7 @@ class TestRos2PhysicsRaycastSensor(ROS2TestCase):
         node = self.create_node("lidar_tester")
         self.create_subscription(node, LaserScan, "scan", lidar_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         # 0.0 Hz rotation — time_increment should be 0
@@ -423,7 +422,7 @@ class TestRos2PhysicsRaycastSensor(ROS2TestCase):
         self._timeline.stop()
         spin()
 
-    async def test_laser_scan_synthesized_intensities(self):
+    async def test_laser_scan_synthesized_intensities(self) -> None:
         """Verify synthesized intensities are binary hit/miss when intensitiesData is unconnected."""
         import rclpy
         from sensor_msgs.msg import LaserScan
@@ -476,13 +475,13 @@ class TestRos2PhysicsRaycastSensor(ROS2TestCase):
 
         self._lidar_data = None
 
-        def lidar_callback(data: LaserScan):
+        def lidar_callback(data: LaserScan) -> None:
             self._lidar_data = data
 
         node = self.create_node("intensity_tester")
         self.create_subscription(node, LaserScan, "scan", lidar_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         self._timeline.play()
@@ -510,7 +509,7 @@ class TestRos2PhysicsRaycastSensor(ROS2TestCase):
         self._timeline.stop()
         spin()
 
-    async def test_point_cloud_depth_accuracy(self):
+    async def test_point_cloud_depth_accuracy(self) -> None:
         """Verify point cloud positions are within expected range for a known scene."""
         import rclpy
         from sensor_msgs.msg import PointCloud2
@@ -561,13 +560,13 @@ class TestRos2PhysicsRaycastSensor(ROS2TestCase):
 
         self._point_cloud_data = None
 
-        def point_cloud_callback(data: PointCloud2):
+        def point_cloud_callback(data: PointCloud2) -> None:
             self._point_cloud_data = data
 
         node = self.create_node("depth_accuracy_tester")
         self.create_subscription(node, PointCloud2, "point_cloud", point_cloud_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         self._timeline.play()

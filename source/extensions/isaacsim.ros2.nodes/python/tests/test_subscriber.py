@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 subscriber OmniGraph node."""
+"""Verifies generic ROS 2 subscriber OmniGraph node behavior in the Isaac Sim ROS 2 test environment."""
 
 import json
+from typing import Any
 
 import numpy as np
 import omni.graph.core as og
@@ -25,21 +26,25 @@ from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 
 
 class TestRos2Subscriber(ROS2TestCase):
-    """Test suite for ros2 subscriber."""
+    """Verify generic ROS 2 subscriber OmniGraph node output attributes."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh stage for generic subscriber graph tests."""
         await super().setUp()
 
         await stage_utils.create_new_stage_async()
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Run shared ROS 2 cleanup after generic subscriber graph tests."""
         await super().tearDown()
 
     # ----------------------------------------------------------------------
-    async def test_subscriber(self):
-        """Test subscriber."""
+    async def test_subscriber(self) -> Any:
+        """Test subscriber.
+
+        Returns:
+            None.
+        """
         import math
 
         import builtin_interfaces.msg
@@ -70,7 +75,7 @@ class TestRos2Subscriber(ROS2TestCase):
         ros2_publisher = None
         ros2_node = self.create_node("isaac_sim_test_subscriber")
 
-        def spin():
+        def spin() -> None:
             # Keep ROS communications responsive while the timeline is running.
             try:
                 rclpy.spin_once(ros2_node, timeout_sec=0.0)
@@ -193,7 +198,7 @@ class TestRos2Subscriber(ROS2TestCase):
             # Wait for node output to update (instead of fixed sleeps).
             if message_type == "shape_msgs.msg.MeshTriangle":
 
-                def condition():
+                def condition() -> Any:
                     vertex_indices = og.Controller.attribute("outputs:vertex_indices", subscriber_node).get()
                     vertex_indices = [*list(vertex_indices) + [0] * 3][:3]
                     return vertex_indices is not None and np.array_equal(vertex_indices, message_value.vertex_indices)
@@ -201,14 +206,14 @@ class TestRos2Subscriber(ROS2TestCase):
                 condition_met = await self.simulate_until_condition(condition, max_frames=600, per_frame_callback=spin)
             elif message_type.startswith("tf2_msgs"):
 
-                def condition():
+                def condition() -> Any:
                     transforms = og.Controller.attribute("outputs:transforms", subscriber_node).get()
                     return transforms is not None and len(transforms) == len(message_value.transforms)
 
                 condition_met = await self.simulate_until_condition(condition, max_frames=900, per_frame_callback=spin)
             elif message_type.endswith("Array"):
 
-                def condition():
+                def condition() -> Any:
                     data = og.Controller.attribute("outputs:data", subscriber_node).get()
                     layout_data_offset = og.Controller.attribute("outputs:layout:data_offset", subscriber_node).get()
                     layout_dim = og.Controller.attribute("outputs:layout:dim", subscriber_node).get()
@@ -223,7 +228,7 @@ class TestRos2Subscriber(ROS2TestCase):
                 condition_met = await self.simulate_until_condition(condition, max_frames=600, per_frame_callback=spin)
             else:
 
-                def condition():
+                def condition() -> Any:
                     data = og.Controller.attribute("outputs:data", subscriber_node).get()
                     if message_type == "std_msgs.msg.Byte":
                         return data == ord(message_value.data.decode())

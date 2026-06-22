@@ -13,11 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Common test utilities and helpers."""
+"""Provides shared fixtures, tolerances, and scene helpers for experimental physics sensor tests. Covers timeline reset helpers, gravity constants, and reusable ant and cube scene configuration."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -39,15 +40,24 @@ SMALL_TOLERANCE = 0.01
 
 
 async def step_simulation(seconds: float) -> None:
-    """Step the simulation forward by the given number of seconds."""
+    """Step the simulation forward by the given number of seconds.
+
+    Args:
+        seconds: Duration to step the simulation, in seconds.
+    """
     dt = SimulationManager.get_physics_dt()
     steps = max(1, int(round(seconds / dt)))
     for _ in range(steps):
         await omni.kit.app.get_app().next_update_async()
 
 
-async def reset_timeline(timeline=None, *, steps: int = 2) -> None:
-    """Stop and restart the timeline."""
+async def reset_timeline(timeline: Any = None, *, steps: int = 2) -> None:
+    """Stop and restart the timeline.
+
+    Args:
+        timeline: Timeline interface to reset. Uses the current timeline when ``None``.
+        steps: Number of app updates to wait after restarting.
+    """
     if timeline is None:
         timeline = omni.timeline.get_timeline_interface()
     timeline.stop()
@@ -61,7 +71,7 @@ async def reset_timeline(timeline=None, *, steps: int = 2) -> None:
 class AntConfig:
     """Configuration data for ant robot used in sensor tests."""
 
-    leg_paths: list[str] = field(default_factory=lambda: ["/Ant/Arm_{:02d}/Lower_Arm".format(i + 1) for i in range(4)])
+    leg_paths: list[str] = field(default_factory=lambda: [f"/Ant/Arm_{i + 1:02d}/Lower_Arm" for i in range(4)])
     sphere_path: str = "/Ant/Sphere"
     sensor_offsets: list[np.ndarray] = field(default_factory=lambda: [np.array([[40.0, 0.0, 0.0]]) for _ in range(4)])
     # IMU sensor offsets (at origin for each sensor location)
@@ -74,14 +84,14 @@ class AntConfig:
         default_factory=lambda: [(1, 0, 0, 1), (0, 1, 0, 1), (0, 0, 1, 1), (1, 1, 0, 1)]
     )
     shoulder_joints: list[str] = field(
-        default_factory=lambda: ["/Ant/Arm_{:02d}/Upper_Arm/shoulder_joint".format(i + 1) for i in range(4)]
+        default_factory=lambda: [f"/Ant/Arm_{i + 1:02d}/Upper_Arm/shoulder_joint" for i in range(4)]
     )
     lower_joints: list[str] = field(default_factory=list)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize computed fields after dataclass creation."""
         if not self.lower_joints:
-            self.lower_joints = ["{}/lower_arm_joint".format(path) for path in self.leg_paths]
+            self.lower_joints = [f"{path}/lower_arm_joint" for path in self.leg_paths]
 
 
 async def setup_ant_scene(physics_rate: float = 60.0) -> AntConfig:

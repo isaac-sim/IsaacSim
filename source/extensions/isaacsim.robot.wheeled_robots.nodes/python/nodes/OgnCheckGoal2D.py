@@ -44,14 +44,24 @@ class OgnCheckGoal2D:
 
     @staticmethod
     def init_instance(node: og.Node, graph_instance_id: int) -> None:
-        """Initialize the per-instance state for this node."""
+        """Initialize the per-instance state for this node.
+
+        Args:
+            node: OmniGraph node instance.
+            graph_instance_id: Graph instance identifier.
+        """
         state = OgnCheckGoal2DDatabase.get_internal_state(node, graph_instance_id)
         state.node = node
         state.graph_id = graph_instance_id
 
     @staticmethod
     def release_instance(node: og.Node, graph_instance_id: int) -> None:
-        """Release the per-instance state when the node instance is removed."""
+        """Release the per-instance state when the node instance is removed.
+
+        Args:
+            node: OmniGraph node instance being released.
+            graph_instance_id: Graph instance identifier being released.
+        """
         try:
             state = OgnCheckGoal2DDatabase.get_internal_state(node, graph_instance_id)
         except Exception:
@@ -62,12 +72,23 @@ class OgnCheckGoal2D:
 
     @staticmethod
     def internal_state() -> OgnCheckGoal2DInternalState:
-        """Return a new internal state instance."""
+        """Return a new internal state instance.
+
+        Returns:
+            Per-instance CheckGoal2D state.
+        """
         return OgnCheckGoal2DInternalState()
 
     @staticmethod
     def compute(db: OgnCheckGoal2DDatabase) -> bool:
-        """Compare current position/orientation against the target and output whether the goal is reached."""
+        """Compare current position/orientation against the target and output whether the goal is reached.
+
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            True after goal status outputs are updated.
+        """
         state = db.per_instance_state
 
         # if planner outputs targetChanged = True, new target data will be accessed and stored

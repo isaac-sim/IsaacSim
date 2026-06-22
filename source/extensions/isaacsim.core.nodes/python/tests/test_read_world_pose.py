@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies the ReadWorldPose OmniGraph node outputs the authored world position and orientation for a target prim. Covers graph execution against a transformed USD prim."""
+
 import asyncio
 
 import omni.graph.core as og
@@ -24,8 +26,10 @@ from usdrt import Sdf
 
 
 class TestIsaacReadWorldPose(ogts.OmniGraphTestCase):
+    """Verify ReadWorldPose outputs position and orientation for a transformed prim."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Create a fresh stage and transformed cube for world-pose reads."""
         await omni.usd.get_context().new_stage_async()
         self._stage = omni.usd.get_context().get_stage()
         self._timeline = omni.timeline.get_timeline_interface()
@@ -38,7 +42,8 @@ class TestIsaacReadWorldPose(ogts.OmniGraphTestCase):
         translate_op.Set(Gf.Vec3d(1.0, 2.0, 3.0))
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Reset the stage after the world-pose test."""
         await omni.kit.app.get_app().next_update_async()
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             print("tearDown, assets still loading, waiting to finish...")
@@ -46,7 +51,8 @@ class TestIsaacReadWorldPose(ogts.OmniGraphTestCase):
         await omni.kit.app.get_app().next_update_async()
         return
 
-    async def test_pose_outputs_correct_values(self):
+    async def test_pose_outputs_correct_values(self) -> None:
+        """Verify the node outputs the cube's authored world translation and quaternion."""
         graph_path = "/ActionGraph"
         node_name = "readWorldPoseNode"
 

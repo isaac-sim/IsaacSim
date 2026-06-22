@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for rclpy integration."""
+"""Validate rclpy import, node creation, and publishing in the ROS 2 core test environment."""
 
 import omni.kit.commands
 import omni.kit.test
@@ -24,26 +24,25 @@ from .common import ROS2TestCase
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
 class TestRclpy(ROS2TestCase):
-    """Test suite for rclpy."""
+    """Exercise rclpy through the ROS2TestCase-managed ROS 2 context."""
 
     # Before running each test
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Initialize the ROS 2 test case and advance Kit once before creating rclpy objects."""
         await super().setUp()
         await omni.kit.app.get_app().next_update_async()
 
     # After running each test
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Advance Kit once, then let ROS2TestCase clean up rclpy nodes and context state."""
         await omni.kit.app.get_app().next_update_async()
         await super().tearDown()
 
-    async def test_rclpy(self):
-        """Test rclpy."""
+    async def test_rclpy(self) -> None:
+        """Create a std_msgs/String publisher through rclpy and publish one message."""
         from std_msgs.msg import String
 
         msg = String()
         node = self.create_node("minimal_publisher")
         publisher = self.create_publisher(node, String, "topic", 10)
         publisher.publish(msg)
-        pass

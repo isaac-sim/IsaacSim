@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 service OmniGraph nodes."""
+"""Verifies generic ROS 2 service OmniGraph node behavior and service field type handling."""
 
 import importlib
+from typing import Any
 
 import omni.graph.core as og
 import omni.kit.test
@@ -88,19 +89,32 @@ SERVICE_FIELD_TYPE_CASES = [
 
 
 class TestRos2Service(ROS2TestCase):
-    """Test suite for ros2 service."""
+    """Verify generic ROS 2 service OmniGraph node request handling."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh stage for generic service graph tests."""
         await super().setUp()
         await stage_utils.create_new_stage_async()
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Run shared ROS 2 cleanup after generic service graph tests."""
         await super().tearDown()
 
-    def _create_service_graph(self, graph_path, service_name, package, subfolder, message):
-        """Create a service client/server action graph and return (graph, server_req_node, client_node)."""
+    def _create_service_graph(
+        self, graph_path: Any, service_name: Any, package: Any, subfolder: Any, message: Any
+    ) -> Any:
+        """Create a service client/server action graph.
+
+        Args:
+            graph_path: OmniGraph path to create.
+            service_name: ROS 2 service name.
+            package: Message package name.
+            subfolder: Message package subfolder.
+            message: Service message name.
+
+        Returns:
+            Created graph, server request node, and client node.
+        """
         test_graph, new_nodes, _, _ = og.Controller.edit(
             {"graph_path": graph_path, "evaluator_name": "execution"},
             {
@@ -137,7 +151,7 @@ class TestRos2Service(ROS2TestCase):
         return test_graph, server_req_node, server_res_node, client_node
 
     # ----------------------------------------------------------------------
-    async def test_service(self):
+    async def test_service(self) -> None:
         """Test service."""
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
@@ -173,7 +187,7 @@ class TestRos2Service(ROS2TestCase):
         self._timeline.stop()
 
     # ----------------------------------------------------------------------
-    async def test_service_field_types(self):
+    async def test_service_field_types(self) -> None:
         """Verify writeNodeAttributeFromMessage correctly prefixes attribute paths for all types.
 
         Uses multiple ROS 2 service types whose request fields collectively exercise every

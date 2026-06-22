@@ -40,7 +40,12 @@ class OgnHSBCameraHelperInternalState(BaseWriterNode):
         super().__init__(initialize=False)
 
     def post_attach(self, writer: rep.Writer, render_product: str | list[str]) -> None:
-        """Configure node attributes after attaching a writer to a render product."""
+        """Configure node attributes after attaching a writer to a render product.
+
+        Args:
+            writer: Replicator writer attached to the render product.
+            render_product: Render product path or paths being written.
+        """
         try:
             if self.rv != "":
                 omni.syntheticdata.SyntheticData.Get().set_node_attributes(
@@ -60,12 +65,23 @@ class OgnHSBCameraHelper:
 
     @staticmethod
     def internal_state() -> OgnHSBCameraHelperInternalState:
-        """Return a new internal state instance."""
+        """Return a new internal state instance.
+
+        Returns:
+            Internal state for one OmniGraph node instance.
+        """
         return OgnHSBCameraHelperInternalState()
 
     @staticmethod
     def compute(db: og.Database) -> bool:
-        """Compute the node output by initializing and attaching HSB writers."""
+        """Compute the node output by initializing and attaching HSB writers.
+
+        Args:
+            db: OmniGraph database for this node evaluation.
+
+        Returns:
+            True if the node computed successfully.
+        """
         if db.per_instance_state.initialized is False:
             db.per_instance_state.initialized = True
             stage = omni.usd.get_context().get_stage()
@@ -135,7 +151,12 @@ class OgnHSBCameraHelper:
 
     @staticmethod
     def release_instance(node: object, graph_instance_id: int) -> None:
-        """Release resources when a node instance is destroyed."""
+        """Release resources when a node instance is destroyed.
+
+        Args:
+            node: OmniGraph node whose resources are being released.
+            graph_instance_id: Graph instance identifier for the node.
+        """
         try:
             state = OgnHSBCameraHelperInternalState.per_instance_internal_state(node)
         except Exception:

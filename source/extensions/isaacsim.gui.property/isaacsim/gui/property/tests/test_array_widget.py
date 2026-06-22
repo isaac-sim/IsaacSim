@@ -35,7 +35,16 @@ class TestArrayPropertiesWidgetStringSupport(omni.kit.test.AsyncTestCase):
         self._prim = self._stage.DefinePrim("/World/Test", "Xform")
 
     def _author(self, name: str, type_name: Sdf.ValueTypeName, value: object) -> Usd.Attribute:
-        """Author an attribute on the test prim and set its value."""
+        """Author an attribute on the test prim and set its value.
+
+        Args:
+            name: Attribute name to create.
+            type_name: USD value type to author.
+            value: Initial authored value.
+
+        Returns:
+            Created attribute.
+        """
         attr = self._prim.CreateAttribute(name, type_name)
         attr.Set(value)
         return attr
@@ -63,7 +72,12 @@ class TestArrayPropertiesWidgetStringSupport(omni.kit.test.AsyncTestCase):
         self.assertNotIn("doubles", kept_names, msg="double[] is not yet supported by the array widget")
 
     async def _exercise_model_round_trip(self, attr: Usd.Attribute, initial: list[str]) -> None:
-        """Drive ``_UsdArrayAttributeModel`` through add/set/remove and verify USD reflects each step."""
+        """Drive ``_UsdArrayAttributeModel`` through add/set/remove and verify USD reflects each step.
+
+        Args:
+            attr: Attribute to edit through the model.
+            initial: Initial authored values.
+        """
         model = _UsdArrayAttributeModel(self._stage, [attr.GetPath()], False, {})
         try:
             self.assertEqual(model.get_length(), len(initial))

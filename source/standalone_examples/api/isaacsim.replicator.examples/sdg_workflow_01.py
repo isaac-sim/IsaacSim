@@ -13,13 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Basic SDG workflow with scene creation, asset placement, randomization, and data capture.
+"""Basic SDG workflow with scene creation, asset placement, randomization, and data capture.
+
 Boxes are randomized and simulated with physics before each capture.
 """
 
 import math
 import os
+from typing import Any
 
 from isaacsim import SimulationApp
 
@@ -42,8 +43,8 @@ NUM_PRIM_DISTRACTORS = 5
 ENV_URL = "/Isaac/Environments/Grid/default_environment.usd"
 
 
-def randomize_distractors(prims, rng):
-    # Sample small distractors on a loose ring around the pallet.
+def randomize_distractors(prims: list[Any], rng: Any) -> None:
+    """Randomize small distractors on a loose ring around the pallet."""
     count = len(prims)
     angles = rng.generator.uniform(0.0, 2.0 * math.pi, count)
     radii = rng.generator.uniform(0.9, 1.4, count)
@@ -63,19 +64,22 @@ def randomize_distractors(prims, rng):
     rep.functional.randomizer.display_color(prims, rng=rng)
 
 
-def randomize_dome_light(dome_light, texture_urls, rng):
+def randomize_dome_light(dome_light: Any, texture_urls: list[str], rng: Any) -> None:
+    """Randomize the dome light texture and intensity."""
     texture_url = texture_urls[int(rng.generator.integers(0, len(texture_urls)))]
     intensity = float(rng.generator.uniform(500.0, 900.0))
     rep.functional.modify.attribute(dome_light, "inputs:texture:file", texture_url)
     rep.functional.modify.attribute(dome_light, "inputs:intensity", intensity)
 
 
-def randomize_pallet(pallet, materials, rng):
+def randomize_pallet(pallet: Any, materials: list[Any], rng: Any) -> None:
+    """Randomize the pallet material."""
     material = materials[int(rng.generator.integers(0, len(materials)))]
     rep.functional.modify.material(pallet, material)
 
 
-def randomize_camera(camera, look_at, rng):
+def randomize_camera(camera: Any, look_at: Any, rng: Any) -> None:
+    """Randomize the camera pose while keeping it aimed at the target."""
     theta = float(rng.generator.uniform(0.0, 2.0 * math.pi))
     radius = float(rng.generator.uniform(2.6, 3.4))
     position = (
@@ -92,7 +96,8 @@ def randomize_camera(camera, look_at, rng):
     )
 
 
-def randomize_boxes(boxes, start_height, rng):
+def randomize_boxes(boxes: list[Any], start_height: float, rng: Any) -> None:
+    """Randomize box poses before dropping them onto the pallet."""
     for i, box in enumerate(boxes):
         lateral_range = 0.4
         height = start_height + 0.2 * i
@@ -113,7 +118,8 @@ def randomize_boxes(boxes, start_height, rng):
         )
 
 
-def run_workflow():
+def run_workflow() -> None:
+    """Run the pallet drop SDG workflow."""
     assets_root_path = get_assets_root_path()
     if assets_root_path is None:
         carb.log_error("[SDG] Could not resolve assets root path; aborting.")

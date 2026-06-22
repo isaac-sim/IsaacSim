@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.5.5] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [2.5.4] - 2026-05-10
 ### Fixed
 - Update rotating PhysX LiDAR during physics-only simulation steps and avoid double simulation on the following stage update

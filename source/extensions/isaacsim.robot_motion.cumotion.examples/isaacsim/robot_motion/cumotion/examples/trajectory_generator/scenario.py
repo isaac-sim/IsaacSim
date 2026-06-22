@@ -224,6 +224,9 @@ class UR10TrajectoryGeneratorExample:
 
         Safe to call before a trajectory has been planned or while the
         articulation's physics tensors are not yet valid; both are no-ops.
+
+        Args:
+            dt: Physics time step in seconds.
         """
         if self._trajectory is None or self._articulation is None:
             return
@@ -280,7 +283,13 @@ class UR10TrajectoryGeneratorExample:
     # --------------------------------------------------------------- helpers
 
     def _add_target_frame(self, index: int, position: np.ndarray, orientation: np.ndarray) -> None:
-        """Add a visualization frame prim at ``position`` / ``orientation``."""
+        """Add a visualization frame prim at the target pose.
+
+        Args:
+            index: Target frame index used in the prim path.
+            position: World-space target position.
+            orientation: World-space target orientation.
+        """
         frame_path = f"{_VISUALIZED_FRAMES_PATH}/target_{index}"
         add_reference_to_stage(get_assets_root_path() + "/Isaac/Props/UIElements/frame_prim.usd", frame_path)
         frame = XformPrim(frame_path, reset_xform_op_properties=True)

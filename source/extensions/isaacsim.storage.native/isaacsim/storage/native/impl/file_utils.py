@@ -18,7 +18,7 @@
 import asyncio
 import concurrent.futures
 import os
-from typing import List
+from collections.abc import Callable
 
 import carb
 from pxr import Sdf, UsdUtils
@@ -96,7 +96,7 @@ def is_local_path(path: str) -> bool:
     return True
 
 
-def find_files_recursive(abs_path: list, filter_fn: object = lambda a: True):
+def find_files_recursive(abs_path: list[str], filter_fn: Callable[[str], bool] = lambda a: True) -> list[str]:
     """Recursively list all files under given path(s) that match the filter function.
 
     Args:
@@ -136,12 +136,12 @@ def find_files_recursive(abs_path: list, filter_fn: object = lambda a: True):
 
 
 def find_filtered_files(
-    abs_paths: List[str],
-    max_depth: int = None,
-    filepath_excludes: List[str] = [],
-    filter_patterns: List[str] = [],
+    abs_paths: list[str],
+    max_depth: int | None = None,
+    filepath_excludes: list[str] | None = None,
+    filter_patterns: list[str] | None = None,
     match_all: bool = False,
-) -> set:
+) -> set[str]:
     """Find and filter USD files recursively with optional depth and pattern constraints.
 
     Traverses directory trees starting from the provided absolute paths to discover valid USD files.
@@ -195,6 +195,8 @@ def find_filtered_files(
     import omni.client
     from omni.client import Result
 
+    filepath_excludes = filepath_excludes or []
+    filter_patterns = filter_patterns or []
     usd_files = set()
     # Track paths with their current depth: [(path, depth)]
     remaining_folders = [(path, 0) for path in abs_paths]
@@ -242,7 +244,7 @@ def find_filtered_files(
     return usd_files
 
 
-def get_stage_references(stage_path: str, resolve_relatives: bool = True):
+def get_stage_references(stage_path: str, resolve_relatives: bool = True) -> list[str]:
     """List all references in a USD stage.
 
     Args:
@@ -265,7 +267,7 @@ def get_stage_references(stage_path: str, resolve_relatives: bool = True):
     all_layers, all_assets, unresolved_paths = UsdUtils.ComputeAllDependencies(stage_path)
     paths = []
 
-    def add_path(path):
+    def add_path(path: str) -> str:
         paths.append(path)
         return path
 
@@ -278,7 +280,7 @@ def get_stage_references(stage_path: str, resolve_relatives: bool = True):
     return paths
 
 
-def is_absolute_path(path: str):
+def is_absolute_path(path: str) -> bool:
     """Check if a path is absolute, including Omniverse URLs.
 
     Handles standard filesystem absolute paths as well as omniverse://,
@@ -373,7 +375,7 @@ def is_mdl_file(item: str) -> bool:
     return ext in [".mdl"]
 
 
-async def find_absolute_paths_in_usds(base_path: str):
+async def find_absolute_paths_in_usds(base_path: str) -> dict[str, list[str]]:
     """Check for absolute paths in USD files.
 
     Recursively searches for USD files and identifies any absolute path references
@@ -436,12 +438,12 @@ def is_path_external(path: str, base_path: str) -> bool:
     """
     try:
         return base_path not in path
-    except:
+    except Exception as exc:
         print(path, base_path)
-        raise Exception("Error comparing paths")
+        raise RuntimeError("Error comparing paths") from exc
 
 
-async def find_external_references(base_path: str):
+async def find_external_references(base_path: str) -> dict[str, list[str]]:
     """Check for external references in USD files.
 
     Recursively searches for USD files and identifies references that point
@@ -475,7 +477,7 @@ async def find_external_references(base_path: str):
     return abs_items
 
 
-async def count_asset_references(base_path: str):
+async def count_asset_references(base_path: str) -> dict[str, int]:
     """Get reference counts for all assets in a base path.
 
     Recursively searches for all files and counts how many times each file
@@ -500,8 +502,8 @@ async def count_asset_references(base_path: str):
         >>> ref_counts
         {'/project/assets/unused.usd': 0, '/project/assets/shared.usd': 5}
     """
-    items = {item: 0 for item in await find_files_recursive(base_path)}
-    for item in items.keys():
+    items = dict.fromkeys(await find_files_recursive(base_path), 0)
+    for item in items:
         print(item)
         for i in get_stage_references(item):
             base = os.path.dirname(item)
@@ -509,11 +511,11 @@ async def count_asset_references(base_path: str):
             print(" ", name)
             if name in items:
                 items[name] += 1
-    items = {k: v for k, v in sorted(items.items(), key=lambda item: item[1])}
+    items = dict(sorted(items.items(), key=lambda item: item[1]))
     return items
 
 
-def find_missing_references(base_path: str):
+def find_missing_references(base_path: str) -> None:
     """Check for missing references in USD files.
 
     Recursively searches for USD files and prints any files that have
@@ -531,8 +533,8 @@ def find_missing_references(base_path: str):
         >>> find_missing_references("/project/assets")
         /project/assets/scene.usd ['missing_file.usd']
     """
-    items = {item: 0 for item in find_files_recursive(base_path, lambda item: is_valid_usd_file(item, []))}
-    for item in items.keys():
+    items = dict.fromkeys(find_files_recursive(base_path, lambda item: is_valid_usd_file(item, [])), 0)
+    for item in items:
         all_layers, all_assets, unresolved_paths = UsdUtils.ComputeAllDependencies(item)
         if unresolved_paths:
             print(item, unresolved_paths)
@@ -875,11 +877,11 @@ def resolve_asset_path(original_path: str) -> str | None:
 
 async def find_filtered_files_async(
     root_path: str,
-    filter_patterns: List[str] = [],
+    filter_patterns: list[str] | None = None,
     match_all: bool = False,
-    filepath_excludes: List[str] = [],
-    max_depth: int = None,
-) -> set:
+    filepath_excludes: list[str] | None = None,
+    max_depth: int | None = None,
+) -> set[str]:
     """Asynchronously find and filter USD files recursively with optional depth and pattern constraints.
 
     This is an async wrapper around find_filtered_files that uses a thread pool executor
@@ -895,6 +897,8 @@ async def find_filtered_files_async(
     Returns:
         A set of absolute paths to USD files discovered during traversal.
     """
+    filter_patterns = filter_patterns or []
+    filepath_excludes = filepath_excludes or []
     # Get filtered USD files with depth limit in one pass
     loop = asyncio.get_event_loop()
     with concurrent.futures.ThreadPoolExecutor() as executor:

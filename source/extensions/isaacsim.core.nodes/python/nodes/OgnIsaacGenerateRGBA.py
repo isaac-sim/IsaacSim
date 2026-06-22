@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Generate a constant RGBA image buffer from OmniGraph color and size inputs."""
+
+from typing import Any
+
 import numpy as np
 
 
@@ -20,8 +24,15 @@ class OgnIsaacGenerateRGBA:
     """Test Isaac Sim RGBA Node."""
 
     @staticmethod
-    def compute(db) -> bool:
-        """Simple compute function to generate constant color buffer."""
+    def compute(db: Any) -> bool:
+        """Generate a constant color buffer.
+
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            True after the image buffer is populated.
+        """
         db.outputs.data = np.full((db.inputs.height, db.inputs.width, 4), db.inputs.color * 255, np.uint8)
         db.outputs.width = db.inputs.width
         db.outputs.height = db.inputs.height

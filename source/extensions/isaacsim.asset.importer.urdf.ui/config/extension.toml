@@ -9,7 +9,7 @@
 # its affiliates is strictly prohibited.
 
 [package]
-version = "1.4.2"
+version = "1.4.3"
 category = "Simulation"
 title = "URDF Importer UI Extension"
 description = "UI components for the URDF Importer. Provides the importer window, file picker, and configuration UI for importing URDF (Unified Robot Description Format) files into Omniverse USD scenes."

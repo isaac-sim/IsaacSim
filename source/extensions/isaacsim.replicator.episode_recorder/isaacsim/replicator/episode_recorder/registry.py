@@ -37,9 +37,11 @@ def register_recordable(cls: type[Recordable]) -> type[Recordable]:
     during tests would otherwise raise). A *different* class trying to claim an
     already-used ``TYPE_ID`` raises :class:`RuntimeError`.
 
-    Raises:
-        ValueError: If ``cls.TYPE_ID`` is empty.
-        RuntimeError: If a different class has already claimed the same ``TYPE_ID``.
+    Args:
+        cls: Recordable class to register.
+
+    Returns:
+        register recordable result.
     """
     if not cls.TYPE_ID:
         raise ValueError(f"{cls.__name__} must define a non-empty TYPE_ID to be registered.")
@@ -55,7 +57,14 @@ def register_recordable(cls: type[Recordable]) -> type[Recordable]:
 
 
 def get_registered(type_id: str) -> type[Recordable] | None:
-    """Return the registered class for ``type_id`` or ``None`` if unknown."""
+    """Return the registered class for ``type_id`` or ``None`` if unknown.
+
+    Args:
+        type_id: Type id to use.
+
+    Returns:
+        get registered result.
+    """
     return _REGISTRY.get(type_id)
 
 
@@ -63,12 +72,10 @@ def rehydrate(entry: Mapping[str, Any]) -> Recordable:
     """Reconstruct a :class:`Recordable` from a manifest entry.
 
     Args:
-        entry: Manifest entry dict. Must contain a ``"type"`` key matching a registered
-            ``TYPE_ID``; remaining fields are passed through to
-            :meth:`Recordable.from_manifest`.
+        entry: Manifest entry used to reconstruct the recordable.
 
-    Raises:
-        KeyError: If ``entry`` has no ``"type"`` field, or the type is not registered.
+    Returns:
+        rehydrate result.
     """
     if "type" not in entry:
         raise KeyError("Manifest entry missing required 'type' field.")
@@ -83,10 +90,18 @@ def rehydrate(entry: Mapping[str, Any]) -> Recordable:
 
 
 def registered_types() -> list[str]:
-    """Return the list of currently-registered ``TYPE_ID`` strings (sorted)."""
+    """Return the list of currently-registered ``TYPE_ID`` strings (sorted).
+
+    Returns:
+        registered types result.
+    """
     return sorted(_REGISTRY)
 
 
 def unregister_recordable(type_id: str) -> None:
-    """Remove a registration. Primarily used by tests. Silently ignores unknown ids."""
+    """Remove a registration. Primarily used by tests. Silently ignores unknown ids.
+
+    Args:
+        type_id: Type id to use.
+    """
     _REGISTRY.pop(type_id, None)

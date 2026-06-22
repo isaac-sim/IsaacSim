@@ -89,7 +89,11 @@ _preload_h5py_native_dlls()
 
 
 def require_h5py() -> Any:
-    """Import ``h5py`` with a user-friendly error message if unavailable."""
+    """Import ``h5py`` with a user-friendly error message if unavailable.
+
+    Returns:
+        Imported h5py module.
+    """
     try:
         import h5py
     except ImportError as exc:

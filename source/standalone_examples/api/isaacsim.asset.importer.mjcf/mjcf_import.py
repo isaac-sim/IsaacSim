@@ -25,12 +25,12 @@ simulation_app = SimulationApp({"headless": True})
 import omni.kit.app
 
 
-def _enable_scene_optimizer_extension():
+def _enable_scene_optimizer_extension() -> None:
     ext_manager = omni.kit.app.get_app().get_extension_manager()
     ext_manager.set_extension_enabled_immediate("omni.scene.optimizer.core", True)
 
 
-def _enable_robot_schema_extension():
+def _enable_robot_schema_extension() -> None:
     ext_manager = omni.kit.app.get_app().get_extension_manager()
     ext_manager.set_extension_enabled_immediate("isaacsim.robot.schema", True)
 
@@ -158,7 +158,7 @@ parser.add_argument(
 args, unknown = parser.parse_known_args()
 
 
-def _collect_mjcf_files(path):
+def _collect_mjcf_files(path: str) -> list[str]:
     """Return a list of .xml MJCF file paths from *path*.
 
     If *path* is a single file it is returned as-is.  If it is a directory the
@@ -175,7 +175,9 @@ def _collect_mjcf_files(path):
     return sorted(mjcf_files)
 
 
-def _resolve_usd_paths(source_files, base_usd_path, input_dir=None):
+def _resolve_usd_paths(
+    source_files: list[str], base_usd_path: str | None, input_dir: str | None = None
+) -> dict[str, str | None]:
     """Return a dict mapping each source file to a unique ``usd_path``.
 
     When *input_dir* is given (batch / directory import) the relative directory
@@ -186,7 +188,7 @@ def _resolve_usd_paths(source_files, base_usd_path, input_dir=None):
     value for every file is simply *base_usd_path*.
     """
     if base_usd_path is None or input_dir is None or len(source_files) <= 1:
-        return {f: base_usd_path for f in source_files}
+        return dict.fromkeys(source_files, base_usd_path)
 
     mapping = {}
     for src in source_files:
@@ -195,7 +197,7 @@ def _resolve_usd_paths(source_files, base_usd_path, input_dir=None):
     return mapping
 
 
-def _apply_cli_overrides(import_config, usd_path_override=None):
+def _apply_cli_overrides(import_config: MJCFImporterConfig, usd_path_override: str | None = None) -> None:
     """Apply CLI flag overrides onto *import_config* (mutates in-place)."""
     usd_path = usd_path_override if usd_path_override is not None else args.usd_path
     if usd_path is not None:
@@ -232,7 +234,7 @@ def _apply_cli_overrides(import_config, usd_path_override=None):
         import_config.run_multi_physics_conversion = args.run_multi_physics_conversion
 
 
-def main():
+def main() -> None:
     """Run the MJCF import workflow with CLI configuration."""
     try:
         mjcf_path = None

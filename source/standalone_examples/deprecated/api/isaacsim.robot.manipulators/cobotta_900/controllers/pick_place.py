@@ -26,7 +26,11 @@ class PickPlaceController(manipulators_controllers.PickPlaceController):
     """Coordinate pick-and-place actions for the Cobotta Pro 900 using RMPFlow."""
 
     def __init__(
-        self, name: str, gripper: ParallelGripper, robot_articulation: SingleArticulation, events_dt=None
+        self,
+        name: str,
+        gripper: ParallelGripper,
+        robot_articulation: SingleArticulation,
+        events_dt: list[float] | None = None,
     ) -> None:
         if events_dt is None:
             events_dt = [0.005, 0.002, 1, 0.05, 0.0008, 0.005, 0.0008, 0.1, 0.0008, 0.008]

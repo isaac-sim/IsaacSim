@@ -54,6 +54,11 @@ class MobilityGenRobot(Module, ABC):
 
     The two main abstract methods subclasses must define are the build() and write_action()
     methods.
+
+    Args:
+        prim_path: USD prim path of the robot root.
+        articulation: Articulation wrapper for the robot.
+        front_camera: Front camera module attached to the robot.
     """
 
     physics_dt: float
@@ -305,6 +310,11 @@ class MobilityGenMultiSensorRobot(MobilityGenRobot):
     :class:`~.types.CameraConfig`).  Call :meth:`build_sensor_rig` in ``build()`` to
     instantiate the :class:`~.sensor_rig.MobilityGenSensorRig` and store it as
     ``self.sensor_rig``.
+
+    Args:
+        prim_path: USD prim path of the robot root.
+        articulation: Articulation wrapper for the robot.
+        sensor_rig: Sensor rig module attached to the robot. Defaults to None.
     """
 
     robot_config_path: str = ""
@@ -312,7 +322,11 @@ class MobilityGenMultiSensorRobot(MobilityGenRobot):
     sensor_configs: list[SensorConfig] = []
 
     def __init_subclass__(cls, **kwargs: object) -> None:
-        """Auto-apply robot YAML when a subclass sets robot_config_path."""
+        """Auto-apply robot YAML when a subclass sets robot_config_path.
+
+        Args:
+            **kwargs: Keyword arguments forwarded to ``super().__init_subclass__``.
+        """
         super().__init_subclass__(**kwargs)
         if cls.robot_config_path:
             module_file = sys.modules[cls.__module__].__file__

@@ -62,12 +62,12 @@ from isaacsim.storage.native import get_assets_root_path
 # 2. --------------------------------------------------------------------
 
 
-def step_callback_1(dt, context):
+def step_callback_1(dt: float, context: object) -> None:
     """Physics callback to set joint position target."""
     robot.set_dof_position_targets(-1.5, dof_indices=[dof_index])
 
 
-def step_callback_2(dt, context):
+def step_callback_2(dt: float, context: object) -> None:
     """Physics callback to print joint position and simulation time."""
     step_count = SimulationManager.get_num_physics_steps()
     dof_positions = robot.get_dof_positions(dof_indices=[dof_index])
@@ -79,7 +79,7 @@ def step_callback_2(dt, context):
     print("Time:", SimulationManager.get_simulation_time())
 
 
-def render_callback(event):
+def render_callback(event: RenderingEvent) -> None:
     """Render callback to print render frame."""
     print("Render Frame")
 

@@ -32,6 +32,9 @@ class RTSPStreamingExtension(omni.ext.IExt):
 
         The writer is also appended to ``_default_writers`` so that
         Replicator includes it in telemetry tracking.
+
+        Args:
+            ext_id: Extension identifier supplied by Kit.
         """
         rep.WriterRegistry.register(RTSPStreamWriter)
         if WRITER_NAME not in rep.WriterRegistry._default_writers:

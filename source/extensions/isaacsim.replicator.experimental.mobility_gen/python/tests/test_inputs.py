@@ -13,12 +13,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test KeyboardButton event consumption for tracked keyboard input.
+
+These tests verify that press, repeat, and release events update only the
+configured key, while unrelated keys and CHAR events continue through Kit's
+input pipeline.
+"""
+
 import carb
 import omni.kit.test
 from isaacsim.replicator.experimental.mobility_gen.impl.inputs import KeyboardButton
 
 
 class _FakeKeyboardEvent:
+    """Keyboard event stand-in exposing the fields read by KeyboardButton.
+
+    Args:
+        input_key: Keyboard input key to expose on the fake event.
+        event_type: Keyboard event type to expose on the fake event.
+    """
+
     # Lightweight stand-in for `carb.input.KeyboardEvent`. The real type cannot be
     # constructed from Python, but `KeyboardButton._event_callback` only reads
     # `.input` and `.type`, so duck typing is sufficient here.
@@ -31,19 +45,24 @@ class _FakeKeyboardEvent:
 # buffered keystrokes because `_event_callback` did not return True for events
 # it consumed, so Kit kept propagating them to UI widgets.
 class TestKeyboardButton(omni.kit.test.AsyncTestCase):
-    async def test_event_callback_consumes_press_for_tracked_key(self):
+    """KeyboardButton input-event consumption regression tests."""
+
+    async def test_event_callback_consumes_press_for_tracked_key(self) -> None:
+        """Verify a tracked key press is consumed and marks the button pressed."""
         button = KeyboardButton(carb.input.KeyboardInput.W)
         event = _FakeKeyboardEvent(carb.input.KeyboardInput.W, carb.input.KeyboardEventType.KEY_PRESS)
         self.assertTrue(button._event_callback(event))
         self.assertTrue(button.value)
 
-    async def test_event_callback_consumes_repeat_for_tracked_key(self):
+    async def test_event_callback_consumes_repeat_for_tracked_key(self) -> None:
+        """Verify a tracked key repeat is consumed and keeps the button pressed."""
         button = KeyboardButton(carb.input.KeyboardInput.A)
         event = _FakeKeyboardEvent(carb.input.KeyboardInput.A, carb.input.KeyboardEventType.KEY_REPEAT)
         self.assertTrue(button._event_callback(event))
         self.assertTrue(button.value)
 
-    async def test_event_callback_consumes_release_for_tracked_key(self):
+    async def test_event_callback_consumes_release_for_tracked_key(self) -> None:
+        """Verify a tracked key release is consumed and clears the button value."""
         button = KeyboardButton(carb.input.KeyboardInput.S)
         # Pre-set the button so we can confirm release flips it back to False.
         button._event_callback(_FakeKeyboardEvent(carb.input.KeyboardInput.S, carb.input.KeyboardEventType.KEY_PRESS))
@@ -51,7 +70,8 @@ class TestKeyboardButton(omni.kit.test.AsyncTestCase):
         self.assertTrue(button._event_callback(event))
         self.assertFalse(button.value)
 
-    async def test_event_callback_does_not_consume_other_keys(self):
+    async def test_event_callback_does_not_consume_other_keys(self) -> None:
+        """Verify events for other keys are ignored and not consumed."""
         # A WASD button must let other keys (e.g. Q) fall through so UI widgets
         # can still receive them. Returning True here is the bug.
         button = KeyboardButton(carb.input.KeyboardInput.W)
@@ -59,7 +79,8 @@ class TestKeyboardButton(omni.kit.test.AsyncTestCase):
         self.assertFalse(button._event_callback(event))
         self.assertFalse(button.value)
 
-    async def test_event_callback_does_not_consume_unhandled_event_type(self):
+    async def test_event_callback_does_not_consume_unhandled_event_type(self) -> None:
+        """Verify CHAR events are ignored even for the tracked key."""
         # `CHAR` events are produced for text input; we should never consume those
         # or text fields will be starved.
         button = KeyboardButton(carb.input.KeyboardInput.D)

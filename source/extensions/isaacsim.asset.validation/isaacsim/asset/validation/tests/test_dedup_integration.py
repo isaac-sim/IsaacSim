@@ -32,6 +32,9 @@ def _build_fanout_stage() -> Usd.Stage:
     When the ValidationEngine traverses with variants=True, it visits /Robot/body once
     per variant selection, producing 5 identical _AddError calls without dedup wiring and
     exactly 1 call with dedup wiring in place.
+
+    Returns:
+        The stage configured with the variant fan-out test hierarchy.
     """
     stage = Usd.Stage.CreateInMemory()
 

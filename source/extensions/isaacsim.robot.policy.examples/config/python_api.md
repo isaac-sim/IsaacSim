@@ -1,6 +1,31 @@
 # Public API for module isaacsim.robot.policy.examples:
 
-No public API
+# Public API for module isaacsim.robot.policy.examples.robots:
+
+## Classes
+
+- class AnymalFlatTerrainPolicy(PolicyController)
+  - def __init__(self, prim_path: str, root_path: str | None = None, usd_path: str | None = None, position: list[float] | None = None, orientation: list[float] | None = None, policy_path: str | None = None, env_config_path: str | None = None)
+  - def forward(self, dt: float, command: object)
+  - def initialize(self)
+
+- class FrankaOpenDrawerPolicy(PolicyController)
+  - def __init__(self, prim_path: str, cabinet: Articulation, root_path: str | None = None, usd_path: str | None = None, position: list[float] | None = None, orientation: list[float] | None = None)
+  - def forward(self, dt: float)
+  - def initialize(self)
+
+- class Go2FlatTerrainPolicy(PolicyController)
+  - def __init__(self, prim_path: str, root_path: str | None = None, usd_path: str | None = None, position: list[float] | None = None, orientation: list[float] | None = None, policy_path: str | None = None, env_config_path: str | None = None)
+  - def forward(self, dt: float, command: object)
+
+- class H1FlatTerrainPolicy(PolicyController)
+  - def __init__(self, prim_path: str, root_path: str | None = None, usd_path: str | None = None, position: list[float] | None = None, orientation: list[float] | None = None, policy_path: str | None = None, env_config_path: str | None = None)
+  - def forward(self, dt: float, command: object)
+  - def initialize(self)
+
+- class SpotFlatTerrainPolicy(PolicyController)
+  - def __init__(self, prim_path: str, root_path: str | None = None, usd_path: str | None = None, position: list[float] | None = None, orientation: list[float] | None = None, policy_path: str | None = None, env_config_path: str | None = None)
+  - def forward(self, dt: float, command: object)
 
 # Public API for module isaacsim.robot.policy.examples.interactive.franka:
 
@@ -66,30 +91,3 @@ No public API
   - async def setup_post_clear(self)
   - def on_physics_step(self, dt: float, context: object)
   - def physics_cleanup(self)
-
-# Public API for module isaacsim.robot.policy.examples.robots:
-
-## Classes
-
-- class AnymalFlatTerrainPolicy(PolicyController)
-  - def __init__(self, prim_path: str, root_path: str | None = None, usd_path: str | None = None, position: list[float] | None = None, orientation: list[float] | None = None, policy_path: str | None = None, env_config_path: str | None = None)
-  - def forward(self, dt: float, command: object)
-  - def initialize(self)
-
-- class FrankaOpenDrawerPolicy(PolicyController)
-  - def __init__(self, prim_path: str, cabinet: Articulation, root_path: str | None = None, usd_path: str | None = None, position: list[float] | None = None, orientation: list[float] | None = None)
-  - def forward(self, dt: float)
-  - def initialize(self)
-
-- class Go2FlatTerrainPolicy(PolicyController)
-  - def __init__(self, prim_path: str, root_path: str | None = None, usd_path: str | None = None, position: list[float] | None = None, orientation: list[float] | None = None, policy_path: str | None = None, env_config_path: str | None = None)
-  - def forward(self, dt: float, command: object)
-
-- class H1FlatTerrainPolicy(PolicyController)
-  - def __init__(self, prim_path: str, root_path: str | None = None, usd_path: str | None = None, position: list[float] | None = None, orientation: list[float] | None = None, policy_path: str | None = None, env_config_path: str | None = None)
-  - def forward(self, dt: float, command: object)
-  - def initialize(self)
-
-- class SpotFlatTerrainPolicy(PolicyController)
-  - def __init__(self, prim_path: str, root_path: str | None = None, usd_path: str | None = None, position: list[float] | None = None, orientation: list[float] | None = None, policy_path: str | None = None, env_config_path: str | None = None)
-  - def forward(self, dt: float, command: object)

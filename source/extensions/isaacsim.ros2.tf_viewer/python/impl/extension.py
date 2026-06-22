@@ -32,7 +32,11 @@ class Extension(omni.ext.IExt):
     """Extension for the ROS 2 TF Viewer."""
 
     def on_startup(self, ext_id: str) -> None:
-        """Initialize the extension."""
+        """Initialize the extension.
+
+        Args:
+            ext_id: Extension identifier provided by Kit.
+        """
         self._extension_manager = omni.kit.app.get_app().get_extension_manager()
         ext_path = self._extension_manager.get_extension_path(ext_id)
 

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test deleting a prim while it is in contact with another prim."""
+"""Verifies that a rigid prim can be deleted while another prim is actively contacting it under GPU dynamics and contact sensor reporting."""
 
 from isaacsim import SimulationApp
 
@@ -71,7 +71,7 @@ PhysxSchema.PhysxContactReportAPI.Apply(block_1.prims[0])
 cs = _sensor.acquire_contact_sensor_interface()
 
 
-def block_1_is_contacting_block_0():
+def block_1_is_contacting_block_0() -> bool:
     """Check whether block_1 is in contact with block_0."""
     raw_data = cs.get_rigid_body_raw_data(block_1.prim_paths[0])
     in_contact = False

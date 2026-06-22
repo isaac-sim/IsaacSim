@@ -28,7 +28,7 @@ from typing import Any
 import carb
 import numpy as np
 
-from ..base import ChannelDescriptor, Recordable, ReplayPolicy
+from ..base import ChannelDescriptor, ReplayPolicy
 from ..registry import register_recordable
 from ._pose_base import _PoseBase
 from ._utils import to_numpy
@@ -71,6 +71,11 @@ class CameraRecordable(_PoseBase):
     """Records a camera prim's world pose + intrinsics per frame.
 
     Static fields (``resolution``) are stored in the manifest rather than per-frame.
+
+    Args:
+        group: Recordable HDF5 group path.
+        prim_path: USD prim path bound to the recordable.
+        resolution: Camera resolution override, or None to use the render product resolution.
     """
 
     TYPE_ID = "camera"
@@ -87,6 +92,11 @@ class CameraRecordable(_PoseBase):
         self._stage: Any = None
 
     def describe_channels(self) -> dict[str, ChannelDescriptor]:
+        """Describe the recorded channels.
+
+        Returns:
+            Channel descriptors keyed by channel name.
+        """
         return {
             "position": ChannelDescriptor(shape=(3,), dtype="f4", units="meters", space="world"),
             "orientation": ChannelDescriptor(shape=(4,), dtype="f4", quaternion_order="wxyz", space="world"),
@@ -97,10 +107,16 @@ class CameraRecordable(_PoseBase):
         }
 
     def on_session_open(self, stage: Any) -> None:
+        """Open the recordable session.
+
+        Args:
+            stage: USD stage to use.
+        """
         super().on_session_open(stage)
         self._stage = stage
 
     def on_session_close(self) -> None:
+        """Close the recordable session."""
         super().on_session_close()
         self._stage = None
 
@@ -108,9 +124,23 @@ class CameraRecordable(_PoseBase):
         return self._stage.GetPrimAtPath(self.prim_path)
 
     def pose_paths(self) -> list[str] | None:
+        """Return the pose paths consumed by this recordable.
+
+        Returns:
+            Prim paths for shared pose batching, or None when disabled.
+        """
         return [self.prim_path]
 
     def consume_pose_batch(self, positions: np.ndarray, orientations: np.ndarray) -> dict[str, np.ndarray]:
+        """Consume a batched pose sample.
+
+        Args:
+            positions: Batched positions for this recordable.
+            orientations: Batched orientations for this recordable.
+
+        Returns:
+            Sampled frame data keyed by channel name.
+        """
         intrin = _camera_intrinsics(self._prim())
         return {
             "position": positions[0],
@@ -119,6 +149,11 @@ class CameraRecordable(_PoseBase):
         }
 
     def sample(self) -> dict[str, np.ndarray]:
+        """Sample one frame of data.
+
+        Returns:
+            Sampled frame data keyed by channel name.
+        """
         if self._wrapper is None:
             raise RuntimeError(f"CameraRecordable {self.prim_path}: not bound.")
         pos_wp, quat_wp = self._wrapper.get_world_poses()
@@ -132,6 +167,12 @@ class CameraRecordable(_PoseBase):
         }
 
     def apply(self, frame: Mapping[str, np.ndarray], *, policy: ReplayPolicy) -> None:
+        """Apply one recorded frame.
+
+        Args:
+            frame: Frame data keyed by channel name.
+            policy: Replay policy controlling error handling.
+        """
         if self._wrapper is None:
             if policy.strictness == "strict":
                 raise RuntimeError(f"CameraRecordable {self.prim_path}: not bound.")
@@ -153,6 +194,11 @@ class CameraRecordable(_PoseBase):
             carb.log_warn(f"[CameraRecordable {self.prim_path}] apply failed: {exc}")
 
     def to_manifest(self) -> dict[str, Any]:
+        """Serialize this object to a manifest entry.
+
+        Returns:
+            JSON-friendly manifest entry.
+        """
         entry: dict[str, Any] = {
             "type": self.TYPE_ID,
             "group": self.group,
@@ -164,6 +210,14 @@ class CameraRecordable(_PoseBase):
 
     @classmethod
     def from_manifest(cls, entry: Mapping[str, Any]) -> CameraRecordable:
+        """Create an instance from a manifest entry.
+
+        Args:
+            entry: Manifest entry used to reconstruct the recordable.
+
+        Returns:
+            Recordable reconstructed from the manifest entry.
+        """
         res = entry.get("resolution")
         resolution = tuple(res) if res is not None else None
         return cls(group=entry["group"], prim_path=entry["prim_path"], resolution=resolution)

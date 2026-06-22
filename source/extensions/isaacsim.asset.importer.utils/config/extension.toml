@@ -1,5 +1,5 @@
 [package]
-version = "1.8.0"
+version = "1.8.1"
 category = "Simulation"
 title = "Isaac Sim Asset Importer Utils"
 description = "Shared utility functions for asset importers."

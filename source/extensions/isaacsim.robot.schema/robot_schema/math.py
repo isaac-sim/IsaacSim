@@ -170,7 +170,7 @@ class Transform:
     t: Vec3
     q: Quat
 
-    def __init__(self, t: Vec3 | None = None, q: Quat | None = None):
+    def __init__(self, t: Vec3 | None = None, q: Quat | None = None) -> None:
         self.t = np.zeros(3) if t is None else np.array(t, float)
         self.q = np.array([1, 0, 0, 0], float) if q is None else np.array(q, float)
 

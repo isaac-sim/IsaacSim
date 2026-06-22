@@ -62,7 +62,16 @@ class TestUI(omni.kit.test.AsyncTestCase):
         await update_stage_async()
 
     async def _create_window(self, title: object, width: object, height: object) -> object:
-        """Create a scrolling window for testing."""
+        """Create a scrolling window for testing.
+
+        Args:
+            title: Window title to display.
+            width: Window width in pixels.
+            height: Window height in pixels.
+
+        Returns:
+            The scrolling window created for the test.
+        """
         window = ScrollingWindow(
             title=title,
             width=width,

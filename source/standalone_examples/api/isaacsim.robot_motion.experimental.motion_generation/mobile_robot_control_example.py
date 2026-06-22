@@ -56,7 +56,7 @@ class LowPassFilterController(mg.BaseController):
     """
 
     # <start-low-pass-filter-init-snippet>
-    def __init__(self, robot_joint_space: list[str], alpha: float = 0.1):
+    def __init__(self, robot_joint_space: list[str], alpha: float = 0.1) -> None:
         """Initialize the low-pass filter controller.
 
         Args:
@@ -97,7 +97,7 @@ class LowPassFilterController(mg.BaseController):
 
     # <start-low-pass-filter-reset-snippet>
     def reset(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: object
     ) -> bool:
         """Initialize the controller.
 
@@ -122,7 +122,7 @@ class LowPassFilterController(mg.BaseController):
 
     # <start-low-pass-filter-forward-snippet>
     def forward(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: object
     ) -> Optional[mg.RobotState]:
         """Compute filtered joint state.
 
@@ -187,7 +187,7 @@ class DifferentialDriveController(mg.BaseController):
         robot_joint_space: list[str],
         wheel_radius: float,
         wheel_base: float,
-    ):
+    ) -> None:
         """Initialize the differential drive controller.
 
         Args:
@@ -223,7 +223,7 @@ class DifferentialDriveController(mg.BaseController):
 
     # <start-differential-drive-reset-snippet>
     def reset(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: object
     ) -> bool:
         """Initialize the controller.
 
@@ -235,7 +235,7 @@ class DifferentialDriveController(mg.BaseController):
 
     # <start-differential-drive-forward-snippet>
     def forward(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: object
     ) -> Optional[mg.RobotState]:
         """Compute desired wheel angular velocities from root velocity setpoint.
 
@@ -325,7 +325,7 @@ def get_estimated_state_from_robot(robot: Articulation, robot_joint_space: list[
 
 
 # <start-apply-desired-state-to-robot-snippet>
-def apply_desired_state_to_robot(robot: Articulation, desired_state: mg.RobotState):
+def apply_desired_state_to_robot(robot: Articulation, desired_state: mg.RobotState) -> None:
     """Apply a desired RobotState to the robot.
 
     Args:
@@ -361,7 +361,7 @@ def run_differential_control_loop(
     robot_joint_space: list[str],
     add_noise: bool = False,
     duration_seconds: float = 15.0,
-):
+) -> None:
     """Run a real-time control loop with a differential drive controller.
 
     This function provides root velocity setpoints (with optional noise) to the controller.
@@ -445,7 +445,7 @@ def run_differential_control_loop(
 # <start-sequential-controller-snippet>
 def differential_drive_control(
     robot: Articulation, robot_joint_space: list[str], add_noise: bool = False, use_filter: bool = False
-):
+) -> None:
     """Example: Differential drive controller tracking root velocity.
 
     Args:
@@ -528,7 +528,7 @@ async def setup_scene() -> tuple[Articulation, list[str]]:
     return robot, robot_joint_space
 
 
-def main():
+def main() -> None:
     """Run the complete robot control workflow."""
     # Parse command-line arguments
     parser = argparse.ArgumentParser(

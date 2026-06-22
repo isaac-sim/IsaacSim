@@ -22,7 +22,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
 import warp as wp

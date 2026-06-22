@@ -13,9 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 QoS profile configuration."""
+"""Verify ROS 2 QoS profile node output.
+
+Covers default, custom, preset, reliability, history, durability, depth,
+time-policy, JSON, and publisher-connected cases.
+"""
 
 import json
+from typing import Any
 
 import omni.graph.core as og
 import omni.kit.test
@@ -25,20 +30,28 @@ NODE_TYPE = "isaacsim.ros2.bridge.ROS2QoSProfile"
 
 
 class TestROS2QoSProfile(ROS2TestCase):
-    """Test suite for r o s2 qo s profile."""
+    """Verify ROS 2 QoS profile JSON emitted by the QoSProfile node."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh stage for QoSProfile node evaluation."""
         await super().setUp()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Run shared ROS 2 cleanup after QoSProfile node tests."""
         await super().tearDown()
 
-    async def _create_qos_graph(self, graph_path, set_values=None):
-        """Create a graph with a QoS Profile node and return (graph, qos_node)."""
+    async def _create_qos_graph(self, graph_path: Any, set_values: Any = None) -> Any:
+        """Create a graph with a QoS Profile node.
+
+        Args:
+            graph_path: OmniGraph path to create.
+            set_values: Optional node input values to set.
+
+        Returns:
+            Created graph and QoS node.
+        """
         edit_spec = {
             og.Controller.Keys.CREATE_NODES: [
                 ("QoSProfile", NODE_TYPE),
@@ -53,8 +66,16 @@ class TestROS2QoSProfile(ROS2TestCase):
         )
         return graph, nodes[0]
 
-    async def _evaluate_and_get_output(self, graph, qos_node):
-        """Evaluate the graph and return the parsed QoS profile JSON from the node output."""
+    async def _evaluate_and_get_output(self, graph: Any, qos_node: Any) -> Any:
+        """Evaluate the graph and return the parsed QoS profile JSON from the node output.
+
+        Args:
+            graph: Graph to evaluate.
+            qos_node: QoS node to read.
+
+        Returns:
+            Parsed QoS profile output.
+        """
         await omni.kit.app.get_app().next_update_async()
         await og.Controller.evaluate(graph)
         await omni.kit.app.get_app().next_update_async()
@@ -63,7 +84,7 @@ class TestROS2QoSProfile(ROS2TestCase):
         self.assertTrue(qos_json_str, "QoS profile output should not be empty")
         return json.loads(qos_json_str)
 
-    async def test_default_profile_output(self):
+    async def test_default_profile_output(self) -> None:
         """Verify the node produces valid JSON output with default input values."""
         graph, qos_node = await self._create_qos_graph("/TestGraph")
         profile = await self._evaluate_and_get_output(graph, qos_node)
@@ -77,7 +98,7 @@ class TestROS2QoSProfile(ROS2TestCase):
         self.assertEqual(profile["liveliness"], "systemDefault")
         self.assertAlmostEqual(profile["leaseDuration"], 0.0)
 
-    async def test_output_json_has_all_required_fields(self):
+    async def test_output_json_has_all_required_fields(self) -> None:
         """Verify the output JSON contains all fields expected by downstream nodes."""
         graph, qos_node = await self._create_qos_graph("/TestGraph")
         profile = await self._evaluate_and_get_output(graph, qos_node)
@@ -95,7 +116,7 @@ class TestROS2QoSProfile(ROS2TestCase):
         for field in required_fields:
             self.assertIn(field, profile, f"Output JSON missing required field: {field}")
 
-    async def test_custom_profile_values(self):
+    async def test_custom_profile_values(self) -> None:
         """Verify custom QoS policy inputs are correctly serialized to JSON."""
         graph, qos_node = await self._create_qos_graph(
             "/TestGraph",
@@ -122,7 +143,7 @@ class TestROS2QoSProfile(ROS2TestCase):
         self.assertEqual(profile["liveliness"], "automatic")
         self.assertAlmostEqual(profile["leaseDuration"], 3.0)
 
-    async def test_best_effort_reliability(self):
+    async def test_best_effort_reliability(self) -> None:
         """Verify bestEffort reliability is correctly serialized."""
         graph, qos_node = await self._create_qos_graph(
             "/TestGraph",
@@ -135,7 +156,7 @@ class TestROS2QoSProfile(ROS2TestCase):
 
         self.assertEqual(profile["reliability"], "bestEffort")
 
-    async def test_keep_all_history(self):
+    async def test_keep_all_history(self) -> None:
         """Verify keepAll history policy is correctly serialized."""
         graph, qos_node = await self._create_qos_graph(
             "/TestGraph",
@@ -148,7 +169,7 @@ class TestROS2QoSProfile(ROS2TestCase):
 
         self.assertEqual(profile["history"], "keepAll")
 
-    async def test_transient_local_durability(self):
+    async def test_transient_local_durability(self) -> None:
         """Verify transientLocal durability is correctly serialized."""
         graph, qos_node = await self._create_qos_graph(
             "/TestGraph",
@@ -161,7 +182,7 @@ class TestROS2QoSProfile(ROS2TestCase):
 
         self.assertEqual(profile["durability"], "transientLocal")
 
-    async def test_nonzero_time_policies(self):
+    async def test_nonzero_time_policies(self) -> None:
         """Verify nonzero deadline, lifespan, and leaseDuration values."""
         graph, qos_node = await self._create_qos_graph(
             "/TestGraph",
@@ -178,7 +199,7 @@ class TestROS2QoSProfile(ROS2TestCase):
         self.assertAlmostEqual(profile["lifespan"], 1.0)
         self.assertAlmostEqual(profile["leaseDuration"], 2.5)
 
-    async def test_preset_sensor_data_profile(self):
+    async def test_preset_sensor_data_profile(self) -> None:
         """Verify selecting the Sensor Data preset applies expected policy values."""
         graph, qos_node = await self._create_qos_graph(
             "/TestGraph",
@@ -197,7 +218,7 @@ class TestROS2QoSProfile(ROS2TestCase):
         self.assertAlmostEqual(profile["lifespan"], 0.0)
         self.assertAlmostEqual(profile["leaseDuration"], 0.0)
 
-    async def test_preset_system_default_profile(self):
+    async def test_preset_system_default_profile(self) -> None:
         """Verify selecting the System Default preset applies expected policy values."""
         graph, qos_node = await self._create_qos_graph(
             "/TestGraph",
@@ -216,7 +237,7 @@ class TestROS2QoSProfile(ROS2TestCase):
         self.assertAlmostEqual(profile["lifespan"], 0.0)
         self.assertAlmostEqual(profile["leaseDuration"], 0.0)
 
-    async def test_preset_services_profile_matches_default(self):
+    async def test_preset_services_profile_matches_default(self) -> None:
         """Verify selecting the Services preset applies default policy values."""
         graph, qos_node = await self._create_qos_graph(
             "/TestGraph",
@@ -235,7 +256,7 @@ class TestROS2QoSProfile(ROS2TestCase):
         self.assertAlmostEqual(profile["lifespan"], 0.0)
         self.assertAlmostEqual(profile["leaseDuration"], 0.0)
 
-    async def test_preset_application_does_not_flip_create_profile_to_custom(self):
+    async def test_preset_application_does_not_flip_create_profile_to_custom(self) -> None:
         """Verify preset-driven policy changes keep createProfile at the selected preset."""
         graph, qos_node = await self._create_qos_graph("/TestGraph")
 
@@ -247,7 +268,7 @@ class TestROS2QoSProfile(ROS2TestCase):
 
         self.assertEqual(create_profile_attr.get(), "Sensor Data")
 
-    async def test_output_is_valid_json(self):
+    async def test_output_is_valid_json(self) -> None:
         """Verify the raw output string is valid JSON."""
         graph, qos_node = await self._create_qos_graph("/TestGraph")
         await omni.kit.app.get_app().next_update_async()
@@ -261,14 +282,14 @@ class TestROS2QoSProfile(ROS2TestCase):
         except json.JSONDecodeError:
             self.fail(f"Output is not valid JSON: {qos_json_str}")
 
-    async def test_depth_is_integer_in_json(self):
+    async def test_depth_is_integer_in_json(self) -> None:
         """Verify depth is serialized as an integer, not a float."""
         graph, qos_node = await self._create_qos_graph("/TestGraph")
         profile = await self._evaluate_and_get_output(graph, qos_node)
 
         self.assertIsInstance(profile["depth"], int)
 
-    async def test_connected_to_publisher(self):
+    async def test_connected_to_publisher(self) -> None:
         """Verify the QoS profile node can be connected to a publisher node."""
         graph_path = "/TestGraph"
         graph, nodes, _, _ = og.Controller.edit(

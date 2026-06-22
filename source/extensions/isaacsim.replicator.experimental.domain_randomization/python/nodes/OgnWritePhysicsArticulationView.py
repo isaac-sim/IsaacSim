@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Write randomized values into registered articulation physics views."""
+
+from typing import Any
+
 import carb
 import numpy as np
 import omni.graph.core as og
@@ -25,8 +29,22 @@ from isaacsim.replicator.experimental.domain_randomization import physics_view a
 OPERATION_TYPES = ["direct", "additive", "scaling"]
 
 
-def apply_randomization_operation(view_name, operation, attribute_name, samples, indices, on_reset):
-    """Apply randomization operation for indexed values."""
+def apply_randomization_operation(
+    view_name: Any, operation: Any, attribute_name: Any, samples: Any, indices: Any, on_reset: Any
+) -> Any:
+    """Apply randomization operation for indexed values.
+
+    Args:
+        view_name: Name of the registered articulation view.
+        operation: Operation to apply to the stored reset values.
+        attribute_name: Name of the randomized attribute.
+        samples: Sample values to apply.
+        indices: Indices of the selected articulations.
+        on_reset: Whether to return reset values without applying samples.
+
+    Returns:
+        Values to write for the selected articulation indices.
+    """
     if on_reset:
         return physics._articulation_views_reset_values[view_name][attribute_name][indices]
     if operation == "additive":
@@ -37,8 +55,19 @@ def apply_randomization_operation(view_name, operation, attribute_name, samples,
         return samples
 
 
-def apply_randomization_operation_full_tensor(view_name, operation, attribute_name, samples, indices, on_reset):
-    """Apply randomization operation for full tensor values."""
+def apply_randomization_operation_full_tensor(
+    view_name: Any, operation: Any, attribute_name: Any, samples: Any, indices: Any, on_reset: Any
+) -> None:
+    """Apply randomization operation for full tensor values.
+
+    Args:
+        view_name: Name of the registered articulation view.
+        operation: Operation to apply to the stored reset values.
+        attribute_name: Name of the randomized attribute.
+        samples: Sample values to apply.
+        indices: Indices of the selected articulations.
+        on_reset: Whether to return reset values without applying samples.
+    """
     if on_reset:
         return physics._articulation_views_reset_values[view_name][attribute_name]
     initial_values = np.copy(physics._articulation_views_reset_values[view_name][attribute_name])
@@ -51,8 +80,19 @@ def apply_randomization_operation_full_tensor(view_name, operation, attribute_na
     return initial_values
 
 
-def modify_initial_values(view_name, operation, attribute_name, samples, indices):
-    """Modify initial values based on operation type."""
+def modify_initial_values(view_name: Any, operation: Any, attribute_name: Any, samples: Any, indices: Any) -> Any:
+    """Modify initial values based on operation type.
+
+    Args:
+        view_name: Name of the registered articulation view.
+        operation: Operation to apply to the stored initial values.
+        attribute_name: Name of the randomized attribute.
+        samples: Sample values to store.
+        indices: Indices of the selected articulations.
+
+    Returns:
+        None.
+    """
     if operation == "additive":
         physics._articulation_views_reset_values[view_name][attribute_name][indices] = (
             physics._articulation_views_initial_values[view_name][attribute_name][indices] + samples
@@ -65,8 +105,29 @@ def modify_initial_values(view_name, operation, attribute_name, samples, indices
         physics._articulation_views_reset_values[view_name][attribute_name][indices] = samples
 
 
-def get_bucketed_values(view_name, attribute_name, samples, distribution, dist_param_1, dist_param_2, num_buckets):
-    """Get bucketed values for material properties randomization."""
+def get_bucketed_values(
+    view_name: Any,
+    attribute_name: Any,
+    samples: Any,
+    distribution: Any,
+    dist_param_1: Any,
+    dist_param_2: Any,
+    num_buckets: Any,
+) -> Any:
+    """Quantize material-property samples into distribution-derived buckets.
+
+    Args:
+        view_name: Name of the registered articulation view.
+        attribute_name: Name of the randomized attribute.
+        samples: Material property samples to quantize.
+        distribution: Distribution name used to derive bucket bounds.
+        dist_param_1: First distribution parameter.
+        dist_param_2: Second distribution parameter.
+        num_buckets: Number of buckets to quantize into.
+
+    Returns:
+        Copy of ``samples`` with values snapped to distribution-derived buckets.
+    """
     new_samples = samples.copy()
 
     if distribution == "gaussian":
@@ -90,10 +151,28 @@ def get_bucketed_values(view_name, attribute_name, samples, distribution, dist_p
 
 
 class OgnWritePhysicsArticulationView:
-    """OmniGraph node that writes physics attributes to Articulation views."""
+    """OmniGraph writer for registered ``Articulation`` view attributes."""
 
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
+        """Apply sampled values to selected articulation environments.
+
+        The node expects a registered articulation view name, an attribute from
+        ``ARTICULATION_ATTRIBUTES``, one of ``direct``, ``additive``, or
+        ``scaling`` operations, sampled values, and selected environment
+        indices. Empty indices keep ``execOut`` enabled but perform no write.
+        On reset, the stored reset baseline is updated before values are
+        restored or applied. Tendon attributes are staged together and written
+        as fixed tendon properties when the articulation has fixed tendons.
+        Invalid views, attributes, or operations log an error, disable
+        ``execOut``, and return ``False``.
+
+        Args:
+            db: Database object containing node inputs and outputs.
+
+        Returns:
+            True when values are written, False when inputs are empty or invalid.
+        """
         view_name = db.inputs.prims
         attribute_name = db.inputs.attribute
         operation = db.inputs.operation

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the isaacsim.robot_motion.pink extension startup and core imports."""
+"""Smoke tests that the PINK motion extension loads and that its Pinocchio, Pink, public API, and transform utility imports are available."""
 
 import omni.kit.test
 
@@ -22,9 +22,11 @@ class TestExtension(omni.kit.test.AsyncTestCase):
     """Verify that the PINK extension loads and core dependencies are importable."""
 
     async def setUp(self) -> None:
+        """Prepare the Extension test fixture."""
         super().setUp()
 
     async def tearDown(self) -> None:
+        """Clean up the Extension test fixture."""
         super().tearDown()
 
     async def test_pinocchio_importable(self) -> None:

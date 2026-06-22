@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests pattern matching functionality for articulation views."""
+"""Verifies wildcard and bracket pattern matching used by Newton view path selection. The tests cover simple wildcard, environment-index, and bracket-expanded path patterns."""
 
 import re
 
@@ -23,7 +23,7 @@ import omni.kit.test
 class TestPatternMatching(omni.kit.test.AsyncTestCase):
     """Test pattern matching for articulation views."""
 
-    async def test_wildcard_pattern(self):
+    async def test_wildcard_pattern(self) -> None:
         """Test wildcard pattern conversion to regex."""
         pattern = "Franka_*"
         regex = f"^{pattern.replace('*', '.*')}$"
@@ -37,7 +37,7 @@ class TestPatternMatching(omni.kit.test.AsyncTestCase):
         self.assertFalse(matcher.match("Robot_1"))
         self.assertFalse(matcher.match("Franka"))
 
-    async def test_bracket_pattern(self):
+    async def test_bracket_pattern(self) -> None:
         """Test bracket pattern conversion to regex."""
         pattern = "Franka_[1-2]"
         regex = f"^{pattern.replace('*', '.*')}$"
@@ -50,7 +50,7 @@ class TestPatternMatching(omni.kit.test.AsyncTestCase):
         self.assertFalse(matcher.match("Franka_3"))
         self.assertFalse(matcher.match("Franka_test"))
 
-    async def test_simple_wildcard(self):
+    async def test_simple_wildcard(self) -> None:
         """Test simple wildcard pattern."""
         pattern = "Robot*"
         regex = f"^{pattern.replace('*', '.*')}$"
@@ -63,7 +63,7 @@ class TestPatternMatching(omni.kit.test.AsyncTestCase):
         self.assertTrue(matcher.match("Robot"))
         self.assertFalse(matcher.match("Franka"))
 
-    async def test_env_pattern(self):
+    async def test_env_pattern(self) -> None:
         """Test environment pattern matching."""
         pattern = "env_*"
         regex = f"^{pattern.replace('*', '.*')}$"

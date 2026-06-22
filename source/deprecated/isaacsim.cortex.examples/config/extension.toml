@@ -1,5 +1,5 @@
 [package]
-version = "0.2.3"
+version = "0.2.4"
 category = "Simulation"
 title = "Isaac Cortex Examples"
 description = "Example environments and behavior scripts for the Isaac Cortex decision framework, including Franka block stacking and UR10 bin stacking scenarios."
@@ -84,7 +84,9 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]

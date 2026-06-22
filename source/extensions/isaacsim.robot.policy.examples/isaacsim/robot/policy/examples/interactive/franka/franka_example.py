@@ -41,7 +41,7 @@ class FrankaExample(BaseSample):
     control and provides automatic reset functionality for continuous demonstration.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._world_settings["stage_units_in_meters"] = 1.0
         self._world_settings["physics_dt"] = 1.0 / 200.0
@@ -54,7 +54,7 @@ class FrankaExample(BaseSample):
         self._physics_callback_id = None
         self._time_elapsed = 0.0
 
-    def setup_scene(self):
+    def setup_scene(self) -> None:
         """Set up the scene with robot, cabinet, and environment."""
         # Add ground plane
         add_reference_to_stage(
@@ -79,7 +79,7 @@ class FrankaExample(BaseSample):
         self.franka = FrankaOpenDrawerPolicy(prim_path="/World/franka", cabinet=self.cabinet)
         print("Scene setup complete with Franka robot and cabinet")
 
-    async def setup_post_load(self):
+    async def setup_post_load(self) -> None:
         """Setup physics callback after initial load."""
         self._physics_ready = False
 
@@ -92,13 +92,13 @@ class FrankaExample(BaseSample):
             )
         print("Franka open drawer scene loaded successfully")
 
-    async def setup_pre_reset(self):
+    async def setup_pre_reset(self) -> None:
         """Called before world reset."""
         # Reset physics ready flag before reset
         self._physics_ready = False
         self._time_elapsed = 0.0
 
-    async def setup_post_reset(self):
+    async def setup_post_reset(self) -> None:
         """Called after world reset."""
         # Reset physics ready flag after reset so robot reinitializes on next play
         self._physics_ready = False
@@ -108,7 +108,7 @@ class FrankaExample(BaseSample):
             # Reset previous action for clean state
             self.franka.previous_action = np.zeros(9)
 
-    async def setup_post_clear(self):
+    async def setup_post_clear(self) -> None:
         """Called after clearing the scene."""
         # Deregister physics callback
         if self._physics_callback_id is not None:
@@ -157,7 +157,7 @@ class FrankaExample(BaseSample):
             self.franka.initialize()
             self.franka.post_reset()
 
-    def physics_cleanup(self):
+    def physics_cleanup(self) -> None:
         """Clean up physics resources."""
         # Deregister physics callback
         if self._physics_callback_id is not None:

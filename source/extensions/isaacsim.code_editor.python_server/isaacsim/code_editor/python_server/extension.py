@@ -308,7 +308,14 @@ class Extension(omni.ext.IExt):
     # ------------------------------------------------------------------
 
     def _get_or_create_auth_token(self, settings: object) -> str:
-        """Read the configured auth token or generate one for this settings store."""
+        """Read the configured auth token or generate one for this settings store.
+
+        Args:
+            settings: The Carbonite settings interface used to read and store the token.
+
+        Returns:
+            The configured authentication token, or an empty string when authentication is disabled.
+        """
         if not self._require_auth:
             return ""
         token = settings.get_as_string(f"{_SETTINGS_PREFIX}/auth_token")
@@ -395,7 +402,15 @@ class Extension(omni.ext.IExt):
             self._server = None
 
     def _strip_auth_header(self, source: str) -> tuple[str | None, str]:
-        """Extract the optional raw-source token header from *source*."""
+        """Extract the optional raw-source token header from *source*.
+
+        Args:
+            source: The raw incoming string from the TCP connection.
+
+        Returns:
+            A ``(token, source)`` tuple where *token* is the header token if present,
+            and *source* is the remaining Python source.
+        """
         if not source.startswith(_AUTH_HEADER_PREFIX):
             return None, source
         header, separator, remainder = source.partition("\n")
@@ -431,7 +446,14 @@ class Extension(omni.ext.IExt):
         return source, {}
 
     def _is_authenticated(self, envelope: dict) -> bool:
-        """Return whether the request envelope contains a valid authentication token."""
+        """Return whether the request envelope contains a valid authentication token.
+
+        Args:
+            envelope: The parsed request envelope.
+
+        Returns:
+            True if authentication is disabled or the envelope token is valid; otherwise False.
+        """
         if not self._require_auth:
             return True
         token = envelope.get("auth_token")
@@ -471,7 +493,12 @@ class Extension(omni.ext.IExt):
             self._send_raw_reply(reply, transport)
 
     def _process_code_inner(self, source: str, transport: asyncio.Transport) -> None:
-        """Inner implementation of ``_process_code``, wrapped by a safety-net handler."""
+        """Inner implementation of ``_process_code``, wrapped by a safety-net handler.
+
+        Args:
+            source: The raw incoming string from the TCP connection.
+            transport: The asyncio transport for sending the response.
+        """
         code, envelope = self._parse_envelope(source)
         if not self._is_authenticated(envelope):
             self._send_raw_reply(

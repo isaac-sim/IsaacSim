@@ -23,7 +23,14 @@ import numpy as np
 
 
 def to_numpy(value: Any) -> np.ndarray:
-    """Convert warp / torch arrays (returned by the prim APIs) to a NumPy array."""
+    """Convert warp / torch arrays (returned by the prim APIs) to a NumPy array.
+
+    Args:
+        value: Value to process.
+
+    Returns:
+        Value converted to a NumPy array.
+    """
     if isinstance(value, np.ndarray):
         return value
     if hasattr(value, "numpy"):
@@ -38,13 +45,23 @@ def to_numpy_f32(value: Any) -> np.ndarray:
 
     Combines :func:`to_numpy` with a single dtype cast. For arrays that are already
     ``float32``, the cast is a no-op and no copy is made.
+
+    Args:
+        value: Value to process.
+
+    Returns:
+        Value converted to a float32 NumPy array.
     """
     arr = to_numpy(value)
     return arr.astype(np.float32, copy=False)
 
 
 def get_stage() -> Any:
-    """Return the current USD stage. Raises if no stage is loaded."""
+    """Return the current USD stage. Raises if no stage is loaded.
+
+    Returns:
+        Current USD stage.
+    """
     import omni.usd
 
     stage = omni.usd.get_context().get_stage()
@@ -61,6 +78,12 @@ def is_missing_xform_ops_error(exc: BaseException) -> bool:
     ``reset_xform_op_properties()`` once and retry; we match the error text so both
     the per-recordable :class:`_PoseBase` and the replayer's shared pose batch can
     apply the same recovery path.
+
+    Args:
+        exc: Exception to inspect.
+
+    Returns:
+        True if the exception reports missing xform ops, otherwise False.
     """
     msg = str(exc)
     return "xformOp:" in msg and "reset_xform_op_properties" in msg

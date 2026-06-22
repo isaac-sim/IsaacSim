@@ -13,11 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 simulation control services."""
+"""Validate ROS 2 simulation-control services and actions against an Isaac Sim stage.
+
+The tests cover simulation state, entity queries and mutation, spawning,
+deletion, reset, stepping, world loading, batch spawning, bounds, and
+spawnable discovery through the simulation_interfaces package.
+"""
 
 import asyncio
 import gc
 import time
+from typing import Any
 
 import numpy as np
 import omni.kit.test
@@ -27,11 +33,11 @@ from pxr import Gf, UsdGeom, UsdLux, UsdPhysics
 
 
 class TestSimControlServices(omni.kit.test.AsyncTestCase):
-    """Test suite for sim control services."""
+    """Exercise the simulation-control ROS 2 service and action surface."""
 
     # Before running each test
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh stopped stage, cache the timeline, and initialize rclpy if needed."""
         import rclpy
 
         await stage_utils.create_new_stage_async()
@@ -44,8 +50,8 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
             rclpy.init()
 
     # After running each test
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Wait for pending USD loads, tick Kit once, release the timeline, and force GC."""
         if omni.usd.get_context().get_stage_loading_status()[2] > 0:
             print("tearDown, assets still loading, waiting to finish...")
             await self.simulate_until_condition(
@@ -60,8 +66,19 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
 
         gc.collect()
 
-    async def simulate_until_condition(self, condition_func, max_frames=180, per_frame_callback=None):
-        """Simulate until condition is met or maximum frames reached."""
+    async def simulate_until_condition(
+        self, condition_func: Any, max_frames: Any = 180, per_frame_callback: Any = None
+    ) -> Any:
+        """Tick Kit until a predicate succeeds or a frame limit is reached.
+
+        Args:
+            condition_func: Predicate called after each Kit update.
+            max_frames: Maximum number of frames to simulate.
+            per_frame_callback: Optional callback invoked once per frame.
+
+        Returns:
+            True if ``condition_func`` succeeds before the frame limit, otherwise False.
+        """
         frames_run = 0
         while frames_run < max_frames:
             await omni.kit.app.get_app().next_update_async()
@@ -72,8 +89,12 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
                 return True
         return False
 
-    def create_test_stage(self):
-        """Handle create test stage operation."""
+    def create_test_stage(self) -> Any:
+        """Build a small stage with physics, lighting, dynamic cube, and static cone fixtures.
+
+        Returns:
+            USD stage containing the test fixtures.
+        """
         stage = omni.usd.get_context().get_stage()
 
         # Create World xform
@@ -112,14 +133,23 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
 
         return stage
 
-    async def _call_service_async(self, service_type, service_name, request):
-        """Call ROS2 services asynchronously."""
+    async def _call_service_async(self, service_type: Any, service_name: Any, request: Any) -> Any:
+        """Call a ROS 2 service from a temporary rclpy node without blocking the Kit loop.
+
+        Args:
+            service_type: ROS 2 service type used to create the client.
+            service_name: Name of the service endpoint to call.
+            request: Request object sent to the service.
+
+        Returns:
+            Service response object.
+        """
         import concurrent.futures
 
         import rclpy
         from rclpy.executors import SingleThreadedExecutor
 
-        def call_service():
+        def call_service() -> Any:
             unique_id = f"{int(time.time() * 1000)}"
             node = rclpy.create_node(f"test_client_node_{unique_id}")
             try:
@@ -170,15 +200,24 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
             except Exception as e:
                 self.fail(f"Test execution failed: {e}")
 
-    async def _call_action_async(self, action_type, action_name, goal):
-        """Call ROS2 actions asynchronously."""
+    async def _call_action_async(self, action_type: Any, action_name: Any, goal: Any) -> Any:
+        """Send a ROS 2 action goal from a temporary rclpy node without blocking the Kit loop.
+
+        Args:
+            action_type: ROS 2 action type used to create the client.
+            action_name: Name of the action endpoint to call.
+            goal: Goal object sent to the action server.
+
+        Returns:
+            Action result object.
+        """
         import concurrent.futures
 
         import rclpy
         from rclpy.action import ActionClient
         from rclpy.executors import SingleThreadedExecutor
 
-        def call_action():
+        def call_action() -> Any:
             unique_id = f"{int(time.time() * 1000)}"
             node = rclpy.create_node(f"test_action_client_node_{unique_id}")
             try:
@@ -243,8 +282,8 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
             except Exception as e:
                 self.fail(f"Test execution failed: {e}")
 
-    async def test_get_simulator_features_service(self):
-        """Test get simulator features service."""
+    async def test_get_simulator_features_service(self) -> None:
+        """Verify GetSimulatorFeatures reports the supported service/action feature flags and USD format."""
         from simulation_interfaces.srv import GetSimulatorFeatures
 
         self.create_test_stage()
@@ -268,7 +307,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_get_simulation_state_service(self):
+    async def test_get_simulation_state_service(self) -> None:
         """Test that GetSimulationState service returns correct state when using timeline controls.
 
         This test verifies the service correctly reports simulation state changes made through
@@ -322,7 +361,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_set_simulation_state_service(self):
+    async def test_set_simulation_state_service(self) -> None:
         """Test that SetSimulationState service correctly controls the timeline interface.
 
         This test verifies the service correctly changes timeline state by setting different
@@ -386,7 +425,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_get_entities_service(self):
+    async def test_get_entities_service(self) -> None:
         """Test that GetEntities service returns all entities in the stage.
 
         This test creates a test stage, collects all prim paths using USD traversal,
@@ -449,7 +488,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_get_entity_info_service(self):
+    async def test_get_entity_info_service(self) -> None:
         """Test that GetEntityInfo service returns correct information for an entity.
 
         This test verifies the service can retrieve entity information for different types
@@ -492,7 +531,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_get_entity_state_service(self):
+    async def test_get_entity_state_service(self) -> None:
         """Test that GetEntityState service returns correct state information.
 
         This test uses RigidPrim experimental API to set transform and velocity values,
@@ -591,7 +630,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_get_entities_states_service(self):
+    async def test_get_entities_states_service(self) -> None:
         """Test that GetEntitiesStates service returns correct state information for multiple entities.
 
         This test sets up both cube and cone with specific transforms and velocities,
@@ -716,7 +755,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_set_entity_state_service(self):
+    async def test_set_entity_state_service(self) -> None:
         """Test that SetEntityState service correctly sets entity states.
 
         This test sets entity states for both rigid body and static objects,
@@ -867,10 +906,13 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_spawn_entity_basic_default_position(self):
+    async def test_spawn_entity_basic_default_position(self) -> Any:
         """Test basic entity spawn with default position using USD file.
 
         This test first deletes an existing object, then spawns a robot entity using a USD file at the default position.
+
+        Returns:
+            None.
         """
         # fmt: off
         from simulation_interfaces.msg import Result
@@ -958,7 +1000,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
 
         # Verify orientation is forward/identity
         # Check if quaternions are close or their negation is close (both represent same rotation)
-        def quaternions_almost_equal(q1, q2, delta=0.01):
+        def quaternions_almost_equal(q1: Any, q2: Any, delta: Any = 0.01) -> Any:
             return (
                 abs(q1[0] - q2[0]) < delta
                 and abs(q1[1] - q2[1]) < delta
@@ -977,10 +1019,13 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_spawn_entity_with_position_orientation(self):
+    async def test_spawn_entity_with_position_orientation(self) -> Any:
         """Test spawning entity with specific position and orientation.
 
         This test spawns a robot entity with explicitly set initial pose.
+
+        Returns:
+            None.
         """
         from geometry_msgs.msg import Point, Pose, PoseStamped, Quaternion
 
@@ -1066,7 +1111,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
 
         # Verify orientation (quaternions can be tricky due to equivalent representations and precision)
         # Check if quaternions are close or their negation is close (both represent same rotation)
-        def quaternions_almost_equal(q1, q2, delta=0.01):
+        def quaternions_almost_equal(q1: Any, q2: Any, delta: Any = 0.01) -> Any:
             return (
                 abs(q1[0] - q2[0]) < delta
                 and abs(q1[1] - q2[1]) < delta
@@ -1085,7 +1130,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_spawn_entity_empty_xform(self):
+    async def test_spawn_entity_empty_xform(self) -> None:
         """Test empty Xform creation (no URI provided).
 
         This test creates an empty Xform prim without loading any USD content.
@@ -1119,7 +1164,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_spawn_entity_auto_renaming(self):
+    async def test_spawn_entity_auto_renaming(self) -> None:
         """Test spawning with auto-renaming enabled for duplicate names.
 
         This test spawns two entities with the same name, with auto-renaming enabled
@@ -1172,7 +1217,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_spawn_entity_with_namespace(self):
+    async def test_spawn_entity_with_namespace(self) -> None:
         """Test spawning entity with namespace specified.
 
         This test spawns an entity with a namespace and verifies the isaac:namespace
@@ -1244,7 +1289,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_spawn_entity_error_cases(self):
+    async def test_spawn_entity_error_cases(self) -> None:
         """Test SpawnEntity service error conditions.
 
         This test validates error handling for various invalid spawn scenarios.
@@ -1317,7 +1362,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_delete_entity_service(self):
+    async def test_delete_entity_service(self) -> None:
         """Test that DeleteEntity service correctly removes entities from the stage.
 
         This test spawns entities and then verifies they can be deleted successfully.
@@ -1378,7 +1423,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_reset_simulation_service(self):
+    async def test_reset_simulation_service(self) -> None:
         """Test that ResetSimulation service correctly resets simulation with SCOPE_DEFAULT.
 
         This test verifies the service removes dynamically spawned entities but keeps original stage entities.
@@ -1465,7 +1510,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_step_simulation_service(self):
+    async def test_step_simulation_service(self) -> None:
         """Test that StepSimulation service correctly steps simulation for finite steps.
 
         This test verifies the service can step simulation while paused and return to paused state.
@@ -1573,7 +1618,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_simulate_steps_action(self):
+    async def test_simulate_steps_action(self) -> None:
         """Test that SimulateSteps action correctly steps simulation with feedback.
 
         This test verifies the action can step simulation while providing progress feedback.
@@ -1647,7 +1692,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_load_world_service(self):
+    async def test_load_world_service(self) -> None:
         """Test that LoadWorld service correctly loads USD world files.
 
         This test verifies the service can load valid USD files, handles invalid paths,
@@ -1729,7 +1774,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_get_current_world_service(self):
+    async def test_get_current_world_service(self) -> None:
         """Test that GetCurrentWorld service returns correct world information.
 
         This test verifies the service returns appropriate responses for loaded worlds,
@@ -1779,7 +1824,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_unload_world_service(self):
+    async def test_unload_world_service(self) -> None:
         """Test that UnloadWorld service correctly unloads worlds and creates empty stage.
 
         This test verifies the service can unload a loaded world, creating an anonymous
@@ -1848,7 +1893,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_get_available_worlds_service(self):
+    async def test_get_available_worlds_service(self) -> None:
         """Test that GetAvailableWorlds service discovers and filters world files correctly.
 
         This test verifies basic world discovery, tag filtering with ANY/ALL modes,
@@ -1971,7 +2016,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_spawn_entities_batch_service(self):
+    async def test_spawn_entities_batch_service(self) -> None:
         """Test SpawnEntities batch spawn service.
 
         Verifies that multiple entities can be spawned in a single call, that per-entity
@@ -2074,7 +2119,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_get_entity_bounds_service(self):
+    async def test_get_entity_bounds_service(self) -> None:
         """Test GetEntityBounds service returns correct bounding boxes.
 
         Verifies TYPE_BOX axis-aligned bounds for known geometry (cube and cone),
@@ -2143,7 +2188,7 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_get_spawnables_service(self):
+    async def test_get_spawnables_service(self) -> None:
         """Test GetSpawnables service discovers available USD assets.
 
         Verifies that default sources return spawnables, that each spawnable has

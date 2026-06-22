@@ -79,11 +79,11 @@ class TestDifferentialRobotGraph(MenuUITestCase):
         wheel_distance = ui_test.find(root_widget_path + "/HStack[4]/FloatField[0]")
         wheel_distance.model.set_value("0.118")
 
-        # Find and set joint names, right and left
-        right_joint_name = ui_test.find(root_widget_path + "/VStack[0]/HStack[0]/StringField[0]")
-        right_joint_name.model.set_value("right_wheel_joint")
-        left_joint_name = ui_test.find(root_widget_path + "/VStack[0]/HStack[1]/StringField[0]")
+        # Find and set joint names in Differential Controller output order: left, then right
+        left_joint_name = ui_test.find(root_widget_path + "/VStack[0]/HStack[0]/StringField[0]")
         left_joint_name.model.set_value("left_wheel_joint")
+        right_joint_name = ui_test.find(root_widget_path + "/VStack[0]/HStack[1]/StringField[0]")
+        right_joint_name.model.set_value("right_wheel_joint")
 
         await app_utils.update_app_async()
 
@@ -116,6 +116,56 @@ class TestDifferentialRobotGraph(MenuUITestCase):
         self.assertEqual(
             expected_nodes, node_types, f"Found unexpected node types. Expected: {expected_nodes}, Got: {node_types}"
         )
+
+        array_node_path = graph_test_path + "/ArrayNames"
+        self.assertEqual(
+            og.Controller(og.Controller.attribute(array_node_path + ".inputs:input0")).get(), "left_wheel_joint"
+        )
+        self.assertEqual(
+            og.Controller(og.Controller.attribute(array_node_path + ".inputs:input1")).get(), "right_wheel_joint"
+        )
+
+    async def test_joint_indices_use_left_right_order(self) -> None:
+        """Test generated joint index arrays support index 0 and match Differential Controller output order."""
+        window_name = "Differential Controller"
+        param_window = await self.menu_click_with_retry(
+            "Tools/Robotics/OmniGraph Controllers/Differential Controller", window_name=window_name
+        )
+        self.assertIsNotNone(param_window, "Parameter window not found")
+
+        graph_test_path = "/World/test_graph_indices"
+        root_widget_path = f"{window_name}//Frame/VStack[0]"
+        graph_root_prim = ui_test.find(root_widget_path + "/HStack[1]/StringField[0]")
+        graph_root_prim.model.set_value(graph_test_path)
+
+        robot_prim = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
+        robot_prim.model.set_value(self._robot_path)
+
+        wheel_radius = ui_test.find(root_widget_path + "/HStack[3]/FloatField[0]")
+        wheel_radius.model.set_value("0.0325")
+
+        wheel_distance = ui_test.find(root_widget_path + "/HStack[4]/FloatField[0]")
+        wheel_distance.model.set_value("0.118")
+
+        left_joint_index = ui_test.find(root_widget_path + "/VStack[1]/HStack[0]/IntField[0]")
+        left_joint_index.model.set_value(0)
+        right_joint_index = ui_test.find(root_widget_path + "/VStack[1]/HStack[1]/IntField[0]")
+        right_joint_index.model.set_value(1)
+
+        await app_utils.update_app_async()
+
+        ok_button = ui_test.find(root_widget_path + "/HStack[6]/Button[0]")
+        self.assertIsNotNone(ok_button, "OK button not found")
+        await ok_button.click()
+
+        await app_utils.update_app_async()
+
+        graph = og.get_graph_by_path(graph_test_path)
+        self.assertIsNotNone(graph, "Graph was not created")
+
+        array_node_path = graph_test_path + "/ArrayNames"
+        self.assertEqual(og.Controller(og.Controller.attribute(array_node_path + ".inputs:input0")).get(), 0)
+        self.assertEqual(og.Controller(og.Controller.attribute(array_node_path + ".inputs:input1")).get(), 1)
 
     async def test_add_to_existing_graph(self) -> None:
         """Test adding differential drive nodes to an existing graph."""
@@ -322,16 +372,18 @@ class TestDifferentialRobotGraph(MenuUITestCase):
         robot_param = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
         robot_param.model.set_value(self._robot_path)
 
+        wheel_radius_value = 0.0325
         wheel_radius = ui_test.find(root_widget_path + "/HStack[3]/FloatField[0]")
-        wheel_radius.model.set_value("0.0325")
+        wheel_radius.model.set_value(str(wheel_radius_value))
 
+        wheel_distance_value = 0.118
         wheel_distance = ui_test.find(root_widget_path + "/HStack[4]/FloatField[0]")
-        wheel_distance.model.set_value("0.118")
+        wheel_distance.model.set_value(str(wheel_distance_value))
 
-        right_joint_name = ui_test.find(root_widget_path + "/VStack[0]/HStack[0]/StringField[0]")
-        right_joint_name.model.set_value("right_wheel_joint")
-        left_joint_name = ui_test.find(root_widget_path + "/VStack[0]/HStack[1]/StringField[0]")
+        left_joint_name = ui_test.find(root_widget_path + "/VStack[0]/HStack[0]/StringField[0]")
         left_joint_name.model.set_value("left_wheel_joint")
+        right_joint_name = ui_test.find(root_widget_path + "/VStack[0]/HStack[1]/StringField[0]")
+        right_joint_name.model.set_value("right_wheel_joint")
 
         await app_utils.update_app_async()
 
@@ -352,11 +404,27 @@ class TestDifferentialRobotGraph(MenuUITestCase):
         await app_utils.update_app_async()
 
         app_utils.play()
-        await app_utils.update_app_async(steps=180)
+        await app_utils.update_app_async()
+
+        velocity_command = og.Controller(og.Controller.attribute("outputs:velocityCommand", diff_node)).get()
+        expected_left_velocity = ((2 * linear_velocity) - (angular_velocity * wheel_distance_value)) / (
+            2 * wheel_radius_value
+        )
+        expected_right_velocity = ((2 * linear_velocity) + (angular_velocity * wheel_distance_value)) / (
+            2 * wheel_radius_value
+        )
+        self.assertAlmostEqual(velocity_command[0], expected_left_velocity, delta=1e-6)
+        self.assertAlmostEqual(velocity_command[1], expected_right_velocity, delta=1e-6)
+        self.assertLess(
+            velocity_command[0], velocity_command[1], "Positive angular velocity should command right wheel faster"
+        )
+
+        await app_utils.update_app_async(steps=179)
 
         robot_position = robot.get_world_poses()[0].numpy()[0]
         app_utils.stop()
 
         self.assertAlmostEqual(robot_position[0], 0.06, delta=0.02)
-        self.assertAlmostEqual(robot_position[1], -0.61, delta=0.02)
+        # Positive angular velocity with DifferentialController's left/right output order turns toward +Y.
+        self.assertAlmostEqual(robot_position[1], 0.61, delta=0.02)
         self.assertAlmostEqual(robot_position[2], 0.033, delta=0.02)

@@ -35,6 +35,8 @@
   - def get_contact_force_matrix(self) -> wp.array
   - def get_contact_force_data(self) -> tuple[wp.array, wp.array, wp.array, wp.array, wp.array, wp.array]
   - def get_friction_data(self) -> tuple[wp.array, wp.array, wp.array, wp.array]
+  - def get_raw_contact_data(self) -> tuple[wp.array, wp.array, wp.array, wp.array, wp.array, wp.array, wp.array]
+  - def get_actor_paths_from_ids(self, actor_ids: wp.array) -> list[str]
   - def set_default_state(self, positions: list | np.ndarray | wp.array | None = None, orientations: list | np.ndarray | wp.array | None = None, linear_velocities: list | np.ndarray | wp.array | None = None, angular_velocities: list | np.ndarray | wp.array | None = None)
   - def get_default_state(self) -> tuple[wp.array | None, wp.array | None, wp.array | None, wp.array | None]
   - def reset_to_default_state(self)
@@ -62,30 +64,31 @@
   - def __init__(self)
   - def initialize(self)
   - def shutdown(self)
-  - def register_service(self, service_name, service_type, callback)
-  - def unregister_service(self, service_name, remove_from_dict = True)
-  - def register_action_server(self, action_name, action_type, execute_callback, goal_callback = None, cancel_callback = None)
-  - def unregister_action_server(self, action_name, remove_from_dict = True)
+  - def register_service(self, service_name: str, service_type: object, callback: callable) -> bool
+  - def unregister_service(self, service_name: str, remove_from_dict: bool = True) -> bool
+  - def register_action_server(self, action_name: str, action_type: object, execute_callback: callable, goal_callback: callable = None, cancel_callback: callable = None) -> bool
+  - def unregister_action_server(self, action_name: str, remove_from_dict: bool = True) -> bool
 
 - class SimulationControl
   - def __init__(self)
   - def shutdown(self)
 
 - class Extension(omni.ext.IExt)
-  - def on_startup(self, ext_id)
+  - def on_startup(self, ext_id: str)
   - def on_shutdown(self)
 
 ## Functions
 
-- def get_filtered_entities(usdrt_stage, filter_pattern = None)
-- async def get_entity_state(entity_path)
-- def create_empty_entity_state()
-- async def find_filtered_files_async(root_path: str, filter_patterns: List[str] = [], match_all: bool = False, filepath_excludes: List[str] = [], max_depth: int = None) -> set
-- async def get_assets_root_path_async() -> str
 - def is_local_path(path: str) -> bool
+- def resolve_source_path(src: str, assets_root_path: str | None) -> str
+- def get_filtered_entities(usdrt_stage: object, filter_pattern: str | None = None) -> tuple[list[str], str]
+- async def get_entity_state(entity_path: str) -> tuple[object | None, str, int]
+- def create_empty_entity_state() -> object
+- async def find_filtered_files_async(root_path: str, filter_patterns: list[str] | None = None, match_all: bool = False, filepath_excludes: list[str] | None = None, max_depth: int | None = None) -> set[str]
+- async def get_assets_root_path_async() -> str
 - def is_valid_usd_file(item: str, excludes: list) -> bool
 - async def resolve_asset_path_async(original_path: str) -> str | None
-- def Singleton(class_)
+- def Singleton(class_: type) -> callable
 
 ## Variables
 

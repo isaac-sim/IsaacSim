@@ -35,13 +35,13 @@ args, unknown = parser.parse_known_args()
 class RigidViewExample:
     """Manage rigid body contact data simulation."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.my_world = World(stage_units_in_meters=1.0, backend="numpy")
         self.stage = simulation_app.context.get_stage()
         self.g = 10
         self.count = 3
 
-    def makeEnv(self):
+    def make_env(self) -> None:
         """Create the environment with cubes and contact filters."""
         self.cube_height = 1.0
         self.top_cube_height = self.cube_height + 3.0
@@ -85,9 +85,9 @@ class RigidViewExample:
         self.my_world.scene.add(self._box_view)
         self.my_world.reset(soft=False)
 
-    def play(self):
+    def play(self) -> None:
         """Run the simulation loop and print contact data periodically."""
-        self.makeEnv()
+        self.make_env()
         reset_needed = False
         while simulation_app.is_running():
             if self.my_world.is_stopped() and not reset_needed:

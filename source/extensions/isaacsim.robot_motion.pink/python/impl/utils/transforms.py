@@ -161,7 +161,14 @@ def map_pinocchio_velocity_to_joint_state(
 
 
 def _to_numpy(input_array: list[float] | wp.array | np.ndarray) -> np.ndarray:
-    """Convert input to numpy array."""
+    """Convert input to a numpy array.
+
+    Args:
+        input_array: Array-like input to convert.
+
+    Returns:
+        Numpy array view or copy of the input.
+    """
     if isinstance(input_array, wp.array):
         return input_array.numpy()
     return np.asarray(input_array, dtype=np.float64)

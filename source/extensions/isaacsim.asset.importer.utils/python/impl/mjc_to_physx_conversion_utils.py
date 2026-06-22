@@ -279,7 +279,15 @@ def _group_joints_by_body_pair(stage: Usd.Stage) -> dict[tuple, list[Usd.Prim]]:
 
 
 def _snapshot_ancestor_specifiers(layer: Sdf.Layer, path: Sdf.Path) -> list[tuple[Sdf.Path, Sdf.Specifier, str]]:
-    """Snapshot ``(path, specifier, typeName)`` for each existing ancestor spec of *path*."""
+    """Snapshot ``(path, specifier, typeName)`` for each existing ancestor spec of *path*.
+
+    Args:
+        layer: Layer containing the ancestor prim specs.
+        path: Prim path whose ancestors should be inspected.
+
+    Returns:
+        Existing ancestor prim paths with their original specifier and type name.
+    """
     snapshot: list[tuple[Sdf.Path, Sdf.Specifier, str]] = []
     parent = path.GetParentPath()
     while parent != Sdf.Path.absoluteRootPath and not parent.isEmpty:
@@ -295,6 +303,10 @@ def _restore_ancestor_specifiers(layer: Sdf.Layer, snapshot: list[tuple[Sdf.Path
 
     Prevents ``def Joint`` authoring from silently promoting ``over``
     ancestors to ``def``.
+
+    Args:
+        layer: Layer containing the ancestor prim specs to restore.
+        snapshot: Ancestor specifier/typeName records produced by ``_snapshot_ancestor_specifiers``.
     """
     for path, specifier, type_name in snapshot:
         spec = layer.GetPrimAtPath(path)

@@ -30,7 +30,7 @@ from omni.replicator.core import Writer
 class MyWriter(Writer):
     """Access and print annotator data from attached render products."""
 
-    def __init__(self, camera_params: bool = True, bounding_box_3d: bool = True):
+    def __init__(self, camera_params: bool = True, bounding_box_3d: bool = True) -> None:
         # Organize data from render product perspective (legacy, annotator, renderProduct)
         self.data_structure = "renderProduct"
         self.annotators = []
@@ -40,7 +40,7 @@ class MyWriter(Writer):
             self.annotators.append(rep.annotators.get("bounding_box_3d"))
         self._frame_id = 0
 
-    def write(self, data: dict):
+    def write(self, data: dict) -> None:
         """Print captured annotator data for each frame."""
         print(f"[MyWriter][{self._frame_id}] data:")
         for key, value in data.items():
@@ -52,7 +52,7 @@ class MyWriter(Writer):
 rep.writers.register_writer(MyWriter)
 
 
-def run_example():
+def run_example() -> None:
     """Run SDG with custom writer, pose writer, and annotator data access."""
     # Create a new stage and disable capture on play
     omni.usd.get_context().new_stage()

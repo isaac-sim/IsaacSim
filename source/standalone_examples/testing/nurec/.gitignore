@@ -1,0 +1,6 @@
+# Large NuRec USDs (only the GT frames are committed)
+/assets/endeavor_lr1/particle/
+/assets/endeavor_lr1/volume/
+
+# Render + eval outputs
+/_out/

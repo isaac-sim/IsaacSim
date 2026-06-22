@@ -15,12 +15,48 @@
 
 
 #include <carb/RenderingTypes.h>
+#include <carb/logging/Log.h>
 
 #include <flatbuffers/flatbuffers.h>
 #include <isaacsim/ucx/nodes/UcxPublishImageNodeBase.h>
 
 #include <OgnUCXPublishImageDatabase.h>
 #include <image_generated.h>
+
+namespace
+{
+/**
+ * @brief Build the image data Tensor for the Image FlatBuffer.
+ * @details
+ * Shared by the GPU-direct (empty pixel vector + CUDA device) and CPU (inline pixel vector +
+ * CPU device) paths. Shape is `[height, width, bytes_per_pixel]` where `bpp = dataSize / (H*W)`;
+ * row-major contiguous strides; dtype uint8. Warns if dataSize isn't evenly divisible by H*W
+ * (i.e. a future padded/misaligned upstream would silently shape-truncate otherwise).
+ */
+flatbuffers::Offset<isaac::Tensor> buildImageDataTensor(flatbuffers::FlatBufferBuilder& builder,
+                                                        flatbuffers::Offset<flatbuffers::Vector<uint8_t>> pixel_bytes,
+                                                        const isaac::DLDevice& device,
+                                                        uint32_t height,
+                                                        uint32_t width,
+                                                        size_t dataSize)
+{
+    const int64_t pixelCount = static_cast<int64_t>(height) * static_cast<int64_t>(width);
+    const int64_t bpp = static_cast<int64_t>(dataSize) / pixelCount;
+    if (bpp * pixelCount != static_cast<int64_t>(dataSize))
+    {
+        CARB_LOG_WARN(
+            "dataSize (%zu) is not evenly divisible by height*width (%u*%u); "
+            "Tensor.shape will undercount bytes",
+            dataSize, height, width);
+    }
+    std::vector<int64_t> shape = { static_cast<int64_t>(height), static_cast<int64_t>(width), bpp };
+    auto shape_fb = builder.CreateVector(shape);
+    isaac::DLDataType dtype(isaac::DLDataTypeCode_kDLUInt, 8, 1);
+    std::vector<int64_t> strides = { static_cast<int64_t>(width) * bpp, bpp, 1 };
+    auto strides_fb = builder.CreateVector(strides);
+    return isaac::CreateTensor(builder, pixel_bytes, shape_fb, &dtype, &device, 3, strides_fb);
+}
+} // namespace
 
 /**
  * @class OgnUCXPublishImage
@@ -171,14 +207,10 @@ protected:
 
         // Empty pixel bytes — receiver will substitute the separately received GPU buffer.
         auto pixel_bytes = builder.CreateVector(std::vector<uint8_t>{});
-        std::vector<int64_t> shape = { static_cast<int64_t>(metadata.dataSize) };
-        auto shape_fb = builder.CreateVector(shape);
-        isaac::DLDataType dtype(isaac::DLDataTypeCode_kDLUInt, 8, 1);
         // Mark device as CUDA so downstream consumers treat the tensor as GPU memory.
         isaac::DLDevice device(isaac::DLDeviceType_kDLCUDA, cudaDeviceIndex);
-        std::vector<int64_t> strides = { 1 };
-        auto strides_fb = builder.CreateVector(strides);
-        auto data_tensor = isaac::CreateTensor(builder, pixel_bytes, shape_fb, &dtype, &device, 1, strides_fb);
+        auto data_tensor =
+            buildImageDataTensor(builder, pixel_bytes, device, metadata.height, metadata.width, metadata.dataSize);
 
         isaac::ImageEncoding encoding = isaac::ImageEncoding_CUSTOM;
         {
@@ -220,7 +252,7 @@ protected:
      * @brief Generate message from image metadata and pixel data.
      * @details
      * Serializes image metadata and data as a FlatBuffers Image message.
-     * Pixel data is stored as a Tensor with dtype uint8 and shape [dataSize].
+     * Pixel data is stored as a Tensor with dtype uint8 and shape [height, width, bytes_per_pixel].
      * GPU sources are first copied to CPU memory, then serialized.
      *
      * @param[in] metadata Image metadata (timestamp, dimensions, encoding)
@@ -346,15 +378,11 @@ protected:
         // Build FlatBuffers message
         flatbuffers::FlatBufferBuilder builder;
 
-        // Data Tensor: raw bytes as ubyte, dtype=uint8, shape=[dataSize]
+        // Pixel bytes inline; the Tensor build is shared with the GPU-direct path via
+        // buildImageDataTensor (which sets the [H, W, bpp] shape and warns on misalignment).
         auto pixel_bytes = builder.CreateVector(dest, dataSize);
-        std::vector<int64_t> shape = { static_cast<int64_t>(dataSize) };
-        auto shape_fb = builder.CreateVector(shape);
-        isaac::DLDataType dtype(isaac::DLDataTypeCode_kDLUInt, 8, 1);
         isaac::DLDevice device(isaac::DLDeviceType_kDLCPU, 0);
-        std::vector<int64_t> strides = { 1 };
-        auto strides_fb = builder.CreateVector(strides);
-        auto data_tensor = isaac::CreateTensor(builder, pixel_bytes, shape_fb, &dtype, &device, 1, strides_fb);
+        auto data_tensor = buildImageDataTensor(builder, pixel_bytes, device, metadata.height, metadata.width, dataSize);
 
         // Header
         const int64_t time_ns = static_cast<int64_t>(metadata.timestamp * 1e9);

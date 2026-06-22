@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.0.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.0.1] - 2026-04-08
 ### Fixed
 - Fix class name exposed in __init__.py file

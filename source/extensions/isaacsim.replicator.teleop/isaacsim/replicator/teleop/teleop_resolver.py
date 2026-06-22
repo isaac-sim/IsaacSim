@@ -57,22 +57,41 @@ class TeleopResolutionReport:
 
     @property
     def error_count(self) -> int:
-        """Return the number of errors in the report."""
+        """Return the number of errors in the report.
+
+        Returns:
+            The requested value.
+        """
         return sum(issue.severity == SEVERITY_ERROR for issue in self.issues)
 
     @property
     def warning_count(self) -> int:
-        """Return the number of warnings in the report."""
+        """Return the number of warnings in the report.
+
+        Returns:
+            The requested value.
+        """
         return sum(issue.severity == SEVERITY_WARNING for issue in self.issues)
 
     @property
     def ready(self) -> bool:
-        """Return whether the current stage is ready and no errors remain."""
+        """Return whether the current stage is ready and no errors remain.
+
+        Returns:
+            The requested value.
+        """
         return self.stage_state == STAGE_STATE_READY and self.error_count == 0
 
 
 def resolve_teleop_profile(profile: TeleopProfile) -> TeleopResolutionReport:
-    """Resolve a teleop profile against the current USD stage."""
+    """Resolve a teleop profile against the current USD stage.
+
+    Args:
+        profile: Value for profile.
+
+    Returns:
+        The requested value.
+    """
     usd_context = omni.usd.get_context()
     stage = usd_context.get_stage()
     if stage is None:

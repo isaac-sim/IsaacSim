@@ -11,10 +11,15 @@
 - class BaseWriterNode(BaseResetNode)
   - def __init__(self, initialize: bool = False)
   - def custom_reset(self)
-  - def append_writer(self, writer)
-  - def attach_writers(self, render_product_path)
-  - def attach_writer(self, writer, render_product_path)
-  - def post_attach(self, writer, render_product)
+  - def append_writer(self, writer: rep.Writer)
+  - def attach_writers(self, render_product_path: str | list[str])
+  - def attach_writer(self, writer: rep.Writer, render_product_path: str | list[str])
+  - def post_attach(self, writer: rep.Writer, render_product: str | list[str])
 
 - class WriterRequest
   - def __init__(self, writer: rep.Writer, render_product_path: str | list[str], activate: bool = True)
+
+## Functions
+
+- def register_annotator_from_node_with_telemetry(*args: Any, **kwargs: Any)
+- def register_node_writer_with_telemetry(*args: Any, **kwargs: Any)

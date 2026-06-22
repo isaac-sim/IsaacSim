@@ -553,7 +553,11 @@ class SimulationManager:
 
     @staticmethod
     def _on_stage_opened(event: Any) -> None:
-        """Handle stage opened events to reset simulation state and track asset loading."""
+        """Handle stage opened events to reset simulation state and track asset loading.
+
+        Args:
+            event: Stage opened event payload.
+        """
 
         def _assets_loading(event: Any) -> None:
             SimulationManager._assets_loaded = False
@@ -586,7 +590,11 @@ class SimulationManager:
 
     @staticmethod
     def _on_stage_closed(event: Any) -> None:
-        """Handle stage closed events to reset all simulation resources."""
+        """Handle stage closed events to reset all simulation resources.
+
+        Args:
+            event: Stage closed event payload.
+        """
         SimulationManager._reset(
             reset_assets=True,
             reset_callbacks=True,
@@ -597,7 +605,11 @@ class SimulationManager:
 
     @staticmethod
     def _on_play(event: Any) -> None:
-        """Handle timeline play events to initialize physics simulation."""
+        """Handle timeline play events to initialize physics simulation.
+
+        Args:
+            event: Timeline play event payload.
+        """
         if SimulationManager._carb_settings.get_as_bool(_SETTING_PLAY_SIMULATION):
             # Verify the stage is valid before attempting any physics operations
             # This handles cases where play is triggered on an expired/invalid stage
@@ -627,7 +639,11 @@ class SimulationManager:
 
     @staticmethod
     def _on_stop(event: Any) -> None:
-        """Handle timeline stop events to invalidate physics."""
+        """Handle timeline stop events to invalidate physics.
+
+        Args:
+            event: Timeline stop event payload.
+        """
         SimulationManager.invalidate_physics()
 
     """

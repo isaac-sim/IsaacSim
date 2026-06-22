@@ -47,7 +47,7 @@ class TestMenuAssets(MenuUITestCase):
         self.assertGreater(num_prims, 0, "No prims added to stage.")
         self.assertTrue(sensor_passed, f"{test_path} did not pass, missing prim or wrong prim type")
 
-    async def test_rtx_lidar_menu_items(self):
+    async def test_rtx_lidar_menu_items(self) -> None:
         """Test all RTX Lidar sensor menu items."""
         # Get menu dict at runtime instead of module load time
         window = get_main_window()

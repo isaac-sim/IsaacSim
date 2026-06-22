@@ -43,7 +43,11 @@ FONT_SIZE = 14
 
 
 def get_option_style() -> dict:
-    """Return the omni.ui style dictionary for export option widgets."""
+    """Get the omni.ui style dictionary for export option widgets.
+
+    Returns:
+        Style dictionary for export option widgets.
+    """
     style = {
         "Button::reset": {"background_color": 0x0, "border_radius": 1},
         "Button::reset:disabled": {"background_color": 0x0, "color": 0x0, "border_radius": 1},

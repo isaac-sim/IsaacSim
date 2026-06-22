@@ -173,15 +173,17 @@ public:
         }
 
         // ---------------------------------------------------------------
-        // Spherical-to-Cartesian conversion + timestamp computation
+        // Point cloud extraction + timestamp computation.
+        // SPHERICAL GMOs are converted to Cartesian; CARTESIAN GMOs are
+        // copied directly to avoid a second coordinate transformation.
         // ---------------------------------------------------------------
         {
-            CARB_PROFILE_ZONE(0, "[IsaacSim] Spherical to Cartesian Conversion");
+            CARB_PROFILE_ZONE(0, "[IsaacSim] Extract RTX Sensor Point Cloud");
             auto tasking = carb::getCachedInterface<carb::tasking::ITasking>();
 
-            const float* azData = gmo->elements.x;
-            const float* elData = gmo->elements.y;
-            const float* distData = gmo->elements.z;
+            const float* xData = gmo->elements.x;
+            const float* yData = gmo->elements.y;
+            const float* zData = gmo->elements.z;
             float3* pcOut = state.m_pcBuffer.data();
             constexpr float kDegToRad = static_cast<float>(M_PI) / 180.0f;
             constexpr float kMinDistance = 1e-6f;
@@ -190,20 +192,29 @@ public:
             const int32_t* tsOffsets = gmo->elements.timeOffsetNs;
             const uint64_t tsBaseNs = gmo->timestampNs;
 
+            const bool isSpherical = (gmo->elementsCoordsType == omni::sensors::CoordsType::SPHERICAL);
+
             tasking->parallelFor(size_t(0), numElements,
                                  [=](size_t idx)
                                  {
-                                     const float r = distData[idx];
-                                     if (r < kMinDistance)
+                                     if (isSpherical)
                                      {
-                                         pcOut[idx] = make_float3(0.f, 0.f, 0.f);
+                                         const float r = zData[idx];
+                                         if (r < kMinDistance)
+                                         {
+                                             pcOut[idx] = make_float3(0.f, 0.f, 0.f);
+                                         }
+                                         else
+                                         {
+                                             const float az = xData[idx] * kDegToRad;
+                                             const float el = yData[idx] * kDegToRad;
+                                             const float rxy = r * cosf(el);
+                                             pcOut[idx] = make_float3(rxy * cosf(az), rxy * sinf(az), r * sinf(el));
+                                         }
                                      }
                                      else
                                      {
-                                         const float az = azData[idx] * kDegToRad;
-                                         const float el = elData[idx] * kDegToRad;
-                                         const float rxy = r * cosf(el);
-                                         pcOut[idx] = make_float3(rxy * cosf(az), rxy * sinf(az), r * sinf(el));
+                                         pcOut[idx] = make_float3(xData[idx], yData[idx], zData[idx]);
                                      }
 
                                      tsDst[idx] = tsBaseNs + static_cast<uint64_t>(tsOffsets[idx]);

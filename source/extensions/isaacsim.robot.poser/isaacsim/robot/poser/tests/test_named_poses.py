@@ -482,6 +482,14 @@ class TestColdStartSeedLadder(omni.kit.test.AsyncTestCase):
 
         The screw axis, home pose, and joint type are irrelevant for the
         seed-ladder helper — only ``lower``/``upper`` are read.
+
+        Args:
+            prim_path: Joint prim path to store on the joint.
+            lower: Lower joint limit.
+            upper: Upper joint limit.
+
+        Returns:
+            Minimal joint with the requested limits.
         """
         identity = Transform(t=[0.0, 0.0, 0.0], q=[1.0, 0.0, 0.0, 0.0])
         return Joint(

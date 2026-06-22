@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -190,6 +190,10 @@ jobs:
           if docker info > _build/docker-image-build/docker-info-preflight.log 2>&1; then
             break
           fi
+          if [ "$attempt" -eq 90 ]; then
+            echo "ERROR: Docker daemon did not become available after 180 seconds"
+            exit 1
+          fi
           echo "Waiting for Docker daemon at ${DOCKER_HOST:-default} (${attempt}/90)"
           sleep 2
         done
@@ -272,6 +276,7 @@ jobs:
         # license-acceptance denial, so build with a credential-less docker config.
         DOCKER_CONFIG="$(mktemp -d)"
         export DOCKER_CONFIG
+        trap 'rm -rf "$DOCKER_CONFIG"' EXIT
         ./tools/docker/build_docker.sh --x86_64 --tag "$DOCKER_ISAACSIM_IMAGE"
 
     - name: Remove local Docker image

@@ -11,6 +11,17 @@
   - collision_from_visuals: bool
   - collision_type: str
   - allow_self_collision: bool
+  - robot_type: str
+  - fix_base: bool | None
+  - link_density: float | None
+  - joint_drive_type: str | dict[str, str] | None
+  - joint_target_type: str | dict[str, str] | None
+  - override_gain_type: str | None
+  - override_bias_type: str | None
+  - override_gain_prm: list[float] | None
+  - override_bias_prm: list[float] | None
+  - run_asset_transformer: bool
+  - run_multi_physics_conversion: bool
 
 - class MJCFImporter
   - def __init__(self, config: MJCFImporterConfig | None = None)

@@ -4796,8 +4796,8 @@ class Articulation(XformPrim):
     def _deferred_switch_remotesim() -> bool:
         """Switch to the remotesim engine if it is not the only active engine.
 
-        Called after PhysX query_prim so articulation metadata is already populated
-        before the engine transition.
+        Returns:
+            True if the engine switch succeeds, False otherwise.
         """
         available = SimulationManager.get_available_physics_engines()
         remotesim_entry = next(((name, active) for name, active in available if name == "remotesim"), None)

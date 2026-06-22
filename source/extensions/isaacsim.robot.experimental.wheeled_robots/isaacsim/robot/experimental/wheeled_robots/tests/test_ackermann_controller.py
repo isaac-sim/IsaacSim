@@ -23,17 +23,17 @@ from isaacsim.robot.experimental.wheeled_robots.controllers.ackermann_controller
 class TestAckermannController(omni.kit.test.AsyncTestCase):
     """Tests for AckermannController steering and velocity behavior."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures."""
 
     # ----------------------------------------------------------------------
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Tear down test fixtures."""
 
     # ----------------------------------------------------------------------
 
-    async def test_ackermann_steering_control(self):
+    async def test_ackermann_steering_control(self) -> None:
         """Test steering angle and wheel velocities for constant-radius turns."""
         # First case check that it snaps to correct angle, no steering velocity
 
@@ -43,8 +43,13 @@ class TestAckermannController(omni.kit.test.AsyncTestCase):
         wheel_radius = 0.25
 
         def controller_calcs(
-            wheel_base, track_width, wheel_radius, desired_forward_vel, radius_of_turn, desired_steering_angle
-        ):
+            wheel_base: float,
+            track_width: float,
+            wheel_radius: float,
+            desired_forward_vel: float,
+            radius_of_turn: float,
+            desired_steering_angle: float,
+        ) -> None:
             controller = AckermannController(
                 wheel_base=wheel_base, track_width=track_width, front_wheel_radius=wheel_radius
             )
@@ -106,7 +111,7 @@ class TestAckermannController(omni.kit.test.AsyncTestCase):
             wheel_base, track_width, wheel_radius, desired_forward_vel, radius_of_turn, desired_steering_angle
         )
 
-    async def test_ackermann_steering_velocity_drive_acceleration(self):
+    async def test_ackermann_steering_velocity_drive_acceleration(self) -> None:
         """Test steering velocity and drive acceleration behavior."""
         # First case check that it snaps to correct angle, no steering velocity
 
@@ -115,7 +120,13 @@ class TestAckermannController(omni.kit.test.AsyncTestCase):
         track_width = 1.25
         wheel_radius = 0.25
 
-        def controller_calcs(wheel_base, track_width, wheel_radius, desired_forward_vel, radius_of_turn):
+        def controller_calcs(
+            wheel_base: float,
+            track_width: float,
+            wheel_radius: float,
+            desired_forward_vel: float,
+            radius_of_turn: float,
+        ) -> list[float]:
 
             expected_steering_angle_left = np.arctan(wheel_base / (radius_of_turn - 0.5 * track_width))
             expected_steering_angle_right = np.arctan(wheel_base / (radius_of_turn + 0.5 * track_width))
@@ -304,3 +315,89 @@ class TestAckermannController(omni.kit.test.AsyncTestCase):
                 self.assertAlmostEqual(joint_velocities[1], expected_joint_values[3], delta=0.01)
                 self.assertAlmostEqual(joint_velocities[2], expected_joint_values[4], delta=0.01)
                 self.assertAlmostEqual(joint_velocities[3], expected_joint_values[5], delta=0.01)
+
+    async def test_invert_steering_symmetry(self):
+        """With invert_steering=True, outputs mirror forward steering (rear axle steers)."""
+        wheel_base = 1.65
+        track_width = 1.25
+        wheel_radius = 0.25
+        # Instant command: [steering angle, steering rate, speed, acceleration, dt]
+        command = [0.5, 0.0, 1.5, 0.0, 0.0]
+
+        forward_controller = AckermannController(
+            wheel_base=wheel_base,
+            track_width=track_width,
+            front_wheel_radius=wheel_radius,
+            invert_steering=False,
+        )
+        invert_controller = AckermannController(
+            wheel_base=wheel_base,
+            track_width=track_width,
+            front_wheel_radius=wheel_radius,
+            invert_steering=True,
+        )
+
+        (fwd_left, fwd_right), (fwd_fl, fwd_fr, fwd_bl, fwd_br) = forward_controller.forward(command)
+        (inv_left, inv_right), (inv_fl, inv_fr, inv_bl, inv_br) = invert_controller.forward(command)
+
+        # Rear steering: swap left/right steering angles and flip sign.
+        self.assertAlmostEqual(inv_left, -fwd_right, delta=1e-5)
+        self.assertAlmostEqual(inv_right, -fwd_left, delta=1e-5)
+
+        # Rear steering: steering axle moves to the back, so front/back wheel speeds swap.
+        self.assertAlmostEqual(inv_fl, fwd_bl, delta=1e-5)
+        self.assertAlmostEqual(inv_fr, fwd_br, delta=1e-5)
+        self.assertAlmostEqual(inv_bl, fwd_fl, delta=1e-5)
+        self.assertAlmostEqual(inv_br, fwd_fr, delta=1e-5)
+
+    async def test_invert_steering_with_steering_velocity_and_acceleration(self):
+        """invert_steering symmetry holds while steering angle and speed ramp up."""
+        wheel_base = 1.65
+        track_width = 1.25
+        wheel_radius = 0.25
+
+        desired_forward_vel = -1.1
+        desired_angular_vel = -0.2
+        radius_of_turn = desired_forward_vel / desired_angular_vel
+        desired_steering_angle = np.arctan(wheel_base / radius_of_turn)
+        steering_velocity = 0.05
+        acceleration = -0.02
+        dt = 0.05
+
+        # Same ramp iteration counts as test_ackermann_steering_velocity_drive_acceleration case 1.
+        num_iterations_steering = int(np.abs(desired_steering_angle / (steering_velocity * dt))) - 1
+        num_iterations_acceleration = int(np.abs(desired_forward_vel / (acceleration * dt))) - 1
+        max_iter = max(num_iterations_acceleration, num_iterations_steering)
+
+        command = [desired_steering_angle, steering_velocity, desired_forward_vel, acceleration, dt]
+
+        forward_controller = AckermannController(
+            wheel_base=wheel_base,
+            track_width=track_width,
+            front_wheel_radius=wheel_radius,
+            invert_steering=False,
+        )
+        invert_controller = AckermannController(
+            wheel_base=wheel_base,
+            track_width=track_width,
+            front_wheel_radius=wheel_radius,
+            invert_steering=True,
+        )
+
+        for i in range(max_iter):
+            (fwd_left, fwd_right), (fwd_fl, fwd_fr, fwd_bl, fwd_br) = forward_controller.forward(command)
+            (inv_left, inv_right), (inv_fl, inv_fr, inv_bl, inv_br) = invert_controller.forward(command)
+
+            # Increase our steering angle as we go:
+            command[0] += command[1] * dt
+
+            # Increase our speed as we go:
+            command[2] += command[3] * dt
+
+            # invert_steering symmetry on every step (not only at the final target).
+            self.assertAlmostEqual(inv_left, -fwd_right, delta=1e-5)
+            self.assertAlmostEqual(inv_right, -fwd_left, delta=1e-5)
+            self.assertAlmostEqual(inv_fl, fwd_bl, delta=1e-5)
+            self.assertAlmostEqual(inv_fr, fwd_br, delta=1e-5)
+            self.assertAlmostEqual(inv_bl, fwd_fl, delta=1e-5)
+            self.assertAlmostEqual(inv_br, fwd_fr, delta=1e-5)

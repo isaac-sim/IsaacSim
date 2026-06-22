@@ -140,7 +140,7 @@
   - [property] def paths(self) -> list[str]
   - [property] def prims(self) -> list[Usd.Prim]
   - [property] def valid(self) -> bool
-  - static def ensure_api(prims: list[Usd.Prim], api: type, *args, **kwargs) -> list[type[UsdAPISchemaBase]]
+  - static def ensure_api(prims: list[Usd.Prim], api: type, *args: Any, **kwargs: Any) -> list[type[UsdAPISchemaBase]]
   - static def resolve_paths(paths: str | list[str], raise_on_mixed_paths: bool = True) -> tuple[list[str], list[str]]
 
 - class RigidPrim(XformPrim)
@@ -200,3 +200,7 @@
   - def get_local_scales(self) -> wp.array
   - def reset_xform_op_properties(self)
   - def reset_to_default_state(self)
+
+- class Extension(omni.ext.IExt)
+  - def on_startup(self, ext_id: str)
+  - def on_shutdown(self)

@@ -50,7 +50,14 @@ class _TestRule(DedupMixin, _RecordingBase):
 
 
 def _make_stage_and_prim(prim_path: str = "/World/Cube") -> tuple[Usd.Stage, Usd.Prim]:
-    """Return an in-memory stage and an Xform prim at ``prim_path``."""
+    """Return an in-memory stage and an Xform prim at ``prim_path``.
+
+    Args:
+        prim_path: Path where the Xform prim is defined.
+
+    Returns:
+        The created stage and prim.
+    """
     stage = Usd.Stage.CreateInMemory()
     prim = UsdGeom.Xform.Define(stage, prim_path).GetPrim()
     return stage, prim

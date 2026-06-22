@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.3.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [2.3.0] - 2026-05-15
 ### Changed
 - Refactor About dialog: remove OK button (dismiss via titlebar X), align header rows, simplify plugin list, restyle hover tooltip. Fix clipped OK button and clipboard "Kit SDK Version" separator.

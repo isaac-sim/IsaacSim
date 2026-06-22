@@ -132,7 +132,7 @@ class SceneQuery:
     Initializes the scene query cache and stage handles.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         # to cache the bounding box of collision objects:
         self._bb_cache = bound_utils.create_bbox_cache()
 
@@ -193,9 +193,11 @@ class SceneQuery:
             if isinstance(exclude_prim_paths, str):
                 exclude_prim_paths = [exclude_prim_paths]
 
-        if tracked_api not in set(
-            [TrackableApi.PHYSICS_COLLISION, TrackableApi.PHYSICS_RIGID_BODY, TrackableApi.MOTION_GENERATION_COLLISION]
-        ):
+        if tracked_api not in {
+            TrackableApi.PHYSICS_COLLISION,
+            TrackableApi.PHYSICS_RIGID_BODY,
+            TrackableApi.MOTION_GENERATION_COLLISION,
+        }:
             raise ValueError(f"{str(tracked_api)} is not in the list of supported TrackableApi.")
 
         if isinstance(search_box_origin, wp.array):
@@ -227,8 +229,8 @@ class SceneQuery:
             max_bounds=search_box_maximum,
         )
 
-        def _all_child_prims_of_list_of_prims(prim_paths):
-            all_paths = []
+        def _all_child_prims_of_list_of_prims(prim_paths: list[str]) -> list[object]:
+            all_paths: list[object] = []
             for prim_path in prim_paths:
                 all_paths.extend(
                     [
@@ -248,7 +250,7 @@ class SceneQuery:
         if include_prim_paths is not None:
             all_paths_to_include = _all_child_prims_of_list_of_prims(include_prim_paths)
 
-        def _search_predicate(sdf_path) -> bool:
+        def _search_predicate(sdf_path: object) -> bool:
             # Reject Prototypes:
             prim_path_string = sdf_path.GetString()
             if Usd.Prim.IsPathInPrototype(prim_path_string):

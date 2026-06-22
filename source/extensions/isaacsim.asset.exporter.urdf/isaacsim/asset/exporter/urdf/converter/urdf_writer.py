@@ -77,7 +77,12 @@ def write_urdf(
 
 
 def _write_material(parent: ET.Element, mat: MaterialData) -> None:
-    """Write a global <material> element."""
+    """Write a global <material> element.
+
+    Args:
+        parent: Parent XML element.
+        mat: Matrix to convert or material data to write.
+    """
     mat_elem = ET.SubElement(parent, "material", name=mat.name)
 
     if mat.color_rgba is not None:
@@ -89,7 +94,12 @@ def _write_material(parent: ET.Element, mat: MaterialData) -> None:
 
 
 def _write_link(parent: ET.Element, link: LinkData) -> None:
-    """Write a <link> element with inertial, visual, and collision children."""
+    """Write a <link> element with inertial, visual, and collision children.
+
+    Args:
+        parent: Parent XML element.
+        link: Link data to write.
+    """
     link_elem = ET.SubElement(parent, "link", name=link.name)
 
     if link.inertial:
@@ -103,7 +113,12 @@ def _write_link(parent: ET.Element, link: LinkData) -> None:
 
 
 def _write_inertial(parent: ET.Element, inertial: InertiaData) -> None:
-    """Write an <inertial> element."""
+    """Write an <inertial> element.
+
+    Args:
+        parent: Parent XML element.
+        inertial: Inertial data to write.
+    """
     inertial_elem = ET.SubElement(parent, "inertial")
 
     if not is_origin_identity(inertial.origin_xyz, inertial.origin_rpy):
@@ -124,7 +139,12 @@ def _write_inertial(parent: ET.Element, inertial: InertiaData) -> None:
 
 
 def _write_visual(parent: ET.Element, visual: VisualData) -> None:
-    """Write a <visual> element."""
+    """Write a <visual> element.
+
+    Args:
+        parent: Parent XML element.
+        visual: Visual data to write.
+    """
     attrs = {}
     if visual.name:
         attrs["name"] = visual.name
@@ -142,7 +162,12 @@ def _write_visual(parent: ET.Element, visual: VisualData) -> None:
 
 
 def _write_collision(parent: ET.Element, collision: CollisionData) -> None:
-    """Write a <collision> element."""
+    """Write a <collision> element.
+
+    Args:
+        parent: Parent XML element.
+        collision: Value to use.
+    """
     attrs = {}
     if collision.name:
         attrs["name"] = collision.name
@@ -156,7 +181,12 @@ def _write_collision(parent: ET.Element, collision: CollisionData) -> None:
 
 
 def _write_geometry(parent: ET.Element, geom: GeometryData | None) -> None:
-    """Write a <geometry> element."""
+    """Write a <geometry> element.
+
+    Args:
+        parent: Parent XML element.
+        geom: Geometry data to write.
+    """
     if geom is None:
         return
 
@@ -189,6 +219,10 @@ def _write_source_geometry_breadcrumb(parent_elem: ET.Element, geom: GeometryDat
 
     The importer can parse these ``isaac:source_geometry`` comments to
     reconstruct the original USD primitive type (e.g. Capsule, Cone).
+
+    Args:
+        parent_elem: Parent XML element.
+        geom: Geometry data to write.
     """
     if geom is None or geom.original_type is None:
         return
@@ -209,6 +243,10 @@ def _write_source_joint_breadcrumb(parent_elem: ET.Element, joint: JointData) ->
     The importer can parse these ``isaac:source_joint`` comments to
     reconstruct multi-DOF USD joint types (SphericalJoint, D6Joint)
     from their chained single-DOF URDF representation.
+
+    Args:
+        parent_elem: Parent XML element.
+        joint: Joint data or USD physics joint to read.
     """
     if joint.original_usd_type is None:
         return
@@ -222,7 +260,12 @@ def _write_source_joint_breadcrumb(parent_elem: ET.Element, joint: JointData) ->
 
 
 def _write_joint(parent: ET.Element, joint: JointData) -> None:
-    """Write a <joint> element."""
+    """Write a <joint> element.
+
+    Args:
+        parent: Parent XML element.
+        joint: Joint data or USD physics joint to read.
+    """
     joint_elem = ET.SubElement(parent, "joint", name=joint.name, type=joint.joint_type)
 
     if not is_origin_identity(joint.origin_xyz, joint.origin_rpy):
@@ -307,6 +350,10 @@ def _write_source_drive_breadcrumb(parent_elem: ET.Element, joint: JointData) ->
 
     The importer can parse these ``isaac:source_drive`` comments to
     restore actuation parameters that have no URDF equivalent.
+
+    Args:
+        parent_elem: Parent XML element.
+        joint: Joint data or USD physics joint to read.
     """
     if joint.source_drive is None:
         return
@@ -321,7 +368,13 @@ def _write_origin(
     xyz: tuple[float, float, float],
     rpy: tuple[float, float, float],
 ) -> None:
-    """Write an <origin> element."""
+    """Write an <origin> element.
+
+    Args:
+        parent: Parent XML element.
+        xyz: Translation values.
+        rpy: Roll-pitch-yaw rotation values.
+    """
     origin_attrs = {}
     origin_attrs["xyz"] = " ".join(_fmt(v) for v in xyz)
     origin_attrs["rpy"] = " ".join(_fmt(v) for v in rpy)
@@ -336,6 +389,10 @@ def _write_loop_joint(parent: ET.Element, lj: LoopJointData) -> None:
         <link1 link="..." xyz="..." rpy="..."/>
         <link2 link="..." xyz="..." rpy="..."/>
       </loop_joint>
+
+    Args:
+        parent: Parent XML element.
+        lj: Loop joint data to write.
     """
     lj_elem = ET.SubElement(parent, "loop_joint", name=lj.name, type=lj.joint_type)
 
@@ -351,7 +408,14 @@ def _write_loop_joint(parent: ET.Element, lj: LoopJointData) -> None:
 
 
 def _fmt(value: float) -> str:
-    """Format a float for URDF output, trimming trailing zeros."""
+    """Format a float for URDF output, trimming trailing zeros.
+
+    Args:
+        value: Value to format.
+
+    Returns:
+        Formatted value string.
+    """
     if value is None:
         return "0"
     if abs(value) < 1e-10:

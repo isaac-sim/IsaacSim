@@ -53,11 +53,11 @@ pyproject.keywords = ["nvidia", "omniverse", "isaacsim", "kernel"]
 pyproject.dependencies.all = [
     # archives (omni.kit.pip_archive)
     # 1.
-    "aiohttp==3.12.14",
+    "aiohttp==3.13.4",
     # 2.
     "pycares==5.0.1",
     "aiodns==3.1.1",
-    "Pillow==12.1.1",
+    "Pillow==12.2.0",
     "toml==0.10.2",
     "numpy==2.3.1",
     "click==8.1.7",
@@ -75,7 +75,7 @@ pyproject.dependencies.all = [
     "uvicorn==0.29.0",
     "httptools==0.6.1",
     "asteval==1.0.6",
-    "python-multipart==0.0.22",
+    "python-multipart==0.0.26",
     "wrapt==1.16.0",
     "aioitertools==0.11.0",
     "coverage==7.4.4",
@@ -291,7 +291,6 @@ pyproject.dependencies.all = [
     "opencv-python-headless==4.13.0.90",
     "trimesh==4.11.1",
     "rtree==1.4.1",
-    "pynvvideocodec==2.1.0",
     # archives (omni.pip.cloud)
     "aioboto3==15.5.0",
     "boto3==1.40.61",
@@ -314,7 +313,7 @@ pyproject.dependencies.all = [
     # archives (isaacsim.pip.newton)
     "mujoco==3.8.0",
     "mujoco-warp==3.8.0.3",
-    "newton[sim]==1.2.0",
+    "newton[sim]==1.2.1",
     "newton-actuators==0.1.0",
     "newton-usd-schemas==0.2.0",
     "mujoco-usd-converter==0.2.0",
@@ -329,7 +328,7 @@ pyproject.dependencies.all = [
     "tinyobjloader==2.0.0rc13",
     "coacd==1.0.7",
     # archives (isaacsim.asset.importer.urdf)
-    "urdf-usd-converter==0.1.2",
+    "urdf-usd-converter==0.1.3",
     "pycollada==0.9.3",
 ]
 pyproject.dependencies.linux-x86_64 = [
@@ -489,6 +488,7 @@ inventory.includes.all = [
     "exts/isaacsim.replicator.mobility_gen",
     "exts/isaacsim.replicator.mobility_gen.examples",
     "exts/isaacsim.replicator.mobility_gen.ui",
+    "exts/isaacsim.replicator.nurec_utils",
     "exts/isaacsim.replicator.synthetic_recorder",
     "exts/isaacsim.replicator.writers",
 ]

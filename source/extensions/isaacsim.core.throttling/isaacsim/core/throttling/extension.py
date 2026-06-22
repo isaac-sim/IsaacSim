@@ -39,7 +39,8 @@ class Extension(omni.ext.IExt):
     The extension listens for timeline play, stop, and pause events. During playback it hides viewport gizmos,
     disables eco mode, optionally puts the main Kit loop in manual mode, and defers disabling async rendering
     until after the play callback returns. When playback stops or pauses, it restores editing-oriented settings
-    and re-enables async rendering after a short frame delay unless Replicator is still capturing.
+    and re-enables async rendering after a short frame delay unless Replicator still owns the setting (a capture
+    pipeline is attached).
     """
 
     def on_startup(self, ext_id: str) -> None:
@@ -113,7 +114,11 @@ class Extension(omni.ext.IExt):
                 pass
 
     def _set_async_rendering(self, enabled: bool) -> None:
-        """Set both async rendering settings to the same state."""
+        """Set both async rendering settings to the same state.
+
+        Args:
+            enabled: Whether async rendering should be enabled.
+        """
         _settings = carb.settings.get_settings()
         _settings.set(ASYNC_RENDERING_SETTING, enabled)
         _settings.set(ASYNC_RENDERING_LOW_LATENCY_SETTING, enabled)
@@ -122,7 +127,8 @@ class Extension(omni.ext.IExt):
         """Track update frames before async rendering is re-enabled.
 
         Re-enabling waits for the configured frame delay and only occurs while the timeline remains stopped or
-        paused. Replicator capture state is checked at the end of the delay so writer frames are not skipped.
+        paused. Replicator ownership is checked at the end of the delay so async rendering is left untouched while a
+        capture pipeline is attached.
 
         Args:
             event: Kit update event.
@@ -137,7 +143,7 @@ class Extension(omni.ext.IExt):
             if not timeline.is_playing():
                 # toggle async rendering
                 _settings = carb.settings.get_settings()
-                if _settings.get(ASYNC_TOGGLE_SETTING) and not self._is_replicator_capturing():
+                if _settings.get(ASYNC_TOGGLE_SETTING) and not self._is_replicator_managing_async_rendering():
                     self._set_async_rendering(True)
 
             self._stop_frame_counting()
@@ -161,31 +167,39 @@ class Extension(omni.ext.IExt):
         self._frame_count = 0
         self._frame_update_subscription = None
 
-    def _is_replicator_capturing(self) -> bool:
-        """Return whether Replicator is active with attached annotators.
+    def _is_replicator_managing_async_rendering(self) -> bool:
+        """Return whether Replicator currently owns the async rendering setting.
 
-        Replicator disables async rendering for synchronous captures. If the timeline is paused while Replicator stays
-        started, re-enabling async rendering here can cause writer frames to be skipped.
+        Replicator drives ``/app/asyncRendering`` for the duration of a capture session: it disables it for
+        synchronous captures and restores it on a delayed timer that also clears a stale asset-loading flag to work
+        around a Kit issue where toggling async rendering can emit an ``ASSETS_LOADING`` event with no matching
+        ``ASSETS_LOADED`` (NVBug-6169678). A configured capture pipeline (one or more attached annotators) means
+        Replicator owns the setting even while the orchestrator is briefly ``STOPPED`` between steps, so the
+        throttling extension must not toggle async rendering during that window or it re-introduces the one-sided
+        ``ASSETS_LOADING`` event and the subsequent 30s asset-loading stall on the next Replicator step.
 
         Returns:
-            True if Replicator is started and has annotators attached; otherwise False.
+            True if a Replicator capture pipeline is configured or actively running; otherwise False.
         """
         rep = sys.modules.get("omni.replicator.core")
         if rep is None:
             return False
 
         try:
-            status = rep.orchestrator.get_status()
-            inactive_statuses = (rep.orchestrator.Status.STOPPED, rep.orchestrator.Status.STOPPING)
             annotator_registry = getattr(rep, "AnnotatorRegistry", None)
             if annotator_registry is None:
                 annotators_module = sys.modules.get("omni.replicator.core.scripts.annotators")
                 annotator_registry = getattr(annotators_module, "AnnotatorRegistry", None)
-            return (
-                status not in inactive_statuses
-                and annotator_registry is not None
-                and annotator_registry.has_attached_annotators()
-            )
+            # Attached annotators mean a capture pipeline is set up and Replicator owns async rendering, including
+            # the stopped window between steps. Defer to Replicator regardless of the orchestrator run status.
+            if annotator_registry is not None and annotator_registry.has_attached_annotators():
+                return True
+
+            # Fall back to run status so an actively running orchestrator still defers throttling even when the
+            # annotator registry cannot be queried.
+            status = rep.orchestrator.get_status()
+            inactive_statuses = (rep.orchestrator.Status.STOPPED, rep.orchestrator.Status.STOPPING)
+            return status not in inactive_statuses
         except Exception as exc:
             if not self._replicator_capture_warning_logged:
                 carb.log_warn(f"Unable to query Replicator capture status for async rendering throttling: {exc}")
@@ -293,5 +307,9 @@ class Extension(omni.ext.IExt):
 
 
 def get_instance() -> Extension | None:
-    """Return the active throttling extension instance, if the extension is loaded."""
+    """Return the active throttling extension instance, if the extension is loaded.
+
+    Returns:
+        The active extension instance, or None if it is not loaded.
+    """
     return _extension_instance

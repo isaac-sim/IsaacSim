@@ -20,6 +20,7 @@ import json
 import os
 import socket
 import sys
+from typing import Any
 
 SOCKET_HOST = "127.0.0.1"
 SOCKET_PORT = 8227
@@ -28,17 +29,17 @@ PACKAGES_PATH = []
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # add packages to sys.path
-with open(os.path.join(SCRIPT_DIR, "packages.txt"), "r") as f:
+with open(os.path.join(SCRIPT_DIR, "packages.txt")) as f:
     for p in f.readlines():
         p = p.strip()
         if p:
             PACKAGES_PATH.append(p)
             if p not in sys.path:
-                print("Adding package to sys.path: {}".format(p))
+                print(f"Adding package to sys.path: {p}")
                 sys.path.append(p)
 
 # read authentication token from file
-with open(os.path.join(SCRIPT_DIR, "token.txt"), "r") as f:
+with open(os.path.join(SCRIPT_DIR, "token.txt")) as f:
     SOCKET_TOKEN = f.read().strip()
 
 
@@ -46,7 +47,7 @@ from ipykernel.kernelapp import IPKernelApp
 from ipykernel.kernelbase import Kernel
 
 
-async def _send_and_recv(message):
+async def _send_and_recv(message: Any) -> Any:
     reader, writer = await asyncio.open_connection(host=SOCKET_HOST, port=SOCKET_PORT, family=socket.AF_INET)
     writer.write((SOCKET_TOKEN + message).encode())
     await writer.drain()
@@ -56,7 +57,7 @@ async def _send_and_recv(message):
     return data.decode()
 
 
-def _get_line_column(code, cursor_pos):
+def _get_line_column(code: Any, cursor_pos: Any) -> Any:
     line = code.count("\n", 0, cursor_pos) + 1
     last_newline_pos = code.rfind("\n", 0, cursor_pos)
     column = cursor_pos - last_newline_pos - 1
@@ -87,8 +88,21 @@ class EmbeddedKernel(Kernel):
         }
     ]
 
-    async def do_execute(self, code, silent, store_history=True, user_expressions=None, allow_stdin=False):
-        """Execute user code."""
+    async def do_execute(
+        self, code: Any, silent: Any, store_history: Any = True, user_expressions: Any = None, allow_stdin: Any = False
+    ) -> Any:
+        """Execute user code.
+
+        Args:
+            code: Source code to execute in the Omniverse runtime.
+            silent: Whether to suppress stream output on the IOPub socket.
+            store_history: Whether the frontend requested execution history updates.
+            user_expressions: User expressions requested by the frontend.
+            allow_stdin: Whether stdin requests are allowed for this execution.
+
+        Returns:
+            Execute reply content for the Jupyter frontend.
+        """
         # https://jupyter-client.readthedocs.io/en/latest/messaging.html#execute
         execute_reply = {"status": "ok", "execution_count": self.execution_count, "payload": [], "user_expressions": {}}
         # no code
@@ -105,7 +119,7 @@ class EmbeddedKernel(Kernel):
         except Exception as e:
             # show network error in client
             print("\x1b[0;31m==================================================\x1b[0m")
-            print("\x1b[0;31mKernel error at port {}\x1b[0m".format(SOCKET_PORT))
+            print(f"\x1b[0;31mKernel error at port {SOCKET_PORT}\x1b[0m")
             print(e)
             print("\x1b[0;31m==================================================\x1b[0m")
             reply_content = {
@@ -133,12 +147,27 @@ class EmbeddedKernel(Kernel):
 
         return execute_reply
 
-    def do_debug_request(self, msg):
-        """Handle a debug request message."""
+    def do_debug_request(self, msg: Any) -> Any:
+        """Handle a debug request message.
+
+        Args:
+            msg: Debug request message content from the frontend.
+
+        Returns:
+            Empty debug reply content.
+        """
         return {}
 
-    async def do_complete(self, code, cursor_pos):
-        """Code completation."""
+    async def do_complete(self, code: Any, cursor_pos: Any) -> Any:
+        """Complete code at the requested cursor position.
+
+        Args:
+            code: Source code to complete.
+            cursor_pos: Cursor position within ``code``.
+
+        Returns:
+            Completion reply content for the Jupyter frontend.
+        """
         # https://jupyter-client.readthedocs.io/en/latest/messaging.html#msging-completion
         complete_reply = {"status": "ok", "matches": [], "cursor_start": 0, "cursor_end": cursor_pos, "metadata": {}}
 
@@ -154,7 +183,7 @@ class EmbeddedKernel(Kernel):
         except Exception as e:
             # show network error in client
             print("\x1b[0;31m==================================================\x1b[0m")
-            print("\x1b[0;31mKernel error at port {}\x1b[0m".format(SOCKET_PORT))
+            print(f"\x1b[0;31mKernel error at port {SOCKET_PORT}\x1b[0m")
             print(e)
             print("\x1b[0;31m==================================================\x1b[0m")
             reply_content = {"matches": [], "delta": cursor_pos}
@@ -165,8 +194,18 @@ class EmbeddedKernel(Kernel):
 
         return complete_reply
 
-    async def do_inspect(self, code, cursor_pos, detail_level=0, omit_sections=()):
-        """Object introspection."""
+    async def do_inspect(self, code: Any, cursor_pos: Any, detail_level: Any = 0, omit_sections: Any = ()) -> Any:
+        """Inspect the object at the requested cursor position.
+
+        Args:
+            code: Source code to inspect.
+            cursor_pos: Cursor position within ``code``.
+            detail_level: Requested inspection detail level.
+            omit_sections: Inspection sections to omit from the response.
+
+        Returns:
+            Inspection reply content for the Jupyter frontend.
+        """
         # https://jupyter-client.readthedocs.io/en/latest/messaging.html#msging-inspection
         inspect_reply = {"status": "ok", "found": False, "data": {}, "metadata": {}}
 
@@ -179,7 +218,7 @@ class EmbeddedKernel(Kernel):
         except Exception as e:
             # show network error in client
             print("\x1b[0;31m==================================================\x1b[0m")
-            print("\x1b[0;31mKernel error at port {}\x1b[0m".format(SOCKET_PORT))
+            print(f"\x1b[0;31mKernel error at port {SOCKET_PORT}\x1b[0m")
             print(e)
             print("\x1b[0;31m==================================================\x1b[0m")
             reply_content = {"found": False, "data": cursor_pos}
@@ -198,7 +237,7 @@ if __name__ == "__main__":
 
     # read socket port from file
     if os.path.exists(os.path.join(SCRIPT_DIR, "socket.txt")):
-        with open(os.path.join(SCRIPT_DIR, "socket.txt"), "r") as f:
+        with open(os.path.join(SCRIPT_DIR, "socket.txt")) as f:
             SOCKET_PORT = int(f.read())
 
     IPKernelApp.launch_instance(kernel_class=EmbeddedKernel)

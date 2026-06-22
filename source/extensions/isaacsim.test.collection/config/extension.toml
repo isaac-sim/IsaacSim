@@ -1,5 +1,5 @@
 [package]
-version = "2.6.7"
+version = "2.6.8"
 category = "Simulation"
 title = "Isaac Sim Tests"
 description = "Collection of tests for isaac sim that are not tied to a specific extension"

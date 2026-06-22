@@ -78,6 +78,7 @@ class RuleInterface(ABC):
         self.args: dict[str, Any] = args or {}
         self._log: list[str] = []
         self._affected_stages: list[str] = []
+        self._pending_deletions: list[str] = []
 
     @abstractmethod
     def process_rule(self) -> str | None:
@@ -171,6 +172,55 @@ class RuleInterface(ABC):
 
         """
         return list(self._affected_stages)
+
+    def request_deletion(self, path: str) -> None:
+        """Ask the manager to delete *path* once it releases the working stage.
+
+        A rule must use this instead of calling :func:`os.remove` directly when
+        the file it wants to delete backs the working stage. ``self.source_stage``
+        is the manager-owned working stage; the manager keeps it (and its root
+        :class:`pxr.Sdf.Layer`) open for the duration of the rule, so the rule
+        cannot free the underlying file. On Windows an open USD layer is an
+        OS-level file lock, so an in-rule ``os.remove`` fails with
+        ``PermissionError: [WinError 5] Access is denied``. The manager drains
+        the requests returned by :meth:`get_pending_deletions` only after it has
+        dropped the working stage, guaranteeing the file handle is gone before
+        the unlink.
+
+        The rule should drop its own references to the file (e.g. set
+        ``self.source_stage = None``) before returning so the manager holds the
+        last handle.
+
+        Args:
+            path: Filesystem path the manager should delete after releasing the
+                working stage. Duplicate and empty paths are ignored.
+
+        Example:
+
+        .. code-block:: python
+
+            rule.request_deletion("/tmp/pkg/payloads/base.usd")
+
+        """
+        if path and path not in self._pending_deletions:
+            self._pending_deletions.append(path)
+
+    def get_pending_deletions(self) -> list[str]:
+        """Return paths the rule deferred to the manager for deletion.
+
+        Returns:
+            List of unique filesystem paths registered via
+            :meth:`request_deletion`, in registration order.
+
+        Example:
+
+        .. code-block:: python
+
+            for path in rule.get_pending_deletions():
+                ...
+
+        """
+        return list(self._pending_deletions)
 
     @abstractmethod
     def get_configuration_parameters(self) -> list[RuleConfigurationParam]:

@@ -13,16 +13,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 """OmniGraph node for configuring ROS 2 RTX lidar point cloud metadata."""
+
+from typing import Any
 
 
 class OgnROS2RtxLidarPointCloudConfig:
     """OmniGraph node that configures RTX lidar point cloud metadata selection."""
 
     @staticmethod
-    def compute(db) -> bool:
-        """Compute the node outputs."""
+    def compute(db: Any) -> bool:
+        """Populate selected RTX lidar metadata fields for downstream PointCloud2 publishing.
+
+        Args:
+            db: OmniGraph database for the node.
+
+        Returns:
+            True after the selected metadata output is populated.
+        """
         selectedMetadata = []
         if db.inputs.outputIntensity:
             selectedMetadata.append("Intensity")

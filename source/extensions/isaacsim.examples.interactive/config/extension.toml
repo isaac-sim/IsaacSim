@@ -1,5 +1,5 @@
 [package]
-version = "4.16.0"
+version = "4.16.1"
 category = "Simulation"
 title = "Isaac Sim Samples"
 description = "Provides interactive sample extensions demonstrating Isaac Sim features including robot manipulation, path planning, gamepad control, and bin filling."

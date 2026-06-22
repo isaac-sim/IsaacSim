@@ -23,6 +23,12 @@ def _resolve_at(at: object) -> str:
 
     Uses duck-typing so this module never imports pxr, keeping the companion
     unit test suite pure stdlib.
+
+    Args:
+        at: Object passed as the issue location.
+
+    Returns:
+        Stable string representation used in deduplication keys.
     """
     if at is None:
         return ""
@@ -45,6 +51,10 @@ class DedupMixin:
     never leaks across consecutive validation runs in batch mode.
 
     Dedup key: ``(rule_class_name, resolved_at, severity, message)``
+
+    Args:
+        *args: Positional arguments forwarded to the next class in the MRO.
+        **kwargs: Keyword arguments forwarded to the next class in the MRO.
     """
 
     def __init__(self, *args: object, **kwargs: object) -> None:

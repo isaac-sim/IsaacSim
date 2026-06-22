@@ -16,6 +16,8 @@
 """Benchmark UR10 robot articulation simulation performance."""
 
 import argparse
+from collections.abc import Callable
+from typing import Any
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-robots", type=int, default=1, help="Number of robots")
@@ -91,7 +93,7 @@ joint_indices = torch.arange(6)
 robot_path = "/ur10"
 
 
-def get_clipped_joint_ranges(articulation_view):
+def get_clipped_joint_ranges(articulation_view: Any) -> tuple[Any, Any]:
     """Compute joint ranges clipped to a 2-pi window for the given articulation."""
     lower_limit, upper_limit = articulation_view.get_dof_limits()
     # convert to numpy
@@ -110,7 +112,9 @@ def get_clipped_joint_ranges(articulation_view):
     return l, u
 
 
-def get_joint_commands(articulation_view, v_max, T, joint_indices):
+def get_joint_commands(
+    articulation_view: Any, v_max: Any, T: Any, joint_indices: Any
+) -> tuple[Callable[[float], Any], Callable[[float], Any]]:
     """Generate sinusoidal position and velocity command functions for the joints."""
     lower_joint_limits, upper_joint_limits = get_clipped_joint_ranges(articulation_view)
 
@@ -128,7 +132,13 @@ def get_joint_commands(articulation_view, v_max, T, joint_indices):
     return position, velocity
 
 
-def on_physics_step(articulation_view, position_commands, velocity_commands, step, context):
+def on_physics_step(
+    articulation_view: Any,
+    position_commands: Callable[[float], Any] | None,
+    velocity_commands: Callable[[float], Any],
+    step: float,
+    context: object,
+) -> None:
     """Apply joint position and velocity commands on each physics step."""
     if position_commands is None:
         return

@@ -13,10 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for app."""
+"""Verifies app utility helpers for update ticks, extension lookup, extension enablement, and timeline access. Covers both synchronous and asynchronous app update paths."""
 
 import os
 import unittest
+from typing import Any
 
 import isaacsim.core.experimental.utils.app as app_utils
 import omni.kit.test
@@ -28,17 +29,17 @@ EXTENSION_NAME = "omni.pip.cloud"
 class TestApp(omni.kit.test.AsyncTestCase):
     """Test app."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
     @unittest.skip("Skipping update_app tests in async environment")
-    async def test_update_app(self):
+    async def test_update_app(self) -> None:
         """Test update app."""
         # perform 1 update step
         app_utils.update_app()
@@ -55,7 +56,7 @@ class TestApp(omni.kit.test.AsyncTestCase):
         )
         self.assertEqual(counter[0], 2)
 
-    async def test_update_app_async(self):
+    async def test_update_app_async(self) -> None:
         """Test update app async."""
         # perform 1 update step
         await app_utils.update_app_async()
@@ -72,7 +73,7 @@ class TestApp(omni.kit.test.AsyncTestCase):
         )
         self.assertEqual(counter[0], 5)
 
-    async def test_enable_extension(self):
+    async def test_enable_extension(self) -> None:
         """Test enable extension."""
         for _ in range(3):
             # - enable extension
@@ -86,10 +87,10 @@ class TestApp(omni.kit.test.AsyncTestCase):
             self.assertTrue(app_utils.enable_extension(EXTENSION_NAME, enabled=False))
             self.assertFalse(app_utils.is_extension_enabled(EXTENSION_NAME), f"{EXTENSION_NAME} should be disabled")
 
-    async def test_extension_id(self):
+    async def test_extension_id(self) -> None:
         """Test extension id."""
 
-        def _check_id(uid):
+        def _check_id(uid: Any) -> None:
             self.assertEqual(len(uid.split("-")), 2)
             self.assertEqual(uid.split("-")[0], EXTENSION_NAME)
             self.assertTrue(uid.split("-")[1] != "")
@@ -112,7 +113,7 @@ class TestApp(omni.kit.test.AsyncTestCase):
         self.assertTrue(app_utils.enable_extension(EXTENSION_NAME, enabled=False))
         self.assertIsNone(app_utils.get_extension_id(EXTENSION_NAME))
 
-    async def test_extension_path(self):
+    async def test_extension_path(self) -> None:
         """Test extension path."""
         self.assertTrue(app_utils.enable_extension(EXTENSION_NAME))  # ensure extension is enabled
         # test cases
@@ -127,10 +128,10 @@ class TestApp(omni.kit.test.AsyncTestCase):
         path = app_utils.get_extension_path(EXTENSION_NAME)
         self.assertEqual(path, "")
 
-    async def test_extension_dict(self):
+    async def test_extension_dict(self) -> None:
         """Test extension dict."""
 
-        def _check_dict(data):
+        def _check_dict(data: Any) -> None:
             self.assertTrue(isinstance(data, dict), f"{data} should be a dictionary")
             self.assertIn("path", data)
             self.assertIn("package", data)
@@ -149,21 +150,21 @@ class TestApp(omni.kit.test.AsyncTestCase):
         self.assertTrue(app_utils.enable_extension(EXTENSION_NAME, enabled=False))
         self.assertIsNone(app_utils.get_extension_dict(EXTENSION_NAME))
 
-    async def test_timeline(self):
+    async def test_timeline(self) -> None:
         """Test timeline."""
 
-        def check_timeline_state(*, is_playing, is_paused, is_stopped):
+        def check_timeline_state(*, is_playing: Any, is_paused: Any, is_stopped: Any) -> None:
             self.assertEqual(app_utils.is_playing(), is_playing, "Timeline should be 'playing'")
             self.assertEqual(app_utils.is_paused(), is_paused, "Timeline should be 'paused'")
             self.assertEqual(app_utils.is_stopped(), is_stopped, "Timeline should be 'stopped'")
 
-        def _on_play(event):
+        def _on_play(event: Any) -> None:
             events[0] += 1
 
-        def _on_pause(event):
+        def _on_pause(event: Any) -> None:
             events[1] += 1
 
-        def _on_stop(event):
+        def _on_stop(event: Any) -> None:
             events[2] += 1
 
         timeline_event_stream = omni.timeline.get_timeline_interface().get_timeline_event_stream()

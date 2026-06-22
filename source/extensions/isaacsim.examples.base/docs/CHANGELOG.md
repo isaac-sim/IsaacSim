@@ -1,4 +1,9 @@
 # Changelog
+
+## [1.3.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.3.1] - 2026-03-04
 ### Changed
 - Changed default physics device to CPU in BaseSampleExperimental

@@ -37,7 +37,7 @@ SENSOR_FPS = 10.0
 SENSOR_DT = 1.0 / SENSOR_FPS
 
 
-def run_custom_fps_example(duration_seconds):
+def run_custom_fps_example(duration_seconds: float) -> None:
     """Run a simulation capturing data at a custom sensor framerate."""
     # Create a new stage
     omni.usd.get_context().new_stage()

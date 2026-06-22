@@ -63,7 +63,7 @@ def _differential_ik(
         min_singular_value: Threshold for SVD method.
 
     Returns:
-        Delta DOF positions (N, num_arm_dofs).
+        The requested value.
     """
     goal_orient = current_orient if goal_orient is None else goal_orient
     q = quat_mul_wxyz(goal_orient, quat_conjugate_wxyz(current_orient))
@@ -121,6 +121,19 @@ class PositionBasedIKController:
     - **Error-proportional scaling**: when EE-to-target distance exceeds
       ``error_scale_distance``, the step is scaled down proportionally so
       the arm slows to a stop at its reachable limit.
+
+    Args:
+        robot: Value for robot.
+        ee_link: Value for ee link.
+        ee_link_index: Value for ee link index.
+        num_arm_dofs: Value for num arm dofs.
+        method: Value for method.
+        scale: Value for scale.
+        damping: Value for damping.
+        vr_target_filter: Value for vr target filter.
+        max_joint_step_rad: Value for max joint step rad.
+        min_manipulability: Value for min manipulability.
+        error_scale_distance: Value for error scale distance.
     """
 
     def __init__(
@@ -157,37 +170,65 @@ class PositionBasedIKController:
 
     @property
     def reachable(self) -> bool:
-        """Whether the last compute() produced a valid solution."""
+        """Whether the last compute() produced a valid solution.
+
+        Returns:
+            The requested value.
+        """
         return self._reachable
 
     @property
     def vr_target_filter(self) -> float:
-        """Return the EMA low-pass filter strength for VR targets."""
+        """Return the EMA low-pass filter strength for VR targets.
+
+        Returns:
+            The requested value.
+        """
         return float(self._vr_target_filter)
 
     @vr_target_filter.setter
     def vr_target_filter(self, value: float) -> None:
-        """Set the EMA low-pass filter strength for VR targets."""
+        """Set the EMA low-pass filter strength for VR targets.
+
+        Args:
+            value: Value for value.
+        """
         self._vr_target_filter = np.clip(value, 0.0, 0.99)
 
     @property
     def max_joint_step_rad(self) -> float:
-        """Return the maximum allowed joint change per step in radians."""
+        """Return the maximum allowed joint change per step in radians.
+
+        Returns:
+            The requested value.
+        """
         return float(self._max_joint_step_rad)
 
     @max_joint_step_rad.setter
     def max_joint_step_rad(self, value: float) -> None:
-        """Set the maximum allowed joint change per step in radians."""
+        """Set the maximum allowed joint change per step in radians.
+
+        Args:
+            value: Value for value.
+        """
         self._max_joint_step_rad = max(0.0, value)
 
     @property
     def method(self) -> str:
-        """Return the differential IK method name."""
+        """Return the differential IK method name.
+
+        Returns:
+            The requested value.
+        """
         return self._method
 
     @method.setter
     def method(self, value: str) -> None:
-        """Set the differential IK method by name."""
+        """Set the differential IK method by name.
+
+        Args:
+            value: Value for value.
+        """
         allowed = {
             "damped-least-squares",
             "pseudoinverse",
@@ -203,7 +244,12 @@ class PositionBasedIKController:
         position: tuple[float, float, float],
         orientation: tuple[float, float, float, float] | None,
     ) -> None:
-        """Set the 6DOF goal pose (sim coordinates, xyzw quaternion)."""
+        """Set the 6DOF goal pose (sim coordinates, xyzw quaternion).
+
+        Args:
+            position: Value for position.
+            orientation: Value for orientation.
+        """
         self._raw_position = np.array([list(position)], dtype=np.float64)
         if orientation is not None:
             self._raw_orientation = xyzw_to_wxyz(orientation)
@@ -230,8 +276,7 @@ class PositionBasedIKController:
         """Compute one differential IK step.
 
         Returns:
-            Absolute joint positions for the first ``num_arm_dofs`` DOFs
-            as a 1-D numpy array, or None if no target / physics not ready.
+            The requested value.
         """
         if self._filtered_position is None:
             return None

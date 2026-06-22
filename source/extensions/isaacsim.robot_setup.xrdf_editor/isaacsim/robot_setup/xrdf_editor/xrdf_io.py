@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TextIO
 
 import carb
 import numpy as np
@@ -42,13 +42,27 @@ from .yaml_utils import safe_load_yaml
 
 
 def is_xrdf_file(path: str) -> bool:
-    """Return True if ``path`` has a YAML or XRDF extension."""
+    """Return True if ``path`` has a YAML or XRDF extension.
+
+    Args:
+        path: Path to check.
+
+    Returns:
+        True if the path has a YAML or XRDF extension.
+    """
     _, ext = os.path.splitext(path.lower())
     return ext in (".yaml", ".yml", ".xrdf")
 
 
 def on_filter_xrdf_item(item: object) -> bool:
-    """File-browser filter showing XRDF files and non-Omniverse folders."""
+    """Filter file-browser entries to XRDF files and non-Omniverse folders.
+
+    Args:
+        item: File-browser item to evaluate.
+
+    Returns:
+        True if the item should be shown.
+    """
     if not item:
         return False
     if item.is_folder:
@@ -60,6 +74,12 @@ def collision_key_for_version(version: float) -> str:
     """Return the top-level collision key used by the given XRDF format version.
 
     Version 1.0 uses ``collision`` and version 2.0 uses ``world_collision``.
+
+    Args:
+        version: XRDF format version.
+
+    Returns:
+        Top-level collision key for the format version.
     """
     if version == XRDF_VERSION_1:
         return COLLISION_KEY_V1
@@ -85,7 +105,7 @@ def is_valid_xrdf_file(path: str) -> bool:
     if not os.path.isfile(path):
         carb.log_warn(warning_msg)
         return False
-    with open(path, "r") as stream:
+    with open(path) as stream:
         try:
             parsed_file = yaml.safe_load(stream)
         except yaml.YAMLError as exc:
@@ -280,6 +300,10 @@ def _normalise_version(parsed_file: dict, format_version: float) -> None:
 
     Mutates the dict in place so only the version-appropriate top-level key
     (``collision`` for v1, ``world_collision`` for v2) is present.
+
+    Args:
+        parsed_file: Parsed XRDF payload to mutate.
+        format_version: XRDF format version to normalize to.
     """
     if format_version == XRDF_VERSION_1:
         if COLLISION_KEY_V2 in parsed_file:
@@ -292,18 +316,30 @@ def _normalise_version(parsed_file: dict, format_version: float) -> None:
 
 
 def _validate_xrdf_version(format_version: float) -> float:
-    """Coerce ``format_version`` to a supported value, warning on mismatch."""
+    """Coerce ``format_version`` to a supported value, warning on mismatch.
+
+    Args:
+        format_version: Candidate XRDF format version.
+
+    Returns:
+        Supported XRDF format version.
+    """
     if format_version in SUPPORTED_XRDF_VERSIONS:
         return float(format_version)
     carb.log_warn(f"Invalid XRDF version {format_version}, defaulting to {XRDF_VERSION_2}")
     return XRDF_VERSION_2
 
 
-def _write_yaml_item(f, item: Any, tabbing: str) -> None:
+def _write_yaml_item(f: TextIO, item: Any, tabbing: str) -> None:
     """Write ``item`` to ``f`` using the XRDF-style formatting.
 
     The XRDF format expects ordered keys, terse inline numeric lists, and
     a per-section block style; that's what this writer produces.
+
+    Args:
+        f: Destination text stream.
+        item: Object to write.
+        tabbing: Leading indentation string.
     """
     if isinstance(item, dict):
         for k in list(item.keys()):
@@ -425,6 +461,9 @@ def write_xrdf_file(inputs: XrdfWriteInputs) -> None:
     """Build and serialise an XRDF document to disk.
 
     See :class:`XrdfWriteInputs` for the input bundle.
+
+    Args:
+        inputs: XRDF write input bundle.
     """
     parsed_file = build_xrdf_dict(inputs)
     format_version = _validate_xrdf_version(inputs.format_version)

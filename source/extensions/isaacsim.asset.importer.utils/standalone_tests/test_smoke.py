@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Standalone smoke tests for isaacsim-asset-importer-utils."""
+"""Verifies standalone importability and public API surface for isaacsim.asset.importer.utils without Omni modules. Covers PhysX helper reexports, submodule access, schema value formatting, mimic attribute naming, and authoring helper attributes on a USD stage."""
 
 from __future__ import annotations
 
@@ -125,7 +125,7 @@ class TestFunctional(unittest.TestCase):
     def test_create_physx_attrs_on_stage(self) -> None:
         """Verify PhysxAttr enums can create real USD attributes."""
         from isaacsim.asset.importer.utils.impl.physx_types import PhysxAttr
-        from pxr import Sdf, Usd, UsdGeom, UsdPhysics
+        from pxr import Usd, UsdGeom, UsdPhysics
 
         stage = Usd.Stage.CreateInMemory()
         UsdGeom.Xform.Define(stage, "/World")

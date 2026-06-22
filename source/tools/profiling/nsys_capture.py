@@ -21,18 +21,18 @@ and perform a timed capture session during the benchmark phase.
 Typical usage from the build directory::
 
     # Select a benchmark by short name with a 10-second capture
-    ./python.sh tools/benchmark/nsys_capture.py \\
+    ./python.sh tools/profiling/nsys_capture.py \\
         --benchmark camera \\
         --capture-duration 10 \\
         --output-dir /tmp/nsys_output \\
         -- --num-cameras 2 --num-frames 300
 
     # Capture from app start (including loading phase)
-    ./python.sh tools/benchmark/nsys_capture.py \\
+    ./python.sh tools/profiling/nsys_capture.py \\
         --benchmark camera --capture-loading --capture-duration 30
 
     # List all available benchmarks
-    ./python.sh tools/benchmark/nsys_capture.py \\
+    ./python.sh tools/profiling/nsys_capture.py \\
         --list-benchmarks
 
 The script:

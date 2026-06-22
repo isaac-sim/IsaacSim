@@ -1,5 +1,5 @@
 [package]
-version = "1.2.0"
+version = "1.2.1"
 category = "Utility"
 title = "Jupyter notebook integration"
 description = "Jupyter notebook version of Omniverse's script editor"

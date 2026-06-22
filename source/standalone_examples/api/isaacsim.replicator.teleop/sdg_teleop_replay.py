@@ -60,7 +60,8 @@ RESOLUTION = (512, 512)
 NUM_CAPTURES = 10  # Number of frames to capture, evenly distributed across the episode
 
 
-def run_example():
+def run_example() -> None:
+    """Replay a recorded teleoperation episode and capture SDG frames."""
     print("[TeleopReplay] Starting replay example")
     if not HDF5_PATH:
         print("[TeleopReplay] HDF5 path not provided, exiting")

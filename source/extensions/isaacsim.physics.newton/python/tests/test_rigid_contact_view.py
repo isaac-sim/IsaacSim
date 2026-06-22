@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test suite for Newton rigid contact view pattern matching functionality."""
+"""Verifies Newton rigid contact view sensor and filter pattern handling. The tests cover wildcard, bracket, explicit-list, one-to-many, and multi-filter contact view configurations and validate the resolved sensor paths."""
+
+from typing import Any
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import isaacsim.physics.newton
@@ -26,8 +28,12 @@ from isaacsim.core.simulation_manager import SimulationManager
 from pxr import Gf, PhysicsSchemaTools, UsdGeom, UsdPhysics
 
 
-async def wait_for_stage_loading():
-    """Wait until USD stage loading is complete."""
+async def wait_for_stage_loading() -> Any:
+    """Wait until USD stage loading is complete.
+
+    Returns:
+        None.
+    """
     while omni.usd.get_context().get_stage_loading_status()[2] > 0:
         await omni.kit.app.get_app().next_update_async()
 
@@ -35,7 +41,7 @@ async def wait_for_stage_loading():
 class TestRigidContactView(omni.kit.test.AsyncTestCase):
     """Test rigid contact view pattern matching functionality."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment with multiple cubes and ground plane."""
         self.use_gpu = True
         self.wp_device = "cuda:0" if self.use_gpu else "cpu"
@@ -76,14 +82,24 @@ class TestRigidContactView(omni.kit.test.AsyncTestCase):
             frontend_name="warp", stage_id=-1, newton_stage=self.newton_stage
         )
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after test."""
         self.timeline.pause()
         await omni.kit.app.get_app().next_update_async()
         await omni.usd.get_context().close_stage_async()
 
-    def _create_cube(self, path, position=(0, 0, 0), size=1.0, mass=1.0):
-        """Helper to create a cube with physics."""
+    def _create_cube(self, path: Any, position: Any = (0, 0, 0), size: Any = 1.0, mass: Any = 1.0) -> Any:
+        """Create a cube with physics.
+
+        Args:
+            path: USD path where the cube should be created.
+            position: Translation to apply to the cube.
+            size: Cube size to author.
+            mass: Mass value to author.
+
+        Returns:
+            None.
+        """
         cube_geom = UsdGeom.Cube.Define(self.stage, path)
         cube_prim = self.stage.GetPrimAtPath(path)
         cube_geom.CreateSizeAttr(size)
@@ -98,8 +114,18 @@ class TestRigidContactView(omni.kit.test.AsyncTestCase):
         cube_inertia = (1.0 / 6.0) * mass * size * size
         mass_api.CreateDiagonalInertiaAttr(Gf.Vec3f(cube_inertia, cube_inertia, cube_inertia))
 
-    def _create_sphere(self, path, position=(0, 0, 0), radius=0.5, mass=1.0):
-        """Helper to create a sphere with physics."""
+    def _create_sphere(self, path: Any, position: Any = (0, 0, 0), radius: Any = 0.5, mass: Any = 1.0) -> Any:
+        """Create a sphere with physics.
+
+        Args:
+            path: USD path where the sphere should be created.
+            position: Translation to apply to the sphere.
+            radius: Sphere radius to author.
+            mass: Mass value to author.
+
+        Returns:
+            None.
+        """
         sphere_geom = UsdGeom.Sphere.Define(self.stage, path)
         sphere_prim = self.stage.GetPrimAtPath(path)
         sphere_geom.CreateRadiusAttr(radius)
@@ -114,42 +140,49 @@ class TestRigidContactView(omni.kit.test.AsyncTestCase):
         sphere_inertia = (2.0 / 5.0) * mass * radius * radius
         mass_api.CreateDiagonalInertiaAttr(Gf.Vec3f(sphere_inertia, sphere_inertia, sphere_inertia))
 
-    def _create_ground_plane(self, path):
-        """Helper to create a ground plane."""
+    def _create_ground_plane(self, path: Any) -> Any:
+        """Create a ground plane.
+
+        Args:
+            path: USD path where the ground plane should be created.
+
+        Returns:
+            None.
+        """
         plane_geom = UsdGeom.Plane.Define(self.stage, path)
         plane_prim = self.stage.GetPrimAtPath(path)
         plane_geom.CreateAxisAttr("Z")
         UsdPhysics.CollisionAPI.Apply(plane_prim)
 
-    async def test_wildcard_sensor_pattern(self):
+    async def test_wildcard_sensor_pattern(self) -> None:
         """Test creating contact view with wildcard sensor pattern."""
         contact_view = self.sim.create_rigid_contact_view("/World/Cube_*")
 
         self.assertIsNotNone(contact_view)
         self.assertEqual(contact_view.sensor_count, 5, "Should match all 5 cubes")
 
-    async def test_bracket_sensor_pattern(self):
+    async def test_bracket_sensor_pattern(self) -> None:
         """Test creating contact view with bracket pattern."""
         contact_view = self.sim.create_rigid_contact_view("/World/Cube_[0-2]")
 
         self.assertIsNotNone(contact_view)
         self.assertEqual(contact_view.sensor_count, 3, "Should match cubes 0, 1, 2")
 
-    async def test_list_sensor_patterns(self):
+    async def test_list_sensor_patterns(self) -> None:
         """Test creating contact view with list of sensor patterns."""
         contact_view = self.sim.create_rigid_contact_view(["/World/Cube_[0-2]", "/World/Cube_[3-4]"])
 
         self.assertIsNotNone(contact_view)
         self.assertEqual(contact_view.sensor_count, 5, "Should match all 5 cubes via two patterns")
 
-    async def test_explicit_sensor_list(self):
+    async def test_explicit_sensor_list(self) -> None:
         """Test creating contact view with explicit list of sensor paths."""
         contact_view = self.sim.create_rigid_contact_view(["/World/Cube_0", "/World/Cube_2", "/World/Cube_4"])
 
         self.assertIsNotNone(contact_view)
         self.assertEqual(contact_view.sensor_count, 3, "Should match exactly 3 specified cubes")
 
-    async def test_no_filters(self):
+    async def test_no_filters(self) -> None:
         """Test creating contact view without filters (only net forces available).
 
         Corresponds to: view_1 = sim_view.create_rigid_contact_view("/World/Cube_*")
@@ -160,7 +193,7 @@ class TestRigidContactView(omni.kit.test.AsyncTestCase):
         self.assertEqual(contact_view.sensor_count, 5, "Should have 5 cube sensors")
         self.assertEqual(contact_view.filter_count, 0, "Should have no filters")
 
-    async def test_single_filter_all_sensors(self):
+    async def test_single_filter_all_sensors(self) -> None:
         """Test single filter pattern that matches all sensors.
 
         Corresponds to: view_4 = sim_view.create_rigid_contact_view("/World/Cube_*", ["/World/GroundPlane"])
@@ -180,7 +213,7 @@ class TestRigidContactView(omni.kit.test.AsyncTestCase):
         # Single prim exception: GroundPlane should appear in filters for first sensor
         self.assertIn("/World/GroundPlane", contact_view.filter_paths[0])
 
-    async def test_multiple_filters_with_wildcard(self):
+    async def test_multiple_filters_with_wildcard(self) -> None:
         """Test multiple filter patterns with wildcards.
 
         Corresponds to: view_5 = sim_view.create_rigid_contact_view("/World/Cube_*", ["/World/GroundPlane", "/World/Sphere_*"])
@@ -205,7 +238,7 @@ class TestRigidContactView(omni.kit.test.AsyncTestCase):
         sphere_found = any("/World/Sphere_" in path for path in first_sensor_filters)
         self.assertTrue(sphere_found, "Should have sphere filters")
 
-    async def test_list_of_filter_lists(self):
+    async def test_list_of_filter_lists(self) -> None:
         """Test list of sensor patterns with corresponding filter lists.
 
         Corresponds to: view_5 = sim_view.create_rigid_contact_view(
@@ -235,7 +268,7 @@ class TestRigidContactView(omni.kit.test.AsyncTestCase):
         first_sensor_filters = contact_view.filter_paths[0]
         self.assertIn("/World/GroundPlane", first_sensor_filters, "GroundPlane should be in filters")
 
-    async def test_complex_filter_lists_with_boxes(self):
+    async def test_complex_filter_lists_with_boxes(self) -> None:
         """Test complex filter lists with multiple object types.
 
         Corresponds to: view_6 = sim_view.create_rigid_contact_view(
@@ -264,7 +297,7 @@ class TestRigidContactView(omni.kit.test.AsyncTestCase):
         box_found = any("/World/Box_" in path for path in first_sensor_filters)
         self.assertTrue(box_found, "Should have boxes in filters")
 
-    async def test_one_to_many_relationship(self):
+    async def test_one_to_many_relationship(self) -> None:
         """Test one-to-many relationship (each sensor tracks contacts with multiple filters).
 
         Corresponds to: view_7 = create_rigid_contact_view(
@@ -293,7 +326,7 @@ class TestRigidContactView(omni.kit.test.AsyncTestCase):
         for i in range(num_filters):
             self.assertIn(f"/World/Sphere_{i}", first_sensor_filters, f"Should have Sphere_{i} in filters")
 
-    async def test_sensor_paths_verification(self):
+    async def test_sensor_paths_verification(self) -> None:
         """Test that sensor paths are correctly populated."""
         contact_view = self.sim.create_rigid_contact_view(["/World/Cube_0", "/World/Cube_1", "/World/Cube_2"])
 

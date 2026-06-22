@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.6] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [0.3.5] - 2026-05-18
 ### Fixed
 - `test_teleop_sdg_pick_and_place.py`: updated golden images and fixed a grasp offset
@@ -9,7 +13,7 @@
 
 ## [0.3.4] - 2026-05-15
 ### Added
-- golden teleop episode HDF5 (`tests/data/_episode_recorder/episode_floating_xarm_dex3.hdf5`) as a default example for the teleop replay examples
+- Golden teleop episode HDF5 (`tests/data/_episode_recorder/episode_floating_xarm_dex3.hdf5`) as a default example for the teleop replay examples
 
 ## [0.3.3] - 2026-05-07
 ### Fixed

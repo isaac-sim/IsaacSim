@@ -1231,8 +1231,16 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertEqual(updated_path, expected_usda)
         self.assertTrue(os.path.exists(expected_usda), f"Expected .usda file not found: {expected_usda}")
 
-        # The original .usd binary must have been removed
-        self.assertFalse(os.path.exists(input_path), "Original .usd should be deleted after conversion")
+        # The rule must NOT delete the original .usd itself: self.source_stage is
+        # the manager-owned working stage, so the manager (not the rule) holds the
+        # file open and must perform the deletion after releasing it. Verify the
+        # rule released its own stage handle and queued the original for deletion.
+        self.assertIsNone(rule.source_stage, "rule must release its working stage handle before deferring deletion")
+        pending = rule.get_pending_deletions()
+        self.assertTrue(
+            any(os.path.realpath(p) == os.path.realpath(input_path) for p in pending),
+            f"original .usd must be queued for deferred deletion, got: {pending}",
+        )
 
         # The converted file must be a valid stage with the original content preserved
         converted_stage = Usd.Stage.Open(expected_usda)
@@ -1243,6 +1251,167 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
         capsule = converted_stage.GetPrimAtPath("/root/body/leg_geom")
         self.assertTrue(capsule.IsValid())
         self.assertTrue(capsule.IsA(UsdGeom.Capsule))
+
+        self._success = True
+
+    async def test_manager_run_deletes_converted_base_usd(self) -> None:
+        """End-to-end: the manager removes the original base.usd after conversion.
+
+        Regression for the Windows ``[WinError 5] Access is denied`` failure.
+        Running ``GeometriesRoutingRule`` through ``AssetTransformerManager`` must
+        leave ``payloads/base.usda`` on disk and delete the intermediate
+        ``payloads/base.usd`` that the rule converted: the rule defers the
+        deletion (it cannot release the manager-owned working stage) and the
+        manager performs it after dropping that stage.
+        """
+        from isaacsim.asset.transformer.manager import AssetTransformerManager, RuleRegistry
+        from isaacsim.asset.transformer.models import RuleProfile, RuleSpec
+
+        registry = RuleRegistry()
+        # RuleRegistry is a process-global singleton that the extension populates
+        # once at startup via register_all_rules(). Snapshot it and restore on
+        # cleanup; clearing it without restoration would empty those rules and
+        # break every later test in this process (e.g. test_profile_idempotency).
+        saved_rules = registry.list_rules()
+
+        def _restore_registry() -> None:
+            registry.clear()
+            for rule_cls in saved_rules.values():
+                registry.register(rule_cls)
+
+        self.addCleanup(_restore_registry)
+        registry.clear()
+        registry.register(GeometriesRoutingRule)
+
+        # Self-contained input (no external assets) with real Mesh geometry so
+        # the main process_rule export branch runs.
+        input_path = os.path.join(self._tmpdir, "input.usda")
+        _build_mirrored_meshes_stage(input_path)
+
+        out_root = os.path.join(self._tmpdir, "out")
+        rule_type = f"{GeometriesRoutingRule.__module__}.{GeometriesRoutingRule.__qualname__}"
+        profile = RuleProfile(
+            profile_name="geom",
+            rules=[
+                RuleSpec(
+                    name="geometries",
+                    type=rule_type,
+                    destination="payloads",
+                    params={
+                        "geometries_layer": "geometries.usd",
+                        "instance_layer": "instances.usda",
+                        "save_base_as_usda": True,
+                    },
+                )
+            ],
+            base_name="base.usd",
+        )
+
+        manager = AssetTransformerManager()
+        report = manager.run(input_stage=input_path, profile=profile, package_root=out_root)
+
+        self.assertTrue(report.results, "manager produced no rule results")
+        self.assertTrue(report.results[0].success, f"rule failed: {report.results[0].error}")
+
+        base_usd = os.path.join(out_root, "payloads", "base.usd")
+        base_usda = os.path.join(out_root, "payloads", "base.usda")
+        self.assertTrue(os.path.exists(base_usda), f"converted .usda missing: {base_usda}")
+        self.assertFalse(
+            os.path.exists(base_usd),
+            "manager must delete the original base.usd after releasing the working stage",
+        )
+        # The reported output asset must be the converted .usda.
+        self.assertIsNotNone(report.output_stage_path)
+        self.assertEqual(os.path.realpath(report.output_stage_path), os.path.realpath(base_usda))
+
+        self._success = True
+
+    async def test_converted_base_usda_has_no_stale_source_references(self) -> None:
+        """After .usd -> .usda conversion, no output layer may reference base.usd.
+
+        Material handling authors references in ``instances.usda`` that point at
+        the source layer; the conversion must rewrite every one from ``base.usd``
+        to ``base.usda``. The created reference and the rewrite both anchor on the
+        layer ``realPath`` so they match on all platforms. If a reference were
+        left pointing at the deleted ``base.usd``, the working stage would keep
+        ``base.usd`` open -- which on Windows blocks its deletion and corrupts the
+        rest of the pipeline.
+        """
+        os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
+        input_path = os.path.join(self._tmpdir, "payloads", "base.usd")
+
+        stage = Usd.Stage.CreateNew(input_path)
+        stage.SetMetadata("metersPerUnit", 1.0)
+        stage.SetMetadata("upAxis", "Z")
+        root = UsdGeom.Xform.Define(stage, "/root")
+        stage.SetDefaultPrim(root.GetPrim())
+        vis_mat = UsdShade.Material.Define(stage, "/root/Materials/VisualMat")
+        shader = UsdShade.Shader.Define(stage, "/root/Materials/VisualMat/PreviewSurface")
+        shader.CreateIdAttr("UsdPreviewSurface")
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.8, 0.2, 0.1))
+        vis_mat.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+        UsdGeom.Xform.Define(stage, "/root/body")
+        mesh = UsdGeom.Mesh.Define(stage, "/root/body/Mesh")
+        mesh.GetPointsAttr().Set([Gf.Vec3f(0, 0, 0), Gf.Vec3f(1, 0, 0), Gf.Vec3f(0, 1, 0)])
+        mesh.GetFaceVertexCountsAttr().Set([3])
+        mesh.GetFaceVertexIndicesAttr().Set([0, 1, 2])
+        UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(vis_mat)
+        stage.Export(input_path)
+
+        self.assertTrue(input_path.endswith(".usd"))
+        stage = Usd.Stage.Open(input_path)
+
+        rule = GeometriesRoutingRule(
+            source_stage=stage,
+            package_root=self._tmpdir,
+            destination_path="payloads",
+            args={
+                "params": {
+                    "geometries_layer": "geometries.usd",
+                    "instance_layer": "instances.usda",
+                    "save_base_as_usda": True,
+                }
+            },
+        )
+
+        updated_path = rule.process_rule()
+        self.assertEqual(updated_path, os.path.join(self._tmpdir, "payloads", "base.usda"))
+        # The original .usd must be deferred for deletion, not referenced by output.
+        self.assertTrue(
+            any(os.path.realpath(p) == os.path.realpath(input_path) for p in rule.get_pending_deletions()),
+            "original base.usd must be queued for deferred deletion",
+        )
+
+        # No output layer may still reference the original base.usd: every source
+        # reference must have been rewritten to base.usda.
+        payloads_dir = os.path.join(self._tmpdir, "payloads")
+        stale: list[str] = []
+        rewritten_to_usda = False
+        for fn in os.listdir(payloads_dir):
+            if not fn.endswith((".usd", ".usda")):
+                continue
+            layer = Sdf.Layer.FindOrOpen(os.path.join(payloads_dir, fn))
+            if layer is None:
+                continue
+            prim_paths: list[Sdf.Path] = []
+            layer.Traverse(Sdf.Path.absoluteRootPath, prim_paths.append)
+            for prim_path in prim_paths:
+                spec = layer.GetPrimAtPath(prim_path)
+                if not spec:
+                    continue
+                refs = list(spec.referenceList.prependedItems) + list(spec.referenceList.GetAddedOrExplicitItems())
+                for ref in refs:
+                    if not ref.assetPath:
+                        continue
+                    if ref.assetPath.endswith("base.usda"):
+                        rewritten_to_usda = True
+                    # "base.usda" intentionally does not match "base.usd".
+                    elif ref.assetPath.endswith("base.usd"):
+                        stale.append(f"{fn}:{prim_path} -> {ref.assetPath}")
+        self.assertEqual(stale, [], f"stale base.usd references remain after conversion: {stale}")
+        # Guard against a vacuous pass: the material path must have authored a
+        # source reference that the conversion rewrote to base.usda.
+        self.assertTrue(rewritten_to_usda, "expected at least one source reference rewritten to base.usda")
 
         self._success = True
 

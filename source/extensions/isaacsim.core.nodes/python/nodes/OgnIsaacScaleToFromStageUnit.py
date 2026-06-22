@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Convert OmniGraph numeric values between meters and the current USD stage units."""
+
+from typing import Any
+
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.graph.core as og
 
@@ -21,7 +25,15 @@ class OgnIsaacScaleToFromStageUnit:
     """Isaac Sim Scale To and From Stage Units."""
 
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
+        """Apply the requested `toStage` or `toMeters` conversion and reject missing or custom modes.
+
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            True when conversion succeeds, False otherwise.
+        """
         conversion = db.inputs.conversion
         value = db.inputs.value.value
 
@@ -42,7 +54,12 @@ class OgnIsaacScaleToFromStageUnit:
         return True
 
     @staticmethod
-    def on_connection_type_resolve(node) -> None:
+    def on_connection_type_resolve(node: Any) -> None:
+        """Resolve the output type from the input value type, promoting integer inputs to double.
+
+        Args:
+            node: OmniGraph node whose connection types are being resolved.
+        """
         int_types = (
             og.BaseDataType.UCHAR,
             og.BaseDataType.INT,

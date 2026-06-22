@@ -15,6 +15,6 @@
 
 """Import the implementation modules that will be externally visible."""
 
-from .extension import Extension
+from .extension import Extension as Extension
 
 __all__ = []

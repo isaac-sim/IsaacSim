@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verify semantic segmentation class labels with per-GeomSubset segmentation enabled and disabled."""
+
 import carb.settings
 import omni.kit
 import omni.replicator.core as rep
@@ -21,6 +23,7 @@ import pxr
 
 
 class TestSDGGeomSubset(omni.kit.test.AsyncTestCase):
+    """Checks that mesh-level and GeomSubset labels appear only under the expected setting."""
 
     PER_SUBSET_SETTING = "/syntheticdata/sensors/perSubsetSegmentation"
 
@@ -44,13 +47,15 @@ class TestSDGGeomSubset(omni.kit.test.AsyncTestCase):
         }
     )
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Create a clean stage and save the per-subset segmentation setting."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
         self._original_per_subset = carb.settings.get_settings().get(self.PER_SUBSET_SETTING)
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Restore the per-subset segmentation setting and close the test stage."""
         if self._original_per_subset is not None:
             carb.settings.get_settings().set(self.PER_SUBSET_SETTING, self._original_per_subset)
         omni.usd.get_context().close_stage()
@@ -59,6 +64,14 @@ class TestSDGGeomSubset(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
 
     async def _capture_classes_async(self, per_subset_segmentation: bool) -> frozenset[str]:
+        """Capture semantic classes for cubes with mesh labels, GeomSubset labels, and no subsets.
+
+        Args:
+            per_subset_segmentation: Whether per-GeomSubset segmentation is enabled.
+
+        Returns:
+            Captured semantic class names.
+        """
         carb.settings.get_settings().set(self.PER_SUBSET_SETTING, per_subset_segmentation)
         await omni.usd.get_context().new_stage_async()
 
@@ -119,7 +132,8 @@ class TestSDGGeomSubset(omni.kit.test.AsyncTestCase):
             str(entry["class"]) for entry in id_to_labels.values() if isinstance(entry, dict) and "class" in entry
         )
 
-    async def test_sdg_geomsubset_per_subset_toggle(self):
+    async def test_sdg_geomsubset_per_subset_toggle(self) -> None:
+        """Assert class labels when per-subset segmentation is off, on, and off again."""
         classes_false_a = await self._capture_classes_async(False)
         self.assertEqual(
             classes_false_a,

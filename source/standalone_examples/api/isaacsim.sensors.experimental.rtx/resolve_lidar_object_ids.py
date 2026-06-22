@@ -136,7 +136,7 @@ print("Created LidarSensor")
 class GmoObjectIdWriter(Writer):
     """Writer that collects GenericModelOutput and StableIdMap data each frame."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.data_structure = "renderProduct"
         self.annotators = [
             rep.annotators.get("GenericModelOutput"),
@@ -145,7 +145,8 @@ class GmoObjectIdWriter(Writer):
         self.gmo = None
         self.stable_id_map = None
 
-    def write(self, data):
+    def write(self, data: dict[str, object]) -> None:
+        """Collect GenericModelOutput and StableIdMap payloads."""
         if "renderProducts" not in data:
             return
         for _rp_name, rp_data in data["renderProducts"].items():

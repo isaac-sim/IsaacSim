@@ -17,6 +17,7 @@
 
 import os
 import random
+from typing import Any
 
 from isaacsim import SimulationApp
 
@@ -27,13 +28,13 @@ import omni.replicator.core as rep
 import omni.usd
 
 
-def randomize_location(prim):
+def randomize_location(prim: Any) -> None:
     """Randomize the position of a prim using the USD functional API."""
     random_pos = (random.uniform(-1, 1), random.uniform(-1, 1), random.uniform(-1, 1))
     rep.functional.modify.position(prim, random_pos)
 
 
-def run_example():
+def run_example() -> None:
     """Run SDG with combined USD API and graph-based randomization."""
     # Create a new stage and disable capture on play
     omni.usd.get_context().new_stage()

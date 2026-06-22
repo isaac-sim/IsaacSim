@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for validating all supported radar configurations and variants in the isaacsim.sensors.experimental.rtx extension."""
+"""Verifies every supported RTX radar configuration and variant by creating a Radar prim and validating its parameters with SensorCheckerUtil."""
 
 from pathlib import Path
+from typing import Any
 
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -41,7 +42,7 @@ class TestSupportedRadarConfigs(omni.kit.test.AsyncTestCase):
     which creates individual test cases for each config-variant pair.
     """
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Sets up the test environment for radar configuration testing.
 
         Creates a new USD stage, initializes a sarcophagus object with non-visual materials,
@@ -63,7 +64,7 @@ class TestSupportedRadarConfigs(omni.kit.test.AsyncTestCase):
         self._checker = SensorCheckerUtil()
         self._checker.init(model_info)
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Cleans up the test environment after radar configuration testing.
 
         Removes the sensor checker, waits for any pending asset loading to complete,
@@ -75,7 +76,7 @@ class TestSupportedRadarConfigs(omni.kit.test.AsyncTestCase):
         await app_utils.update_app_async()
 
 
-def _create_radar_parameters_test(config_path, variant):
+def _create_radar_parameters_test(config_path: Any, variant: Any) -> Any:
     """Creates a test function for validating radar sensor parameters with specified configuration and variant.
 
     Generates an async test function that creates an RTX radar sensor prim using Radar.create() with
@@ -89,7 +90,7 @@ def _create_radar_parameters_test(config_path, variant):
         An async test function that validates the radar sensor parameters.
     """
 
-    async def test_function(self):
+    async def test_function(self: Any) -> None:
         config_name = Path(config_path).stem
         radar = Radar.create(
             path="/asset",
@@ -121,7 +122,7 @@ def _create_radar_parameters_test(config_path, variant):
     return test_function
 
 
-def _variant_label(v):
+def _variant_label(v: Any) -> Any:
     if v is None:
         return "default"
     if isinstance(v, str):

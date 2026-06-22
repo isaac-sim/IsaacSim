@@ -15,9 +15,9 @@
 
 # NOTE: Import here your extension examples to be propagated to ISAAC SIM Extensions startup
 
-from .franka.franka_example import FrankaExample
-from .franka.franka_example_extension import FrankaExampleExtension
-from .humanoid.humanoid_example import HumanoidExample
-from .humanoid.humanoid_example_extension import HumanoidExampleExtension
-from .quadruped.quadruped_example import QuadrupedExample
-from .quadruped.quadruped_example_extension import QuadrupedExampleExtension
+from .franka.franka_example import FrankaExample as FrankaExample
+from .franka.franka_example_extension import FrankaExampleExtension as FrankaExampleExtension
+from .humanoid.humanoid_example import HumanoidExample as HumanoidExample
+from .humanoid.humanoid_example_extension import HumanoidExampleExtension as HumanoidExampleExtension
+from .quadruped.quadruped_example import QuadrupedExample as QuadrupedExample
+from .quadruped.quadruped_example_extension import QuadrupedExampleExtension as QuadrupedExampleExtension

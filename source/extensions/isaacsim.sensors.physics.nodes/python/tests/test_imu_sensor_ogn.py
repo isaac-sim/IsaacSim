@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies IMU sensor OmniGraph nodes for valid and invalid inputs, gravity-toggle reads, latest-data reads, and stop-play lifecycle behavior."""
+
 import asyncio
 
 import isaacsim.core.experimental.utils.prim as prim_utils
@@ -37,7 +39,10 @@ from .common import (
 
 
 class TestIMUSensorOgn(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Exercise the IMU read node on a rigid cube with a configured IMU sensor."""
+
+    async def setUp(self) -> None:
+        """Create the cube IMU scene and its OmniGraph reader node."""
         await stage_utils.create_new_stage_async()
         physics_rate = 60
         SimulationManager.setup_simulation(dt=1.0 / physics_rate)
@@ -46,7 +51,8 @@ class TestIMUSensorOgn(omni.kit.test.AsyncTestCase):
         await self.setup_ogn()
         self._physics_rate = physics_rate
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Stop playback, invalidate physics, and wait for stage loading to finish."""
         if self._timeline.is_playing():
             self._timeline.stop()
         SimulationManager.invalidate_physics()
@@ -55,9 +61,9 @@ class TestIMUSensorOgn(omni.kit.test.AsyncTestCase):
             # print("tearDown, assets still loading, waiting to finish...")
             await asyncio.sleep(1.0)
         await omni.kit.app.get_app().next_update_async()
-        pass
 
-    async def setup_environment(self):
+    async def setup_environment(self) -> None:
+        """Create a rigid cube on a ground plane and author an IMU with a filter width."""
         GroundPlane("/World/GroundPlane", positions=[0.0, 0.0, 0.0])
         Cube("/World/Cube", sizes=1.0, positions=[0.0, 0.0, 1.0])
         GeomPrim("/World/Cube", apply_collision_apis=True)
@@ -67,9 +73,9 @@ class TestIMUSensorOgn(omni.kit.test.AsyncTestCase):
             "/World/Cube/imu_sensor",
         )
         prim_utils.get_prim_at_path("/World/Cube/imu_sensor").GetAttribute("linearAccelerationFilterWidth").Set(10)
-        pass
 
-    async def setup_ogn(self):
+    async def setup_ogn(self) -> None:
+        """Create an OnPlaybackTick-driven IsaacReadIMU node graph."""
         self.graph_path = "/TestGraph"
         self.prim_path = "/World/Cube/imu_sensor"
 
@@ -95,7 +101,8 @@ class TestIMUSensorOgn(omni.kit.test.AsyncTestCase):
 
     # verifying linear acceleration values are approximately equal to  zero for x and y and 9.81 for z in valid case
     # verifying sensor time is non-zero for the valid case
-    async def test_valid_imu_sensor_ogn(self):
+    async def test_valid_imu_sensor_ogn(self) -> None:
+        """Verify valid IMU input reports gravity on Z, near-zero angular velocity, and time."""
         og.Controller.set(
             og.Controller.attribute(self.graph_path + "/ReadIMUNode.inputs:imuPrim"),
             [usdrt.Sdf.Path("/World/Cube/imu_sensor")],
@@ -120,7 +127,8 @@ class TestIMUSensorOgn(omni.kit.test.AsyncTestCase):
         sensor_time = og.Controller.attribute(self.graph_path + "/ReadIMUNode.outputs:sensorTime").get()
         self.assertNotEqual(sensor_time, 0.0)
 
-    async def test_read_gravity_toggle_imu_sensor_ogn(self):
+    async def test_read_gravity_toggle_imu_sensor_ogn(self) -> None:
+        """Verify readGravity=False removes gravity from the reported linear acceleration."""
         og.Controller.set(
             og.Controller.attribute(self.graph_path + "/ReadIMUNode.inputs:imuPrim"),
             [usdrt.Sdf.Path("/World/Cube/imu_sensor")],
@@ -135,7 +143,8 @@ class TestIMUSensorOgn(omni.kit.test.AsyncTestCase):
         lin_acc = og.Controller.attribute(self.graph_path + "/ReadIMUNode.outputs:linAcc").get()
         self.assertAlmostEqual(lin_acc[2], 0.0, delta=SMALL_TOLERANCE)
 
-    async def test_use_latest_data_imu_sensor_ogn(self):
+    async def test_use_latest_data_imu_sensor_ogn(self) -> None:
+        """Verify useLatestData=True still returns a nonzero IMU sensor timestamp."""
         og.Controller.set(
             og.Controller.attribute(self.graph_path + "/ReadIMUNode.inputs:imuPrim"),
             [usdrt.Sdf.Path("/World/Cube/imu_sensor")],
@@ -150,7 +159,7 @@ class TestIMUSensorOgn(omni.kit.test.AsyncTestCase):
         sensor_time = og.Controller.attribute(self.graph_path + "/ReadIMUNode.outputs:sensorTime").get()
         self.assertNotEqual(sensor_time, 0.0)
 
-    async def test_imu_sensor_stop_play_lifecycle(self):
+    async def test_imu_sensor_stop_play_lifecycle(self) -> None:
         """IMU outputs recover valid data after a stop/play cycle."""
         og.Controller.set(
             og.Controller.attribute(self.graph_path + "/ReadIMUNode.inputs:imuPrim"),
@@ -180,7 +189,8 @@ class TestIMUSensorOgn(omni.kit.test.AsyncTestCase):
         sensor_time_after = og.Controller.attribute(self.graph_path + "/ReadIMUNode.outputs:sensorTime").get()
         self.assertNotEqual(sensor_time_after, 0.0, "Should have non-zero time after stop/play")
 
-    async def test_invalid_imu_sensor_ogn(self):
+    async def test_invalid_imu_sensor_ogn(self) -> None:
+        """Verify a non-IMU prim produces zero motion outputs and identity orientation."""
         og.Controller.set(
             og.Controller.attribute(self.graph_path + "/ReadIMUNode.inputs:imuPrim"),
             [usdrt.Sdf.Path("/World/Cube")],

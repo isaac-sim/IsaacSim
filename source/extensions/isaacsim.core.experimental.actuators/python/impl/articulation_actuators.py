@@ -18,22 +18,43 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import carb
 import isaacsim.core.experimental.utils.ops as ops_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
-import newton.actuators as na
 import numpy as np
-import warp as wp
-from isaacsim.core.experimental.prims import Articulation
-from isaacsim.core.simulation_manager import IsaacEvents, SimulationEvent, SimulationManager
-from newton.actuators import Actuator, ActuatorParsed, Clamping, Controller, Delay
 from pxr import Usd
 
-from .clamping_builders import build_clamping
-from .controller_builders import build_controller
-from .delay_builder import build_delay
+_RUNTIME_LOADED = False
+
+if TYPE_CHECKING:
+    import newton.actuators as na
+    import warp as wp
+    from isaacsim.core.experimental.prims import Articulation
+    from isaacsim.core.simulation_manager import IsaacEvents, SimulationEvent, SimulationManager
+    from newton.actuators import Actuator, ActuatorParsed, Clamping, Controller, Delay
+
+    # When type checking is on, we have already imported everything.
+    _RUNTIME_LOADED = True
+
+
+def _ensure_runtime() -> None:
+    """Import Newton, Warp, and Articulation dependencies on first use (cached)."""
+    global _RUNTIME_LOADED
+    global wp, na, Actuator, ActuatorParsed, Clamping, Delay
+    global Articulation, IsaacEvents, SimulationEvent, SimulationManager
+
+    if _RUNTIME_LOADED:
+        return
+
+    import newton.actuators as na
+    import warp as wp
+    from isaacsim.core.experimental.prims import Articulation
+    from isaacsim.core.simulation_manager import IsaacEvents, SimulationEvent, SimulationManager
+    from newton.actuators import Actuator, ActuatorParsed, Clamping, Delay
+
+    _RUNTIME_LOADED = True
 
 
 @dataclass
@@ -72,6 +93,7 @@ def _row_major_indices(n_rows: int, stride: int, column: int, device: str | None
     Returns:
         ``wp.array`` of shape ``(n_rows,)`` and dtype ``wp.uint32``.
     """
+    _ensure_runtime()
     return wp.array(
         np.arange(n_rows, dtype=np.uint32) * stride + column,
         dtype=wp.uint32,
@@ -96,6 +118,7 @@ def _gather_into(dst: wp.array, src: wp.array) -> wp.array:
         ``src`` unchanged if its device matches ``dst.device``; otherwise ``dst``,
         populated via ``wp.copy``.
     """
+    _ensure_runtime()
     if src.device == dst.device:
         return src
     wp.copy(dst, src)
@@ -312,6 +335,7 @@ class ArticulationActuators:
         device: str | None = None,
         _skip_discovery: bool = False,
     ) -> None:
+        _ensure_runtime()
         self._articulation = Articulation(paths)
         self._device = device
 
@@ -467,6 +491,9 @@ class ArticulationActuators:
             >>> actuated.close()  # doctest: +NO_CHECK
         """
         self.disable_auto_step_pre_physics()
+        if not self._lifecycle_callback_ids:
+            return
+        _ensure_runtime()
         for cb_id in self._lifecycle_callback_ids:
             SimulationManager.deregister_callback(cb_id)
         self._lifecycle_callback_ids = []
@@ -501,6 +528,7 @@ class ArticulationActuators:
             ...     dof_indices=[0, 1],
             ... )
         """
+        _ensure_runtime()
         indices = ops_utils.resolve_indices(indices, count=len(self._articulation), device="cpu")
         dof_indices = ops_utils.resolve_indices(dof_indices, count=self._articulation.num_dofs, device="cpu")
         target_feedforward_efforts = ops_utils.broadcast_to(
@@ -568,6 +596,7 @@ class ArticulationActuators:
             >>> actuated.step_actuators(step_dt=1.0 / 60.0)  # doctest: +NO_CHECK
         """
         del context  # Unused; required by `SimulationManager` callback signature.
+        _ensure_runtime()
         if not self._actuators:
             return
 
@@ -640,6 +669,11 @@ class ArticulationActuators:
         ``indices`` (into the articulation's ``(n_robots, n_all_dofs)`` state/control layout) and
         compact ``effort_indices`` (into the effort buffer).
         """
+        _ensure_runtime()
+        from .clamping_builders import build_clamping
+        from .controller_builders import build_controller
+        from .delay_builder import build_delay
+
         n_robots = len(self._articulation)
         n_all_dofs = self._articulation.num_dofs
 
@@ -766,6 +800,7 @@ class ArticulationActuators:
         """Register the pre-physics callback if not already registered."""
         if self._actuator_callback_id is not None:
             return
+        _ensure_runtime()
         self._actuator_callback_id = SimulationManager.register_callback(
             self.step_actuators,
             event=SimulationEvent.PHYSICS_PRE_STEP,

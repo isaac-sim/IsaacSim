@@ -107,7 +107,7 @@ class DocTest:
         **kwargs: Arbitrary keyword arguments for configuring the doctest runner.
     """
 
-    def __init__(self, *args: object, **kwargs: object):
+    def __init__(self, *args: object, **kwargs: object) -> None:
         self._globs = {"__name__": "__main__"}
         self._checker = _Checker()
 
@@ -190,7 +190,7 @@ class DocTest:
                 members.insert(index, members.pop(members.index(member)))
         return members
 
-    def checkDocTest(
+    def _check_doc_test_impl(
         self,
         expr: object,
         flags: int = doctest.NORMALIZE_WHITESPACE | doctest.ELLIPSIS | doctest.FAIL_FAST,
@@ -222,6 +222,8 @@ class DocTest:
             if status.failed:
                 return False
         return True
+
+    checkDocTest = _check_doc_test_impl
 
     def _is_pybind11_module(self, obj: object) -> bool:
         """Check if this is a pybind11 module.

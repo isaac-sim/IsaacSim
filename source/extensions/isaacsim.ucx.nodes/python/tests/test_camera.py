@@ -103,8 +103,8 @@ class TestUCXCamera(UCXTestCase):
           an empty ``data`` vector, then sends the raw pixel buffer on the
           same tag. UCX preserves per-tag FIFO order so a second ``tag_recv``
           pulls the pixels deterministically. The mode is detected from the
-          FlatBuffer itself: when the embedded ubyte vector is empty but
-          ``Tensor.shape[0]`` reports a non-zero size, this method posts a
+          FlatBuffer itself: when the embedded ubyte vector is empty but the
+          ``Tensor.shape`` product reports a non-zero size, this method posts a
           follow-up recv for that many bytes.
 
         Args:
@@ -141,7 +141,7 @@ class TestUCXCamera(UCXTestCase):
             request.check_error()
 
             try:
-                timestamp, width, height, encoding, step, image_data = unpack_image_message(buffer)
+                timestamp, width, height, encoding, step, image_data, shape = unpack_image_message(buffer)
             except ValueError:
                 # Invalid data received, might be timing issue - retry after waiting
                 if retry < retry_count - 1:
@@ -151,8 +151,8 @@ class TestUCXCamera(UCXTestCase):
                     raise
 
             # GPU-direct two-message protocol: the metadata FB carries an empty
-            # pixel vector but records the expected size in Tensor.shape[0].
-            # Pull the follow-up raw pixel buffer from the same tag.
+            # pixel vector but records the per-axis dimensions in Tensor.shape.
+            # Pull the follow-up raw pixel buffer (size = prod(shape)) from the same tag.
             expected_size = get_image_pixel_data_size(buffer)
             if len(image_data) == 0 and expected_size > 0:
                 pixel_buffer = np.zeros(expected_size, dtype=np.uint8)
@@ -166,7 +166,7 @@ class TestUCXCamera(UCXTestCase):
                 image_data = bytes(pixel_buffer[:expected_size])
                 step = expected_size // height if height > 0 else 0
 
-            return timestamp, width, height, encoding, step, image_data
+            return timestamp, width, height, encoding, step, image_data, shape
 
         self.fail("Failed to receive valid image message after all retries")
 
@@ -214,7 +214,7 @@ class TestUCXCamera(UCXTestCase):
         await self.setup_ucx_client_with_listener(self.port)
 
         # Receive RGB image
-        timestamp, width, height, encoding, step, image_data = await self.receive_image_message(tag=10)
+        timestamp, width, height, encoding, step, image_data, _shape = await self.receive_image_message(tag=10)
 
         # Verify metadata
         self.assertIsNotNone(image_data)
@@ -283,7 +283,7 @@ class TestUCXCamera(UCXTestCase):
         await app_utils.update_app_async(steps=180)
 
         # Receive RGB image
-        timestamp, width, height, encoding, step, image_data = await self.receive_image_message(tag=10)
+        timestamp, width, height, encoding, step, image_data, _shape = await self.receive_image_message(tag=10)
 
         # Verify metadata
         self.assertIsNotNone(image_data)
@@ -345,7 +345,7 @@ class TestUCXCamera(UCXTestCase):
         await self.setup_ucx_client_with_listener(self.port)
 
         # Receive RGB image (with longer timeout since publish is less frequent)
-        timestamp, width, height, encoding, step, image_data = await self.receive_image_message(
+        timestamp, width, height, encoding, step, image_data, _shape = await self.receive_image_message(
             tag=10, timeout_frames=3000
         )
 
@@ -408,7 +408,9 @@ class TestUCXCamera(UCXTestCase):
             await self.setup_ucx_client_with_listener(port=port)
 
             # Receive RGB image
-            timestamp, recv_width, recv_height, encoding, step, image_data = await self.receive_image_message(tag=tag)
+            timestamp, recv_width, recv_height, encoding, step, image_data, shape = await self.receive_image_message(
+                tag=tag
+            )
 
             # Verify metadata
             self.assertEqual(recv_width, width, f"Width mismatch for resolution {width}x{height}")
@@ -419,6 +421,9 @@ class TestUCXCamera(UCXTestCase):
             # Verify data size
             expected_size = height * step
             self.assertEqual(len(image_data), expected_size, f"Data size mismatch for resolution {width}x{height}")
+
+            # Verify Tensor.shape contract: [height, width, bytes_per_pixel].
+            self.assertEqual(shape, (height, width, 3), f"Shape mismatch for resolution {width}x{height}")
 
             timeline.stop()
             await omni.kit.app.get_app().next_update_async()

@@ -46,14 +46,14 @@ KNOWN_UI_TEST_FAILURES = {
 class TestRTXContextMenu(MenuUITestCase):
     """Test r t x context menu."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures."""
         await super().setUp()
         self.carb_settings = carb.settings.get_settings()
         self.carb_settings.set("/rtx/rendermode", "RealTimePathTracing")
         self.carb_settings.set("/rtx-transient/resourcemanager/enableTextureStreaming", False)
 
-    async def test_rtx_sensors_context_menu_count(self):
+    async def test_rtx_sensors_context_menu_count(self) -> None:
         """Test all the RTX sensors are added to context menus correctly."""
         viewport_context_menu = await self.get_viewport_context_menu()
         self.assertIsNotNone(viewport_context_menu, "Failed to get viewport context menu")
@@ -68,7 +68,7 @@ class TestRTXContextMenu(MenuUITestCase):
             f"There are {n_items_viewport_menu} items in the viewport context menu, expected {n_configs}.",
         )
 
-    async def test_rtx_sensors_context_menu_click(self):
+    async def test_rtx_sensors_context_menu_click(self) -> None:
         """Test the RTX sensors are created correctly via context menu.
 
         Note: Some sensors are skipped due to a known bug in omni.kit.ui_test.select_context_menu.

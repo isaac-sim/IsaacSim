@@ -43,7 +43,7 @@ class TestGo2CPU(omni.kit.test.AsyncTestCase):
         """
         return torch.device("cpu")
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment with physics scene and ground plane."""
         await stage_utils.create_new_stage_async()
         self._physics_rate = 200
@@ -72,7 +72,7 @@ class TestGo2CPU(omni.kit.test.AsyncTestCase):
         self._timeline = omni.timeline.get_timeline_interface()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Tear down test environment and deregister physics callback."""
         await omni.kit.app.get_app().next_update_async()
         self._timeline.stop()
@@ -82,7 +82,7 @@ class TestGo2CPU(omni.kit.test.AsyncTestCase):
             await asyncio.sleep(1.0)
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_go2_add(self):
+    async def test_go2_add(self) -> None:
         """Test spawning a Go2 robot and verify its configuration.
 
         Verifies that the robot has the expected 12 degrees of freedom and that the robot prim
@@ -106,7 +106,7 @@ class TestGo2CPU(omni.kit.test.AsyncTestCase):
             f"Articulation root prim at {articulation_root_path} should have ArticulationRootAPI",
         )
 
-    async def test_robot_standing(self):
+    async def test_robot_standing(self) -> None:
         """Test the robot remains upright with a zero command (standing in place)."""
         await self.spawn_go2()
         await omni.kit.app.get_app().next_update_async()
@@ -126,7 +126,7 @@ class TestGo2CPU(omni.kit.test.AsyncTestCase):
         horizontal_drift = float(np.linalg.norm(current_pos[:2] - start_pos[:2]))
         self.assertLess(horizontal_drift, 0.5, f"Robot should not drift horizontally. drift={horizontal_drift:.4f}m")
 
-    async def test_robot_move_forward_command(self):
+    async def test_robot_move_forward_command(self) -> None:
         """Test the robot moves forward in response to a forward command."""
         await self.spawn_go2()
         await omni.kit.app.get_app().next_update_async()
@@ -148,7 +148,7 @@ class TestGo2CPU(omni.kit.test.AsyncTestCase):
         self.assertGreater(delta, 0.5)
         self.assertLess(delta, 2.0)
 
-    async def test_robot_turn_command(self):
+    async def test_robot_turn_command(self) -> None:
         """Test the robot turns in response to a yaw command."""
         await self.spawn_go2()
         await omni.kit.app.get_app().next_update_async()
@@ -174,7 +174,7 @@ class TestGo2CPU(omni.kit.test.AsyncTestCase):
         heading_delta = abs(current_yaw - start_yaw)
         self.assertGreater(heading_delta, 0.35)
 
-    async def spawn_go2(self, name="go2"):
+    async def spawn_go2(self, name: object = "go2") -> None:
         """Spawn a Go2 robot and register the physics callback.
 
         Args:
@@ -194,7 +194,7 @@ class TestGo2CPU(omni.kit.test.AsyncTestCase):
         )
         await omni.kit.app.get_app().next_update_async()
 
-    def on_physics_step(self, step_size, context):
+    def on_physics_step(self, step_size: object, context: object) -> None:
         """Execute one policy step on physics update.
 
         Args:

@@ -13,16 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-The Kit extension system tests for Python has additional wrapping.
-
-to make test auto-discoverable add support for async/await tests.
-The easiest way to set up the test class is to have it derive from
-the omni.kit.test.AsyncTestCase class that implements them.
-
-Visit the next link for more details:
-  https://docs.omniverse.nvidia.com/kit/docs/kit-manual/latest/guide/testing_exts_python.html
-"""
+"""Smoke tests that the cuMotion extension loads through Kit and exposes its testable Python entry points."""
 
 import omni.kit.test
 

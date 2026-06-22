@@ -1,4 +1,9 @@
 # Changelog
+
+## [1.3.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.3.0] - 2026-05-20
 ### Added
 - `normalize_urdf_for_urdfdom(urdf_text)` helper (`urdf_normalize.py`): rewrites a URDF document in-memory so it satisfies urdfdom 4.0.1's strict parser without modifying any kinematically meaningful values. Inserts default `effort`/`velocity` attributes on `<limit>` elements that omit them, adds a wide-open `<limit>` to `revolute`/`prismatic` joints that have none, adds `k_velocity="0"` to `<safety_controller>` elements missing it, drops empty `<dynamics/>` elements, and removes `<mimic>` elements with no target joint. Idempotent on already-clean URDFs.

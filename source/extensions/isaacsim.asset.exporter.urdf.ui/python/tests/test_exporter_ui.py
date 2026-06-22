@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""UI tests for the URDF exporter extension."""
+"""Verifies the URDF exporter UI registration and dialog behavior. Covers option widget defaults, value updates, package name sanitization, and delegating export of a selected robot."""
 
 from __future__ import annotations
 
@@ -35,10 +35,12 @@ class TestExporterUI(MenuUITestCase):
     """Test URDF exporter UI menu integration, dialog lifecycle, and widget interactions."""
 
     async def setUp(self) -> None:
+        """Prepare the Exporter UI test fixture."""
         await super().setUp()
         self._tmpdir = tempfile.mkdtemp(prefix="urdf_export_ui_test_")
 
     async def tearDown(self) -> None:
+        """Clean up the Exporter UI test fixture."""
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
         await omni.kit.app.get_app().next_update_async()

@@ -22,7 +22,11 @@ class HsbCoreExtension(omni.ext.IExt):
     """HSB Core Extension class."""
 
     def on_startup(self, ext_id: str) -> None:
-        """Called when the extension is loaded."""
+        """Called when the extension is loaded.
+
+        Args:
+            ext_id: Extension identifier provided by Kit.
+        """
         carb.log_info("HSB Core Extension starting up")
 
         from .bindings._hsb_core import acquire_interface

@@ -15,4 +15,4 @@
 
 """Utilities for working with primitive shape types in motion generation."""
 
-from .core_type import get_shape_type
+from .core_type import get_shape_type as get_shape_type

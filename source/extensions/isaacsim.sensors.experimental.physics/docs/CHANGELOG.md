@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.0.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [3.0.1] - 2026-05-10
 ### Fixed
 - Refresh IMU prim-data reader initialization when reading or stepping so IMU data is available after physics-only simulation steps

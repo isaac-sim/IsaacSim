@@ -32,7 +32,7 @@ class Extension(omni.ext.IExt):
     2. Registers an authentication callback for the Omniverse client when ETM_ACTIVE is set.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize the extension.
 
         Applies ISAACSIM_ASSET_ROOT env var override (if set), then registers an
@@ -70,6 +70,6 @@ class Extension(omni.ext.IExt):
             return (omniuser, omnipass)
         return None
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up resources when the extension is shut down."""
         self._auth_cb = None

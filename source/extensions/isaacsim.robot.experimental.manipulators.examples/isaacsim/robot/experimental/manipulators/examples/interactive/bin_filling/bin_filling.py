@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Interactive bin filling example with UR10 robot"""
+"""Interactive bin filling example with UR10 robot."""
 
 from __future__ import annotations
 
@@ -225,7 +225,11 @@ class BinFilling(BaseSample):
         )
 
     def _get_estimated_state(self) -> mg.RobotState:
-        """Wrap the robot's current joint state for the motion-generation controller."""
+        """Wrap the robot's current joint state for the motion-generation controller.
+
+        Returns:
+            Current robot joint state in the controller's joint-space format.
+        """
         names = self._robot.dof_names
         return mg.RobotState(
             joints=mg.JointState.from_name(
@@ -236,7 +240,14 @@ class BinFilling(BaseSample):
         )
 
     def _create_setpoint_state(self, target_position: np.ndarray) -> mg.RobotState:
-        """Build the desired tool-frame state for RMPflow."""
+        """Build the desired tool-frame state for RMPflow.
+
+        Args:
+            target_position: Desired tool-frame position in world coordinates.
+
+        Returns:
+            Desired tool-frame state for the controller.
+        """
         return mg.RobotState(
             sites=mg.SpatialState.from_name(
                 spatial_space=self._site_space,
@@ -246,7 +257,12 @@ class BinFilling(BaseSample):
         )
 
     def _move_to_target(self, target_position: np.ndarray, dt: float) -> None:
-        """Advance RMPflow toward the requested tool-frame target."""
+        """Advance RMPflow toward the requested tool-frame target.
+
+        Args:
+            target_position: Desired tool-frame position in world coordinates.
+            dt: Physics step size in seconds.
+        """
         if (
             self._robot is None
             or self._controller is None
@@ -358,7 +374,12 @@ class BinFilling(BaseSample):
     # ------------------------------------------------------------------
 
     def _physics_step(self, dt: float, context: object) -> None:
-        """Execute one step of the pick-and-hold state machine and handle cube spawning."""
+        """Execute one step of the pick-and-hold state machine and handle cube spawning.
+
+        Args:
+            dt: Physics step size in seconds.
+            context: Callback context supplied by the simulation manager.
+        """
         if self._robot is None or self._bin_prim is None:
             return
 
@@ -431,22 +452,49 @@ class BinFilling(BaseSample):
             app_utils.pause()
 
     def _is_done(self) -> bool:
-        """Return whether the state machine has completed all phases."""
+        """Return whether the state machine has completed all phases.
+
+        Returns:
+            True if all state-machine phases have completed.
+        """
         return self._event >= len(EVENTS_DT)
 
     @staticmethod
     def _mix_sin(t: float) -> float:
-        """Return a smooth 0-1 interpolation value."""
+        """Return a smooth 0-1 interpolation value.
+
+        Args:
+            t: Normalized interpolation phase.
+
+        Returns:
+            Smooth interpolation value between 0 and 1.
+        """
         return 0.5 * (1.0 - np.cos(t * np.pi))
 
     @staticmethod
     def _combine_convex(a: np.ndarray | float, b: np.ndarray | float, alpha: float) -> np.ndarray | float:
-        """Blend two values with a convex combination."""
+        """Blend two values with a convex combination.
+
+        Args:
+            a: Start value.
+            b: End value.
+            alpha: Blend weight applied to ``b``.
+
+        Returns:
+            Convex blend of ``a`` and ``b``.
+        """
         return (1.0 - alpha) * a + alpha * b
 
     @staticmethod
     def _get_tool_orientation_from_ee_orientation(ee_orientation: np.ndarray) -> np.ndarray:
-        """Convert desired USD ee_link orientation to cuMotion tool0 orientation."""
+        """Convert desired USD ee_link orientation to cuMotion tool0 orientation.
+
+        Args:
+            ee_orientation: Desired ee_link orientation quaternion.
+
+        Returns:
+            Normalized cuMotion tool0 orientation quaternion.
+        """
         ee_link_from_wrist = euler_angles_to_quaternion([0.0, 0.0, np.pi / 2.0]).numpy()
         tool0_from_wrist = euler_angles_to_quaternion([-np.pi / 2.0, 0.0, 0.0]).numpy()
         wrist_from_ee_link = quaternion_conjugate(ee_link_from_wrist).numpy()

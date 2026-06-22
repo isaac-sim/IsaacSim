@@ -17,6 +17,7 @@
 
 import argparse
 import os
+from typing import Any
 
 _VALIDATION_DIR = os.path.dirname(os.path.realpath(__file__))
 _DEFAULT_GOLDEN_DIR = os.path.join(_VALIDATION_DIR, "golden_data")
@@ -146,14 +147,17 @@ from omni.replicator.core.scripts.writers_default.basicwriter import BasicWriter
 
 
 class TimestampedBasicWriter(BasicWriter):
-    """BasicWriter subclass that uses the timeline simulation time as the
-    filename instead of an incrementing frame counter."""
+    """BasicWriter subclass that uses the timeline simulation time.
 
-    def write(self, data):
+    filename instead of an incrementing frame counter.
+    """
+
+    def write(self, data: dict[str, Any]) -> None:
+        """Write a frame using the current timeline time as the reference."""
         self._ref_time_sec = omni.timeline.get_timeline_interface().get_current_time()
         super().write(data)
 
-    def _write_rgb(self, anno_rp_data, output_path):
+    def _write_rgb(self, anno_rp_data: dict[str, Any], output_path: str) -> None:
         file_path = f"{output_path}rgb_{self._ref_time_sec:.6f}.{self._image_output_format}"
         self._backend.schedule(F.write_image, data=anno_rp_data["data"], path=file_path)
 

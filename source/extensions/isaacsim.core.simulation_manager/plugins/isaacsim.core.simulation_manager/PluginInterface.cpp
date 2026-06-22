@@ -597,14 +597,14 @@ private:
         auto usdContext = omni::usd::UsdContext::getContext();
         if (!usdContext)
         {
-            CARB_LOG_WARN("USD context is not available; stage-opened subscription is deferred");
+            CARB_LOG_INFO("USD context is not available; stage-opened subscription is deferred");
             return;
         }
 
         auto stage = usdContext->getStage();
         if (!stage)
         {
-            CARB_LOG_WARN("USD stage is not available; stage-opened subscription is deferred");
+            CARB_LOG_INFO("USD stage is not available; stage-opened subscription is deferred");
             return;
         }
 

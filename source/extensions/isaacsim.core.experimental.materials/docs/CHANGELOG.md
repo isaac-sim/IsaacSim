@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.7.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [0.7.0] - 2026-03-18
 ### Added
 - Add non-visual material

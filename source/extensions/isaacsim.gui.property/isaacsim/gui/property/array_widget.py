@@ -89,6 +89,9 @@ class _BaseMultiField:
         Args:
             index: The field index to retrieve.
 
+        Returns:
+            The value at the given field index.
+
         Raises:
             NotImplementedError: Subclasses must implement this method.
         """
@@ -200,7 +203,11 @@ class _CustomStringField:
             )
 
     def get_value(self) -> str:
-        """Return the current string value of the field."""
+        """Return the current string value of the field.
+
+        Returns:
+            The current field value.
+        """
         return self._field.get_value_as_string()
 
     def remove(self) -> None:

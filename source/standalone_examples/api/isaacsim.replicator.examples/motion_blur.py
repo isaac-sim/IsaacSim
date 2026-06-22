@@ -44,7 +44,7 @@ ANIMATION_DURATION = 10
 NUM_FRAMES = 3
 
 
-def parse_delta_time(value):
+def parse_delta_time(value: str) -> float | None:
     """Convert string to float or None. Accepts 'None', -1, 0, or numeric values."""
     if value.lower() == "none":
         return None
@@ -80,7 +80,7 @@ samples_per_pixel = args.samples_per_pixel
 motion_blur_subsamples = args.motion_blur_subsamples
 
 
-def setup_stage():
+def setup_stage() -> None:
     """Create a new USD stage with animated and physics-enabled assets with synchronized motion."""
     omni.usd.get_context().new_stage()
     settings = carb.settings.get_settings()
@@ -129,8 +129,12 @@ def setup_stage():
 
 
 def run_motion_blur_example(
-    num_frames, delta_time=None, use_path_tracing=True, motion_blur_subsamples=8, samples_per_pixel=64
-):
+    num_frames: int,
+    delta_time: float | None = None,
+    use_path_tracing: bool = True,
+    motion_blur_subsamples: int = 8,
+    samples_per_pixel: int = 64,
+) -> None:
     """Capture motion blur frames with the given delta time step and render mode."""
     setup_stage()
     stage = omni.usd.get_context().get_stage()
@@ -225,7 +229,12 @@ def run_motion_blur_example(
     render_product.destroy()
 
 
-def run_motion_blur_examples(num_frames, delta_times, samples_per_pixel, motion_blur_subsamples):
+def run_motion_blur_examples(
+    num_frames: int,
+    delta_times: list[float | None],
+    samples_per_pixel: list[int],
+    motion_blur_subsamples: list[int],
+) -> None:
     """Run motion blur examples across all delta time and render mode combinations."""
     print(
         f"[MotionBlur] Running with delta_times={delta_times}, samples_per_pixel={samples_per_pixel}, motion_blur_subsamples={motion_blur_subsamples}"

@@ -32,7 +32,12 @@ from ._pose_base import _PoseBase
 
 @register_recordable
 class RigidBodyRecordable(_PoseBase):
-    """Records the world ``position`` + ``wxyz orientation`` of a single rigid body."""
+    """Records the world ``position`` + ``wxyz orientation`` of a single rigid body.
+
+    Args:
+        group: Recordable HDF5 group path.
+        prim_path: USD prim path bound to the recordable.
+    """
 
     TYPE_ID = "rigid_body"
 
@@ -40,8 +45,21 @@ class RigidBodyRecordable(_PoseBase):
         super().__init__(group=group, prim_path=prim_path, space="world")
 
     def to_manifest(self) -> dict[str, Any]:
+        """Serialize this object to a manifest entry.
+
+        Returns:
+            JSON-friendly manifest entry.
+        """
         return {"type": self.TYPE_ID, "group": self.group, "prim_path": self.prim_path}
 
     @classmethod
     def from_manifest(cls, entry: Mapping[str, Any]) -> RigidBodyRecordable:
+        """Create an instance from a manifest entry.
+
+        Args:
+            entry: Manifest entry used to reconstruct the recordable.
+
+        Returns:
+            Recordable reconstructed from the manifest entry.
+        """
         return cls(group=entry["group"], prim_path=entry["prim_path"])

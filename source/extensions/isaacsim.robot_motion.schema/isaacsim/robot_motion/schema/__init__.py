@@ -20,7 +20,7 @@ from pxr import Plug
 from .api import MOTION_PLANNING_API_NAME, MOTION_PLANNING_ENABLED_ATTR, apply_motion_planning_api
 
 
-def _register_plugin_path(path: str):
+def _register_plugin_path(path: str) -> None:
     """Register USD plugins from a directory path if not already registered.
 
     Reads the plugInfo.json file in the specified path and registers USD plugins with the Pixar USD
@@ -39,7 +39,7 @@ def _register_plugin_path(path: str):
     try:
         import json
 
-        with open(pluginfo_path, "r") as file_handle:
+        with open(pluginfo_path) as file_handle:
             lines = file_handle.readlines()
             json_lines = [line for line in lines if not line.strip().startswith("#")]
             json_content = "".join(json_lines)
@@ -64,7 +64,7 @@ def _register_plugin_path(path: str):
     Plug.Registry().RegisterPlugins(path)
 
 
-def _register_plugins(ext_path: str):
+def _register_plugins(ext_path: str) -> None:
     """Register robot motion schema USD plugins from extension paths.
 
     Registers USD plugins from the standard schema locations within the extension directory structure.

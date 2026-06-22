@@ -15,11 +15,13 @@
 
 """Utility functions for USD prim relationships and Replicator node registration with telemetry tracking."""
 
+from typing import Any
+
 import omni
 import omni.replicator.core as rep
 
 
-def set_target_prims(primPath: str, targetPrimPaths: list, inputName: str = "inputs:targetPrim"):
+def set_target_prims(primPath: str, targetPrimPaths: list, inputName: str = "inputs:targetPrim") -> None:
     """Set target prim relationships for a USD prim.
 
     Creates a relationship attribute on the specified prim and sets its targets to the provided
@@ -38,7 +40,7 @@ def set_target_prims(primPath: str, targetPrimPaths: list, inputName: str = "inp
         print(e, primPath)
 
 
-def register_node_writer_with_telemetry(*args, **kwargs):
+def register_node_writer_with_telemetry(*args: Any, **kwargs: Any) -> None:
     """Register a node writer with Replicator and enable telemetry tracking.
 
     Registers a node writer using the Replicator core API and adds it to the default writers
@@ -55,7 +57,7 @@ def register_node_writer_with_telemetry(*args, **kwargs):
         rep.WriterRegistry._default_writers.append(kwargs["name"])
 
 
-def register_annotator_from_node_with_telemetry(*args, **kwargs):
+def register_annotator_from_node_with_telemetry(*args: Any, **kwargs: Any) -> None:
     """Register an annotator from a node with Replicator and enable telemetry tracking.
 
     Registers an annotator from a node using the Replicator core API and adds it to the

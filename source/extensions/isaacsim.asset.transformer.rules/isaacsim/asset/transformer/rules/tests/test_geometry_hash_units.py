@@ -33,6 +33,14 @@ def _build_unit_triangle_stage(path: str, meters_per_unit: float) -> Usd.Stage:
 
     The triangle is authored in **stage units** but represents the same
     physical geometry: a right triangle with legs of 1 m.
+
+    Args:
+        path: File path where the stage root layer is created.
+        meters_per_unit: Stage meters-per-unit metadata value.
+
+    Returns:
+        Stage containing the authored triangle mesh.
+
     """
     stage = Usd.Stage.CreateNew(path)
     stage.SetMetadata("metersPerUnit", meters_per_unit)

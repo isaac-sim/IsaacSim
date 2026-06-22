@@ -79,6 +79,9 @@ class UIBuilder:
 
         Skipped while a load is in flight (the load itself triggers stage
         events; resetting state mid-load would clobber it).
+
+        Args:
+            event: USD stage event payload supplied by Kit.
         """
         if self._load_task is not None and not self._load_task.done():
             return
@@ -88,7 +91,11 @@ class UIBuilder:
         self._reset_widgets()
 
     def on_timeline_event(self, event: Any) -> None:
-        """Reset the Run/Stop button on timeline state changes."""
+        """Reset the Run/Stop button on timeline state changes.
+
+        Args:
+            event: Timeline event payload supplied by Kit.
+        """
         self._scenario_state_btn.reset()
         self._scenario_state_btn.enabled = False
 
@@ -166,7 +173,12 @@ class UIBuilder:
         self._scenario_state_btn.enabled = True
 
     def _on_update_style_changed(self, model: Any, _val: Any) -> None:
-        """Push the new combo selection into the scenario."""
+        """Push the new combo selection into the scenario.
+
+        Args:
+            model: Combo box model containing the selected update style index.
+            _val: Unused value supplied by the item-changed callback.
+        """
         selected_index = model.get_item_value_model().as_int
         self._scenario.set_update_style(self._update_style_items[selected_index])
 
@@ -181,7 +193,13 @@ class UIBuilder:
     # ------------------------------------------------------------ per-tick
 
     def _update_scenario(self, step: float, *args: Any, **kwargs: Any) -> None:
-        """Per-physics-step callback wired into the StateButton."""
+        """Run the scenario's per-physics-step callback.
+
+        Args:
+            step: Physics time step in seconds.
+            *args: Extra callback arguments supplied by the StateButton.
+            **kwargs: Extra callback keyword arguments supplied by the StateButton.
+        """
         if self._scenario is not None:
             self._scenario.step(step)
 

@@ -56,7 +56,7 @@ class QuadrupedExample(BaseSample):
     - Proper simulation lifecycle management with setup and cleanup phases
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         # Configure simulation settings for GPU dynamics with high-frequency physics
         self._world_settings["stage_units_in_meters"] = 1.0
@@ -121,7 +121,7 @@ class QuadrupedExample(BaseSample):
             binding_api = UsdShade.MaterialBindingAPI.Apply(ground_geom)
             binding_api.Bind(material)
 
-    def setup_scene(self):
+    def setup_scene(self) -> None:
         """Set up the scene with robot and environment."""
         # Snapshot prior physics device/fabric state so cleanup can restore it.
         self._prev_physics_sim_device, self._prev_fabric_enabled = snapshot_physics_simulation_state()
@@ -151,7 +151,7 @@ class QuadrupedExample(BaseSample):
         )
         print("Scene setup complete with Spot quadruped robot")
 
-    async def setup_post_load(self):
+    async def setup_post_load(self) -> None:
         """Setup keyboard input and physics callback after initial load."""
         self._appwindow = omni.appwindow.get_default_app_window()
         self._input = carb.input.acquire_input_interface()
@@ -169,15 +169,15 @@ class QuadrupedExample(BaseSample):
             )
         print("Spot quadruped scene loaded successfully")
 
-    async def setup_pre_reset(self):
+    async def setup_pre_reset(self) -> None:
         """Called before world reset."""
         self._physics_ready = False
 
-    async def setup_post_reset(self):
+    async def setup_post_reset(self) -> None:
         """Called after world reset."""
         self._physics_ready = False
 
-    async def setup_post_clear(self):
+    async def setup_post_clear(self) -> None:
         """Called after clearing the scene."""
         # Deregister physics callback
         if self._physics_callback_id is not None:
@@ -241,13 +241,13 @@ class QuadrupedExample(BaseSample):
                 )
         return True
 
-    def _unsubscribe_keyboard(self):
+    def _unsubscribe_keyboard(self) -> None:
         """Unsubscribe from keyboard events if currently subscribed."""
         if self._sub_keyboard is not None:
             self._input.unsubscribe_to_keyboard_events(self._keyboard, self._sub_keyboard)
             self._sub_keyboard = None
 
-    def physics_cleanup(self):
+    def physics_cleanup(self) -> None:
         """Clean up physics resources."""
         # Deregister physics callback
         if self._physics_callback_id is not None:

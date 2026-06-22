@@ -27,7 +27,11 @@ message = "Hello World!"
 
 
 def _read_token() -> str:
-    """Read the authentication token written by the extension at startup."""
+    """Read the authentication token written by the extension at startup.
+
+    Returns:
+        Authentication token from the extension's token file.
+    """
     ext_path = app_utils.get_extension_path("isaacsim.code_editor.jupyter")
     with open(os.path.join(ext_path, "data", "launchers", "token.txt")) as f:
         return f.read().strip()

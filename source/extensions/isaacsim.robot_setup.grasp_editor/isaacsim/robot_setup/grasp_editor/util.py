@@ -15,8 +15,6 @@
 
 """Utility functions for manipulating rigid bodies, physics colliders, and UI elements in the grasp editor."""
 
-from typing import List
-
 import carb
 import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.transform as transform_utils
@@ -68,7 +66,7 @@ def move_rb_subframe_to_position(
     rb_xform_view.set_world_poses(a_trans_cmd[np.newaxis, :], a_orient_cmd[np.newaxis, :])
 
 
-def show_physics_colliders(show: bool):
+def show_physics_colliders(show: bool) -> None:
     """Toggle the visibility of physics colliders in the viewport.
 
     Controls the physics visualization setting for displaying collision shapes.
@@ -108,7 +106,7 @@ def mask_collisions(prim_path_a: str, prim_path_b: str) -> Usd.Relationship:
     return rel
 
 
-def convert_prim_to_collidable_rigid_body(prim_path: str, articulation_paths: List[str]) -> str | None:
+def convert_prim_to_collidable_rigid_body(prim_path: str, articulation_paths: list[str]) -> str | None:
     """Convert a prim to a rigid body by applying the UsdPhysics.RigidBodyAPI.
 
     Also sets physics:kinematicEnabled property to true to prevent falling from gravity without needing a fixed joint.
@@ -150,7 +148,7 @@ def convert_prim_to_collidable_rigid_body(prim_path: str, articulation_paths: Li
     UsdPhysics.RigidBodyAPI.Apply(prim_to_convert)
 
 
-def find_all_articulations():
+def find_all_articulations() -> object:
     """Find all articulation root paths in the current USD stage.
 
     Scans the stage for articulation roots and joints to identify valid articulation base paths.

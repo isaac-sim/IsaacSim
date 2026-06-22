@@ -69,7 +69,11 @@ class TestUcxCoreBindings(TimedAsyncTestCase):
         await super().tearDown()
 
     def _connect_client(self, port: int) -> None:
-        """Connect a UCXX client to the given port."""
+        """Connect a UCXX client to the given port.
+
+        Args:
+            port: TCP port for the UCX listener.
+        """
         self._client_context = ucx_api.UCXContext()
         self._client_worker = ucx_api.UCXWorker(self._client_context)
         self._client_endpoint = ucx_api.UCXEndpoint.create(

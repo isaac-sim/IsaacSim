@@ -42,7 +42,7 @@ args, unknown = parser.parse_known_args()
 print(f"Using device: {args.device}")
 
 
-class Anymal_runner(object):
+class AnymalRunner(object):
     """Interactive ANYmal robot simulation runner with keyboard control.
 
     Creates a simulation environment with an ANYmal robot in a warehouse setting,
@@ -122,7 +122,7 @@ class Anymal_runner(object):
         self._sub_keyboard = self._input.subscribe_to_keyboard_events(self._keyboard, self._sub_keyboard_event)
         _physics_callback_id = SimulationManager.register_callback(self.on_physics_step, IsaacEvents.POST_PHYSICS_STEP)
 
-    def on_physics_step(self, step_size: float, context) -> None:
+    def on_physics_step(self, step_size: float, context: object) -> None:
         """Physics simulation step callback handler.
 
         Manages robot initialization on first step, handles simulation resets,
@@ -160,7 +160,7 @@ class Anymal_runner(object):
                 break
         return
 
-    def _sub_keyboard_event(self, event: carb.input.KeyboardEvent, *args, **kwargs) -> bool:
+    def _sub_keyboard_event(self, event: carb.input.KeyboardEvent, *args: object, **kwargs: object) -> bool:
         """Handle keyboard input events for robot control.
 
         Processes key press and release events to update the robot's command velocity.
@@ -202,7 +202,7 @@ def main() -> None:
     physics_dt = 1 / 200.0
     render_dt = 1 / 60.0
 
-    runner = Anymal_runner(physics_dt=physics_dt, render_dt=render_dt)
+    runner = AnymalRunner(physics_dt=physics_dt, render_dt=render_dt)
     simulation_app.update()
     runner.setup()
     simulation_app.update()

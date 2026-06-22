@@ -443,7 +443,11 @@ class GainTuner:
         self.step = 0
 
     def add_inertia_updated_callback(self, callback: Callable[[], None]) -> None:
-        """Register a callback invoked after joint accumulated inertia is recomputed."""
+        """Register a callback invoked after joint accumulated inertia is recomputed.
+
+        Args:
+            callback: Zero-argument callback to invoke after inertia recomputation.
+        """
         if callback not in self._inertia_updated_callbacks:
             self._inertia_updated_callbacks.append(callback)
 

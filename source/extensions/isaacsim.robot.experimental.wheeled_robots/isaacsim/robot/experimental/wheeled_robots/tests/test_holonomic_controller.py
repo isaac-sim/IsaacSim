@@ -23,16 +23,16 @@ from isaacsim.robot.experimental.wheeled_robots.controllers.holonomic_controller
 class TestHolonomicController(omni.kit.test.AsyncTestCase):
     """Tests for HolonomicController kinematics."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures."""
 
     # ----------------------------------------------------------------------
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Tear down test fixtures."""
 
     # ----------------------------------------------------------------------
 
-    async def test_holonomic_drive(self):
+    async def test_holonomic_drive(self) -> None:
         """Test holonomic forward() produces correct joint velocities.
 
         Uses the same wheel configuration and velocity command as the deprecated
@@ -61,7 +61,7 @@ class TestHolonomicController(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(float(actions[1]), 14.3182, delta=0.01)
         self.assertAlmostEqual(float(actions[2]), -14.5417, delta=0.01)
 
-    async def test_forward_only_positive_x(self):
+    async def test_forward_only_positive_x(self) -> None:
         """Test that a pure forward command produces positive net X velocity.
 
         Verifies the euler-angle convention is correct by checking that the
@@ -87,14 +87,14 @@ class TestHolonomicController(omni.kit.test.AsyncTestCase):
         net_x = np.dot(controller.base_dir[0, :], actions)
         self.assertGreater(net_x, 0, "Forward command should produce positive net X velocity")
 
-    async def test_init_raises_on_missing_required_param(self):
+    async def test_init_raises_on_missing_required_param(self) -> None:
         """Constructor must raise a descriptive ValueError when a required array is omitted."""
-        base = dict(
-            wheel_radius=[0.04, 0.04, 0.04],
-            wheel_positions=[[0.0, 0.0, 0.0]] * 3,
-            wheel_orientations=[[0, 0, 0, 1]] * 3,
-            mecanum_angles=[90, 90, 90],
-        )
+        base = {
+            "wheel_radius": [0.04, 0.04, 0.04],
+            "wheel_positions": [[0.0, 0.0, 0.0]] * 3,
+            "wheel_orientations": [[0, 0, 0, 1]] * 3,
+            "mecanum_angles": [90, 90, 90],
+        }
         for missing in ("wheel_radius", "wheel_positions", "wheel_orientations", "mecanum_angles"):
             kwargs = dict(base)
             kwargs[missing] = None

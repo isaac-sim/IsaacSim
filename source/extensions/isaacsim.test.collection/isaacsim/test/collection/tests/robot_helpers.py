@@ -55,7 +55,7 @@ def setup_robot_og(
     robot_path: str,
     wheel_rad: float,
     wheel_dist: float,
-):
+) -> object:
     """Set up OmniGraph for differential drive robot control.
 
     Creates an action graph with playback tick, differential controller,

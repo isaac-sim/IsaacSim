@@ -49,7 +49,7 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
     - Validating pose accuracy against recorded ground truth data from the Properties Panel
     """
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment with gripper, soup can, and grasp specifications.
 
         Creates a new stage with a Robotiq gripper, tomato soup can with subframe, ground plane,
@@ -121,7 +121,7 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
         self._grasp_spec = import_grasps_from_file(self._grasp_file)
         await app_utils.update_app_async()
 
-    def assertAlmostEqual(self, a: object, b: object, msg: str = "", tol: float = 1e-6):
+    def _assert_almost_equal(self, a: object, b: object, msg: str = "", tol: float = 1e-6) -> None:
         """Assert that two arrays are almost equal within tolerance.
 
         Overrides the default method to support array comparisons by converting inputs to NumPy
@@ -136,9 +136,9 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
         # overriding method because it doesn't support iterables
         a = np.array(a)
         b = np.array(b)
-        self.assertFalse(np.any(abs((a[a != np.array(None)] - b[b != np.array(None)])) > tol), msg)
+        self.assertFalse(np.any(abs(a[a != np.array(None)] - b[b != np.array(None)]) > tol), msg)
 
-    async def _create_light(self):
+    async def _create_light(self) -> None:
         """Create a sphere light in the scene for proper illumination.
 
         Adds a UsdLux SphereLight with specified radius and intensity positioned above the scene.
@@ -148,7 +148,7 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
         sphereLight.CreateIntensityAttr(100000)
         XformPrim(str(sphereLight.GetPath().pathString), reset_xform_op_properties=True).set_world_poses([6.5, 0, 12])
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test environment after test completion.
 
         Waits for any pending asset loading operations to complete before updating the stage.
@@ -160,7 +160,9 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
 
     # Each ground truth pose for the representative subframes was captured when creating the imported
     # grasp file.  The information in the file should be enough to exactly recover the ground truth pose
-    def compareRigidBodyPoseToGroundTruth(self, grasp_index: int, translation: object, orientation: object) -> None:
+    def _compare_rigid_body_pose_to_ground_truth(
+        self, grasp_index: int, translation: object, orientation: object
+    ) -> None:
         """Compare rigid body pose against recorded ground truth values.
 
         Validates that the computed pose matches the expected ground truth pose for the
@@ -171,10 +173,10 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
             translation: Computed translation to compare.
             orientation: Computed orientation quaternion to compare.
         """
-        self.assertAlmostEqual(self._ground_truth_rb_translations[grasp_index], translation)
-        self.assertAlmostEqual(self._ground_truth_rb_quats[grasp_index], orientation, tol=1e-3)
+        self._assert_almost_equal(self._ground_truth_rb_translations[grasp_index], translation)
+        self._assert_almost_equal(self._ground_truth_rb_quats[grasp_index], orientation, tol=1e-3)
 
-    def compareGripperPoseToGroundTruth(self, translation: object, orientation: object) -> None:
+    def _compare_gripper_pose_to_ground_truth(self, translation: object, orientation: object) -> None:
         """Compare gripper pose against recorded ground truth values.
 
         Validates that the computed gripper pose matches the expected ground truth pose
@@ -184,11 +186,11 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
             translation: Computed gripper translation to compare.
             orientation: Computed gripper orientation quaternion to compare.
         """
-        self.assertAlmostEqual(self._ground_truth_gripper_translation, translation)
-        self.assertAlmostEqual(self._ground_truth_gripper_orientation, orientation, tol=1e-3)
+        self._assert_almost_equal(self._ground_truth_gripper_translation, translation)
+        self._assert_almost_equal(self._ground_truth_gripper_orientation, orientation, tol=1e-3)
 
     # Carry out test described in
-    async def test_derived_poses(self):
+    async def test_derived_poses(self) -> None:
         """Ground truths were recorded from the Properties Panel while using the Grasp Editor UI.
 
         to author the grasps in `robotiq_soup_grasp.yaml`.  These ground truths represent the
@@ -203,7 +205,7 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
             t, q = self._grasp_spec.compute_gripper_pose_from_rigid_body_pose(
                 self._grasp_spec.get_grasp_names()[i], rb_trans, rb_quat
             )
-            self.compareGripperPoseToGroundTruth(t, q)
+            self._compare_gripper_pose_to_ground_truth(t, q)
 
         for i in range(len(self._ground_truth_rb_translations)):
             t, q = self._grasp_spec.compute_rigid_body_pose_from_gripper_pose(
@@ -211,9 +213,9 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
                 self._ground_truth_gripper_translation,
                 self._ground_truth_gripper_orientation,
             )
-            self.compareRigidBodyPoseToGroundTruth(i, t, q)
+            self._compare_rigid_body_pose_to_ground_truth(i, t, q)
 
-    async def test_move_rb_subframe_to_position(self):
+    async def test_move_rb_subframe_to_position(self) -> None:
         """Test moving rigid body subframe to desired position and orientation.
 
         Validates that the move_rb_subframe_to_position utility function correctly positions
@@ -228,6 +230,6 @@ class TestGraspSubframes(omni.kit.test.AsyncTestCase):
         t, q = self._rb_subframe.get_world_poses()
         t, q = t[0].numpy(), q[0].numpy()
 
-        self.assertAlmostEqual(t, desired_trans)
+        self._assert_almost_equal(t, desired_trans)
         # Error is expected to accumulate from rotation conversions
-        self.assertAlmostEqual(q, desired_orient, tol=1e-3)
+        self._assert_almost_equal(q, desired_orient, tol=1e-3)

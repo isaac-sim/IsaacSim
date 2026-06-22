@@ -119,7 +119,13 @@ class StressTest(RobotTest):
         Yields once per physics step. On completion, returns a
         :class:`TestResult` with recorded trajectories and per-joint
         stable/unstable metrics.
-        """
+
+        Yields:
+            None, after each physics step.
+
+        Returns:
+            TestResult with recorded trajectories and per-joint metrics.
+        """  # noqa: DOC405
         articulation = self._articulation
         if articulation is None:
             return TestResult(
@@ -297,7 +303,11 @@ class StressTest(RobotTest):
         super().stop()
 
     def _disable_max_velocities(self, articulation: Articulation) -> None:
-        """Save current max velocities and set them to a very large value."""
+        """Save current max velocities and set them to a very large value.
+
+        Args:
+            articulation: Articulation whose velocity limits should be overridden.
+        """
         if not self._disable_velocity_limits:
             return
         self._original_max_velocities = articulation.get_dof_max_velocities().numpy()[0].copy()

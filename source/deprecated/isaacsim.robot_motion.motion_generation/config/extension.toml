@@ -1,5 +1,5 @@
 [package]
-version = "8.2.8"
+version = "8.2.9"
 category = "Simulation"
 title = "Isaac Sim Motion Generation"
 description = "Extension that provides support for generating motion with Lula-based motion policies and an interface for writing arbitrary motion policies"
@@ -85,8 +85,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 

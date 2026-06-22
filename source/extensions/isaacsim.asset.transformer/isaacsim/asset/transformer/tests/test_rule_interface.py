@@ -56,3 +56,18 @@ class TestRuleInterface(omni.kit.test.AsyncTestCase):
             self.assertIn("stage://mem", rule.get_affected_stages())
             rule.add_affected_stage("stage://mem")
             self.assertEqual(rule.get_affected_stages().count("stage://mem"), 1)
+
+    async def test_request_deletion_records_unique_paths(self) -> None:
+        """Verify request_deletion de-duplicates, ignores empties, and returns a copy."""
+        fake_usd_mod = types.SimpleNamespace(Stage=types.SimpleNamespace())
+        with patch("isaacsim.asset.transformer.rule_interface.Usd", fake_usd_mod, create=True):
+            rule = _NoOpRule(source_stage=object(), package_root="/pkg", destination_path="", args={})
+            self.assertEqual(rule.get_pending_deletions(), [])
+            rule.request_deletion("/tmp/a.usd")
+            rule.request_deletion("/tmp/b.usd")
+            rule.request_deletion("/tmp/a.usd")  # duplicate ignored
+            rule.request_deletion("")  # empty ignored
+            self.assertEqual(rule.get_pending_deletions(), ["/tmp/a.usd", "/tmp/b.usd"])
+            # The accessor returns a copy; mutating it must not affect internal state.
+            rule.get_pending_deletions().append("/tmp/c.usd")
+            self.assertEqual(rule.get_pending_deletions(), ["/tmp/a.usd", "/tmp/b.usd"])

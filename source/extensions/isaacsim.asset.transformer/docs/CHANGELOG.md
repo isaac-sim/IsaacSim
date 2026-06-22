@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.5] - 2026-06-10
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
+## [1.2.4] - 2026-06-09
+### Added
+- `RuleInterface.request_deletion` / `RuleInterface.get_pending_deletions` for rules to register manager-owned working files for deletion after the manager releases its stage handle.
+
+### Fixed
+- `AssetTransformerManager.run` performs deferred file deletions after releasing the working stage, fixing Windows `PermissionError` when rules convert `payloads/<base>.usd` to `.usda`. The manager now drops its `base_layer` handle after asset collection and drains pending deletions after each rule.
+- `_run_deferred_deletions` is best-effort and non-fatal: it skips `Sdf.Layer.Clear()` and logs files that cannot be removed instead of failing the rule.
+
 ## [1.2.3] - 2026-05-27
 ### Changed
 - Documented the input-stage mutation contract on `RuleInterface`: `args["input_stage"]` is informational only and must be treated as fully read-only, including its session layer. Rules that need to author overrides while reading from the original input must open a private `Usd.Stage` from `args["input_stage_path"]` and author into that stage's session layer. The contract exists because (a) `args["input_stage"]` may be a caller-owned Stage whose session layer carries user-driven overrides (visibility toggles, purpose settings, camera opinions), and (b) its root `Sdf.Layer` is shared via USD's process-wide layer cache with any other Stage observing the same file (notably the editor's active Stage); mutations there fire change notifications that have been observed to crash `librtx.hydra`.

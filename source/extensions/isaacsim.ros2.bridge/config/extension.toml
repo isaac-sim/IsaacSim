@@ -1,5 +1,5 @@
 [package]
-version = "5.1.1"
+version = "5.1.2"
 category = "Simulation"
 title = "ROS 2 Bridge"
 description = "The ROS 2 Bridge extension enables communication between the Isaac Sim and ROS 2 systems. It allows for the publishing and subscribing of ROS 2 topics and services via OmniGraph nodes and Action graphs. ROS 2 publishers, subscribers and services are only active when play is pressed. To enable this extension, ensure ROS 2 libraries are sourced in the terminal before running Isaac Sim or source the lightweight ROS 2 libraries included with Isaac Sim as an alternative."

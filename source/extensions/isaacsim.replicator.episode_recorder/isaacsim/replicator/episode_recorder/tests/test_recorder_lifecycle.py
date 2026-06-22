@@ -48,7 +48,11 @@ _COUNTER_TYPE_ID = "_test_counter_v2"
 
 
 class _CounterRecordable(Recordable):
-    """Records a monotonically increasing counter; ignores the live stage entirely."""
+    """Records a monotonically increasing counter; ignores the live stage entirely.
+
+    Args:
+        group: Recordable HDF5 group path.
+    """
 
     TYPE_ID = _COUNTER_TYPE_ID
 
@@ -59,7 +63,7 @@ class _CounterRecordable(Recordable):
     def describe_channels(self) -> dict[str, ChannelDescriptor]:
         return {"count": ChannelDescriptor(shape=(), dtype="i8")}
 
-    def on_session_open(self, stage) -> None:
+    def on_session_open(self, stage: object) -> None:
         self._value = 0
 
     def sample(self) -> dict[str, np.ndarray | int]:
@@ -67,19 +71,23 @@ class _CounterRecordable(Recordable):
         self._value += 1
         return {"count": np.int64(v)}
 
-    def apply(self, frame, *, policy: ReplayPolicy) -> None:
+    def apply(self, frame: object, *, policy: ReplayPolicy) -> None:
         pass
 
     def to_manifest(self) -> dict[str, object]:
         return {"type": self.TYPE_ID, "group": self.group}
 
     @classmethod
-    def from_manifest(cls, entry):
+    def from_manifest(cls, entry: object) -> object:
         return cls(group=str(entry["group"]))
 
 
 class _MalformedFrameRecordable(Recordable):
-    """Returns an invalid frame on the second tick to exercise partial-write handling."""
+    """Returns an invalid frame on the second tick to exercise partial-write handling.
+
+    Args:
+        group: Recordable HDF5 group path.
+    """
 
     TYPE_ID = "_test_malformed_frame_v2"
 
@@ -90,7 +98,7 @@ class _MalformedFrameRecordable(Recordable):
     def describe_channels(self) -> dict[str, ChannelDescriptor]:
         return {"value": ChannelDescriptor(shape=(), dtype="i8")}
 
-    def on_session_open(self, stage) -> None:
+    def on_session_open(self, stage: object) -> None:
         self._sample_count = 0
 
     def sample(self) -> dict[str, np.ndarray | int]:
@@ -99,19 +107,22 @@ class _MalformedFrameRecordable(Recordable):
             return {}
         return {"value": np.int64(self._sample_count)}
 
-    def apply(self, frame, *, policy: ReplayPolicy) -> None:
+    def apply(self, frame: object, *, policy: ReplayPolicy) -> None:
         pass
 
     def to_manifest(self) -> dict[str, object]:
         return {"type": self.TYPE_ID, "group": self.group}
 
     @classmethod
-    def from_manifest(cls, entry):
+    def from_manifest(cls, entry: object) -> object:
         return cls(group=str(entry["group"]))
 
 
 class EpisodeRecorderLifecycleTests(omni.kit.test.AsyncTestCase):
+    """Define EpisodeRecorderLifecycleTests behavior."""
+
     async def setUp(self) -> None:
+        """Set up the test fixture."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
@@ -121,6 +132,7 @@ class EpisodeRecorderLifecycleTests(omni.kit.test.AsyncTestCase):
             register_recordable(_MalformedFrameRecordable)
 
     async def tearDown(self) -> None:
+        """Tear down the test fixture."""
         if _COUNTER_TYPE_ID in registered_types():
             unregister_recordable(_COUNTER_TYPE_ID)
         if _MalformedFrameRecordable.TYPE_ID in registered_types():
@@ -151,6 +163,7 @@ class EpisodeRecorderLifecycleTests(omni.kit.test.AsyncTestCase):
     # ---- state machine ------------------------------------------------
 
     async def test_state_transitions_and_guards(self) -> None:
+        """Run the state transitions and guards test."""
         with tempfile.TemporaryDirectory(prefix="recorder_lifecycle_") as output_dir:
             rec = self._make_recorder(output_dir)
             rec.add(_CounterRecordable())
@@ -182,6 +195,7 @@ class EpisodeRecorderLifecycleTests(omni.kit.test.AsyncTestCase):
                 self.assertEqual(rec.state, "closed")
 
     async def test_open_session_creates_explicit_output_parent(self) -> None:
+        """Run the open session creates explicit output parent test."""
         with tempfile.TemporaryDirectory(prefix="recorder_lifecycle_") as output_dir:
             rec = self._make_recorder(output_dir)
             rec.add(_CounterRecordable())
@@ -196,6 +210,7 @@ class EpisodeRecorderLifecycleTests(omni.kit.test.AsyncTestCase):
     # ---- command bus --------------------------------------------------
 
     async def test_dispatch_toggle_alternates_start_and_end(self) -> None:
+        """Run the dispatch toggle alternates start and end test."""
         with tempfile.TemporaryDirectory(prefix="recorder_lifecycle_") as output_dir:
             rec = self._make_recorder(output_dir, session_id="toggle_test")
             rec.add(_CounterRecordable())
@@ -214,6 +229,7 @@ class EpisodeRecorderLifecycleTests(omni.kit.test.AsyncTestCase):
                 rec.close_session()
 
     async def test_command_ignored_for_other_session_id(self) -> None:
+        """Run the command ignored for other session id test."""
         with tempfile.TemporaryDirectory(prefix="recorder_lifecycle_") as output_dir:
             rec = self._make_recorder(output_dir, session_id="session_A")
             rec.add(_CounterRecordable())
@@ -229,6 +245,7 @@ class EpisodeRecorderLifecycleTests(omni.kit.test.AsyncTestCase):
     # ---- sampling / decimation / pause ------------------------------
 
     async def test_decimation_produces_expected_frame_count(self) -> None:
+        """Run the decimation produces expected frame count test."""
         with tempfile.TemporaryDirectory(prefix="recorder_lifecycle_") as output_dir:
             rec = self._make_recorder(output_dir, decimation=3)
             rec.add(_CounterRecordable())
@@ -251,6 +268,7 @@ class EpisodeRecorderLifecycleTests(omni.kit.test.AsyncTestCase):
                 reader.close()
 
     async def test_pause_resume_suppresses_samples(self) -> None:
+        """Run the pause resume suppresses samples test."""
         with tempfile.TemporaryDirectory(prefix="recorder_lifecycle_") as output_dir:
             rec = self._make_recorder(output_dir)
             rec.add(_CounterRecordable())
@@ -275,6 +293,7 @@ class EpisodeRecorderLifecycleTests(omni.kit.test.AsyncTestCase):
                 rec.close_session()
 
     async def test_partial_append_failure_clamps_episode_length(self) -> None:
+        """Run the partial append failure clamps episode length test."""
         with tempfile.TemporaryDirectory(prefix="recorder_lifecycle_") as output_dir:
             rec = self._make_recorder(output_dir)
             rec.add(_CounterRecordable())
@@ -304,6 +323,7 @@ class EpisodeRecorderLifecycleTests(omni.kit.test.AsyncTestCase):
     # ---- session events ----------------------------------------------
 
     async def test_session_events_fire_for_full_lifecycle(self) -> None:
+        """Run the session events fire for full lifecycle test."""
         with tempfile.TemporaryDirectory(prefix="recorder_lifecycle_") as output_dir:
             rec = self._make_recorder(output_dir)
             rec.add(_CounterRecordable())
@@ -325,6 +345,7 @@ class EpisodeRecorderLifecycleTests(omni.kit.test.AsyncTestCase):
     # ---- export_stage_snapshot ---------------------------------------
 
     async def test_export_stage_snapshot_writes_usd_and_sidecar(self) -> None:
+        """Run the export stage snapshot writes usd and sidecar test."""
         with tempfile.TemporaryDirectory(prefix="recorder_lifecycle_") as output_dir:
             usd_path = export_stage_snapshot(output_dir)
             self.assertTrue(os.path.isfile(usd_path))
@@ -334,6 +355,7 @@ class EpisodeRecorderLifecycleTests(omni.kit.test.AsyncTestCase):
                 self.assertGreater(os.path.getsize(sidecar), 0)
 
     async def test_stage_snapshot_auto_linked_into_session_attrs(self) -> None:
+        """Run the stage snapshot auto linked into session attrs test."""
         with tempfile.TemporaryDirectory(prefix="recorder_lifecycle_") as output_dir:
             export_stage_snapshot(output_dir)
             rec = EpisodeRecorder(

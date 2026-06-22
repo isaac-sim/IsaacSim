@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test suite for Isaac Sim <-> Pinocchio transform utilities."""
+"""Verifies conversion between Isaac Sim position-quaternion poses and Pinocchio SE3 transforms. The tests also cover joint-position mapping from named Isaac Sim joints into Pinocchio model order."""
 
 import numpy as np
 import omni.kit.test
@@ -30,10 +30,10 @@ class TestSE3Conversions(omni.kit.test.AsyncTestCase):
     """Test suite for isaac_sim_position_quaternion_to_se3 and se3_to_isaac_sim_position_quaternion."""
 
     async def setUp(self) -> None:
-        pass
+        """Prepare the SE3 Conversions test fixture."""
 
     async def tearDown(self) -> None:
-        pass
+        """Clean up the SE3 Conversions test fixture."""
 
     # ========================================================================
     # isaac_sim_position_quaternion_to_se3
@@ -181,6 +181,7 @@ class TestJointMapping(omni.kit.test.AsyncTestCase):
     """Test suite for joint position mapping between Isaac Sim and Pinocchio."""
 
     async def setUp(self) -> None:
+        """Prepare the Joint Mapping test fixture."""
         # Build a 3-revolute-joint model programmatically
         self.model = pin.Model()
         parent_id = 0
@@ -198,7 +199,7 @@ class TestJointMapping(omni.kit.test.AsyncTestCase):
         )
 
     async def tearDown(self) -> None:
-        pass
+        """Clean up the Joint Mapping test fixture."""
 
     async def test_map_all_joints(self) -> None:
         """Mapping all joints produces correct q vector."""

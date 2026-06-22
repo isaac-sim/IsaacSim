@@ -68,7 +68,15 @@ def set_status(
     emit_terminal: bool = False,
     side: str | None = None,
 ) -> None:
-    """Set the status label text and color for this panel."""
+    """Set the status label text and color for this panel.
+
+    Args:
+        label: Label widget to update.
+        text: Status text to display.
+        color: Label text color.
+        emit_terminal: Whether to print the status change to the terminal.
+        side: Optional controller side for terminal log tagging.
+    """
     _set_status_base(label, text, color, source=_LOG_NAMESPACE, emit_terminal=emit_terminal, side=side)
 
 
@@ -76,7 +84,13 @@ _SETTINGS_PREFIX = "/persistent/exts/isaacsim.replicator.teleop/floating"
 
 
 class FloatingPanel:
-    """Floating controller panel with per-side path, gains, and enable/disable."""
+    """Floating controller panel with per-side path, gains, and enable/disable.
+
+    Args:
+        floating_controller: Controller backing floating rigid-body tracking.
+        teleop_manager: Shared teleop manager for controller assignment state.
+        collapsed_states: Mutable panel collapsed-state cache.
+    """
 
     _ROTATION_OFFSET_VALUES = list(ROTATION_OFFSET_DEGREES)
     _ROTATION_OFFSET_LABELS = list(ROTATION_OFFSET_LABELS)
@@ -284,7 +298,11 @@ class FloatingPanel:
         return settings
 
     def collect_profile(self) -> BimanualControllerProfile:
-        """Collect the current floating-controller state into a teleop profile section."""
+        """Collect the current floating-controller state into a teleop profile section.
+
+        Returns:
+            Floating-controller profile section.
+        """
         return BimanualControllerProfile(
             left=ControllerSideProfile(
                 enabled=self._desired_enabled["left"],
@@ -297,7 +315,12 @@ class FloatingPanel:
         )
 
     def apply_profile(self, profile: BimanualControllerProfile, resolve_stage: bool) -> None:
-        """Apply a floating-controller teleop profile section."""
+        """Apply a floating-controller teleop profile section.
+
+        Args:
+            profile: Floating-controller profile section to apply.
+            resolve_stage: Whether to validate profile paths against the active stage.
+        """
         for side, side_profile in (("left", profile.left), ("right", profile.right)):
             self._fc.destroy(side)
             self._tm.clear_floating_side(side)
@@ -327,7 +350,15 @@ class FloatingPanel:
     # ------------------------------------------------------------------
 
     def _get_field(self, side: str, key: str) -> object:
-        """Return the widget stored under the given key for this side."""
+        """Return the widget stored under the given key for this side.
+
+        Args:
+            side: Controller side containing the widget.
+            key: Widget key to read.
+
+        Returns:
+            Stored widget, or None if the key is not present.
+        """
         return self._widgets[side].get(key)
 
     def _get_path(self, side: str) -> str:
@@ -411,7 +442,11 @@ class FloatingPanel:
         self._apply_rotation_offsets(side)
 
     def _on_path_changed(self, side: str) -> None:
-        """Auto-validates when the prim path field changes.  Destroys stale controller."""
+        """Auto-validate when the prim path field changes and destroy stale controller state.
+
+        Args:
+            side: Controller side whose path changed.
+        """
         if self._is_playing:
             return
         path = self._get_path(side)
@@ -441,7 +476,11 @@ class FloatingPanel:
         self._sync_side_controls(side)
 
     def _on_clear(self, side: str) -> None:
-        """Destroy controller resources for a side (path is preserved)."""
+        """Destroy controller resources for a side.
+
+        Args:
+            side: Controller side to clear.
+        """
         if self._is_playing:
             return
         self._fc.destroy(side)

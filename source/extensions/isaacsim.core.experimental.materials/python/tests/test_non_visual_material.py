@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for non visual material."""
+"""Verifies NonVisualMaterial batches across supported prim backends. Covers length, base material IDs, coating IDs, encoded attributes, and material ID encode/decode behavior."""
 
-from typing import Literal
+from typing import Any, Literal
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
@@ -24,20 +24,22 @@ import warp as wp
 from isaacsim.core.experimental.materials import NonVisualMaterial
 from isaacsim.core.experimental.materials.impl.non_visual_material import ATTRIBUTE_SPEC, BASE_SPEC, COATING_SPEC
 from isaacsim.core.experimental.prims.tests.common import (
-    check_allclose,
-    check_array,
     check_lists,
     cprint,
     draw_choice,
     draw_indices,
-    draw_sample,
     parametrize,
 )
 from pxr import UsdShade
 
 
 async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"]) -> None:
-    """Populate stage."""
+    """Populate stage.
+
+    Args:
+        max_num_prims: Maximum number of material prims to pre-author.
+        operation: Prim setup operation requested by the parametrized test.
+    """
     # create new stage
     stage = await stage_utils.create_new_stage_async()
     # define prims
@@ -49,24 +51,38 @@ async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"
 class TestNonVisualMaterial(omni.kit.test.AsyncTestCase):
     """Test non visual material."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
     @parametrize(backends=["usd"], prim_class=NonVisualMaterial, populate_stage_func=populate_stage)
-    async def test_len(self, prim, num_prims, device, backend):
-        """Test len."""
+    async def test_len(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Test len.
+
+        Args:
+            prim: Material wrapper under test.
+            num_prims: Number of material prims in the parametrized case.
+            device: Simulation device selected by the parametrized case.
+            backend: Prim backend selected by the parametrized case.
+        """
         self.assertEqual(len(prim), num_prims, f"Invalid len ({num_prims} prims)")
 
     @parametrize(backends=["usd"], prim_class=NonVisualMaterial, populate_stage_func=populate_stage)
-    async def test_bases(self, prim, num_prims, device, backend):
-        """Test bases."""
+    async def test_bases(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Test bases.
+
+        Args:
+            prim: Material wrapper under test.
+            num_prims: Number of material prims in the parametrized case.
+            device: Simulation device selected by the parametrized case.
+            backend: Prim backend selected by the parametrized case.
+        """
         choices = list(BASE_SPEC.keys())
         # test cases
         # - check before applying any values
@@ -88,8 +104,15 @@ class TestNonVisualMaterial(omni.kit.test.AsyncTestCase):
             check_lists(expected_v0, output)
 
     @parametrize(backends=["usd"], prim_class=NonVisualMaterial, populate_stage_func=populate_stage)
-    async def test_coatings(self, prim, num_prims, device, backend):
-        """Test coatings."""
+    async def test_coatings(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Test coatings.
+
+        Args:
+            prim: Material wrapper under test.
+            num_prims: Number of material prims in the parametrized case.
+            device: Simulation device selected by the parametrized case.
+            backend: Prim backend selected by the parametrized case.
+        """
         choices = list(COATING_SPEC.keys())
         # test cases
         # - check before applying any values
@@ -111,8 +134,15 @@ class TestNonVisualMaterial(omni.kit.test.AsyncTestCase):
             check_lists(expected_v0, output)
 
     @parametrize(backends=["usd"], prim_class=NonVisualMaterial, populate_stage_func=populate_stage)
-    async def test_attributes(self, prim, num_prims, device, backend):
-        """Test attributes."""
+    async def test_attributes(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Test attributes.
+
+        Args:
+            prim: Material wrapper under test.
+            num_prims: Number of material prims in the parametrized case.
+            device: Simulation device selected by the parametrized case.
+            backend: Prim backend selected by the parametrized case.
+        """
         choices = list(ATTRIBUTE_SPEC.keys())
         # test cases
         # - check before applying any values
@@ -134,8 +164,15 @@ class TestNonVisualMaterial(omni.kit.test.AsyncTestCase):
             check_lists(expected_v0, output)
 
     @parametrize(backends=["usd"], prim_class=NonVisualMaterial, populate_stage_func=populate_stage)
-    async def test_encode_decode_material_ids(self, prim, num_prims, device, backend):
-        """Test encode decode material ids."""
+    async def test_encode_decode_material_ids(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Test encode decode material ids.
+
+        Args:
+            prim: Material wrapper under test.
+            num_prims: Number of material prims in the parametrized case.
+            device: Simulation device selected by the parametrized case.
+            backend: Prim backend selected by the parametrized case.
+        """
         self.assertTrue(len(BASE_SPEC) > 0, "BASE_SPEC is empty")
         self.assertTrue(len(COATING_SPEC) > 0, "COATING_SPEC is empty")
         self.assertTrue(len(ATTRIBUTE_SPEC) > 0, "ATTRIBUTE_SPEC is empty")

@@ -1,5 +1,5 @@
 [package]
-version = "2.1.0"
+version = "2.1.1"
 category = "Other"
 title = "Isaac Sim Version"
 description = "Isaac Sim Version extension provides tools to query Isaac Sim version and build information."

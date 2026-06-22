@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Assign an OmniGraph camera prim input to a render product or viewport."""
+
+from typing import Any
+
 import omni
 from isaacsim.core.rendering_manager import ViewportManager
 
@@ -21,7 +25,15 @@ class OgnIsaacSetCameraOnRenderProduct:
     """Isaac Sim Set Camera On Render Product."""
 
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
+        """Set the render product camera and enable `execOut`, or fail when no camera prim is provided.
+
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            True when the camera is assigned, False otherwise.
+        """
         if len(db.inputs.cameraPrim) == 0:
             db.log_error(f"Camera prim must be specified")
             return False

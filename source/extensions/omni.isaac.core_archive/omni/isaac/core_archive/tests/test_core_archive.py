@@ -13,12 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies that the core archive extension packages all required third-party Python dependencies by importing each dependency in the Kit test environment."""
+
 import omni.kit.test
 
 
 class TestPipArchive(omni.kit.test.AsyncTestCase):
+    """TestPipArchive implementation."""
+
     # import all packages to make sure dependencies were not missed
-    async def test_import_all(self):
+    async def test_import_all(self) -> None:
+        """Verify import all."""
         import contourpy
         import cycler
         import dateutil

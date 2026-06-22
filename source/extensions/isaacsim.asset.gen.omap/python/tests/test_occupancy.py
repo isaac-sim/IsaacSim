@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for occupancy map generation functionality."""
+"""Verifies occupancy map generation against empty, room, and synthetic stage setups. Covers map setup, simulation requirements, bounds handling, image generation, and generated occupancy output."""
 
 import carb.tokens
 import numpy as np
@@ -46,7 +46,6 @@ class TestOccupancyMapGenerator(omni.kit.test.AsyncTestCase):
             carb.log_error("Could not find Isaac Sim assets folder")
             return
         await omni.kit.app.get_app().next_update_async()
-        pass
 
     # After running each test
     async def tearDown(self) -> None:
@@ -55,7 +54,6 @@ class TestOccupancyMapGenerator(omni.kit.test.AsyncTestCase):
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
-        pass
 
     def compute_index(
         self, p: tuple[float, float], scale: float, size: tuple[float, float], min_b: tuple[float, float]
@@ -170,8 +168,6 @@ class TestOccupancyMapGenerator(omni.kit.test.AsyncTestCase):
         # self.assertEqual(self.compute_index(points[780], scale, size, min_b), 28649)
 
         # This test currently fails from PIL not loading on TC
-
-        pass
 
     async def test_synthetic(self) -> None:
         """Test occupancy map generation with synthetic cubes."""

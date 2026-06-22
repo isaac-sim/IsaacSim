@@ -82,7 +82,14 @@ WINDOW_TITLE = "Joint Inspector"
 
 # --- Stage / robot helpers ---
 def _list_robot_prims(stage: Usd.Stage | None) -> list[Usd.Prim]:
-    """Return all prims on ``stage`` that have ``IsaacRobotAPI`` applied."""
+    """Return all prims on ``stage`` that have ``IsaacRobotAPI`` applied.
+
+    Args:
+        stage: Stage to scan, or None when no stage is available.
+
+    Returns:
+        Matching robot prims.
+    """
     if stage is None:
         return []
     return [p for p in stage.Traverse() if p.HasAPI(robot_schema.Classes.ROBOT_API.value)]
@@ -93,6 +100,12 @@ def _is_inspectable_joint(prim: Usd.Prim) -> bool:
 
     Excludes non-joint prims and ``UsdPhysics.FixedJoint`` (zero DOF: nothing
     to inspect, and it would only contribute empty cells).
+
+    Args:
+        prim: Prim to test.
+
+    Returns:
+        True if the prim should appear in the inspector.
     """
     if not prim or not prim.IsValid():
         return False
@@ -110,6 +123,12 @@ def _joint_prims_for_robot(robot_prim: Usd.Prim) -> list[Usd.Prim]:
     stage. Falls back to scanning descendants for ``IsaacJointAPI`` when the
     relationship is empty. Filters out invalid prims, non-joint prims and
     fixed joints (see :func:`_is_inspectable_joint`).
+
+    Args:
+        robot_prim: Robot prim to inspect.
+
+    Returns:
+        Inspectable joint prims for the robot.
     """
     if not robot_prim or not robot_prim.IsValid():
         return []
@@ -146,7 +165,14 @@ _AXIS_PRIORITY: tuple[str, ...] = ("angular", "linear", *_D6_AXES)
 
 
 def _natural_axis_for_joint(joint_prim: Usd.Prim) -> str | None:
-    """Return ``"angular"`` for ``RevoluteJoint``, ``"linear"`` for ``PrismaticJoint``."""
+    """Return ``"angular"`` for ``RevoluteJoint``, ``"linear"`` for ``PrismaticJoint``.
+
+    Args:
+        joint_prim: Joint prim to inspect.
+
+    Returns:
+        Natural axis token for the joint, or None if the joint has no natural axis.
+    """
     if not joint_prim or not joint_prim.IsValid():
         return None
     if joint_prim.IsA(UsdPhysics.RevoluteJoint):
@@ -163,6 +189,13 @@ def _applied_api_instances(joint_prim: Usd.Prim, api_name: str) -> list[str]:
     ``["angular"]`` for a revolute drive joint, or ``["transX", "rotZ"]`` for a
     D6 joint that has DriveAPIs applied to those axes. Empty list when the API
     is not applied. Single-apply APIs return ``[""]`` when applied.
+
+    Args:
+        joint_prim: Joint prim to inspect.
+        api_name: Applied schema name to query.
+
+    Returns:
+        Applied instance tokens for the schema.
     """
     if not joint_prim or not joint_prim.IsValid():
         return []
@@ -181,6 +214,13 @@ def _api_axes_for_joint(joint_prim: Usd.Prim, api_name: str) -> list[str]:
 
     Excludes the empty single-apply token so callers iterating over per-axis
     columns don't produce duplicate "no axis" entries.
+
+    Args:
+        joint_prim: Joint prim to inspect.
+        api_name: Applied schema name to query.
+
+    Returns:
+        Axis tokens authored for the schema.
     """
     instances = [a for a in _applied_api_instances(joint_prim, api_name) if a]
     return sorted(set(instances), key=lambda a: _AXIS_PRIORITY.index(a) if a in _AXIS_PRIORITY else 99)
@@ -208,7 +248,14 @@ def _set_attr_value(attr: Usd.Attribute | None, value: float) -> None:
 
 
 def _array_first_attr(attr: Usd.Attribute | None) -> float:
-    """Return ``attr[0]`` as a float, or 0.0 if empty / not an array."""
+    """Return ``attr[0]`` as a float, or 0.0 if empty or not an array.
+
+    Args:
+        attr: Attribute to read.
+
+    Returns:
+        First authored value converted to a float, or 0.0 when unavailable.
+    """
     if not attr:
         return 0.0
     val = attr.Get()
@@ -223,7 +270,12 @@ def _array_first_attr(attr: Usd.Attribute | None) -> float:
 
 
 def _set_array_first(attr: Usd.Attribute | None, value: float) -> None:
-    """Update ``attr[0]`` in place, leaving the rest of the array untouched."""
+    """Update ``attr[0]`` in place, leaving the rest of the array untouched.
+
+    Args:
+        attr: Attribute to update.
+        value: New first value.
+    """
     if not attr:
         return
     try:
@@ -249,6 +301,14 @@ def _resolve_row_axis(joint_prim: Usd.Prim, axis: str, api_name: str) -> str | N
     fall back to the joint's natural axis (``angular``/``linear``) so revolute
     + prismatic joints can share the column. Returns ``None`` if neither is
     available.
+
+    Args:
+        joint_prim: Joint prim for the table row.
+        axis: Axis token from the resolved column.
+        api_name: Applied schema name to query.
+
+    Returns:
+        Axis token to use for this row, or None if no axis is available.
     """
     if axis:
         return axis
@@ -266,6 +326,14 @@ def _drive_attr(joint_prim: Usd.Prim, axis: str, attr_name: str) -> Usd.Attribut
 
     When ``axis`` is empty the row's column has been coalesced; pick this
     joint's authored axis (or its natural axis as a fallback).
+
+    Args:
+        joint_prim: Joint prim to inspect.
+        axis: Axis token to read, or an empty string for row-specific resolution.
+        attr_name: Drive attribute name.
+
+    Returns:
+        Resolved attribute, or None when unavailable.
     """
     actual_axis = _resolve_row_axis(joint_prim, axis, "PhysicsDriveAPI")
     if not actual_axis:
@@ -287,7 +355,16 @@ def _drive_attr(joint_prim: Usd.Prim, axis: str, attr_name: str) -> Usd.Attribut
 
 
 def _perf_envelope_attr(joint_prim: Usd.Prim, axis: str, attr_name: str) -> Usd.Attribute | None:
-    """Resolve a ``PhysxDrivePerformanceEnvelopeAPI`` axis attribute."""
+    """Resolve a ``PhysxDrivePerformanceEnvelopeAPI`` axis attribute.
+
+    Args:
+        joint_prim: Joint prim to inspect.
+        axis: Axis token to read, or an empty string for row-specific resolution.
+        attr_name: Performance envelope attribute name.
+
+    Returns:
+        Resolved attribute, or None when unavailable.
+    """
     actual_axis = _resolve_row_axis(joint_prim, axis, "PhysxDrivePerformanceEnvelopeAPI")
     if not actual_axis:
         return None
@@ -298,7 +375,16 @@ def _perf_envelope_attr(joint_prim: Usd.Prim, axis: str, attr_name: str) -> Usd.
 
 
 def _joint_state_attr(joint_prim: Usd.Prim, axis: str, attr_name: str) -> Usd.Attribute | None:
-    """Resolve a ``PhysxSchema.JointStateAPI`` axis attribute."""
+    """Resolve a ``PhysxSchema.JointStateAPI`` axis attribute.
+
+    Args:
+        joint_prim: Joint prim to inspect.
+        axis: Axis token to read, or an empty string for row-specific resolution.
+        attr_name: Joint state attribute name.
+
+    Returns:
+        Resolved attribute, or None when unavailable.
+    """
     actual_axis = _resolve_row_axis(joint_prim, axis, "PhysicsJointStateAPI")
     if not actual_axis:
         return None
@@ -335,7 +421,15 @@ def _max_joint_velocity_attr(joint_prim: Usd.Prim) -> Usd.Attribute | None:
 
 
 def _mjc_joint_attr(joint_prim: Usd.Prim, attr_name: str) -> Usd.Attribute | None:
-    """Resolve a ``MjcJointAPI`` attribute by name (single-apply schema)."""
+    """Resolve a ``MjcJointAPI`` attribute by name.
+
+    Args:
+        joint_prim: Joint prim to inspect.
+        attr_name: MuJoCo attribute name.
+
+    Returns:
+        Resolved attribute, or None when unavailable.
+    """
     if "MjcJointAPI" not in joint_prim.GetAppliedSchemas():
         return None
     attr = joint_prim.GetAttribute(f"mjc:{attr_name}")
@@ -661,6 +755,13 @@ def _column_axes_for_joints(col: _ColumnSpec, joints: list[Usd.Prim]) -> list[st
     is rendered per distinct axis token across the whole joint set.
 
     For non-axis columns (no ``axis_api``): always returns ``[""]``.
+
+    Args:
+        col: Column specification to expand.
+        joints: Joint prims currently displayed in the table.
+
+    Returns:
+        Axis suffixes to render for the column.
     """
     if not col.axis_api:
         return [""]
@@ -700,6 +801,13 @@ def _resolve_columns(visible_ids: set[str], joints: list[Usd.Prim]) -> list[_Res
     Preserves the catalogue order, fans out per-axis columns when ``joints``
     require it, and silently drops columns whose API is not applied on any
     joint in the set.
+
+    Args:
+        visible_ids: Column ids selected by the user.
+        joints: Joint prims currently displayed in the table.
+
+    Returns:
+        Concrete columns to render.
     """
     out: list[_ResolvedColumn] = []
     for spec in _COLUMNS:
@@ -711,7 +819,15 @@ def _resolve_columns(visible_ids: set[str], joints: list[Usd.Prim]) -> list[_Res
 
 
 def _column_available_for(spec: _ColumnSpec, joints: list[Usd.Prim]) -> bool:
-    """True if at least one joint backs ``spec`` (used by the columns menu)."""
+    """Return True if at least one joint backs ``spec``.
+
+    Args:
+        spec: Column specification to test.
+        joints: Joint prims currently displayed in the table.
+
+    Returns:
+        True if the column is available for at least one joint.
+    """
     if not joints:
         return False
     if spec.axis_api:
@@ -766,7 +882,11 @@ class _ColumnsMenu:
         self._popup_frame: ui.Frame | None = None
 
     def toggle(self, anchor_widget: object) -> None:
-        """Show or hide the popup, anchoring it under ``anchor_widget``."""
+        """Show or hide the popup, anchoring it under ``anchor_widget``.
+
+        Args:
+            anchor_widget: Widget used to position the popup.
+        """
         if self._popup and self._popup.visible:
             self._popup.visible = False
             return
@@ -925,6 +1045,10 @@ class _JointItem(ui.AbstractItem):
     ``SimpleFloatModel`` instances keyed by ``(spec.id, axis)``. Editing a cell
     fires ``on_value_changed`` so the view can propagate the new value across
     every row in the current selection.
+
+    Args:
+        joint_prim: Joint prim represented by this row.
+        on_value_changed: Callback invoked when a cell value changes.
     """
 
     def __init__(
@@ -942,7 +1066,14 @@ class _JointItem(ui.AbstractItem):
         self._cell_models: dict[tuple[str, str], ui.SimpleFloatModel] = {}
 
     def value_model(self, rcol: _ResolvedColumn) -> ui.SimpleFloatModel:
-        """Return (lazily creating) the SimpleFloatModel for ``rcol`` on this joint."""
+        """Return the value model for ``rcol`` on this joint.
+
+        Args:
+            rcol: Resolved column to read.
+
+        Returns:
+            Cell value model for the resolved column.
+        """
         key = (rcol.spec.id, rcol.axis)
         model = self._cell_models.get(key)
         if model is not None:
@@ -958,7 +1089,15 @@ class _JointItem(ui.AbstractItem):
         return model
 
     def attr_for(self, spec_id: str, axis: str) -> Usd.Attribute | None:
-        """Return the cached USD attribute for the column on this joint."""
+        """Return the cached USD attribute for the column on this joint.
+
+        Args:
+            spec_id: Column specification id.
+            axis: Axis token for the resolved column.
+
+        Returns:
+            Cached attribute, or None when unavailable.
+        """
         key = (spec_id, axis)
         if key not in self._cell_attrs:
             spec = _COLUMN_BY_ID.get(spec_id)
@@ -966,11 +1105,24 @@ class _JointItem(ui.AbstractItem):
         return self._cell_attrs[key]
 
     def has_api(self, rcol: _ResolvedColumn) -> bool:
-        """Cheap availability check used to disable cells when the API is unapplied."""
+        """Check whether the resolved column is available on this joint.
+
+        Args:
+            rcol: Resolved column to test.
+
+        Returns:
+            True if the backing API is available.
+        """
         return rcol.spec.api_test(self.joint_prim, rcol.axis)
 
     def push_remote_value(self, spec_id: str, axis: str, value: float) -> None:
-        """Update the cell model to reflect an external write without re-firing fan-out."""
+        """Update the cell model to reflect an external write without re-firing fan-out.
+
+        Args:
+            spec_id: Column specification id.
+            axis: Axis token for the resolved column.
+            value: Value to mirror into the local model.
+        """
         model = self._cell_models.get((spec_id, axis))
         if model is None:
             return
@@ -986,6 +1138,9 @@ class _JointTableModel(ui.AbstractItemModel):
     a list of :class:`_ResolvedColumn` instances supplied through
     :meth:`set_data`. The model owns the joint items and surfaces a callback
     when any cell value changes.
+
+    Args:
+        on_value_changed: Callback invoked when a cell value changes.
     """
 
     def __init__(self, on_value_changed: Callable[[_JointItem, str, str, float], None]) -> None:
@@ -995,7 +1150,12 @@ class _JointTableModel(ui.AbstractItemModel):
         self._active_columns: list[_ResolvedColumn] = []
 
     def set_data(self, joints: list[Usd.Prim], active_columns: list[_ResolvedColumn]) -> None:
-        """Replace the row set and the visible-column list, then notify the view."""
+        """Replace the row set and the visible-column list, then notify the view.
+
+        Args:
+            joints: Joint prims to display.
+            active_columns: Resolved columns to display.
+        """
         self._items = [_JointItem(j, self._on_value_changed) for j in joints]
         self._active_columns = list(active_columns)
         self._item_changed(None)
@@ -1013,7 +1173,15 @@ class _JointTableModel(ui.AbstractItemModel):
         return 1 + len(self._active_columns)
 
     def get_item_value_model(self, item: _JointItem | None, column_id: int) -> ui.AbstractValueModel | None:
-        """Return the value model for the given item and column index."""
+        """Return the value model for the given item and column index.
+
+        Args:
+            item: Joint row item to query.
+            column_id: Table column index.
+
+        Returns:
+            Value model for the cell, or None when unavailable.
+        """
         if item is None:
             return None
         if column_id == 0:
@@ -1025,7 +1193,11 @@ class _JointTableModel(ui.AbstractItemModel):
 
 
 class _JointTableDelegate(ui.AbstractItemDelegate):
-    """Delegate that paints the joint table cells for :class:`_JointTableModel`."""
+    """Delegate that paints the joint table cells for :class:`_JointTableModel`.
+
+    Args:
+        model: Table model to render.
+    """
 
     _DRAG_STYLE = {
         "FloatDrag": {
@@ -1161,6 +1333,9 @@ class JointInspectorView:
         any joint of the current robot are filtered out at render time only
         (see :meth:`_effective_visible_ids`), so switching back to a robot that
         does have those APIs restores the previously checked columns.
+
+        Args:
+            robot_prim: Robot prim to inspect, or None to clear the table.
         """
         self._robot_prim = robot_prim if (robot_prim and robot_prim.IsValid()) else None
         self._joint_prims = _joint_prims_for_robot(self._robot_prim) if self._robot_prim else []
@@ -1168,7 +1343,11 @@ class JointInspectorView:
         self._rebuild_table()
 
     def _available_column_ids(self) -> set[str]:
-        """Set of column ids whose API is applied on at least one joint."""
+        """Get column ids whose API is applied on at least one joint.
+
+        Returns:
+            Available column ids for the current robot.
+        """
         if not self._joint_prims:
             return set()
         return {c.id for c in _COLUMNS if _column_available_for(c, self._joint_prims)}
@@ -1412,6 +1591,9 @@ class JointInspectorView:
           user did not bracket it themselves. Both the joint short name and
           the full prim path are tested.
         - Otherwise: case-insensitive substring match on either.
+
+        Returns:
+            Joint prims matching the current filter.
         """
         text = self._filter_text.strip()
         if not text:
@@ -1450,6 +1632,9 @@ class JointInspectorView:
         switches; this method just hides columns whose backing API is not
         applied on any joint of the current robot, so flipping back to a
         compatible robot restores them.
+
+        Returns:
+            Column ids that should be visible for the current robot.
         """
         available = self._available_column_ids()
         return {
@@ -1559,6 +1744,12 @@ class JointInspectorView:
         dominant element. The originating row is always written. If it is part
         of the current selection (more than one item selected), the same value
         is mirrored to every other selected row whose attribute exists.
+
+        Args:
+            source: Row item whose cell changed.
+            spec_id: Column specification id.
+            axis: Axis token for the resolved column.
+            value: New cell value.
         """
         spec = _COLUMN_BY_ID.get(spec_id)
         if spec is None:
@@ -1587,6 +1778,12 @@ class JointInspectorWindow:
     Multiple instances may exist concurrently; each window keeps its own robot
     selection. Pass ``on_new_window`` to wire the in-window
     "+ New Inspector" button to the manager.
+
+    Args:
+        title: Window title.
+        on_new_window: Callback used to spawn an additional inspector window.
+        on_visibility_changed: Callback invoked when window visibility changes.
+        dock_target_title: Window title used as the preferred docking target.
     """
 
     def __init__(
@@ -1952,6 +2149,9 @@ class JointInspectorWindowManager:
     The menu entry calls :meth:`open_or_focus_primary` to toggle/focus the first
     window. Clicking ``+ New Inspector`` inside any window calls
     :meth:`spawn_window` to create another instance.
+
+    Args:
+        on_primary_visibility_changed: Callback invoked when primary window visibility changes.
     """
 
     def __init__(self, on_primary_visibility_changed: Callable[[bool], None] | None = None) -> None:
@@ -1980,6 +2180,9 @@ class JointInspectorWindowManager:
         is not currently assigned to a live window, so closing and respawning
         does not accumulate stale numbering. The primary window always owns
         the un-suffixed title.
+
+        Returns:
+            Newly created inspector window.
         """
         used_titles = {w.title for w in self._extra if w.visible}
         if self._primary is not None and self._primary.visible:
@@ -1998,7 +2201,11 @@ class JointInspectorWindowManager:
         return win
 
     def is_primary_visible(self) -> bool:
-        """Return True when the primary inspector window exists and is visible."""
+        """Return True when the primary inspector window exists and is visible.
+
+        Returns:
+            True if the primary window is visible.
+        """
         return bool(self._primary and self._primary.visible)
 
     def shutdown(self) -> None:
@@ -2017,6 +2224,9 @@ class JointInspectorWindowManager:
         `self._extra` when invoked and removes any entries whose windows
         have been hidden or destroyed. This prevents the manager from
         retaining closed inspector windows for the lifetime of the extension.
+
+        Returns:
+            Visibility callback for extra windows.
         """
 
         def _reap(_visible: bool) -> None:

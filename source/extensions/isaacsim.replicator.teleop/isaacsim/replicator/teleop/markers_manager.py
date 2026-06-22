@@ -113,6 +113,12 @@ class MarkersManager:
         On first call also cleans up any stale ``/Teleop`` specs that may
         have leaked into the root layer from earlier sessions (before the
         anonymous-layer approach was introduced).
+
+        Args:
+            stage: Value for stage.
+
+        Returns:
+            The requested value.
         """
         if self._layer is not None:
             return self._layer
@@ -127,7 +133,11 @@ class MarkersManager:
 
     @staticmethod
     def _cleanup_root_layer_overs(stage: Usd.Stage) -> None:
-        """Remove stale /Teleop prim specs from the root layer if present."""
+        """Remove stale /Teleop prim specs from the root layer if present.
+
+        Args:
+            stage: Value for stage.
+        """
         root = stage.GetRootLayer()
         teleop_spec = root.GetPrimAtPath("/Teleop")
         if teleop_spec:
@@ -158,8 +168,8 @@ class MarkersManager:
     def _edit_ctx(self) -> Generator[Usd.Stage | None, None, None]:
         """Context manager that directs all USD writes to the anonymous layer.
 
-        Yields the stage for convenience.  If no layer exists yet (markers
-        not created), yields ``None`` so callers can bail out.
+        Yields:
+            Stage for convenience, or None if no marker layer exists yet.
         """
         stage = get_current_stage()
         if stage and self._layer is not None:
@@ -174,22 +184,38 @@ class MarkersManager:
 
     @property
     def has_active_markers(self) -> bool:
-        """True if any tracking marker (left, right, or head) is active."""
+        """True if any tracking marker (left, right, or head) is active.
+
+        Returns:
+            The requested value.
+        """
         return bool(self._markers)
 
     @property
     def layer(self) -> Sdf.Layer | None:
-        """The anonymous session sublayer used for all teleop prim writes, or ``None``."""
+        """The anonymous session sublayer used for all teleop prim writes, or ``None``.
+
+        Returns:
+            The requested value.
+        """
         return self._layer
 
     @property
     def frame_scale(self) -> float:
-        """Current uniform scale factor for frame markers."""
+        """Current uniform scale factor for frame markers.
+
+        Returns:
+            The requested value.
+        """
         return self._frame_scale
 
     @property
     def backend(self) -> str:
-        """Active XformPrim write backend (``"usd"``, ``"usdrt"``, or ``"fabric"``)."""
+        """Active XformPrim write backend (``"usd"``, ``"usdrt"``, or ``"fabric"``).
+
+        Returns:
+            The requested value.
+        """
         return get_teleop_backend()
 
     def set_backend(self, backend: Literal["usd", "usdrt", "fabric"]) -> None:
@@ -205,7 +231,14 @@ class MarkersManager:
 
     @classmethod
     def get_default_marker_pose(cls, name: str) -> tuple[tuple[float, float, float], tuple[float, float, float, float]]:
-        """Return the default pose for a marker."""
+        """Return the default pose for a marker.
+
+        Args:
+            name: Value for name.
+
+        Returns:
+            The requested value.
+        """
         return cls.DEFAULT_MARKER_POSES.get(name, cls.DEFAULT_MARKER_POSES["origin"])
 
     def get_marker_world_pose(
@@ -220,8 +253,7 @@ class MarkersManager:
             name: Marker identifier (e.g. ``"left"``, ``"right"``).
 
         Returns:
-            ``((x, y, z), (qx, qy, qz, qw))`` or ``None`` if the
-            marker is not active.
+            The requested value.
         """
         xform = self._markers.get(name)
         if xform is None:
@@ -290,7 +322,7 @@ class MarkersManager:
             source_prim_path: USD prim path whose world pose is copied.
 
         Returns:
-            True if successful.
+            The requested value.
         """
         origin = self._markers.get("origin")
         if not origin:
@@ -328,7 +360,7 @@ class MarkersManager:
             name: Marker identifier (e.g. "left", "right", "origin").
 
         Returns:
-            (success, message) tuple.
+            The requested value.
         """
         if name in self._markers:
             return True, f"Marker '{name}' already active"
@@ -379,7 +411,7 @@ class MarkersManager:
             name: Marker identifier (e.g. "left", "right", "origin").
 
         Returns:
-            True if removed successfully.
+            The requested value.
         """
         path = self.MARKER_PATHS.get(name)
         if not path:
@@ -413,7 +445,7 @@ class MarkersManager:
         teleop prims from the composed stage.
 
         Returns:
-            True if removed successfully.
+            The requested value.
         """
         self._clear_teleop_selection()
         self._markers.clear()
@@ -474,6 +506,14 @@ class MarkersManager:
         When a non-USD backend is selected (``"usdrt"`` or ``"fabric"``),
         the ``XformPrim`` writes are dispatched through that backend for
         lower per-frame overhead.
+
+        Args:
+            left_position: Value for left position.
+            left_orientation: Value for left orientation.
+            right_position: Value for right position.
+            right_orientation: Value for right orientation.
+            head_position: Value for head position.
+            head_orientation: Value for head orientation.
         """
         with self._edit_ctx() as stage:
             if stage is None:
@@ -492,13 +532,26 @@ class MarkersManager:
         head_position: tuple[float, float, float] | None,
         head_orientation: tuple[float, float, float, float] | None,
     ) -> None:
-        """Write left/right/head marker poses. Must be called inside ``_edit_ctx``."""
+        """Write left/right/head marker poses. Must be called inside ``_edit_ctx``.
+
+        Args:
+            left_position: Value for left position.
+            left_orientation: Value for left orientation.
+            right_position: Value for right position.
+            right_orientation: Value for right orientation.
+            head_position: Value for head position.
+            head_orientation: Value for head orientation.
+        """
         self._set_pose("left", left_position, left_orientation)
         self._set_pose("right", right_position, right_orientation)
         self._set_pose("head", head_position, head_orientation)
 
     def reset_marker_transform(self, name: str) -> None:
-        """Reset a single marker to its default pose."""
+        """Reset a single marker to its default pose.
+
+        Args:
+            name: Value for name.
+        """
         with self._edit_ctx() as stage:
             if stage is None:
                 return
@@ -540,7 +593,13 @@ class MarkersManager:
         position: tuple[float, float, float] | None,
         orientation: tuple[float, float, float, float] | None,
     ) -> None:
-        """Set pose on a marker.  Must be called inside ``_edit_ctx``."""
+        """Set pose on a marker.  Must be called inside ``_edit_ctx``.
+
+        Args:
+            name: Value for name.
+            position: Value for position.
+            orientation: Value for orientation.
+        """
         xform = self._markers.get(name)
         if not xform:
             return
@@ -557,7 +616,11 @@ class MarkersManager:
         xform.set_local_poses(translations=self._trans_buf, orientations=self._orient_buf)
 
     def _set_default_pose(self, name: str) -> None:
-        """Set a marker to its default pose. Must be called inside ``_edit_ctx``."""
+        """Set a marker to its default pose. Must be called inside ``_edit_ctx``.
+
+        Args:
+            name: Value for name.
+        """
         position, orientation = self.get_default_marker_pose(name)
         self._set_pose(name, position, orientation)
 
@@ -571,7 +634,7 @@ class MarkersManager:
             path: Prim path for the reference.
 
         Returns:
-            True if the reference was added successfully.
+            The requested value.
         """
         if self._assets_root_path is None:
             self._assets_root_path = get_assets_root_path()

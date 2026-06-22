@@ -13,11 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Comprehensive tests for TimeSampleStorage functionality through the SimulationManager interface.
+"""Verifies SimulationManager time sample storage through monotonic sampling, interpolation, range queries, logging, and structured access. The tests cover buffer overflow, high-frequency stepping, stop-play behavior, pause-resume behavior, and stored-time lookups."""
 
-Tests validate monotonic behavior, buffer management, and thread safety.
-"""
+from typing import Any
 
 import carb
 import omni.kit.app
@@ -30,7 +28,7 @@ from isaacsim.core.simulation_manager import SimulationManager
 class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
     """Test time sample storage."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment."""
         super().setUp()
         await create_new_stage_async()
@@ -42,18 +40,21 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
         SimulationManager.set_physics_dt(1.0 / 60.0)
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after test."""
         timeline = omni.timeline.get_timeline_interface()
         timeline.stop()
         await omni.kit.app.get_app().next_update_async()
         super().tearDown()
 
-    def _verify_samples_monotonic(self, samples, message="Samples should be monotonic"):
-        """
-        Manually verify that samples are monotonically increasing in time.
+    def _verify_samples_monotonic(self, samples: Any, message: Any = "Samples should be monotonic") -> None:
+        """Manually verify that samples are monotonically increasing in time.
 
         This replaces the removed validateSamplesMonotonic C++ function.
+
+        Args:
+            samples: Time sample entries to validate.
+            message: Assertion message prefix to use when monotonicity checks fail.
         """
         for i in range(1, len(samples)):
             prev_entry = samples[i - 1]
@@ -75,7 +76,7 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
                 f"{message}: Monotonic sim time not monotonic at sample {i}",
             )
 
-    async def test_time_samples_monotonic_increase(self):
+    async def test_time_samples_monotonic_increase(self) -> None:
         """Test that stored samples are monotonically increasing."""
         timeline = omni.timeline.get_timeline_interface()
 
@@ -115,7 +116,7 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
             self.assertTrue(prev_entry.valid, f"Sample {i-1} should be valid")
             self.assertTrue(curr_entry.valid, f"Sample {i} should be valid")
 
-    async def test_high_frequency_simulation_buffer_behavior(self):
+    async def test_high_frequency_simulation_buffer_behavior(self) -> None:
         """Test high write rate doesn't cause issues and buffer behaves correctly."""
         SimulationManager.set_physics_dt(1 / 1000)  # Physics at 1000 Hz
         timeline = omni.timeline.get_timeline_interface()
@@ -185,7 +186,7 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
             # Note: This may be None if the sample was evicted from the circular buffer
             # That's expected behavior for very old samples beyond buffer capacity
 
-    async def test_stop_play_behavior(self):
+    async def test_stop_play_behavior(self) -> None:
         """Test behavior during stop/play cycles."""
         timeline = omni.timeline.get_timeline_interface()
 
@@ -231,7 +232,7 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
         self.assertGreater(count_after_restart, 0)
         self._verify_samples_monotonic(samples_after_restart)
 
-    async def test_pause_resume_behavior(self):
+    async def test_pause_resume_behavior(self) -> None:
         """Test that pause/resume doesn't break sample consistency."""
         timeline = omni.timeline.get_timeline_interface()
 
@@ -265,7 +266,7 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
         self.assertGreater(count_after_resume, count_before_pause)
         self._verify_samples_monotonic(samples_after_resume)
 
-    async def test_interpolation_with_stored_samples(self):
+    async def test_interpolation_with_stored_samples(self) -> None:
         """Test interpolation using actual stored samples."""
         timeline = omni.timeline.get_timeline_interface()
         timeline.play()
@@ -305,7 +306,7 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
         self.assertGreaterEqual(interpolated_sim_time, first_sim_time)
         self.assertLessEqual(interpolated_sim_time, last_sim_time)
 
-    async def test_time_sample_range(self):
+    async def test_time_sample_range(self) -> None:
         """Test time sample range functionality."""
         # Should be None when empty
         self.assertIsNone(SimulationManager._simulation_manager_interface.get_sample_range())
@@ -335,7 +336,7 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
         self.assertLess(
             earliest_seconds,
             latest_seconds,
-            "Latest time {} should be greater than earliest {}".format(latest_seconds, earliest_seconds),
+            f"Latest time {latest_seconds} should be greater than earliest {earliest_seconds}",
         )
 
         # Verify range matches actual samples
@@ -355,9 +356,7 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
             time_delta,
             expected_total_delta,
             places=2,
-            msg="Time range {:.4f} - {:.4f} ({} samples) should span {:.4f}s".format(
-                earliest_seconds, latest_seconds, len(samples), expected_total_delta
-            ),
+            msg=f"Time range {earliest_seconds:.4f} - {latest_seconds:.4f} ({len(samples)} samples) should span {expected_total_delta:.4f}s",
         )
 
         # Verify delta between consecutive samples matches physics dt
@@ -396,7 +395,7 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
             msg=f"Simulation time should span {expected_total_delta:.4f}s ({len(samples)} samples)",
         )
 
-    async def test_logging_functionality(self):
+    async def test_logging_functionality(self) -> None:
         """Test that logging doesn't crash and works with different storage states."""
         # Should work when empty
         SimulationManager._simulation_manager_interface.log_statistics()
@@ -417,7 +416,7 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
         SimulationManager._simulation_manager_interface.log_statistics()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_structured_data_access(self):
+    async def test_structured_data_access(self) -> None:
         """Test that the Entry and TimeData objects work correctly."""
         timeline = omni.timeline.get_timeline_interface()
         timeline.play()
@@ -446,7 +445,7 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
             # Test valid flag
             self.assertTrue(sample.valid, f"Sample {i} should be valid")
 
-    async def test_buffer_overflow_oldest_eviction(self):
+    async def test_buffer_overflow_oldest_eviction(self) -> None:
         """Test that buffer overflow correctly evicts oldest samples."""
         timeline = omni.timeline.get_timeline_interface()
         timeline.play()
@@ -469,7 +468,7 @@ class TestTimeSampleStorage(omni.kit.test.AsyncTestCase):
         # (we can't easily test this without knowing exact timing,
         #  but the monotonic check verifies basic correctness)
 
-    async def test_get_simulation_time_at_time(self):
+    async def test_get_simulation_time_at_time(self) -> None:
         """Test that get_simulation_time_at_time works correctly."""
         invalid_time = SimulationManager._simulation_manager_interface.get_simulation_time_at_time((0, 0))
         self.assertAlmostEqual(invalid_time, 0.0)

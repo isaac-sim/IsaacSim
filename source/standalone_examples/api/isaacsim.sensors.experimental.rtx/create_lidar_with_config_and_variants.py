@@ -54,7 +54,6 @@ os.makedirs(output_dir, exist_ok=True)
 import carb
 import numpy as np
 import omni
-import omni.replicator.core as rep
 from isaacsim.core.experimental.utils.app import enable_extension
 from isaacsim.core.experimental.utils.stage import is_stage_loading, open_stage
 from isaacsim.sensors.experimental.rtx import SUPPORTED_LIDAR_CONFIGS, Lidar, LidarSensor
@@ -84,7 +83,7 @@ while is_stage_loading():
 # variants. Configs with empty sets have no variants (single configuration).
 
 
-def _format_variant(variant):
+def _format_variant(variant: str | dict[str, str]) -> str:
     # Variants are either a flat string (single "sensor" variant set) or a
     # dict mapping variant-set names to selections (e.g. SICK family USDs).
     if isinstance(variant, dict):

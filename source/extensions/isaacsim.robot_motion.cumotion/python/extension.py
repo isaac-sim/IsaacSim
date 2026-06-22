@@ -18,6 +18,7 @@
 
 import os
 import pathlib
+from typing import Any
 
 import omni.ext
 
@@ -38,7 +39,7 @@ class Extension(omni.ext.IExt):
     functioning of the cuMotion Python extension module and its dependencies.
     """
 
-    def on_startup(self, ext_id) -> None:
+    def on_startup(self, ext_id: Any) -> None:
         """Startup the extension.
 
         Args:

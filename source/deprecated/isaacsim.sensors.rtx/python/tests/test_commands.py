@@ -13,12 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for RTX sensor commands.
-
-Tests the functionality of creating different types of RTX sensors through commands.
-"""
+"""Verifies RTX sensor creation commands for lidar, radar, IDS, and ultrasonic sensors. Covers config handling, USD path variants, parented prim creation, undo behavior, and radar motion BVH settings."""
 
 from pathlib import Path
+from typing import Any
 
 import carb
 import omni.kit.commands
@@ -32,7 +30,7 @@ from isaacsim.storage.native import get_assets_root_path
 from pxr import Gf, Sdf, UsdGeom
 
 
-def _variant_label(v):
+def _variant_label(v: Any) -> Any:
     if v is None:
         return "default"
     if isinstance(v, str):

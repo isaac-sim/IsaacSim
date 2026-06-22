@@ -80,7 +80,7 @@ for i in range(4):
         my_world.scene.add(
             ContactSensor(
                 prim_path="/World/Ant/" + ant_foot_prim_names[i] + "/contact_sensor",
-                name="ant_contact_sensor_{}".format(i),
+                name=f"ant_contact_sensor_{i}",
                 min_threshold=0,
                 max_threshold=10000000,
                 radius=0.1,

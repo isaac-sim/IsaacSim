@@ -29,6 +29,7 @@ import asyncio
 import glob
 import os
 import time
+from typing import Any
 
 import carb
 import carb.eventdispatcher
@@ -185,6 +186,7 @@ class EpisodeRecorderPanel:
     # ------------------------------------------------------------------
 
     def build(self) -> None:
+        """Build the Episode Recorder panel UI."""
         with ui.VStack(spacing=SECTION_SPACING):
             self._build_targets_section()
             self._build_session_options_section()
@@ -719,20 +721,41 @@ class EpisodeRecorderPanel:
             self._timeline_controller.set_auto_start_on_play(value)
 
     def _on_replay_seek_timeline_changed(self, model: ui.SimpleBoolModel) -> None:
-        """Persist the Seek-timeline replay option; applies to the next Start Replay."""
+        """Persist the Seek-timeline replay option; applies to the next Start Replay.
+
+        Args:
+            model: Checkbox model containing the new persisted state.
+        """
         self._save_bool("replay_seek_timeline", bool(model.get_value_as_bool()))
 
     def _on_pose_backend_record_changed(self, model: ui.AbstractItemModel, _item: object) -> None:
-        """Persist the recorder pose-backend selection; applies to the next Open Session."""
+        """Persist the recorder pose-backend selection; applies to the next Open Session.
+
+        Args:
+            model: ComboBox model containing the selected backend index.
+            _item: ComboBox item emitted by the UI callback.
+        """
         self._save_str("pose_backend_record", self._pose_backend_from_combo_model(model))
 
     def _on_pose_backend_replay_changed(self, model: ui.AbstractItemModel, _item: object) -> None:
-        """Persist the replayer pose-backend selection; applies to the next Load + Replay."""
+        """Persist the replayer pose-backend selection; applies to the next Load + Replay.
+
+        Args:
+            model: ComboBox model containing the selected backend index.
+            _item: ComboBox item emitted by the UI callback.
+        """
         self._save_str("pose_backend_replay", self._pose_backend_from_combo_model(model))
 
     @staticmethod
     def _pose_backend_index(value: str) -> int:
-        """Map a backend string to its ComboBox index, falling back to ``"usd"`` (index 0)."""
+        """Map a backend string to its ComboBox index.
+
+        Args:
+            value: Backend name to look up.
+
+        Returns:
+            ComboBox index for ``value``, or zero when it is unknown.
+        """
         try:
             return _POSE_BACKEND_OPTIONS.index(value)
         except ValueError:
@@ -740,20 +763,35 @@ class EpisodeRecorderPanel:
 
     @staticmethod
     def _pose_backend_from_combo_model(model: ui.AbstractItemModel) -> str:
-        """Read the active option from a backend ComboBox, defaulting to ``"usd"``."""
+        """Read the active option from a backend ComboBox.
+
+        Args:
+            model: ComboBox model containing the active option index.
+
+        Returns:
+            Selected backend name, or the record default when the index is invalid.
+        """
         idx = model.get_item_value_model().get_value_as_int()
         if 0 <= idx < len(_POSE_BACKEND_OPTIONS):
             return _POSE_BACKEND_OPTIONS[idx]
         return _DEFAULT_POSE_BACKEND_RECORD
 
     def _get_pose_backend_record(self) -> str:
-        """Return the active record-side pose backend (combo if built, else carb setting)."""
+        """Return the active record-side pose backend.
+
+        Returns:
+            Backend selected in the combo if built, otherwise the persisted setting.
+        """
         if self._pose_backend_record_combo is not None:
             return self._pose_backend_from_combo_model(self._pose_backend_record_combo.model)
         return self._load_str("pose_backend_record") or _DEFAULT_POSE_BACKEND_RECORD
 
     def _get_pose_backend_replay(self) -> str:
-        """Return the active replay-side pose backend (combo if built, else carb setting)."""
+        """Return the active replay-side pose backend.
+
+        Returns:
+            Backend selected in the combo if built, otherwise the persisted setting.
+        """
         if self._pose_backend_replay_combo is not None:
             return self._pose_backend_from_combo_model(self._pose_backend_replay_combo.model)
         return self._load_str("pose_backend_replay") or _DEFAULT_POSE_BACKEND_REPLAY
@@ -904,7 +942,11 @@ class EpisodeRecorderPanel:
             self._start_replay()
 
     def _on_replay_step(self, delta: int) -> None:
-        """Step the active replay by ``delta`` frames; auto-pauses via the replayer."""
+        """Step the active replay by ``delta`` frames.
+
+        Args:
+            delta: Number of frames to move relative to the current replay frame.
+        """
         replayer = self._replayer
         if replayer is None or not self._replay_attached:
             return
@@ -972,6 +1014,9 @@ class EpisodeRecorderPanel:
 
         The HDF5 prefetch happens on a worker thread; USD binding and the per-tick
         apply loop remain on the main thread where they must be.
+
+        Args:
+            episode: Episode index selected in the replay ComboBox.
         """
         if self._replayer is None:
             return
@@ -1022,7 +1067,11 @@ class EpisodeRecorderPanel:
         self._sync_controls()
 
     def _on_replay_frame_applied(self, frame_index: int) -> None:
-        """Update the in-UI frame indicator and terminal log for each applied frame."""
+        """Update the in-UI frame indicator and terminal log for each applied frame.
+
+        Args:
+            frame_index: Zero-based replay frame index applied by the replayer.
+        """
         if self._replay_active_episode is None:
             return
         total = (
@@ -1192,6 +1241,9 @@ class EpisodeRecorderPanel:
 
         Events fire synchronously from the recorder's own state transitions, so
         ``recorder.is_recording`` is authoritative when the handler runs.
+
+        Args:
+            recorder: Recorder whose episode lifecycle events drive the UI state.
         """
         self._unsubscribe_recorder_events()
         self._recorder_event_subs = [
@@ -1211,7 +1263,7 @@ class EpisodeRecorderPanel:
         return self._recorder is not None and self._recorder.is_recording
 
     def _refresh_recording_state(self) -> None:
-        def update_ui():
+        def update_ui() -> None:
             recording = self._is_recording()
             if recording and not self._was_recording:
                 self._episode_count += 1
@@ -1260,7 +1312,11 @@ class EpisodeRecorderPanel:
             self._notify_stage_close_replay()
 
     def _notify_stage_close_session(self, hdf5_path: str) -> None:
-        """Surface a non-blocking notification when an active recording was force-stopped."""
+        """Surface a non-blocking notification when an active recording was force-stopped.
+
+        Args:
+            hdf5_path: Path to the HDF5 file flushed during stage close.
+        """
         message = f"Stage closed while recording was in progress.\nCaptured frames were flushed to:\n{hdf5_path}"
         carb.log_warn(f"[EpisodeRecorder][UI] {message}")
         try:
@@ -1288,7 +1344,7 @@ class EpisodeRecorderPanel:
         self._binding_event_sub = None
         self._bindings.clear()
 
-    def _on_binding_event(self, event) -> None:
+    def _on_binding_event(self, event: Any) -> None:
         """Track external bindings advertised on :data:`EPISODE_BINDING_EVENT`.
 
         Bindings carrying a non-empty ``session_id`` are dropped when they target a
@@ -1296,6 +1352,9 @@ class EpisodeRecorderPanel:
         cross-talk between concurrent sessions sharing the same event bus. Events
         without a ``session_id`` (or with a falsy one) are treated as global
         advertisements and always counted.
+
+        Args:
+            event: Event-dispatcher object containing the binding payload.
         """
         try:
             payload = dict(event.payload) if hasattr(event, "payload") else {}
@@ -1322,6 +1381,12 @@ class EpisodeRecorderPanel:
         When no recorder is bound yet, scoped events cannot be addressed to this panel,
         so they are dropped. Once a recorder exists, scoped events must match its
         ``session_id`` exactly.
+
+        Args:
+            event_session_id: Session identifier carried by the binding event.
+
+        Returns:
+            True when the event targets the active recorder, False otherwise.
         """
         recorder = self._recorder
         if recorder is None:

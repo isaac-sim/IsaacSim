@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test saving and reloading the simulation stage."""
+"""Verifies that saving a stage without reloading preserves SimulationContext initialization, while saving and reloading in place clears the initialized simulation context state."""
 
 from isaacsim import SimulationApp
 
@@ -41,17 +41,17 @@ simulation_context.step(render=True)
 with tempfile.TemporaryDirectory() as temp_dir:
     test_save_path = os.path.join(temp_dir, "save_stage.usd")
 
-    if simulation_context._sim_context_initialized == False:
+    if not simulation_context._sim_context_initialized:
         print(f"[fatal] simulation context is not initialized")
         sys.exit(1)
     save_stage(test_save_path, save_and_reload_in_place=False)
-    if simulation_context._sim_context_initialized == False:
+    if not simulation_context._sim_context_initialized:
         print(f"[fatal] simulation context is not initialized")
         sys.exit(1)
     simulation_context.step(render=True)
     save_stage(test_save_path, save_and_reload_in_place=True)
     # this should reload the stage and the context should not be initialized anymore
-    if simulation_context._sim_context_initialized == True:
+    if simulation_context._sim_context_initialized:
         print(f"[fatal] simulation context should not be initialized")
         sys.exit(1)
 

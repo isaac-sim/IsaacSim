@@ -15,7 +15,7 @@
 
 """Provides classes for representing and converting joint-space paths to minimal-time trajectories."""
 
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import warp as wp
@@ -37,7 +37,7 @@ class Path:
         ValueError: If waypoints is not a two-dimensional array.
     """
 
-    def __init__(self, waypoints: Union[list, np.ndarray, wp.array]):
+    def __init__(self, waypoints: list | np.ndarray | wp.array) -> None:
         # internally represent all waypoints as a warp array.
         warp_waypoints = place(waypoints)
         self._waypoints = warp_waypoints
@@ -90,8 +90,8 @@ class Path:
 
     def to_minimal_time_joint_trajectory(
         self,
-        max_velocities: Union[list, np.ndarray, wp.array],
-        max_accelerations: Union[list, np.ndarray, wp.array],
+        max_velocities: list | np.ndarray | wp.array,
+        max_accelerations: list | np.ndarray | wp.array,
         robot_joint_space: list[str],
         active_joints: list[str],
         waypoint_relative_difference_tolerance: float = 1e-6,
@@ -165,13 +165,13 @@ class MinimalTimeJointTrajectory(Trajectory):
     def __init__(
         self,
         path: Path,
-        max_velocities: Union[list, np.ndarray, wp.array],
-        max_accelerations: Union[list, np.ndarray, wp.array],
+        max_velocities: list | np.ndarray | wp.array,
+        max_accelerations: list | np.ndarray | wp.array,
         robot_joint_space: list[str],
         active_joints: list[str],
         waypoint_relative_difference_tolerance: float,
         waypoint_absolute_difference_tolerance: float,
-    ):
+    ) -> None:
         self._robot_joint_space = robot_joint_space
         self._active_joints = active_joints
         self._waypoints = path.get_waypoints()
@@ -573,7 +573,7 @@ def _get_joint_targets_kernel(
     i_segment: int,
     out_desired_position: wp.array(dtype=wp.Float),
     out_desired_velocity: wp.array(dtype=wp.Float),
-):
+) -> None:
     """Warp kernel to compute joint targets for all joints in parallel.
 
     Args:

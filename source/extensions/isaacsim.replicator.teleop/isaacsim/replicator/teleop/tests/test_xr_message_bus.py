@@ -37,7 +37,10 @@ from isaacsim.replicator.teleop.teleop_manager import _extract_xr_teleop_command
 
 
 class ExtractXrTeleopCommandTests(omni.kit.test.AsyncTestCase):
+    """Define ExtractXrTeleopCommandTests behavior."""
+
     async def test_json_string_payload_extracts_command(self) -> None:
+        """Run the json string payload extracts command test."""
         payload = {"message": '{"command":"start teleop"}'}
         self.assertEqual(_extract_xr_teleop_command(payload), "start teleop")
 
@@ -47,23 +50,32 @@ class ExtractXrTeleopCommandTests(omni.kit.test.AsyncTestCase):
         self.assertEqual(_extract_xr_teleop_command(payload), "start teleop")
 
     async def test_none_payload_returns_empty_string(self) -> None:
+        """Run the none payload returns empty string test."""
         self.assertEqual(_extract_xr_teleop_command(None), "")
 
     async def test_missing_message_returns_empty_string(self) -> None:
+        """Run the missing message returns empty string test."""
         self.assertEqual(_extract_xr_teleop_command({"other": "thing"}), "")
 
     async def test_invalid_json_string_returns_empty_string(self) -> None:
+        """Run the invalid json string returns empty string test."""
         self.assertEqual(_extract_xr_teleop_command({"message": "not valid json"}), "")
 
     async def test_dict_without_command_key_returns_empty_string(self) -> None:
+        """Run the dict without command key returns empty string test."""
         self.assertEqual(_extract_xr_teleop_command({"message": {"other": "value"}}), "")
 
     async def test_non_string_non_dict_message_returns_empty_string(self) -> None:
+        """Run the non string non dict message returns empty string test."""
         self.assertEqual(_extract_xr_teleop_command({"message": 42}), "")
 
 
 class _FakeXrSettings:
-    """Minimal stand-in for the Kit ``XRSettings`` singleton used by the snapshot helpers."""
+    """Minimal stand-in for the Kit ``XRSettings`` singleton used by the snapshot helpers.
+
+    Args:
+        initial: Value for initial.
+    """
 
     def __init__(self, initial: dict[str, str | float] | None = None) -> None:
         self.values: dict[str, str | float] = dict(initial or {})
@@ -83,11 +95,13 @@ class PreSessionAnchorRefcountTests(omni.kit.test.AsyncTestCase):
     async def setUp(self) -> None:
         # Force a clean global state for every test; a leaked refcount from a
         # prior test would mask the very bugs we want to catch here.
+        """Set up the test fixture."""
         xam._settings_snapshot = None
         xam._settings_snapshot_refs = 0
 
     async def tearDown(self) -> None:
         # Don't leave a stray refcount or snapshot behind for the rest of the suite.
+        """Tear down the test fixture."""
         xam._settings_snapshot = None
         xam._settings_snapshot_refs = 0
 
@@ -101,8 +115,11 @@ class PreSessionAnchorRefcountTests(omni.kit.test.AsyncTestCase):
         self.assertEqual(xam._settings_snapshot_refs, 0)
 
     async def test_late_xr_after_failed_activation_does_not_strip_anchor(self) -> None:
-        """If activation no-op'd because XR was offline, a late-arriving XR module
-        must not get its baseline overwritten by a stray restore."""
+        """Verify late XR startup does not strip the anchor.
+
+        If activation no-op'd because XR was offline, a late-arriving XR module must not
+        get its baseline overwritten by a stray restore.
+        """
         with patch.object(xam, "_xr_settings", lambda: None):
             xam.activate_pre_session_anchor()
             xam.activate_pre_session_anchor()
@@ -117,8 +134,11 @@ class PreSessionAnchorRefcountTests(omni.kit.test.AsyncTestCase):
         )
 
     async def test_nested_activation_only_restores_on_final_release(self) -> None:
-        """Two activations + one restore must keep the override in place; the
-        baseline returns only when the matching second restore lands."""
+        """Verify nested activation restores only on final release.
+
+        Two activations plus one restore must keep the override in place; the baseline
+        returns only when the matching second restore lands.
+        """
         xs = _FakeXrSettings({xam._XR_TOKEN_ANCHOR_MODE: "active camera"})
         with patch.object(xam, "_xr_settings", lambda: xs):
             self.assertTrue(xam.activate_pre_session_anchor())
@@ -139,6 +159,7 @@ class PreSessionAnchorRefcountTests(omni.kit.test.AsyncTestCase):
             )
 
     async def test_restore_is_idempotent_when_refcount_is_zero(self) -> None:
+        """Run the restore is idempotent when refcount is zero test."""
         xs = _FakeXrSettings({xam._XR_TOKEN_ANCHOR_MODE: "active camera"})
         with patch.object(xam, "_xr_settings", lambda: xs):
             xam.restore_pre_session_anchor()

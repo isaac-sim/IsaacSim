@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.11.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
+## [3.11.1] - 2026-05-22
+### Changed
+- Update urdf-usd-converter to v0.1.3
+
 ## [3.11.0] - 2026-05-14
 ### Added
 - `URDFImporterConfig.fix_base` is now a tri-state `bool | None`. `True` adds a world-to-root fixed joint (existing behavior), `False` removes any existing world-to-root fixed joint so the robot becomes floating-base, and the new default `None` leaves the source asset's base authoring untouched.

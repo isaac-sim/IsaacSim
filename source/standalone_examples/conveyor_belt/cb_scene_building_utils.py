@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Create USD mesh and rigid body helpers for the conveyor belt scene."""
+
 import math
 
 import warp as wp
@@ -33,8 +35,7 @@ def _create_quarter_hollow_cylinder_mesh_data(
     segment_count: int,
     close_at_front_and_back: bool = True,
 ) -> tuple[list[tuple[float, float, float]], list[int]]:
-    """
-    Generate a hollow cylinder mesh that is a quarter of a circle (90 degrees).
+    """Generate a hollow cylinder mesh that is a quarter of a circle (90 degrees).
 
     The cylinder has an inner and outer radius (annular cross-section). It extends
     along the Z axis from -half_height to +half_height. The circular arc runs from
@@ -58,7 +59,6 @@ def _create_quarter_hollow_cylinder_mesh_data(
           suitable for UsdGeom.Mesh.GetFaceVertexIndicesAttr().Set(face_vertex_indices).
           Use face vertex counts of [3] * (len(face_vertex_indices) // 3).
     """
-
     if segment_count < 1:
         raise ValueError("segment_count must be >= 1")
     if inner_radius >= outer_radius:
@@ -133,19 +133,19 @@ def _create_quarter_hollow_cylinder_mesh(
     half_height: float,
     segment_count: int,
 ) -> UsdGeom.Mesh:
-    """
-    Convenience: create a UsdGeom.Mesh prim with the quarter hollow cylinder geometry.
+    """Create a UsdGeom.Mesh prim with the quarter hollow cylinder geometry.
 
     Args:
         stage: Usd.Stage to create the mesh on.
         path: path for the new mesh prim.
-        inner_radius, outer_radius, half_height, segment_count: Same as
-            create_quarter_hollow_cylinder_mesh_data.
+        inner_radius: Radius of the inner circular edge.
+        outer_radius: Radius of the outer circular edge.
+        half_height: Half-extent along the Z axis.
+        segment_count: Number of segments along the curved arc.
 
     Returns:
         UsdGeom.Mesh prim.
     """
-
     points, face_vertex_indices = _create_quarter_hollow_cylinder_mesh_data(
         inner_radius,
         outer_radius,
@@ -329,7 +329,6 @@ def _create_conveyor_belt_box_mesh_data(
     Returns:
         A tuple ``(vertices, face_vertex_indices)`` of the full mesh data.
     """
-
     offset_front = (0.0, -half_extent[1], 0.0)
     offset_back = (0.0, half_extent[1], 0.0)
 
@@ -489,7 +488,6 @@ def _create_conveyor_belt_turn_90_degree_mesh_data(
     Returns:
         A tuple ``(vertices, face_vertex_indices)`` of the full turn mesh data.
     """
-
     vertices, face_vertex_indices = _create_quarter_hollow_cylinder_mesh_data(
         inner_radius,
         outer_radius,
@@ -565,7 +563,6 @@ def _compute_box_inertia(
     Returns:
         Tuple (Ix, Iy, Iz) of principal moments of inertia.
     """
-
     base_inertia_value = (1.0 / 12.0) * mass
     extent_x = 2.0 * half_extent[0]
     extent_y = 2.0 * half_extent[1]
@@ -585,7 +582,6 @@ def _set_physics_material(prim: Usd.Prim, material: UsdShade.Material) -> None:
         prim: The USD prim to bind the material to.
         material: The UsdShade material to bind.
     """
-
     bindingAPI = UsdShade.MaterialBindingAPI.Apply(prim)
     bindingAPI.Bind(material, UsdShade.Tokens.weakerThanDescendants, "physics")
 
@@ -619,7 +615,6 @@ def _create_rigid_body(
     Returns:
         The created USD prim.
     """
-
     body_xform = UsdGeom.Xform.Define(stage, path)
 
     body_xform.AddTranslateOp(precision=UsdGeom.XformOp.PrecisionFloat).Set(
@@ -660,7 +655,6 @@ def _set_contact_and_rest_offset(
         contact_offset: Distance at which contacts are detected (in scene units).
         rest_offset: Distance at which objects come to rest against each other (in scene units).
     """
-
     physx_collision_api = PhysxSchema.PhysxCollisionAPI.Apply(prim)
     physx_collision_api.CreateContactOffsetAttr(contact_offset)
     physx_collision_api.CreateRestOffsetAttr(rest_offset)
@@ -691,7 +685,6 @@ def _create_collision_box(
     Returns:
         The created collision geometry prim.
     """
-
     cube_geom = UsdGeom.Cube.Define(stage, path)
 
     cube_geom.AddTranslateOp(precision=UsdGeom.XformOp.PrecisionFloat).Set(
@@ -745,7 +738,6 @@ def _create_collision_turn_90_degree(
     Returns:
         The created collision geometry prim.
     """
-
     mesh_geom = _create_quarter_hollow_cylinder_mesh(
         stage,
         path,
@@ -806,7 +798,6 @@ def create_rigid_body_box(
     Returns:
         A tuple ``(body_prim, collision_geom_prim)``.
     """
-
     #
     # Creating the rigid body prim
     #
@@ -869,7 +860,6 @@ def create_conveyor_belt_box(
     Returns:
         A tuple ``(body_prim, collision_mesh_prim)``.
     """
-
     #
     # Creating the xform prim
     #
@@ -946,7 +936,6 @@ def create_conveyor_belt_box_guard(
     Returns:
         A tuple ``(body_prim, collision_geom_prim)``.
     """
-
     #
     # Creating the xform prim
     #
@@ -1014,7 +1003,6 @@ def create_conveyor_belt_turn(
     Returns:
         A tuple ``(body_prim, collision_mesh_prim)``.
     """
-
     #
     # Creating the xform prim
     #
@@ -1094,7 +1082,6 @@ def create_conveyor_belt_turn_guard(
     Returns:
         A tuple ``(body_prim, collision_mesh_prim)``.
     """
-
     #
     # Creating the xform prim
     #

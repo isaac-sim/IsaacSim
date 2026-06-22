@@ -13,12 +13,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Generate random float3 values for domain-randomization graphs."""
+
 import random
+from typing import Any
 
 
 class OgnRandom3f:
+    """OmniGraph node that samples each float3 component independently."""
+
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
+        """Write a random ``outputs:output`` vector within the input ranges.
+
+        Each component is sampled uniformly between the corresponding component
+        of ``inputs:minimum`` and ``inputs:maximum``.
+
+        Args:
+            db: Database object containing node inputs and outputs.
+
+        Returns:
+            True after ``outputs:output`` is written.
+        """
         min_range = db.inputs.minimum
         max_range = db.inputs.maximum
         db.outputs.output = (

@@ -13,11 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 image to buffer conversion OmniGraph node."""
+"""Verify ROS 2 image-to-buffer conversion.
+
+Covers color, mono, 16-bit, floating-point, YUV, padded-stride, copy, squeeze,
+endian, and invalid-message cases.
+"""
 
 import os
 import tempfile
 import time
+from typing import Any
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
@@ -31,7 +36,7 @@ from .common import get_qos_profile
 
 
 class TestRos2ImageToBuffer(ROS2TestCase):
-    """Test suite for ros2 image to buffer."""
+    """Verify conversion from sensor_msgs/Image messages to NumPy buffers."""
 
     # Configuration for each test's golden image
     # Maps test method name to (height, width, encoding, channels, dtype, extra_config)
@@ -46,8 +51,8 @@ class TestRos2ImageToBuffer(ROS2TestCase):
         "test_yuv422_shape": (8, 8, "uyvy", 2, np.uint8, {}),
     }
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh stage and temporary image-buffer output directory."""
         await super().setUp()
 
         await stage_utils.create_new_stage_async()
@@ -64,8 +69,8 @@ class TestRos2ImageToBuffer(ROS2TestCase):
         # Initialize received image storage
         self._received_image = None
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Remove temporary image-buffer files after each conversion test."""
         # Delete all golden images created during this test
         for filepath in self._golden_files:
             if os.path.exists(filepath):
@@ -80,8 +85,12 @@ class TestRos2ImageToBuffer(ROS2TestCase):
 
         await super().tearDown()
 
-    def _create_golden_image(self, test_name):
-        """Create and save a random golden image for the given test."""
+    def _create_golden_image(self, test_name: Any) -> None:
+        """Create and save a random golden image for the given test.
+
+        Args:
+            test_name: Name of the image conversion test.
+        """
         h, w, encoding, channels, dtype, extra_config = self._TEST_IMAGE_CONFIG[test_name]
 
         # Use a fixed seed based on test name for reproducibility
@@ -137,8 +146,12 @@ class TestRos2ImageToBuffer(ROS2TestCase):
         self._current_golden_path = golden_path
         self._current_config = (h, w, encoding, channels, dtype, extra_config)
 
-    def _load_golden_image(self):
-        """Load the golden image and adjust for the expected format."""
+    def _load_golden_image(self) -> Any:
+        """Load the golden image and adjust for the expected format.
+
+        Returns:
+            Golden image data in the expected format.
+        """
         h, w, encoding, channels, dtype, extra_config = self._current_config
 
         # For float32 single-channel, load from TIFF (lossless)
@@ -163,18 +176,30 @@ class TestRos2ImageToBuffer(ROS2TestCase):
 
         return img
 
-    def _image_callback(self, msg):
-        """Handle received ROS2 Image messages."""
+    def _image_callback(self, msg: Any) -> None:
+        """Handle received ROS2 Image messages.
+
+        Args:
+            msg: Received ROS 2 image message.
+        """
         self._received_image = msg
 
-    async def _publish_and_receive_image(self, ros2_image_msg, topic_name="/test_image"):
-        """Publish an image and wait for subscriber to receive it."""
+    async def _publish_and_receive_image(self, ros2_image_msg: Any, topic_name: Any = "/test_image") -> Any:
+        """Publish an image and wait for subscriber to receive it.
+
+        Args:
+            ros2_image_msg: ROS 2 image message to publish.
+            topic_name: Topic to publish and subscribe.
+
+        Returns:
+            Received ROS 2 image message, or None if no message arrives.
+        """
         # Create node, publisher, and subscriber
         node = self.create_node("image_test_node")
         publisher = self.create_publisher(node, Image, topic_name, get_qos_profile())
         self.create_subscription(node, Image, topic_name, self._image_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         # Reset received image
@@ -195,7 +220,7 @@ class TestRos2ImageToBuffer(ROS2TestCase):
         self.assertIsNotNone(self._received_image, "Failed to receive image from topic")
         return self._received_image
 
-    async def test_bgr8_normalization_and_no_normalization(self):
+    async def test_bgr8_normalization_and_no_normalization(self) -> None:
         """Test bgr8 normalization and no normalization."""
         h, w, encoding, channels, dtype, _ = self._current_config
         bgr = self._load_golden_image()
@@ -218,7 +243,7 @@ class TestRos2ImageToBuffer(ROS2TestCase):
         bgr_out = ros2_image_to_buffer(received_msg, normalize_color_order=False)
         np.testing.assert_array_equal(bgr_out, bgr)
 
-    async def test_bgra8_alpha_preserved(self):
+    async def test_bgra8_alpha_preserved(self) -> None:
         """Test bgra8 alpha preserved."""
         h, w, encoding, channels, dtype, _ = self._current_config
         bgra = self._load_golden_image()
@@ -234,7 +259,7 @@ class TestRos2ImageToBuffer(ROS2TestCase):
         np.testing.assert_array_equal(out[..., :3], bgra[..., :3][:, :, ::-1])
         np.testing.assert_array_equal(out[..., 3], bgra[..., 3])
 
-    async def test_mono8_squeeze_toggle(self):
+    async def test_mono8_squeeze_toggle(self) -> None:
         """Test mono8 squeeze toggle."""
         h, w, encoding, channels, dtype, _ = self._current_config
         mono = self._load_golden_image()
@@ -257,7 +282,7 @@ class TestRos2ImageToBuffer(ROS2TestCase):
         self.assertEqual(arr2.shape, (h, w, 1))
         np.testing.assert_array_equal(arr2[..., 0], mono)
 
-    async def test_rgb16_big_endian_byteswap(self):
+    async def test_rgb16_big_endian_byteswap(self) -> None:
         """Test rgb16 big endian byteswap."""
         h, w, encoding, channels, dtype, extra_config = self._current_config
         rgb16 = self._load_golden_image()
@@ -278,7 +303,7 @@ class TestRos2ImageToBuffer(ROS2TestCase):
         # Expect native-endian values matching original
         np.testing.assert_array_equal(out, rgb16)
 
-    async def test_stride_padding_rows(self):
+    async def test_stride_padding_rows(self) -> None:
         """Test stride padding rows."""
         h, w, encoding, channels, dtype, extra_config = self._current_config
         padding = extra_config.get("padding", 4)
@@ -303,7 +328,7 @@ class TestRos2ImageToBuffer(ROS2TestCase):
         self.assertEqual(out.shape, (h, w, channels))
         np.testing.assert_array_equal(out, golden)
 
-    async def test_opencv_16sc3(self):
+    async def test_opencv_16sc3(self) -> None:
         """Test opencv 16sc3."""
         h, w, encoding, channels, dtype, _ = self._current_config
         arr = self._load_golden_image()
@@ -322,7 +347,7 @@ class TestRos2ImageToBuffer(ROS2TestCase):
         self.assertEqual(out.dtype, np.int16)
         np.testing.assert_array_equal(out, arr)
 
-    async def test_opencv_32fc1_squeeze_toggle(self):
+    async def test_opencv_32fc1_squeeze_toggle(self) -> None:
         """Test opencv 32fc1 squeeze toggle."""
         h, w, encoding, channels, dtype, _ = self._current_config
         float_data = self._load_golden_image()
@@ -347,7 +372,7 @@ class TestRos2ImageToBuffer(ROS2TestCase):
         self.assertEqual(arr2.dtype, np.float32)
         np.testing.assert_array_equal(arr2[..., 0], float_data)
 
-    async def test_yuv422_shape(self):
+    async def test_yuv422_shape(self) -> None:
         """Test yuv422 shape."""
         h, w, encoding, channels, dtype, _ = self._current_config
         data = self._load_golden_image()
@@ -368,7 +393,7 @@ class TestRos2ImageToBuffer(ROS2TestCase):
         self.assertEqual(out.shape, (h, w, channels))
         self.assertEqual(out.dtype, np.uint8)
 
-    def test_unsupported_and_unknown_encodings_raise(self):
+    def test_unsupported_and_unknown_encodings_raise(self) -> None:
         """Test unsupported and unknown encodings raise."""
         h, w = 1, 1
         # nv21 not supported
@@ -378,21 +403,21 @@ class TestRos2ImageToBuffer(ROS2TestCase):
         with self.assertRaises(ValueError):
             ros2_image_to_buffer(create_image(h, w, "foo", 3, b"\x00\x00\x00"))
 
-    def test_invalid_step_too_small_raises(self):
+    def test_invalid_step_too_small_raises(self) -> None:
         """Test invalid step too small raises."""
         h, w = 1, 2
         # rgb8 expected row bytes = 2*3 = 6, provide step smaller
         with self.assertRaises(ValueError):
             ros2_image_to_buffer(create_image(h, w, "rgb8", 5, b"\x00" * 6))
 
-    def test_buffer_size_mismatch_raises(self):
+    def test_buffer_size_mismatch_raises(self) -> None:
         """Test buffer size mismatch raises."""
         h, w = 2, 2
         # rgb8 needs 2*2*3 = 12 bytes; give 10
         with self.assertRaises(ValueError):
             ros2_image_to_buffer(create_image(h, w, "rgb8", 6, b"\x00" * 10))
 
-    def test_row_length_mismatch_raises(self):
+    def test_row_length_mismatch_raises(self) -> None:
         """Test row length mismatch raises."""
         h, w = 2, 2
         channels = 3
@@ -405,7 +430,7 @@ class TestRos2ImageToBuffer(ROS2TestCase):
         with self.assertRaises(ValueError):
             ros2_image_to_buffer(create_image(h, w, "rgb8", step, data))
 
-    def test_copy_behavior(self):
+    def test_copy_behavior(self) -> None:
         """Test copy behavior."""
         h, w = 1, 3
         orig = bytearray([1, 2, 3, 4, 5, 6, 7, 8, 9])  # rgb8, 3 pixels

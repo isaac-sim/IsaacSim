@@ -13,10 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Built-in :class:`Recordable` implementations for sim time, articulations, xforms,
-rigid bodies, cameras, and arbitrary USD attributes.
+"""Register built-in recordable implementations.
 
-Importing this package registers all built-in recordables with the registry.
+This package covers sim time, articulations, xforms, rigid bodies, cameras, and arbitrary
+USD attributes. Importing it registers all built-in recordables with the registry.
 """
 
 from __future__ import annotations

@@ -13,7 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Provides utilities for loading robot motion generation configuration files and discovering supported robot-policy combinations."""
+"""This InterfaceLoader makes it trivial to load a valid config for supported interface implementations.
+
+For example, RMPflow has a collection of robot-specific config files stored in the motion_generation extension.
+This loader makes it simple to load RMPflow for the Franka robot using load_supported_motion_policy_config("Franka","RMPflow")
+"""
 
 from __future__ import annotations
 
@@ -22,11 +26,6 @@ import os
 
 import carb
 from isaacsim.core.utils.extensions import get_extension_path_from_name
-
-"""This InterfaceLoader makes it trivial to load a valid config for supported interface implementations
-For example, RMPflow has a collection of robot-specific config files stored in the motion_generation extension.
-This loader makes it simple to load RMPflow for the Franka robot using load_supported_motion_policy_config("Franka","RMPflow")
-"""
 
 
 def get_supported_robot_policy_pairs() -> dict:

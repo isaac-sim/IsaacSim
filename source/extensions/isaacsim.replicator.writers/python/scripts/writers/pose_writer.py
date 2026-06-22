@@ -16,6 +16,7 @@
 """A Replicator writer that outputs pose data including 3D bounding box annotations, camera parameters, and optional debug images for object pose estimation tasks."""
 
 from functools import partial
+from typing import Any
 
 import numpy as np
 from isaacsim.replicator.writers.scripts.utils import (
@@ -70,7 +71,7 @@ class PoseWriter(Writer):
     """Name of the 3D bounding box annotator used for retrieving object pose and geometry data."""
     CAM_PARAMS_ANNOT_NAME = "camera_params"
     """Name of the camera parameters annotator used for retrieving camera intrinsic and extrinsic data."""
-    SUPPORTED_FORMATS = set(["dope", "centerpose"])
+    SUPPORTED_FORMATS = {"dope", "centerpose"}
     """Set of supported output formats for pose data."""
     CUBOID_KEYPOINTS_ORDER_DEFAULT = ["Center", "LDB", "LDF", "LUB", "LUF", "RDB", "RDF", "RUB", "RUF"]
     """Default ordering of cuboid keypoints for 3D bounding box representation."""
@@ -96,7 +97,7 @@ class PoseWriter(Writer):
         s3_region: str = None,
         backend: BaseBackend = None,
         image_output_format: str = "png",
-    ):
+    ) -> None:
         self.version = __version__
         self.data_structure = "renderProduct"
 
@@ -162,7 +163,7 @@ class PoseWriter(Writer):
         self.annotators.append(AnnotatorRegistry.get_annotator(self.CAM_PARAMS_ANNOT_NAME))
 
     # Abstract method from Writer to access the annotator data and write to disk
-    def write(self, data: dict):
+    def write(self, data: dict) -> None:
         """Write pose data for all render products in the frame.
 
         Args:
@@ -198,7 +199,7 @@ class PoseWriter(Writer):
             self._frame_id += 1
 
     # Note that the frame id can be incremented for each render product write (if use_subfolders is False) or for each step (if use_subfolders is True)
-    def get_current_frame_id(self):
+    def get_current_frame_id(self) -> Any:
         """Current frame ID counter.
 
         Returns:
@@ -385,7 +386,7 @@ class PoseWriter(Writer):
         return objs
 
     # Get the camera parameters from the annotator data
-    def _process_camera_parameters(self, camera_params) -> dict:
+    def _process_camera_parameters(self, camera_params: Any) -> dict:
         """Process camera parameters from annotator data.
 
         Args:
@@ -425,7 +426,7 @@ class PoseWriter(Writer):
         return camera_data
 
     # Write the processed data to disk
-    def _write_frame_data(self, rgb_data: dict, render_product_subfolder: str = ""):
+    def _write_frame_data(self, rgb_data: dict, render_product_subfolder: str = "") -> None:
         """Write frame data and RGB image to disk.
 
         Args:
@@ -441,7 +442,7 @@ class PoseWriter(Writer):
         self.backend.schedule(F.write_image, path=rgb_file_path, data=rgb_data)
 
     # Write overlay debug data to disk
-    def _write_debug_data(self, rgb_data: dict, render_product_subfolder: str = ""):
+    def _write_debug_data(self, rgb_data: dict, render_product_subfolder: str = "") -> None:
         """Write debug overlay image with projected keypoints and coordinate axes.
 
         Args:
@@ -481,7 +482,7 @@ class PoseWriter(Writer):
         self.backend.schedule(F.write_image, path=file_path, data=overlay_data)
 
     # Transform a 3D point from world coordinates to camera coordinates
-    def _world_point_to_camera_point(self, world_point, view_matrix):
+    def _world_point_to_camera_point(self, world_point: Any, view_matrix: Any) -> Any:
         """Transform a 3D point from world coordinates to camera coordinates.
 
         Args:
@@ -499,7 +500,7 @@ class PoseWriter(Writer):
 
         return point_camera
 
-    def _project_world_point_to_screen(self, world_point, camera_params):
+    def _project_world_point_to_screen(self, world_point: Any, camera_params: Any) -> Any:
         """Project a 3D world point to 2D screen coordinates.
 
         Args:
@@ -516,13 +517,13 @@ class PoseWriter(Writer):
     # Projects the local frame axes of the object to the screen
     def _draw_local_frame_axes(
         self,
-        draw,
-        local_to_world_transform,
-        camera_params,
-        size_local=[1, 1, 1],
-        origin_local=[0, 0, 0],
-        axes_length_perc=0.25,
-    ):
+        draw: Any,
+        local_to_world_transform: Any,
+        camera_params: Any,
+        size_local: Any | None = None,
+        origin_local: Any | None = None,
+        axes_length_perc: float = 0.25,
+    ) -> None:
         """Draw local coordinate frame axes of an object projected onto the screen.
 
         Args:
@@ -533,6 +534,11 @@ class PoseWriter(Writer):
             origin_local: Local origin point of the coordinate frame.
             axes_length_perc: Percentage of mean object size to use for axes length.
         """
+        if size_local is None:
+            size_local = [1, 1, 1]
+        if origin_local is None:
+            origin_local = [0, 0, 0]
+
         # The length of the local axes is a percentage of the mean size of the object in local frame (before any scaling)
         local_axes_length = np.mean(size_local) * axes_length_perc
 
@@ -563,7 +569,9 @@ class PoseWriter(Writer):
         draw.line([origin_2d, z_axis_end_2d], fill="blue", width=2)  # Z-axis in blue
 
     # Draws the world frame axes at the bottom left corner of the image.
-    def _draw_world_frame_axes_bottom_left(self, draw, camera_params, axes_scale=0.03, margin_percentage=0.03):
+    def _draw_world_frame_axes_bottom_left(
+        self, draw: Any, camera_params: Any, axes_scale: float = 0.03, margin_percentage: float = 0.03
+    ) -> None:
         """Draw the world coordinate system axes at the bottom-left corner of the image.
 
         Args:
@@ -611,7 +619,7 @@ class PoseWriter(Writer):
         draw.line([origin_2d, z_axis_end_2d], fill="blue", width=2)  # Z-axis in blue
 
     # Draw the projected cuboid and its edges
-    def _draw_projected_keypoints(self, draw, keypoints, point_size=4, edge_size=2):
+    def _draw_projected_keypoints(self, draw: Any, keypoints: Any, point_size: int = 4, edge_size: int = 2) -> None:
         """Draw the projected cuboid keypoints and edges on the image.
 
         Args:
@@ -638,7 +646,7 @@ class PoseWriter(Writer):
                 draw.line(keypoints[start] + keypoints[end], fill=self.CUBOID_EDGE_COLORS[edge_type], width=edge_size)
 
     # Override to clear the writer state
-    def detach(self):
+    def detach(self) -> None:
         """Clear the writer state by resetting the frame counter to zero."""
         super().detach()
         self._frame_id = 0

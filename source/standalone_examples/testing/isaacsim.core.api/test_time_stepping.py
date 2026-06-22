@@ -13,11 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test simulation time stepping with various physics and rendering rates."""
+"""Verifies SimulationContext physics and rendering step counts, callback dt values, and render-only behavior across several timestep configurations. Also confirms render calls update PhysX state before pose queries."""
 
 import math
 import sys
 import unittest
+from typing import Any
 
 from isaacsim import SimulationApp
 
@@ -53,39 +54,39 @@ simulation_context.initialize_physics()
 class TimeStepTester(unittest.TestCase):
     """Track and verify physics and rendering step counts and dt values."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.physics_steps = 0
         self.render_steps = 0
         self.physics_dt = 1.0 / 60.0
         self.render_dt = 1.0 / 60.0
 
-    def step_callback(self, step_size):
+    def step_callback(self, step_size: float) -> None:
         """Record a physics step with the given step size."""
         print("simulate with step: ", step_size)
         self.physics_steps = self.physics_steps + 1
         self.physics_dt = step_size
 
-    def render_callback(self, event):
+    def render_callback(self, event: Any) -> None:
         """Record a render step with the dt from the event payload."""
         print("update app with step: ", event.payload["dt"])
         self.render_steps = self.render_steps + 1
         self.render_dt = event.payload["dt"]
 
-    def check_steps(self, physics_steps, render_steps):
+    def check_steps(self, physics_steps: int, render_steps: int) -> None:
         """Assert that recorded step counts match expected values."""
         if physics_steps != self.physics_steps:
             self.assertAlmostEqual(physics_steps, self.physics_steps)
         if render_steps != self.render_steps:
             self.assertAlmostEqual(render_steps, self.render_steps)
 
-    def check_dt(self, physics_dt, render_dt):
+    def check_dt(self, physics_dt: float, render_dt: float) -> None:
         """Assert that recorded dt values match expected values."""
         if physics_dt != self.physics_dt:
             self.assertAlmostEqual(physics_dt, self.physics_dt)
         if render_dt != self.render_dt:
             self.assertAlmostEqual(render_dt, self.render_dt)
 
-    def reset_values(self):
+    def reset_values(self) -> None:
         """Reset all tracked step counts and dt values to defaults."""
         self.physics_steps = 0
         self.render_steps = 0

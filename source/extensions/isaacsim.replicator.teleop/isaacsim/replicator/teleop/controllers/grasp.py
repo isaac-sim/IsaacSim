@@ -65,6 +65,12 @@ class JointMapping:
         Below input_range[0] returns target_range[0].
         Above input_range[1] returns target_range[1].
         Within range, linearly interpolates.
+
+        Args:
+            input_value: Value for input value.
+
+        Returns:
+            The requested value.
         """
         input_value = max(0.0, min(1.0, input_value))
         lo, hi = self.input_range
@@ -141,12 +147,26 @@ def _get_builtin_grasp_configs_dir() -> Path | None:
 
 
 def get_builtin_grasp_config_uri(name: str) -> str:
-    """Return the symbolic URI for a built-in grasp config name."""
+    """Return the symbolic URI for a built-in grasp config name.
+
+    Args:
+        name: Value for name.
+
+    Returns:
+        The requested value.
+    """
     return f"{BUILTIN_GRASP_CONFIG_SCHEME}{name.strip()}"
 
 
 def normalize_grasp_config_path(path: str) -> str:
-    """Normalize grasp config references to a portable built-in URI when possible."""
+    """Normalize grasp config references to a portable built-in URI when possible.
+
+    Args:
+        path: Value for path.
+
+    Returns:
+        The requested value.
+    """
     raw_path = path.strip()
     if not raw_path:
         return ""
@@ -170,7 +190,14 @@ def normalize_grasp_config_path(path: str) -> str:
 
 
 def resolve_grasp_config_path(path: str) -> str:
-    """Resolve a grasp config reference to a filesystem path when possible."""
+    """Resolve a grasp config reference to a filesystem path when possible.
+
+    Args:
+        path: Value for path.
+
+    Returns:
+        The requested value.
+    """
     normalized = normalize_grasp_config_path(path)
     if not normalized:
         return ""
@@ -200,7 +227,7 @@ def load_grasp_config(path: str) -> tuple[GraspConfig | None, list[str]]:
         path: Filesystem path to the YAML file.
 
     Returns:
-        (config, errors) - config is None if loading failed.
+        The requested value.
     """
     import yaml  # noqa: delayed import - only needed when user loads a config
 
@@ -268,6 +295,9 @@ def get_builtin_grasp_configs() -> list[tuple[str, str]]:
     """Return (display_name, portable_config_path) pairs for built-in grasp configs.
 
     Scans the extension's ``data/grasp_configs/`` directory.
+
+    Returns:
+        The requested value.
     """
     configs_dir = _get_builtin_grasp_configs_dir()
     if configs_dir is None:
@@ -316,7 +346,7 @@ class GraspController:
             prim_path: USD path to the gripper/hand root prim.
 
         Returns:
-            GraspValidationResult with details.
+            The requested value.
         """
         result = GraspValidationResult()
 
@@ -372,7 +402,7 @@ class GraspController:
             config: Grasp configuration (loaded from YAML).
 
         Returns:
-            True if configuration succeeded.
+            The requested value.
         """
         if not prim_path:
             print(f"[Teleop][Grasp] Cannot configure {side}: empty path")
@@ -424,6 +454,13 @@ class GraspController:
         ``None`` on success or when the articulation simply has no matching
         DOFs. Callers decide whether to surface the message based on whether
         the DriveAPI fallback is viable.
+
+        Args:
+            state: Value for state.
+            art_root_path: Value for art root path.
+
+        Returns:
+            The requested value.
         """
         try:
             robot = Articulation(art_root_path)
@@ -457,7 +494,15 @@ class GraspController:
         config: GraspConfig,
         drive_joint_paths: list[str],
     ) -> dict[str, tuple[JointMapping, UsdPhysics.DriveAPI]]:
-        """Matches config joint names to USD joints and caches DriveAPIs."""
+        """Matches config joint names to USD joints and caches DriveAPIs.
+
+        Args:
+            config: Value for config.
+            drive_joint_paths: Value for drive joint paths.
+
+        Returns:
+            The requested value.
+        """
         stage = omni.usd.get_context().get_stage()
         if not stage:
             return {}
@@ -511,6 +556,9 @@ class GraspController:
         Uses the Articulation tensor API when available (required for
         assembled robots where another controller owns the articulation).
         Falls back to direct DriveAPI writes for standalone grippers.
+
+        Args:
+            state: Value for state.
         """
         if state.articulation and state.art_joint_map:
             self._apply_via_articulation(state)
@@ -518,7 +566,11 @@ class GraspController:
             self._apply_via_drive_api(state)
 
     def _apply_via_articulation(self, state: _GraspState) -> None:
-        """Set drive targets through the Articulation tensor API."""
+        """Set drive targets through the Articulation tensor API.
+
+        Args:
+            state: Value for state.
+        """
         robot = state.articulation
         if robot is None:
             return
@@ -537,7 +589,11 @@ class GraspController:
             self._apply_via_drive_api(state)
 
     def _apply_via_drive_api(self, state: _GraspState) -> None:
-        """Set drive targets directly on USD DriveAPI attributes."""
+        """Set drive targets directly on USD DriveAPI attributes.
+
+        Args:
+            state: Value for state.
+        """
         for _jp, (mapping, drive_api) in state.active_joints.items():
             target = mapping.compute_target(state.input_value)
             target_attr = drive_api.GetTargetPositionAttr()
@@ -545,7 +601,11 @@ class GraspController:
                 target_attr.Set(target)
 
     def remove(self, side: str) -> None:
-        """Clear grasp configuration for one side."""
+        """Clear grasp configuration for one side.
+
+        Args:
+            side: Value for side.
+        """
         side = side.lower()
         state = self._sides.get(side)
         if state is None:
@@ -567,14 +627,26 @@ class GraspController:
         print("[Teleop][Grasp] Controllers removed.")
 
     def set_side_tracking_enabled(self, side: str, enabled: bool) -> None:
-        """Enable/disable trigger tracking for one side."""
+        """Enable/disable trigger tracking for one side.
+
+        Args:
+            side: Value for side.
+            enabled: Value for enabled.
+        """
         side = side.lower()
         if side not in self._tracking_enabled:
             return
         self._tracking_enabled[side] = bool(enabled)
 
     def is_side_tracking_enabled(self, side: str) -> bool:
-        """Return True if trigger tracking is enabled for one side."""
+        """Return True if trigger tracking is enabled for one side.
+
+        Args:
+            side: Value for side.
+
+        Returns:
+            The requested value.
+        """
         side = side.lower()
         state = self._sides.get(side)
         if state is None:
@@ -583,22 +655,38 @@ class GraspController:
 
     @property
     def has_any_side_tracking_enabled(self) -> bool:
-        """True when at least one side accepts trigger tracking."""
+        """True when at least one side accepts trigger tracking.
+
+        Returns:
+            The requested value.
+        """
         return self.is_side_tracking_enabled("left") or self.is_side_tracking_enabled("right")
 
     # ── Properties ───────────────────────────────────────────────────
 
     @property
     def is_enabled(self) -> bool:
-        """True if any side has active joints."""
+        """True if any side has active joints.
+
+        Returns:
+            The requested value.
+        """
         return self._enabled and any(s.active_joints for s in self._sides.values())
 
     @property
     def left_prim_path(self) -> str | None:
-        """Return the left side prim path."""
+        """Return the left side prim path.
+
+        Returns:
+            The requested value.
+        """
         return self._side("left").prim_path
 
     @property
     def right_prim_path(self) -> str | None:
-        """Return the right side prim path."""
+        """Return the right side prim path.
+
+        Returns:
+            The requested value.
+        """
         return self._side("right").prim_path

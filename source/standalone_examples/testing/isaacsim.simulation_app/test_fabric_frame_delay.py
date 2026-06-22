@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test Fabric frame delay across multiple backend configurations."""
+"""Verifies that Fabric world matrices for rigid and articulated prims are synchronized after render across tensor, USD, USDRT, and Fabric backends."""
 
 import os
+from typing import Any
 
 from isaacsim import SimulationApp
 
@@ -61,7 +62,7 @@ def _assert_fabric_position(prim_path: str, expected: np.ndarray, message: str) 
         sys.exit(1)
 
 
-def _run_backend_test(device: str, backend: str, timeline) -> None:
+def _run_backend_test(device: str, backend: str, timeline: Any) -> None:
     print(f"Running test with device: {device}, backend: {backend}")
     timeline.stop()
     # Create a fresh stage and configure simulation settings for each backend.

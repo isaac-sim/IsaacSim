@@ -1,4 +1,9 @@
 # Changelog
+
+## [1.5.4] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.5.3] - 2026-05-19
 ### Changed
 - Clarified `LocationRandomizer` docstrings for the `frame:useRelativeFrame` and `frame:targetPrimPath` exposed attributes to disambiguate how the random offset is composed with the initial location and the optional target prim.

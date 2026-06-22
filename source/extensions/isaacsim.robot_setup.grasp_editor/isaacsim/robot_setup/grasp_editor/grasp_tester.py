@@ -15,8 +15,6 @@
 
 """Testing framework for evaluating robotic grasp stability and effectiveness through automated simulation."""
 
-from typing import List
-
 import isaacsim.core.experimental.utils.transform as transform_utils
 import isaacsim.core.experimental.utils.xform as xform_utils
 import numpy as np
@@ -53,16 +51,16 @@ class GraspTestSettings:
         self,
         articulation_path: str,
         articulation_pose_frame: str,
-        active_joints: List[str],
-        active_joint_open_positions: List[float],
-        active_joint_closed_positions: List[float],
-        active_joint_close_speeds: List[float],
-        inactive_joint_fixed_positions: List[float],
+        active_joints: list[str],
+        active_joint_open_positions: list[float],
+        active_joint_closed_positions: list[float],
+        active_joint_close_speeds: list[float],
+        inactive_joint_fixed_positions: list[float],
         rigid_body_path: str,
         rigid_body_pose_frame: str,
         external_force_magnitude: float,
         external_torque_magnitude: float,
-    ):
+    ) -> None:
         self.articulation_path = articulation_path
         self.articulation_pose_frame = articulation_pose_frame
         self.active_joints = active_joints
@@ -102,7 +100,7 @@ class GraspTestResults:
         stable_positions: np.array,
         suggested_confidence: float,
         success: bool,
-    ):
+    ) -> None:
         self.grasp_test_settings = grasp_test_settings
         self.articulation_rel_quat = articulation_rel_quat
         self.articulation_rel_trans = articulation_rel_trans
@@ -145,11 +143,13 @@ class GraspTester:
     allowing evaluation of complex multi-fingered grasping systems with varied joint control strategies.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._test_grasp_generator = None
         self._test_timestep = 0
 
-    def initialize_test_grasp_script(self, articulation, rigid_body, grasp_test_settings):
+    def initialize_test_grasp_script(
+        self, articulation: object, rigid_body: object, grasp_test_settings: object
+    ) -> None:
         """Initialize the grasp test script generator.
 
         Args:
@@ -160,7 +160,9 @@ class GraspTester:
         self._test_grasp_generator = self._test_grasp_script(articulation, rigid_body, grasp_test_settings)
         self._test_timestep = 0
 
-    def close_gripper_trajectory(self, t, open_positions, close_positions, close_velocities):
+    def close_gripper_trajectory(
+        self, t: object, open_positions: object, close_positions: object, close_velocities: object
+    ) -> object:
         """Compute gripper position command along a closing trajectory at constant velocity.
 
         Args:
@@ -180,7 +182,7 @@ class GraspTester:
 
         return open_positions + signed_close_distance_clipped
 
-    def update_grasp_test(self, step: float):
+    def update_grasp_test(self, step: float) -> object:
         """Advance the grasp test by one step and return the result.
 
         Args:
@@ -197,7 +199,7 @@ class GraspTester:
             # StopIteration occurs when the script returns, and e.value is the return value
             return e.value
 
-    def compute_relative_pose(self, rigid_body_frame: str, articulation_frame: str):
+    def compute_relative_pose(self, rigid_body_frame: str, articulation_frame: str) -> object:
         """Compute the pose of the articulation frame relative to the rigid body frame.
 
         Args:
@@ -222,8 +224,14 @@ class GraspTester:
         return rel_trans, transform_utils.rotation_matrix_to_quaternion(rel_rot).numpy()
 
     def _apply_external_force(
-        self, rigid_body, force_magnitude, articulation, dof_indices, closed_positions, apply_torque=False
-    ):
+        self,
+        rigid_body: object,
+        force_magnitude: object,
+        articulation: object,
+        dof_indices: object,
+        closed_positions: object,
+        apply_torque: object = False,
+    ) -> object:
         s = "torque" if apply_torque else "force"
         succ = True
         for idx in range(3):
@@ -280,7 +288,7 @@ class GraspTester:
         yield ()
         return succ
 
-    def _test_grasp_script(self, articulation, rigid_body, test_settings):
+    def _test_grasp_script(self, articulation: object, rigid_body: object, test_settings: object) -> object:
         x = test_settings
 
         dof_indices = articulation.get_dof_indices(x.active_joints)

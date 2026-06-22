@@ -82,6 +82,7 @@ def load_scenario(path: str) -> MobilityGenScenario:
         delete_prim(robot_prim_path)
 
     SimulationManager.setup_simulation(dt=robot_type.physics_dt)
+
     ground_plane = GroundPlane("/World/ground_plane", templates=None)
     # Hide the render mesh to prevent z-fighting with the warehouse USD floor.
     # Develop uses GroundPlane(visible=False); experimental API has no such parameter.

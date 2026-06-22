@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.8.9] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.8.8] - 2026-05-11
 ### Fixed
 - Remove unused `unitsResolve` properties (other than `xformOp:scale:unitsResolve`) when resetting the transformation operation attributes of wrapped prims

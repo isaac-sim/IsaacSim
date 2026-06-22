@@ -1,5 +1,5 @@
 [package]
-version = "0.7.1"
+version = "0.7.2"
 category = "Simulation"
 title = "Isaac Sim Camera Simulation UI Components"
 description = "Provides UI components for Isaac Sim camera simulation, eg. menu options."
@@ -78,6 +78,7 @@ args = [
     "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 

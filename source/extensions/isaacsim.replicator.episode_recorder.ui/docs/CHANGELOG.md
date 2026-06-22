@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [0.1.2] - 2026-05-01
 ### Changed
 - Updated UI tests to use shared menu interaction helpers for more robust CI execution.

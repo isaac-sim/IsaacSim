@@ -1,5 +1,5 @@
 [package]
-version = "2.3.1"
+version = "2.3.3"
 category = "Simulation"
 title = "Wheeled Robots UI"
 description = "This extension provides the UI elements for the wheeled_robots extension"

@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.6.7] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
+## [1.6.6] - 2026-06-04
+### Changed
+- `OgnUCXPublishImage`: the image FlatBuffer's `Tensor.shape` is now `[height, width, bytes_per_pixel]` with `ndim = 3` and row-major strides, replacing the previous 1D `[dataSize]` shape. Receivers can now consume the image as a properly-shaped tensor without an external reshape step. `bytes_per_pixel` is derived as `dataSize / (height * width)` so future encodings do not require a code change here. Both the CPU path (`sendCudaBuffer = false`) and the GPU-direct metadata header (`sendCudaBuffer = true`) emit the same shape. Total byte count is still recoverable as `prod(shape)`.
+
+### Fixed
+- `python/tests/common.py::get_image_pixel_data_size` now returns `prod(shape)` instead of `shape[0]` so the helper continues to report the pixel byte count under the new 3D shape. Docstring and `unpack_image_message` / `test_camera` comments updated to match.
+
+## [1.6.5] - 2026-06-04
+### Fixed
+- `OgnUCXCameraHelper.ogn`: the `tag` input default is now the FNV-1a 32-bit hash of `"isaac.Image"` (`270059627`), matching the convention used by the other UCX OGN publishers (`OgnUCXPublishClock`, `OgnUCXPublishJointState`, `OgnUCXSubscribeJointCommand`). Previously the default was the literal `10`, which made `UCXCameraHelper` the only UCX publisher whose default tag did not derive from its FlatBuffer schema name and required consumers to override the input to receive frames.
+
 ## [1.6.4] - 2026-05-21
 ### Fixed
 - Made `test_publish_clock.py` more robust by waiting for the UCX listener to accept the client connection and by arming clock receives before triggering manual publish impulses.

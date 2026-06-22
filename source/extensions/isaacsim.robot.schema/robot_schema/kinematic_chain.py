@@ -66,7 +66,11 @@ _AXIS_MAP_GF: dict[str, Any] = {}
 
 
 def _lazy_axis_map() -> dict[str, Any]:
-    """Return the axis-string → Gf.Vec3d mapping (built on first call)."""
+    """Return the axis-string to Gf.Vec3d mapping.
+
+    Returns:
+        Mapping from axis token strings to vector values.
+    """
     global _AXIS_MAP_GF
     if not _AXIS_MAP_GF:
         import pxr

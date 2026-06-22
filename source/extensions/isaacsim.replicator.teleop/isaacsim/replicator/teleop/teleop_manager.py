@@ -82,9 +82,7 @@ def dispatch_command(command: TeleopCommand | str) -> None:
     externally (e.g. from a VR headset overlay panel).
 
     Args:
-        command: :class:`TeleopCommand` enum value or lowercase string
-            (``"connect"``, ``"start"``, ``"stop"``, ``"reset"``,
-            ``"disconnect"``).
+        command: :class:`TeleopCommand` enum value or lowercase string (``"connect"``, ``"start"``, ``"stop"``, ``"reset"``, ``"disconnect"``).
     """
     cmd_str = command.value if isinstance(command, TeleopCommand) else str(command).lower()
     carb.eventdispatcher.get_eventdispatcher().dispatch_event(
@@ -100,6 +98,12 @@ def _extract_xr_teleop_command(payload: Any) -> str:
     JSON-encoded string (web client) or as a dict (some clients / fixtures)
     - so command dispatch is not coupled to one wire format. Returns ``""``
     when nothing parseable is found.
+
+    Args:
+        payload: Value for payload.
+
+    Returns:
+        The requested value.
     """
     if payload is None:
         return ""
@@ -230,6 +234,9 @@ class TeleopManager:
         the dispatch is a no-op, so keeping the binding alive for the whole
         lifetime of :class:`TeleopManager` is safe whether the user is
         recording or not.
+
+        Returns:
+            The requested value.
         """
         try:
             button = VRRecordingButton(self, button=VRButton.LEFT_SECONDARY, command="toggle")
@@ -244,11 +251,18 @@ class TeleopManager:
 
         The UI layer uses this to sync button/label state after automatic
         disconnect and marker cleanup.
+
+        Args:
+            callback: Value for callback.
         """
         self._on_stage_closing = callback
 
     def _handle_stage_closing(self, event: carb.eventdispatcher.Event) -> None:
-        """Automatically disconnects session and tears down all controllers on stage close."""
+        """Automatically disconnects session and tears down all controllers on stage close.
+
+        Args:
+            event: Value for event.
+        """
         if self._is_connected:
             print("[Teleop][Session] Stage closing - disconnecting session.")
             self.disconnect()
@@ -338,7 +352,7 @@ class TeleopManager:
             command: The command to execute.
 
         Returns:
-            ``(success, message)`` tuple.
+            The requested value.
         """
         handler = {
             TeleopCommand.CONNECT: self._cmd_connect,
@@ -365,7 +379,11 @@ class TeleopManager:
         return success, message
 
     def _on_command_event(self, event: carb.eventdispatcher.Event) -> None:
-        """Handle incoming command bus events."""
+        """Handle incoming command bus events.
+
+        Args:
+            event: Value for event.
+        """
         cmd_str = event.payload.get("command", "")
         try:
             command = TeleopCommand(cmd_str)
@@ -417,6 +435,9 @@ class TeleopManager:
         The CloudXR runtime forwards these onto Kit's XR Core message bus
         with ``payload["message"]`` set to the JSON-encoded inner object.
         See :func:`_extract_xr_teleop_command` for the payload parser.
+
+        Args:
+            event: Value for event.
         """
         command = _extract_xr_teleop_command(getattr(event, "payload", None))
         if command == "start teleop":
@@ -432,7 +453,11 @@ class TeleopManager:
             )
 
     def _cmd_connect(self) -> tuple[bool, str]:
-        """Connect to OpenXR, creates markers, sets up XR anchor, starts live tracking."""
+        """Connect to OpenXR, creates markers, sets up XR anchor, starts live tracking.
+
+        Returns:
+            The requested value.
+        """
         if self._is_connected:
             return True, "Already connected"
 
@@ -463,6 +488,9 @@ class TeleopManager:
         controllers (floating, articulation, IK) begin receiving physics
         steps.  Mirrors IsaacLab's Play behavior where the main loop
         switches from ``render()`` to ``env.step(actions)``.
+
+        Returns:
+            The requested value.
         """
         timeline = omni.timeline.get_timeline_interface()
         if timeline.is_playing():
@@ -476,6 +504,9 @@ class TeleopManager:
 
         Pauses physics so controllers stop receiving steps.
         Markers keep tracking so the user can still see hand positions.
+
+        Returns:
+            The requested value.
         """
         timeline = omni.timeline.get_timeline_interface()
         if not timeline.is_playing():
@@ -491,6 +522,9 @@ class TeleopManager:
         and re-validates the tracking space.  The XR session stays
         alive and markers keep tracking.  The user can press Play to
         restart.
+
+        Returns:
+            The requested value.
         """
         timeline = omni.timeline.get_timeline_interface()
         was_playing = timeline.is_playing()
@@ -507,7 +541,11 @@ class TeleopManager:
         return True, "Timeline reset to t=0"
 
     def _cmd_disconnect(self) -> tuple[bool, str]:
-        """Full teardown: stops controllers, removes markers, ends session."""
+        """Full teardown: stops controllers, removes markers, ends session.
+
+        Returns:
+            The requested value.
+        """
         if not self._is_connected:
             return True, "Already disconnected"
 
@@ -528,7 +566,11 @@ class TeleopManager:
     # ------------------------------------------------------------------
 
     def _on_timeline_event(self, event: Any) -> None:
-        """Dispatch timeline play/stop events to controller warm-up/cool-down."""
+        """Dispatch timeline play/stop events to controller warm-up/cool-down.
+
+        Args:
+            event: Value for event.
+        """
         if not (self._is_connected or self._debug_tracking_enabled):
             return
         if event.type == int(omni.timeline.TimelineEventType.PLAY):
@@ -624,7 +666,11 @@ class TeleopManager:
 
     @property
     def is_connected(self) -> bool:
-        """Return True if the teleop session is connected."""
+        """Return True if the teleop session is connected.
+
+        Returns:
+            The requested value.
+        """
         return self._is_connected
 
     @staticmethod
@@ -661,7 +707,7 @@ class TeleopManager:
             on_status_changed: Optional callback for status updates.
 
         Returns:
-            True if connection was successful, False otherwise.
+            The requested value.
         """
         self._on_status_changed = on_status_changed
         self._update_fail_count = 0
@@ -736,7 +782,11 @@ class TeleopManager:
         return True
 
     def disconnect(self, on_status_changed: Callable[[str], None] | None = None) -> None:
-        """Disconnect from the teleop session."""
+        """Disconnect from the teleop session.
+
+        Args:
+            on_status_changed: Value for on status changed.
+        """
         if not self._is_connected:
             print("[Teleop][Session] Not connected.")
             return
@@ -761,11 +811,22 @@ class TeleopManager:
 
     @property
     def debug_tracking_enabled(self) -> bool:
-        """True when debug tracking mode is active."""
+        """True when debug tracking mode is active.
+
+        Returns:
+            The requested value.
+        """
         return self._debug_tracking_enabled
 
     def _get_debug_snapshot(self, side: str) -> _DebugControllerSnapshot | None:
-        """Return the synthetic controller snapshot for the requested side."""
+        """Return the synthetic controller snapshot for the requested side.
+
+        Args:
+            side: Value for side.
+
+        Returns:
+            The requested value.
+        """
         if side == "left":
             return self._debug_left_snapshot
         if side == "right":
@@ -785,6 +846,9 @@ class TeleopManager:
 
         Mutually exclusive with a live VR connection — cannot be
         enabled while connected.
+
+        Args:
+            enabled: Value for enabled.
         """
         if enabled and self._is_connected:
             print("[Teleop][Debug] Cannot enable debug tracking while VR is connected.")
@@ -814,7 +878,13 @@ class TeleopManager:
         snapshot.inputs.trigger_value = max(0.0, min(1.0, value))
 
     def set_debug_thumbstick(self, side: str, *, x: float | None = None, y: float | None = None) -> None:
-        """Set synthetic thumbstick axes for debug tracking mode."""
+        """Set synthetic thumbstick axes for debug tracking mode.
+
+        Args:
+            side: Value for side.
+            x: Value for x.
+            y: Value for y.
+        """
         snapshot = self._get_debug_snapshot(side)
         if snapshot is None:
             return
@@ -824,7 +894,13 @@ class TeleopManager:
             snapshot.inputs.thumbstick_y = max(-1.0, min(1.0, y))
 
     def set_debug_button(self, side: str, button: str, pressed: bool) -> None:
-        """Set a synthetic controller button state for debug tracking mode."""
+        """Set a synthetic controller button state for debug tracking mode.
+
+        Args:
+            side: Value for side.
+            button: Value for button.
+            pressed: Value for pressed.
+        """
         snapshot = self._get_debug_snapshot(side)
         if snapshot is None or button not in {"primary_click", "secondary_click", "thumbstick_click"}:
             return
@@ -864,7 +940,11 @@ class TeleopManager:
             self._locomotion_controller.set_tracking_space_prim_path("")
 
     def set_builtin_tracking_space(self) -> tuple[bool, str]:
-        """Use the built-in Teleop origin marker as tracking space."""
+        """Use the built-in Teleop origin marker as tracking space.
+
+        Returns:
+            The requested value.
+        """
         from .markers_manager import MarkersManager
 
         builtin_path = MarkersManager.MARKER_PATHS["origin"]
@@ -883,7 +963,14 @@ class TeleopManager:
         return ok, message
 
     def set_tracking_space_prim_path(self, path: str) -> tuple[bool, str]:
-        """Use a custom scene prim as tracking space."""
+        """Use a custom scene prim as tracking space.
+
+        Args:
+            path: Value for path.
+
+        Returns:
+            The requested value.
+        """
         from .markers_manager import MarkersManager
 
         requested_path = path.strip()
@@ -905,7 +992,15 @@ class TeleopManager:
         return ok, message
 
     def _teleop_edit_ctx(self, stage: Usd.Stage, prim_path: str) -> AbstractContextManager[None]:
-        """Return an ``Usd.EditContext`` targeting the markers anonymous layer for Teleop prims."""
+        """Return an ``Usd.EditContext`` targeting the markers anonymous layer for Teleop prims.
+
+        Args:
+            stage: Value for stage.
+            prim_path: Value for prim path.
+
+        Returns:
+            The requested value.
+        """
         layer = self._markers_manager.layer if self._markers_manager is not None else None
         if (
             layer is not None
@@ -921,6 +1016,12 @@ class TeleopManager:
         For built-in Teleop prims (under ``/Teleop/``), xformOp writes are
         directed to the markers anonymous layer so no specs leak to the root
         layer.
+
+        Args:
+            resolved_path: Value for resolved path.
+
+        Returns:
+            The requested value.
         """
         stage = omni.usd.get_context().get_stage()
         if not stage:
@@ -963,6 +1064,9 @@ class TeleopManager:
 
         Always activates at least the built-in origin marker so that
         VR pose offsetting and locomotion carry work out of the box.
+
+        Returns:
+            The requested value.
         """
         if self._tracking_space_prim_path:
             return self.set_tracking_space_prim_path(self._tracking_space_prim_path)
@@ -970,7 +1074,11 @@ class TeleopManager:
 
     @property
     def tracking_space_prim_path(self) -> str:
-        """Return the current tracking-space prim path."""
+        """Return the current tracking-space prim path.
+
+        Returns:
+            The requested value.
+        """
         return self._active_tracking_space_prim_path
 
     def _get_tracking_space_transform(self) -> tuple[Gf.Vec3d, Gf.Rotation, Gf.Quatd] | None:
@@ -980,7 +1088,7 @@ class TeleopManager:
         ``_on_update`` do not re-read the prim.
 
         Returns:
-            ``(position, rotation, quaternion)`` or *None* if no tracking space is set.
+            The requested value.
         """
         if self._cached_tracking_space_frame == self._frame_count:
             return self._cached_tracking_space
@@ -1010,12 +1118,10 @@ class TeleopManager:
         Args:
             pos: (x, y, z) position in scene coordinates (post coord-conversion).
             orient: (x, y, z, w) quaternion in scene coordinates.
-            tracking_space: ``(position, rotation, quaternion)`` from
-                :meth:`_get_tracking_space_transform`,
-                    or *None* to skip the offset.
+            tracking_space: ``(position, rotation, quaternion)`` from :meth:`_get_tracking_space_transform`, or *None* to skip the offset.
 
         Returns:
-            (world_pos, world_orient) tuple.
+            The requested value.
         """
         if pos is None or tracking_space is None:
             return pos, orient
@@ -1049,26 +1155,46 @@ class TeleopManager:
 
     @property
     def xr_anchor(self) -> XrAnchorManager | None:
-        """The active XR anchor manager, or None if not connected."""
+        """The active XR anchor manager, or None if not connected.
+
+        Returns:
+            The requested value.
+        """
         return self._xr_anchor
 
     def set_xr_anchor_pos(self, pos: tuple[float, float, float]) -> None:
-        """Update the XR anchor position offset (live)."""
+        """Update the XR anchor position offset (live).
+
+        Args:
+            pos: Value for pos.
+        """
         if self._xr_anchor is not None:
             self._xr_anchor.set_anchor_pos(pos)
 
     def set_xr_anchor_rotation_mode(self, mode: AnchorRotationMode) -> None:
-        """Update the XR anchor rotation mode (live)."""
+        """Update the XR anchor rotation mode (live).
+
+        Args:
+            mode: Value for mode.
+        """
         if self._xr_anchor is not None:
             self._xr_anchor.set_rotation_mode(mode)
 
     def set_xr_anchor_smoothing_time(self, seconds: float) -> None:
-        """Update the XR anchor rotation smoothing time (live)."""
+        """Update the XR anchor rotation smoothing time (live).
+
+        Args:
+            seconds: Value for seconds.
+        """
         if self._xr_anchor is not None:
             self._xr_anchor.set_smoothing_time(seconds)
 
     def set_xr_anchor_fixed_height(self, fixed: bool) -> None:
-        """Toggle XR anchor fixed-height mode (live)."""
+        """Toggle XR anchor fixed-height mode (live).
+
+        Args:
+            fixed: Value for fixed.
+        """
         if self._xr_anchor is not None:
             self._xr_anchor.set_fixed_height(fixed)
 
@@ -1100,7 +1226,11 @@ class TeleopManager:
 
     @property
     def is_live_tracking(self) -> bool:
-        """Return True if live tracking is enabled."""
+        """Return True if live tracking is enabled.
+
+        Returns:
+            The requested value.
+        """
         return self._live_tracking_enabled
 
     def set_floating_controller(self, controller: FloatingRigidBodyController | None) -> None:
@@ -1116,7 +1246,12 @@ class TeleopManager:
             self._floating_controller.set_side_enabled("right", self._right_floating_assigned)
 
     def set_floating_side_assigned(self, side: str, assigned: bool) -> None:
-        """Assigns or clears the floating controller for a specific side."""
+        """Assigns or clears the floating controller for a specific side.
+
+        Args:
+            side: Value for side.
+            assigned: Value for assigned.
+        """
         side = side.lower()
         assigned = bool(assigned)
         if side == "left":
@@ -1129,11 +1264,22 @@ class TeleopManager:
                 self._floating_controller.set_side_enabled("right", assigned)
 
     def clear_floating_side(self, side: str) -> None:
-        """Clear floating-controller assignment for a specific side."""
+        """Clear floating-controller assignment for a specific side.
+
+        Args:
+            side: Value for side.
+        """
         self.set_floating_side_assigned(side, False)
 
     def is_floating_side_assigned(self, side: str) -> bool:
-        """Return whether a side is assigned to the floating controller."""
+        """Return whether a side is assigned to the floating controller.
+
+        Args:
+            side: Value for side.
+
+        Returns:
+            The requested value.
+        """
         return self._right_floating_assigned if side.lower() == "right" else self._left_floating_assigned
 
     def set_grasp_controller(self, controller: GraspController | None) -> None:
@@ -1195,7 +1341,11 @@ class TeleopManager:
 
     @property
     def is_locomotion_tracking(self) -> bool:
-        """Return True if locomotion tracking is enabled."""
+        """Return True if locomotion tracking is enabled.
+
+        Returns:
+            The requested value.
+        """
         return self._locomotion_tracking_enabled
 
     def set_grasp_tracking(self, enabled: bool) -> None:
@@ -1212,11 +1362,19 @@ class TeleopManager:
 
     @property
     def is_grasp_tracking(self) -> bool:
-        """Return True if grasp tracking is enabled."""
+        """Return True if grasp tracking is enabled.
+
+        Returns:
+            The requested value.
+        """
         return self._grasp_tracking_enabled
 
     def set_floating_tracking(self, enabled: bool) -> None:
-        """Enable or disables floating rigid-body tracking."""
+        """Enable or disables floating rigid-body tracking.
+
+        Args:
+            enabled: Value for enabled.
+        """
         if self._floating_tracking_enabled == enabled:
             return
         self._floating_tracking_enabled = enabled
@@ -1227,7 +1385,11 @@ class TeleopManager:
 
     @property
     def is_floating_tracking(self) -> bool:
-        """Return True if floating rigid-body tracking is enabled."""
+        """Return True if floating rigid-body tracking is enabled.
+
+        Returns:
+            The requested value.
+        """
         return self._floating_tracking_enabled and (self._left_floating_assigned or self._right_floating_assigned)
 
     def _cleanup_trackers(self) -> None:
@@ -1244,11 +1406,18 @@ class TeleopManager:
         recording button); long-running work should be deferred to a background task.
 
         The same observer may be registered multiple times; each registration is independent.
+
+        Args:
+            observer: Value for observer.
         """
         self._controller_inputs_observers.append(observer)
 
     def remove_controller_inputs_observer(self, observer: Callable[[object | None, object | None], None]) -> None:
-        """Deregister a previously added controller-inputs observer. Silently ignores unknown observers."""
+        """Deregister a previously added controller-inputs observer. Silently ignores unknown observers.
+
+        Args:
+            observer: Value for observer.
+        """
         try:
             self._controller_inputs_observers.remove(observer)
         except ValueError:
@@ -1258,6 +1427,10 @@ class TeleopManager:
         """Invoke every registered observer with the current controller snapshots.
 
         Each observer is wrapped in try/except so a faulty subscriber cannot break the tracking loop.
+
+        Args:
+            left_ctrl: Value for left ctrl.
+            right_ctrl: Value for right ctrl.
         """
         if not self._controller_inputs_observers:
             return
@@ -1279,18 +1452,29 @@ class TeleopManager:
 
         Used by :class:`TeleopHeadRecordable` to record head pose channels. Observers are invoked
         from the tracking update loop and should be lightweight.
+
+        Args:
+            observer: Value for observer.
         """
         self._head_observers.append(observer)
 
     def remove_head_observer(self, observer: Callable[[object | None], None]) -> None:
-        """Deregister a previously added head observer. Silently ignores unknown observers."""
+        """Deregister a previously added head observer. Silently ignores unknown observers.
+
+        Args:
+            observer: Value for observer.
+        """
         try:
             self._head_observers.remove(observer)
         except ValueError:
             pass
 
     def _notify_head_observers(self, head: object | None) -> None:
-        """Invoke every registered head observer with the current head snapshot (or ``None``)."""
+        """Invoke every registered head observer with the current head snapshot (or ``None``).
+
+        Args:
+            head: Value for head.
+        """
         if not self._head_observers:
             return
         for observer in list(self._head_observers):
@@ -1300,7 +1484,11 @@ class TeleopManager:
                 carb.log_warn(f"[Teleop][Session] head observer error: {exc}")
 
     def _get_controller_snapshots(self) -> tuple[object | None, object | None]:
-        """Return left/right controller snapshots from the current deviceio session."""
+        """Return left/right controller snapshots from the current deviceio session.
+
+        Returns:
+            The requested value.
+        """
         if self._controller_tracker is None or self._deviceio_session is None:
             return None, None
 
@@ -1312,7 +1500,11 @@ class TeleopManager:
         )
 
     def _get_head_snapshot(self) -> Any:
-        """Return the current head snapshot from the deviceio session."""
+        """Return the current head snapshot from the deviceio session.
+
+        Returns:
+            The requested value.
+        """
         if self._head_tracker is None or self._deviceio_session is None:
             return None
 
@@ -1324,10 +1516,11 @@ class TeleopManager:
     ) -> tuple[tuple[float, float, float] | None, tuple[float, float, float, float] | None]:
         """Read the world-space pose of a marker for debug tracking.
 
+        Args:
+            name: Value for name.
+
         Returns:
-            ``(position, orientation)`` tuples, or ``(None, None)``
-            if the markers manager is unavailable or the marker is
-            not active.
+            The requested value.
         """
         if self._markers_manager is None:
             return None, None
@@ -1380,6 +1573,9 @@ class TeleopManager:
 
         When debug tracking is active, delegates to
         :meth:`_on_update_debug` which reads marker poses directly.
+
+        Args:
+            event: Value for event.
         """
         if self._debug_tracking_enabled:
             self._on_update_debug()
@@ -1508,6 +1704,14 @@ class TeleopManager:
 
         The origin marker is not written here — only locomotion carry or
         ``move_tracking_space_to`` change the origin.
+
+        Args:
+            left_pos: Value for left pos.
+            left_orient: Value for left orient.
+            right_pos: Value for right pos.
+            right_orient: Value for right orient.
+            head_pos: Value for head pos.
+            head_orient: Value for head orient.
         """
         if self._markers_manager is None:
             return
@@ -1530,7 +1734,14 @@ class TeleopManager:
         right_pos: tuple | None,
         right_orient: tuple | None,
     ) -> None:
-        """Update floating controller targets from pre-extracted VR wrist data."""
+        """Update floating controller targets from pre-extracted VR wrist data.
+
+        Args:
+            left_pos: Value for left pos.
+            left_orient: Value for left orient.
+            right_pos: Value for right pos.
+            right_orient: Value for right orient.
+        """
         left_assigned = self._left_floating_assigned
         right_assigned = self._right_floating_assigned
 
@@ -1553,7 +1764,12 @@ class TeleopManager:
                 self._floating_controller.apply_tracking()
 
     def _update_grasp_inputs(self, left_ctrl: Any, right_ctrl: Any) -> None:
-        """Update grasp joint targets from pre-extracted VR controller data."""
+        """Update grasp joint targets from pre-extracted VR controller data.
+
+        Args:
+            left_ctrl: Value for left ctrl.
+            right_ctrl: Value for right ctrl.
+        """
         if self._grasp_controller is None or not self._grasp_controller.is_enabled:
             return
 

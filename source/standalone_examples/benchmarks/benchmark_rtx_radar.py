@@ -16,6 +16,7 @@
 """Benchmark RTX radar sensor performance in Isaac Sim."""
 
 import argparse
+from typing import Any
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-sensors", type=int, default=1, help="Number of sensors")
@@ -54,7 +55,7 @@ from isaacsim.benchmark.services import BaseIsaacBenchmark
 
 
 # Create RTX Radar from params
-def add_rtx_radar(prim_path, sensor_translation, sensor_orientation):
+def add_rtx_radar(prim_path: str, sensor_translation: Any, sensor_orientation: Any) -> Any:
     """Create an RTX radar sensor at the specified path and transform."""
     radar = Radar.create(
         path=prim_path,

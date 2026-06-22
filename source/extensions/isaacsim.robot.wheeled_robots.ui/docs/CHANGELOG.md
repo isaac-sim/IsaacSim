@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.3.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
+## [2.3.2] - 2026-06-02
+### Fixed
+- Corrected Differential Controller graph shortcut joint names and indices to use left/right wheel order.
+- Supported joint index 0 by using -1 as the unset index sentinel.
+
 ## [2.3.1] - 2026-04-13
 ### Removed
 - Remove the `omni.isaac.ml_archive` dependency

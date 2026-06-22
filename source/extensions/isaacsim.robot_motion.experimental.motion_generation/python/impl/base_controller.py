@@ -30,7 +30,7 @@ class BaseController(ABC):
 
     @abstractmethod
     def forward(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs
+        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
     ) -> Optional[RobotState]:
         """Define the desired state of the robot at the next time-step.
 
@@ -55,7 +55,9 @@ class BaseController(ABC):
         """
 
     @abstractmethod
-    def reset(self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs) -> bool:
+    def reset(
+        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
+    ) -> bool:
         """Reset the internal state of the controller to safe values.
 
         This should be called immediately before running the controller for the first time.

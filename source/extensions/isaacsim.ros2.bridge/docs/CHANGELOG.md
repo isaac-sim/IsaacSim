@@ -1,5 +1,9 @@
 # Changelog
 
+## [5.1.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [5.1.1] - 2026-04-27
 ### Removed
 - Remove the `omni.isaac.ml_archive` dependency

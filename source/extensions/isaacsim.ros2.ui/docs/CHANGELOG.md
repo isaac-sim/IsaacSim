@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.6.5] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.6.4] - 2026-05-26
 ### Fixed
 - `Ros2RtxLidarGraph._check_params`: drop the legacy `Camera + IsaacRtxLidarSensorAPI` branch from lidar-prim validation; validator now only accepts `OmniLidar + OmniSensorGenericLidarCoreAPI`.

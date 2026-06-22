@@ -13,10 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for motion generation control structures including controllers and their compositions."""
+"""Verify motion-generation controller orchestration.
+
+The tests exercise controller selection, reset timing, passthrough keyword
+arguments, parallel state merging, sequential state transforms, and failure
+propagation from child controllers.
+"""
 
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 # Import extension python module we are testing with absolute import path, as if we are an external user (i.e. a different extension)
 import isaacsim.robot_motion.experimental.motion_generation as mg
@@ -47,12 +52,12 @@ class DefaultController(mg.BaseController):
     - Supports standard BaseController interface for reset and forward operations
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.was_reset = False
         self.should_error = False
 
     def reset(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: Any
     ) -> bool:
         """Resets the controller state and marks it as having been reset.
 
@@ -69,7 +74,7 @@ class DefaultController(mg.BaseController):
         return not self.should_error
 
     def forward(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: Any
     ) -> Optional[mg.RobotState]:
         """Computes the next robot state with default joint configurations.
 
@@ -107,12 +112,12 @@ class OtherController(mg.BaseController):
     configured to simulate error conditions for testing controller failure scenarios.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.was_reset = False
         self.should_error = False
 
     def reset(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: Any
     ) -> bool:
         """Resets the controller to its initial state.
 
@@ -129,7 +134,7 @@ class OtherController(mg.BaseController):
         return not self.should_error
 
     def forward(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: Any
     ) -> Optional[mg.RobotState]:
         """Computes the next control action for the robot.
 
@@ -164,7 +169,7 @@ class AddOneController(mg.BaseController):
     """
 
     def reset(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: Any
     ) -> bool:
         """Reset the controller.
 
@@ -180,7 +185,7 @@ class AddOneController(mg.BaseController):
         return True
 
     def forward(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: Any
     ) -> Optional[mg.RobotState]:
         """Generate control commands by adding one to all setpoint values.
 
@@ -221,7 +226,7 @@ class AlwaysFailsController(mg.BaseController):
     """
 
     def reset(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: Any
     ) -> bool:
         """Resets the controller and always returns failure status.
 
@@ -237,7 +242,7 @@ class AlwaysFailsController(mg.BaseController):
         return False
 
     def forward(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: Any
     ) -> Optional[mg.RobotState]:
         """Computes the control output and always returns None to indicate failure.
 
@@ -268,7 +273,7 @@ class RootController(mg.BaseController):
     """
 
     def reset(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: Any
     ) -> bool:
         """Initialize the root controller with the current robot state.
 
@@ -284,7 +289,7 @@ class RootController(mg.BaseController):
         return True
 
     def forward(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: Any
     ) -> Optional[mg.RobotState]:
         """Generate a robot state with root position, orientation, and velocity commands.
 
@@ -321,7 +326,7 @@ class LinkController(mg.BaseController):
     """
 
     def reset(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: Any
     ) -> bool:
         """Resets the link controller.
 
@@ -337,7 +342,7 @@ class LinkController(mg.BaseController):
         return True
 
     def forward(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: Any
     ) -> Optional[mg.RobotState]:
         """Computes the desired robot state for link control.
 
@@ -373,7 +378,7 @@ class SiteController(mg.BaseController):
     """
 
     def reset(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: Any
     ) -> bool:
         """Resets the site controller.
 
@@ -389,7 +394,7 @@ class SiteController(mg.BaseController):
         return True
 
     def forward(
-        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs
+        self, estimated_state: mg.RobotState, setpoint_state: Optional[mg.RobotState], t: float, **kwargs: Any
     ) -> Optional[mg.RobotState]:
         """Computes the robot state with site spatial information.
 
@@ -432,16 +437,14 @@ class TestControlStructures(omni.kit.test.AsyncTestCase):
     """
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures before each test method is run."""
-        pass
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after each test method has run."""
-        pass
 
-    async def test_controller_container(self):
+    async def test_controller_container(self) -> None:
         """Test ControllerContainer functionality including creation, controller switching, and error handling."""
 
         # creating a controller selection enum:
@@ -580,7 +583,7 @@ class TestControlStructures(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(controller_container.get_controller(ControllerSelection.DEFAULT))
         self.assertIsNotNone(controller_container.get_controller(ControllerSelection.OTHER))
 
-    async def test_parallel_controller(self):
+    async def test_parallel_controller(self) -> None:
         """Test ParallelController functionality including output combination and error propagation."""
         # parallel controller must have at least two controllers.
         self.assertRaises(ValueError, mg.ParallelController, controllers=[])
@@ -645,7 +648,7 @@ class TestControlStructures(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(desired_state.sites.linear_velocities.numpy(), np.array([[0.0, 0.0, 0.0]])))
         self.assertTrue(np.allclose(desired_state.sites.angular_velocities.numpy(), np.array([[0.0, 0.0, 0.0]])))
 
-    async def test_sequential_controller(self):
+    async def test_sequential_controller(self) -> None:
         """Test SequentialController functionality including chaining controllers and error propagation."""
         # sequential controller must have at least two controllers.
         self.assertRaises(ValueError, mg.SequentialController, controllers=[])

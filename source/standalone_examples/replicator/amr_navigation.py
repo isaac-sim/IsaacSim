@@ -159,7 +159,7 @@ class NavSDGDemo:
         """Return whether the script is running in the Isaac Sim script editor."""
         return builtins.ISAAC_LAUNCHED_FROM_TERMINAL is True
 
-    def _on_stage_closing_event(self, e: carb.eventdispatcher.Event):
+    def _on_stage_closing_event(self, e: carb.eventdispatcher.Event) -> None:
         """Handle stage closing event by clearing state."""
         self.clear()
 
@@ -376,7 +376,7 @@ class NavSDGDemo:
         )
         rep.functional.physics.apply_collider(ground)
 
-    def _on_sdg_done(self, task) -> None:
+    def _on_sdg_done(self, task: object) -> None:
         """Callback invoked when async SDG step completes."""
         self._setup_next_frame()
 
@@ -410,7 +410,7 @@ class NavSDGDemo:
             observer_name="amr_navigation.NavSDGDemo._on_timeline_event",
         )
 
-    def _on_timeline_event(self, e: carb.eventdispatcher.Event):
+    def _on_timeline_event(self, e: carb.eventdispatcher.Event) -> None:
         """Check distance to dolly and trigger SDG capture when close enough."""
         carter_loc = self._carter_chassis.GetAttribute("xformOp:translate").Get()
         dolly_loc = self._dolly.GetAttribute("xformOp:translate").Get()

@@ -22,7 +22,15 @@ import warp as wp
 
 
 def _random_unit_quaternions(n: int, rng: np.random.Generator) -> np.ndarray:
-    """Sample ``n`` unit quaternions uniformly on S^3, returned as ``(n, 4)`` float32 in (w, x, y, z) order."""
+    """Sample unit quaternions uniformly on S^3.
+
+    Args:
+        n: Number of quaternions to sample.
+        rng: Random number generator to sample from.
+
+    Returns:
+        ``(n, 4)`` float32 array in ``(w, x, y, z)`` order.
+    """
     q = rng.standard_normal((n, 4)).astype(np.float32)
     q /= np.linalg.norm(q, axis=1, keepdims=True)
     return q

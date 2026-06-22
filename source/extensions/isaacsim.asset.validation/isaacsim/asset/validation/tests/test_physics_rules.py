@@ -61,7 +61,15 @@ class _ErrorCapturingRigidBodyChecker(RigidBodyHasMassAPI):
 
 
 def _make_rigid_body_prim(stage: Usd.Stage, path: str = "/Robot/link") -> Usd.Prim:
-    """Helper: define an Xform prim at ``path`` with ``RigidBodyAPI`` applied."""
+    """Define an Xform prim at ``path`` with ``RigidBodyAPI`` applied.
+
+    Args:
+        stage: Stage where the prim is defined.
+        path: Path where the rigid body prim is defined.
+
+    Returns:
+        The prim with ``RigidBodyAPI`` applied.
+    """
     # Ensure parent /Robot exists as a defined prim so the path resolves.
     stage.DefinePrim("/Robot", "Xform")
     prim = stage.DefinePrim(path, "Xform")
@@ -79,6 +87,12 @@ def _apply_mass_api_with(
     """Apply ``MassAPI`` to ``prim`` and optionally author each attribute.
 
     Pass ``None`` for any field to skip authoring it. Useful for precondition tests.
+
+    Args:
+        prim: Prim to receive ``MassAPI``.
+        mass: Mass value to author, or None to skip authoring it.
+        diagonal_inertia: Diagonal inertia value to author, or None to skip authoring it.
+        principal_axes: Principal axes value to author, or None to skip authoring it.
     """
     mass_api = UsdPhysics.MassAPI.Apply(prim)
     if mass is not None:
@@ -221,6 +235,9 @@ class TestNonAdjacentCollisionMeshesDoNotClash(omni.kit.test.AsyncTestCase):
         /Robot/link0 and /Robot/link1 both carry RigidBodyAPI and are connected
         by a joint under /Robot. /GroundPlane carries RigidBodyAPI and is OUTSIDE
         the defaultPrim subtree.
+
+        Returns:
+            The stage containing the robot and sibling ground plane.
         """
         stage = Usd.Stage.CreateInMemory()
         robot = stage.DefinePrim("/Robot", "Xform")
@@ -246,6 +263,9 @@ class TestNonAdjacentCollisionMeshesDoNotClash(omni.kit.test.AsyncTestCase):
         /Robot/link0 and /Robot/link1 each have RigidBodyAPI. Collider meshes live at
         /Robot/link0/collisions/mesh_0 and /Robot/link1/collisions/mesh_1 (depth ≥ 2).
         A joint connects link0 and link1.
+
+        Returns:
+            The stage containing nested colliders under joint-connected links.
         """
         stage = Usd.Stage.CreateInMemory()
         robot = stage.DefinePrim("/Robot", "Xform")

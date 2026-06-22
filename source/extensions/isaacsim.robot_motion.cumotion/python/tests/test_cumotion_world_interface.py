@@ -1035,7 +1035,14 @@ class TestCumotionWorldInterface(omni.kit.test.AsyncTestCase):
     # ============================================================================
 
     def _add_three_spheres(self, world_interface: "cu_mg.CumotionWorldInterface") -> list[str]:
-        """Register three spheres on ``world_interface`` and return their prim paths."""
+        """Register three spheres on ``world_interface`` and return their prim paths.
+
+        Args:
+            world_interface: cuMotion world interface to register obstacles on.
+
+        Returns:
+            Prim paths for the registered spheres.
+        """
         prim_paths = ["/World/Sphere0", "/World/Sphere1", "/World/Sphere2"]
         positions = wp.array([[0.5, 0.0, 0.5], [0.0, 0.5, 0.6], [-0.3, 0.2, 0.4]], dtype=wp.float32)
         quaternions = wp.array(

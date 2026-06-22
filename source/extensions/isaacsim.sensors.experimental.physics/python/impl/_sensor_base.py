@@ -65,6 +65,15 @@ class _PhysicsSensorAuthoring(XformPrim):
     Subclasses may override:
         ``_on_existing_prim``: Validation hook before wrapping an existing prim.
         ``_update_attributes``: Apply user-provided attribute overrides after wrapping.
+
+    Args:
+        path: Full USD path for the sensor prim.
+        positions: World-frame positions forwarded to ``XformPrim``.
+        translations: Local-frame translations forwarded to ``XformPrim``.
+        orientations: Orientations as ``wxyz`` quaternions forwarded to ``XformPrim``.
+        scales: Local scales forwarded to ``XformPrim``.
+        reset_xform_op_properties: Whether to reset existing xform op properties.
+        **kwargs: Sensor-specific keyword arguments forwarded to subclass hooks.
     """
 
     _PRIM_TYPE: str
@@ -132,6 +141,12 @@ class _PhysicsSensorAuthoring(XformPrim):
 
         Subclasses must override to call ``_create_sensor_prim`` (from ``common.py``)
         and apply default sensor-specific attributes. Returns the schema-wrapped prim.
+
+        Args:
+            **kwargs: Sensor-specific keyword arguments.
+
+        Returns:
+            The schema-wrapped sensor prim.
         """
         raise NotImplementedError
 
@@ -140,6 +155,10 @@ class _PhysicsSensorAuthoring(XformPrim):
 
         Default no-op. Subclasses may override for validation that needs to run
         before transforms are applied (e.g., parent-API checks).
+
+        Args:
+            prim: Existing USD prim being wrapped.
+            **kwargs: Sensor-specific keyword arguments.
         """
 
     def _update_attributes(self, **kwargs: Any) -> None:
@@ -147,6 +166,9 @@ class _PhysicsSensorAuthoring(XformPrim):
 
         Default no-op. Subclasses may override to conditionally apply attribute
         updates passed by the user at construction time.
+
+        Args:
+            **kwargs: Sensor-specific keyword arguments.
         """
 
     @classmethod
@@ -186,6 +208,9 @@ class _PhysicsSensorRuntimeBase:
     registration, and timeline-stop reset.
 
     Subclasses must override ``_acquire_interface`` and ``_get_invalid_reading``.
+
+    Args:
+        path: USD path for the runtime sensor.
     """
 
     def __init__(self, path: str) -> None:
@@ -197,6 +222,9 @@ class _PhysicsSensorRuntimeBase:
     def _acquire_interface(self) -> object | None:
         """Return the C++ Carbonite interface for this sensor type.
 
+        Returns:
+            Carbonite interface instance, or ``None`` if unavailable.
+
         Raises:
             NotImplementedError: If not overridden by subclass.
         """
@@ -204,6 +232,9 @@ class _PhysicsSensorRuntimeBase:
 
     def _get_invalid_reading(self) -> object:
         """Return a default invalid reading for this sensor type.
+
+        Returns:
+            Invalid reading object for this sensor type.
 
         Raises:
             NotImplementedError: If not overridden by subclass.
@@ -300,6 +331,9 @@ class _PhysicsSensorRuntime(_PhysicsSensorRuntimeBase):
         ``_init_frame``: Returns the initial ``_current_frame`` dict. Default
         provides ``time`` and ``physics_step`` keys.
         ``get_data``: Public read method for sensor data.
+
+    Args:
+        path: Sensor USD path or pre-built authoring object.
     """
 
     _AUTHORING_CLASS: type
@@ -324,6 +358,9 @@ class _PhysicsSensorRuntime(_PhysicsSensorRuntimeBase):
 
         Default provides ``time`` and ``physics_step`` keys. Subclasses override
         to add sensor-specific fields.
+
+        Returns:
+            Initial current-frame dictionary.
         """
         return {"time": 0.0, "physics_step": 0.0}
 

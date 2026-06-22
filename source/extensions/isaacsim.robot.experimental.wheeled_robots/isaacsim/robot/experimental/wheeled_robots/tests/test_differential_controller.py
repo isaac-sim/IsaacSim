@@ -22,16 +22,16 @@ from isaacsim.robot.experimental.wheeled_robots.controllers.differential_control
 class TestDifferentialController(omni.kit.test.AsyncTestCase):
     """Tests for DifferentialController kinematics."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures."""
 
     # ----------------------------------------------------------------------
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Tear down test fixtures."""
 
     # ----------------------------------------------------------------------
 
-    async def test_differential_drive(self):
+    async def test_differential_drive(self) -> None:
         """Test differential drive forward() output for a given command."""
         # test the actual calculation of differential drive
         wheel_radius = 0.03

@@ -1,5 +1,5 @@
 [package]
-version = "1.6.4"
+version = "1.6.5"
 category = "Simulation"
 title = "ROS 2 UI Components"
 description = "This extension provides UI components for ROS 2 integration with Isaac Sim."

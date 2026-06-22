@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.10.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [3.10.0] - 2026-05-14
 ### Added
 - After `run_asset_transformer_profile` finishes (and `run_multi_physics_conversion` is enabled), `MJCFImporter.import_mjcf()` now post-processes `<output_dir>/payloads/Physics/physx.usda` to combine over-constrained joints (multiple single-axis joints sharing the same body pair) into a single PhysX D6 joint

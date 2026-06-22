@@ -43,7 +43,15 @@ _AXIS_VECS = {"X": Gf.Vec3d(1, 0, 0), "Y": Gf.Vec3d(0, 1, 0), "Z": Gf.Vec3d(0, 0
 
 
 def _get_joint_body_path(joint_prim: Usd.Prim, body_index: int) -> str | None:
-    """Get body relationship target path as string."""
+    """Get body relationship target path as string.
+
+    Args:
+        joint_prim: USD joint prim to read.
+        body_index: Body relationship index to read.
+
+    Returns:
+        Body target path string, or None if absent.
+    """
     joint = UsdPhysics.Joint(joint_prim)
     if not joint:
         return None
@@ -56,7 +64,14 @@ def _get_joint_body_path(joint_prim: Usd.Prim, body_index: int) -> str | None:
 
 
 def _get_axis_token(joint_prim: Usd.Prim) -> str:
-    """Read physics:axis token from a joint prim."""
+    """Read physics:axis token from a joint prim.
+
+    Args:
+        joint_prim: USD joint prim to read.
+
+    Returns:
+        Uppercase axis token.
+    """
     attr = joint_prim.GetAttribute("physics:axis")
     if attr and attr.IsValid():
         val = attr.Get()
@@ -71,6 +86,12 @@ def _detect_axis_flip(joint_prim: Usd.Prim) -> bool:
     A 180-degree rotation about an axis orthogonal to the joint axis
     negates the joint axis direction. Check by transforming the axis
     vector through localRot1 and comparing the dot product.
+
+    Args:
+        joint_prim: USD joint prim to read.
+
+    Returns:
+        True if localRot1 flips the joint axis, False otherwise.
     """
     joint = UsdPhysics.Joint(joint_prim)
     if not joint:
@@ -103,6 +124,12 @@ def _make_axis_flip_correction(axis_token: str) -> Gf.Matrix4d:
     """Create a 180-degree rotation matrix about an axis orthogonal to the joint axis.
 
     This removes the flip from the child frame when the axis is negated.
+
+    Args:
+        axis_token: Physics axis token.
+
+    Returns:
+        Axis flip correction matrix.
     """
     if axis_token == "Z":
         rot = Gf.Rotation(Gf.Vec3d(1, 0, 0), 180.0)
@@ -122,10 +149,11 @@ def build_urdf_frames(desc: RobotDescription) -> tuple[dict[str, Gf.Matrix4d], d
     Uses GetJointPose from robot_schema to get each joint's world pose
     in robot coordinates. Detects axis flips and adjusts child frames.
 
+    Args:
+        desc: Robot description to read.
+
     Returns:
-        Tuple of:
-        - Dict mapping link prim path -> URDF frame as Gf.Matrix4d
-        - Dict mapping joint prim path -> bool (True if axis is flipped)
+        URDF frames and axis flip flags.
     """
     try:
         from usd.schema.isaac.robot_schema.utils import GetJointPose
@@ -173,7 +201,14 @@ def build_urdf_frames(desc: RobotDescription) -> tuple[dict[str, Gf.Matrix4d], d
 
 
 def _build_urdf_frames_fallback(desc: RobotDescription) -> dict[str, Gf.Matrix4d]:
-    """Fallback when robot_schema is not available: use world transforms."""
+    """Fallback when robot_schema is not available: use world transforms.
+
+    Args:
+        desc: Robot description to read.
+
+    Returns:
+        URDF frames keyed by link prim path.
+    """
     xfc = UsdGeom.XformCache()
     robot_world = Gf.Matrix4d(xfc.GetLocalToWorldTransform(desc.root_prim))
     robot_inv = robot_world.GetInverse()
@@ -192,6 +227,14 @@ def compute_joint_origin_from_frames(
     """Compute URDF joint origin from pre-built URDF frames.
 
     origin = child_urdf_frame * parent_urdf_frame^-1
+
+    Args:
+        urdf_frames: Mapping from link prim paths to URDF frames.
+        parent_path: Parent link prim path.
+        child_path: Child link prim path.
+
+    Returns:
+        Joint origin translation and rotation.
     """
     parent_frame = urdf_frames.get(parent_path)
     child_frame = urdf_frames.get(child_path)
@@ -222,6 +265,15 @@ def compute_geom_to_link_transform(
     component as well should use :func:`matrix4_to_origin_and_scale`.
 
     Returns the identity matrix when *link_path* has no URDF frame.
+
+    Args:
+        urdf_frames: Mapping from link prim paths to URDF frames.
+        link_path: Link prim path.
+        geom_prim: Value to use.
+        robot_prim: Robot root prim.
+
+    Returns:
+        Geometry-to-link transform matrix.
     """
     link_urdf = urdf_frames.get(link_path)
     if link_urdf is None:
@@ -246,6 +298,15 @@ def compute_geom_origin_from_frames(
     Scale on the geometry chain is discarded by ``matrix4_to_origin``;
     URDF callers handle scale separately via the ``<mesh scale=...>``
     attribute.
+
+    Args:
+        urdf_frames: Mapping from link prim paths to URDF frames.
+        link_path: Link prim path.
+        geom_prim: Value to use.
+        robot_prim: Robot root prim.
+
+    Returns:
+        Geometry origin translation and rotation.
     """
     if link_path not in urdf_frames:
         return (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)
@@ -264,5 +325,14 @@ def compute_mesh_bake_transform(
     geometry origin can stay identity. Equivalent to
     :func:`compute_geom_to_link_transform` and kept as a separate name
     purely for readability at the call site.
+
+    Args:
+        urdf_frames: Mapping from link prim paths to URDF frames.
+        link_path: Link prim path.
+        geom_prim: Value to use.
+        robot_prim: Robot root prim.
+
+    Returns:
+        Mesh bake transform matrix.
     """
     return compute_geom_to_link_transform(urdf_frames, link_path, geom_prim, robot_prim)

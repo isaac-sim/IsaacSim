@@ -78,7 +78,14 @@ ACTION_TYPES = [
 
 # Define the Singleton decorator
 def Singleton(class_: type) -> callable:  # noqa: N802 - decorator named after the pattern it implements
-    """Decorate a class to implement the singleton pattern."""
+    """Decorate a class to implement the singleton pattern.
+
+    Args:
+        class_: Class to instantiate once and reuse.
+
+    Returns:
+        Callable that returns the singleton instance for ``class_``.
+    """
     instances = {}
 
     def getinstance(*args: object, **kwargs: object) -> object:
@@ -101,7 +108,6 @@ class ROS2ServiceManager:
     """
 
     def __init__(self) -> None:
-        """Initialize the ROS2 service manager."""
         self.node_name = "isaac_sim_control"
         self.node = None
         self.services = {}
@@ -460,7 +466,6 @@ class SimulationControl:
                 setattr(self, f"{class_name}_{interface_kind}_name", None)
 
     def __init__(self) -> None:
-        """Initialize the simulation control with ROS2 services and actions."""
         self.timeline = omni.timeline.get_timeline_interface()
         self.service_manager = ROS2ServiceManager()
         self.is_initialized = False
@@ -2156,7 +2161,11 @@ class Extension(omni.ext.IExt):
     """Extension that starts and stops the ROS 2 simulation control services."""
 
     def on_startup(self, ext_id: str) -> None:
-        """Initialize the extension."""
+        """Initialize the extension.
+
+        Args:
+            ext_id: Extension identifier supplied by Kit.
+        """
         self.sim_control = SimulationControl()
 
     def on_shutdown(self) -> None:

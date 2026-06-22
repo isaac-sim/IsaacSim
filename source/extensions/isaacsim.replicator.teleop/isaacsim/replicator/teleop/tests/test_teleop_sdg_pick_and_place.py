@@ -39,6 +39,9 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
     moves the markers through the place, reach, locomote, grasp, lift, and
     drop stages. Optionally records the live episode and replays it, and
     optionally captures SDG images at each action boundary in both phases.
+
+    Args:
+        scenario_config: Value for scenario config.
     """
     from dataclasses import dataclass
     from pathlib import Path
@@ -91,7 +94,15 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
     def world_to_tracking_origin_local(
         markers_manager: MarkersManager, world_position: np.ndarray
     ) -> np.ndarray | None:
-        """Convert a world target to the current TrackingOrigin-local marker position."""
+        """Convert a world target to the current TrackingOrigin-local marker position.
+
+        Args:
+            markers_manager: Value for markers manager.
+            world_position: Value for world position.
+
+        Returns:
+            The requested value.
+        """
         stage = omni.usd.get_context().get_stage()
         if stage is None:
             return None
@@ -106,15 +117,31 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         return np.array([local_position[0], local_position[1], local_position[2]], dtype=np.float64)
 
     def asset_relative_world_target(state: dict, relative_location: tuple[float, float, float]) -> np.ndarray:
-        """Return ``asset_origin + relative_location + tcp_offset`` for one side."""
+        """Return ``asset_origin + relative_location + tcp_offset`` for one side.
+
+        Args:
+            state: Value for state.
+            relative_location: Value for relative location.
+
+        Returns:
+            The requested value.
+        """
         return state["asset_origin"] + np.asarray(relative_location, dtype=np.float64) + state["tcp_offset"]
 
     # -----------------------------------------------------------------------
     # Per-controller configuration helpers (one side at a time)
     # -----------------------------------------------------------------------
 
-    def detect_active_motion(profile, scenario_sides: list[str]) -> dict[str, str]:
-        """Return ``{side: 'floating'|'ik'}`` for sides enabled in both profile and scenario."""
+    def detect_active_motion(profile: object, scenario_sides: list[str]) -> dict[str, str]:
+        """Return ``{side: 'floating'|'ik'}`` for sides enabled in both profile and scenario.
+
+        Args:
+            profile: Value for profile.
+            scenario_sides: Value for scenario sides.
+
+        Returns:
+            The requested value.
+        """
         active: dict[str, str] = {}
         for side in scenario_sides:
             if getattr(profile.floating, side).enabled:
@@ -124,12 +151,22 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         return active
 
     def configure_floating_side(
-        profile,
+        profile: object,
         teleop_manager: TeleopManager,
         controller: FloatingRigidBodyController,
         side: str,
     ) -> str | None:
-        """Configure one floating side and return its target prim path."""
+        """Configure one floating side and return its target prim path.
+
+        Args:
+            profile: Value for profile.
+            teleop_manager: Value for teleop manager.
+            controller: Value for controller.
+            side: Value for side.
+
+        Returns:
+            The requested value.
+        """
         settings = getattr(profile.floating, side).settings
         prim_path = str(settings.get("prim_path", "")).strip()
         if not prim_path:
@@ -161,8 +198,17 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         print(f"[TeleopDemo][Setup]   Configured {side} floating controller: {prim_path}")
         return prim_path
 
-    def configure_ik_side(profile, controller: RobotIKController, side: str) -> bool:
-        """Configure one IK side from the profile."""
+    def configure_ik_side(profile: object, controller: RobotIKController, side: str) -> bool:
+        """Configure one IK side from the profile.
+
+        Args:
+            profile: Value for profile.
+            controller: Value for controller.
+            side: Value for side.
+
+        Returns:
+            The requested value.
+        """
         settings = getattr(profile.ik, side).settings
         robot_path = str(settings.get("robot_path", "")).strip()
         ee_link = str(settings.get("ee_link", "")).strip()
@@ -226,12 +272,22 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         return True
 
     def configure_grasp_side(
-        profile,
+        profile: object,
         teleop_manager: TeleopManager,
         controller: GraspController,
         side: str,
     ) -> str | None:
-        """Configure one grasp side. Returns the gripper prim path or None when disabled / invalid."""
+        """Configure one grasp side. Returns the gripper prim path or None when disabled / invalid.
+
+        Args:
+            profile: Value for profile.
+            teleop_manager: Value for teleop manager.
+            controller: Value for controller.
+            side: Value for side.
+
+        Returns:
+            The requested value.
+        """
         side_profile = getattr(profile.grasp, side)
         if not side_profile.enabled:
             return None
@@ -252,11 +308,19 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         print(f"[TeleopDemo][Setup]   Configured {side} grasp controller: {side_profile.prim_path}")
         return side_profile.prim_path
 
-    def configure_locomotion(profile, teleop_manager: TeleopManager, controller: LocomotionController) -> bool:
+    def configure_locomotion(profile: object, teleop_manager: TeleopManager, controller: LocomotionController) -> bool:
         """Configure the (single, scenario-wide) locomotion controller.
 
         Locomotion is optional: profiles that disable it (e.g. solo floating
         scenarios) are accepted; the locomotion phase is then skipped at runtime.
+
+        Args:
+            profile: Value for profile.
+            teleop_manager: Value for teleop manager.
+            controller: Value for controller.
+
+        Returns:
+            The requested value.
         """
         if not profile.locomotion.enabled:
             print("[TeleopDemo][Setup]   Locomotion disabled in profile, skipping configuration")
@@ -281,12 +345,22 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         return True
 
     def configure_session(
-        profile,
+        profile: object,
         teleop_manager: TeleopManager,
         markers_manager: MarkersManager,
         sides: list[str],
     ) -> bool:
-        """Apply session settings and create only the markers needed for the active sides."""
+        """Apply session settings and create only the markers needed for the active sides.
+
+        Args:
+            profile: Value for profile.
+            teleop_manager: Value for teleop manager.
+            markers_manager: Value for markers manager.
+            sides: Value for sides.
+
+        Returns:
+            The requested value.
+        """
         try:
             coordinate_system = CoordinateSystem(profile.session.coordinate_system)
         except ValueError:
@@ -314,7 +388,7 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
     # -----------------------------------------------------------------------
 
     def build_sides_state(
-        profile,
+        profile: object,
         teleop_manager: TeleopManager,
         floating_controller: FloatingRigidBodyController,
         ik_controller: RobotIKController,
@@ -325,6 +399,16 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         The returned per-side state bundles everything the rest of the demo needs:
         motion type and controller, the controlled gripper prim, asset path /
         TCP offset, and grasp availability.
+
+        Args:
+            profile: Value for profile.
+            teleop_manager: Value for teleop manager.
+            floating_controller: Value for floating controller.
+            ik_controller: Value for ik controller.
+            grasp_controller: Value for grasp controller.
+
+        Returns:
+            The requested value.
         """
         scenario_sides = list(scenario_config["sides"].keys())
         active_motion = detect_active_motion(profile, scenario_sides)
@@ -369,8 +453,16 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         teleop_manager.set_grasp_tracking(grasp_controller.has_any_side_tracking_enabled)
         return sides_state
 
-    def cache_target_origins(stage, sides_state: dict[str, dict]) -> bool:
-        """Cache each side's asset world position once, used as the relative-motion origin."""
+    def cache_target_origins(stage: object, sides_state: dict[str, dict]) -> bool:
+        """Cache each side's asset world position once, used as the relative-motion origin.
+
+        Args:
+            stage: Value for stage.
+            sides_state: Value for sides state.
+
+        Returns:
+            The requested value.
+        """
         for side, state in sides_state.items():
             prim = stage.GetPrimAtPath(state["asset_path"])
             if prim is None or not prim.IsValid():
@@ -396,7 +488,15 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
     # -----------------------------------------------------------------------
 
     async def wait_for_motion_controllers(sides_state: dict[str, dict], max_frames: int = 5) -> bool:
-        """Block briefly until every active side's motion controller is running."""
+        """Block briefly until every active side's motion controller is running.
+
+        Args:
+            sides_state: Value for sides state.
+            max_frames: Value for max frames.
+
+        Returns:
+            The requested value.
+        """
         for _ in range(max_frames):
             if all(state["motion_controller"].is_running(side) for side, state in sides_state.items()):
                 return True
@@ -413,6 +513,13 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         the recording begins with markers already at each side's ``start_offset``.
         The matching wait for the controllers to converge happens after
         ``timeline.play()`` via ``settle_at_start_pose``.
+
+        Args:
+            markers_manager: Value for markers manager.
+            sides_state: Value for sides state.
+
+        Returns:
+            The requested value.
         """
         offsets_summary = ", ".join(
             f"{side.capitalize()}={list(state['start_offset'])}" for side, state in sides_state.items()
@@ -438,6 +545,11 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         Must be called after ``timeline.play()``: physics only advances while the
         timeline is playing, so a settle scheduled before ``play()`` is a no-op.
         Prints a per-side gripper-vs-start-pose tracking summary at the end.
+
+        Args:
+            sides_state: Value for sides state.
+            settle_frames: Value for settle frames.
+            target_min_distance_error: Value for target min distance error.
         """
         if settle_frames > 0:
             await app_utils.update_app_async(steps=settle_frames)
@@ -470,6 +582,18 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         ``settle_frames`` frames so the controller can converge. Prints a per-side
         gripper-vs-target tracking summary at the end and flags any side whose
         error exceeds ``target_min_distance_error``.
+
+        Args:
+            markers_manager: Value for markers manager.
+            sides_state: Value for sides state.
+            offset_key: Value for offset key.
+            motion_frames: Value for motion frames.
+            settle_frames: Value for settle frames.
+            target_min_distance_error: Value for target min distance error.
+            phase_name: Value for phase name.
+
+        Returns:
+            The requested value.
         """
         if motion_frames < 1:
             print(f"[TeleopDemo][Motion]     {phase_name}: motion_frames must be >= 1")
@@ -532,6 +656,16 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         trajectory + settle + tracking summary contract as
         ``move_markers_to_asset_relative_target``. Sides without a configured
         drop target are skipped silently.
+
+        Args:
+            markers_manager: Value for markers manager.
+            sides_state: Value for sides state.
+            motion_frames: Value for motion frames.
+            settle_frames: Value for settle frames.
+            target_min_distance_error: Value for target min distance error.
+
+        Returns:
+            The requested value.
         """
         if motion_frames < 1:
             print("[TeleopDemo][Motion]     Drop: motion_frames must be >= 1")
@@ -602,6 +736,18 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
 
         ``offset_key`` selects which per-side offset to read from ``sides_state``
         (typically ``"pre_grasp_offset"``).
+
+        Args:
+            markers_manager: Value for markers manager.
+            teleop_manager: Value for teleop manager.
+            sides_state: Value for sides state.
+            offset_key: Value for offset key.
+            target_min_distance_error: Value for target min distance error.
+            max_locomotion_steps: Value for max locomotion steps.
+            settle_frames: Value for settle frames.
+
+        Returns:
+            The requested value.
         """
         targets = {side: asset_relative_world_target(state, state[offset_key]) for side, state in sides_state.items()}
         final_errors = {side: float("inf") for side in sides_state}
@@ -649,7 +795,13 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         return True
 
     async def close_grasps(teleop_manager: TeleopManager, sides_state: dict[str, dict], settle_frames: int) -> None:
-        """Trigger every active grasp side and let the drives settle."""
+        """Trigger every active grasp side and let the drives settle.
+
+        Args:
+            teleop_manager: Value for teleop manager.
+            sides_state: Value for sides state.
+            settle_frames: Value for settle frames.
+        """
         grasp_sides = [side for side, state in sides_state.items() if state["grasp_enabled"]]
         if not grasp_sides:
             print("[TeleopDemo][Grasp]   No grasp sides enabled, skipping")
@@ -660,7 +812,13 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         print(f"[TeleopDemo][Grasp]   Closed ({', '.join(grasp_sides)}) after settle {settle_frames} frames")
 
     async def open_grasps(teleop_manager: TeleopManager, sides_state: dict[str, dict], settle_frames: int) -> None:
-        """Open every active grasp side and let dropped objects settle."""
+        """Open every active grasp side and let dropped objects settle.
+
+        Args:
+            teleop_manager: Value for teleop manager.
+            sides_state: Value for sides state.
+            settle_frames: Value for settle frames.
+        """
         grasp_sides = [side for side, state in sides_state.items() if state["grasp_enabled"]]
         if not grasp_sides:
             print("[TeleopDemo][Grasp]   No grasp sides enabled, skipping drop release")
@@ -675,11 +833,20 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
     # -----------------------------------------------------------------------
 
     def build_recorder_targets(
-        profile,
+        profile: object,
         sides_state: dict[str, dict],
         markers_manager: MarkersManager,
     ) -> tuple[dict[str, str], dict[str, str]]:
-        """Build the ``xforms`` and ``articulations`` dicts for the EpisodeRecorder."""
+        """Build the ``xforms`` and ``articulations`` dicts for the EpisodeRecorder.
+
+        Args:
+            profile: Value for profile.
+            sides_state: Value for sides state.
+            markers_manager: Value for markers manager.
+
+        Returns:
+            The requested value.
+        """
         xforms: dict[str, str] = {"tracking_origin": markers_manager.MARKER_PATHS["origin"]}
         articulations: dict[str, str] = {}
         if profile.locomotion.enabled:
@@ -702,11 +869,20 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
     # -----------------------------------------------------------------------
 
     def setup_sdg_render_products(
-        stage,
+        stage: object,
         camera_paths: list[str],
         resolution: tuple[int, int],
-    ):
-        """Build per-camera render products for SDG captures."""
+    ) -> object:
+        """Build per-camera render products for SDG captures.
+
+        Args:
+            stage: Value for stage.
+            camera_paths: Value for camera paths.
+            resolution: Value for resolution.
+
+        Returns:
+            The requested value.
+        """
         valid_camera_paths: list[str] = []
         for camera_path in camera_paths:
             camera_prim = stage.GetPrimAtPath(camera_path)
@@ -738,8 +914,8 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
 
     async def capture_live_sdg_action_image(
         action_name: str,
-        recorder,
-        writer,
+        recorder: object,
+        writer: object,
         render_products: list,
         capture_index: int,
         rt_subframes: int,
@@ -750,6 +926,18 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         When ``recorder`` is ``None`` (record + replay disabled in the scenario)
         the image is still written but no replay capture point is tracked, since
         there is no episode to replay against.
+
+        Args:
+            action_name: Value for action name.
+            recorder: Value for recorder.
+            writer: Value for writer.
+            render_products: Value for render products.
+            capture_index: Value for capture index.
+            rt_subframes: Value for rt subframes.
+            replay_capture_points: Value for replay capture points.
+
+        Returns:
+            The requested value.
         """
         if writer is None or not render_products:
             return capture_index
@@ -789,12 +977,23 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
 
     async def capture_replayed_sdg_action_image(
         capture_point: SdgReplayCapture,
-        writer,
+        writer: object,
         render_products: list,
         capture_index: int,
         rt_subframes: int,
     ) -> int:
-        """Capture the replayed frame matching a live SDG action capture."""
+        """Capture the replayed frame matching a live SDG action capture.
+
+        Args:
+            capture_point: Value for capture point.
+            writer: Value for writer.
+            render_products: Value for render products.
+            capture_index: Value for capture index.
+            rt_subframes: Value for rt subframes.
+
+        Returns:
+            The requested value.
+        """
         if writer is None or not render_products:
             return capture_index
         next_capture_index = capture_index + 1
@@ -820,28 +1019,40 @@ async def run_teleop_pick_and_place_async(scenario_config: dict) -> None:
         scenario_name: str,
         markers_manager: MarkersManager | None,
         teleop_manager: TeleopManager | None,
-        recorder=None,
+        recorder: object = None,
         episode_active: bool = False,
-        timeline=None,
+        timeline: object = None,
         timeline_started: bool = False,
-        sdg_capture_writer=None,
+        sdg_capture_writer: object = None,
         sdg_capture_render_products: list | None = None,
-        replayer=None,
+        replayer: object = None,
     ) -> None:
         """Best-effort, never-raising teardown for the live + replay phases.
 
         Each step is wrapped so a single failure does not skip the rest. Useful
         when the user closes the stage, stops the app, or any setup step fails
         mid-flight: this still tears down whatever was already brought up.
+
+        Args:
+            scenario_name: Value for scenario name.
+            markers_manager: Value for markers manager.
+            teleop_manager: Value for teleop manager.
+            recorder: Value for recorder.
+            episode_active: Value for episode active.
+            timeline: Value for timeline.
+            timeline_started: Value for timeline started.
+            sdg_capture_writer: Value for sdg capture writer.
+            sdg_capture_render_products: Value for sdg capture render products.
+            replayer: Value for replayer.
         """
 
-        def _safe(label: str, fn, *args, **kwargs):
+        def _safe(label: str, fn: object, *args: object, **kwargs: object) -> object:
             try:
                 return fn(*args, **kwargs)
             except Exception as exc:
-                print(f"[TeleopDemo][Cleanup]   '{label}' skipped: {exc}")
+                print(f"[TeleopDemo][Cleanup]   '{label}' skipped -> object: {exc}")
 
-        async def _safe_async(label: str, coro):
+        async def _safe_async(label: str, coro: object) -> None:
             try:
                 await coro
             except Exception as exc:
@@ -1283,18 +1494,20 @@ class TestTeleopSDGPickAndPlace(omni.kit.test.AsyncTestCase):
     # introduce small per-pixel variation, so a moderate budget is used.
     MEAN_DIFF_TOLERANCE = 10
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Set up the test fixture."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Tear down the test fixture."""
         omni.usd.get_context().close_stage()
         await omni.kit.app.get_app().next_update_async()
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_floating_xarm_dex3(self):
+    async def test_floating_xarm_dex3(self) -> None:
         """Bimanual floating teleop: xArm gripper (left) + Dex3 gripper (right)."""
         scenario_config = {
             "name": "floating_xarm_dex3",
@@ -1370,7 +1583,7 @@ class TestTeleopSDGPickAndPlace(omni.kit.test.AsyncTestCase):
                     f"Image comparison failed ({phase}/{camera_dir}). Output dir: {test_camera_dir}",
                 )
 
-    async def test_floating_xarm(self):
+    async def test_floating_xarm(self) -> None:
         """Solo floating teleop: a single xArm gripper on the right side."""
         scenario_config = {
             "name": "floating_xarm",
@@ -1429,7 +1642,7 @@ class TestTeleopSDGPickAndPlace(omni.kit.test.AsyncTestCase):
             )
             self.assertTrue(result["all_passed"], f"Image comparison failed ({phase}). Output dir: {out_dir}")
 
-    async def test_ik_dual_ur3_xarm_dex3(self):
+    async def test_ik_dual_ur3_xarm_dex3(self) -> None:
         """Bimanual IK teleop: dual UR3 arms with xArm gripper (left) + Dex3 (right)."""
         scenario_config = {
             "name": "ik_dual_ur3_xarm_dex3",
@@ -1507,7 +1720,7 @@ class TestTeleopSDGPickAndPlace(omni.kit.test.AsyncTestCase):
                     f"Image comparison failed ({phase}/{camera_dir}). Output dir: {test_camera_dir}",
                 )
 
-    async def test_ik_solo_ur3_xarm(self):
+    async def test_ik_solo_ur3_xarm(self) -> None:
         """Solo IK teleop: single UR3 arm with an xArm gripper on the right."""
         scenario_config = {
             "name": "ik_solo_ur3_xarm",

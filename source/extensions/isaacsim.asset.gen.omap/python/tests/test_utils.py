@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies occupancy map utility functions for coordinate conversion, bounds updates, and image generation. Covers unknown, occupied, and free-space pixels, custom colors, empty buffers, performance, and symmetry assumptions."""
+
 from __future__ import annotations
 
 import omni.kit.test
@@ -36,14 +38,6 @@ class MockOccupancyMap:
         buffer: list[float] | None = None,
         dimensions: tuple[int, int, int] = (10, 10, 1),
     ) -> None:
-        """Initialize mock occupancy map.
-
-        Args:
-            min_bound: Minimum boundary coordinates.
-            max_bound: Maximum boundary coordinates.
-            buffer: Occupancy buffer (list of float values).
-            dimensions: Map dimensions (x, y, z).
-        """
         self._min_bound = min_bound
         self._max_bound = max_bound
         self._buffer = buffer if buffer is not None else [0.5] * (dimensions[0] * dimensions[1])
@@ -103,7 +97,6 @@ class MockOccupancyMap:
 
     def update(self) -> None:
         """Update the map (no-op for mock)."""
-        pass
 
     def set_cell_size(self, cell_size: float) -> None:
         """Set cell size for the occupancy map.

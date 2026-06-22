@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
+"""Verify manual Replicator captures while the simulation timeline continues running."""
+
 import tempfile
 
 import omni.kit
@@ -24,19 +25,24 @@ from isaacsim.test.utils.file_validation import validate_folder_contents
 
 
 class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Checks writer attachment and render-product toggling during active timeline playback."""
+
+    async def setUp(self) -> None:
+        """Create a clean stage before timeline-running capture tests."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Close the stage and wait for any pending loads to finish."""
         omni.usd.get_context().close_stage()
         await omni.kit.app.get_app().next_update_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_capture_data_with_timeline_running(self):
+    async def test_capture_data_with_timeline_running(self) -> None:
+        """Attach BasicWriter during playback and ensure only explicit orchestrator steps write frames."""
         await omni.kit.app.get_app().next_update_async()
         rep.orchestrator.set_capture_on_play(False)
 
@@ -76,7 +82,8 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
         folder_contents_success = validate_folder_contents(path=out_dir, expected_counts={"png": num_frame_captures})
         self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {out_dir}")
 
-    async def test_toggled_render_product_captures_with_timeline_running(self):
+    async def test_toggled_render_product_captures_with_timeline_running(self) -> None:
+        """Enable a disabled render product only around capture steps and verify per-iteration frame counts."""
         num_captures = 5
         num_iterations = 4
         app_updates_per_capture = 20

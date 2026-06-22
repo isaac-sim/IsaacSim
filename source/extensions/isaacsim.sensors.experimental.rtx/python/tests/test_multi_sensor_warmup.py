@@ -13,22 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test the deferred-radar-construction workaround for the lidar FIF empty-slot race.
+"""Verify deferred RadarSensor attachment after lidar warmup still produces valid RTX GMO frames."""
 
-The race lives in ``rtx.sensors.lidar.core.plugin`` and manifests as a fatal
-crash within the first frames after pressing Play when an RTX Radar and one or
-more RTX Lidars come online in the same render frame with Motion BVH enabled.
-
-The documented workaround in the standalone Python flow is to:
-
-1. Author the radar's USD prim before ``timeline.play()`` (lightweight, USD-only).
-2. Start playback and let the lidar sensors warm up for several frames.
-3. Only then construct the ``RadarSensor`` wrapper, which is what binds the
-   radar to the renderer and triggers FIF slot allocation.
-
-This test exercises the workaround end-to-end and asserts that every sensor's
-``GenericModelOutput`` writer eventually observes ``numElements > 0``.
-"""
+from typing import Any
 
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -64,13 +51,13 @@ class TestMultiSensorWarmup(omni.kit.test.AsyncTestCase):
         any future generic counting writer registered by another test.
         """
 
-        def __init__(self):
+        def __init__(self) -> None:
             self.annotators = [rep.annotators.get("GenericModelOutput")]
             self.data_structure = "renderProduct"
             self.valid_frame_count = 0
             self.zero_element_frame_count = 0
 
-        def write(self, data):
+        def write(self, data: Any) -> None:
             if "renderProducts" not in data:
                 return
             for _rp_name, rp_data in data["renderProducts"].items():
@@ -89,7 +76,8 @@ class TestMultiSensorWarmup(omni.kit.test.AsyncTestCase):
 
     _writer_registered = False
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Enable Motion BVH, create lidar/radar target geometry, and register the GMO counter writer."""
         super().setUp()
         await stage_utils.create_new_stage_async()
         await ViewportManager.wait_for_viewport_async()
@@ -102,7 +90,8 @@ class TestMultiSensorWarmup(omni.kit.test.AsyncTestCase):
             rep.WriterRegistry.register(TestMultiSensorWarmup._GmoMultiSensorWarmupCountingWriter)
             TestMultiSensorWarmup._writer_registered = True
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Stop multi-sensor playback and flush one app update after each warmup test."""
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
         super().tearDown()
@@ -111,7 +100,7 @@ class TestMultiSensorWarmup(omni.kit.test.AsyncTestCase):
     # Tests
     # ------------------------------------------------------------------
 
-    async def test_radar_attached_after_lidar_warmup_yields_valid_output(self):
+    async def test_radar_attached_after_lidar_warmup_yields_valid_output(self) -> None:
         """All three sensors produce valid GMO output when the radar is deferred.
 
         Pattern under test (mirrors the documented user-facing workaround):
@@ -145,12 +134,12 @@ class TestMultiSensorWarmup(omni.kit.test.AsyncTestCase):
         # Lidar 1: full wrap pre-play.
         lidar_1 = Lidar("/World/lidar_1")
         lidar_sensor_1 = LidarSensor(lidar_1, annotators=["generic-model-output"])
-        lidar_sensor_1.attach_writer(WRITER_NAME)
+        lidar_1_writer = lidar_sensor_1.attach_writer(WRITER_NAME)
 
         # Lidar 2: full wrap pre-play.
         lidar_2 = Lidar("/World/lidar_2")
         lidar_sensor_2 = LidarSensor(lidar_2, annotators=["generic-model-output"])
-        lidar_sensor_2.attach_writer(WRITER_NAME)
+        lidar_2_writer = lidar_sensor_2.attach_writer(WRITER_NAME)
 
         # Radar: USD authoring object only - no render product yet.
         radar = Radar(
@@ -168,17 +157,12 @@ class TestMultiSensorWarmup(omni.kit.test.AsyncTestCase):
         # product and binds annotators, mirroring the operation that opens
         # the FIF race window when done concurrently with lidar attachment.
         radar_sensor = RadarSensor(radar, annotators=["generic-model-output"])
-        radar_sensor.attach_writer(WRITER_NAME)
+        radar_writer = radar_sensor.attach_writer(WRITER_NAME)
 
         for _ in range(COLLECTION_FRAMES):
             await omni.kit.app.get_app().next_update_async()
 
         self._timeline.stop()
-
-        # Each sensor has its own writer instance with independent counters.
-        lidar_1_writer = lidar_sensor_1._writers[WRITER_NAME]
-        lidar_2_writer = lidar_sensor_2._writers[WRITER_NAME]
-        radar_writer = radar_sensor._writers[WRITER_NAME]
 
         carb.log_warn(
             f"lidar_1: valid={lidar_1_writer.valid_frame_count} " f"zero={lidar_1_writer.zero_element_frame_count}"

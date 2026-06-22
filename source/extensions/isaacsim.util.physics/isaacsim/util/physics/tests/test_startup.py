@@ -27,7 +27,7 @@ class TestStartup(omni.kit.test.AsyncTestCase):
     """Test case for verifying the Physics API Editor extension starts up correctly."""
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures before each test method.
 
         Waits for the next application update to ensure the environment is ready.
@@ -35,7 +35,7 @@ class TestStartup(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after each test method.
 
         Waits for the next application update to allow cleanup to complete.
@@ -43,7 +43,7 @@ class TestStartup(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
 
     # Run for 60 frames and make sure there were no errors loading
-    async def test_startup(self):
+    async def test_startup(self) -> None:
         """Verify the Physics API Editor window loads without errors.
 
         Opens the Physics API Editor window, runs for 60 frames to ensure stability,

@@ -13,15 +13,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Filter randomization execution by per-environment frame counts or reset indices."""
+
+from typing import Any
+
 import numpy as np
 import omni.graph.core as og
 
 
 class OgnIntervalFiltering:
-    """OmniGraph node that filters execution based on frame intervals."""
+    """OmniGraph gate that selects which environments should be randomized."""
 
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
+        """Emit selected indices and reset state for downstream writer nodes.
+
+        With ``ignoreInterval`` disabled, ``inputs:frameCounts`` is filtered to
+        environments whose count is positive and divisible by ``inputs:interval``.
+        With ``ignoreInterval`` enabled, ``inputs:indices`` is passed through and
+        ``outputs:on_reset`` is set so writers update their reset baselines.
+        ``outputs:execOut`` remains enabled when no indices are selected.
+
+        Args:
+            db: Database object containing node inputs and outputs.
+
+        Returns:
+            True when selected indices are emitted, False when no indices are selected.
+        """
         interval = db.inputs.interval
         frame_num = np.array(db.inputs.frameCounts)
         indices = np.array(db.inputs.indices)

@@ -70,6 +70,12 @@ def _articulation_base_path(stage: Usd.Stage) -> str | None:
     maximal subtree containing the robot, e.g. ``/ur10e``), rather than the
     path of the prim carrying the ``UsdPhysics.ArticulationRootAPI`` (which on
     UR10e is ``/ur10e/root_joint``).
+
+    Args:
+        stage: Stage to inspect.
+
+    Returns:
+        First articulation base path, or None if none exists.
     """
     paths = articulation_discovery.find_all_articulation_base_paths(stage)
     return paths[0] if paths else None
@@ -87,6 +93,9 @@ def _disable_instanceable(stage: Usd.Stage) -> None:
     A single pass over the stage isn't enough because hiding the children of
     an instanceable prim only becomes visible after the parent is flipped, so
     we loop until no more instanceable prims remain.
+
+    Args:
+        stage: Stage to update.
     """
     while True:
         changed = False
@@ -105,6 +114,7 @@ class TestXrdfEditorUIPanels(omni.kit.test.AsyncTestCase):
     # Shared fixture
     # ------------------------------------------------------------------
     async def setUp(self) -> None:
+        """Open UR10e and build the XRDF editor extension UI."""
         self._timeline = omni.timeline.get_timeline_interface()
         self._ext: Extension | None = None
         self._articulation_path: str | None = None
@@ -139,6 +149,7 @@ class TestXrdfEditorUIPanels(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
 
     async def tearDown(self) -> None:
+        """Tear down the extension UI and reset the stage."""
         if self._ext is not None:
             try:
                 self._ext._window.visible = False
@@ -176,7 +187,11 @@ class TestXrdfEditorUIPanels(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
 
     async def _select_link(self, link_subpath: str) -> None:
-        """Trigger 'Select Link' selection in the SelectionPanel by subpath."""
+        """Trigger 'Select Link' selection in the SelectionPanel by subpath.
+
+        Args:
+            link_subpath: Link subpath to select.
+        """
         sel = self._ext.ui_builder._selection_panel
         keys = list(self._ext.ui_builder.state.link_to_meshes.keys())
         self.assertIn(link_subpath, keys, f"Link {link_subpath} not in link_to_meshes")
@@ -185,7 +200,11 @@ class TestXrdfEditorUIPanels(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
 
     def _first_link_with_meshes(self) -> str:
-        """Return the first link subpath that has at least one mesh."""
+        """Return the first link subpath that has at least one mesh.
+
+        Returns:
+            First link subpath with a non-empty mesh list.
+        """
         for link, meshes in self._ext.ui_builder.state.link_to_meshes.items():
             if meshes:
                 return link
@@ -493,11 +512,25 @@ class TestXrdfEditorUIPanels(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
     @staticmethod
     def _link_subpath_to_key(link_subpath: str) -> str:
-        """Convert ``/base_link`` style subpaths into XRDF/Lula sphere-dict keys."""
+        """Convert ``/base_link`` style subpaths into XRDF/Lula sphere-dict keys.
+
+        Args:
+            link_subpath: Link subpath to convert.
+
+        Returns:
+            XRDF or Lula sphere-dict key for the link.
+        """
         return link_subpath.lstrip("/")
 
     def _spheres_under(self, link_full_path: str) -> list[tuple[np.ndarray, float]]:
-        """Return ``[(center, radius), ...]`` for every sphere under ``link_full_path``."""
+        """Return sphere centers and radii under ``link_full_path``.
+
+        Args:
+            link_full_path: Full link path whose child spheres should be collected.
+
+        Returns:
+            Sphere center and radius tuples sorted by radius.
+        """
         editor = self._ext.ui_builder.state.collision_sphere_editor
         prefix = link_full_path + "/"
         results: list[tuple[np.ndarray, float]] = []
@@ -511,7 +544,12 @@ class TestXrdfEditorUIPanels(omni.kit.test.AsyncTestCase):
         return results
 
     async def _import_xrdf_with_spheres_and_assert(self, format_version: float, collision_key: str) -> None:
-        """Drive the XRDF Import button for a real on-disk file and verify state + spheres."""
+        """Drive the XRDF Import button for a real on-disk file and verify state and spheres.
+
+        Args:
+            format_version: XRDF format version to write.
+            collision_key: Top-level collision key expected for the version.
+        """
         await self._select_ur10e()
         state = self._ext.ui_builder.state
         tools_panel = self._ext.ui_builder._editor_tools_panel
@@ -790,6 +828,7 @@ class TestMimicJointBehavior(omni.kit.test.AsyncTestCase):
     _MIMIC_DRIVER_NAME = "wrist_2_joint"
 
     async def setUp(self) -> None:
+        """Open UR10e, apply a mimic relationship, and build the editor UI."""
         self._timeline = omni.timeline.get_timeline_interface()
         self._ext: Extension | None = None
         self._articulation_path: str | None = None
@@ -833,6 +872,7 @@ class TestMimicJointBehavior(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
 
     async def tearDown(self) -> None:
+        """Tear down the mimic UI fixture and reset the stage."""
         if self._ext is not None:
             try:
                 self._ext._window.visible = False
@@ -856,7 +896,15 @@ class TestMimicJointBehavior(omni.kit.test.AsyncTestCase):
     def _find_joints_by_name(
         self, stage: Usd.Stage, articulation_base_path: str
     ) -> tuple[Usd.Prim | None, Usd.Prim | None]:
-        """Find ``(follower, driver)`` joint prims inside the articulation by name."""
+        """Find follower and driver joint prims inside the articulation by name.
+
+        Args:
+            stage: Stage containing the articulation.
+            articulation_base_path: Base path of the articulation to search.
+
+        Returns:
+            Mimic follower and driver joint prims. Either value may be None.
+        """
         follower: Usd.Prim | None = None
         driver: Usd.Prim | None = None
         base_prim = stage.GetPrimAtPath(articulation_base_path)
@@ -932,7 +980,7 @@ class TestMimicJointBehavior(omni.kit.test.AsyncTestCase):
 
         # Walk the frame's widget tree and detect any FloatField-style input
         # widget. A read-only mimic frame contains only labels.
-        def _has_float_field(widget) -> bool:
+        def _has_float_field(widget: object) -> bool:
             cls_name = type(widget).__name__
             if cls_name in {"FloatField", "FloatDrag", "FloatSlider"}:
                 return True

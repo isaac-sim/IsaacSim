@@ -1,5 +1,5 @@
 [package]
-version = "1.2.1"
+version = "1.2.2"
 category = "Simulation"
 title = "Camera Inspector"
 description = "This extension can inspect and modify the properties of cameras in the scene."

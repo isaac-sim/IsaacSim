@@ -39,7 +39,7 @@ class HumanoidExampleExtension(omni.ext.IExt):
         - Right arrow / numpad 6: Spin clockwise
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initializes the Humanoid example extension.
 
         Registers the Unitree H1 humanoid robot example with the examples browser and creates the UI template
@@ -77,6 +77,6 @@ class HumanoidExampleExtension(omni.ext.IExt):
             category=self.category,
         )
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Cleans up the extension by deregistering the Humanoid example from the examples browser."""
         get_browser_instance().deregister_example(name=self.example_name, category=self.category)

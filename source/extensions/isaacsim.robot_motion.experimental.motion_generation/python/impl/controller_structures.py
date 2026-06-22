@@ -48,7 +48,7 @@ class ControllerContainer(BaseController):
         True
     """
 
-    def __init__(self, controller_options: dict[Enum, BaseController], initial_controller_selection: Enum):
+    def __init__(self, controller_options: dict[Enum, BaseController], initial_controller_selection: Enum) -> None:
         self._controller_options = controller_options
         if len(controller_options) == 0:
             raise ValueError("ControllerContainer must have at least one controller.")
@@ -59,7 +59,9 @@ class ControllerContainer(BaseController):
         self._active_controller_selection = initial_controller_selection
         self._next_controller_selection = initial_controller_selection
 
-    def reset(self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs) -> bool:
+    def reset(
+        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
+    ) -> bool:
         """Set the initial controller to be active again and call reset on it.
 
         Args:
@@ -85,7 +87,7 @@ class ControllerContainer(BaseController):
         return self._active_controller.reset(estimated_state, setpoint_state, t, **kwargs)
 
     def forward(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs
+        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
     ) -> Optional[RobotState]:
         """Run the active controller.
 
@@ -128,7 +130,7 @@ class ControllerContainer(BaseController):
         # run the controller and return its result.
         return self._active_controller.forward(estimated_state, setpoint_state, t, **kwargs)
 
-    def set_next_controller(self, next_controller_selection: Enum):
+    def set_next_controller(self, next_controller_selection: Enum) -> None:
         """Set the controller which will be running starting at the next time-step.
 
         This function is typically called by a higher-level behavior control scheme,
@@ -146,7 +148,7 @@ class ControllerContainer(BaseController):
 
             >>> container.set_next_controller(next_controller_selection)
         """
-        if next_controller_selection not in self._controller_options.keys():
+        if next_controller_selection not in self._controller_options:
             raise LookupError("There is no controller which corresponds to the requested enum.")
         self._next_controller_selection = next_controller_selection
 
@@ -190,7 +192,7 @@ class ControllerContainer(BaseController):
 
             >>> controller = container.get_controller(controller_selection)
         """
-        if controller_selection not in self._controller_options.keys():
+        if controller_selection not in self._controller_options:
             raise LookupError("The selected controller is not a part of the available options.")
         return self._controller_options[controller_selection]
 
@@ -214,12 +216,14 @@ class ParallelController(BaseController):
         >>> parallel_controller = ParallelController(controllers)
     """
 
-    def __init__(self, controllers: list[BaseController]):
+    def __init__(self, controllers: list[BaseController]) -> None:
         if len(controllers) < 2:
             raise ValueError("ParallelController must have at least two controllers.")
         self._controllers = controllers
 
-    def reset(self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs) -> bool:
+    def reset(
+        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
+    ) -> bool:
         """Reset all contained controllers.
 
         Args:
@@ -245,7 +249,7 @@ class ParallelController(BaseController):
         return True
 
     def forward(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs
+        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
     ) -> Optional[RobotState]:
         """Run all controllers and combine their outputs.
 
@@ -297,12 +301,14 @@ class SequentialController(BaseController):
         >>> sequential_controller = SequentialController(controllers)
     """
 
-    def __init__(self, controllers: list[BaseController]):
+    def __init__(self, controllers: list[BaseController]) -> None:
         if len(controllers) < 2:
             raise ValueError("SequentialController must have at least two controllers.")
         self._controllers = controllers
 
-    def reset(self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs) -> bool:
+    def reset(
+        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
+    ) -> bool:
         """Reset all contained controllers.
 
         Args:
@@ -328,7 +334,7 @@ class SequentialController(BaseController):
         return True
 
     def forward(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs
+        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
     ) -> Optional[RobotState]:
         """Run controllers sequentially, passing outputs as setpoints.
 

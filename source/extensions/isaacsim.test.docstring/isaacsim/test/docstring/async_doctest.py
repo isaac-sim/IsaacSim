@@ -94,16 +94,16 @@ class AsyncDocTestCase(omni.kit.test.AsyncTestCase):
         **kwargs: Additional keyword arguments passed to the parent class.
     """
 
-    def __init__(self, *args: object, **kwargs: object):
+    def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self._doctest_checker = _doctest.DocTest()
 
-    def assertDocTest(
+    def _assert_doc_test_impl(
         self,
         expr: object,
         msg: str = "",
         flags: int = doctest.NORMALIZE_WHITESPACE | doctest.ELLIPSIS | doctest.FAIL_FAST,
-    ):
+    ) -> None:
         """Check that the examples in docstrings pass for a class/module member.
 
         Args:
@@ -124,7 +124,9 @@ class AsyncDocTestCase(omni.kit.test.AsyncTestCase):
             sys.tracebacklimit = 0  # don't show test file tracing, only doctest
             self.fail("Examples in docstrings failed" if not msg else msg)
 
-    async def assertDocTests(
+    assertDocTest = _assert_doc_test_impl
+
+    async def _assert_doc_tests_impl(
         self,
         expr: object,
         msg: str = "",
@@ -133,7 +135,7 @@ class AsyncDocTestCase(omni.kit.test.AsyncTestCase):
         exclude: list[object] | None = None,
         stop_on_failure: bool = False,
         await_update: bool = True,
-    ):
+    ) -> None:
         """Check that the examples in docstrings pass for all class/module's members (names).
 
         Args:
@@ -166,9 +168,8 @@ class AsyncDocTestCase(omni.kit.test.AsyncTestCase):
         # test docstrings examples
         failures = 0
         for obj in objects:
-            try:
-                name = obj.__name__
-            except:
+            name = getattr(obj, "__name__", None)
+            if name is None:
                 name = obj.fget.__name__
             print(f"  |-- checking: {name}")
             if await_update:
@@ -183,3 +184,5 @@ class AsyncDocTestCase(omni.kit.test.AsyncTestCase):
             self.fail(
                 f"Some tests failed: failed ({failures}), successful ({len(objects) - failures}), total ({len(objects)})"
             )
+
+    assertDocTests = _assert_doc_tests_impl

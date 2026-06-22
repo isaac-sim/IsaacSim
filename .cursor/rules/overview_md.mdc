@@ -94,6 +94,19 @@ The Overview length should be proportional to the extension's complexity:
 - Build instructions — that belongs in repo-level docs
 - Default values for settings — those belong in extension.toml comments
 - Duplicate content from other extension Overviews
+- Tutorial-style or long-form walkthrough content — see below
+
+### Keep It an Overview (no tutorials)
+
+The Overview must stay an *overview*. Tutorial-style content — step-by-step walkthroughs,
+end-to-end workflows, lengthy how-to guides, or multi-stage examples — does NOT belong here.
+Such content belongs in the main documentation folder (`docs/`, e.g. `docs/isaacsim/...`) so
+the Overview stays a concise, scannable entry point.
+
+- Keep code examples to one or two short, self-contained snippets (see "Code Examples").
+- When the explanation grows into a sequence of numbered steps or a guided workflow, move it
+  to a dedicated page under the main docs folder and link to it from the Overview.
+- The Overview should orient the reader and point to deeper docs, not teach the full workflow.
 
 ### Sphinx/MyST Syntax
 

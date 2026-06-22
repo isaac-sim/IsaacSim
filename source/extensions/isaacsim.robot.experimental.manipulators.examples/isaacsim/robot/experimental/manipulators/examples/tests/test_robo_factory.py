@@ -27,7 +27,14 @@ class TestRoboFactoryExampleExtension(omni.kit.test.AsyncTestCase):
     """Test cases for the robo factory example."""
 
     async def _wait_for_stacking_done(self, *, max_steps: int = 3200) -> bool:
-        """Wait until all stacking tasks report completion."""
+        """Wait until all stacking tasks report completion.
+
+        Args:
+            max_steps: Maximum number of app update steps to wait.
+
+        Returns:
+            True if all stacking tasks complete before the step limit.
+        """
         is_done = False
 
         def check_done(_step: int, _steps: int) -> bool:

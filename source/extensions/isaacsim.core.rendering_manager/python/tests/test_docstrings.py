@@ -13,26 +13,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies that the RenderingManager and ViewportManager public APIs have complete docstrings. The tests create a clean stage before running the shared docstring checker against each class."""
+
 import isaacsim.core.experimental.utils.stage as stage_utils
 import isaacsim.test.docstring
 from isaacsim.core.rendering_manager import RenderingManager, ViewportManager
 
 
 class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
-    async def setUp(self):
+    """Docstring coverage tests for rendering and viewport manager APIs."""
+
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # create new stage
         await stage_utils.create_new_stage_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
-    async def test_rendering_manager_docstrings(self):
+    async def test_rendering_manager_docstrings(self) -> None:
+        """Validate RenderingManager docstrings with the shared docstring checker."""
         await self.assertDocTests(RenderingManager)
 
-    async def test_viewport_manager_docstrings(self):
+    async def test_viewport_manager_docstrings(self) -> None:
+        """Validate ViewportManager docstrings with the shared docstring checker."""
         await self.assertDocTests(ViewportManager)

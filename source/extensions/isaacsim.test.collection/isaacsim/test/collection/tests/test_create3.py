@@ -67,7 +67,7 @@ class TestCreate3(omni.kit.test.AsyncTestCase):
         )
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test environment and stop timeline."""
         app_utils.stop()
         await omni.kit.app.get_app().next_update_async()
@@ -76,7 +76,7 @@ class TestCreate3(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
 
     # Actual test, notice it is "async" function, so "await" can be used if needed
-    async def test_loading(self):
+    async def test_loading(self) -> None:
         """Test that the Create3 robot loads and can move forward."""
         stage_utils.delete_prim("/ActionGraph")
         # Start Simulation and wait
@@ -103,7 +103,7 @@ class TestCreate3(omni.kit.test.AsyncTestCase):
         self.assertTrue(delta > 0.02)
 
     # Building up speed tests
-    async def test_accel(self):
+    async def test_accel(self) -> None:
         """Test acceleration behavior with gradually increasing velocities."""
         odom_velocity = og.Controller.attribute("outputs:linearVelocity", self.odom_node)
         odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)
@@ -131,7 +131,7 @@ class TestCreate3(omni.kit.test.AsyncTestCase):
         app_utils.stop()
 
     # braking from different init speeds
-    async def test_brake(self):
+    async def test_brake(self) -> None:
         """Test braking behavior from various initial velocities."""
         odom_velocity = og.Controller.attribute("outputs:linearVelocity", self.odom_node)
         odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)
@@ -164,7 +164,7 @@ class TestCreate3(omni.kit.test.AsyncTestCase):
             app_utils.stop()
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_spin(self):
+    async def test_spin(self) -> None:
         """Test spinning behavior at different angular velocities."""
         odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)
 
@@ -190,7 +190,7 @@ class TestCreate3(omni.kit.test.AsyncTestCase):
             app_utils.stop()
 
     # go in circle
-    async def test_circle(self):
+    async def test_circle(self) -> None:
         """Test circular motion and verify return to starting position."""
         odom_velocity = og.Controller.attribute("outputs:linearVelocity", self.odom_node)
         odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)

@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 object ID map OmniGraph node."""
+"""Verifies ROS 2 object ID map publication from scene semantics and rendered sensor data."""
 
 import json
+from typing import Any
 from uuid import uuid4
 
 import omni
@@ -30,10 +31,10 @@ from .common import create_sarcophagus, get_qos_profile
 
 
 class TestROS2ObjectIdMap(ROS2TestCase):
-    """Test suite for r o s2 object id map."""
+    """Verify object ID map messages generated from semantic scene labels."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh stage for object ID map publication tests."""
         await super().setUp()
 
         await omni.usd.get_context().new_stage_async()
@@ -58,7 +59,7 @@ class TestROS2ObjectIdMap(ROS2TestCase):
         self._ros_msg_timestamp_prev = None
         self._ros_msg_queue_depth = 10
 
-        def ros_callback(data):
+        def ros_callback(data: Any) -> None:
             self._ros_msg_data = data
             self._ros_msg_count += 1
 
@@ -86,19 +87,19 @@ class TestROS2ObjectIdMap(ROS2TestCase):
         )
         self._writer.attach(self._render_product)
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Stop the timeline after object ID map publication tests."""
         if self._annotator is not None:
             self._annotator.detach()
         if self._writer is not None:
             self._writer.detach()
         await super().tearDown()
 
-    def spin(self):
+    def spin(self) -> None:
         """Handle spin operation."""
         rclpy.spin_once(self._ros_node, timeout_sec=0.01)
 
-    async def test_object_id_map(self):
+    async def test_object_id_map(self) -> None:
         """Test object id map."""
         # Run the timeline to populate data
         self._timeline.play()

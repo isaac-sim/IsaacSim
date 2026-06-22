@@ -80,19 +80,25 @@ from isaacsim.storage.native import get_assets_root_path
 _ROBOT_USD = "Isaac/Robots/UniversalRobots/ur10e/ur10e.usd"
 
 
-def _articulation_base_path(stage) -> str | None:
+def _articulation_base_path(stage: object) -> str | None:
     """Find the first articulation BASE path on ``stage`` and return it.
 
     Uses :func:`articulation_discovery.find_all_articulation_base_paths` so the
     returned path matches what :class:`EditorState` expects (the maximal
     subtree containing the robot, e.g. ``/ur10e``), not the path of the
     ArticulationRootAPI-bearing prim (which on UR10e is ``/ur10e/root_joint``).
+
+    Args:
+        stage: Stage to inspect.
+
+    Returns:
+        First articulation base path, or None if none exists.
     """
     paths = articulation_discovery.find_all_articulation_base_paths(stage)
     return paths[0] if paths else None
 
 
-def _disable_instanceable(stage) -> None:
+def _disable_instanceable(stage: object) -> None:
     """Recursively turn off ``instanceable=True`` on every prim of ``stage``.
 
     UR10e's USD references sub-assets with ``instanceable=True``, but
@@ -104,6 +110,9 @@ def _disable_instanceable(stage) -> None:
     A single pass isn't enough because hiding the children of an instanceable
     prim only becomes visible after the parent is flipped, so we loop until
     no more instanceable prims remain.
+
+    Args:
+        stage: Stage to update.
     """
     while True:
         changed = False
@@ -121,7 +130,8 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
     # Extension checkers
     # ------------------------------------------------------------------
-    async def test_is_xrdf_file_extensions(self):
+    async def test_is_xrdf_file_extensions(self) -> None:
+        """Test is xrdf file extensions."""
         self.assertTrue(is_xrdf_file("robot.xrdf"))
         self.assertTrue(is_xrdf_file("robot.yaml"))
         self.assertTrue(is_xrdf_file("robot.yml"))
@@ -129,7 +139,8 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         self.assertFalse(is_xrdf_file("robot.urdf"))
         self.assertFalse(is_xrdf_file("robot.txt"))
 
-    async def test_is_yaml_file_extensions(self):
+    async def test_is_yaml_file_extensions(self) -> None:
+        """Test is yaml file extensions."""
         self.assertTrue(is_yaml_file("robot.yaml"))
         self.assertTrue(is_yaml_file("robot.yml"))
         self.assertFalse(is_yaml_file("robot.xrdf"))
@@ -138,7 +149,8 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
     # YAML helpers
     # ------------------------------------------------------------------
-    async def test_recursive_cast_to_float_handles_strings_and_lists(self):
+    async def test_recursive_cast_to_float_handles_strings_and_lists(self) -> None:
+        """Test recursive cast to float handles strings and lists."""
         d = {
             "scalar": "1.5",
             "non_numeric": "hello",
@@ -151,7 +163,8 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         self.assertEqual(d["list"], [2.0, "world", -3.5])
         self.assertEqual(d["nested"]["value"], 0.25)
 
-    async def test_safe_load_yaml_round_trip(self):
+    async def test_safe_load_yaml_round_trip(self) -> None:
+        """Test safe load yaml round trip."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "doc.yaml")
             with open(path, "w") as f:
@@ -161,14 +174,15 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
             self.assertEqual(loaded["b"], [2.0, 3.0])
             self.assertEqual(loaded["c"]["d"], 0.5)
 
-    async def test_safe_load_yaml_handles_missing_path_gracefully(self):
+    async def test_safe_load_yaml_handles_missing_path_gracefully(self) -> None:
+        """Test safe load yaml handles missing path gracefully."""
         with tempfile.TemporaryDirectory() as tmpdir:
             empty_path = os.path.join(tmpdir, "empty.yaml")
             with open(empty_path, "w") as f:
                 f.write("")
             self.assertEqual(safe_load_yaml(empty_path), {})
 
-    async def test_safe_load_yaml_handles_non_mapping_root(self):
+    async def test_safe_load_yaml_handles_non_mapping_root(self) -> None:
         """A YAML file with a list/scalar root must return ``{}``, not crash.
 
         Regression: ``recursive_cast_to_float`` assumes a dict and previously
@@ -187,7 +201,8 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
     # XRDF version helpers
     # ------------------------------------------------------------------
-    async def test_collision_key_for_version(self):
+    async def test_collision_key_for_version(self) -> None:
+        """Test collision key for version."""
         self.assertEqual(collision_key_for_version(XRDF_VERSION_1), COLLISION_KEY_V1)
         self.assertEqual(collision_key_for_version(XRDF_VERSION_2), COLLISION_KEY_V2)
         with self.assertRaises(ValueError):
@@ -212,7 +227,8 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
             sphere_dict_writer=None,  # No real spheres
         )
 
-    async def test_build_xrdf_dict_basic_structure_v2(self):
+    async def test_build_xrdf_dict_basic_structure_v2(self) -> None:
+        """Test build xrdf dict basic structure v2."""
         inputs = self._build_minimal_inputs("/tmp/never-written.xrdf", XRDF_VERSION_2)
         result = build_xrdf_dict(inputs)
         self.assertEqual(result["format"], XRDF_FORMAT)
@@ -224,20 +240,22 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         self.assertEqual(result["cspace"]["jerk_limits"], [100.0, 200.0])
         self.assertEqual(set(result["default_joint_positions"].keys()), {"j0", "j1", "j2"})
 
-    async def test_build_xrdf_dict_basic_structure_v1(self):
+    async def test_build_xrdf_dict_basic_structure_v1(self) -> None:
+        """Test build xrdf dict basic structure v1."""
         inputs = self._build_minimal_inputs("/tmp/never-written.xrdf", XRDF_VERSION_1)
         result = build_xrdf_dict(inputs)
         self.assertEqual(result["format_version"], 1.0)
         self.assertIn(COLLISION_KEY_V1, result)
         self.assertNotIn(COLLISION_KEY_V2, result)
 
-    async def test_invalid_format_version_falls_back_to_v2(self):
+    async def test_invalid_format_version_falls_back_to_v2(self) -> None:
+        """Test invalid format version falls back to v2."""
         inputs = self._build_minimal_inputs("/tmp/never-written.xrdf", 5.5)
         result = build_xrdf_dict(inputs)
         self.assertEqual(result["format_version"], XRDF_VERSION_2)
         self.assertIn(COLLISION_KEY_V2, result)
 
-    async def test_build_xrdf_dict_merge_existing_without_self_collision(self):
+    async def test_build_xrdf_dict_merge_existing_without_self_collision(self) -> None:
         """Merging an XRDF that has world_collision + geometry but no self_collision.
 
         Regression: ``build_xrdf_dict`` used to raise ``KeyError`` accessing
@@ -269,7 +287,8 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
             self.assertEqual(result[COLLISION_KEY_V2]["geometry"], "preexisting_group")
             self.assertNotIn(DEFAULT_GEOMETRY_GROUP_NAME, result["geometry"])
 
-    async def test_write_and_read_round_trip(self):
+    async def test_write_and_read_round_trip(self) -> None:
+        """Test write and read round trip."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "robot.xrdf")
             inputs = self._build_minimal_inputs(path)
@@ -297,7 +316,8 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
             )
             np.testing.assert_allclose(result.joint_positions, inputs.joint_positions, atol=1e-3)
 
-    async def test_is_valid_xrdf_file_rejects_non_xrdf(self):
+    async def test_is_valid_xrdf_file_rejects_non_xrdf(self) -> None:
+        """Test is valid xrdf file rejects non xrdf."""
         with tempfile.TemporaryDirectory() as tmpdir:
             not_xrdf = os.path.join(tmpdir, "robot.yaml")
             with open(not_xrdf, "w") as f:
@@ -307,7 +327,8 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
             missing = os.path.join(tmpdir, "does_not_exist.xrdf")
             self.assertFalse(is_valid_xrdf_file(missing))
 
-    async def test_read_xrdf_file_raises_on_missing_format(self):
+    async def test_read_xrdf_file_raises_on_missing_format(self) -> None:
+        """Test read xrdf file raises on missing format."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "bad.xrdf")
             with open(path, "w") as f:
@@ -325,7 +346,15 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
     @staticmethod
     def _full_xrdf_payload(format_version: float, *, collision_key: str) -> dict:
-        """Build a complete XRDF dict with collision + geometry + self_collision."""
+        """Build a complete XRDF dict with collision, geometry, and self-collision.
+
+        Args:
+            format_version: XRDF format version to encode.
+            collision_key: Top-level collision key to include.
+
+        Returns:
+            Complete XRDF payload.
+        """
         return {
             "format": XRDF_FORMAT,
             "format_version": float(format_version),
@@ -354,7 +383,12 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         }
 
     def _assert_full_xrdf_round_trip(self, format_version: float, collision_key: str) -> None:
-        """Shared assertions for the v1 / v2 read-from-disk round-trip tests."""
+        """Run shared assertions for the v1 and v2 read-from-disk round-trip tests.
+
+        Args:
+            format_version: XRDF format version to test.
+            collision_key: Top-level collision key expected for the version.
+        """
         dof_names = ["j0", "j1", "j2"]
         payload = self._full_xrdf_payload(format_version, collision_key=collision_key)
 
@@ -413,15 +447,15 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         )
         self.assertEqual(parsed["self_collision"]["geometry"], "test_group")
 
-    async def test_read_xrdf_file_v1_returns_full_payload(self):
+    async def test_read_xrdf_file_v1_returns_full_payload(self) -> None:
         """Read a v1 XRDF from disk and verify every section round-trips."""
         self._assert_full_xrdf_round_trip(XRDF_VERSION_1, COLLISION_KEY_V1)
 
-    async def test_read_xrdf_file_v2_returns_full_payload(self):
+    async def test_read_xrdf_file_v2_returns_full_payload(self) -> None:
         """Read a v2 XRDF from disk and verify every section round-trips."""
         self._assert_full_xrdf_round_trip(XRDF_VERSION_2, COLLISION_KEY_V2)
 
-    async def test_read_lula_robot_description_file_returns_full_payload(self):
+    async def test_read_lula_robot_description_file_returns_full_payload(self) -> None:
         """Read a Lula robot-description YAML and verify the projected state.
 
         Lula's reader returns a narrower :class:`LulaReadResult` (no parsed
@@ -472,7 +506,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
     # Defensive guards: non-mapping YAML roots, malformed merge inputs
     # ------------------------------------------------------------------
-    async def test_is_valid_xrdf_file_rejects_non_mapping_yaml_root(self):
+    async def test_is_valid_xrdf_file_rejects_non_mapping_yaml_root(self) -> None:
         """A YAML file whose root is a list or scalar must be rejected, not crash."""
         with tempfile.TemporaryDirectory() as tmpdir:
             for name, body in (
@@ -486,7 +520,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
                 # Must return False rather than raise AttributeError on .get().
                 self.assertFalse(is_valid_xrdf_file(path), f"{name} should not be a valid XRDF")
 
-    async def test_read_xrdf_file_raises_clean_error_on_non_mapping_root(self):
+    async def test_read_xrdf_file_raises_clean_error_on_non_mapping_root(self) -> None:
         """A list/scalar-rooted YAML must surface a ValueError (no AttributeError)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "list_root.xrdf")
@@ -500,7 +534,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
                     default_jerk_limit=DEFAULT_JERK_LIMIT,
                 )
 
-    async def test_merge_passthrough_preserves_self_collision_ignore_when_geometry_renamed(self):
+    async def test_merge_passthrough_preserves_self_collision_ignore_when_geometry_renamed(self) -> None:
         """Regression: changing the geometry group name during merge must keep ``ignore``.
 
         Previously merge_passthrough_dict replaced the whole self_collision block
@@ -536,7 +570,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         )
         self.assertEqual(result["self_collision"]["buffer_distance"], {"link0": 0.01})
 
-    async def test_merge_passthrough_normalises_missing_geometry_group(self):
+    async def test_merge_passthrough_normalises_missing_geometry_group(self) -> None:
         """A file with collision.geometry pointing at a non-existent group must not crash."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "dangling_group.xrdf")
@@ -562,7 +596,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         self.assertNotIn("geometry", result)
         self.assertNotIn("self_collision", result)
 
-    async def test_merge_passthrough_normalises_missing_top_level_geometry(self):
+    async def test_merge_passthrough_normalises_missing_top_level_geometry(self) -> None:
         """A file with collision_key but no top-level geometry dict must not crash."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "no_top_geometry.xrdf")
@@ -580,7 +614,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         self.assertNotIn(COLLISION_KEY_V2, result)
         self.assertNotIn("geometry", result)
 
-    async def test_merge_passthrough_mirrors_self_collision_geometry_when_missing(self):
+    async def test_merge_passthrough_mirrors_self_collision_geometry_when_missing(self) -> None:
         """``self_collision`` present without a ``geometry`` sub-key must get one mirrored from collision.
 
         Regression: previously the rewrite-in-place branch only fired when
@@ -607,7 +641,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         # Preserved field survived the mirror.
         self.assertEqual(result["self_collision"]["ignore"], {"link0": ["link1"]})
 
-    async def test_merge_passthrough_renames_v1_collision_to_v2(self):
+    async def test_merge_passthrough_renames_v1_collision_to_v2(self) -> None:
         """A merge source using the v1 ``collision`` key must be normalised to ``world_collision``.
 
         Internally :func:`merge_passthrough_dict` works in v2-space; the v1 key
@@ -639,7 +673,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         )
         self.assertEqual(result["self_collision"]["ignore"], {"link0": ["link1"]})
 
-    async def test_merge_passthrough_buffer_distance_reconciliation(self):
+    async def test_merge_passthrough_buffer_distance_reconciliation(self) -> None:
         """world_collision buffer distances must be zeroed and the offset moved to self_collision.
 
         Covers four behaviours that previously had no test:
@@ -730,7 +764,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
     # Mimic-joint filtering
     # ------------------------------------------------------------------
-    async def test_build_xrdf_dict_omits_mimic_joints_from_default_positions(self):
+    async def test_build_xrdf_dict_omits_mimic_joints_from_default_positions(self) -> None:
         """Mimic-follower joints must not appear in ``default_joint_positions``.
 
         Regression: cuMotion's ``load_robot_from_memory`` rejects independent
@@ -745,7 +779,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         self.assertEqual(set(result["default_joint_positions"].keys()), {"j0", "j2"})
         self.assertNotIn("j1", result["default_joint_positions"])
 
-    async def test_build_xrdf_dict_omits_mimic_joints_from_cspace(self):
+    async def test_build_xrdf_dict_omits_mimic_joints_from_cspace(self) -> None:
         """Mimic-follower joints must not appear in ``cspace.joint_names`` even when active.
 
         cuMotion treats every joint in ``cspace.joint_names`` as directly
@@ -772,7 +806,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(cspace["jerk_limits"][0], 100.0, places=6)
         self.assertAlmostEqual(cspace["jerk_limits"][1], 300.0, places=6)
 
-    async def test_build_xrdf_dict_with_empty_mimic_set_preserves_behaviour(self):
+    async def test_build_xrdf_dict_with_empty_mimic_set_preserves_behaviour(self) -> None:
         """Passing an empty ``mimic_joint_names`` must reproduce the pre-mimic behaviour."""
         inputs = self._build_minimal_inputs("/tmp/never-written.xrdf", XRDF_VERSION_2)
         inputs.mimic_joint_names = set()
@@ -782,7 +816,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         self.assertEqual(set(result["default_joint_positions"].keys()), {"j0", "j1", "j2"})
         self.assertEqual(result["cspace"]["joint_names"], ["j0", "j1"])
 
-    async def test_write_lula_robot_description_omits_mimic_joints(self):
+    async def test_write_lula_robot_description_omits_mimic_joints(self) -> None:
         """Mimic-follower joints must appear in neither ``cspace`` nor ``cspace_to_urdf_rules``.
 
         Lula derives the mimic-follower's position from the URDF ``<mimic>``
@@ -795,7 +829,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
             # be filtered out), j2 fixed.
 
             class _NoSpheres:
-                def save_spheres(self, _base_path, _f):
+                def save_spheres(self, _base_path: object, _f: object) -> None:
                     return None
 
             inputs = LulaWriteInputs(
@@ -821,7 +855,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         # `j1` must not appear as either a cspace entry OR a fixed rule.
         self.assertNotIn("name: j1", contents)
 
-    async def test_find_mimic_joint_names_detects_physx_and_newton_schemas(self):
+    async def test_find_mimic_joint_names_detects_physx_and_newton_schemas(self) -> None:
         """``find_mimic_joint_names`` must detect both legacy and current mimic schemas.
 
         * ``PhysxSchema.PhysxMimicJointAPI`` (multi-apply): authored by
@@ -880,7 +914,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
         self.assertEqual(articulation_discovery.find_mimic_joint_names(stage, ""), set())
         self.assertEqual(articulation_discovery.find_mimic_joint_names(stage, "/does/not/exist"), set())
 
-    async def test_write_lula_robot_description_raises_when_only_mimic_active(self):
+    async def test_write_lula_robot_description_raises_when_only_mimic_active(self) -> None:
         """If every active joint is a mimic follower, the writer must raise.
 
         After filtering, no DOFs remain in cspace, which is the same failure
@@ -891,7 +925,7 @@ class TestXrdfIoPure(omni.kit.test.AsyncTestCase):
             path = os.path.join(tmpdir, "robot.yaml")
 
             class _NoSpheres:
-                def save_spheres(self, _base_path, _f):
+                def save_spheres(self, _base_path: object, _f: object) -> None:
                     return None
 
             inputs = LulaWriteInputs(
@@ -913,11 +947,13 @@ class TestXrdfPipelineIntegration(omni.kit.test.AsyncTestCase):
     """End-to-end pipeline test: USD -> URDF + XRDF -> cuMotion load."""
 
     async def setUp(self) -> None:
+        """Set up test fixtures."""
         self._timeline = omni.timeline.get_timeline_interface()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
     async def tearDown(self) -> None:
+        """Clean up test fixtures."""
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await asyncio.sleep(1.0)
         if self._timeline and self._timeline.is_playing():
@@ -926,7 +962,7 @@ class TestXrdfPipelineIntegration(omni.kit.test.AsyncTestCase):
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def _open_robot(self, robot_path: str):
+    async def _open_robot(self, robot_path: str) -> object | None:
         assets_root = get_assets_root_path()
         if assets_root is None:
             return None
@@ -940,7 +976,7 @@ class TestXrdfPipelineIntegration(omni.kit.test.AsyncTestCase):
         for _ in range(5):
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_full_xrdf_export_and_cumotion_load(self):
+    async def test_full_xrdf_export_and_cumotion_load(self) -> None:
         """Open UR10e, populate state, export URDF + XRDF, then load via cuMotion."""
         stage = await self._open_robot(_ROBOT_USD)
         if stage is None:

@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.4] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.2.3] - 2026-04-30
 ### Changed
 - Migrated examples and tests to the new `isaacsim.sensors.experimental.physics` 3.0.0 API: call `IMU.create()`, `Contact.create()`, `Raycast.create()` (the authoring classes) and wrap the returned authoring object with the runtime sensor for data reads. The deleted `*Backend` classes and the runtime `XSensor.create()` class methods are no longer used; examples and tests use `IMUSensor`, `ContactSensor`, `RaycastSensor` directly. Updated all transform arguments to plural `translations`/`orientations` arrays matching the new API.

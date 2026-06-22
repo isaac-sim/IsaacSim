@@ -16,7 +16,8 @@
 """Provides interactive editing capabilities for collision spheres in robot descriptions."""
 
 from collections import OrderedDict
-from typing import Generator
+from collections.abc import Generator
+from typing import Any
 
 import carb
 import isaacsim.core.experimental.utils.prim as prim_utils
@@ -51,7 +52,7 @@ class CollisionSphereEditor:
     tracked as operations that can be undone or redone, providing a robust editing experience.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.path_2_spheres = {}
         self.path_2_sphere_serial_copy = {}
 
@@ -140,7 +141,7 @@ class CollisionSphereEditor:
         for sphere_path in sphere_paths:
             self.delete_sphere(sphere_path)
 
-    def clear_link_spheres(self, link_path: str, store_op: bool = True):
+    def clear_link_spheres(self, link_path: str, store_op: bool = True) -> None:
         """Removes all collision spheres associated with the specified link.
 
         Args:
@@ -155,7 +156,7 @@ class CollisionSphereEditor:
         if store_op:
             self.copy_all_sphere_data()
         deleted_spheres = ["DEL"]
-        for p in self.path_2_spheres.keys():
+        for p in self.path_2_spheres:
             if self._is_prim_path_valid(p) and p[:path_len] == link_path:
                 deleted_spheres.append(self.path_2_sphere_serial_copy[p])
                 to_delete.append(p)
@@ -165,7 +166,7 @@ class CollisionSphereEditor:
         for s in to_delete:
             self.delete_sphere(s)
 
-    def delete_sphere(self, sphere_path: str):
+    def delete_sphere(self, sphere_path: str) -> None:
         """Deletes the collision sphere at the specified path.
 
         Args:
@@ -177,7 +178,9 @@ class CollisionSphereEditor:
         if sphere_path in self.path_2_spheres:
             del self.path_2_spheres[sphere_path]
 
-    def set_sphere_colors(self, filter: str, color_in: np.ndarray | None = None, color_out: np.ndarray | None = None):
+    def set_sphere_colors(
+        self, filter: str, color_in: np.ndarray | None = None, color_out: np.ndarray | None = None
+    ) -> None:
         """Sets the colors for spheres based on filter matching.
 
         Args:
@@ -192,7 +195,7 @@ class CollisionSphereEditor:
         self.filter = filter
 
         with Sdf.ChangeBlock():
-            for sphere_path in self.path_2_spheres.keys():
+            for sphere_path in self.path_2_spheres:
                 self.set_sphere_color(sphere_path, False)
 
     def set_sphere_color(self, sphere_path: str, ensure_visual_material: bool = True) -> None:
@@ -210,7 +213,7 @@ class CollisionSphereEditor:
         else:
             sphere.set_display_colors(self.filter_out_sphere_color)
 
-    def copy_all_sphere_data(self):
+    def copy_all_sphere_data(self) -> None:
         """Copies all current sphere data to the serial copy storage for undo operations."""
         sphere_paths = list(self.path_2_spheres.keys())
         deleted_spheres = ["DEL"]
@@ -231,7 +234,7 @@ class CollisionSphereEditor:
         if len(deleted_spheres) > 1:
             self._operations.append(deleted_spheres)
 
-    def undo(self):
+    def undo(self) -> None:
         """Undo the last sphere operation."""
         if len(self._operations) == 0:
             return
@@ -281,7 +284,7 @@ class CollisionSphereEditor:
                     redo.append({"sphere_path": path, "radius": factor * rad})
             self._redo.append(redo)
 
-    def redo(self):
+    def redo(self) -> None:
         """Redo the last undone sphere operation."""
         if len(self._redo) == 0:
             return
@@ -319,7 +322,16 @@ class CollisionSphereEditor:
                     sphere = self.path_2_spheres[path]
                     sphere.set_radii(rad)
 
-    def generate_spheres(self, link_path, points, face_inds, vert_cts, num_spheres, radius_offset, is_preview):
+    def generate_spheres(
+        self,
+        link_path: str,
+        points: np.ndarray,
+        face_inds: np.ndarray,
+        vert_cts: np.ndarray,
+        num_spheres: int,
+        radius_offset: float,
+        is_preview: bool,
+    ) -> None:
         """Generate collision spheres from mesh geometry for the specified link.
 
         Args:
@@ -384,7 +396,7 @@ class CollisionSphereEditor:
             self._operations.append(added_sphere_paths)
             self.clear_preview()
 
-    def clear_preview(self):
+    def clear_preview(self) -> None:
         """Remove all preview spheres from the scene."""
         self._preview_path_generator = {}
 
@@ -392,7 +404,7 @@ class CollisionSphereEditor:
             self.delete_sphere(sphere.paths[0])
         self._preview_spheres = []
 
-    def add_sphere(self, link_path, center, radius, store_op=True):
+    def add_sphere(self, link_path: str, center: object, radius: float, store_op: bool = True) -> str:
         """Add a collision sphere to the specified link.
 
         Args:
@@ -427,7 +439,9 @@ class CollisionSphereEditor:
 
         return sphere_path
 
-    def _get_sphere_list_from_xrdf_geometries(self, parsed_file, geometry_group_name) -> dict:
+    def _get_sphere_list_from_xrdf_geometries(
+        self, parsed_file: dict[str, Any], geometry_group_name: str
+    ) -> dict[str, Any]:
         spheres = {}
         if "geometry" not in parsed_file:
             carb.log_warn("No geometry groups specified under 'geometry' in XRDF file.  No spheres will be imported.")
@@ -447,7 +461,7 @@ class CollisionSphereEditor:
 
         from collections import deque
 
-        handled_groups = set([geometry_group_name])
+        handled_groups = {geometry_group_name}
         clones = deque()
         if "clone" in imported_group:
             for clone_group_name in imported_group["clone"]:
@@ -473,7 +487,7 @@ class CollisionSphereEditor:
 
         return spheres
 
-    def load_xrdf_spheres(self, robot_prim_path, parsed_file: dict):
+    def load_xrdf_spheres(self, robot_prim_path: str, parsed_file: dict[str, Any]) -> None:
         """Load collision spheres from a parsed XRDF file.
 
         Args:
@@ -517,7 +531,7 @@ class CollisionSphereEditor:
             and parsed_file["self_collision"]["geometry"] != geometry_group_name
         ):
             carb.log_warn(
-                f"Specifying a 'self_collision' geometry group that is not the same as "
+                "Specifying a 'self_collision' geometry group that is not the same as "
                 + f"the '{collision_key}' geometry group is not supported by this importer. "
                 + "The 'self_collision' group will be ignored."
             )
@@ -539,7 +553,7 @@ class CollisionSphereEditor:
                     sphere_path = self.add_sphere(link_path, center, radius, store_op=False)
                     added_sphere_paths.append(sphere_path)
             else:
-                carb.log_warn("Could not place sphere from xrdf at path: {}".format(link_path))
+                carb.log_warn(f"Could not place sphere from xrdf at path: {link_path}")
 
         self._operations.append(added_sphere_paths)
 
@@ -548,13 +562,13 @@ class CollisionSphereEditor:
             # distance targeted at `link1` does not also match sibling links
             # whose names share that prefix (e.g. `link10`, `link1_tip`).
             link_path_prefix = robot_prim_path + "/" + k + "/"
-            for p in self.path_2_spheres.keys():
+            for p in self.path_2_spheres:
                 if self._is_prim_path_valid(p) and p.startswith(link_path_prefix):
                     sphere = self.path_2_spheres[p]
                     rad = sphere.get_radii().numpy()[0]
                     sphere.set_radii(rad + v)
 
-    def load_spheres(self, robot_prim_path, robot_description_file_path):
+    def load_spheres(self, robot_prim_path: str, robot_description_file_path: str) -> None:
         """Load collision spheres from a robot description YAML file.
 
         Args:
@@ -566,7 +580,7 @@ class CollisionSphereEditor:
         self._redo = []
         self._operations = []
 
-        with open(robot_description_file_path, "r") as stream:
+        with open(robot_description_file_path) as stream:
             try:
                 parsed_file = yaml.safe_load(stream)
             except yaml.YAMLError as exc:
@@ -600,11 +614,11 @@ class CollisionSphereEditor:
                         sphere_path = self.add_sphere(link_path, center, radius, store_op=False)
                         added_sphere_paths.append(sphere_path)
                 else:
-                    carb.log_warn("Could not place sphere from robot description at path: {}".format(link_path))
+                    carb.log_warn(f"Could not place sphere from robot description at path: {link_path}")
 
         self._operations.append(added_sphere_paths)
 
-    def interpolate_spheres(self, path1, path2, num_spheres):
+    def interpolate_spheres(self, path1: str, path2: str, num_spheres: int) -> None:
         """Create interpolated spheres between two existing spheres.
 
         Args:
@@ -613,10 +627,10 @@ class CollisionSphereEditor:
             num_spheres: Number of interpolated spheres to create.
         """
         if not self._is_prim_path_valid(path1):
-            carb.log_warn("{} is not a valid Prim path to a sphere".format(path1))
+            carb.log_warn(f"{path1} is not a valid Prim path to a sphere")
             return
         elif not self._is_prim_path_valid(path2):
-            carb.log_warn("{} is not a valid Prim path to a sphere".format(path2))
+            carb.log_warn(f"{path2} is not a valid Prim path to a sphere")
             return
 
         link_path = self._get_link_path(path1)
@@ -625,9 +639,7 @@ class CollisionSphereEditor:
             # function silently interpolated `path2` into `path1`'s link and
             # produced spheres at the wrong location. Bail out instead.
             carb.log_warn(
-                "Prim paths {} and {} are not nested under the same link.  They cannot be interpolated.".format(
-                    path1, path2
-                )
+                f"Prim paths {path1} and {path2} are not nested under the same link.  They cannot be interpolated."
             )
             return
 
@@ -664,7 +676,7 @@ class CollisionSphereEditor:
             added_sphere_paths.append(sphere_path)
         self._operations.append(added_sphere_paths)
 
-    def scale_spheres(self, path, factor):
+    def scale_spheres(self, path: str, factor: float) -> None:
         """Scale all spheres under the specified path by a factor.
 
         Args:
@@ -674,7 +686,7 @@ class CollisionSphereEditor:
         scaled_spheres = ["SCALE"]
         path_len = len(path)
 
-        for p in self.path_2_spheres.keys():
+        for p in self.path_2_spheres:
             if self._is_prim_path_valid(p) and p[:path_len] == path:
                 sphere = self.path_2_spheres[p]
                 rad = sphere.get_radii().numpy()[0]
@@ -692,7 +704,7 @@ class CollisionSphereEditor:
             List of sphere names (relative paths from the link path).
         """
         sphere_names = []
-        for sphere_path in self.path_2_spheres.keys():
+        for sphere_path in self.path_2_spheres:
             sphere_link_path = self._get_link_path(sphere_path)
             if sphere_link_path == link_path:
                 sphere_names.append(sphere_path[len(link_path) :])
@@ -700,7 +712,7 @@ class CollisionSphereEditor:
         return sphere_names
 
     # Used for XRDF files
-    def write_spheres_to_dict(self, robot_prim_path: str, link_to_spheres: dict):
+    def write_spheres_to_dict(self, robot_prim_path: str, link_to_spheres: dict[str, Any]) -> None:
         """Writes collision sphere data to a dictionary grouped by link names.
 
         Used for XRDF files. Updates the provided dictionary with sphere data for each link.
@@ -714,9 +726,7 @@ class CollisionSphereEditor:
             if self._is_prim_path_valid(prim_path):
                 if prim_path[: len(robot_prim_path)] != robot_prim_path:
                     carb.log_warn(
-                        "Not writing sphere at path {} to file because it is not nested under the robot Articulation".format(
-                            prim_path
-                        )
+                        f"Not writing sphere at path {prim_path} to file because it is not nested under the robot Articulation"
                     )
                     continue
                 link_name = prim_path[len(robot_prim_path) + 1 : prim_path.rfind("/")]
@@ -741,9 +751,7 @@ class CollisionSphereEditor:
             if self._is_prim_path_valid(prim_path):
                 if prim_path[: len(robot_prim_path)] != robot_prim_path:
                     carb.log_warn(
-                        "Not writing sphere at path {} to file because it is not nested under the robot Articulation".format(
-                            prim_path
-                        )
+                        f"Not writing sphere at path {prim_path} to file because it is not nested under the robot Articulation"
                     )
                     continue
                 link_name = prim_path[len(robot_prim_path) + 1 : prim_path.rfind("/")]
@@ -759,12 +767,12 @@ class CollisionSphereEditor:
 
         f.write("collision_spheres:\n")
         for link_name, sphere_list in link_to_spheres.items():
-            f.write("  - {}:\n".format(link_name))
+            f.write(f"  - {link_name}:\n")
             for sphere in sphere_list:
                 f.write('    - "center": {}\n'.format(sphere["center"]))
                 f.write('      "radius": {}\n'.format(sphere["radius"]))
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Cleans up resources when the editor is shut down.
 
         Removes all spheres, preview spheres, and deletes the Lula robot description editor prim.

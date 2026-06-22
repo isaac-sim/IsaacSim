@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [0.1.1] - 2026-05-11
 ### Changed
 - Updated PINK examples to target the Franka gripper fingertip midpoint and initialize from a bent reaching posture.

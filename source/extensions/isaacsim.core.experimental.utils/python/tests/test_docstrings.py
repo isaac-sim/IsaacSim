@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for docstrings."""
+"""Verifies public experimental utility modules have complete API docstring coverage. Covers app, backend, foundation, ops, prim, semantics, stage, transform, and xform utilities."""
 
 import isaacsim.core.experimental.utils.impl.app as app_utils
 import isaacsim.core.experimental.utils.impl.backend as backend_utils
@@ -33,49 +33,49 @@ wp.init()  # init warp to avoid undesired stdout output
 class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
     """Test extension docstrings."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # create new stage
         await stage_utils.create_new_stage_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
-    async def test_app_docstrings(self):
+    async def test_app_docstrings(self) -> None:
         """Test app docstrings."""
         await self.assertDocTests(app_utils)
 
-    async def test_backend_docstrings(self):
+    async def test_backend_docstrings(self) -> None:
         """Test backend docstrings."""
         await self.assertDocTests(backend_utils)
 
-    async def test_foundation_docstrings(self):
+    async def test_foundation_docstrings(self) -> None:
         """Test foundation docstrings."""
         await self.assertDocTests(foundation_utils)
 
-    async def test_ops_docstrings(self):
+    async def test_ops_docstrings(self) -> None:
         """Test ops docstrings."""
         await self.assertDocTests(ops_utils)
 
-    async def test_prim_docstrings(self):
+    async def test_prim_docstrings(self) -> None:
         """Test prim docstrings."""
         await self.assertDocTests(prim_utils)
 
-    async def test_semantics_docstrings(self):
+    async def test_semantics_docstrings(self) -> None:
         """Test semantics docstrings."""
         await self.assertDocTests(semantics_utils)
 
-    async def test_stage_docstrings(self):
+    async def test_stage_docstrings(self) -> None:
         """Test stage docstrings."""
         await self.assertDocTests(stage_utils)
 
-    async def test_transform_docstrings(self):
+    async def test_transform_docstrings(self) -> None:
         """Test transform docstrings."""
         await self.assertDocTests(transform_utils)
 
-    async def test_xform_docstrings(self):
+    async def test_xform_docstrings(self) -> None:
         """Test xform docstrings."""
         stage_utils.define_prim("/A")
         stage_utils.define_prim("/A/B")

@@ -21,7 +21,6 @@ from typing import Any
 
 import carb
 import carb.events
-import omni.kit.app
 from isaacsim.replicator.behavior.global_variables import EXPOSED_ATTR_NS, EXTENSION_NAME
 from isaacsim.replicator.behavior.utils.behavior_utils import (
     check_if_exposed_variables_should_be_removed,

@@ -13,13 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Regression tests for known Newton initialization errors.
-
-Each test constructs a minimal USD scene that triggers a specific known
-limitation and asserts the expected error is produced. A test passes when
-the limitation is still present; a failure indicates it may have been fixed
-or the scene setup needs revisiting.
-"""
+"""Verifies known Newton initialization limitations produce the expected errors for minimal USD scenes. The tests cover missing or invalid joint graphs, bad mass or collision values, USD composition errors, orphan joints, and contact-count overflow."""
 
 from __future__ import annotations
 
@@ -29,6 +23,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import contextmanager
+from typing import Any
 
 import carb
 import carb.eventdispatcher
@@ -42,11 +37,18 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 
 
 @contextmanager
-def _capture_errors():
-    """Capture carb ERROR-level log messages via the event dispatcher."""
+def _capture_errors() -> Any:
+    """Capture carb ERROR-level log messages via the event dispatcher.
+
+    Returns:
+        Context manager that yields captured ERROR-level log messages.
+
+    Yields:
+        Mutable list populated with captured ERROR-level log messages.
+    """  # noqa: DOC403
     messages: list[str] = []
 
-    def _on_event(e):
+    def _on_event(e: Any) -> Any:
         source = e.get("source") or ""
         if source == "omni.kit.app._impl":
             return
@@ -65,19 +67,23 @@ def _capture_errors():
         sub = None  # noqa: F841
 
 
-def _flush_process_output():
+def _flush_process_output() -> Any:
     sys.stdout.flush()
     sys.stderr.flush()
     ctypes.CDLL(None).fflush(None)
 
 
 class _CaptureFds:
-    """Redirect process-level output fds to a temp file during expected errors."""
+    """Redirect process-level output fds to a temp file during expected errors.
 
-    def __init__(self, fds=(1, 2)):
+    Args:
+        fds: File descriptors to redirect while the context manager is active.
+    """
+
+    def __init__(self, fds: Any = (1, 2)) -> None:
         self._fds = fds
 
-    def __enter__(self):
+    def __enter__(self) -> Any:
         self._tmp = tempfile.TemporaryFile(mode="w+b")
         _flush_process_output()
         self._saved = {fd: os.dup(fd) for fd in self._fds}
@@ -86,7 +92,7 @@ class _CaptureFds:
         self.output = ""
         return self
 
-    def __exit__(self, *_):
+    def __exit__(self, *_: Any) -> Any:
         _flush_process_output()
         for fd, saved in self._saved.items():
             os.dup2(saved, fd)
@@ -99,12 +105,14 @@ class _CaptureFds:
 class TestNewtonInitErrors(omni.kit.test.AsyncTestCase):
     """Tests that known Newton initialization errors are produced as expected."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Prepare the Newton Init Errors test fixture."""
         await stage_utils.create_new_stage_async()
         self.stage = omni.usd.get_context().get_stage()
         self.timeline = omni.timeline.get_timeline_interface()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Clean up the Newton Init Errors test fixture."""
         self.timeline.stop()
         await omni.kit.app.get_app().next_update_async()
         await omni.usd.get_context().close_stage_async()
@@ -119,7 +127,7 @@ class TestNewtonInitErrors(omni.kit.test.AsyncTestCase):
             msgs.append(output.output)
         return msgs
 
-    def _assert_error(self, msgs, fragment, label):
+    def _assert_error(self, msgs: Any, fragment: Any, label: Any) -> Any:
         combined = "\n".join(msgs)
         self.assertIn(fragment, combined, msg=f"Expected {label}. Captured:\n{combined}")
 
@@ -156,7 +164,7 @@ class TestNewtonInitErrors(omni.kit.test.AsyncTestCase):
     # Tests
     # ------------------------------------------------------------------
 
-    async def test_scene_without_joints(self):
+    async def test_scene_without_joints(self) -> None:
         """Rigid body with no collision geometry and no authored mass.
 
         Without a collider, Newton cannot compute body mass from shapes (mass
@@ -179,7 +187,7 @@ class TestNewtonInitErrors(omni.kit.test.AsyncTestCase):
         msgs = await self._play_and_capture()
         self._assert_error(msgs, "at least one joint", "at-least-one-joint error")
 
-    async def test_reversed_joints(self):
+    async def test_reversed_joints(self) -> None:
         """Three-body chain where the second joint has body0/body1 swapped.
 
         Newton requires physics:body0 to be the parent body and physics:body1
@@ -208,7 +216,7 @@ class TestNewtonInitErrors(omni.kit.test.AsyncTestCase):
         msgs = await self._play_and_capture()
         self._assert_error(msgs, "Reversed joints are not supported", "reversed joints error")
 
-    async def test_joint_graph_cycle(self):
+    async def test_joint_graph_cycle(self) -> None:
         """Three-body articulation where the last joint closes a loop back to root.
 
         Newton does not support closed kinematic chains. A joint connecting a
@@ -231,7 +239,7 @@ class TestNewtonInitErrors(omni.kit.test.AsyncTestCase):
         msgs = await self._play_and_capture()
         self._assert_error(msgs, "Joint graph contains a cycle", "joint cycle error")
 
-    async def test_mass_inertia_below_mjminval(self):
+    async def test_mass_inertia_below_mjminval(self) -> None:
         """Link with mass far below Newton's minimum enforced value (mjMINVAL).
 
         Newton's MuJoCo solver requires all dynamic bodies to have mass and
@@ -255,7 +263,7 @@ class TestNewtonInitErrors(omni.kit.test.AsyncTestCase):
         msgs = await self._play_and_capture()
         self._assert_error(msgs, "must be larger than mjMINVAL", "mjMINVAL error")
 
-    async def test_zero_size_collision_shape(self):
+    async def test_zero_size_collision_shape(self) -> None:
         """Rigid body with a zero-size cube collision shape.
 
         Newton requires all collision geometry to have non-zero dimensions.
@@ -281,7 +289,7 @@ class TestNewtonInitErrors(omni.kit.test.AsyncTestCase):
         msgs = await self._play_and_capture()
         self._assert_error(msgs, "Only plane shapes are allowed to have a size of zero", "zero-size shape error")
 
-    async def test_orphan_joints(self):
+    async def test_orphan_joints(self) -> None:
         """Two rigid bodies connected by a joint with no ArticulationRootAPI.
 
         All joints must belong to an articulation. Newton reports joints that
@@ -311,7 +319,7 @@ class TestNewtonInitErrors(omni.kit.test.AsyncTestCase):
         msgs = await self._play_and_capture()
         self._assert_error(msgs, "not belonging to any articulation", "orphan joints error")
 
-    async def test_usd_composition_errors(self):
+    async def test_usd_composition_errors(self) -> None:
         """Stage with an unresolved USD reference.
 
         Newton's stage parser is stricter than PhysX about USD composition
@@ -341,7 +349,7 @@ class TestNewtonInitErrors(omni.kit.test.AsyncTestCase):
         "Newton auto-estimates nconmax from geometry and uses max(user, estimated), so a "
         "small programmatic scene cannot reliably exceed it. Test via validation sweep instead."
     )
-    async def test_contact_count_exceeded(self):
+    async def test_contact_count_exceeded(self) -> None:
         """Simulation with more contacts than the pre-allocated nconmax buffer.
 
         The MuJoCo Warp solver prints a warning via CUDA kernel printf when

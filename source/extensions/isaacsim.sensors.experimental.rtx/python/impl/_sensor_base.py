@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import difflib
 import pathlib
-from typing import Any, Iterable, Literal
+from collections.abc import Iterable
+from typing import Any, Literal
 
 import carb
 import isaacsim.core.experimental.utils.prim as prim_utils
@@ -53,6 +54,12 @@ def _config_aliases(config_path: str) -> tuple[str, str, str, str, str]:
     when the stem starts with ``<Vendor>_`` that prefix is stripped to produce the
     vendor-stripped form. The vendor-stripped form falls back to the bare stem when
     the path does not follow the conventional layout.
+
+    Args:
+        config_path: Registry asset path.
+
+    Returns:
+        Accepted aliases for the registry entry.
     """
     _p = pathlib.Path(config_path)
     _vendor = _p.parts[3] if len(_p.parts) > 3 else ""
@@ -132,6 +139,18 @@ class _SensorAuthoring(XformPrim):
         _SCHEMA: str — API schema name (e.g. ``"OmniSensorGenericLidarCoreAPI"``)
         _VALID_AUX_OUTPUT_LEVELS: tuple[str, ...] — valid ``aux_output_level`` values
         _create_prim(path, attributes) -> str — create a new prim and return its actual path
+
+    Args:
+        path: USD path for the sensor prim to create or wrap.
+        aux_output_level: Auxiliary output level for the GenericModelOutput RenderVar.
+        tick_rate: Sensor tick rate to apply to the prim, or None to preserve authored values.
+        schemas: API schemas to apply to the prim.
+        attributes: Attributes to set on the prim.
+        positions: World positions forwarded to the base transform wrapper.
+        translations: Local translations forwarded to the base transform wrapper.
+        orientations: World orientations forwarded to the base transform wrapper.
+        scales: Scales forwarded to the base transform wrapper.
+        reset_xform_op_properties: Whether to reset the xformOp stack.
     """
 
     _PRIM_TYPE: str
@@ -251,6 +270,10 @@ class _SensorAuthoring(XformPrim):
         Each entry can be a plain schema name (e.g. ``"OmniLensDistortionOpenCvFisheyeAPI"``)
         or a multi-instance schema with a colon-separated instance name
         (e.g. ``"OmniSensorGenericLidarCoreEmitterStateAPI:s002"``).
+
+        Args:
+            path: USD prim path.
+            schemas: API schemas to apply.
         """
         prim = prim_utils.get_prim_at_path(path)
         for schema in schemas:
@@ -340,6 +363,12 @@ class _SensorRuntime:
     Subclasses must define:
         _AUTHORING_CLASS: type — the authoring class (e.g. ``Lidar``)
         _AUTHORING_ATTR: str — attribute name for the encapsulated object (e.g. ``"_lidar"``)
+
+    Args:
+        path: Sensor authoring object or path to a sensor prim.
+        annotators: Annotator types to configure.
+        writers: Writer types to attach.
+        render_vars: Render variables to pass to the render product.
     """
 
     _AUTHORING_CLASS: type
@@ -417,11 +446,14 @@ class _SensorRuntime:
             return UsdRender.Product(prim)
         raise RuntimeError(f"Invalid render product at path '{self._hydra_texture.path}'")
 
-    def attach_annotators(self, annotators: str | list[str]) -> None:
+    def attach_annotators(self, annotators: str | list[str]) -> dict[str, Any]:
         """Attach annotators to the sensor.
 
         Args:
             annotators: Annotator/sensor types to attach.
+
+        Returns:
+            Mapping from annotator name to attached annotator instance.
 
         Raises:
             ValueError: If the specified annotator is not supported.
@@ -438,6 +470,8 @@ class _SensorRuntime:
             )
         for annotator in annotators:
             self._annotators[annotator].attach(self._hydra_texture.path)
+
+        return {annotator: self._annotators[annotator] for annotator in annotators}
 
     def detach_annotators(self, annotators: str | list[str]) -> None:
         """Detach annotators from the sensor.
@@ -484,7 +518,7 @@ class _SensorRuntime:
             info = {}
         return data, info
 
-    def attach_writer(self, writer_name: str, **kwargs) -> None:
+    def attach_writer(self, writer_name: str, **kwargs: Any) -> rep.Writer:
         """Attach a writer to the sensor's render product.
 
         ``writer_name`` can be either a short name registered in :data:`WRITER_SPEC`
@@ -495,6 +529,9 @@ class _SensorRuntime:
         Args:
             writer_name: Writer spec name or Replicator writer registry name.
             **kwargs: Keyword arguments forwarded to ``writer.initialize()``.
+
+        Returns:
+            Attached Replicator writer instance.
 
         Example:
 
@@ -517,6 +554,8 @@ class _SensorRuntime:
         writer.initialize(**merged)
         writer.attach([self._hydra_texture.path])
         self._writers[writer_name] = writer
+
+        return writer
 
     def detach_writer(self, writer_name: str) -> None:
         """Detach a previously attached writer.
@@ -542,7 +581,12 @@ class _SensorRuntime:
         self._hydra_texture = None
 
     def _initialize_sensor(self, annotators: str | list[str], *, render_vars: list[str] | None = None) -> None:
-        """Initialize sensor by creating the hydra texture and attaching annotators."""
+        """Initialize sensor by creating the hydra texture and attaching annotators.
+
+        Args:
+            annotators: Annotator/sensor types to attach.
+            render_vars: Render variables to pass to the render product.
+        """
         self._hydra_texture = rep.create.render_product(
             camera=self.authoring_object.paths[0],
             resolution=(300, 300),  # (width, height), needed but unused by the RTX sensor
@@ -552,7 +596,14 @@ class _SensorRuntime:
         self.attach_annotators(annotators)
 
     def _get_annotator_spec(self, annotator: str) -> dict[str, Any]:
-        """Get the specification of the given annotator."""
+        """Get the specification of the given annotator.
+
+        Args:
+            annotator: Annotator name.
+
+        Returns:
+            Annotator specification.
+        """
         try:
             return self._annotators_spec[annotator]
         except KeyError:
@@ -561,7 +612,11 @@ class _SensorRuntime:
             )
 
     def _validate_annotators(self, annotators: str | list[str]) -> None:
-        """Validate the given annotators."""
+        """Validate the given annotators.
+
+        Args:
+            annotators: Annotator names to validate.
+        """
         annotators = [annotators] if isinstance(annotators, str) else annotators
         for annotator in annotators:
             if annotator not in self._annotators_spec:
@@ -570,7 +625,11 @@ class _SensorRuntime:
                 )
 
     def _validate_writers(self, writers: str | list[str]) -> None:
-        """Validate the given writers."""
+        """Validate the given writers.
+
+        Args:
+            writers: Writer names to validate.
+        """
         writers = [writers] if isinstance(writers, str) else writers
         for writer in writers:
             if writer not in self._writers_spec:

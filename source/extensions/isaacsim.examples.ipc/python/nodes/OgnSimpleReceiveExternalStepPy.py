@@ -54,12 +54,23 @@ class OgnSimpleReceiveExternalStepPy:
 
     @staticmethod
     def internal_state() -> OgnSimpleReceiveExternalStepPyInternalState:
-        """Create per-instance state for the node."""
+        """Create per-instance state for the node.
+
+        Returns:
+            Per-instance TCP server state.
+        """
         return OgnSimpleReceiveExternalStepPyInternalState()
 
     @staticmethod
     def compute(db: object) -> bool:
-        """Accept and read one external step value without blocking."""
+        """Accept and read one external step value without blocking.
+
+        Args:
+            db: OmniGraph database object for the current node evaluation.
+
+        Returns:
+            True when a complete step value is received, otherwise False.
+        """
         state = db.per_instance_state
         uri = db.inputs.uri
         if state.listen_sock is not None and state.uri != uri:

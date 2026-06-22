@@ -17,7 +17,7 @@
 
 """Interactive quadruped robot policy examples for Isaac Sim."""
 
-from .quadruped_example import QuadrupedExample
-from .quadruped_example_extension import QuadrupedExampleExtension
+from .quadruped_example import QuadrupedExample as QuadrupedExample
+from .quadruped_example_extension import QuadrupedExampleExtension as QuadrupedExampleExtension
 
 __all__ = ["QuadrupedExample"]

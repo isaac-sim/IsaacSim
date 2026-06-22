@@ -76,9 +76,13 @@ class PathPlanningUI(BaseSampleUITemplate):
     """User interface for the Path Planning example.
 
     Provides task control buttons for planning to target, adding walls, and removing walls.
+
+    Args:
+        *args: Variable length argument list passed to the parent class.
+        **kwargs: Additional keyword arguments passed to the parent class.
     """
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
 
     def build_extra_frames(self) -> None:

@@ -1,5 +1,5 @@
 [package]
-version = "0.1.7"
+version = "0.1.9"
 category = "Simulation"
 title = "Isaac Sim Newton Physics Tensor Backend"
 description = "C++ tensor interface implementation for Newton physics"

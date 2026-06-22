@@ -1,5 +1,9 @@
 # Changelog
 
+## [5.10.5] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [5.10.4] - 2026-05-29
 ### Fixed
 - `OgnIsaacComputeTransformTree`: refine the `IsaacRobotAPI` fallback via `isaacsim.robot.schema`'s `GetAllRobotComponents` helper — emits frames for every schema-tagged prim in the robot subtree (links, sites, reference points), skips a component path that matches `parentPrim` to avoid the `TF_SELF_TRANSFORM` self-loop, and applies the ROS optical-frame rotation to camera-sites.

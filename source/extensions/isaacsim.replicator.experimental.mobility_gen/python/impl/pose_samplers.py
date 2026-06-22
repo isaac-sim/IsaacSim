@@ -96,6 +96,8 @@ class GridPoseSampler(PoseSampler):
     2. Sampling a grid region uniformly
     3. Sampling a final pose uniformly from the freespace inside the sampled region.
 
+    Args:
+        grid_size_meters: Size of each sampling grid region in meters.
     """
 
     grid_size_meters: float

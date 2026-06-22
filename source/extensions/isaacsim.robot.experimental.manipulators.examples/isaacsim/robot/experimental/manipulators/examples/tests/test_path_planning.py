@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for the interactive path planning example."""
+
 from __future__ import annotations
 
 import isaacsim.core.experimental.utils.app as app_utils
@@ -23,13 +25,13 @@ from isaacsim.robot.experimental.manipulators.examples.interactive.path_planning
 class TestPathPlanningExampleExtension(omni.kit.test.AsyncTestCase):
     """Test suite for the path planning interactive example."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment before each test."""
         self._sample = PathPlanning()
         await self._sample.load_world_async()
         await app_utils.update_app_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after each test."""
         if app_utils.is_playing():
             app_utils.stop()
@@ -37,7 +39,7 @@ class TestPathPlanningExampleExtension(omni.kit.test.AsyncTestCase):
         await app_utils.update_app_async()
         self._sample = None
 
-    async def test_follow_target(self):
+    async def test_follow_target(self) -> None:
         """Test planning and executing a trajectory to the target."""
         await self._sample.reset_async()
         await app_utils.update_app_async()
@@ -47,7 +49,7 @@ class TestPathPlanningExampleExtension(omni.kit.test.AsyncTestCase):
 
         await app_utils.update_app_async(steps=500)
 
-    async def test_add_obstacle(self):
+    async def test_add_obstacle(self) -> None:
         """Test adding wall obstacles and replanning."""
         await self._sample.reset_async()
         await app_utils.update_app_async()
@@ -63,7 +65,7 @@ class TestPathPlanningExampleExtension(omni.kit.test.AsyncTestCase):
         await self._sample.reset_async()
         await app_utils.update_app_async()
 
-    async def test_reset(self):
+    async def test_reset(self) -> None:
         """Test reset functionality."""
         await self._sample.reset_async()
         await app_utils.update_app_async()

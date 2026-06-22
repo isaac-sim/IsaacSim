@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.3.4] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [2.3.3] - 2026-05-18
 ### Changed
 - Size the heightmap ground plane from the generated occupancy map's world-space bounds (via `UsdGeom.BBoxCache`) instead of the raw image dimensions, and create it after the heightmap instances so it always fully covers the geometry.

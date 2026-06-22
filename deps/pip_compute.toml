@@ -8,7 +8,6 @@ packages = [
     "opencv-python-headless==4.13.0.90", # SWIPAT filed under: https://nvbugs/4636915 # Used by: isaacsim.benchmark.services, isaacsim.replicator.mobility_gen, isaacsim.ros2.core, isaacsim.ros2.nodes, isaacsim.sensors.camera
     "trimesh==4.11.1",                   # SWIPAT filed under: https://nvbugs/4287403 # Used by: isaacsim.replicator.grasping
     "rtree==1.4.1",                      # SWIPAT filed under: https://nvbugs/5326957 # Used by: isaacsim.replicator.grasping
-    "pynvvideocodec==2.1.0",             # SWIPAT filed under: https://nvbugs/5934760 # Used by: isaacsim.ros2.nodes
 ]
 
 target = "../_build/target-deps/pip_compute_prebundle"

@@ -13,14 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for MobilityGenWriter.copy_stage / copy_init."""
+"""Tests for MobilityGen recording-stage caching (collect_input / copy_stage / copy_init)."""
 
 import os
 import shutil
 import tempfile
 
 import omni.kit.test
-from isaacsim.replicator.experimental.mobility_gen.impl.writer import MobilityGenWriter
+from isaacsim.replicator.experimental.mobility_gen.impl.writer import MobilityGenWriter, collect_input
 from pxr import Sdf, Usd, UsdGeom, UsdShade
 
 # 1x1 PNG — body of every test texture; avoids a PIL dependency at test time.
@@ -36,17 +36,34 @@ def _make_png(path: str) -> None:
         f.write(_PNG_1x1)
 
 
+def _make_text(path: str, body: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write(body)
+
+
 def _build_source_scene(scene_dir: str) -> str:
-    """Build a USD covering: relative texture, UDIM family, Reference sub-USD
-    with its own texture, Payload sub-USD with its own texture."""
+    """Build a non-flattened USD with textures, references, payloads, and kernels.
+
+    The scene covers relative texture paths, a UDIM family, a Reference sub-USD
+    and a Payload sub-USD, plus an SPG `.cu` kernel with a sibling `.cu.lua`
+    launcher that is undeclared in USD.
+
+    Args:
+        scene_dir: Directory where the source scene and assets are created.
+
+    Returns:
+        Path to the created source USD scene.
+    """
     _make_png(os.path.join(scene_dir, "textures", "brick.png"))
-    # Non-UDIM texture whose basename happens to contain a 4-digit segment in
-    # the UDIM range — must NOT be treated as a UDIM template by the rewriter.
-    _make_png(os.path.join(scene_dir, "textures", "icon.2048.png"))
     for udim in ("1001", "1002", "1003"):
         _make_png(os.path.join(scene_dir, "textures", f"tile.{udim}.png"))
     _make_png(os.path.join(scene_dir, "subusds", "tex", "ref_tex.png"))
     _make_png(os.path.join(scene_dir, "subusds", "tex", "payload_tex.png"))
+    # SPG kernel pair: `.cu` is declared via an asset attribute; `.cu.lua` is a
+    # sibling found by naming convention only (no USD attribute references it).
+    _make_text(os.path.join(scene_dir, "kernels", "foo.cu"), "// cuda kernel\n")
+    _make_text(os.path.join(scene_dir, "kernels", "foo.cu.lua"), "-- launcher\n")
 
     ref_usd = os.path.join(scene_dir, "subusds", "ref.usd")
     ref_stage = Usd.Stage.CreateNew(ref_usd)
@@ -79,236 +96,221 @@ def _build_source_scene(scene_dir: str) -> str:
     tex.CreateIdAttr("UsdUVTexture")
     tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(Sdf.AssetPath("./textures/brick.png"))
 
-    icon_tex = UsdShade.Shader.Define(stage, "/World/Mat/IconTex")
-    icon_tex.CreateIdAttr("UsdUVTexture")
-    icon_tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(Sdf.AssetPath("./textures/icon.2048.png"))
-
     udim_tex = UsdShade.Shader.Define(stage, "/World/Mat/UdimTex")
     udim_tex.CreateIdAttr("UsdUVTexture")
     udim_tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(Sdf.AssetPath("./textures/tile.<UDIM>.png"))
+
+    kernel = UsdGeom.Xform.Define(stage, "/World/Kernel").GetPrim()
+    kernel.CreateAttribute("info:spg:sourceAsset", Sdf.ValueTypeNames.Asset).Set(Sdf.AssetPath("./kernels/foo.cu"))
 
     stage.Save()
     return scene_usd
 
 
-def _flatten(scene_usd: str, out_path: str) -> None:
-    # Mirror `omni.usd.get_context().export_as_stage()`: composition arcs are
-    # inlined but asset-typed attribute strings still resolve to their original
-    # on-disk locations. That's the input shape `copy_stage` sees in production.
-    Usd.Stage.Open(scene_usd).Flatten().Export(out_path)
+def _resolved_texture(stage: Usd.Stage, prim_path: str) -> str:
+    """Return the resolved path of a shader's `file` input.
+
+    Resolution is anchored at the layer that authored the input so textures
+    inside a sub-USD resolve correctly.
+
+    Args:
+        stage: USD stage containing the shader prim.
+        prim_path: USD prim path of the shader.
+
+    Returns:
+        Resolved texture path, or an empty string when no asset is authored.
+    """
+    asset = UsdShade.Shader(stage.GetPrimAtPath(prim_path)).GetInput("file").Get()
+    return asset.resolvedPath if asset else ""
 
 
-def _texture_path(stage: Usd.Stage, prim_path: str) -> str:
-    return UsdShade.Shader(stage.GetPrimAtPath(prim_path)).GetInput("file").Get().path
+def _exists_under(root: str, basename: str) -> bool:
+    """True if a file named `basename` exists anywhere under `root`.
+
+    Args:
+        root: Directory tree to search.
+        basename: File name to find.
+
+    Returns:
+        True if a matching file exists under ``root``.
+    """
+    return any(basename in files for _, _, files in os.walk(root))
 
 
-def _resolve(stage: Usd.Stage, raw_asset_path: str) -> str:
-    return stage.GetRootLayer().ComputeAbsolutePath(raw_asset_path)
+class TestCollectInputUsd(omni.kit.test.AsyncTestCase):
+    """Validate self-contained caches collected from USD inputs.
 
+    `collect_input` on a `.usd` must produce a relocatable cache whose
+    references all resolve inside it.
+    """
 
-class TestCopyStageDependencies(omni.kit.test.AsyncTestCase):
-    """copy_stage on a flattened .usd must produce a self-contained recording."""
-
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Create a source USD scene and cache directory."""
         self._tmp = tempfile.mkdtemp(prefix="test_writer_")
         scene_dir = os.path.join(self._tmp, "scene")
         os.makedirs(scene_dir)
         self._source_scene = _build_source_scene(scene_dir)
-        self._cached_stage = os.path.join(self._tmp, "cached_stage.usd")
-        _flatten(self._source_scene, self._cached_stage)
-        self._recording_dir = os.path.join(self._tmp, "recording")
+        self._cache_dir = os.path.join(self._tmp, "cache")
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Remove the temporary cache workspace."""
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    async def test_recording_stage_is_written(self):
-        writer = MobilityGenWriter(self._recording_dir, async_write=False)
-        try:
-            writer.copy_stage(self._cached_stage)
-        finally:
-            writer.close()
-        self.assertTrue(os.path.exists(os.path.join(self._recording_dir, "stage.usd")))
+    async def test_returns_stage_usd(self) -> None:
+        """Collecting a USD returns the cached stage path."""
+        stage_path = await collect_input(self._source_scene, self._cache_dir)
+        self.assertEqual(stage_path, os.path.join(self._cache_dir, "stage.usd"))
+        self.assertTrue(os.path.isfile(stage_path))
 
-    async def test_all_external_assets_copied(self):
-        # Includes textures inlined from flattened Reference/Payload arcs.
-        writer = MobilityGenWriter(self._recording_dir, async_write=False)
-        try:
-            writer.copy_stage(self._cached_stage)
-        finally:
-            writer.close()
-
-        copied_basenames = set()
-        for root, _, files in os.walk(os.path.join(self._recording_dir, "assets")):
-            for f in files:
-                copied_basenames.add(f)
-
-        for expected in (
-            "brick.png",
-            "icon.2048.png",
-            "ref_tex.png",
-            "payload_tex.png",
-            "tile.1001.png",
-            "tile.1002.png",
-            "tile.1003.png",
-        ):
-            self.assertIn(expected, copied_basenames, f"{expected} was not copied")
-
-    async def test_rewritten_paths_resolve_inside_recording(self):
-        writer = MobilityGenWriter(self._recording_dir, async_write=False)
-        try:
-            writer.copy_stage(self._cached_stage)
-        finally:
-            writer.close()
-
-        recorded = Usd.Stage.Open(os.path.join(self._recording_dir, "stage.usd"))
+    async def test_textures_resolve_inside_cache(self) -> None:
+        """Texture dependencies resolve inside the collected cache."""
+        await collect_input(self._source_scene, self._cache_dir)
+        recorded = Usd.Stage.Open(os.path.join(self._cache_dir, "stage.usd"))
         for prim_path, label in [
             ("/World/Mat/Tex", "top-level texture"),
-            ("/World/Mat/IconTex", "non-UDIM texture with 4-digit segment in basename"),
-            ("/World/Referenced/Mat/Tex", "texture inside flattened Reference"),
-            ("/World/Payloaded/Mat/Tex", "texture inside flattened Payload"),
+            ("/World/Referenced/Mat/Tex", "texture inside referenced sub-USD"),
+            ("/World/Payloaded/Mat/Tex", "texture inside payloaded sub-USD"),
         ]:
-            raw = _texture_path(recorded, prim_path)
-            resolved = _resolve(recorded, raw)
-            self.assertTrue(
-                os.path.exists(resolved),
-                f"{label}: rewritten asset path {raw!r} does not resolve to an existing file",
-            )
+            resolved = _resolved_texture(recorded, prim_path)
+            self.assertTrue(resolved and os.path.exists(resolved), f"{label}: did not resolve")
             self.assertEqual(
-                os.path.commonpath([resolved, self._recording_dir]),
-                self._recording_dir,
-                f"{label}: resolved path {resolved!r} is outside recording dir",
+                os.path.commonpath([resolved, self._cache_dir]),
+                self._cache_dir,
+                f"{label}: resolved outside cache ({resolved!r})",
             )
 
-    async def test_udim_placeholder_preserved(self):
-        # `<UDIM>` token must survive the rewrite — one authored ref per family,
-        # not one per tile. Non-UDIM textures with a 4-digit segment in their
-        # basename (e.g. `icon.2048.png`) must NOT be turned into `<UDIM>` refs.
-        writer = MobilityGenWriter(self._recording_dir, async_write=False)
-        try:
-            writer.copy_stage(self._cached_stage)
-        finally:
-            writer.close()
-
-        recorded = Usd.Stage.Open(os.path.join(self._recording_dir, "stage.usd"))
-        udim_raw = _texture_path(recorded, "/World/Mat/UdimTex")
-        self.assertIn("<UDIM>", udim_raw, f"UDIM placeholder dropped from authored path {udim_raw!r}")
+    async def test_udim_tiles_collected(self) -> None:
+        """UDIM texture tiles are collected into the cache."""
+        await collect_input(self._source_scene, self._cache_dir)
         for udim in ("1001", "1002", "1003"):
-            concrete = _resolve(recorded, udim_raw.replace("<UDIM>", udim))
-            self.assertTrue(os.path.exists(concrete), f"UDIM tile {udim} not present at {concrete!r}")
+            self.assertTrue(_exists_under(self._cache_dir, f"tile.{udim}.png"), f"UDIM tile {udim} not collected")
 
-        icon_raw = _texture_path(recorded, "/World/Mat/IconTex")
-        self.assertNotIn("<UDIM>", icon_raw, f"non-UDIM basename `icon.2048.png` rewritten to {icon_raw!r}")
+    async def test_referenced_cu_collected(self) -> None:
+        """Referenced CUDA kernels are collected into the cache."""
+        # `.cu` is declared via an asset attribute (info:spg:sourceAsset), so it is
+        # a USD dependency and must be collected.
+        await collect_input(self._source_scene, self._cache_dir)
+        self.assertTrue(_exists_under(self._cache_dir, "foo.cu"), "referenced .cu was not collected")
 
-    async def test_source_layer_not_mutated(self):
-        # The layer returned by ComputeAllDependencies is in USD's global
-        # registry; rewriting in place would corrupt any live consumer.
-        cached_mtime = os.path.getmtime(self._cached_stage)
-        cached_size = os.path.getsize(self._cached_stage)
+    async def test_unreferenced_companion_skipped(self) -> None:
+        """Unreferenced CUDA companion files are not collected from USD inputs."""
+        # `.cu.lua` is referenced by no USD path, so it is not collected. Such
+        # scenes must be provided as `.usdz` to keep the companion.
+        await collect_input(self._source_scene, self._cache_dir)
+        self.assertFalse(_exists_under(self._cache_dir, "foo.cu.lua"), "unreferenced .cu.lua should be skipped")
+
+    async def test_no_hash_bucketing(self) -> None:
+        """Collected USD caches do not use hash-bucketed asset directories."""
+        await collect_input(self._source_scene, self._cache_dir)
+        self.assertFalse(os.path.isdir(os.path.join(self._cache_dir, "assets")))
+
+    async def test_source_not_mutated(self) -> None:
+        """Collecting input does not mutate the source USD file."""
         source_mtime = os.path.getmtime(self._source_scene)
         source_size = os.path.getsize(self._source_scene)
-
-        writer = MobilityGenWriter(self._recording_dir, async_write=False)
-        try:
-            writer.copy_stage(self._cached_stage)
-        finally:
-            writer.close()
-
-        self.assertEqual(os.path.getmtime(self._cached_stage), cached_mtime)
-        self.assertEqual(os.path.getsize(self._cached_stage), cached_size)
+        await collect_input(self._source_scene, self._cache_dir)
         self.assertEqual(os.path.getmtime(self._source_scene), source_mtime)
         self.assertEqual(os.path.getsize(self._source_scene), source_size)
 
-    async def test_recording_is_relocatable(self):
-        # Asset paths must be relative to stage.usd, not absolute.
+    async def test_cache_is_relocatable(self) -> None:
+        """Collected caches remain resolvable after being moved."""
+        await collect_input(self._source_scene, self._cache_dir)
+        moved = os.path.join(self._tmp, "moved")
+        shutil.copytree(self._cache_dir, moved)
+        moved_stage = Usd.Stage.Open(os.path.join(moved, "stage.usd"))
+        for prim_path in ("/World/Mat/Tex", "/World/Referenced/Mat/Tex", "/World/Payloaded/Mat/Tex"):
+            resolved = _resolved_texture(moved_stage, prim_path)
+            self.assertTrue(resolved and os.path.exists(resolved), f"{prim_path} did not resolve after move")
+            self.assertEqual(os.path.commonpath([resolved, moved]), moved)
+
+
+class TestCopyStage(omni.kit.test.AsyncTestCase):
+    """copy_stage must copy the cache tree verbatim into the recording dir."""
+
+    async def setUp(self) -> None:
+        """Create a collected cache and destination recording directory."""
+        self._tmp = tempfile.mkdtemp(prefix="test_writer_copy_")
+        scene_dir = os.path.join(self._tmp, "scene")
+        os.makedirs(scene_dir)
+        self._source_scene = _build_source_scene(scene_dir)
+        self._cache_dir = os.path.join(self._tmp, "cache")
+        self._cached_stage = await collect_input(self._source_scene, self._cache_dir)
+        self._recording_dir = os.path.join(self._tmp, "recording")
+
+    async def tearDown(self) -> None:
+        """Remove the temporary copy-stage workspace."""
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    async def test_recording_mirrors_cache(self) -> None:
+        """The recording stage copy mirrors the collected cache."""
         writer = MobilityGenWriter(self._recording_dir, async_write=False)
         try:
             writer.copy_stage(self._cached_stage)
         finally:
             writer.close()
-
-        moved = os.path.join(self._tmp, "moved")
-        shutil.copytree(self._recording_dir, moved)
-        moved_stage = Usd.Stage.Open(os.path.join(moved, "stage.usd"))
-        for prim_path, label in [
-            ("/World/Mat/Tex", "top-level texture"),
-            ("/World/Referenced/Mat/Tex", "Reference-anchored texture"),
-            ("/World/Payloaded/Mat/Tex", "Payload-anchored texture"),
-        ]:
-            raw = _texture_path(moved_stage, prim_path)
-            resolved = _resolve(moved_stage, raw)
-            self.assertTrue(os.path.exists(resolved), f"{label}: {raw!r} did not resolve after move")
-            self.assertEqual(
-                os.path.commonpath([resolved, moved]),
-                moved,
-                f"{label}: resolves outside moved dir ({resolved!r})",
-            )
+        self.assertTrue(os.path.isfile(os.path.join(self._recording_dir, "stage.usd")))
+        # References still resolve from the recording copy.
+        recorded = Usd.Stage.Open(os.path.join(self._recording_dir, "stage.usd"))
+        resolved = _resolved_texture(recorded, "/World/Referenced/Mat/Tex")
+        self.assertTrue(resolved and os.path.exists(resolved))
+        self.assertEqual(os.path.commonpath([resolved, self._recording_dir]), self._recording_dir)
 
 
-class TestCopyStageUsdz(omni.kit.test.AsyncTestCase):
-    """USDZ inputs are self-contained — copy_stage must leave them alone."""
+class TestCollectInputUsdz(omni.kit.test.AsyncTestCase):
+    """USDZ inputs are byte-copied — every member (incl. `.cu.lua`) is preserved."""
 
-    async def test_usdz_input_is_plain_copied(self):
+    async def test_usdz_input_is_byte_copied_with_members_preserved(self) -> None:
+        """USDZ input archives are byte-copied with all members preserved."""
+        import zipfile
+
         from pxr import UsdUtils
 
         with tempfile.TemporaryDirectory() as tmp:
-            # USDZ packages must be constructed via `UsdUtils.CreateNewUsdzPackage`;
-            # `Sdf.Layer.Export(*.usdz)` is rejected by the package-layer writer.
-            inner = os.path.join(tmp, "inner.usda")
+            # Build a USDZ that includes an SPG `.cu` and its `.cu.lua` companion.
+            src_dir = os.path.join(tmp, "src")
+            inner = os.path.join(src_dir, "inner.usda")
+            os.makedirs(src_dir)
             stage = Usd.Stage.CreateNew(inner)
             UsdGeom.Xform.Define(stage, "/World")
             stage.Save()
+            _make_text(os.path.join(src_dir, "foo.cu"), "// k\n")
+            _make_text(os.path.join(src_dir, "foo.cu.lua"), "-- l\n")
             src = os.path.join(tmp, "src.usdz")
             self.assertTrue(UsdUtils.CreateNewUsdzPackage(inner, src))
+            # Ensure the companion is inside the archive (CreateNewUsdzPackage only
+            # packs declared members; add the undeclared `.cu.lua` to mimic NuRec).
+            with zipfile.ZipFile(src, "a") as zf:
+                if "foo.cu.lua" not in zf.namelist():
+                    zf.write(os.path.join(src_dir, "foo.cu.lua"), "foo.cu.lua")
             src_size = os.path.getsize(src)
+            with zipfile.ZipFile(src) as zf:
+                src_members = set(zf.namelist())
 
-            recording_dir = os.path.join(tmp, "recording")
-            writer = MobilityGenWriter(recording_dir, async_write=False)
-            try:
-                writer.copy_stage(src)
-            finally:
-                writer.close()
+            cache_dir = os.path.join(tmp, "cache")
+            stage_path = await collect_input(src, cache_dir)
 
-            dst = os.path.join(recording_dir, "stage.usdz")
-            self.assertTrue(os.path.exists(dst))
-            self.assertEqual(os.path.getsize(dst), src_size)
-            self.assertFalse(os.path.isdir(os.path.join(recording_dir, "assets")))
+            self.assertEqual(stage_path, os.path.join(cache_dir, "stage.usdz"))
+            self.assertEqual(os.path.getsize(stage_path), src_size)  # byte-for-byte
+            self.assertFalse(os.path.isdir(os.path.join(cache_dir, "assets")))
+            # All archive members survive — including the undeclared `.cu.lua`.
+            with zipfile.ZipFile(stage_path) as zf:
+                self.assertEqual(set(zf.namelist()), src_members)
 
 
-class TestCopyInitWithAssets(omni.kit.test.AsyncTestCase):
-    """copy_init must propagate the sibling assets/ tree, and tolerate its absence."""
+class TestCopyInit(omni.kit.test.AsyncTestCase):
+    """copy_init must copy stage + dependency files + config + occupancy, but not state."""
 
-    async def test_assets_subdir_is_propagated(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            src = os.path.join(tmp, "src")
-            os.makedirs(os.path.join(src, "assets", "abcd1234"))
-            with open(os.path.join(src, "stage.usd"), "w") as f:
-                f.write("#usda 1.0\n")
-            with open(os.path.join(src, "config.json"), "w") as f:
-                f.write("{}")
-            with open(os.path.join(src, "assets", "abcd1234", "brick.png"), "wb") as f:
-                f.write(_PNG_1x1)
-            os.makedirs(os.path.join(src, "occupancy_map"))
-
-            dst = os.path.join(tmp, "dst")
-            writer = MobilityGenWriter(dst, async_write=False)
-            try:
-                writer.copy_init(src)
-            finally:
-                writer.close()
-
-            self.assertTrue(os.path.exists(os.path.join(dst, "stage.usd")))
-            self.assertTrue(os.path.exists(os.path.join(dst, "assets", "abcd1234", "brick.png")))
-
-    async def test_missing_assets_subdir_is_tolerated(self):
-        # Legacy recordings have no assets/ dir; copy_init must still succeed.
+    async def test_init_files_copied_state_skipped(self) -> None:
+        """Initial replay files are copied while recorded state is skipped."""
         with tempfile.TemporaryDirectory() as tmp:
             src = os.path.join(tmp, "src")
             os.makedirs(src)
-            with open(os.path.join(src, "stage.usd"), "w") as f:
-                f.write("#usda 1.0\n")
-            with open(os.path.join(src, "config.json"), "w") as f:
-                f.write("{}")
+            _make_text(os.path.join(src, "stage.usd"), "#usda 1.0\n")
+            _make_text(os.path.join(src, "config.json"), "{}")
+            _make_png(os.path.join(src, "textures", "brick.png"))  # sibling dependency
             os.makedirs(os.path.join(src, "occupancy_map"))
+            # per-step recorded output that must NOT be copied
+            _make_text(os.path.join(src, "state", "common", "00000000.npz"), "x")
 
             dst = os.path.join(tmp, "dst")
             writer = MobilityGenWriter(dst, async_write=False)
@@ -318,4 +320,7 @@ class TestCopyInitWithAssets(omni.kit.test.AsyncTestCase):
                 writer.close()
 
             self.assertTrue(os.path.exists(os.path.join(dst, "stage.usd")))
-            self.assertFalse(os.path.isdir(os.path.join(dst, "assets")))
+            self.assertTrue(os.path.exists(os.path.join(dst, "config.json")))
+            self.assertTrue(os.path.exists(os.path.join(dst, "textures", "brick.png")))
+            self.assertTrue(os.path.isdir(os.path.join(dst, "occupancy_map")))
+            self.assertFalse(os.path.isdir(os.path.join(dst, "state")))

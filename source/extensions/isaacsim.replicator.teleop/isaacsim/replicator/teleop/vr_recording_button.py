@@ -95,28 +95,11 @@ class VRRecordingButton:
     or USD state, so it is safe to construct early and attach/detach repeatedly.
 
     Args:
-        teleop_manager: The :class:`TeleopManager` whose per-frame controller snapshots will drive
-            the button edge detection. Must live for the lifetime of this binding.
-        button: Which VR controller button to observe. Defaults to ``LEFT_SECONDARY`` (Meta Quest
-            "Y"), matching the "record-from-left-Y" convention documented in the teleop workflow.
-        command: Which :class:`EpisodeRecorder` command to dispatch on a rising edge. Defaults to
-            ``"toggle"``, which starts a new episode if none is active and ends the active one
-            otherwise. Use ``"start"``/``"end"`` for two-button start/stop wiring.
-        command_payload: Extra payload fields forwarded with every dispatched event (e.g.
-            ``{"metadata": {"trigger": "left_y"}}``). Useful for tagging episodes with the input
-            source without adding per-button code to the recorder.
-        session_id_getter: Optional callable returning the recorder ``session_id`` that should
-            receive button events. When provided and it returns ``None``, the button press is
-            ignored until a session is available.
-
-    Example — bimanual start/stop on two separate buttons:
-
-    .. code-block:: python
-
-        start = VRRecordingButton(teleop, button=VRButton.LEFT_SECONDARY, command="start")
-        stop = VRRecordingButton(teleop, button=VRButton.RIGHT_SECONDARY, command="end")
-        start.attach()
-        stop.attach()
+        teleop_manager: The :class:`TeleopManager` whose per-frame controller snapshots will drive the button edge detection. Must live for the lifetime of this binding.
+        button: Which VR controller button to observe. Defaults to ``LEFT_SECONDARY`` (Meta Quest "Y"), matching the "record-from-left-Y" convention documented in the teleop workflow.
+        command: Which :class:`EpisodeRecorder` command to dispatch on a rising edge. Defaults to ``"toggle"``, which starts a new episode if none is active and ends the active one otherwise. Use ``"start"``/``"end"`` for two-button start/stop wiring.
+        command_payload: Extra payload fields forwarded with every dispatched event (e.g. ``{"metadata": {"trigger": "left_y"}}``). Useful for tagging episodes with the input source without adding per-button code to the recorder.
+        session_id_getter: Optional callable returning the recorder ``session_id`` that should receive button events. When provided and it returns ``None``, the button press is ignored until a session is available. start = VRRecordingButton(teleop, button=VRButton.LEFT_SECONDARY, command="start") stop = VRRecordingButton(teleop, button=VRButton.RIGHT_SECONDARY, command="end") start.attach() stop.attach()
     """
 
     def __init__(
@@ -142,7 +125,11 @@ class VRRecordingButton:
 
     @property
     def is_attached(self) -> bool:
-        """Whether this binding is currently subscribed to the teleop manager."""
+        """Whether this binding is currently subscribed to the teleop manager.
+
+        Returns:
+            The requested value.
+        """
         return self._attached
 
     def attach(self) -> None:
@@ -171,7 +158,11 @@ class VRRecordingButton:
         self._dispatch_binding("detach")
 
     def _dispatch_binding(self, action: str) -> None:
-        """Advertise this binding's lifecycle on the recorder binding event bus."""
+        """Advertise this binding's lifecycle on the recorder binding event bus.
+
+        Args:
+            action: Value for action.
+        """
         try:
             session_id = self._session_id_getter() if self._session_id_getter is not None else None
             dispatch_episode_binding(
@@ -189,8 +180,16 @@ class VRRecordingButton:
         """Alias for :meth:`detach`. Safe to call during shutdown."""
         self.detach()
 
-    def _read_button(self, left_ctrl, right_ctrl) -> bool:
-        """Return the boolean state of the bound button on the current snapshot."""
+    def _read_button(self, left_ctrl: object, right_ctrl: object) -> bool:
+        """Return the boolean state of the bound button on the current snapshot.
+
+        Args:
+            left_ctrl: Value for left ctrl.
+            right_ctrl: Value for right ctrl.
+
+        Returns:
+            The requested value.
+        """
         snapshot = left_ctrl if self._spec.side == "left" else right_ctrl
         if snapshot is None:
             return False
@@ -200,8 +199,13 @@ class VRRecordingButton:
         value = getattr(inputs, self._spec.field, False)
         return bool(value)
 
-    def _on_controller_inputs(self, left_ctrl, right_ctrl) -> None:
-        """Edge-detect the bound button and dispatch the configured command on rising edges."""
+    def _on_controller_inputs(self, left_ctrl: object, right_ctrl: object) -> None:
+        """Edge-detect the bound button and dispatch the configured command on rising edges.
+
+        Args:
+            left_ctrl: Value for left ctrl.
+            right_ctrl: Value for right ctrl.
+        """
         pressed = self._read_button(left_ctrl, right_ctrl)
         if pressed and not self._prev_pressed:
             self._dispatch_command()

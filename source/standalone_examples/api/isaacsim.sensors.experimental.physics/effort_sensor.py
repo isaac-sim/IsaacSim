@@ -32,7 +32,6 @@ import sys
 import carb
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
-import numpy as np
 from isaacsim.core.experimental.objects import Cube, DistantLight, GroundPlane
 from isaacsim.core.experimental.prims import GeomPrim, RigidPrim
 from isaacsim.core.experimental.utils.prim import get_prim_at_path

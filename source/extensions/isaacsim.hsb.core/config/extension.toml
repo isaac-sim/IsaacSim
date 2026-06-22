@@ -1,5 +1,5 @@
 [package]
-version = "1.0.0"
+version = "1.0.1"
 category = "Simulation"
 title = "Holoscan Sensor Bridge Core"
 description = "Core backend library for the Holoscan Sensor Bridge (HSB) extension, providing HSB emulator communication, image encoding, and GPU-accelerated format conversion."

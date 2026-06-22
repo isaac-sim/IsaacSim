@@ -13,12 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies that the compute pip archive includes the scientific and geometry dependencies required by the extension."""
+
 import omni.kit.test
 
 
 class TestPipArchive(omni.kit.test.AsyncTestCase):
+    """TestPipArchive implementation."""
+
     # import all packages to make sure dependencies were not missed
-    async def test_import_all(self):
+    async def test_import_all(self) -> None:
+        """Verify import all."""
         import imageio
         import scipy
         import trimesh

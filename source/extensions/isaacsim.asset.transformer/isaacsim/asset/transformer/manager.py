@@ -17,9 +17,11 @@
 
 from __future__ import annotations
 
+import gc
 import logging
 import os
 import shutil
+import time
 from collections.abc import Callable
 from typing import Any, TypeVar
 
@@ -338,6 +340,59 @@ class RuleRegistry:
         return sorted(self._type_to_cls.keys())
 
 
+def _run_deferred_deletions(paths: list[str], keep: str | None = None) -> None:
+    """Best-effort delete of files a rule deferred to the manager.
+
+    A rule cannot delete a file that backs the working stage: the manager (not
+    the rule) owns the working :class:`pxr.Usd.Stage` and its root
+    :class:`pxr.Sdf.Layer`, and on Windows an open USD layer is an OS-level file
+    lock, so ``os.remove`` fails with ``PermissionError: [WinError 5]`` until
+    that handle is dropped. The manager calls this only after it has released the
+    relevant working stage, so the file pointer is normally already gone.
+
+    This never calls ``Sdf.Layer.Clear()`` and never raises: clearing a layer
+    that is still part of a live composition would corrupt the working stage,
+    and a failed cleanup of an intermediate file must not fail the rule or
+    cascade to later rules. A file that cannot be removed (still referenced or
+    locked) is left in place and logged at warning level.
+
+    Args:
+        paths: Filesystem paths the rule requested via
+            :meth:`RuleInterface.request_deletion`.
+        keep: Path that must never be deleted -- the file backing the live
+            working stage. Compared with :func:`os.path.normcase` /
+            :func:`os.path.abspath` so it is robust on case-insensitive
+            filesystems.
+    """
+    keep_norm = os.path.normcase(os.path.abspath(keep)) if keep else None
+    for path in paths:
+        if not path:
+            continue
+        if keep_norm is not None and os.path.normcase(os.path.abspath(path)) == keep_norm:
+            _LOGGER.warning("Refusing to delete file backing the active working stage: %s", path)
+            continue
+
+        last_error: OSError | None = None
+        for _ in range(10):
+            # The caller already dropped its stage handle. Force a collection
+            # so CPython releases any lingering layer wrapper (and the crate
+            # memory-map / OS handle on Windows) before each unlink attempt.
+            gc.collect()
+            try:
+                os.remove(path)
+                last_error = None
+                break
+            except FileNotFoundError:
+                last_error = None
+                break
+            except OSError as exc:
+                last_error = exc
+                time.sleep(0.1)
+        if last_error is not None:
+            # Leave the intermediate file in place rather than failing the rule.
+            _LOGGER.warning("Could not delete intermediate file %s: %s", path, last_error)
+
+
 class AssetTransformerManager:
     """Coordinates execution of a :class:`RuleProfile` over USD stages.
 
@@ -439,6 +494,13 @@ class AssetTransformerManager:
             _collect_assets(base_layer, package_root_final, source_layer_path=input_stage_path)
             _canonicalize_orient_quats(base_layer)
             base_layer.Save()
+        # Drop the manager's direct handle to the base layer. Holding it would
+        # keep payloads/<base>.usd open for the whole run, so a rule that
+        # converts that file to .usda (and defers its deletion back to the
+        # manager) could never have the original removed on Windows. After this
+        # the working stage opened below is the sole manager-side handle to the
+        # file until a rule returns a replacement stage.
+        base_layer = None
 
         working_stage = Usd.Stage.Open(base_usda_path)
         if working_stage is None:
@@ -473,6 +535,14 @@ class AssetTransformerManager:
 
                 returned_stage_path = rule.process_rule()
 
+                # A rule may defer file deletions to the manager via
+                # RuleInterface.request_deletion. It cannot perform them itself:
+                # the manager owns the working stage handed to the rule as
+                # source_stage, so the file stays open until the manager drops
+                # that handle (on Windows an open USD layer is an OS-level lock
+                # and os.remove fails with WinError 5).
+                deferred_deletions = rule.get_pending_deletions()
+
                 # Update working stage if the rule returned a different stage path
                 if returned_stage_path is not None:
                     current_path = working_stage.GetRootLayer().realPath
@@ -490,6 +560,14 @@ class AssetTransformerManager:
                             _LOGGER.warning("Failed to open returned stage: %s", returned_stage_path)
                             # Re-open the original if we can't open the new one
                             working_stage = Usd.Stage.Open(current_path)
+
+                # The manager has now released any superseded working stage, so
+                # honor the rule's deferred deletions (e.g. the original .usd
+                # converted in place to .usda). Best-effort and never deletes the
+                # file backing the live working stage.
+                if deferred_deletions:
+                    live_path = working_stage.GetRootLayer().realPath if working_stage else None
+                    _run_deferred_deletions(deferred_deletions, keep=live_path)
 
                 # Collect logs and affected stages from the rule.
                 for entry in rule.get_operation_log():

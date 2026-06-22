@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test module for PytorchWriter functionality with single and multiple render products."""
+"""Verifies PytorchWriter tensor output for single and multiple render products on CPU and CUDA. The tests cover in-memory listener delivery, optional PNG backend writing, tensor shapes, and multi-camera output organization."""
 
 import os
 import tempfile
@@ -49,7 +49,7 @@ class TestMultipleRenderProducts(omni.kit.test.AsyncTestCase):
     workflows.
     """
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures with render products, cameras, and scene objects.
 
         Creates a new stage with three cameras at different positions, each with 512x512 render products.
@@ -88,7 +88,7 @@ class TestMultipleRenderProducts(omni.kit.test.AsyncTestCase):
 
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test fixtures by destroying render products and closing the stage."""
         await omni.kit.app.get_app().next_update_async()
         for rp in self.render_products:
@@ -99,12 +99,12 @@ class TestMultipleRenderProducts(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().close_stage()
 
-    async def _run_until_stopped(self):
+    async def _run_until_stopped(self) -> None:
         """Run the replicator orchestrator for 10 frames until completion."""
         await rep.orchestrator.run_until_complete_async(num_frames=10)
 
     @unittest.skip("Skipping test as PytorchWriter is deprecated")
-    async def test_single_camera_writer_without_backend(self):
+    async def test_single_camera_writer_without_backend(self) -> None:
         """Test PytorchWriter with a single camera using CPU device without file output.
 
         Verifies that the writer produces a tensor with correct shape [1, 3, 512, 512] on CPU device.
@@ -124,7 +124,7 @@ class TestMultipleRenderProducts(omni.kit.test.AsyncTestCase):
         pytorch_listener = None
 
     @unittest.skip("Skipping test as PytorchWriter is deprecated")
-    async def test_single_camera_writer_with_backend(self):
+    async def test_single_camera_writer_with_backend(self) -> None:
         """Test PytorchWriter with a single camera using CPU device and file output.
 
         Verifies that the writer produces both in-memory tensor data and saves PNG files to disk.
@@ -154,7 +154,7 @@ class TestMultipleRenderProducts(omni.kit.test.AsyncTestCase):
         pytorch_listener = None
 
     @unittest.skip("Skipping test as PytorchWriter is deprecated")
-    async def test_multiple_cameras_writer_without_backend(self):
+    async def test_multiple_cameras_writer_without_backend(self) -> None:
         """Test PytorchWriter with multiple cameras using CPU device without file output.
 
         Verifies that the writer produces a tensor with correct shape [3, 3, 512, 512] on CPU device
@@ -175,7 +175,7 @@ class TestMultipleRenderProducts(omni.kit.test.AsyncTestCase):
         pytorch_listener = None
 
     @unittest.skip("Skipping test as PytorchWriter is deprecated")
-    async def test_multiple_cameras_writer_with_backend(self):
+    async def test_multiple_cameras_writer_with_backend(self) -> None:
         """Test PytorchWriter with multiple cameras using CPU device and file output.
 
         Verifies that the writer produces both in-memory tensor data and saves PNG files for each camera.
@@ -215,7 +215,7 @@ class TestMultipleRenderProducts(omni.kit.test.AsyncTestCase):
         pytorch_listener = None
 
     @unittest.skip("Skipping test as PytorchWriter is deprecated")
-    async def test_single_camera_writer_with_gpu(self):
+    async def test_single_camera_writer_with_gpu(self) -> None:
         """Test PytorchWriter with a single camera using CUDA GPU device.
 
         Verifies that the writer produces a tensor with correct shape [1, 3, 512, 512] on CUDA device.
@@ -236,7 +236,7 @@ class TestMultipleRenderProducts(omni.kit.test.AsyncTestCase):
         pytorch_listener = None
 
     @unittest.skip("Skipping test as PytorchWriter is deprecated")
-    async def test_multiple_cameras_writer_with_gpu(self):
+    async def test_multiple_cameras_writer_with_gpu(self) -> None:
         """Test PytorchWriter with multiple cameras using CUDA GPU device.
 
         Verifies that the writer produces a tensor with correct shape [3, 3, 512, 512] on CUDA device

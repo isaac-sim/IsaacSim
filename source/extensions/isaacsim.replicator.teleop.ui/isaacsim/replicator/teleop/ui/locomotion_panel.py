@@ -50,7 +50,14 @@ _LOG_NAMESPACE = "Locomotion"
 
 
 def set_status(label: ui.Label | None, text: str, color: int = CLR_DIM, emit_terminal: bool = False) -> None:
-    """Set the status label text and color for this panel."""
+    """Set the status label text and color for this panel.
+
+    Args:
+        label: Label widget to update.
+        text: Status text to display.
+        color: Label text color.
+        emit_terminal: Whether to print the status change to the terminal.
+    """
     _set_status_base(label, text, color, source=_LOG_NAMESPACE, emit_terminal=emit_terminal)
 
 
@@ -58,7 +65,13 @@ _SETTINGS_PREFIX = "/persistent/exts/isaacsim.replicator.teleop/locomotion"
 
 
 class LocomotionPanel:
-    """Panel for kinematic slide locomotion via VR controller input."""
+    """Panel for kinematic slide locomotion via VR controller input.
+
+    Args:
+        locomotion_controller: Controller backing locomotion tracking.
+        teleop_manager: Shared teleop manager for locomotion state.
+        collapsed_states: Mutable panel collapsed-state cache.
+    """
 
     def __init__(
         self,
@@ -295,7 +308,11 @@ class LocomotionPanel:
             self._clear_btn.enabled = (not self._is_playing) and self._configured
 
     def collect_profile(self) -> LocomotionProfile:
-        """Collect the current locomotion-controller state into a teleop profile section."""
+        """Collect the current locomotion-controller state into a teleop profile section.
+
+        Returns:
+            Locomotion profile section.
+        """
         path = self._path_field.model.get_value_as_string() if self._path_field else ""
         settings = {
             "prim_path": path,
@@ -308,7 +325,12 @@ class LocomotionPanel:
         )
 
     def apply_profile(self, profile: LocomotionProfile, resolve_stage: bool) -> None:
-        """Apply a locomotion-controller teleop profile section."""
+        """Apply a locomotion-controller teleop profile section.
+
+        Args:
+            profile: Locomotion profile section to apply.
+            resolve_stage: Whether to validate profile paths against the active stage.
+        """
         self._loco.disable()
         self._tm.set_locomotion_tracking(False)
         self._configured = False

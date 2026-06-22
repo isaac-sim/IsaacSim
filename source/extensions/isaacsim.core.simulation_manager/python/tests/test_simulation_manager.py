@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for simulation manager."""
+"""Verifies SimulationManager backend selection, physics scene settings, callbacks, lifecycle state, engine switching, Fabric handlers, stage transitions, and multi-tick rendering behavior. The tests ensure stale scene references are invalidated and simulation state remains consistent across stage changes."""
 
-import carb
+from typing import Any
+
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.app
 import omni.kit.test
@@ -27,23 +28,23 @@ from pxr import PhysxSchema, UsdPhysics
 class TestSimulationManagerBackend(omni.kit.test.AsyncTestCase):
     """Tests for SimulationManager backend management."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         await stage_utils.create_new_stage_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         SimulationManager.set_backend("numpy")
         super().tearDown()
 
-    async def test_get_set_backend(self):
+    async def test_get_set_backend(self) -> None:
         """Test getting and setting all valid backends."""
         for backend in ["numpy", "torch", "warp"]:
             SimulationManager.set_backend(backend)
             self.assertEqual(SimulationManager.get_backend(), backend)
 
-    async def test_get_backend_utils(self):
+    async def test_get_backend_utils(self) -> None:
         """Test getting backend utils for all backends and invalid backend."""
         # Test numpy backend
         SimulationManager.set_backend("numpy")
@@ -78,17 +79,17 @@ class TestSimulationManagerBackend(omni.kit.test.AsyncTestCase):
 class TestSimulationManagerDefaultCallbacks(omni.kit.test.AsyncTestCase):
     """Tests for SimulationManager default callback enable/disable functionality."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         await stage_utils.create_new_stage_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         SimulationManager.enable_all_default_callbacks(True)
         super().tearDown()
 
-    async def test_default_callbacks(self):
+    async def test_default_callbacks(self) -> None:
         """Test all default callback enable/disable functionality."""
         # Test individual callbacks
         SimulationManager.enable_warm_start_callback(True)
@@ -131,7 +132,7 @@ class TestSimulationManagerDefaultCallbacks(omni.kit.test.AsyncTestCase):
 class TestSimulationManagerPhysicsDevice(omni.kit.test.AsyncTestCase):
     """Tests for SimulationManager physics device management."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         await stage_utils.create_new_stage_async()
@@ -139,7 +140,7 @@ class TestSimulationManagerPhysicsDevice(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         self._original_device = SimulationManager.get_physics_sim_device()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         try:
             SimulationManager.set_physics_sim_device(self._original_device)
@@ -147,7 +148,7 @@ class TestSimulationManagerPhysicsDevice(omni.kit.test.AsyncTestCase):
             print(f"tearDown failed to restore physics sim device: {e}")
         super().tearDown()
 
-    async def test_physics_sim_device(self):
+    async def test_physics_sim_device(self) -> None:
         """Test getting and setting physics simulation device."""
         # Test get returns string
         device = SimulationManager.get_physics_sim_device()
@@ -181,7 +182,7 @@ class TestSimulationManagerPhysicsDevice(omni.kit.test.AsyncTestCase):
 class TestSimulationManagerPhysicsSceneSettings(omni.kit.test.AsyncTestCase):
     """Tests for SimulationManager physics scene settings (dt, broadphase, CCD, GPU dynamics, stabilization, solver)."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         await stage_utils.create_new_stage_async()
@@ -189,7 +190,7 @@ class TestSimulationManagerPhysicsSceneSettings(omni.kit.test.AsyncTestCase):
         self._registered_callbacks = []
         self._received_dt_values = []
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         for callback_id in self._registered_callbacks:
             try:
@@ -201,16 +202,21 @@ class TestSimulationManagerPhysicsSceneSettings(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         super().tearDown()
 
-    async def _create_physics_scene(self):
+    async def _create_physics_scene(self) -> None:
         """Helper to create physics scene for tests that need it."""
         stage_utils.define_prim(self._physics_scene_path, type_name="PhysicsScene")
         await omni.kit.app.get_app().next_update_async()
 
-    def _physics_step_callback(self, step_dt, context):
-        """Callback to capture physics step dt values."""
+    def _physics_step_callback(self, step_dt: Any, context: Any) -> None:
+        """Callback to capture physics step dt values.
+
+        Args:
+            step_dt: Physics step delta time.
+            context: Physics callback context.
+        """
         self._received_dt_values.append(step_dt)
 
-    async def test_physics_scene_settings_no_scene(self):
+    async def test_physics_scene_settings_no_scene(self) -> None:
         """Test all physics scene settings without specifying a physics scene."""
         # Test get physics dt default
         dt = SimulationManager.get_physics_dt()
@@ -347,7 +353,7 @@ class TestSimulationManagerPhysicsSceneSettings(omni.kit.test.AsyncTestCase):
         if scene is not None:
             self.assertIsInstance(scene, str)
 
-    async def test_physics_scene_settings_with_scene(self):
+    async def test_physics_scene_settings_with_scene(self) -> None:
         """Test all physics scene settings with a specific physics scene."""
         if SimulationManager._engine != "physx":
             self.skipTest(f"Skipping PhysX-specific test (active engine: {SimulationManager._engine})")
@@ -423,7 +429,7 @@ class TestSimulationManagerPhysicsSceneSettings(omni.kit.test.AsyncTestCase):
 class TestSimulationManagerCallbacks(omni.kit.test.AsyncTestCase):
     """Tests for SimulationManager callback registration and event handling."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         await stage_utils.create_new_stage_async()
@@ -432,7 +438,7 @@ class TestSimulationManagerCallbacks(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         self._registered_callbacks = []
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         for callback_id in self._registered_callbacks:
             try:
@@ -444,7 +450,7 @@ class TestSimulationManagerCallbacks(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         super().tearDown()
 
-    async def test_register_callbacks(self):
+    async def test_register_callbacks(self) -> None:
         """Test registering and deregistering callbacks for all event types."""
         # Test message bus callbacks
         events = [
@@ -488,10 +494,10 @@ class TestSimulationManagerCallbacks(omni.kit.test.AsyncTestCase):
 
         # Test callback with bound method
         class CallbackHolder:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.called = False
 
-            def on_physics_ready(self, event):
+            def on_physics_ready(self, event: Any) -> None:
                 self.called = True
 
         holder = CallbackHolder()
@@ -507,7 +513,7 @@ class TestSimulationManagerCallbacks(omni.kit.test.AsyncTestCase):
         # Test deregistering invalid callback (log a warning and do nothing)
         self.assertFalse(SimulationManager.deregister_callback(999999))
 
-    async def test_event_dispatch(self):
+    async def test_event_dispatch(self) -> None:
         """Test that all events are dispatched correctly."""
         warmup_received = []
         ready_received = []
@@ -574,7 +580,7 @@ class TestSimulationManagerCallbacks(omni.kit.test.AsyncTestCase):
 class TestSimulationManagerSimulationLifecycle(omni.kit.test.AsyncTestCase):
     """Tests for SimulationManager simulation state, step, and initialization."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         await stage_utils.create_new_stage_async()
@@ -582,14 +588,14 @@ class TestSimulationManagerSimulationLifecycle(omni.kit.test.AsyncTestCase):
         stage_utils.define_prim(self._physics_scene_path, type_name="PhysicsScene")
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         timeline = omni.timeline.get_timeline_interface()
         timeline.stop()
         await omni.kit.app.get_app().next_update_async()
         super().tearDown()
 
-    async def test_simulation_state(self):
+    async def test_simulation_state(self) -> None:
         """Test simulation state through play, pause, and time advancement."""
         # Test initial state
         self.assertFalse(SimulationManager.is_simulating())
@@ -616,7 +622,7 @@ class TestSimulationManagerSimulationLifecycle(omni.kit.test.AsyncTestCase):
         self.assertTrue(SimulationManager.is_simulating())
         self.assertTrue(SimulationManager.is_paused())
 
-    async def test_simulation_operations(self):
+    async def test_simulation_operations(self) -> None:
         """Test simulation operations including physics view, stepping, and initialization."""
         # Test physics sim view before simulation
         self.assertIsNone(SimulationManager.get_physics_sim_view())
@@ -650,7 +656,7 @@ class TestSimulationManagerSimulationLifecycle(omni.kit.test.AsyncTestCase):
 class TestSimulationManagerPhysicsEngines(omni.kit.test.AsyncTestCase):
     """Tests for SimulationManager physics engine switching and management."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         await stage_utils.create_new_stage_async()
@@ -664,7 +670,7 @@ class TestSimulationManagerPhysicsEngines(omni.kit.test.AsyncTestCase):
         SimulationManager.set_default_physics_scene("/World/PhysicsScene")
         self._original_engine = SimulationManager.get_active_physics_engine()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         if self._original_engine:
             try:
@@ -676,7 +682,7 @@ class TestSimulationManagerPhysicsEngines(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         super().tearDown()
 
-    async def test_engine_query_and_switching(self):
+    async def test_engine_query_and_switching(self) -> None:
         """Test engine query methods and switching to PhysX."""
         # This test is specific to PhysX - skip if another engine is active
         if SimulationManager.get_active_physics_engine() != "physx":
@@ -698,7 +704,7 @@ class TestSimulationManagerPhysicsEngines(omni.kit.test.AsyncTestCase):
         self.assertTrue(result)
         self.assertEqual(SimulationManager.get_active_physics_engine(), "physx")
 
-    async def test_invalid_switch_preserves_state(self):
+    async def test_invalid_switch_preserves_state(self) -> None:
         """Test that invalid engine switches preserve all state and PhysX continues working."""
         # This test is specific to PhysX - skip if another engine is active
         if SimulationManager.get_active_physics_engine() != "physx":
@@ -741,16 +747,16 @@ class TestSimulationManagerPhysicsEngines(omni.kit.test.AsyncTestCase):
 class TestSimulationManagerFabricAndNoticeHandlers(omni.kit.test.AsyncTestCase):
     """Tests for SimulationManager fabric and USD notice handler management."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         await stage_utils.create_new_stage_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
-    async def test_fabric_and_notice_handlers(self):
+    async def test_fabric_and_notice_handlers(self) -> None:
         """Test all fabric and USD notice handler functionality."""
         # Test enable/disable fabric
         try:
@@ -788,20 +794,20 @@ class TestSimulationManagerFabricAndNoticeHandlers(omni.kit.test.AsyncTestCase):
 class TestSimulationManagerStageTransitions(omni.kit.test.AsyncTestCase):
     """Tests for SimulationManager behavior during stage transitions and prim invalidation."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         await stage_utils.create_new_stage_async()
         self._physics_scene_path = "/PhysicsScene"
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         timeline = omni.timeline.get_timeline_interface()
         timeline.stop()
         await omni.kit.app.get_app().next_update_async()
         super().tearDown()
 
-    async def test_stale_physics_scene_prim_reference(self):
+    async def test_stale_physics_scene_prim_reference(self) -> None:
         """Test that SimulationManager handles stale prim references gracefully.
 
         This test directly simulates the bug condition where the _physics_scenes
@@ -818,7 +824,6 @@ class TestSimulationManagerStageTransitions(omni.kit.test.AsyncTestCase):
         4. The cached PhysxScene now has a stale prim reference
         5. Try to play - without fix, this raises RuntimeError for expired prim
         """
-
         # Create physics scene and start simulation
         stage_utils.define_prim(self._physics_scene_path, type_name="PhysicsScene")
         await omni.kit.app.get_app().next_update_async()
@@ -877,7 +882,7 @@ class TestSimulationManagerStageTransitions(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(dt)
         self.assertGreater(dt, 0)
 
-    async def test_physics_scene_prim_invalidation_on_stage_change(self):
+    async def test_physics_scene_prim_invalidation_on_stage_change(self) -> None:
         """Test that SimulationManager handles expired physics scene prims gracefully.
 
         This test verifies that when a stage is changed (e.g., new stage opened),
@@ -928,7 +933,7 @@ class TestSimulationManagerStageTransitions(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(dt)
         self.assertGreater(dt, 0)
 
-    async def test_physics_scene_deletion_during_simulation(self):
+    async def test_physics_scene_deletion_during_simulation(self) -> None:
         """Test SimulationManager behavior when physics scene is deleted.
 
         This test verifies that deleting a physics scene prim while simulation
@@ -967,7 +972,7 @@ class TestSimulationManagerStageTransitions(omni.kit.test.AsyncTestCase):
         # Verify simulation is running
         self.assertTrue(SimulationManager.is_simulating())
 
-    async def test_multiple_stage_transitions(self):
+    async def test_multiple_stage_transitions(self) -> None:
         """Test SimulationManager across multiple stage open/close cycles.
 
         This test verifies that repeated stage transitions don't accumulate
@@ -1004,7 +1009,7 @@ class TestSimulationManagerStageTransitions(omni.kit.test.AsyncTestCase):
 class TestSimulationManagerMultiTickRendering(omni.kit.test.AsyncTestCase):
     """Tests for SimulationManager multi-tick rendering mode support."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # /rtx/hydra/supportMultiTickRate must be set at app startup (see the
@@ -1015,14 +1020,14 @@ class TestSimulationManagerMultiTickRendering(omni.kit.test.AsyncTestCase):
         stage_utils.define_prim(self._physics_scene_path, type_name="PhysicsScene")
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         timeline = omni.timeline.get_timeline_interface()
         timeline.stop()
         await omni.kit.app.get_app().next_update_async()
         super().tearDown()
 
-    async def test_multi_tick_simulation_time_update(self):
+    async def test_multi_tick_simulation_time_update(self) -> None:
         """Test that simulation time is written to the Fabric prim in multi-tick mode.
 
         When /rtx/hydra/supportMultiTickRate is enabled, the physics callback writes
@@ -1034,8 +1039,12 @@ class TestSimulationManagerMultiTickRendering(omni.kit.test.AsyncTestCase):
         usd_context = omni.usd.get_context()
         stage_id = usd_context.get_stage_id()
 
-        def _read_fabric_sim_time():
-            """Read the omni:time attribute from /ExternalSimulationTime in Fabric."""
+        def _read_fabric_sim_time() -> float | None:
+            """Read the omni:time attribute from /ExternalSimulationTime in Fabric.
+
+            Returns:
+                The Fabric simulation time, or None if the attribute cannot be read.
+            """
             try:
                 import usdrt
 

@@ -1,5 +1,5 @@
 [package]
-version = "0.1.1"
+version = "0.1.2"
 category = "Simulation"
 title = "PINK Examples"
 description = "Examples for using the PINK inverse kinematics library under motion generation."

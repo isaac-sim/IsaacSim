@@ -13,11 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Standalone functional tests for isaacsim-asset-importer-urdf.
-
-Imports URDF files into USD and validates the resulting stage structure,
-joint types, limits, link hierarchy, and geometry. No Kit runtime required.
-"""
+"""Verifies standalone URDF import of a representative robot model. Covers USD output, imported links and joints, revolute and prismatic joint typing, joint limits, geometry, and mass properties."""
 
 from __future__ import annotations
 
@@ -25,7 +21,7 @@ import os
 import tempfile
 import unittest
 
-from pxr import Sdf, Usd, UsdGeom, UsdPhysics
+from pxr import Usd, UsdGeom, UsdPhysics
 
 # Minimal two-link arm: fixed base + revolute elbow with limits + prismatic gripper.
 _TWO_LINK_URDF = """\
@@ -133,6 +129,9 @@ class TestURDFImportFunctional(unittest.TestCase):
         since the full pipeline depends on additional transformer infrastructure
         that may produce a different output layout. The intermediate stage still
         contains all USD prims, joints, and physics schemas.
+
+        Returns:
+            The USD stage opened from the generated import output.
         """
         from isaacsim.asset.importer.urdf import URDFImporter
         from isaacsim.asset.importer.urdf.impl.config import URDFImporterConfig

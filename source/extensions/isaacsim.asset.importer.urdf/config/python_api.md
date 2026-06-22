@@ -11,13 +11,19 @@
 - class URDFImporterConfig
   - urdf_path: str | None
   - usd_path: str | None
+  - merge_fixed_joints: bool
   - merge_mesh: bool
   - debug_mode: bool
   - collision_from_visuals: bool
   - collision_type: str
   - allow_self_collision: bool
   - ros_package_paths: list[dict[str, str]]
-
-- class Extension(omni.ext.IExt)
-  - def on_startup(self, ext_id: str)
-  - def on_shutdown(self)
+  - robot_type: str
+  - fix_base: bool | None
+  - link_density: float | None
+  - joint_drive_type: str | dict[str, str] | None
+  - joint_target_type: str | dict[str, str] | None
+  - override_joint_stiffness: float | dict[str, float] | None
+  - override_joint_damping: float | dict[str, float] | None
+  - run_asset_transformer: bool
+  - run_multi_physics_conversion: bool

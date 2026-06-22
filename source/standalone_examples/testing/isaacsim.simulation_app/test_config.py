@@ -13,10 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Combined test suite for SimulationApp configuration options."""
+"""Verifies SimulationApp configuration for deferred stage creation, extra Kit arguments, asset-root settings, and clean shutdown without an unsaved-stage prompt."""
 
 import os
 import sys
+from typing import Any
 
 from isaacsim import SimulationApp
 
@@ -30,7 +31,7 @@ import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.app
 
 
-def test_createstage_config(kit):
+def test_createstage_config(kit: Any) -> None:
     """Test app startup without creating new stage.
 
     Args:
@@ -60,7 +61,7 @@ def test_createstage_config(kit):
     print("[TEST 1] PASSED - create_new_stage configuration works correctly")
 
 
-def test_extra_args(kit):
+def test_extra_args(kit: Any) -> None:
     """Test passing extra arguments to SimulationApp.
 
     Args:
@@ -92,7 +93,7 @@ def test_extra_args(kit):
     print("[TEST 2] PASSED - extra_args configuration works correctly")
 
 
-def test_unsaved_on_exit(kit):
+def test_unsaved_on_exit(kit: Any) -> None:
     """Test that app exits cleanly without prompting for unsaved changes.
 
     Args:

@@ -18,10 +18,13 @@
 from __future__ import annotations
 
 import traceback
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from isaacsim.core.experimental.actuators import ArticulationActuators
 from isaacsim.core.experimental.actuators.ogn.OgnArticulationActuatorsDatabase import OgnArticulationActuatorsDatabase
+
+if TYPE_CHECKING:
+    from isaacsim.core.experimental.actuators import ArticulationActuators
 
 
 class OgnArticulationActuatorsInternalState:
@@ -48,6 +51,8 @@ class OgnArticulationActuatorsInternalState:
             robot_path: USD path of the articulation root prim.
             auto_step_pre_physics: Forwarded to `ArticulationActuators.__init__`.
         """
+        from isaacsim.core.experimental.actuators import ArticulationActuators
+
         self._robot_path = robot_path
         self._auto_step_pre_physics = auto_step_pre_physics
         self._actuators = ArticulationActuators(robot_path, auto_step_pre_physics=auto_step_pre_physics)
@@ -78,6 +83,11 @@ class OgnArticulationActuators:
 
     @staticmethod
     def internal_state() -> OgnArticulationActuatorsInternalState:
+        """Return a new per-instance node state.
+
+        Returns:
+            A fresh `OgnArticulationActuatorsInternalState` for one node instance.
+        """
         return OgnArticulationActuatorsInternalState()
 
     @staticmethod
@@ -101,7 +111,15 @@ class OgnArticulationActuators:
             state.release()
 
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
+        """Compute actuator commands from the current OmniGraph inputs.
+
+        Args:
+            db: OmniGraph database object for the current compute call.
+
+        Returns:
+            True if commands were processed successfully, otherwise False.
+        """
         state: OgnArticulationActuatorsInternalState = db.per_instance_state
         try:
             robot_path: str = db.inputs.robotPath

@@ -19,22 +19,25 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
+from typing import Generic, TypeVar
+
+T = TypeVar("T")
 
 
-class Registry[T]:
+class Registry(Generic[T]):
     """A generic registry mapping class names to class objects."""
 
     def __init__(self) -> None:
-        self.items = OrderedDict()
+        self.items: OrderedDict[str, type[T]] = OrderedDict()
 
-    def register(self) -> Callable:
+    def register(self) -> Callable[[type[T]], type[T]]:
         """Return a decorator that registers a class in the registry.
 
         Returns:
             A decorator that registers the decorated class and returns it unchanged.
         """
 
-        def _register(cls: type) -> type:
+        def _register(cls: type[T]) -> type[T]:
             self.items[cls.__name__] = cls
             return cls
 
@@ -48,7 +51,7 @@ class Registry[T]:
         """
         return self.items.keys()
 
-    def get(self, name: str) -> T:
+    def get(self, name: str) -> type[T]:
         """Return the class registered under the given name.
 
         Args:
@@ -59,7 +62,7 @@ class Registry[T]:
         """
         return self.items[name]
 
-    def get_index(self, index: int) -> T:
+    def get_index(self, index: int) -> type[T]:
         """Return the class at the given registration index.
 
         Args:

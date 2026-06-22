@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Default render config for the nurec example — knobs that affect render quality only.
+#
+# load_config() loads THIS file as the base, then overlays --config (top-level keys
+# replace; nested dicts merge one level deep). Per-run inputs (--stage, --output, --cameras,
+# --timestamps, --poses, --resolution) and the keyframe match window (--keyframe-tolerance-us)
+# are CLI args, NOT config.
+#
+# Launch-time args are fixed in rendering_setup.build_extra_args (NOT here):
+#   --enable omni.rtx.spg   --/renderer/multiGpu/enabled=false
+# The override sets below are applied after open_stage but BEFORE the first
+# simulation_app.update(), and re-applied per stage open (a stage's customLayerData can revert
+# process-wide carb settings). They are NOT freely-runtime-changeable: the NuRec engine reads
+# some of them (e.g. disableNuRecPostProcessings) once, at the first Hydra Sync, and bakes them
+# in — setting them after that first update() has no effect. spg_pre_hydra_sync_overrides is
+# used for an SPG (PPISP) NuRec USD, no_spg_pre_hydra_sync_overrides for a plain NuRec USD.
+# A value of `null` means "leave the engine/stage default".
+
+rendering:
+  # RTPT accumulation ticks per frame; higher = cleaner/more converged, slower.
+  warmup_steps: 800
+
+# Applied for SPG (PPISP) NuRec USDs — PPISP is the photometric authority.
+spg_pre_hydra_sync_overrides:
+  # --- SPG correctness (required for a faithful render) ---
+  /rtx/spg/enabled: true
+  /rtx/rtpt/gaussian/skipTonemapping/enabled: false            # tonemap in-graph, don't bypass
+  /omni/rtx/nre/compositing/disableNuRecPostProcessings: true  # PPISP already runs in the SPG graph
+
+  # --- Optional / not forced (null = leave engine/stage default) ---
+  /rtx/post/tonemap/op: null   # leave the stage-authored tonemap operator
+
+  # --- Gaussian raycast quality (particle stages; inert for volume) ---
+  /rtx/rtpt/gaussian/accumulatedDepth/enabled: null
+  /rtx/rtpt/gaussian/accumulatedAlbedo/enabled: null
+  /rtx/rtpt/gaussian/maxGaussiansToAccumulate: null
+
+# Applied for plain (non-PPISP) NuRec USDs — the engine ISP/tonemap stays on.
+no_spg_pre_hydra_sync_overrides:
+  # Plain gaussians: leave gaussian tonemapping at the engine default (the engine ISP/tonemap path handles it).
+  /rtx/rtpt/gaussian/skipTonemapping/enabled: null

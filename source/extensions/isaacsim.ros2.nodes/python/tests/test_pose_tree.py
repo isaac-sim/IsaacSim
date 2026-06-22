@@ -14,7 +14,11 @@
 # limitations under the License.
 
 
-"""Tests for ROS 2 pose tree publisher OmniGraph node."""
+"""Verify ROS 2 pose tree publishing.
+
+Covers duplicate-name handling, frame-name overrides, and
+compute-transform-tree graph integration.
+"""
 
 import numpy as np
 import omni.graph.core as og
@@ -33,21 +37,19 @@ from .common import add_cube, add_franka, get_qos_profile
 
 
 class TestRos2PoseTree(ROS2TestCase):
-    """Test suite for ros2 pose tree."""
+    """Verify TFMessage output from ROS 2 pose tree publishing graphs."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh stage for pose tree publishing tests."""
         await super().setUp()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
-        pass
-
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Run shared ROS 2 cleanup after pose tree tests."""
         await super().tearDown()
 
-    async def test_pose_tree(self):
+    async def test_pose_tree(self) -> None:
         """Test pose tree."""
         import rclpy
         from tf2_msgs.msg import TFMessage
@@ -58,7 +60,7 @@ class TestRos2PoseTree(ROS2TestCase):
         self._tf_data = None
         self._tf_data_prev = None
 
-        def tf_callback(data: TFMessage):
+        def tf_callback(data: TFMessage) -> None:
             self._tf_data = data
 
         node = self.create_node("tf_tester")
@@ -94,7 +96,7 @@ class TestRos2PoseTree(ROS2TestCase):
         except Exception as e:
             print(e)
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         self._timeline.play()
@@ -137,9 +139,7 @@ class TestRos2PoseTree(ROS2TestCase):
         self._timeline.stop()
         spin()
 
-        pass
-
-    async def test_duplicate_names_tree(self):
+    async def test_duplicate_names_tree(self) -> None:
         """Test duplicate names tree."""
         import rclpy
         from tf2_msgs.msg import TFMessage
@@ -161,7 +161,7 @@ class TestRos2PoseTree(ROS2TestCase):
         self._tf_data = None
         self._tf_data_prev = None
 
-        def tf_callback(data: TFMessage):
+        def tf_callback(data: TFMessage) -> None:
             self._tf_data = data
 
         node = self.create_node("tf_tester")
@@ -201,7 +201,7 @@ class TestRos2PoseTree(ROS2TestCase):
         except Exception as e:
             print(e)
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         self._timeline.play()
@@ -235,9 +235,7 @@ class TestRos2PoseTree(ROS2TestCase):
         self._timeline.stop()
         spin()
 
-        pass
-
-    async def test_frame_name_override(self):
+    async def test_frame_name_override(self) -> None:
         """Test frame name override."""
         import rclpy
         from tf2_msgs.msg import TFMessage
@@ -267,7 +265,7 @@ class TestRos2PoseTree(ROS2TestCase):
         stage = omni.usd.get_context().get_stage()
         self._tf_data = None
 
-        def tf_callback(data: TFMessage):
+        def tf_callback(data: TFMessage) -> None:
             self._tf_data = data
 
         node = self.create_node("tf_tester")
@@ -301,7 +299,7 @@ class TestRos2PoseTree(ROS2TestCase):
         except Exception as e:
             print(e)
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         # Run the simulation which will trigger the CARB_LOG_WARN when processing the duplicate "base_link" names
@@ -354,7 +352,7 @@ class TestRos2PoseTree(ROS2TestCase):
 
                 self.assertTrue(renamed_exists, f"Original frame {link} should have a renamed frames")
 
-    async def test_compute_transform_tree_pipeline(self):
+    async def test_compute_transform_tree_pipeline(self) -> None:
         """Test OgnIsaacComputeTransformTree -> OgnROS2PublishTransformTree external data path."""
         import rclpy
         from tf2_msgs.msg import TFMessage
@@ -363,7 +361,7 @@ class TestRos2PoseTree(ROS2TestCase):
 
         self._tf_data = None
 
-        def tf_callback(data: TFMessage):
+        def tf_callback(data: TFMessage) -> None:
             self._tf_data = data
 
         node = self.create_node("tf_pipeline_tester")
@@ -397,7 +395,7 @@ class TestRos2PoseTree(ROS2TestCase):
         except Exception as e:
             print(e)
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         self._timeline.play()

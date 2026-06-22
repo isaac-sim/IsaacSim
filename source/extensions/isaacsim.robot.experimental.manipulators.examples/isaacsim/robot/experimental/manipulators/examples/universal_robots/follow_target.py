@@ -28,11 +28,11 @@ class UR10FollowTarget:
 
     This class provides a complete follow target implementation for UR10 robot
     without inheriting from any base classes. It manages the robot, target cube, and
-    provides the necessary interface for the simulation.
+    provides the necessary interface for the simulation. Instances start with no
+    robot or target cube until the scene is set up.
     """
 
     def __init__(self) -> None:
-        """Initialize the UR follow target task."""
         # Initialize robot and target references
         self.robot = None
         self.target_cube = None

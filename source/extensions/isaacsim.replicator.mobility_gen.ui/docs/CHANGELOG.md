@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.8] - 2026-06-10
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
+## [0.4.7] - 2026-06-09
+### Changed
+- Teleop build validates NuRec render prerequisites (`setup_for_rendering`) on the loaded stage and aborts with a warning notification if one is unmet (e.g. `omni.rtx.spg` not enabled), instead of recording a black scene.
+- For SPG scenes the chase viewport renders through the export's authored PPISP graph via `route_chase_through_ppisp`; non-SPG scenes point the viewport at the chase camera as before.
+- Added a dependency on `isaacsim.replicator.nurec_utils`.
+
+## [0.4.6] - 2026-06-07
+### Changed
+- `_cache_stage` now copies the input scene (and the files it needs) into a temporary folder before loading, then opens the stage from that copy. This removes the flatten + strip-kit-prims path and the USDZ re-export; USDZ inputs are copied as-is so every package member (including SPG `.cu.lua` launchers) is preserved, and recording start is much faster for large NuRec scenes.
+- The recording panel now drives recordings through the shared `RecordingSession`, so the UI and headless scripts build and record scenes through the same path.
+
+## [0.4.5] - 2026-06-04
+### Removed
+- Stale `multiGpu` disable from `[[test]]` args; the Kit 110.1.1 multi-GPU startup crash no longer reproduces.
+
 ## [0.4.4] - 2026-05-13
 ### Changed
 - Clarified the `_cache_stage` docstring around what `export_as_stage` actually inlines.

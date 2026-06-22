@@ -1,4 +1,9 @@
 # Changelog
+
+## [1.7.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.7.2] - 2026-05-10
 ### Fixed
 - Validate clone source prim paths before calling USD bindings.

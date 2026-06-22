@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Manage conveyor belt metadata and Warp buffers."""
+
 import warp as wp
 
 # not needed for the purpose of this sample
@@ -20,8 +22,7 @@ wp.config.enable_backward = False
 
 
 class ConveyorBeltManager:
-    """Class to register conveyor belt objects and create and manage corresponding data
-    buffers.
+    """Conveyor belt registry and buffer manager.
 
     Holds various conveyor belt related data buffers that are used for the computation of the
     forces that conveyor belts apply to interacting rigid bodies.
@@ -68,7 +69,6 @@ class ConveyorBeltManager:
             material_index: Index into the material pair friction table for this belt
                 (see MaterialPairManager).
         """
-
         self.conveyor_belt_path_list.append(path)
 
         self.conveyor_belt_to_indices_list.append(velocity_field_type)
@@ -87,7 +87,6 @@ class ConveyorBeltManager:
         Args:
             device: Warp device string. Uses the default device when ``None``.
         """
-
         # (N, 3) array that holds for each conveyor belt the following indices:
         # - type of the velocity field the conveyor belt should use
         #   (see add_conveyor_belt())

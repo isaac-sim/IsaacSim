@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.5.0] - 2026-05-04
 ### Added
 - RTX Radar menu reorganized into vendor submenus driven by `SUPPORTED_RADAR_CONFIGS`; Generic RTX Radar moved under `NVIDIA`; Texas Instruments IWRL6432AOP added

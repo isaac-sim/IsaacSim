@@ -34,7 +34,6 @@ Note: RTX Radar requires Motion BVH to be enabled.
 
 import argparse
 import os
-import sys
 
 from isaacsim import SimulationApp
 
@@ -122,7 +121,7 @@ RADAR_GMO_FIELDS = [
 # =============================================================================
 # GMO DATA INSPECTION FUNCTION
 # =============================================================================
-def inspect_radar_gmo(frame: int, gmo) -> None:
+def inspect_radar_gmo(frame: int, gmo: object) -> None:
     """Print radar GMO data fields.
 
     Args:
@@ -161,12 +160,13 @@ def inspect_radar_gmo(frame: int, gmo) -> None:
 class GmoRadarInspectWriter(Writer):
     """Writer that parses GenericModelOutput and prints radar GMO fields."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.data_structure = "renderProduct"
         self.annotators = [rep.annotators.get("GenericModelOutput")]
         self._frame_count = 0
 
-    def write(self, data):
+    def write(self, data: dict[str, object]) -> None:
+        """Inspect radar GenericModelOutput data."""
         if "renderProducts" not in data:
             return
         for _rp_name, rp_data in data["renderProducts"].items():

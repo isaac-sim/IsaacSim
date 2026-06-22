@@ -916,7 +916,11 @@ class TestJointWidget(TableWidget):
         self.list.set_selection_changed_fn(self._on_tree_selection_changed)
 
     def _on_tree_selection_changed(self, selection: list) -> None:
-        """Tracks multi-selections so bulk edit survives widget click focus changes."""
+        """Tracks multi-selections so bulk edit survives widget click focus changes.
+
+        Args:
+            selection: Current tree view selection.
+        """
         if len(selection) > 1:
             self._last_multi_selection = list(selection)
 

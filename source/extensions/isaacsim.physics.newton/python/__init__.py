@@ -23,8 +23,8 @@ Submodules:
     - tensors: Tensor-based interface for Newton physics (see isaacsim.physics.newton.tensors)
 """
 
+from .impl.extension import NewtonSimExtension as NewtonSimExtension
 from .impl.extension import (
-    NewtonSimExtension,
     acquire_physics_interface,
     acquire_stage,
     get_active_physics_engine,

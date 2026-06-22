@@ -82,6 +82,9 @@ class UIBuilder:
         stage changes outside of a load - e.g. the user opens a different
         stage in the viewport - this drops the now-stale scenario state
         so the next LOAD click starts cleanly.
+
+        Args:
+            event: USD stage event payload supplied by Kit.
         """
         if self._load_task is not None and not self._load_task.done():
             return
@@ -91,7 +94,11 @@ class UIBuilder:
         self._reset_widgets()
 
     def on_timeline_event(self, event: Any) -> None:
-        """Reset the Run/Stop button on timeline state changes."""
+        """Reset the Run/Stop button on timeline state changes.
+
+        Args:
+            event: Timeline event payload supplied by Kit.
+        """
         self._scenario_state_btn.reset()
         self._scenario_state_btn.enabled = False
 
@@ -192,7 +199,11 @@ class UIBuilder:
         self._run_plan(self._scenario.plan_to_task_space_target)
 
     def _run_plan(self, plan_fn: Callable[[], str | None]) -> None:
-        """Run a planning function and update the Run button based on the result."""
+        """Run a planning function and update the Run button based on the result.
+
+        Args:
+            plan_fn: Planning callable that returns an error message on failure.
+        """
         error_message = plan_fn()
         self._scenario_state_btn.reset()
         if error_message is not None:
@@ -204,7 +215,13 @@ class UIBuilder:
     # ------------------------------------------------------------ per-tick
 
     def _update_scenario(self, step: float, *args: Any, **kwargs: Any) -> None:
-        """Per-physics-step callback wired into the StateButton."""
+        """Run the scenario's per-physics-step callback.
+
+        Args:
+            step: Physics time step in seconds.
+            *args: Extra callback arguments supplied by the StateButton.
+            **kwargs: Extra callback keyword arguments supplied by the StateButton.
+        """
         if self._scenario is not None:
             self._scenario.step(step)
 
@@ -264,7 +281,11 @@ class UIBuilder:
                     self._joint_slider_models.append(field_model)
 
     def _show_error_dialog(self, message: str) -> None:
-        """Show a modal error dialog with the given message."""
+        """Show a modal error dialog with the given message.
+
+        Args:
+            message: Error message to display.
+        """
         dialog = ui.Window(
             "Planning Failed",
             width=500,

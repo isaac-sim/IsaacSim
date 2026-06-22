@@ -30,6 +30,8 @@ from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
 
+from typing import Any
+
 import isaacsim.core.experimental.utils.stage as stage_utils
 import isaacsim.robot_motion.experimental.motion_generation as mg
 import numpy as np
@@ -47,7 +49,7 @@ from isaacsim.robot_motion.experimental.motion_generation import WorldInterface
 # 2. Scene Setup
 # ============================================================================
 # <start-setup-scene-snippet>
-def setup_scene():
+def setup_scene() -> None:
     """Create a simple example scene with obstacles.
 
     The scene is created from the default template which includes a ground plane, lights, etc.
@@ -112,7 +114,7 @@ def setup_scene():
 # 3. SceneQuery: Finding Objects
 # ============================================================================
 # <start-scene-query-snippet>
-def demonstrate_scene_query():
+def demonstrate_scene_query() -> list[str]:
     """Demonstrate using SceneQuery to find objects in the scene."""
     # Create a scene query
     query = mg.SceneQuery()
@@ -153,7 +155,7 @@ def demonstrate_scene_query():
 # 4. ObstacleStrategy: Representation Management
 # ============================================================================
 # <start-obstacle-strategy-snippet>
-def demonstrate_obstacle_strategy(obstacle_paths):
+def demonstrate_obstacle_strategy(obstacle_paths: list[str]) -> mg.ObstacleStrategy:
     """Demonstrate configuring obstacle representations with ObstacleStrategy."""
     # Create an obstacle strategy
     strategy = mg.ObstacleStrategy()
@@ -196,14 +198,22 @@ class ExampleWorldInterface(WorldInterface):
     For example, if using cumotion, you would add obstacles to their WorldModel here.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the planning world representation."""
         # In a real implementation, this would initialize your planning library's world
         # e.g., self.world_model = cumotion.WorldModel()
         self.obstacles = {}
 
     # <start-add-spheres-snippet>
-    def add_spheres(self, prim_paths, radii, scales, safety_tolerances, poses, enabled_array):
+    def add_spheres(
+        self,
+        prim_paths: list[str],
+        radii: Any,
+        scales: Any,
+        safety_tolerances: Any,
+        poses: tuple[Any, Any],
+        enabled_array: Any,
+    ) -> None:
         """Add spheres to your planning library using the provided data.
 
         Args:
@@ -232,7 +242,15 @@ class ExampleWorldInterface(WorldInterface):
 
     # <end-add-spheres-snippet>
 
-    def add_cubes(self, prim_paths, sizes, scales, safety_tolerances, poses, enabled_array):
+    def add_cubes(
+        self,
+        prim_paths: list[str],
+        sizes: Any,
+        scales: Any,
+        safety_tolerances: Any,
+        poses: tuple[Any, Any],
+        enabled_array: Any,
+    ) -> None:
         """Add cubes to your planning library using the provided data.
 
         Args:
@@ -261,14 +279,14 @@ class ExampleWorldInterface(WorldInterface):
 
     def add_triangulated_meshes(
         self,
-        prim_paths,
-        points,
-        face_vertex_indices,
-        scales,
-        safety_tolerances,
-        poses,
-        enabled_array,
-    ):
+        prim_paths: list[str],
+        points: list[Any],
+        face_vertex_indices: list[Any],
+        scales: Any,
+        safety_tolerances: Any,
+        poses: tuple[Any, Any],
+        enabled_array: Any,
+    ) -> None:
         """Add triangulated meshes to your planning library using the provided data.
 
         Args:
@@ -300,15 +318,15 @@ class ExampleWorldInterface(WorldInterface):
 
     def add_oriented_bounding_boxes(
         self,
-        prim_paths,
-        centers,
-        rotations,
-        half_side_lengths,
-        scales,
-        safety_tolerances,
-        poses,
-        enabled_array,
-    ):
+        prim_paths: list[str],
+        centers: Any,
+        rotations: Any,
+        half_side_lengths: Any,
+        scales: Any,
+        safety_tolerances: Any,
+        poses: tuple[Any, Any],
+        enabled_array: Any,
+    ) -> None:
         """Add oriented bounding boxes to your planning library using the provided data.
 
         Args:
@@ -348,15 +366,15 @@ class ExampleWorldInterface(WorldInterface):
 
     def add_planes(
         self,
-        prim_paths,
-        axes,
-        lengths,
-        widths,
-        scales,
-        safety_tolerances,
-        poses,
-        enabled_array,
-    ):
+        prim_paths: list[str],
+        axes: list[str],
+        lengths: Any,
+        widths: Any,
+        scales: Any,
+        safety_tolerances: Any,
+        poses: tuple[Any, Any],
+        enabled_array: Any,
+    ) -> None:
         """Add planes to your planning library using the provided data.
 
         Args:
@@ -392,7 +410,7 @@ class ExampleWorldInterface(WorldInterface):
             }
 
     # <start-update-transforms-snippet>
-    def update_obstacle_transforms(self, prim_paths, poses):
+    def update_obstacle_transforms(self, prim_paths: list[str], poses: tuple[Any, Any]) -> None:
         """Update transforms of existing obstacles in your planning library.
 
         Called frequently for real-time updates, or just before creating a trajectory plan.
@@ -417,7 +435,7 @@ class ExampleWorldInterface(WorldInterface):
     # <end-update-transforms-snippet>
 
     # <start-update-sphere-properties-snippet>
-    def update_sphere_properties(self, prim_paths, radii):
+    def update_sphere_properties(self, prim_paths: list[str], radii: Any) -> None:
         """Update sphere-specific properties for existing obstacles.
 
         Called when shape properties change (e.g., radius changes).
@@ -454,7 +472,9 @@ class ExampleWorldInterface(WorldInterface):
 # 6. WorldBinding: Synchronizing Scene to Your Planning Library
 # ============================================================================
 # <start-world-binding-snippet>
-def demonstrate_world_binding(obstacle_paths, obstacle_strategy):
+def demonstrate_world_binding(
+    obstacle_paths: list[str], obstacle_strategy: mg.ObstacleStrategy
+) -> tuple[mg.WorldBinding, ExampleWorldInterface]:
     """Demonstrate using WorldBinding to synchronize scene to planning library."""
     # Create WorldInterface adapter for your planning library
     world_interface = ExampleWorldInterface()
@@ -485,7 +505,7 @@ def demonstrate_world_binding(obstacle_paths, obstacle_strategy):
 # 7. Complete Workflow
 # ============================================================================
 # <start-main-snippet>
-def main():
+def main() -> None:
     """Run the complete scene interaction workflow."""
     print("=" * 60)
     print("Motion Generation API - Scene Interaction Example")

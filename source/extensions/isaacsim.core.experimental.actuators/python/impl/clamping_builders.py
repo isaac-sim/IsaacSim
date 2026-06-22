@@ -38,7 +38,16 @@ from newton.actuators import (
 
 
 def _float_array(value: float, n: int, device: wp.Device) -> wp.array:
-    """Build a length-`n` `wp.float32` array filled with `value`."""
+    """Build a length-`n` `wp.float32` array filled with `value`.
+
+    Args:
+        value: Scalar value to broadcast into the array.
+        n: Number of array elements to allocate.
+        device: Warp device for the array allocation.
+
+    Returns:
+        A `wp.float32` array on `device` filled with `value`.
+    """
     return wp.array([float(value)] * n, dtype=wp.float32, device=device)
 
 

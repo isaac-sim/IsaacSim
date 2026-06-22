@@ -121,9 +121,10 @@ def differential_inverse_kinematics(
     goal_position: torch.Tensor,
     goal_orientation: torch.Tensor | None = None,
     method: str = "damped-least-squares",
-    method_cfg: dict[str, float] = {"scale": 1.0, "damping": 0.05, "min_singular_value": 1e-5},
+    method_cfg: dict[str, float] | None = None,
 ) -> torch.Tensor:
     """Compute delta DOF positions via differential inverse kinematics."""
+    method_cfg = {"scale": 1.0, "damping": 0.05, "min_singular_value": 1e-5} if method_cfg is None else method_cfg
     scale = method_cfg.get("scale", 1.0)
     # Compute velocity error
     goal_orientation = current_orientation if goal_orientation is None else goal_orientation
@@ -134,7 +135,7 @@ def differential_inverse_kinematics(
     if method == "singular-value-decomposition":
         min_singular_value = method_cfg.get("min_singular_value", 1e-5)
         U, S, Vh = torch.linalg.svd(jacobian_end_effector)
-        inv_s = torch.where(S > min_singular_value, 1.0 / S, torch.zeros_like(S))
+        inv_s = torch.where(min_singular_value < S, 1.0 / S, torch.zeros_like(S))
         pseudoinverse = torch.transpose(Vh, 1, 2)[:, :, :6] @ torch.diagflat(inv_s) @ torch.transpose(U, 1, 2)
         return (scale * pseudoinverse @ error).squeeze(-1)
     # - Moore-Penrose pseudoinverse

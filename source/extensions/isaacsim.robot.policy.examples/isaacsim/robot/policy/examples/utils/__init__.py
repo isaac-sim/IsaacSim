@@ -15,4 +15,4 @@
 
 """Utility functions and classes for robot policy examples, including actuator network implementations."""
 
-from isaacsim.robot.policy.examples.utils.actuator_network import LstmSeaNetwork
+from isaacsim.robot.policy.examples.utils.actuator_network import LstmSeaNetwork as LstmSeaNetwork

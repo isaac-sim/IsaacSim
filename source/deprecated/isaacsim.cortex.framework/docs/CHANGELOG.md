@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.0.18] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.0.17] - 2026-04-24
 ### Changed
 - Add missing `isaacsim.robot.manipulators` as a dependency

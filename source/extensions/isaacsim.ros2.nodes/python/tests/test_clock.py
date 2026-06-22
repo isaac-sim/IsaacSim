@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 clock publisher OmniGraph node."""
+"""Verifies ROS 2 clock publishing for simulation time, physics-step updates, manual clock control, and system time."""
+
+from typing import Any
 
 import omni.graph.core as og
 
@@ -31,19 +33,19 @@ from .common import get_qos_profile, simulate_async
 
 
 class TestRos2NodeCommands(ROS2TestCase):
-    """Test suite for ros2 node commands."""
+    """Verify ROS 2 clock publisher node command graphs."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Cache the current USD stage for clock graph construction."""
         await super().setUp()
         self._stage = omni.usd.get_context().get_stage()
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Drop the cached stage after clock publishing tests."""
         self._stage = None
         await super().tearDown()
 
-    async def test_sim_clock(self):
+    async def test_sim_clock(self) -> None:
         """Test sim clock."""
         import rclpy
         from rosgraph_msgs.msg import Clock
@@ -66,13 +68,13 @@ class TestRos2NodeCommands(ROS2TestCase):
 
         self._time_sec = 0
 
-        def clock_callback(data):
+        def clock_callback(data: Any) -> None:
             self._time_sec = data.clock.sec + data.clock.nanosec / 1.0e9
 
         node = self.create_node("test_sim_clock")
         clock_sub = self.create_subscription(node, Clock, "clock", clock_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         self._timeline.play()
@@ -81,9 +83,8 @@ class TestRos2NodeCommands(ROS2TestCase):
         self._timeline.stop()
         self.assertGreater(self._time_sec, 2.0)
         spin()
-        pass
 
-    async def test_sim_clock_physics_step(self):
+    async def test_sim_clock_physics_step(self) -> None:
         """Test sim clock published from an OnPhysicsStep-driven on-demand graph."""
         import rclpy
         from rosgraph_msgs.msg import Clock
@@ -109,13 +110,13 @@ class TestRos2NodeCommands(ROS2TestCase):
 
         self._time_sec = 0
 
-        def clock_callback(data):
+        def clock_callback(data: Any) -> None:
             self._time_sec = data.clock.sec + data.clock.nanosec / 1.0e9
 
         node = self.create_node("test_sim_clock_physics_step")
         clock_sub = self.create_subscription(node, Clock, "clock", clock_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         self._timeline.play()
@@ -125,7 +126,7 @@ class TestRos2NodeCommands(ROS2TestCase):
         self.assertGreater(self._time_sec, 2.0)
         spin()
 
-    async def test_sim_clock_manual(self):
+    async def test_sim_clock_manual(self) -> None:
         """Test sim clock manual."""
         import rclpy
         from rosgraph_msgs.msg import Clock
@@ -149,13 +150,13 @@ class TestRos2NodeCommands(ROS2TestCase):
 
         self._time_sec = 0
 
-        def clock_callback(data):
+        def clock_callback(data: Any) -> None:
             self._time_sec = data.clock.sec + data.clock.nanosec / 1.0e9
 
         node = self.create_node("test_sim_clock")
         clock_sub = self.create_subscription(node, Clock, "clock", clock_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         await self.simulate_until_condition(lambda: False, max_frames=10, per_frame_callback=spin)
@@ -174,9 +175,8 @@ class TestRos2NodeCommands(ROS2TestCase):
 
         self._timeline.stop()
         spin()
-        pass
 
-    async def test_system_clock(self):
+    async def test_system_clock(self) -> None:
         """Test system clock."""
         import time
 
@@ -200,13 +200,13 @@ class TestRos2NodeCommands(ROS2TestCase):
         )
         self._time_sec = 0
 
-        def clock_callback(data):
+        def clock_callback(data: Any) -> None:
             self._time_sec = data.clock.sec + data.clock.nanosec / 1.0e9
 
         node = self.create_node("test_sim_clock")
         clock_sub = self.create_subscription(node, Clock, "clock", clock_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         self._timeline.play()
@@ -215,4 +215,3 @@ class TestRos2NodeCommands(ROS2TestCase):
         self.assertAlmostEqual(self._time_sec, time.time(), delta=0.5)
         self._timeline.stop()
         spin()
-        pass

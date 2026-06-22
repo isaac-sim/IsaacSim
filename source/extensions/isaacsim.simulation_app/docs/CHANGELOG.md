@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.18.4] - 2026-06-04
+### Added
+- Added `shutdown_watchdog_timeout` launch config option (default 120s). When fast shutdown is enabled, `close()` arms a `faulthandler`-based watchdog before `app.shutdown()` so a deadlocked Kit teardown (e.g. the carb.tasking GIL deadlock) dumps all thread stacks and force-exits instead of hanging until an external timeout. The watchdog runs on a C thread so it fires even when the main thread is wedged holding the GIL.
+
+### Fixed
+- Fixed malformed `syncUsdLoads` setting path in `_start_app` and `_set_render_settings` (was `omni.kit.plugin/syncUsdLoads`, now `omni/kit/plugin/syncUsdLoads`) so the `sync_loads` launch config option correctly forces synchronous USD loads as documented.
+
 ## [2.18.3] - 2026-05-20
 ### Added
 - Added `MinimalRendering` renderer support in `SimulationApp` via the `renderer` launch config option

@@ -53,7 +53,7 @@ class TestH1ExampleExtension(omni.kit.test.AsyncTestCase):
     Tests run on CPU by default but can be overridden for GPU execution through device selection.
     """
 
-    def get_device(self):
+    def get_device(self) -> object:
         """Return the device to use for tensors. Override in subclasses.
 
         Returns:
@@ -61,7 +61,7 @@ class TestH1ExampleExtension(omni.kit.test.AsyncTestCase):
         """
         return torch.device("cpu")
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up the test environment with physics scene and ground plane."""
         await stage_utils.create_new_stage_async()
         # This needs to be set so that kit updates match physics updates
@@ -89,7 +89,7 @@ class TestH1ExampleExtension(omni.kit.test.AsyncTestCase):
         self._timeline = omni.timeline.get_timeline_interface()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up the test environment by stopping timeline and deregistering callbacks."""
         await omni.kit.app.get_app().next_update_async()
         self._timeline.stop()
@@ -105,7 +105,7 @@ class TestH1ExampleExtension(omni.kit.test.AsyncTestCase):
             await asyncio.sleep(1.0)
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_h1_add(self):
+    async def test_h1_add(self) -> None:
         """Test spawning H1 robot and verify it has correct number of DOFs and valid physics setup."""
         await self.spawn_h1()
         await omni.kit.app.get_app().next_update_async()
@@ -124,7 +124,7 @@ class TestH1ExampleExtension(omni.kit.test.AsyncTestCase):
             f"Articulation root prim at {articulation_root_path} should have ArticulationRootAPI",
         )
 
-    async def test_robot_move_forward_command(self):
+    async def test_robot_move_forward_command(self) -> None:
         """Test robot forward movement command and verify position change is within expected range."""
         await self.spawn_h1()
         await omni.kit.app.get_app().next_update_async()
@@ -150,7 +150,7 @@ class TestH1ExampleExtension(omni.kit.test.AsyncTestCase):
         self.assertGreater(delta, 1.0)
         self.assertLess(delta, 2.0)
 
-    async def test_robot_turn_command(self):
+    async def test_robot_turn_command(self) -> None:
         """Test robot turn command and verify heading change is at least 90 degrees."""
         await self.spawn_h1()
         await omni.kit.app.get_app().next_update_async()
@@ -187,7 +187,7 @@ class TestH1ExampleExtension(omni.kit.test.AsyncTestCase):
         # should have turned at least 90 deg
         self.assertGreater(heading_delta, 1.4)
 
-    async def spawn_h1(self, name: str = "h1"):
+    async def spawn_h1(self, name: str = "h1") -> None:
         """Spawn H1 robot in the scene and initialize physics simulation.
 
         Args:
@@ -230,7 +230,7 @@ class TestH1GPU(TestH1ExampleExtension):
     compared to CPU-based testing.
     """
 
-    def get_device(self):
+    def get_device(self) -> object:
         """Return the device to use for tensors.
 
         Returns:

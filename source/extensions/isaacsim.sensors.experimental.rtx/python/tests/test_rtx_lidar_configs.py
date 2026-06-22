@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for validating all supported lidar configurations and variants in the isaacsim.sensors.experimental.rtx extension."""
+"""Verifies every supported RTX lidar configuration and variant by creating a Lidar prim and validating its parameters with SensorCheckerUtil."""
 
 from pathlib import Path
+from typing import Any
 
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -42,7 +43,7 @@ class TestSupportedLidarConfigs(omni.kit.test.AsyncTestCase):
     parameter validation, and ensures the sensor prim has the correct type and valid parameters.
     """
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Sets up the test environment for lidar configuration testing.
 
         Creates a new USD stage, initializes a sarcophagus object with non-visual materials,
@@ -65,7 +66,7 @@ class TestSupportedLidarConfigs(omni.kit.test.AsyncTestCase):
         self._checker = SensorCheckerUtil()
         self._checker.init(model_info)
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Cleans up the test environment after lidar configuration testing.
 
         Removes the sensor checker, waits for any pending asset loading to complete,
@@ -78,7 +79,7 @@ class TestSupportedLidarConfigs(omni.kit.test.AsyncTestCase):
 
 
 # Iterate over all supported lidar configs and variants, creating a test for each as sensor prims
-def _create_lidar_parameters_test(config_path, config_name, variant):
+def _create_lidar_parameters_test(config_path: Any, config_name: Any, variant: Any) -> Any:
     """Creates a test function for validating lidar sensor parameters with specified configuration and variant.
 
     Generates an async test function that creates an RTX lidar sensor prim with the given configuration
@@ -93,7 +94,7 @@ def _create_lidar_parameters_test(config_path, config_name, variant):
         An async test function that validates the lidar sensor parameters.
     """
 
-    async def test_function(self):
+    async def test_function(self: Any) -> None:
         # instantiate lidar prim
         lidar = Lidar.create(
             path="/asset",
@@ -130,7 +131,7 @@ def _create_lidar_parameters_test(config_path, config_name, variant):
     return test_function
 
 
-def _variant_label(v):
+def _variant_label(v: Any) -> Any:
     if v is None:
         return "default"
     if isinstance(v, str):

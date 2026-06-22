@@ -13,20 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Any
+
 import omni.ext
 
 
 class Extension(omni.ext.IExt):
-    def on_startup(self, ext_id):
+    def on_startup(self, ext_id: Any) -> Any:
         # Force reload of newer typing extensions provided by this extensions prebundle
         from importlib import reload
 
         import typing_extensions
 
         reload(typing_extensions)
-        pass
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> Any:
         pass
 
 

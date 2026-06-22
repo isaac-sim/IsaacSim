@@ -13,13 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
+"""Visualize conveyor belt velocity fields with debug-draw markers."""
 
 import warp as wp
-from cb_actuators import (
-    VELOCITY_FIELD_TYPE_CONSTANT_VELOCITY,
-    VELOCITY_FIELD_TYPE_PIVOT,
-)
 from isaacsim.util.debug_draw import _debug_draw
 
 # not needed for the purpose of this sample
@@ -27,21 +23,18 @@ wp.config.enable_backward = False
 
 
 class VelocityFieldVisualizer:
-    """Class to inject and animate point markers that help visualize velocity field speeds and
-    directions.
-    """
+    """Debug marker visualizer for velocity field speeds and directions."""
 
     def __init__(
         self,
         velocity_startup_duration: float,
     ) -> None:
-        """
-        Args:
-            velocity_startup_duration: Time (in seconds) until the velocity fields reach the defined
-                velocity magnitudes. This basically defines a linear acceleration phase that can be
-                used to smoothly get the velocity fields from zero to their actual target velocities.
-        """
+        """Initialize the velocity field visualizer.
 
+        Args:
+            velocity_startup_duration: Time until the velocity fields reach the defined
+                velocity magnitudes.
+        """
         self._velocity_startup_duration = velocity_startup_duration
 
         self.reset()
@@ -84,7 +77,7 @@ class VelocityFieldVisualizer:
     def reset(
         self,
     ) -> None:
-
+        """Reset elapsed visualizer time."""
         self._total_elapsed_time = 0.0
 
     def add_constant_velocity_field(
@@ -102,7 +95,6 @@ class VelocityFieldVisualizer:
             max_distance: Distance along the velocity direction after which markers wrap back to the start.
             marker_count: Number of debug markers to distribute across ``max_distance``.
         """
-
         target_vel_magn = wp.length(target_velocity)
 
         self._constant_velocity_field_target_velocity_magnitude_list.append(target_vel_magn)
@@ -156,7 +148,6 @@ class VelocityFieldVisualizer:
             end_angle: End angle of the arc in radians; markers wrap back to ``start_angle`` after this.
             marker_count: Number of debug markers distributed across the arc.
         """
-
         self._pivot_velocity_field_pivot_point_list.append(pivot_point)
 
         rotation_axis = wp.normalize(angular_velocity)
@@ -211,7 +202,6 @@ class VelocityFieldVisualizer:
         Args:
             dt: Elapsed simulation time for the current step in seconds.
         """
-
         self._total_elapsed_time += dt
 
         if self._total_elapsed_time > self._velocity_startup_duration:

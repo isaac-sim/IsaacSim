@@ -13,12 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test to verify that the Test Runner window can load and populate tests without errors."""
+"""Verifies that the Kit Test Runner extension can be enabled, discover a large set of tests, show its window, and avoid asynchronous task exceptions during discovery."""
 
 import argparse
 import asyncio
 import os
 import sys
+from typing import Any
 
 # Parse arguments before SimulationApp is created
 parser = argparse.ArgumentParser(description="Test Runner validation script")
@@ -57,7 +58,7 @@ test_discovery_complete = False
 discovered_test_count = 0
 
 
-def custom_exception_handler(loop, context):
+def custom_exception_handler(loop: asyncio.AbstractEventLoop, context: dict[str, Any]) -> None:
     """Custom exception handler to capture asyncio task exceptions."""
     exception = context.get("exception")
     message = context.get("message", "")
@@ -97,7 +98,7 @@ for _ in range(120):
     kit.update()
 
 
-def on_tests_discovered(canceled=False):
+def on_tests_discovered(canceled: bool = False) -> None:
     """Callback when test discovery completes."""
     global test_discovery_complete, discovered_test_count
     if canceled:

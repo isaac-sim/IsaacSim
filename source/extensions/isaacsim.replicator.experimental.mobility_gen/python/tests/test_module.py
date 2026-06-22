@@ -16,30 +16,39 @@
 # NOTE:
 #   omni.kit.test - std python's unittest module with additional wrapping to add suport for async/await tests
 #   For most things refer to unittest docs: https://docs.python.org/3/library/unittest.html
+"""Test Mobility Gen Module buffer discovery and state serialization.
+
+These tests cover named buffer traversal, state dictionary serialization, and
+tag-filtered buffer discovery across nested modules.
+"""
+
 import omni.kit.test
 from isaacsim.replicator.experimental.mobility_gen.impl.common import Buffer, Module
 
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
 class TestPathPlanner(omni.kit.test.AsyncTestCase):
+    """Test module buffer behavior."""
+
     # Before running each test
-    async def setUp(self):
-        pass
+    async def setUp(self) -> None:
+        """Prepare the async fixture for module buffer tests."""
 
     # After running each test
-    async def tearDown(self):
-        pass
+    async def tearDown(self) -> None:
+        """Clean up the async fixture for module buffer tests."""
 
     # test to make sure this runs
-    async def test_module_named_buffers(self):
+    async def test_module_named_buffers(self) -> None:
+        """Verify named_buffers reports local and nested buffers with dotted names."""
 
         class ModuleA(Module):
-            def __init__(self):
+            def __init__(self) -> None:
                 super().__init__()
                 self.buffer_a = Buffer(value=0)
 
         class ModuleB(Module):
-            def __init__(self):
+            def __init__(self) -> None:
                 super().__init__()
                 self.module_a = ModuleA()
                 self.buffer_b = Buffer(value=1)
@@ -49,15 +58,16 @@ class TestPathPlanner(omni.kit.test.AsyncTestCase):
         self.assertTrue("buffer_b" in module.named_buffers())
         self.assertTrue("module_a.buffer_a" in module.named_buffers())
 
-    async def test_module_state_dict(self):
+    async def test_module_state_dict(self) -> None:
+        """Verify state_dict serializes local and nested buffer values."""
 
         class ModuleA(Module):
-            def __init__(self):
+            def __init__(self) -> None:
                 super().__init__()
                 self.buffer_a = Buffer(value=0)
 
         class ModuleB(Module):
-            def __init__(self):
+            def __init__(self) -> None:
                 super().__init__()
                 self.module_a = ModuleA()
                 self.buffer_b = Buffer(value=1)
@@ -71,15 +81,16 @@ class TestPathPlanner(omni.kit.test.AsyncTestCase):
         self.assertTrue("module_a.buffer_a" in state_dict)
         self.assertEqual(state_dict["module_a.buffer_a"], 0)
 
-    async def test_module_named_buffer_with_tags(self):
+    async def test_module_named_buffer_with_tags(self) -> None:
+        """Verify named_buffers honors include and exclude tag filters."""
 
         class ModuleA(Module):
-            def __init__(self):
+            def __init__(self) -> None:
                 super().__init__()
                 self.buffer_a = Buffer(value=0, tags=["foo", "bar"])
 
         class ModuleB(Module):
-            def __init__(self):
+            def __init__(self) -> None:
                 super().__init__()
                 self.module_a = ModuleA()
                 self.buffer_b = Buffer(value=1, tags=["foo"])

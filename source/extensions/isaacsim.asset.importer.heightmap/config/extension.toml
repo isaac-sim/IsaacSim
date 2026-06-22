@@ -1,5 +1,5 @@
 [package]
-version = "2.3.3"
+version = "2.3.4"
 category = "Simulation"
 title = "Heightmap extension for Isaac Sim Occupancy Map"
 description = "The Heightmap extension converts heightmap images into 3D terrain environments"

@@ -2,6 +2,18 @@
 
 ## Classes
 
+- class NonVisualMaterial(Prim)
+  - def __init__(self, paths: str | list[str])
+  - [property] def materials(self) -> list[UsdShade.Material]
+  - static def encode_material_ids(prims: str | Usd.Prim | UsdShade.Material | list[str | Usd.Prim | UsdShade.Material] | NonVisualMaterial) -> wp.array
+  - static def decode_material_ids(ids: int | list | np.ndarray | wp.array) -> list[tuple[str, str, str]]
+  - def set_bases(self, bases: str | list[str])
+  - def get_bases(self) -> list[str]
+  - def set_coatings(self, coatings: str | list[str])
+  - def get_coatings(self) -> list[str]
+  - def set_attributes(self, attributes: str | list[str])
+  - def get_attributes(self) -> list[str]
+
 - class PhysicsMaterial(Prim, ABC)
   - def __init__(self, paths: str | list[str])
   - [property] def materials(self) -> list[UsdShade.Material]

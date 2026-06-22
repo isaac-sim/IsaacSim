@@ -13,11 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Gate helpers that restrict randomization to interval or reset events."""
+
+from typing import Any
+
 from omni.replicator.core.utils import ReplicatorItem, ReplicatorWrapper, create_node
 
 
 @ReplicatorWrapper
-def on_interval(interval):
+def on_interval(interval: Any) -> Any:
     """Create a gate that triggers randomization at specified intervals.
 
     Args:
@@ -38,7 +42,7 @@ def on_interval(interval):
 
 
 @ReplicatorWrapper
-def on_env_reset():
+def on_env_reset() -> Any:
     """Create a gate that triggers randomization on environment reset.
 
     Returns:

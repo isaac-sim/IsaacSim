@@ -39,7 +39,17 @@ _STABILITY_BAND_LOOSE = 0.10
 
 
 def _band_core(samples: list[float], reference: float) -> tuple[float, float, float, int]:
-    """Return max abs deviation, pct in tight/loose absolute bands around reference, max streak outside tight."""
+    """Return deviation metrics for stability bands around a reference value.
+
+    Args:
+        samples: Windowed RTF samples to evaluate.
+        reference: Reference value for absolute deviation checks.
+
+    Returns:
+        Maximum absolute deviation, percentage inside the tight band,
+        percentage inside the loose band, and maximum consecutive samples
+        outside the tight band.
+    """
     n = len(samples)
     max_abs = max(abs(s - reference) for s in samples)
     pct_tight = 100.0 * sum(1 for s in samples if abs(s - reference) <= _STABILITY_BAND_TIGHT) / float(n)
@@ -56,7 +66,16 @@ def _band_core(samples: list[float], reference: float) -> tuple[float, float, fl
 
 
 def _stability_derived_metrics(samples: list[float], stats: Stats) -> list:
-    """Absolute ±0.01/±0.10 bands vs phase mean windowed RTF; worst deviation and longest streak outside ±0.01."""
+    """Create derived stability measurements for windowed RTF samples.
+
+    Args:
+        samples: Windowed RTF samples to summarize.
+        stats: Statistics computed from the samples.
+
+    Returns:
+        Measurements for deviation bands, maximum deviation, and longest
+        streak outside the tight band.
+    """
     mm_max, mm_pt, mm_pl, mm_streak = _band_core(samples, float(stats.mean))
 
     return [
@@ -88,6 +107,9 @@ class RtfStabilityRecorder(MeasurementDataRecorder):
     Emits mean/stdev/sample count plus derived stability readouts: absolute ±0.01/±0.10
     bands vs the phase mean windowed RTF, worst deviation from that mean, and the longest
     streak of consecutive windows outside the ±0.01 band.
+
+    Args:
+        context: Input context for the recorder.
     """
 
     def __init__(self, context: InputContext | None = None) -> None:
@@ -175,7 +197,12 @@ class RtfStabilityRecorder(MeasurementDataRecorder):
         self._window_sim_ms = 0.0
 
     def get_data(self) -> MeasurementData:
-        """Return real-time factor stability measurements."""
+        """Return real-time factor stability measurements.
+
+        Returns:
+            Measurement data containing RTF stability statistics, or empty data
+            if no samples were collected or the phase changed.
+        """
         if self.context and self._phase != self.context.phase:
             return MeasurementData()
 

@@ -46,7 +46,11 @@ class Extension(omni.ext.IExt):
     """
 
     def on_startup(self, ext_id: str = "") -> None:
-        """Register annotator and writer on extension load."""
+        """Register annotator and writer on extension load.
+
+        Args:
+            ext_id: Extension identifier provided by Kit.
+        """
         self._interface = acquire_interface()
         self._registered_annotators: list[str] = []
         try:

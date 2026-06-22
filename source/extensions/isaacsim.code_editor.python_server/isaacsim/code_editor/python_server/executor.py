@@ -33,7 +33,14 @@ _SENTINEL = object()
 
 
 def _safe_getvalue(sio: io.StringIO) -> str:
-    """Read captured output, returning an empty string on failure."""
+    """Read captured output, returning an empty string on failure.
+
+    Args:
+        sio: The in-memory stream containing captured output.
+
+    Returns:
+        The stream contents, or an empty string if reading fails.
+    """
     try:
         return sio.getvalue()
     except Exception:
@@ -45,6 +52,12 @@ def _safe_format_exc(exc: BaseException) -> str:
 
     After RecursionError or MemoryError the normal formatting helpers may
     themselves raise; this wrapper ensures we always return *something*.
+
+    Args:
+        exc: The exception being formatted.
+
+    Returns:
+        The formatted traceback string, or a fallback exception summary.
     """
     try:
         return traceback.format_exc()

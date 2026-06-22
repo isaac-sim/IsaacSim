@@ -15,6 +15,8 @@
 
 """Utility functions for 3D-to-2D point projection and camera coordinate transformations in replicator writers."""
 
+from typing import Any
+
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
 import isaacsim.core.experimental.utils.xform as xform_utils
@@ -22,7 +24,7 @@ import numpy as np
 from pxr import Gf, Usd, UsdGeom
 
 
-def project_point_to_screen(camera_point, camera_params):
+def project_point_to_screen(camera_point: Any, camera_params: Any) -> Any:
     """Project a 3D point from camera coordinates to 2D screen coordinates.
 
     Dispatches to the appropriate projection method based on the camera model.
@@ -52,7 +54,7 @@ def project_point_to_screen(camera_point, camera_params):
     return method(camera_point, camera_params)
 
 
-def project_pinhole(camera_point, camera_params):
+def project_pinhole(camera_point: Any, camera_params: Any) -> Any:
     """Project using standard pinhole model.
 
     Args:
@@ -79,7 +81,7 @@ def project_pinhole(camera_point, camera_params):
     return round(x), round(y)
 
 
-def project_fisheye_polynomial(camera_point, camera_params):
+def project_fisheye_polynomial(camera_point: Any, camera_params: Any) -> Any:
     """Project using fisheye polynomial model (f-theta).
 
     The fisheye polynomial in Omniverse defines the INVERSE mapping (r -> theta):
@@ -127,7 +129,7 @@ def project_fisheye_polynomial(camera_point, camera_params):
     return round(px), round(py)
 
 
-def project_pinhole_opencv(camera_point, camera_params):
+def project_pinhole_opencv(camera_point: Any, camera_params: Any) -> Any:
     """Project using OpenCV pinhole model with fx, fy, cx, cy.
 
     Args:
@@ -170,7 +172,7 @@ def project_pinhole_opencv(camera_point, camera_params):
     return round(px), round(py)
 
 
-def invert_fisheye_polynomial(theta, poly_coeffs, max_iterations=10, tolerance=1e-6):
+def invert_fisheye_polynomial(theta: Any, poly_coeffs: Any, max_iterations: int = 10, tolerance: Any = 1e-6) -> Any:
     """Invert the fisheye polynomial to solve for r given theta.
 
     The polynomial is: theta = a + b*r + c*r^2 + d*r^3 + e*r^4 + f*r^5
@@ -222,7 +224,7 @@ def invert_fisheye_polynomial(theta, poly_coeffs, max_iterations=10, tolerance=1
     return r
 
 
-def calculate_truncation_ratio_simple(corners, img_width, img_height):
+def calculate_truncation_ratio_simple(corners: Any, img_width: Any, img_height: Any) -> Any:
     """Calculate the truncation ratio of a cuboid using a simplified bounding box method.
 
     Args:
@@ -234,7 +236,6 @@ def calculate_truncation_ratio_simple(corners, img_width, img_height):
         The truncation ratio of the cuboid.
         1 means object is fully truncated and 0 means object is fully within screen.
     """
-
     # Calculate the bounding box of the cuboid
     x_min, y_min = np.min(corners, axis=0)
     x_max, y_max = np.max(corners, axis=0)
@@ -257,7 +258,7 @@ def calculate_truncation_ratio_simple(corners, img_width, img_height):
     return truncation_ratio
 
 
-def get_image_space_points(points, view_proj_matrix):
+def get_image_space_points(points: Any, view_proj_matrix: Any) -> Any:
     """Project world space points into image space using a view projection matrix.
 
     Args:
@@ -267,7 +268,6 @@ def get_image_space_points(points, view_proj_matrix):
     Returns:
         Numpy array of shape (N, 3) of points projected into the image space.
     """
-
     homo = np.pad(points, ((0, 0), (0, 1)), constant_values=1.0)
     tf_points = np.dot(homo, view_proj_matrix)
     tf_points = tf_points / (tf_points[..., -1:])

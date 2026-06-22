@@ -1,5 +1,5 @@
 [package]
-version = "1.4.2"
+version = "1.4.4"
 category = "Simulation"
 title = "UCX Core"
 description = "The UCX Core extension provides high-performance communication capabilities using UCX (Unified Communication X) for distributed simulation scenarios with low-latency data transfer"

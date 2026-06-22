@@ -57,6 +57,7 @@ import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # USDA parser (unchanged)
@@ -245,6 +246,12 @@ def _box_height(sc: SchemaClass) -> int:
 
     Accounts for the header bar, section titles (``Relationships``,
     ``Attributes``), individual member lines, and top/bottom padding.
+
+    Args:
+        sc: Schema class to measure.
+
+    Returns:
+        Total box height in SVG user units.
     """
     ns = (1 if sc.relationships else 0) + (1 if sc.attributes else 0)
     body = ns * _SECTION_LINE_H + len(sc.attributes) * _ATTR_LINE_H + len(sc.relationships) * _REL_LINE_H
@@ -320,7 +327,14 @@ def _layout(classes: list[SchemaClass], cw: int) -> list[BoxLayout]:
 
 
 def _rgb(hex_color: str) -> str:
-    """Pass-through for colour values (kept as a hook for future transforms)."""
+    """Pass through colour values.
+
+    Args:
+        hex_color: Colour value to return.
+
+    Returns:
+        The input colour value.
+    """
     return hex_color
 
 
@@ -330,6 +344,12 @@ def _font_family(fonts_dir: Path) -> str:
     Each font variant (Bold, Regular, Light, Italic, Medium) is encoded
     inline so the SVG renders identically on any system.  Missing files
     are silently skipped; the diagram then falls back to ``Arial``.
+
+    Args:
+        fonts_dir: Directory containing font files.
+
+    Returns:
+        CSS font-face rules for available fonts.
     """
     faces = []
     mapping = [
@@ -352,7 +372,7 @@ def _font_family(fonts_dir: Path) -> str:
     return "\n".join(faces)
 
 
-def _ortho_path_vhv(x1, y1, x2, y2, r=_BEND_RADIUS) -> str:
+def _ortho_path_vhv(x1: Any, y1: Any, x2: Any, y2: Any, r: Any = _BEND_RADIUS) -> str:
     """Build an SVG path string: vertical, horizontal, vertical with arcs.
 
     The path exits ``(x1, y1)`` vertically, turns with a quarter-circle
@@ -361,6 +381,16 @@ def _ortho_path_vhv(x1, y1, x2, y2, r=_BEND_RADIUS) -> str:
 
     Falls back to a straight line when the displacement is too small
     for the requested bend radius.
+
+    Args:
+        x1: Starting x coordinate.
+        y1: Starting y coordinate.
+        x2: Ending x coordinate.
+        y2: Ending y coordinate.
+        r: Bend radius.
+
+    Returns:
+        SVG path data string.
     """
     dx = x2 - x1
     dy = y2 - y1
@@ -400,12 +430,22 @@ def _ortho_path_vhv(x1, y1, x2, y2, r=_BEND_RADIUS) -> str:
     )
 
 
-def _ortho_path_hvh(x1, y1, x2, y2, r=_BEND_RADIUS) -> str:
+def _ortho_path_hvh(x1: Any, y1: Any, x2: Any, y2: Any, r: Any = _BEND_RADIUS) -> str:
     """SVG path: horizontal → vertical → horizontal with two quarter-arc bends.
 
     Exits horizontally from (x1,y1), transitions vertically at the
     midpoint X, and arrives horizontally at (x2,y2).  Both endpoints
     meet their boxes orthogonally.
+
+    Args:
+        x1: Starting x coordinate.
+        y1: Starting y coordinate.
+        x2: Ending x coordinate.
+        y2: Ending y coordinate.
+        r: Bend radius.
+
+    Returns:
+        SVG path data string.
     """
     dx = x2 - x1
     dy = y2 - y1
@@ -448,7 +488,13 @@ def _ortho_path_hvh(x1, y1, x2, y2, r=_BEND_RADIUS) -> str:
 
 
 def _arrow_marker(svg: ET.Element, marker_id: str, color: str) -> None:
-    """Append an SVG ``<marker>`` arrowhead definition to *svg*'s ``<defs>``."""
+    """Append an SVG ``<marker>`` arrowhead definition to *svg*'s ``<defs>``.
+
+    Args:
+        svg: Root SVG element that receives the marker definition.
+        marker_id: Marker identifier.
+        color: Marker fill colour.
+    """
     marker = ET.SubElement(svg.find("{http://www.w3.org/2000/svg}defs") or ET.SubElement(svg, "defs"), "marker")
     marker.set("id", marker_id)
     marker.set("markerWidth", str(_ARROW_SIZE))
@@ -474,6 +520,10 @@ def _add_box(g: ET.Element, box: BoxLayout) -> None:
     Draws the shadow, body rectangle, coloured header bar, class name,
     schema-type tag, relationship and attribute listings, and an
     optional sublabel at the bottom of the box.
+
+    Args:
+        g: SVG group element that receives the box elements.
+        box: Positioned box to render.
     """
     x, y, w, h = box.x, box.y, box.w, box.h
     sc = box.schema

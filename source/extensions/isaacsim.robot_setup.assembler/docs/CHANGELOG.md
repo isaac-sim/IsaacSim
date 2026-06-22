@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.3.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [3.3.2] - 2026-05-12
 ### Changed
 - Made `assemble_rigid_bodies` and `create_fixed_joint` private (`_assemble_rigid_bodies`, `_create_fixed_joint`)

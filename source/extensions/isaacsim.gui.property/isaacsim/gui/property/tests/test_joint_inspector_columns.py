@@ -41,19 +41,41 @@ class TestJointInspectorColumnResolution(omni.kit.test.AsyncTestCase):
         self._stage = omni.usd.get_context().get_stage()
 
     def _revolute(self, path: str) -> UsdPhysics.RevoluteJoint:
-        """Create a revolute joint at `path` with a DriveAPI on its `angular` axis."""
+        """Create a revolute joint at `path` with a DriveAPI on its `angular` axis.
+
+        Args:
+            path: Joint path to create.
+
+        Returns:
+            Created joint.
+        """
         joint = UsdPhysics.RevoluteJoint.Define(self._stage, path)
         UsdPhysics.DriveAPI.Apply(joint.GetPrim(), "angular")
         return joint
 
     def _prismatic(self, path: str) -> UsdPhysics.PrismaticJoint:
-        """Create a prismatic joint at `path` with a DriveAPI on its `linear` axis."""
+        """Create a prismatic joint at `path` with a DriveAPI on its `linear` axis.
+
+        Args:
+            path: Joint path to create.
+
+        Returns:
+            Created joint.
+        """
         joint = UsdPhysics.PrismaticJoint.Define(self._stage, path)
         UsdPhysics.DriveAPI.Apply(joint.GetPrim(), "linear")
         return joint
 
     def _d6_with_axes(self, path: str, axes: tuple[str, ...]) -> UsdPhysics.Joint:
-        """Create a generic joint with DriveAPI applied on `axes` (e.g. D6)."""
+        """Create a generic joint with DriveAPI applied on `axes`.
+
+        Args:
+            path: Joint path to create.
+            axes: Drive API axes to apply.
+
+        Returns:
+            Created joint.
+        """
         joint = UsdPhysics.Joint.Define(self._stage, path)
         for axis in axes:
             UsdPhysics.DriveAPI.Apply(joint.GetPrim(), axis)

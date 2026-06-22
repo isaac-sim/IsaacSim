@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.2.0] - 2026-05-08
 ### Changed
 - Updated newton-usd-schemas to 0.2.0

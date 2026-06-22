@@ -15,6 +15,9 @@
 
 """Utility classes and functions for Newton physics UI property builders."""
 
+from collections.abc import Callable, Sequence
+from typing import Any
+
 import carb
 import omni.ui as ui
 from omni.kit.property.usd.usd_attribute_model import UsdAttributeModel
@@ -42,7 +45,9 @@ _RESOLVER_INDEX = None
 _RESOLVER_NAMES = None
 
 
-def make_hide_cb(own_resolver_name: str, prim_type: "PrimType", key: str | list, default: object = None):
+def make_hide_cb(
+    own_resolver_name: str, prim_type: "PrimType", key: str | list, default: object = None
+) -> Callable[[Any, Sequence[Any]], tuple[bool, str, str]]:
     """Create a disable callback for a property covered by both Newton and Mjc resolvers.
 
     Resolvers are ordered by priority (Newton first, Mjc second). The *preferred* resolver is
@@ -88,7 +93,7 @@ def make_hide_cb(own_resolver_name: str, prim_type: "PrimType", key: str | list,
                 return spec.name if spec else k
         return None
 
-    def _cb(stage, prim_paths):
+    def _cb(stage: Any, prim_paths: Sequence[Any]) -> tuple[bool, str, str]:
         global _RESOLVERS, _RESOLVER_INDEX, _RESOLVER_NAMES
 
         if not prim_paths or stage is None:
@@ -134,10 +139,30 @@ def make_hide_cb(own_resolver_name: str, prim_type: "PrimType", key: str | list,
 class DisableByCallbackBuilder(UsdPropertiesWidgetBuilder):
     """Widget builder that disable a property based on a callback result."""
 
-    def __new__(cls, stage, prop, prim_paths, label_kwargs, widget_kwargs, disable_callback):
-        """Create a new widget with an overlay that disables based on a callback."""
+    def __new__(
+        cls,
+        stage: Any,
+        prop: Any,
+        prim_paths: Sequence[Any],
+        label_kwargs: dict[str, Any],
+        widget_kwargs: dict[str, Any],
+        disable_callback: Callable[[Any, Sequence[Any]], tuple[bool, str, str]],
+    ) -> Any:
+        """Create a new widget with an overlay that disables based on a callback.
 
-        def _tooltip(resolver_name, attr_name):
+        Args:
+            stage: USD stage containing the edited property.
+            prop: Property descriptor for the widget.
+            prim_paths: Prim paths targeted by the widget.
+            label_kwargs: Keyword arguments for the widget label.
+            widget_kwargs: Keyword arguments for the widget body.
+            disable_callback: Callback returning disabled state and tooltip metadata.
+
+        Returns:
+            The created USD property model.
+        """
+
+        def _tooltip(resolver_name: str, attr_name: str) -> str:
             if not resolver_name:
                 return ""
             return f"Controlled by {attr_name}" if attr_name else f"Controlled by {resolver_name}"
@@ -155,7 +180,7 @@ class DisableByCallbackBuilder(UsdPropertiesWidgetBuilder):
                 tooltip=_tooltip(resolver_name, attr_name),
             )
 
-        def _refresh(*_):
+        def _refresh(*_: Any) -> None:
             disabled, resolver_name, attr_name = disable_callback(stage, prim_paths)
             overlay.visible = disabled
             overlay.set_tooltip(_tooltip(resolver_name, attr_name))
@@ -170,8 +195,28 @@ class DisableByCallbackBuilder(UsdPropertiesWidgetBuilder):
 class HideByCallbackBuilder(UsdPropertiesWidgetBuilder):
     """Widget builder that hide a property based on a callback result."""
 
-    def __new__(cls, stage, prop, prim_paths, label_kwargs, widget_kwargs, hide_callback):
-        """Create a new widget that is hidden when the callback returns True."""
+    def __new__(
+        cls,
+        stage: Any,
+        prop: Any,
+        prim_paths: Sequence[Any],
+        label_kwargs: dict[str, Any],
+        widget_kwargs: dict[str, Any],
+        hide_callback: Callable[[Any, Sequence[Any]], bool],
+    ) -> Any:
+        """Create a new widget that is hidden when the callback returns True.
+
+        Args:
+            stage: USD stage containing the edited property.
+            prop: Property descriptor for the widget.
+            prim_paths: Prim paths targeted by the widget.
+            label_kwargs: Keyword arguments for the widget label.
+            widget_kwargs: Keyword arguments for the widget body.
+            hide_callback: Callback returning whether the widget should be hidden.
+
+        Returns:
+            The visible widget model or a hidden placeholder attribute model.
+        """
         hidden = hide_callback(stage, prim_paths)
         if not hidden:
             model = cls.build(

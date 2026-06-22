@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [0.4.0] - 2026-05-19
 ### Added
 - Adds a best-effort per-class GUI warmup in ``async setUp`` (awaited on the Kit loop), prevents Windows hangs.

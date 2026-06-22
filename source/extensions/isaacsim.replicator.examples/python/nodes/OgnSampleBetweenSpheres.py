@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Sample target prim positions uniformly inside a spherical shell."""
+
+from typing import Any
+
 import numpy as np
 import omni.graph.core as og
 import omni.usd
@@ -20,8 +24,24 @@ from pxr import Sdf, UsdGeom
 
 
 class OgnSampleBetweenSpheres:
+    """Replicator OmniGraph node that writes random positions between two radii."""
+
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
+        """Move each input Xformable prim to a uniformly sampled point between two concentric spheres.
+
+        The node accepts the target prim paths from ``inputs:prims`` and two shell radii from
+        ``inputs:radius1`` and ``inputs:radius2``. It swaps the radii when they are provided in
+        descending order, rejects negative inner radii or non-positive outer radii, and creates a
+        missing ``xformOp:translate`` before writing the sample. Invalid prims or invalid radii log an
+        error, disable ``outputs:execOut``, and return ``False``.
+
+        Args:
+            db: OmniGraph database object containing node inputs and outputs.
+
+        Returns:
+            True when all target prims are sampled and updated, False otherwise.
+        """
         prim_paths = db.inputs.prims
         if len(prim_paths) == 0:
             db.outputs.execOut = og.ExecutionAttributeState.DISABLED

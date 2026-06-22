@@ -13,12 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Create or select a viewport window and publish its title to OmniGraph."""
+
+from typing import Any
+
 import omni
 from omni.kit.viewport.utility import create_viewport_window, get_active_viewport_window
 
 
 class OgnIsaacCreateViewportInternalState:
-    def __init__(self):
+    """Per-instance cache for the viewport window selected or created by the node."""
+
+    def __init__(self) -> None:
         self.window = None
 
 
@@ -26,11 +32,24 @@ class OgnIsaacCreateViewport:
     """Isaac Sim Create Viewport."""
 
     @staticmethod
-    def internal_state():
+    def internal_state() -> OgnIsaacCreateViewportInternalState:
+        """Create the per-instance viewport cache.
+
+        Returns:
+            Per-instance viewport cache.
+        """
         return OgnIsaacCreateViewportInternalState()
 
     @staticmethod
-    def compute(db) -> bool:
+    def compute(db: Any) -> bool:
+        """Create a named or numbered viewport, or reuse the active viewport, and enable `execOut`.
+
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            True after the viewport output is populated.
+        """
         state = db.per_instance_state
         if state.window is None:
             if len(db.inputs.name) > 0:

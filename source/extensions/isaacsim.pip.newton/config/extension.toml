@@ -4,7 +4,7 @@ order = -1000
 reloadable = false
 
 [package]
-version = "0.6.0"
+version = "0.6.1"
 category = "Internal"
 title = "Newton Physics Pip Archive"
 description = "Pip packages for the Newton physics engine"

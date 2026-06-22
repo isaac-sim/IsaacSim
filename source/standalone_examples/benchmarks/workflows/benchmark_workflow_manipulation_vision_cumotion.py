@@ -204,6 +204,7 @@ world_binding = None
 if control == "cumotion":
 
     def get_estimated_state(art: Articulation) -> mg.RobotState:
+        """Build a robot state from the articulation's current joint state."""
         names = art.dof_names
         return mg.RobotState(
             joints=mg.JointState.from_name(
@@ -214,6 +215,7 @@ if control == "cumotion":
         )
 
     def create_setpoint_state(cr: CumotionRobot, tgt: GeomPrim) -> mg.RobotState:
+        """Build a target robot state from the cuMotion tool frame and target prim."""
         tool_frame = cr.robot_description.tool_frame_names()[0]
         site_space = cr.robot_description.tool_frame_names()
         target_positions, _ = tgt.get_world_poses()

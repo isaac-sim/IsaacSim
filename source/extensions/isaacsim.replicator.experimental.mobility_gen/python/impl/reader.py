@@ -235,9 +235,20 @@ class MobilityGenReader:
         return full_dict
 
     def __len__(self) -> int:
-        """Return the number of recorded steps."""
+        """Return the number of recorded steps.
+
+        Returns:
+            Number of recorded steps.
+        """
         return len(self.steps)
 
     def __getitem__(self, index: int) -> dict:
-        """Return the full state dictionary for the given step index."""
+        """Return the full state dictionary for the given step index.
+
+        Args:
+            index: Step index to read.
+
+        Returns:
+            The full state dictionary for the step.
+        """
         return self.read_state_dict(index)

@@ -21,6 +21,7 @@ simulation_app = SimulationApp(launch_config={"headless": False})
 
 import asyncio
 import os
+from typing import Any
 
 import omni.kit.app
 import omni.usd
@@ -35,14 +36,14 @@ from isaacsim.replicator.grasping.grasping_manager import GraspingManager
 
 
 def run_example(
-    stage_path,
-    config_path=None,
-    sampler_config=None,
-    physics_scene_path=None,
-    output_dir=None,
-    gripper_path=None,
-    object_prim_path=None,
-):
+    stage_path: str,
+    config_path: str | None = None,
+    sampler_config: dict[str, Any] | None = None,
+    physics_scene_path: str | None = None,
+    output_dir: str | None = None,
+    gripper_path: str | None = None,
+    object_prim_path: str | None = None,
+) -> None:
     """Run grasp pose generation and physics-based evaluation workflow."""
     assets_root_path = get_assets_root_path()
     print(f"Assets root path: {assets_root_path}")

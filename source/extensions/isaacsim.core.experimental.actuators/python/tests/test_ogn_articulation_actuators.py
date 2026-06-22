@@ -13,48 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the OgnArticulationActuators OmniGraph node.
-
-These tests verify the *wrapper layer* — the OGN-specific wiring that lives in
-OgnArticulationActuators.py — rather than re-proving the physics accuracy of
-ArticulationActuators (which has its own thorough test suite).
-
-What each test is responsible for
-----------------------------------
-* That the node is registered under the right OGN type string.
-* That lazy initialisation fires on the first ``execIn`` pulse, not at graph-creation
-  time.
-* That ``autoStepPrePhysics=True`` (default) lets the pre-physics callback drive
-  stepping while ``execIn`` is still responsible for seeding feedforward.
-* That ``autoStepPrePhysics=False`` causes ``step_actuators`` to be called
-  manually on each ``execIn`` pulse, so the joint only moves when the graph fires.
-* That with ``autoStepPrePhysics=False`` and no ``execIn`` wired, the joint does
-  not move and no effort is written — confirming that stepping is strictly gated
-  on ``execIn`` and not triggered by any other internal code path.
-* That ``feedforwardCommand`` values flow correctly through to
-  ``set_dof_feedforward_effort_targets``.
-* That the optional ``dofIndices`` input narrows which DOFs the feedforward
-  targets.
-* That changing ``autoStepPrePhysics`` at runtime (without rebuilding the graph)
-  forwards the change to the underlying ``ArticulationActuators`` without crashing.
-
-OmniGraph primer (for readers new to OGN testing)
---------------------------------------------------
-* ``og.Controller.edit(...)`` builds an Action Graph *in Python* — the same graph
-  you would build by clicking in the Visual Scripting editor.  The graph lives in
-  the USD stage and is torn down with it.
-* ``"evaluator_name": "execution"`` means the graph is an *Action Graph*: nodes
-  only compute when an execution token travels along an edge.  Setting attribute
-  values and calling ``og.Controller.evaluate`` alone does NOT trigger
-  ``compute()``; a pulse must flow through ``execIn``.
-* ``OnPlaybackTick`` emits a tick (i.e. an execution token) on every app update
-  *while the timeline is playing*.  Connecting it to ``execIn`` means the node
-  runs once per physics step.
-* ``ogts.OmniGraphTestCase`` is the OGN-aware base class.  It calls
-  ``omni.usd.get_context().new_stage_async()`` in its own ``setUp``, so our
-  ``setUp`` must call ``super().setUp()`` first to get a fresh stage and then
-  add the robot reference on top of it.
-"""
+"""Verifies the OgnArticulationActuators OmniGraph node driving articulated robots through Newton actuators. Covers auto-step and exec-driven execution, feedforward commands, DOF index inputs, robot path reinitialization, runtime toggles, and instance cleanup."""
 
 from __future__ import annotations
 
@@ -99,6 +58,7 @@ class TestOgnArticulationActuators(ogts.OmniGraphTestCase):
     # ------------------------------------------------------------------
 
     async def setUp(self) -> None:
+        """Prepare the OmniGraph actuator test stage."""
         # ogts.OmniGraphTestCase.setUp opens a new empty stage.  We must call
         # it before adding any prims so we start from a clean slate.
         await super().setUp()
@@ -116,6 +76,7 @@ class TestOgnArticulationActuators(ogts.OmniGraphTestCase):
         self._timeline = omni.timeline.get_timeline_interface()
 
     async def tearDown(self) -> None:
+        """Clean up the OmniGraph actuator test stage."""
         # Stop the timeline before the stage is torn down so SimulationManager
         # callbacks are cleanly deregistered.
         self._timeline.stop()

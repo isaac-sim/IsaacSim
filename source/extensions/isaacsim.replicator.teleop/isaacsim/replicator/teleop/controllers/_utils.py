@@ -30,7 +30,15 @@ ROTATION_OFFSET_LABELS = ("-180", "-90", "0", "+90", "+180")
 
 
 def quat_mul_wxyz(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Hamilton product of batched quaternions in ``wxyz`` convention."""
+    """Hamilton product of batched quaternions in ``wxyz`` convention.
+
+    Args:
+        a: Value for a.
+        b: Value for b.
+
+    Returns:
+        The requested value.
+    """
     w1, x1, y1, z1 = a[:, 0], a[:, 1], a[:, 2], a[:, 3]
     w2, x2, y2, z2 = b[:, 0], b[:, 1], b[:, 2], b[:, 3]
     ww = (z1 + x1) * (x2 + y2)
@@ -46,12 +54,27 @@ def quat_mul_wxyz(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 def quat_conjugate_wxyz(q: np.ndarray) -> np.ndarray:
-    """Quaternion conjugate for batched ``wxyz`` arrays."""
+    """Quaternion conjugate for batched ``wxyz`` arrays.
+
+    Args:
+        q: Value for q.
+
+    Returns:
+        The requested value.
+    """
     return np.concatenate((q[:, :1], -q[:, 1:]), axis=-1)
 
 
 def quat_error_wxyz(goal_wxyz: np.ndarray, current_wxyz: np.ndarray) -> np.ndarray:
-    """Orientation error as a 3-vector for batched ``wxyz`` quaternions."""
+    """Orientation error as a 3-vector for batched ``wxyz`` quaternions.
+
+    Args:
+        goal_wxyz: Value for goal wxyz.
+        current_wxyz: Value for current wxyz.
+
+    Returns:
+        The requested value.
+    """
     q_err = quat_mul_wxyz(goal_wxyz, quat_conjugate_wxyz(current_wxyz))
     sign = np.sign(q_err[:, [0]])
     sign[sign == 0] = 1.0
@@ -59,14 +82,29 @@ def quat_error_wxyz(goal_wxyz: np.ndarray, current_wxyz: np.ndarray) -> np.ndarr
 
 
 def xyzw_to_wxyz(q: tuple[float, float, float, float]) -> np.ndarray:
-    """Convert an ``xyzw`` tuple to a batched ``wxyz`` array."""
+    """Convert an ``xyzw`` tuple to a batched ``wxyz`` array.
+
+    Args:
+        q: Value for q.
+
+    Returns:
+        The requested value.
+    """
     return np.array([[q[3], q[0], q[1], q[2]]], dtype=np.float64)
 
 
 def quat_mul_xyzw(
     a: tuple[float, float, float, float], b: tuple[float, float, float, float]
 ) -> tuple[float, float, float, float]:
-    """Hamilton product for scalar-last quaternions."""
+    """Hamilton product for scalar-last quaternions.
+
+    Args:
+        a: Value for a.
+        b: Value for b.
+
+    Returns:
+        The requested value.
+    """
     ax, ay, az, aw = float(a[0]), float(a[1]), float(a[2]), float(a[3])
     bx, by, bz, bw = float(b[0]), float(b[1]), float(b[2]), float(b[3])
     x = aw * bx + ax * bw + ay * bz - az * by
@@ -85,6 +123,14 @@ def rotation_offset_quat_xyzw(
 
     Offsets compose in local ``X -> Y -> Z`` order (``qx * qy * qz``) so each
     dropdown reads independently against the viewport gizmo.
+
+    Args:
+        x_deg: Value for x deg.
+        y_deg: Value for y deg.
+        z_deg: Value for z deg.
+
+    Returns:
+        The requested value.
     """
 
     def _axis_quat(axis_idx: int, deg: float) -> tuple[float, float, float, float]:
@@ -109,7 +155,17 @@ def ema_blend(
     *,
     normalize: bool = False,
 ) -> np.ndarray:
-    """Blend a new sample into an EMA state."""
+    """Blend a new sample into an EMA state.
+
+    Args:
+        previous: Value for previous.
+        current: Value for current.
+        filter_strength: Value for filter strength.
+        normalize: Value for normalize.
+
+    Returns:
+        The requested value.
+    """
     alpha = 1.0 - np.clip(filter_strength, 0.0, 0.99)
     if previous is None:
         blended = np.array(current, dtype=np.float64, copy=True)

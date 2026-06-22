@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""OmniGraph helper that wires a camera render product to an RTSP writer."""
+
 from __future__ import annotations
 
 import traceback
@@ -36,7 +38,15 @@ _WRITER_AOVS: tuple[str, ...] = ("LdrColor",)
 
 
 def _resolve_srtx_sensor_set_name(render_product_path: str) -> Optional[str]:
-    """Resolve the SRTX sensor-set name for a render product, or ``None``."""
+    """Resolve the SRTX sensor-set name for a render product, or ``None``.
+
+    Args:
+        render_product_path: USD path of the render product prim.
+
+    Returns:
+        SRTX sensor-set name for the render product, or ``None`` if SRTX
+        routing is unavailable.
+    """
     try:
         from omni.replicator.srtx import resolve_sensor_set_name_for_render_product
     except ImportError:
@@ -48,32 +58,47 @@ class OgnRTSPCameraHelperInternalState(BaseWriterNode):
     """Per-instance state for the RTSPCameraHelper OmniGraph node.
 
     Inherits from ``BaseWriterNode`` which manages a list of Replicator
-    writers and handles attach/detach/reset lifecycle.
+    writers and handles attach/detach/reset lifecycle.  Setup is deferred
+    to ``compute``.
     """
 
     def __init__(self) -> None:
-        """Initialize without starting. Setup is deferred to ``compute``."""
         super().__init__(initialize=False)
 
 
 class OgnRTSPCameraHelper:
-    """OmniGraph node that sets up RTSP streaming for a camera render product."""
+    """Create and attach an RTSP writer from RTSPCameraHelper graph inputs."""
 
     @staticmethod
     def internal_state() -> OgnRTSPCameraHelperInternalState:
-        """OGN framework callback: create per-instance state for this node."""
+        """OGN framework callback: create per-instance state for this node.
+
+        Returns:
+            New RTSP camera helper internal state.
+        """
         return OgnRTSPCameraHelperInternalState()
 
     @staticmethod
     def compute(db: og.Database) -> bool:
-        """OGN framework callback: set up the RTSP streaming pipeline.
+        """Set up RTSP streaming from the node's graph inputs.
 
-        This is a one-shot initializer - once the writer is attached,
-        subsequent ``compute`` calls return immediately.
+        Reads ``renderProductPath``, ``port``, ``mountPath``, ``useRawEncoding``,
+        and ``enabled`` from the OmniGraph database.  Setup is skipped when the
+        node is disabled, already initialized, or the render product path cannot
+        be resolved.  For a valid render product, the helper ensures the writer's
+        required ``LdrColor`` ``RenderVar`` exists, authors the SRTX compression
+        hint used by H.264 versus raw routing, constructs ``RTSPStreamWriter``,
+        and attaches it to the render product.
 
         Returns ``True`` on success or when already initialized, ``False``
         when prerequisites aren't met.  The return value is purely
         diagnostic, since this is a leaf node and there is no subsequent evaluation.
+
+        Args:
+            db: OmniGraph database containing node inputs and per-instance state.
+
+        Returns:
+            ``True`` when setup succeeds or no setup is needed, otherwise ``False``.
         """
         state = db.per_instance_state
         if not db.inputs.enabled:
@@ -155,6 +180,10 @@ class OgnRTSPCameraHelper:
         detaches all writers (stopping any running RTSP servers).  The
         lookup is guarded because the state may not exist if the node
         was never computed.
+
+        Args:
+            node: OmniGraph node whose instance state is being released.
+            graph_instance_id: Identifier of the graph instance being released.
         """
         try:
             state = OgnRTSPCameraHelperInternalState.per_instance_internal_state(node)

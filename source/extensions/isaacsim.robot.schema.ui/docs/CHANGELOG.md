@@ -1,4 +1,9 @@
 # Changelog
+
+## [0.3.5] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [0.3.4] - 2026-05-22
 ### Fixed
 - `TestMaskingState` now snapshots the live `MaskingState` singleton in `setUp` and restores it in `tearDown`, so the `mock.Mock` backends installed by these tests no longer leak into later test classes (`TestRobotInspectorUI`, `TestSchemaUI`). Previously the leaked Mock caused `MaskingState.get_masking_layer_id()` to return a Mock that was passed to `Stage.MuteLayer()` from `generate_robot_hierarchy_stage`, raising `Boost.Python.ArgumentError` and cascading into a viewport-push count regression in `test_selection_pins_active_robot_scope`.

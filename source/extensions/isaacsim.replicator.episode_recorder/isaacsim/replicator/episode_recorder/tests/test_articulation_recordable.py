@@ -27,7 +27,11 @@ from pxr import UsdPhysics
 
 
 class _FakeXformWrapper:
-    """Stand-in for :class:`XformPrim` that records the calls made against it."""
+    """Stand-in for :class:`XformPrim` that records the calls made against it.
+
+    Args:
+        paths: Prim paths used by the fake wrapper.
+    """
 
     def __init__(self, paths: list[str]) -> None:
         self.paths = list(paths)
@@ -42,18 +46,23 @@ class _FakeXformWrapper:
 
 
 class ArticulationRecordableTests(omni.kit.test.AsyncTestCase):
+    """Define ArticulationRecordableTests behavior."""
+
     async def setUp(self) -> None:
+        """Set up the test fixture."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
 
     async def tearDown(self) -> None:
+        """Tear down the test fixture."""
         omni.usd.get_context().close_stage()
         await omni.kit.app.get_app().next_update_async()
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
     async def test_discovers_xformable_links_under_root(self) -> None:
+        """Run the discovers xformable links under root test."""
         stage = omni.usd.get_context().get_stage()
         stage_utils.define_prim("/World", "Xform")
         robot = stage_utils.define_prim("/World/Robot", "Xform")
@@ -81,6 +90,7 @@ class ArticulationRecordableTests(omni.kit.test.AsyncTestCase):
         self.assertTrue(manifest["include_root"])
 
     async def test_include_root_preserved_when_rigid_links_exist(self) -> None:
+        """Run the include root preserved when rigid links exist test."""
         stage = omni.usd.get_context().get_stage()
         stage_utils.define_prim("/World", "Xform")
         robot = stage_utils.define_prim("/World/Robot", "Xform")
@@ -98,8 +108,11 @@ class ArticulationRecordableTests(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(rec.link_paths), len(set(rec.link_paths)))
 
     async def test_joint_as_root_falls_back_to_xformable_ancestor(self) -> None:
-        """PhysX fixed-base convention: ArticulationRootAPI on a UsdPhysicsJoint whose
-        parent is the link-Xform subtree. Discovery must walk up one level."""
+        """Verify fixed-base joint roots resolve to Xformable ancestors.
+
+        PhysX fixed-base convention uses ArticulationRootAPI on a UsdPhysicsJoint whose
+        parent is the link-Xform subtree. Discovery must walk up one level.
+        """
         stage = omni.usd.get_context().get_stage()
         stage_utils.define_prim("/World", "Xform")
         body = stage_utils.define_prim("/World/Robot", "Xform")
@@ -137,6 +150,7 @@ class ArticulationRecordableTests(omni.kit.test.AsyncTestCase):
         rec.apply(frame, policy=ReplayPolicy(strictness="best_effort"))
 
     async def test_from_manifest_preserves_link_paths(self) -> None:
+        """Run the from manifest preserves link paths test."""
         entry = {
             "type": "articulation",
             "group": "state/robot",
@@ -150,6 +164,7 @@ class ArticulationRecordableTests(omni.kit.test.AsyncTestCase):
         self.assertEqual(rec.num_links, 2)
 
     async def test_session_close_invalidates_wrapper(self) -> None:
+        """Run the session close invalidates wrapper test."""
         rec = ArticulationRecordable(
             group="state/robot",
             prim_path="/World/Robot",
@@ -164,6 +179,7 @@ class ArticulationRecordableTests(omni.kit.test.AsyncTestCase):
         self.assertFalse(rec._xform_ops_reset)
 
     async def test_apply_writes_world_poses(self) -> None:
+        """Run the apply writes world poses test."""
         rec = ArticulationRecordable(
             group="state/robot",
             prim_path="/World/Robot",
@@ -185,6 +201,7 @@ class ArticulationRecordableTests(omni.kit.test.AsyncTestCase):
         np.testing.assert_array_equal(call_orientations, orientations)
 
     async def test_apply_self_heals_missing_xform_ops_once(self) -> None:
+        """Run the apply self heals missing xform ops once test."""
         rec = ArticulationRecordable(
             group="state/robot",
             prim_path="/World/Robot",
@@ -196,7 +213,7 @@ class ArticulationRecordableTests(omni.kit.test.AsyncTestCase):
                 super().__init__(paths)
                 self._failed_once = False
 
-            def set_world_poses(self, *, positions, orientations):  # type: ignore[override]
+            def set_world_poses(self, *, positions: object, orientations: object) -> None:  # type: ignore[override]
                 if not self._failed_once:
                     self._failed_once = True
                     raise RuntimeError(

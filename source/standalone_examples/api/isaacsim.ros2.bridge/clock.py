@@ -75,12 +75,12 @@ simulation_app.update()
 
 
 # Define ROS2 callbacks
-def sim_clock_callback(data):
+def sim_clock_callback(data: Clock) -> None:
     """Log the simulation clock time."""
     print("sim time:", data.clock)
 
 
-def manual_clock_callback(data):
+def manual_clock_callback(data: Clock) -> None:
     """Log the manually stepped simulation clock time."""
     print("manual stepped sim time:", data.clock)
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.17.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [0.17.1] - 2026-04-28
 ### Changed
 - Cache `arange` index arrays globally in `ops.resolve_indices` (keyed by `(count, dtype, device)`) so repeated `x=None` calls across all callers reuse the same Warp array without re-allocating

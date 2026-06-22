@@ -1,5 +1,5 @@
 [package]
-version = "15.17.0"
+version = "15.17.1"
 category = "Simulation"
 title = "Isaac Sim Isaac Sensor Simulation"
 description = "Provides APIs for RTX-based sensors, including RTX Lidar & RTX Radar."

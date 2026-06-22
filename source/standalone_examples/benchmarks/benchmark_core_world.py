@@ -52,7 +52,7 @@ from isaacsim.core.experimental.utils.stage import add_reference_to_stage, defin
 from isaacsim.storage.native import get_assets_root_path
 
 
-def define_environment():
+def define_environment() -> None:
     """Define the base environment with cubes and robot assets."""
     define_prim(path="/World/env_0", type_name="Xform")
     XformPrim("/World/env_0", positions=np.array([[0.0, 0.0, 0.0]]), reset_xform_op_properties=True)
@@ -100,7 +100,7 @@ def define_environment():
     XformPrim("/World/env_0/Franka_2", positions=np.array([[0.0, -2.0, 0.0]]), reset_xform_op_properties=True)
 
 
-def clone_environments():
+def clone_environments() -> None:
     """Clone the base environment using GridCloner."""
     cloner = GridCloner(spacing=1)
     cloner.define_base_env("/World")
@@ -108,7 +108,7 @@ def clone_environments():
     cloner.clone(source_prim_path="/World/env_0", prim_paths=prim_paths, replicate_physics=True, copy_from_source=False)
 
 
-def create_cube_views():
+def create_cube_views() -> None:
     """Create geometry and rigid body views for the cloned cubes."""
     # Experimental prims don't need to be added to the scene registry
     visual_cube_view = GeomPrim(paths="/World/env_.*/new_cube_1")
@@ -116,7 +116,7 @@ def create_cube_views():
     rigid_cube_view_2 = RigidPrim(paths="/World/env_.*/new_cube_3")
 
 
-def create_articulation_views():
+def create_articulation_views() -> None:
     """Create articulation views for the cloned Franka robots."""
     global articulation_view_1
     # Experimental prims don't need to be added to the scene registry

@@ -13,13 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Generate palletized box stacks across randomized scenes.
+"""Generate palletized box stacks across randomized scenes.
+
 Each scene chooses an environment, scatters pallets, builds box stacks, and captures camera views.
 """
 
 import math
 import os
+from typing import Any
 
 from isaacsim import SimulationApp
 
@@ -53,7 +54,8 @@ BOXES_PER_STACK_RANGE = range(1, 6)
 STACK_SCATTER_AREA_SCALE = 0.9
 
 
-def create_pallets_on_floor(scene_scope_path, assets_root_path, rng):
+def create_pallets_on_floor(scene_scope_path: str, assets_root_path: str, rng: Any) -> list[Any]:
+    """Create and scatter pallets on a hidden floor plane."""
     pallet_count = int(rng.generator.choice(PALLET_COUNT_RANGE))
     # Use a hidden floor plane as a sampling surface so scattered pallets avoid each other.
     floor_plane = rep.functional.create.plane(
@@ -97,7 +99,10 @@ def create_pallets_on_floor(scene_scope_path, assets_root_path, rng):
     return pallets
 
 
-def create_stacks_on_pallet(scene_scope_path, pallet_index, pallet, assets_root_path, rng):
+def create_stacks_on_pallet(
+    scene_scope_path: str, pallet_index: int, pallet: Any, assets_root_path: str, rng: Any
+) -> list[Any]:
+    """Create randomized box stacks on a pallet."""
     bbox_cache = bounds_utils.create_bbox_cache()
     pallet_bounds = bounds_utils.compute_aabb(pallet, bbox_cache=bbox_cache, include_children=True)
     pallet_origin = rep_utils.get_world_position(pallet)
@@ -203,7 +208,8 @@ def create_stacks_on_pallet(scene_scope_path, pallet_index, pallet, assets_root_
     return all_boxes
 
 
-def randomize_camera(camera, pallet, rng):
+def randomize_camera(camera: Any, pallet: Any, rng: Any) -> None:
+    """Randomize a camera pose around the selected pallet."""
     bbox_cache = bounds_utils.create_bbox_cache()
     pallet_bounds = bounds_utils.compute_aabb(pallet, bbox_cache=bbox_cache, include_children=True)
     pallet_origin = rep_utils.get_world_position(pallet)
@@ -228,7 +234,8 @@ def randomize_camera(camera, pallet, rng):
     )
 
 
-def run_workflow():
+def run_workflow() -> None:
+    """Run the multi-scene pallet stack SDG workflow."""
     assets_root_path = get_assets_root_path()
     if assets_root_path is None:
         carb.log_error("[SDG] Could not resolve assets root path; aborting.")

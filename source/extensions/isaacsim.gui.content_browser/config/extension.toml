@@ -1,5 +1,5 @@
 [package]
-version = "0.4.2"
+version = "0.4.3"
 category = "other"
 title = "Content Browser"
 description = "Extends the Omniverse content browser with an Isaac Sim collection providing quick access to curated robot models, environments, materials, and sensor assets."

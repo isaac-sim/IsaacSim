@@ -43,7 +43,7 @@ EXTENSION_NAME = "Physics API Editor"
 class Extension(omni.ext.IExt):
     """Extension providing a UI for applying and removing physics APIs on USD prims."""
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize the extension UI and menu items.
 
         Args:
@@ -100,11 +100,11 @@ class Extension(omni.ext.IExt):
                 self._progress_bar = progress_bar_builder("Current Progress")
                 self._progress_bar.set_value(0)
 
-    def _menu_callback(self):
+    def _menu_callback(self) -> None:
         """Toggle the visibility of the extension window."""
         self._window.visible = not self._window.visible
 
-    def apply_collision_on_selected(self):
+    def apply_collision_on_selected(self) -> None:
         """Apply collision APIs to the currently selected prims.
 
         Creates an async task that traverses all selected prims and applies the appropriate
@@ -112,7 +112,7 @@ class Extension(omni.ext.IExt):
         Convex Decomposition). Updates the progress bar as prims are processed.
         """
 
-        async def _task():
+        async def _task() -> None:
             self._stage = self._usd_context.get_stage()
             selection = self._selection.get_selected_prim_paths()
             if (len(selection)) == 0:
@@ -135,14 +135,14 @@ class Extension(omni.ext.IExt):
 
         asyncio.ensure_future(_task())
 
-    def clear_collision_on_selected(self):
+    def clear_collision_on_selected(self) -> None:
         """Remove collision APIs from the currently selected prims.
 
         Creates an async task that traverses all selected prims and removes any collision
         APIs that have been applied. Updates the progress bar as prims are processed.
         """
 
-        async def _task():
+        async def _task() -> None:
             self._stage = self._usd_context.get_stage()
             selection = self._selection.get_selected_prim_paths()
             if (len(selection)) == 0:
@@ -161,7 +161,7 @@ class Extension(omni.ext.IExt):
 
         asyncio.ensure_future(_task())
 
-    def remove_physics_apis_on_selected(self):
+    def remove_physics_apis_on_selected(self) -> None:
         """Remove all physics APIs from the currently selected prims.
 
         Creates an async task that traverses all selected prims and removes all physics-related
@@ -169,7 +169,7 @@ class Extension(omni.ext.IExt):
         Updates the progress bar as prims are processed.
         """
 
-        async def _task():
+        async def _task() -> None:
             self._stage = self._usd_context.get_stage()
             selection = self._selection.get_selected_prim_paths()
             if (len(selection)) == 0:
@@ -330,7 +330,7 @@ class Extension(omni.ext.IExt):
         for component in apis:
             omni.kit.commands.execute("RemovePhysicsComponentCommand", usd_prim=prim, component=component)
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up extension resources on shutdown.
 
         Removes menu items and triggers garbage collection.

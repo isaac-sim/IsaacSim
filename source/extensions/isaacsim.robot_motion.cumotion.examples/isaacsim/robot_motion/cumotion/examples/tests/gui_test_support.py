@@ -79,7 +79,14 @@ async def wait_until(
 
 
 def create_built_ui_builder(ui_builder_cls: type) -> object:
-    """Construct a UI builder instance and call ``build_ui()``."""
+    """Construct a UI builder instance and call ``build_ui()``.
+
+    Args:
+        ui_builder_cls: UI builder class to instantiate.
+
+    Returns:
+        Built UI builder instance.
+    """
     ui_builder = ui_builder_cls()
     ui_builder.build_ui()
     return ui_builder

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for docstrings."""
+"""Verifies docstring coverage for the experimental materials public API. Covers rigid-body, deformable, visual, and non-visual material classes exposed by the extension."""
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import isaacsim.test.docstring
@@ -34,7 +34,7 @@ from isaacsim.core.simulation_manager import SimulationManager
 class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
     """Test extension docstrings."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # create new stage
@@ -43,46 +43,46 @@ class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
         # configure simulation
         SimulationManager.set_physics_sim_device("cpu")
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
-    async def test_physics_material_rigid_body_docstrings(self):
+    async def test_physics_material_rigid_body_docstrings(self) -> None:
         """Test physics material rigid body docstrings."""
         await self.assertDocTests(RigidBodyMaterial)
         await self.assertDocTests(PhysicsMaterial)
 
-    async def test_physics_material_surface_deformable_docstrings(self):
+    async def test_physics_material_surface_deformable_docstrings(self) -> None:
         """Test physics material surface deformable docstrings."""
         await self.assertDocTests(SurfaceDeformableMaterial)
         await self.assertDocTests(PhysicsMaterial)
 
-    async def test_physics_material_volume_deformable_docstrings(self):
+    async def test_physics_material_volume_deformable_docstrings(self) -> None:
         """Test physics material volume deformable docstrings."""
         await self.assertDocTests(VolumeDeformableMaterial)
         await self.assertDocTests(PhysicsMaterial)
 
     # --------------------------------------------------------------------
 
-    async def test_visual_material_omni_glass_docstrings(self):
+    async def test_visual_material_omni_glass_docstrings(self) -> None:
         """Test visual material omni glass docstrings."""
         await self.assertDocTests(OmniGlassMaterial)
         await self.assertDocTests(VisualMaterial)
 
-    async def test_visual_material_omni_pbr_docstrings(self):
+    async def test_visual_material_omni_pbr_docstrings(self) -> None:
         """Test visual material omni pbr docstrings."""
         await self.assertDocTests(OmniPbrMaterial)
         await self.assertDocTests(VisualMaterial)
 
-    async def test_visual_material_preview_surface_docstrings(self):
+    async def test_visual_material_preview_surface_docstrings(self) -> None:
         """Test visual material preview surface docstrings."""
         await self.assertDocTests(PreviewSurfaceMaterial)
         await self.assertDocTests(VisualMaterial)
 
     # --------------------------------------------------------------------
 
-    async def test_non_visual_material_docstrings(self):
+    async def test_non_visual_material_docstrings(self) -> None:
         """Test non visual material docstrings."""
         await self.assertDocTests(NonVisualMaterial)

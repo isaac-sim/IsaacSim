@@ -13,8 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies the ComputeOdometry node produces stable odometry for rigid bodies across simulation states. Covers default outputs, stationary and free-fall motion, position relative to start, orientation changes, simulation view invalidation, and global versus local velocity."""
+
 import asyncio
 import math
+from typing import Any
 
 import omni.graph.core as og
 import omni.graph.core.tests as ogts
@@ -28,16 +31,32 @@ from usdrt import Sdf
 
 
 async def add_cube(
-    stage,
-    path,
-    size,
-    offset,
-    physics=True,
-    mass=0.0,
-    orientation_wxyz=None,
-    linear_velocity=None,
-    angular_velocity=None,
+    stage: Any,
+    path: Any,
+    size: Any,
+    offset: Any,
+    physics: Any = True,
+    mass: Any = 0.0,
+    orientation_wxyz: Any = None,
+    linear_velocity: Any = None,
+    angular_velocity: Any = None,
 ) -> Usd.Prim:
+    """Add a cube prim to the test stage.
+
+    Args:
+        stage: Stage where the cube is authored.
+        path: Prim path for the cube.
+        size: Cube size.
+        offset: Cube position offset.
+        physics: Whether to add rigid-body physics.
+        mass: Mass to apply when physics is enabled.
+        orientation_wxyz: Optional cube orientation.
+        linear_velocity: Optional initial linear velocity.
+        angular_velocity: Optional initial angular velocity.
+
+    Returns:
+        Authored cube prim.
+    """
     cube_geom = UsdGeom.Cube.Define(stage, path)
     cube_geom.CreateSizeAttr(size)
     await omni.kit.app.get_app().next_update_async()  # Need this to avoid flatcache errors
@@ -66,24 +85,38 @@ async def add_cube(
     return stage.GetPrimAtPath(path)
 
 
-async def add_ground_plane(stage, path="/World/Ground", size=40.0, offset=(0.0, 0.0, -0.5)) -> Usd.Prim:
-    """Add a ground plane with collision using GroundPlane from isaacsim.core.experimental.objects."""
+async def add_ground_plane(
+    stage: Any, path: Any = "/World/Ground", size: Any = 40.0, offset: Any = (0.0, 0.0, -0.5)
+) -> Usd.Prim:
+    """Add a ground plane with collision using GroundPlane from isaacsim.core.experimental.objects.
+
+    Args:
+        stage: Stage where the ground plane is authored.
+        path: Prim path for the ground plane.
+        size: Ground plane size.
+        offset: Ground plane position offset.
+
+    Returns:
+        Authored ground plane prim.
+    """
     GroundPlane(path, sizes=size, positions=list(offset))
     await omni.kit.app.get_app().next_update_async()
     return stage.GetPrimAtPath(path)
 
 
 class TestComputeOdometry(ogts.OmniGraphTestCase):
+    """Verify odometry outputs for rigid bodies across stopped, moving, and invalidated simulation states."""
+
     GRAPH_PATH = "/ActionGraph"
     NODE_NAME = "ComputeOdometry"
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment, to be torn down when done."""
         await omni.usd.get_context().new_stage_async()
         self._stage = omni.usd.get_context().get_stage()
         self._timeline = omni.timeline.get_timeline_interface()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Get rid of temporary data used by the test."""
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
@@ -91,8 +124,15 @@ class TestComputeOdometry(ogts.OmniGraphTestCase):
             await asyncio.sleep(0.5)
         await omni.kit.app.get_app().next_update_async()
 
-    def _create_odometry_graph(self, prim_path: str):
-        """Create action graph with OnPlaybackTick -> IsaacComputeOdometry, chassisPrim set to prim_path."""
+    def _create_odometry_graph(self, prim_path: str) -> tuple[str, str]:
+        """Create action graph with OnPlaybackTick -> IsaacComputeOdometry, chassisPrim set to prim_path.
+
+        Args:
+            prim_path: Chassis prim path for the odometry node.
+
+        Returns:
+            Graph path and odometry node name.
+        """
         _, _, _, _ = og.Controller.edit(
             {"graph_path": self.GRAPH_PATH, "evaluator_name": "execution"},
             {
@@ -110,8 +150,16 @@ class TestComputeOdometry(ogts.OmniGraphTestCase):
         )
         return self.GRAPH_PATH, self.NODE_NAME
 
-    def _get_odometry_outputs(self, graph_path, node_name):
-        """Read all odometry outputs from the node."""
+    def _get_odometry_outputs(self, graph_path: Any, node_name: Any) -> dict[str, Any]:
+        """Read all odometry outputs from the node.
+
+        Args:
+            graph_path: Path to the graph containing the odometry node.
+            node_name: Name of the odometry node.
+
+        Returns:
+            Mapping of odometry output names to values.
+        """
         return {
             "position": og.Controller.get(f"{graph_path}/{node_name}.outputs:position"),
             "orientation": og.Controller.get(f"{graph_path}/{node_name}.outputs:orientation"),
@@ -123,25 +171,25 @@ class TestComputeOdometry(ogts.OmniGraphTestCase):
             "globalLinearAcceleration": og.Controller.get(f"{graph_path}/{node_name}.outputs:globalLinearAcceleration"),
         }
 
-    async def _step(self, num_steps=1):
+    async def _step(self, num_steps: int = 1) -> None:
         for _ in range(num_steps):
             await omni.kit.app.get_app().next_update_async()
 
     @staticmethod
-    def _vec_norm(values):
+    def _vec_norm(values: Any) -> float:
         return math.sqrt(sum(float(v) * float(v) for v in values))
 
     @staticmethod
-    def _quat_is_close(q_a, q_b, tol=1e-3):
+    def _quat_is_close(q_a: Any, q_b: Any, tol: float = 1e-3) -> bool:
         return all(abs(float(a) - float(b)) < tol for a, b in zip(q_a, q_b))
 
-    def _assert_all_outputs_finite(self, outputs):
+    def _assert_all_outputs_finite(self, outputs: Any) -> None:
         for key, value in outputs.items():
             self.assertTrue(
                 all(math.isfinite(float(v)) for v in value), msg=f"{key} contains non-finite values: {value}"
             )
 
-    async def test_odometry_default_outputs(self):
+    async def test_odometry_default_outputs(self) -> None:
         """Before simulation plays, verify all outputs are default (zeros / identity quaternion)."""
         cube_path = "/World/Cube"
         await add_cube(self._stage, cube_path, 1.0, (0, 0, 0), physics=True, mass=1.0)
@@ -165,7 +213,7 @@ class TestComputeOdometry(ogts.OmniGraphTestCase):
         for i, v in enumerate(out["orientation"]):
             self.assertAlmostEqual(v, 1.0 if i == 3 else 0.0, places=5, msg=f"orientation[{i}]")
 
-    async def test_odometry_rigid_body_stationary(self):
+    async def test_odometry_rigid_body_stationary(self) -> None:
         """Cube at rest on a ground plane; after settling, velocities and accelerations near zero, position near zero."""
         await add_ground_plane(self._stage)
         cube_path = "/World/Cube"
@@ -196,7 +244,7 @@ class TestComputeOdometry(ogts.OmniGraphTestCase):
 
         self._timeline.stop()
 
-    async def test_odometry_rigid_body_free_fall(self):
+    async def test_odometry_rigid_body_free_fall(self) -> None:
         """Cube in free fall: negative globalLinearVelocity z, negative position z, non-zero accelerations."""
         cube_path = "/World/Cube"
         await add_cube(self._stage, cube_path, 1.0, (0, 0, 5.0), physics=True, mass=1.0)
@@ -216,7 +264,7 @@ class TestComputeOdometry(ogts.OmniGraphTestCase):
 
         self._timeline.stop()
 
-    async def test_odometry_position_relative_to_start(self):
+    async def test_odometry_position_relative_to_start(self) -> None:
         """Cube spawned at offset (5, 3, 10); position output is relative to start (near zero initially)."""
         cube_path = "/World/Cube"
         offset = (5.0, 3.0, 10.0)
@@ -243,7 +291,7 @@ class TestComputeOdometry(ogts.OmniGraphTestCase):
 
         self._timeline.stop()
 
-    async def test_odometry_all_outputs_populated(self):
+    async def test_odometry_all_outputs_populated(self) -> None:
         """After simulation with a falling cube, all 8 vector/quat outputs are written (non-default where expected)."""
         cube_path = "/World/Cube"
         await add_cube(
@@ -288,7 +336,7 @@ class TestComputeOdometry(ogts.OmniGraphTestCase):
 
         self._timeline.stop()
 
-    async def test_odometry_orientation_changes_on_rotation(self):
+    async def test_odometry_orientation_changes_on_rotation(self) -> None:
         """Cube given angular velocity; orientation output remains a valid relative quaternion."""
         cube_path = "/World/Cube"
         await add_cube(
@@ -327,11 +375,12 @@ class TestComputeOdometry(ogts.OmniGraphTestCase):
 
         self._timeline.stop()
 
-    async def test_odometry_survives_simulation_view_invalidation(self):
-        """After the shared SimulationManager physics view is invalidated, the odometry node.
+    async def test_odometry_survives_simulation_view_invalidation(self) -> None:
+        """Verify odometry survives invalidating the shared SimulationManager physics view.
 
-        should not crash or produce errors. It should either continue producing valid data
-        (if the view is recovered) or gracefully skip frames."""
+        The node should not crash or produce errors. It should either continue producing valid
+        data if the view is recovered, or gracefully skip frames.
+        """
         cube_path = "/World/Cube"
         await add_cube(self._stage, cube_path, 1.0, (0, 0, 5.0), physics=True, mass=1.0)
         graph_path, node_name = self._create_odometry_graph(cube_path)
@@ -375,7 +424,7 @@ class TestComputeOdometry(ogts.OmniGraphTestCase):
 
         self._timeline.stop()
 
-    async def test_odometry_global_vs_local_velocity(self):
+    async def test_odometry_global_vs_local_velocity(self) -> None:
         """For a rotated rigid body, local and global linear velocity components should differ."""
         cube_path = "/World/Cube"
         await add_cube(

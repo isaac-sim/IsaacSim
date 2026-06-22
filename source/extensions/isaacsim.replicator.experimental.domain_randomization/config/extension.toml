@@ -1,5 +1,5 @@
 [package]
-version = "1.2.4"
+version = "1.2.5"
 category = "SyntheticData"
 title = "Isaac Sim Replicator Domain Randomization"
 description = "Domain Randomization extension for reinforcement learning and sim-to-real applications. Provides OmniGraph nodes for randomizing simulation environments."

@@ -13,9 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test PoseWriter output across supported camera projection models.
+
+These tests validate JSON and debug image output for pinhole, fisheye, OpenCV
+pinhole, and generalized projection cameras against golden data.
+"""
+
 import json
 import os
 import tempfile
+from typing import Any
 
 import numpy as np
 import omni.kit
@@ -25,7 +32,22 @@ from isaacsim.test.utils.file_validation import validate_folder_contents
 from isaacsim.test.utils.image_comparison import compare_images_in_directories
 
 
-def compare_nested_structures_with_tolerance(data1, data2, path="", rtol=1e-5, atol=1e-5):
+def compare_nested_structures_with_tolerance(
+    data1: Any, data2: Any, path: str = "", rtol: Any = 1e-5, atol: Any = 1e-5
+) -> None:
+    """Compare nested PoseWriter JSON structures with tolerances.
+
+    The comparison handles nested containers, float tolerance, and quaternion
+    sign ambiguity so golden pose rotations can match either equivalent
+    quaternion orientation.
+
+    Args:
+        data1: First data structure to compare.
+        data2: Second data structure to compare.
+        path: Dot-separated location used in mismatch messages.
+        rtol: Relative tolerance passed to numpy comparisons.
+        atol: Absolute tolerance passed to numpy comparisons.
+    """
     if isinstance(data1, (list, tuple)) and isinstance(data2, (list, tuple)):
         if len(data1) != len(data2):
             return f"Length mismatch at {path}: {len(data1)} != {len(data2)}"
@@ -85,23 +107,31 @@ def compare_nested_structures_with_tolerance(data1, data2, path="", rtol=1e-5, a
 
 
 class TestPoseWriter(omni.kit.test.AsyncTestCase):
+    """PoseWriter projection-model output regression tests."""
 
     RGB_MEAN_DIFF_TOLERANCE = 10
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Create a fresh USD stage before each PoseWriter capture test."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Close the USD stage and wait for outstanding asset loads to finish."""
         await omni.usd.get_context().close_stage_async()
         await omni.kit.app.get_app().next_update_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    def _validate_and_compare_output(self, out_dir, golden_dir):
-        """Validate folder contents and compare images/JSON with golden data."""
+    def _validate_and_compare_output(self, out_dir: Any, golden_dir: Any) -> None:
+        """Validate folder contents and compare images/JSON with golden data.
+
+        Args:
+            out_dir: Directory containing generated PoseWriter output.
+            golden_dir: Directory containing expected PoseWriter output.
+        """
         test_dir_rp1 = os.path.join(out_dir, "rp1")
         test_dir_rp2 = os.path.join(out_dir, "rp2")
         golden_dir_rp1 = os.path.join(golden_dir, "rp1")
@@ -142,9 +172,9 @@ class TestPoseWriter(omni.kit.test.AsyncTestCase):
         # Compare JSON for rp1
         golden_rp1_json = os.path.join(golden_dir_rp1, "000000.json")
         test_rp1_json = os.path.join(test_dir_rp1, "000000.json")
-        with open(golden_rp1_json, "r") as f:
+        with open(golden_rp1_json) as f:
             golden_rp1_data = json.load(f)
-        with open(test_rp1_json, "r") as f:
+        with open(test_rp1_json) as f:
             test_rp1_data = json.load(f)
         error = compare_nested_structures_with_tolerance(test_rp1_data, golden_rp1_data, rtol=1e-5, atol=1e-5)
         self.assertIsNone(error, f"'/rp1' comparison failed:\n{error}")
@@ -152,15 +182,15 @@ class TestPoseWriter(omni.kit.test.AsyncTestCase):
         # Compare JSON for rp2
         golden_rp2_json = os.path.join(golden_dir_rp2, "000000.json")
         test_rp2_json = os.path.join(test_dir_rp2, "000000.json")
-        with open(golden_rp2_json, "r") as f:
+        with open(golden_rp2_json) as f:
             golden_rp2_data = json.load(f)
-        with open(test_rp2_json, "r") as f:
+        with open(test_rp2_json) as f:
             test_rp2_data = json.load(f)
         error = compare_nested_structures_with_tolerance(test_rp2_data, golden_rp2_data, rtol=1e-5, atol=1e-5)
         self.assertIsNone(error, f"'/rp2' comparison failed:\n{error}")
 
-    async def _setup_stage(self):
-        """Setup stage with world xform, dome light, and test cubes."""
+    async def _setup_stage(self) -> None:
+        """Create a world, dome light, and semantic test cubes for PoseWriter captures."""
         await omni.usd.get_context().new_stage_async()
         rep.functional.create.xform(name="World")
         rep.functional.create.dome_light(intensity=500, parent="/World", name="DomeLight")
@@ -189,7 +219,7 @@ class TestPoseWriter(omni.kit.test.AsyncTestCase):
             semantics=[("class", "cube_scaled")],
         )
 
-    async def test_pose_writer_with_pinhole_camera(self):
+    async def test_pose_writer_with_pinhole_camera(self) -> None:
         """Test PoseWriter with pinhole camera projection."""
         await self._setup_stage()
 
@@ -226,7 +256,7 @@ class TestPoseWriter(omni.kit.test.AsyncTestCase):
         )
         self._validate_and_compare_output(out_dir, golden_dir)
 
-    async def test_pose_writer_with_fisheye_camera(self):
+    async def test_pose_writer_with_fisheye_camera(self) -> None:
         """Test PoseWriter with fisheye polynomial camera projection."""
         await self._setup_stage()
 
@@ -277,7 +307,7 @@ class TestPoseWriter(omni.kit.test.AsyncTestCase):
         )
         self._validate_and_compare_output(out_dir, golden_dir)
 
-    async def test_pose_writer_with_pinhole_opencv_camera(self):
+    async def test_pose_writer_with_pinhole_opencv_camera(self) -> None:
         """Test PoseWriter with pinholeOpenCV camera projection."""
         await self._setup_stage()
 
@@ -327,7 +357,7 @@ class TestPoseWriter(omni.kit.test.AsyncTestCase):
         )
         self._validate_and_compare_output(out_dir, golden_dir)
 
-    async def test_pose_writer_with_generalized_projection_camera(self):
+    async def test_pose_writer_with_generalized_projection_camera(self) -> None:
         """Test PoseWriter with generalizedProjection camera projection."""
         await self._setup_stage()
 

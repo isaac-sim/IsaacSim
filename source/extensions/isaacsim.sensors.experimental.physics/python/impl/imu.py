@@ -39,6 +39,8 @@ class IMU(_PhysicsSensorAuthoring):
         positions: World-frame positions (shape ``(N, 3)``). Mutually exclusive with ``translations``.
         translations: Local-frame translations (shape ``(N, 3)``).
         orientations: Orientations as ``wxyz`` quaternions (shape ``(N, 4)``).
+        scales: Local scales forwarded to ``XformPrim``.
+        reset_xform_op_properties: Whether to reset existing xform op properties.
         linear_acceleration_filter_size: Rolling average window for acceleration.
             Applied only when creating a new prim; ignored when wrapping an existing one.
         angular_velocity_filter_size: Rolling average window for angular velocity.
@@ -107,7 +109,17 @@ class IMU(_PhysicsSensorAuthoring):
         orientation_filter_size: int = 1,
         **_: Any,
     ) -> IsaacSensorSchema.IsaacImuSensor:
-        """Create a new IsaacImuSensor prim with default filter widths applied."""
+        """Create a new IsaacImuSensor prim with default filter widths applied.
+
+        Args:
+            linear_acceleration_filter_size: Rolling average window for acceleration.
+            angular_velocity_filter_size: Rolling average window for angular velocity.
+            orientation_filter_size: Rolling average window for orientation.
+            **_: Additional keyword arguments ignored by this hook.
+
+        Returns:
+            The schema-wrapped IMU sensor prim.
+        """
         prim, _path = _create_sensor_prim(
             "/" + self._sensor_name,
             self._body_prim_path,

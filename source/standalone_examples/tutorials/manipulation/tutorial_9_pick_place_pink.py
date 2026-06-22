@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tutorial 9, Part 5: Pick and Place (PINK IK)
+"""Tutorial 9, Part 5: Pick and Place (PINK IK).
 
 A self-contained pick-and-place controller using PINK differential IK and an 8-phase state machine.
 """
@@ -333,9 +333,11 @@ class UR10ePickPlace:
         return True
 
     def is_done(self) -> bool:
+        """Return whether all pick-and-place phases have completed."""
         return self._event >= len(self.events_dt)
 
     def reset(self) -> None:
+        """Reset the pick-and-place phase state."""
         self._event = 0
         self._step = 0
         self._t = 0.0
@@ -349,6 +351,7 @@ class UR10ePickPlace:
 
 
 def main(args: argparse.Namespace, app: SimulationApp) -> None:
+    """Run the PINK pick-and-place tutorial."""
     SimulationManager.setup_simulation(dt=1.0 / 60.0, device=args.device)
 
     scenario = UR10ePickPlace(urdf_path=args.urdf)

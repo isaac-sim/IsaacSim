@@ -1,0 +1,4 @@
+{
+  "triggerOnUpdates": true,
+  "ignorePatterns": "_build/**\n_repo/**\ntools/packman/**\n**/*.svg\n**/*.min.js"
+}

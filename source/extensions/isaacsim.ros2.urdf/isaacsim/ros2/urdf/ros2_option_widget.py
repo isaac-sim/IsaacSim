@@ -311,7 +311,11 @@ class Ros2UrdfOptionWidget:
     _BASE_TYPE_TO_FIX_BASE = {"Source": None, "Fixed": True, "Mobile": False}
 
     def _set_base_type(self, value: str) -> None:
-        """Map the Base Type dropdown selection onto ``config.fix_base``."""
+        """Map the Base Type dropdown selection onto ``config.fix_base``.
+
+        Args:
+            value: Selected base type label.
+        """
         self._config.fix_base = self._BASE_TYPE_TO_FIX_BASE[value]
 
     def _build_options_frame(self) -> None:

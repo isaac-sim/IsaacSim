@@ -56,7 +56,7 @@ class TestAnymalCPU(omni.kit.test.AsyncTestCase):
     and verify robot behavior through position and orientation changes over simulation steps.
     """
 
-    def get_device(self):
+    def get_device(self) -> object:
         """Return the device to use for tensors. Override in subclasses.
 
         Returns:
@@ -64,7 +64,7 @@ class TestAnymalCPU(omni.kit.test.AsyncTestCase):
         """
         return torch.device("cpu")
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up the test environment with physics scene, simulation manager, and ground plane."""
         await stage_utils.create_new_stage_async()
         # This needs to be set so that kit updates match physics updates
@@ -91,7 +91,7 @@ class TestAnymalCPU(omni.kit.test.AsyncTestCase):
         self._timeline = omni.timeline.get_timeline_interface()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up the test environment by stopping timeline and deregistering physics callbacks."""
         await omni.kit.app.get_app().next_update_async()
         self._timeline.stop()
@@ -101,7 +101,7 @@ class TestAnymalCPU(omni.kit.test.AsyncTestCase):
             await asyncio.sleep(1.0)
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_anymal_add(self):
+    async def test_anymal_add(self) -> None:
         """Test spawning an Anymal robot and verifying its DOFs and stage prims."""
         await self.spawn_anymal()
         await omni.kit.app.get_app().next_update_async()
@@ -119,7 +119,7 @@ class TestAnymalCPU(omni.kit.test.AsyncTestCase):
             f"Articulation root prim at {articulation_root_path} should have ArticulationRootAPI",
         )
 
-    async def test_robot_move_forward_command(self):
+    async def test_robot_move_forward_command(self) -> None:
         """Test robot forward movement by sending a forward command and verifying position change."""
         await self.spawn_anymal()
         await omni.kit.app.get_app().next_update_async()
@@ -143,7 +143,7 @@ class TestAnymalCPU(omni.kit.test.AsyncTestCase):
         self.assertGreater(delta, 0.4)
         self.assertLess(delta, 2.0)
 
-    async def test_robot_turn_command(self):
+    async def test_robot_turn_command(self) -> None:
         """Test robot turning by sending a turn command and verifying orientation change."""
         await self.spawn_anymal()
         await omni.kit.app.get_app().next_update_async()
@@ -179,7 +179,7 @@ class TestAnymalCPU(omni.kit.test.AsyncTestCase):
         # should have turned at least 90 deg
         self.assertGreater(heading_delta, 1.4)
 
-    async def spawn_anymal(self, name: str = "anymal"):
+    async def spawn_anymal(self, name: str = "anymal") -> None:
         """Spawn an Anymal robot in the simulation environment.
 
         Args:
@@ -227,7 +227,7 @@ class TestAnymalGPU(TestAnymalCPU):
     GPU-accelerated robot control policies and simulation performance.
     """
 
-    def get_device(self):
+    def get_device(self) -> object:
         """Return the device to use for tensors.
 
         Returns:

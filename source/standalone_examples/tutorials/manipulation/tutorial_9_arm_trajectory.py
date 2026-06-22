@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tutorial 9, Part 2: Arm Trajectory Following
+"""Tutorial 9, Part 2: Arm Trajectory Following.
 
 Plans and executes a joint-space arm trajectory using
 Path.to_minimal_time_joint_trajectory() and TrajectoryFollower from the
@@ -55,6 +55,7 @@ _HOME: np.ndarray = np.array([0.00, -1.57, 1.57, -1.57, -1.57, 0.00], dtype=np.f
 
 
 async def setup_scene() -> Articulation:
+    """Create the UR10e stage and return the articulation."""
     assets_root_path = await get_assets_root_path_async()
     stage_utils.add_reference_to_stage(
         usd_path=assets_root_path + "/Isaac/Samples/Rigging/Manipulator/configure_manipulator/ur10e/ur/ur_gripper.usd",
@@ -72,6 +73,7 @@ async def setup_scene() -> Articulation:
 
 
 def get_estimated_state(robot: Articulation, joint_space: list[str]) -> mg.RobotState:
+    """Get the current joint state for trajectory control."""
     return mg.RobotState(
         joints=mg.JointState.from_name(
             robot_joint_space=joint_space,
@@ -83,6 +85,7 @@ def get_estimated_state(robot: Articulation, joint_space: list[str]) -> mg.Robot
 
 
 def apply_desired_state(robot: Articulation, desired_state: mg.RobotState) -> None:
+    """Apply a desired joint state to the articulation."""
     if desired_state.joints is None:
         return
     joint_state = desired_state.joints
@@ -98,6 +101,7 @@ def apply_desired_state(robot: Articulation, desired_state: mg.RobotState) -> No
 
 
 def main(args: argparse.Namespace, app: SimulationApp) -> None:
+    """Run the arm trajectory tutorial."""
     SimulationManager.setup_simulation(dt=1.0 / 60.0)
 
     robot = app.run_coroutine(setup_scene())

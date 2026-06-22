@@ -13,15 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test frame delay between object motion and rendered image.
-
-To generate several frames, create and run a bash script with the following content:
-
-for i in $(seq 64 512); do
-    echo ${i}x${i}
-    PATH/TO/python.sh test_frame_delay.py --resolution ${i}x${i} --/app/updateOrder/checkForHydraRenderComplete=1000
-done
-"""
+"""Verifies that rendered RGB, segmentation, bounding boxes, and reference-time metadata match the latest moved cube state. Detects frame delay by comparing expected image-space positions and renderer reference time against live simulation time."""
 
 USE_REPLICATOR_WRITER = True
 CAMERA_PATH = "/camera"
@@ -39,6 +31,7 @@ TIMESTAMP_TOLERANCE_S = 1e-6
 import argparse
 import os
 import sys
+from typing import Any
 
 from isaacsim import SimulationApp
 
@@ -110,16 +103,15 @@ from pxr import UsdGeom, UsdPhysics
 class CustomWriter(Writer):
     """Custom replicator writer that captures RGB, segmentation, and bounding box data."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.annotators = []
         self.annotators.append(AnnotatorRegistry.get_annotator("rgb"))
         self.annotators.append(AnnotatorRegistry.get_annotator("semantic_segmentation"))
         self.annotators.append(AnnotatorRegistry.get_annotator("bounding_box_2d_tight"))
 
-    def write(self, data):
+    def write(self, data: dict[str, Any]) -> None:
         """Cache annotator data without writing to disk."""
         # The base Writer class caches 'data' automatically, accessible via self.get_data()
-        pass
 
 
 def get_data(sensor: Camera | Writer) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -197,7 +189,7 @@ def validate_bbox(detected_bbox: dict, expected_bbox: dict, tolerance_pixels: fl
     return is_valid, error_distance
 
 
-def draw_data(frame, position, bbox, label):
+def draw_data(frame: np.ndarray, position: np.ndarray, bbox: dict[str, int], label: str) -> np.ndarray:
     """Draw position and bounding box annotations onto an image frame."""
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     frame = cv2.rectangle(
@@ -255,8 +247,10 @@ def draw_data(frame, position, bbox, label):
     return frame
 
 
-def generate_result(data: list[dict], banner: list[str] = []):
+def generate_result(data: list[dict[str, Any]], banner: list[str] | None = None) -> np.ndarray:
     """Generate a composite result image from collected frame data."""
+    if banner is None:
+        banner = []
     rgb_frames = []
     semantic_segmentation_frames = []
     for item in data:
@@ -344,12 +338,13 @@ reference_time_annotator.attach([render_product_path])
 sim_manager_iface = SimulationManager._simulation_manager_interface
 
 
-def rational_to_tuple(value) -> tuple[int, int]:
+def rational_to_tuple(value: Any) -> tuple[int, int]:
     """Return (numerator, denominator) for a RationalTime-like object."""
     return int(value.numerator), int(value.denominator)
 
 
 def rational_to_float(value: tuple[int, int]) -> float:
+    """Convert a rational tuple to a floating-point value."""
     numerator, denominator = value
     return numerator / denominator
 
@@ -360,6 +355,7 @@ def rational_before(lhs: tuple[int, int], rhs: tuple[int, int], tolerance_s: flo
 
 
 def format_rational(value: tuple[int, int]) -> str:
+    """Format a rational tuple for diagnostic output."""
     numerator, denominator = value
     return f"({numerator}, {denominator})"
 

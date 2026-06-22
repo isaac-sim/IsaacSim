@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import gc
 import hashlib
 import math
 import os
@@ -1567,33 +1566,31 @@ class GeometriesRoutingRule(RuleInterface):
                 # Already USDA, export in place
                 source_layer.Export(original_path)
             else:
-                # Convert to USDA: export with new extension, delete original
+                # Convert to USDA: export under the new extension, then hand the
+                # original .usd to the manager for deletion.
                 usda_path = os.path.splitext(original_path)[0] + ".usda"
                 source_layer.Export(usda_path)
                 self.add_affected_stage(usda_path)
                 export_path = usda_path
 
-                # Evict the layer from USD's internal registry
-                cached = Sdf.Layer.Find(original_path)
-                if cached:
-                    cached.Clear()
-                    # Remove from registry by releasing all references
-                    del cached
-
-                source_layer.Clear()
-                source_layer = None
-
-                gc.collect()
-
-                os.remove(original_path)
-
-                # Update instances layer references to point to the new source file
+                # Update instances layer references to point to the new source
+                # file (this touches only the instances layer, not source_stage).
                 self._update_instances_layer_source_references(
                     instances_layer,
                     original_path,
                     export_path,
                 )
                 instances_layer.Export(instance_output_path)
+
+                # Defer deleting the original .usd to the manager. self.source_stage
+                # IS the manager's working stage, so the manager -- not this rule --
+                # holds the file open; on Windows that open layer is an OS-level
+                # lock and an in-rule os.remove raises WinError 5. Drop this rule's
+                # own references so the manager owns the last handle, then request
+                # the deletion (performed once the manager releases the stage).
+                source_layer = None
+                self.source_stage = None
+                self.request_deletion(original_path)
         else:
             # Keep original format but force clean serialization via temp file round-trip
             temp_path = original_path + ".tmp.usda"
@@ -1602,6 +1599,12 @@ class GeometriesRoutingRule(RuleInterface):
             clean_layer = Sdf.Layer.FindOrOpen(temp_path)
             if clean_layer:
                 clean_layer.Export(original_path)
+
+            # Drop the temp layer handle before unlinking so the file is not held
+            # open when os.remove runs. This temp file is created and owned by the
+            # rule (not the manager), so it is released here rather than deferred
+            # via request_deletion; that keeps the round-trip safe on Windows.
+            clean_layer = None
 
             if os.path.exists(temp_path):
                 os.remove(temp_path)
@@ -1642,17 +1645,14 @@ class GeometriesRoutingRule(RuleInterface):
         source_layer.Export(usda_path)
         self.add_affected_stage(usda_path)
 
-        cached = Sdf.Layer.Find(original_path)
-        if cached:
-            cached.Clear()
-            del cached
-
-        source_layer.Clear()
+        # Defer deleting the original .usd to the manager. self.source_stage is
+        # the manager-owned working stage, so only the manager can release the
+        # file before removing it (see process_rule for the Windows file-lock
+        # rationale). Drop this rule's references so the manager holds the last
+        # handle, then request the deletion.
         source_layer = None
-
-        gc.collect()
-
-        os.remove(original_path)
+        self.source_stage = None
+        self.request_deletion(original_path)
         self.log_operation(f"Converted base layer to USDA: {usda_path}")
 
         return usda_path
@@ -2620,8 +2620,13 @@ class GeometriesRoutingRule(RuleInterface):
         inst_layer = inst_stage.GetRootLayer()
         src_layer = self.source_stage.GetRootLayer()
 
-        # Compute relative path from instances layer to source layer for material references
-        src_layer_rel_path = utils.get_relative_layer_path(inst_layer, src_layer.identifier)
+        # Compute relative path from instances layer to source layer for material
+        # references. Anchor on the layer's realPath (not its identifier) so the
+        # authored asset path matches what _update_instances_layer_source_references
+        # later searches for when the source is converted .usd -> .usda. On
+        # Windows the identifier and realPath can differ, which would otherwise
+        # leave these references pointing at the deleted .usd source.
+        src_layer_rel_path = utils.get_relative_layer_path(inst_layer, src_layer.realPath or src_layer.identifier)
 
         # The VisualMaterials scope path at the parent of the geometry (Xform wrapper)
         parent_path = Sdf.Path(prim_path).GetParentPath().pathString

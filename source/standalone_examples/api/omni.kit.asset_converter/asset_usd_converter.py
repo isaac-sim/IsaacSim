@@ -22,12 +22,12 @@ import os
 from isaacsim import SimulationApp
 
 
-async def convert(in_file, out_file, load_materials=False):
+async def convert(in_file: str, out_file: str, load_materials: bool = False) -> bool:
     """Convert an asset file to USD format asynchronously."""
     # This import causes conflicts when global
     import omni.kit.asset_converter
 
-    def progress_callback(progress, total_steps):
+    def progress_callback(progress: float, total_steps: int) -> None:
         pass
 
     converter_context = omni.kit.asset_converter.AssetConverterContext()
@@ -54,7 +54,7 @@ async def convert(in_file, out_file, load_materials=False):
     return success
 
 
-def asset_convert(args):
+def asset_convert(args: argparse.Namespace) -> None:
     """Convert all supported assets in the specified folders to USD."""
     supported_file_formats = ["stl", "obj", "fbx"]
     for folder in args.folders:

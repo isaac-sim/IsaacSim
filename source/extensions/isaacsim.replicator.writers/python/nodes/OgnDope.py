@@ -16,6 +16,7 @@
 """This is the implementation of the OGN node defined in OgnDope.ogn."""
 
 import json
+from typing import Any
 
 import isaacsim.core.experimental.utils.transform as transform_utils
 import numpy as np
@@ -25,14 +26,14 @@ from omni.syntheticdata.scripts.helpers import get_bbox_3d_corners
 
 
 def _get_semantics(
-    num_semantics,
-    num_semantic_tokens,
-    instance_semantic_map,
-    min_semantic_idx,
-    max_semantic_hierarchy_depth,
-    semantic_token_map,
-    required_semantic_types,
-):
+    num_semantics: Any,
+    num_semantic_tokens: Any,
+    instance_semantic_map: Any,
+    min_semantic_idx: Any,
+    max_semantic_hierarchy_depth: Any,
+    semantic_token_map: Any,
+    required_semantic_types: Any,
+) -> Any:
     """Process semantic data and return labels mapping.
 
     Args:
@@ -70,7 +71,7 @@ def _get_semantics(
             self_labels = semantic_token_map[i * num_semantic_tokens : (i + 1) * num_semantic_tokens]
             parent_labels = []
 
-            if i in id_to_parents.keys():
+            if i in id_to_parents:
                 for parent_semantic_id in id_to_parents[i]:
                     parent_labels.extend(
                         semantic_token_map[
@@ -118,9 +119,15 @@ class OgnDope:
     """Get pose information of assets with semantic labels. Information is used to train a DOPE model."""
 
     @staticmethod
-    def compute(db) -> bool:
-        """Compute the outputs from the current input."""
+    def compute(db: Any) -> bool:
+        """Compute the outputs from the current input.
 
+        Args:
+            db: Database object containing node inputs and outputs.
+
+        Returns:
+            True when the node computation completes.
+        """
         db.log_warn("Deprecation warning: OgnDope has been deprecated and will be removed in the next major release.")
 
         return_data_dtype = np.dtype(

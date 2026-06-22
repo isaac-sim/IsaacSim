@@ -849,7 +849,11 @@ class UIBuilder:
             self._test_duration_frame.visible = not is_snap and not is_stress_test
 
     def _on_stress_test_submode_changed(self, model: object) -> None:
-        """Toggle sigma / snap-interval fields based on stress test sub-mode."""
+        """Toggle sigma / snap-interval fields based on stress test sub-mode.
+
+        Args:
+            model: Combo-box model containing the selected stress test sub-mode.
+        """
         is_random_walk = model.get_item_value_model().get_value_as_int() == 0
         if self._stress_test_sigma_frame is not None:
             self._stress_test_sigma_frame.visible = is_random_walk
@@ -1265,7 +1269,11 @@ class UIBuilder:
         carb.log_info("\n".join(lines))
 
     def _get_self_collision_attr(self) -> Usd.Attribute | None:
-        """Return the ``physxArticulation:enabledSelfCollisions`` USD attribute, or *None*."""
+        """Return the ``physxArticulation:enabledSelfCollisions`` USD attribute, or *None*.
+
+        Returns:
+            Self-collision attribute on the active articulation, or ``None``.
+        """
         articulation = self._gains_tuner._articulation
         if articulation is None:
             return None
@@ -1310,6 +1318,9 @@ class UIBuilder:
         ``physxArticulation:enabledSelfCollisions`` is a cook-time
         property — it only takes effect when physics loads the scene.
         A timeline stop/play cycle forces that reload.
+
+        Args:
+            test_params: Test parameters to pass to the run action after recooking.
         """
         app = omni.kit.app.get_app()
 

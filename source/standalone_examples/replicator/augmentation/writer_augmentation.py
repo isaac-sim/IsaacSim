@@ -52,7 +52,7 @@ SEED = 42
 carb.settings.get_settings().set_bool("/app/omni.graph.scriptnode/opt_in", True)
 
 
-def gaussian_noise_rgb_np(data_in, sigma: float, seed: int):
+def gaussian_noise_rgb_np(data_in, sigma, seed):
     """Add Gaussian noise to RGB data using NumPy (CPU)."""
     np.random.seed(seed)
     # Convert to float32 space
@@ -94,7 +94,7 @@ def gaussian_noise_rgb_wp(
     data_out[i, j, 3] = data_in[i, j, 3]
 
 
-def gaussian_noise_depth_np(data_in, sigma: float, seed: int):
+def gaussian_noise_depth_np(data_in, sigma, seed):
     """Add Gaussian noise to depth values using NumPy (CPU)."""
     np.random.seed(seed)
     result = data_in.astype(np.float32) + np.random.randn(*data_in.shape) * sigma

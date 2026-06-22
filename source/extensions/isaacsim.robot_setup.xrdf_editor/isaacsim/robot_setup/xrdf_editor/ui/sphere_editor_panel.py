@@ -41,7 +41,11 @@ if TYPE_CHECKING:
 
 
 class SphereEditorPanel:
-    """UI for link-scoped collision sphere operations."""
+    """UI for link-scoped collision sphere operations.
+
+    Args:
+        state: Shared editor state.
+    """
 
     def __init__(self, state: "EditorState") -> None:
         self._state = state
@@ -281,6 +285,7 @@ class SphereEditorPanel:
     # Public API
     # ------------------------------------------------------------------
     def show(self) -> None:
+        """Show and enable the sphere editor frame."""
         if self._frame is None:
             return
         self._frame.collapsed = False
@@ -288,6 +293,7 @@ class SphereEditorPanel:
         self._frame.enabled = True
 
     def hide(self) -> None:
+        """Hide and disable the sphere editor frame."""
         if self._frame is None:
             return
         self._frame.collapsed = True
@@ -298,6 +304,9 @@ class SphereEditorPanel:
 
         Re-populates the mesh dropdown, refreshes connect-sphere dropdowns, applies
         sphere highlighting, and re-runs the preview.
+
+        Args:
+            link_name: Newly selected link subpath.
         """
         self._selected_link = link_name
         meshes = self._state.link_to_meshes.get(link_name, [])
@@ -315,7 +324,11 @@ class SphereEditorPanel:
             self._state.collision_sphere_editor.set_sphere_colors(link_path)
 
     def refresh_collision_sphere_comboboxes(self, keep_sphere_selection: bool = False) -> None:
-        """Re-populate the two 'Select Collision Sphere' dropdowns for the current link."""
+        """Re-populate the two 'Select Collision Sphere' dropdowns for the current link.
+
+        Args:
+            keep_sphere_selection: Whether to preserve the current sphere selection.
+        """
         if self._connect_sphere_0_combobox is None or self._connect_sphere_0_model is None:
             return
         link_path = self.get_selected_link_path()
@@ -336,17 +349,29 @@ class SphereEditorPanel:
         self._on_collision_sphere_select_0(None, None)
 
     def get_selected_link_path(self) -> str | None:
-        """Return the full USD path to the selected link, or ``None``."""
+        """Return the full USD path to the selected link.
+
+        Returns:
+            Full selected link path, or None if no link is selected.
+        """
         if self._selected_link is None or self._state.articulation_base_path is None:
             return None
         return self._state.articulation_base_path + self._selected_link
 
     def get_selected_link_name(self) -> str | None:
-        """Return the selected link subpath, or ``None``."""
+        """Return the selected link subpath.
+
+        Returns:
+            Selected link subpath, or None if no link is selected.
+        """
         return self._selected_link
 
     def get_selected_collision_spheres(self) -> tuple[str | None, str | None]:
-        """Return the (sphere0, sphere1) names selected in the connect-spheres comboboxes."""
+        """Return the sphere names selected in the connect-spheres comboboxes.
+
+        Returns:
+            First and second selected sphere names. Either value may be None.
+        """
         if not self._connect_sphere_0_options:
             return None, None
         if self._connect_sphere_0_model is None:
@@ -359,7 +384,11 @@ class SphereEditorPanel:
         return c0, c1
 
     def get_preview_enabled(self) -> bool:
-        """Whether sphere-generation preview is currently active."""
+        """Return whether sphere-generation preview is currently active.
+
+        Returns:
+            True if preview generation is active.
+        """
         return self._preview_active
 
     # ------------------------------------------------------------------
@@ -368,7 +397,7 @@ class SphereEditorPanel:
     def _trigger_preview_generate_spheres_for_link(self) -> None:
         self._generate_spheres_for_link()
 
-    def _on_collision_sphere_select_0(self, model=None, val=None) -> None:
+    def _on_collision_sphere_select_0(self, model: object = None, val: object = None) -> None:
         if self._connect_sphere_1_combobox is None:
             return
         sphere_0_name, sphere_1_name = self.get_selected_collision_spheres()
@@ -385,7 +414,7 @@ class SphereEditorPanel:
         if sphere_1_name in pruned_names:
             self._connect_sphere_1_model.get_item_value_model().set_value(int(pruned_names.index(sphere_1_name)))
 
-    def _on_toggle_preview(self, model=None) -> None:
+    def _on_toggle_preview(self, model: object = None) -> None:
         if self._preview_active:
             self._preview_active = False
             self._state.collision_sphere_editor.clear_preview()
@@ -397,7 +426,7 @@ class SphereEditorPanel:
         self._generate_spheres_for_link(preview=False)
         self.refresh_collision_sphere_comboboxes(keep_sphere_selection=True)
         if self._num_spheres_field is not None:
-            self._num_spheres_field.set_value(int(0))
+            self._num_spheres_field.set_value(0)
 
     def _on_add_sphere(self) -> None:
         if (
@@ -456,7 +485,11 @@ class SphereEditorPanel:
     # Sphere generation
     # ------------------------------------------------------------------
     def _generate_spheres_for_link(self, preview: bool = True) -> None:
-        """Generate (or preview) spheres for the currently selected link/mesh."""
+        """Generate or preview spheres for the currently selected link and mesh.
+
+        Args:
+            preview: Whether to generate preview spheres instead of committed spheres.
+        """
         if preview and not self._preview_active:
             return
 

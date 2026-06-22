@@ -106,12 +106,15 @@ _settings_snapshot: dict[str, Any] | None = None
 _settings_snapshot_refs: int = 0
 
 
-def _xr_settings():
+def _xr_settings() -> object:
     """Return the XRSettings singleton, or None if XR core is unavailable.
 
     Silent ``None`` only on ``ModuleNotFoundError`` (XR extension not
     loaded). Anything else (e.g. Kit version mismatch) is logged via
     ``carb.log_warn`` so the headset misconfiguration surfaces in the log.
+
+    Returns:
+        The requested value.
     """
     if XRSettings is None:
         return None
@@ -127,6 +130,9 @@ def _snapshot_settings() -> bool:
 
     Returns ``True`` when a snapshot is in place so the caller can decide
     whether to bump the activation refcount.
+
+    Returns:
+        The requested value.
     """
     global _settings_snapshot
     if _settings_snapshot is not None:
@@ -166,9 +172,7 @@ def activate_pre_session_anchor() -> bool:
     before Connect. Refcounted - safe to nest with the per-Connect anchor.
 
     Returns:
-        ``True`` when the override committed and the refcount was bumped
-        (the caller must pair it with :func:`restore_pre_session_anchor`);
-        ``False`` when XR is unavailable and no restore is required.
+        The requested value.
     """
     global _settings_snapshot_refs
     if not _snapshot_settings():
@@ -208,6 +212,15 @@ class XrAnchorManager:
     The tracking-space prim is set externally by :class:`TeleopManager` - it
     forwards the Session panel's Tracking Space prim path here via
     ``set_tracking_space_prim_path()``.
+
+    Args:
+        anchor_pos: Value for anchor pos.
+        anchor_rot_xyzw: Value for anchor rot xyzw.
+        tracking_space_prim_path: Value for tracking space prim path.
+        rotation_mode: Value for rotation mode.
+        smoothing_time: Value for smoothing time.
+        fixed_height: Value for fixed height.
+        near_plane: Value for near plane.
     """
 
     DEFAULT_ANCHOR_PATH = "/World/XRAnchor"
@@ -222,21 +235,6 @@ class XrAnchorManager:
         fixed_height: bool = True,
         near_plane: float = 0.15,
     ) -> None:
-        """Initialize the XR anchor manager.
-
-        Args:
-            anchor_pos: Position offset from the tracking-space prim (or world
-                origin if no tracking-space prim). In Isaac Sim Z-up metres.
-            anchor_rot_xyzw: Orientation offset as quaternion (x, y, z, w).
-            tracking_space_prim_path: USD prim to follow dynamically. Empty
-                for static anchoring.
-            rotation_mode: How the anchor rotation tracks the tracking-space prim.
-            smoothing_time: Slerp time constant (seconds) for
-                ``FOLLOW_PRIM_SMOOTHED`` mode.
-            fixed_height: Lock the anchor Z to its initial value (prevents
-                VR camera bobbing when the tracking-space prim has vertical motion).
-            near_plane: Near clip plane distance for VR rendering (metres).
-        """
         self._anchor_pos = np.array(anchor_pos, dtype=np.float64)
         self._anchor_rot_xyzw = np.array(anchor_rot_xyzw, dtype=np.float64)
         self._tracking_space_prim_path = tracking_space_prim_path
@@ -273,7 +271,7 @@ class XrAnchorManager:
         """Create the anchor prim, configures carb settings, and starts sync.
 
         Returns:
-            True if initialization succeeded.
+            The requested value.
         """
         stage = omni.usd.get_context().get_stage()
         if stage is None:
@@ -360,12 +358,20 @@ class XrAnchorManager:
 
     @property
     def anchor_prim_path(self) -> str:
-        """Return the USD path of the XR anchor prim."""
+        """Return the USD path of the XR anchor prim.
+
+        Returns:
+            The requested value.
+        """
         return self._anchor_prim_path
 
     @property
     def tracking_space_prim_path(self) -> str:
-        """Return the currently configured tracking-space prim path."""
+        """Return the currently configured tracking-space prim path.
+
+        Returns:
+            The requested value.
+        """
         return self._tracking_space_prim_path
 
     # ------------------------------------------------------------------
@@ -373,17 +379,29 @@ class XrAnchorManager:
     # ------------------------------------------------------------------
 
     def set_anchor_pos(self, pos: tuple[float, float, float]) -> None:
-        """Update the anchor position offset and re-sync."""
+        """Update the anchor position offset and re-sync.
+
+        Args:
+            pos: Value for pos.
+        """
         self._anchor_pos = np.array(pos, dtype=np.float64)
         self._sync()
 
     def set_anchor_rot(self, rot_xyzw: tuple[float, float, float, float]) -> None:
-        """Update the anchor orientation offset and re-sync."""
+        """Update the anchor orientation offset and re-sync.
+
+        Args:
+            rot_xyzw: Value for rot xyzw.
+        """
         self._anchor_rot_xyzw = np.array(rot_xyzw, dtype=np.float64)
         self._sync()
 
     def set_tracking_space_prim_path(self, path: str) -> None:
-        """Changes the dynamic tracking-space prim and reapplies live sync."""
+        """Changes the dynamic tracking-space prim and reapplies live sync.
+
+        Args:
+            path: Value for path.
+        """
         self._tracking_space_prim_path = path
         self._tracking_space_xform = None
         self._reset_sync_state()
@@ -391,17 +409,29 @@ class XrAnchorManager:
         self._update_sync_subscription()
 
     def set_rotation_mode(self, mode: AnchorRotationMode) -> None:
-        """Change the rotation-tracking mode and re-sync."""
+        """Change the rotation-tracking mode and re-sync.
+
+        Args:
+            mode: Value for mode.
+        """
         self._rotation_mode = mode
         self._reset_sync_state()
         self._sync()
 
     def set_smoothing_time(self, seconds: float) -> None:
-        """Set the slerp smoothing time constant in seconds."""
+        """Set the slerp smoothing time constant in seconds.
+
+        Args:
+            seconds: Value for seconds.
+        """
         self._smoothing_time = max(0.01, seconds)
 
     def set_fixed_height(self, fixed: bool) -> None:
-        """Toggle fixed-height mode and re-sync."""
+        """Toggle fixed-height mode and re-sync.
+
+        Args:
+            fixed: Value for fixed.
+        """
         self._fixed_height = fixed
         self._initial_height = None
         self._sync()
@@ -420,6 +450,9 @@ class XrAnchorManager:
 
         Composes: ``world_T_anchor @ oxr_to_usd`` so a raw OpenXR pose
         can be transformed with a single matrix multiply.
+
+        Returns:
+            The requested value.
         """
         if self._cached_pos is not None and self._cached_quat_xyzw is not None:
             return self._build_matrix(self._cached_pos, self._cached_quat_xyzw)
@@ -450,7 +483,11 @@ class XrAnchorManager:
             self._xr_core.set_world_transform_matrix(self._anchor_prim_path, mat, self._anchor_layer_id)
 
     def _compute_anchor_pose(self) -> tuple[Gf.Vec3d, Gf.Quatd]:
-        """Compute the final anchor world pose from config + tracking-space prim."""
+        """Compute the final anchor world pose from config + tracking-space prim.
+
+        Returns:
+            The requested value.
+        """
         x, y, z, w = self._anchor_rot_xyzw
         cfg_quat = Gf.Quatd(float(w), Gf.Vec3d(float(x), float(y), float(z)))
 
@@ -483,6 +520,9 @@ class XrAnchorManager:
         the physics engine, avoiding the USD/Fabric desync that can occur
         when the prim hierarchy is updated by physics on the Fabric side
         but not yet flushed back to USD.
+
+        Returns:
+            The requested value.
         """
         # Attempt Fabric read via usdrt
         try:
@@ -531,7 +571,15 @@ class XrAnchorManager:
         return None, None
 
     def _compute_rotation(self, ref_matrix: Gf.Matrix4d | None, cfg_quat: Gf.Quatd) -> Gf.Quatd:
-        """Apply the rotation mode to produce the final anchor quaternion."""
+        """Apply the rotation mode to produce the final anchor quaternion.
+
+        Args:
+            ref_matrix: Value for ref matrix.
+            cfg_quat: Value for cfg quat.
+
+        Returns:
+            The requested value.
+        """
         if ref_matrix is None or self._rotation_mode == AnchorRotationMode.FIXED:
             final = cfg_quat
         else:
@@ -581,7 +629,15 @@ class XrAnchorManager:
         return final
 
     def _build_matrix(self, pos: np.ndarray, quat_xyzw: np.ndarray) -> np.ndarray:
-        """Assembles ``world_T_anchor @ oxr_to_usd`` as a single 4x4 matrix."""
+        """Assembles ``world_T_anchor @ oxr_to_usd`` as a single 4x4 matrix.
+
+        Args:
+            pos: Value for pos.
+            quat_xyzw: Value for quat xyzw.
+
+        Returns:
+            The requested value.
+        """
         x, y, z, w = [float(v) for v in quat_xyzw]
         # Rotation matrix from quaternion (xyzw)
         r_anchor = np.array(
@@ -607,7 +663,11 @@ class XrAnchorManager:
         self._last_sync_time = 0.0
 
     def _get_fabric_stage(self) -> Any:
-        """Return a cached usdrt stage attached to the current USD stage."""
+        """Return a cached usdrt stage attached to the current USD stage.
+
+        Returns:
+            The requested value.
+        """
         if self._fabric_stage is not None:
             return self._fabric_stage
 

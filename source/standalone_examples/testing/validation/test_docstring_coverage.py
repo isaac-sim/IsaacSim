@@ -13,10 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Check docstring coverage of Python modules in Isaac Sim extensions.
-
-This script inspects public methods and functions to ensure they have valid docstrings.
-"""
+"""Inspects Isaac Sim extension modules for public functions and methods with missing or too-short docstrings after enabling their extensions. Produces human, JSON, or AI-oriented coverage reports with file and method details."""
 
 from isaacsim import SimulationApp
 
@@ -32,7 +29,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from isaacsim.core.utils.extensions import enable_extension
 
@@ -49,7 +46,7 @@ def is_public_method(name: str) -> bool:
     return not name.startswith("_")
 
 
-def is_extension_excluded(ext_name: str, exclusion_patterns: List[str]) -> bool:
+def is_extension_excluded(ext_name: str, exclusion_patterns: list[str]) -> bool:
     """Check if an extension matches any exclusion pattern.
 
     Args:
@@ -59,13 +56,10 @@ def is_extension_excluded(ext_name: str, exclusion_patterns: List[str]) -> bool:
     Returns:
         True if the extension matches any exclusion pattern.
     """
-    for pattern in exclusion_patterns:
-        if fnmatch.fnmatch(ext_name, pattern):
-            return True
-    return False
+    return any(fnmatch.fnmatch(ext_name, pattern) for pattern in exclusion_patterns)
 
 
-def get_function_info(obj: Any, name: str) -> Dict[str, Any]:
+def get_function_info(obj: Any, name: str) -> dict[str, Any]:
     """Get detailed information about a function/method.
 
     Args:
@@ -111,7 +105,7 @@ def get_function_info(obj: Any, name: str) -> Dict[str, Any]:
     return info
 
 
-def check_docstring(obj: Any, name: str) -> Tuple[bool, str]:
+def check_docstring(obj: Any, name: str) -> tuple[bool, str]:
     """Check if an object has a valid docstring.
 
     Args:
@@ -129,7 +123,7 @@ def check_docstring(obj: Any, name: str) -> Tuple[bool, str]:
     return True, docstring
 
 
-def inspect_module(module_name: str, file_path: str) -> Dict[str, Any]:
+def inspect_module(module_name: str, file_path: str) -> dict[str, Any]:
     """Inspect a module and check for docstrings on public methods.
 
     Args:
@@ -214,7 +208,7 @@ def inspect_module(module_name: str, file_path: str) -> Dict[str, Any]:
     return result
 
 
-def get_extensions_to_check(base_dir: str) -> Dict[str, str]:
+def get_extensions_to_check(base_dir: str) -> dict[str, str]:
     """Get list of extensions to check.
 
     Args:
@@ -243,7 +237,7 @@ def get_extensions_to_check(base_dir: str) -> Dict[str, str]:
     return extensions
 
 
-def get_python_modules_from_extension_config(config_path: str) -> List[str]:
+def get_python_modules_from_extension_config(config_path: str) -> list[str]:
     """Parse extension.toml to find Python module names.
 
     Args:
@@ -254,7 +248,7 @@ def get_python_modules_from_extension_config(config_path: str) -> List[str]:
     """
     modules = []
     try:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             content = f.read()
 
         # Simple parsing for [[python.module]] sections
@@ -272,7 +266,7 @@ def get_python_modules_from_extension_config(config_path: str) -> List[str]:
     return modules
 
 
-def main():
+def main() -> None:
     """Main function to check docstrings across all extension modules."""
     # Check for output format argument
     output_format = "human"  # default

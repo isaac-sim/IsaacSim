@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies the real-time-factor OmniGraph node reports simulation timing through the core nodes binding. Covers graph execution while the simulation advances."""
+
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.graph.core as og
@@ -23,7 +25,9 @@ from isaacsim.storage.native import get_assets_root_path
 
 
 class TestRealTimeFactor(ogts.OmniGraphTestCase):
-    async def setUp(self):
+    """Verify real-time-factor output through an OmniGraph test-node chain."""
+
+    async def setUp(self) -> None:
         """Set up  test environment, to be torn down when done."""
         await omni.usd.get_context().new_stage_async()
         self._timeline = omni.timeline.get_timeline_interface()
@@ -37,12 +41,13 @@ class TestRealTimeFactor(ogts.OmniGraphTestCase):
         await stage_utils.open_stage_async(assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd")
 
     # ----------------------------------------------------------------------
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Get rid of temporary data used by the test."""
         await omni.kit.stage_templates.new_stage_async()
 
     # ----------------------------------------------------------------------
-    async def test_rtf(self):
+    async def test_rtf(self) -> None:
+        """Verify RTF becomes positive after the timeline advances."""
         graph_path = "/ActionGraph"
         nodeName = "isaac_test_node"
 

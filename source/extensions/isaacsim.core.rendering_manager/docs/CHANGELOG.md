@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [0.4.2] - 2026-05-20
 ### Fixed
 - `test_callback` no longer asserts an exact 1:1 mapping between `RenderingManager.render_async()` calls and `NEW_FRAME` dispatches.

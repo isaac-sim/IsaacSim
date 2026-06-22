@@ -128,10 +128,12 @@ class EpisodeReplayer:
     # ------------------------------------------------------------------ properties
     @property
     def hdf5_path(self) -> str:
+        """Run the hdf5 path operation."""
         return self._hdf5_path
 
     @property
     def policy(self) -> ReplayPolicy:
+        """Run the policy operation."""
         return self._policy
 
     @property
@@ -156,6 +158,7 @@ class EpisodeReplayer:
 
     @property
     def prepared_recordables(self) -> list[Recordable]:
+        """Run the prepared recordables operation."""
         return list(self._prepared)
 
     @property
@@ -182,19 +185,49 @@ class EpisodeReplayer:
         return self._pose_backend
 
     def list_episodes(self) -> list[str]:
+        """Run the list episodes operation.
+
+        Returns:
+            Episode names in storage order.
+        """
         return self._reader.list_episodes()
 
     def num_frames(self, episode: int | str) -> int:
+        """Return the number of frames.
+
+        Args:
+            episode: Episode identifier or index.
+
+        Returns:
+            Number of frames in the episode.
+        """
         return self._reader.num_frames(episode)
 
     def episode_attrs(self, episode: int | str) -> dict[str, Any]:
-        """Return the HDF5 attribute dict for the given episode (e.g. ``num_frames``, ``success``)."""
+        """Return the HDF5 attribute dict for the given episode (e.g. ``num_frames``, ``success``).
+
+        Args:
+            episode: Episode identifier or index.
+
+        Returns:
+            Episode attributes keyed by attribute name.
+        """
         return self._reader.episode_attrs(episode)
 
     def manifest(self) -> SessionManifest:
+        """Run the manifest operation.
+
+        Returns:
+            Session manifest.
+        """
         return self._reader.manifest()
 
     def session_metadata(self) -> dict[str, Any]:
+        """Run the session metadata operation.
+
+        Returns:
+            session metadata result.
+        """
         return dict(self._reader.manifest().session)
 
     # ------------------------------------------------------------------ preparation
@@ -208,6 +241,9 @@ class EpisodeReplayer:
 
         In ``best_effort`` mode (default), missing types / bindings are logged and skipped.
         In ``strict`` mode, any failure aborts with :class:`RuntimeError`.
+
+        Args:
+            episode: Episode identifier or index.
         """
         episode_name = self._reader.normalize_episode(episode)
         self._release_prepared()
@@ -268,7 +304,15 @@ class EpisodeReplayer:
             raise
 
     def _prefetch_frames(self, episode_name: str, recordables: list[Recordable]) -> dict[str, dict[str, np.ndarray]]:
-        """Load every prepared recordable's datasets fully into memory."""
+        """Load every prepared recordable's datasets fully into memory.
+
+        Args:
+            episode_name: Episode name to use.
+            recordables: Recordables to process.
+
+        Returns:
+            prefetch frames result.
+        """
         return self._prefetch_groups(self._reader, episode_name, [rec.group for rec in recordables])
 
     def _prefetch_frames_from_new_reader(
@@ -280,6 +324,13 @@ class EpisodeReplayer:
         from a worker thread via :meth:`prepare_episode_async`. Opening a dedicated
         read-only HDF5 handle inside that worker avoids sharing h5py objects across
         threads and keeps the UI thread out of the prefetch path.
+
+        Args:
+            episode_name: Episode name to use.
+            groups: Groups to use.
+
+        Returns:
+            prefetch frames from new reader result.
         """
         reader = SessionReader(self._hdf5_path)
         try:
@@ -290,7 +341,16 @@ class EpisodeReplayer:
     def _prefetch_groups(
         self, reader: SessionReader, episode_name: str, groups: list[str] | tuple[str, ...]
     ) -> dict[str, dict[str, np.ndarray]]:
-        """Load every requested group as full time-series arrays."""
+        """Load every requested group as full time-series arrays.
+
+        Args:
+            reader: Reader to use.
+            episode_name: Episode name to use.
+            groups: Groups to use.
+
+        Returns:
+            prefetch groups result.
+        """
         cache: dict[str, dict[str, np.ndarray]] = {}
         for group in groups:
             try:
@@ -308,6 +368,9 @@ class EpisodeReplayer:
         thread — USD is not thread-safe. The prefetch itself (pure HDF5 reads) is
         moved to the default executor so the main thread stays responsive while a
         large episode is being loaded.
+
+        Args:
+            episode: Episode identifier or index.
         """
         import asyncio
 
@@ -401,7 +464,11 @@ class EpisodeReplayer:
 
     # ------------------------------------------------------------------ application
     def apply_frame(self, frame_index: int) -> None:
-        """Read one frame from the prefetched cache and apply it via every recordable."""
+        """Read one frame from the prefetched cache and apply it via every recordable.
+
+        Args:
+            frame_index: Frame index to read.
+        """
         if self._prepared_episode is None:
             raise RuntimeError("EpisodeReplayer: call prepare_episode() before apply_frame().")
         n = self._prepared_num_frames
@@ -457,14 +524,24 @@ class EpisodeReplayer:
     def _apply_recordable_frames(
         self, recordables: list[Recordable], frames_by_group: dict[str, dict[str, np.ndarray]]
     ) -> None:
-        """Apply a set of recordable frames through their individual ``apply`` methods."""
+        """Apply a set of recordable frames through their individual ``apply`` methods.
+
+        Args:
+            recordables: Recordables to process.
+            frames_by_group: Frame data keyed by recordable group.
+        """
         for rec in recordables:
             frame = frames_by_group.get(rec.group)
             if frame is not None:
                 self._apply_recordable_frame(rec, frame)
 
     def _apply_recordable_frame(self, rec: Recordable, frame: dict[str, np.ndarray]) -> None:
-        """Apply one non-batched recordable frame with policy-aware error handling."""
+        """Apply one non-batched recordable frame with policy-aware error handling.
+
+        Args:
+            rec: Recordable to apply.
+            frame: Frame data keyed by channel name.
+        """
         try:
             rec.apply(frame, policy=self._policy)
         except Exception as exc:
@@ -483,6 +560,11 @@ class EpisodeReplayer:
         always a producer-side bug, so we surface it as a descriptive
         :class:`ValueError` rather than letting a downstream ``KeyError`` mask the
         true cause.
+
+        Args:
+            rec: Recordable to apply.
+            frame: Frame data keyed by channel name.
+            slot: Pose-batch slice assigned to the recordable.
         """
         assert self._replay_pose_positions is not None
         assert self._replay_pose_orientations is not None
@@ -565,6 +647,9 @@ class EpisodeReplayer:
         wrapper xform plus an :class:`ArticulationRecordable` for a robot nested under
         it) are split across tiers so the wrapper's pose write flushes before the
         articulation links' writes are computed.
+
+        Args:
+            recordables: Recordables to process.
         """
         self._teardown_replay_pose_batch()
 
@@ -665,7 +750,17 @@ class EpisodeReplayer:
         post_frame_hook: Callable[[int], None] | None = None,
         app_update_per_frame: bool = True,
     ) -> None:
-        """Offline loop: apply each frame, optionally drive ``kit.app.update`` and user hooks."""
+        """Offline loop: apply each frame, optionally drive ``kit.app.update`` and user hooks.
+
+        Args:
+            episode: Episode identifier or index.
+            render_interval: Frame interval for app updates while replaying.
+            start_frame: First frame index to replay.
+            end_frame: Last frame index to replay, or None to replay through the end.
+            pre_frame_hook: Callback invoked before each replayed frame.
+            post_frame_hook: Callback invoked after each replayed frame.
+            app_update_per_frame: Whether to update the app after applying each frame.
+        """
         self.prepare_episode(episode)
         total = self._prepared_num_frames
         if end_frame is None:
@@ -748,6 +843,13 @@ class EpisodeReplayer:
         Prefer this from UI callers — stage binding stays on the main thread but the
         usually-expensive prefetch runs on the default executor, so the app stays
         interactive while a large episode is being loaded.
+
+        Args:
+            episode: Episode identifier or index.
+            loop: Whether replay should loop when it reaches the end.
+            seek_timeline: Whether to seek the timeline during asynchronous replay.
+            on_applied: Callback invoked after a frame is applied.
+            on_finished: Callback invoked when replay finishes.
         """
         if self.is_replaying:
             self.stop_replay()
@@ -771,6 +873,12 @@ class EpisodeReplayer:
 
         Assumes :meth:`prepare_episode` (or its async equivalent) has already populated
         ``_prepared`` / ``_frames_cache`` for the target episode.
+
+        Args:
+            loop: Whether replay should loop when it reaches the end.
+            seek_timeline: Whether to seek the timeline during asynchronous replay.
+            on_applied: Callback invoked after a frame is applied.
+            on_finished: Callback invoked when replay finishes.
         """
         import omni.kit.app
 
@@ -897,6 +1005,9 @@ class EpisodeReplayer:
         Silently no-op when the session has no ``sim_time`` track or when the timeline
         interface is not available. The timeline is only seeked — never played — so
         physics is not stepped.
+
+        Args:
+            idx: Frame index to seek to.
         """
         times = self._sim_time_cache
         if times is None or len(times) == 0:
@@ -966,9 +1077,19 @@ class EpisodeReplayer:
         self._reader.close()
 
     def __enter__(self) -> EpisodeReplayer:
+        """Enter the context manager.
+
+        Returns:
+            This context manager instance.
+        """
         return self
 
     def __exit__(self, *exc_info: Any) -> None:
+        """Exit the context manager.
+
+        Args:
+            *exc_info: Exception information from the context manager protocol.
+        """
         self.close()
 
 

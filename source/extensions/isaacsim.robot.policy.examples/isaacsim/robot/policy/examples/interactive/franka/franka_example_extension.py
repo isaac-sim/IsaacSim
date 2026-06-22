@@ -36,7 +36,7 @@ class FrankaExampleExtension(omni.ext.IExt):
     documentation links and overview information for users.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initializes the Franka example extension and registers it with the examples browser.
 
         Sets up the Franka Panda drawer opening policy example with UI components and documentation.
@@ -71,6 +71,6 @@ class FrankaExampleExtension(omni.ext.IExt):
             category=self.category,
         )
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Cleans up the extension by deregistering the Franka example from the examples browser."""
         get_browser_instance().deregister_example(name=self.example_name, category=self.category)

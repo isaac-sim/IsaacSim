@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.2.1] - 2026-04-01
 ### Changed
 - Added extension structure validation README.md, isaac-sim.svg and ogn node CategoryDefinition.json files

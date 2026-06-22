@@ -39,7 +39,6 @@ if args.headless:
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.app
-import warp as wp
 from isaacsim.core.experimental.objects import DomeLight, GroundPlane
 from isaacsim.core.experimental.prims import Articulation
 from isaacsim.core.simulation_manager import SimulationManager
@@ -54,6 +53,7 @@ _HOLD_STEPS: int = 120
 
 
 async def setup_scene() -> Articulation:
+    """Create the UR10e gripper scene and return the articulation."""
     assets_root_path = await get_assets_root_path_async()
     stage_utils.add_reference_to_stage(
         usd_path=assets_root_path + "/Isaac/Samples/Rigging/Manipulator/configure_manipulator/ur10e/ur/ur_gripper.usd",
@@ -74,6 +74,7 @@ async def setup_scene() -> Articulation:
 
 
 def main(args: argparse.Namespace, app: SimulationApp) -> None:
+    """Run the gripper control tutorial."""
     SimulationManager.setup_simulation(dt=1.0 / 60.0)
 
     robot = app.run_coroutine(setup_scene())

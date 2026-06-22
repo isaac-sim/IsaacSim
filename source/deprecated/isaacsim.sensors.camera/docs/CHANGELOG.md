@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.7.9] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.7.8] - 2026-05-18
 ### Fixed
 - Log a warning when `Camera.set_frequency()` / `set_dt()` fall back to "process all frames" because `/app/runLoops/main/rateLimitFrequency` is unset, instead of silently discarding the requested value

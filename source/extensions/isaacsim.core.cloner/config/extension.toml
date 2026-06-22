@@ -1,5 +1,5 @@
 [package]
-version = "1.7.2"
+version = "1.7.3"
 category = "Simulation"
 title = "Isaac Sim Cloner"
 description = "The Cloner extension provides a set of APIs to clone prims and environments in an efficient way as well as filtering the collisions across the clones if needed."

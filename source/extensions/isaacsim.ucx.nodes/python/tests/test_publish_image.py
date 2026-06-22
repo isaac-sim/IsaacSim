@@ -113,7 +113,7 @@ class TestUCXPublishImage(UCXTestCase):
         await app_utils.update_app_async()
 
         await self.setup_ucx_client_with_listener()
-        timestamp, width, height, encoding, step, image_data = await self.receive_image_message()
+        timestamp, width, height, encoding, step, image_data, shape = await self.receive_image_message()
 
         # Verify metadata
         self.assertGreater(timestamp, 0.0)
@@ -125,3 +125,6 @@ class TestUCXPublishImage(UCXTestCase):
         # Verify data size
         expected_size = test_height * step
         self.assertEqual(len(image_data), expected_size)
+
+        # Verify Tensor.shape contract: [height, width, bytes_per_pixel].
+        self.assertEqual(shape, (test_height, test_width, test_channels))

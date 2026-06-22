@@ -1,4 +1,9 @@
 # Changelog
+
+## [3.5.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [3.5.2] - 2026-05-12
 ### Changed
 - Menu entry is under Tools > Robotics > Asset Editors > Gain Tuner (matches `isaacsim.gui.menu` layout and user docs).

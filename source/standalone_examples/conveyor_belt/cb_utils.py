@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Provide small Warp utility functions for conveyor belt kernels."""
+
 import warp as wp
 
 # not needed for the purpose of this sample
@@ -21,6 +23,8 @@ wp.config.enable_backward = False
 
 @wp.struct
 class Vec3Pair:
+    """Pair of orthogonal vectors returned by ``compute_basis_vectors``."""
+
     v0: wp.vec3
     v1: wp.vec3
 
@@ -31,7 +35,6 @@ def compute_basis_vectors(dir: wp.vec3) -> Vec3Pair:
 
     ``dir`` must be a normalized vector.
     """
-
     basis_vectors = Vec3Pair()
 
     if wp.abs(dir.y) <= 0.9999:

@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5.4] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.5.3] - 2026-04-30
 ### Changed
 - Update cryptography to 46.0.7

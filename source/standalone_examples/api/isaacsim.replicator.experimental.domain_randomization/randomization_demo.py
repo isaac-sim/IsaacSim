@@ -149,7 +149,7 @@ with dr.trigger.on_rl_frame(num_envs=num_envs):
 frame_idx = 0
 run_indefinitely = max_frames == 0
 while simulation_app.is_running() and (run_indefinitely or frame_idx < max_frames):
-    reset_inds = list()
+    reset_inds = []
     if frame_idx > 0 and frame_idx % reset_interval == 0:
         reset_inds = list(range(num_envs))
         print(f"Reset #{frame_idx // reset_interval} at frame {frame_idx}")

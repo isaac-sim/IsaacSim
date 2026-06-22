@@ -247,7 +247,11 @@ class ConveyorTrack:
 
     @style.setter
     def style(self, value: int) -> None:
-        """Set the conveyor visual style."""
+        """Set the conveyor visual style.
+
+        Args:
+            value: Integer value of the `Style` enum member to apply.
+        """
         if Style.has_value(value):
             self._style = Style(value)
 
@@ -262,7 +266,11 @@ class ConveyorTrack:
 
     @angle.setter
     def angle(self, value: int) -> None:
-        """Set the angle configuration."""
+        """Set the angle configuration.
+
+        Args:
+            value: Integer value of the `Angle` enum member to apply.
+        """
         if Angle.has_value(value):
             self._angle = Angle(value)
 
@@ -277,7 +285,11 @@ class ConveyorTrack:
 
     @curvature.setter
     def curvature(self, value: int) -> None:
-        """Set the curvature configuration."""
+        """Set the curvature configuration.
+
+        Args:
+            value: Integer value of the `Curvature` enum member to apply.
+        """
         if Curvature.has_value(value):
             self._angle = Curvature(value)
 
@@ -292,7 +304,11 @@ class ConveyorTrack:
 
     @ramp.setter
     def ramp(self, value: int) -> None:
-        """Set the ramp configuration."""
+        """Set the ramp configuration.
+
+        Args:
+            value: Integer value of the `Ramp` enum member to apply.
+        """
         if Ramp.has_value(value):
             self._ramp = Ramp(value)
 
@@ -307,7 +323,11 @@ class ConveyorTrack:
 
     @type.setter
     def type(self, value: int) -> None:
-        """Set the track type."""
+        """Set the track type.
+
+        Args:
+            value: Integer value of the `Type` enum member to apply.
+        """
         if Type.has_value(value):
             self._type = Type(value)
 

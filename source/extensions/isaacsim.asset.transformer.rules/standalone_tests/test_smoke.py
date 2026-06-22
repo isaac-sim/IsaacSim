@@ -29,7 +29,12 @@ _EXCLUDED_TOP_LEVEL_PACKAGES = frozenset({"tests"})
 
 
 def _iter_rule_module_names() -> list[str]:
-    """Return shipped rule package modules, excluding Kit-only test modules."""
+    """Return shipped rule package modules, excluding Kit-only test modules.
+
+    Returns:
+        Sorted import names for shipped non-test rule modules.
+
+    """
     import isaacsim.asset.transformer.rules as rules_pkg
 
     package_root = rules_pkg.__name__
@@ -43,7 +48,12 @@ def _iter_rule_module_names() -> list[str]:
 
 
 def _iter_rule_python_files() -> list[Path]:
-    """Return Python files from the installed rules package, excluding tests."""
+    """Return Python files from the installed rules package, excluding tests.
+
+    Returns:
+        Sorted paths to shipped non-test Python files.
+
+    """
     import isaacsim.asset.transformer.rules as rules_pkg
 
     files = []

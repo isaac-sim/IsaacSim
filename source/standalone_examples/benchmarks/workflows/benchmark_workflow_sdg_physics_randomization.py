@@ -19,6 +19,7 @@ import argparse
 import os
 import shutil
 import time
+from typing import Any
 
 VALID_ANNOTATORS = {
     "rgb",
@@ -118,7 +119,7 @@ replicator_write_to_fabric = not args.no_replicator_write_to_fabric
 randomize_drop_height = args.randomize_drop_height
 
 if "all" in args.annotators:
-    annotators_kwargs = {annotator: True for annotator in VALID_ANNOTATORS}
+    annotators_kwargs = dict.fromkeys(VALID_ANNOTATORS, True)
 else:
     annotators_kwargs = {annotator: True for annotator in args.annotators if annotator in VALID_ANNOTATORS}
 
@@ -151,12 +152,13 @@ from isaacsim.benchmark.services.metrics import measurements
 class FPSWriter(Writer):
     """Lightweight writer that tracks replicator step speed (FPS)."""
 
-    def __init__(self, annotators=None):
+    def __init__(self, annotators: list[str] | None = None) -> None:
         self._last_frame_time = None
         self._times_per_frame = []
         self.annotators = annotators if annotators else ["rgb"]
 
-    def write(self, data):
+    def write(self, data: dict[str, Any]) -> None:
+        """Record the time between consecutive Replicator frames."""
         if self._last_frame_time is None:
             self._last_frame_time = time.time()
             return
@@ -170,20 +172,22 @@ class FPSWriter(Writer):
 class ReplicatorFPSRecorder(MeasurementDataRecorder):
     """Bridge between FPSWriter and benchmark metrics."""
 
-    def __init__(self, context=None):
+    def __init__(self, context: Any = None) -> None:
         self.context = context
         self._fps_writer = None
 
-    def set_fps_writer(self, fps_writer: FPSWriter):
+    def set_fps_writer(self, fps_writer: FPSWriter) -> None:
+        """Attach an FPS writer for metric extraction."""
         self._fps_writer = fps_writer
 
-    def start_collecting(self):
-        pass
+    def start_collecting(self) -> None:
+        """Start collecting FPS measurements."""
 
-    def stop_collecting(self):
-        pass
+    def stop_collecting(self) -> None:
+        """Stop collecting FPS measurements."""
 
     def get_data(self) -> MeasurementData:
+        """Return the collected FPS measurements."""
         if not self._fps_writer or not self._fps_writer._times_per_frame:
             return MeasurementData()
 

@@ -37,13 +37,13 @@ from isaacsim.cortex.framework.robot import add_franka_to_stage
 class NullspaceShiftState(DfState):
     """Cycle through random nullspace posture configurations at a fixed end-effector target."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.config_mean = np.array([0.00, -1.3, 0.00, -2.87, 0.00, 2.00, 0.75])
         self.target_p = np.array([0.7, 0.0, 0.5])
         self.construction_time = time.time()
 
-    def enter(self):
+    def enter(self) -> None:
         """Sample a new posture configuration and toggle the gripper."""
         # Change the posture configuration while maintaining a consistent target.
         posture_config = self.config_mean + np.random.randn(7)
@@ -61,14 +61,14 @@ class NullspaceShiftState(DfState):
 
         print("[%f] <enter> sampling posture config" % (self.entry_time - self.construction_time))
 
-    def step(self):
+    def step(self) -> DfState | None:
         """Wait for two seconds before transitioning to the next state."""
         if time.time() - self.entry_time < 2.0:
             return self
         return None
 
 
-def main():
+def main() -> None:
     """Set up and run the nullspace posture shifting example."""
     world = CortexWorld()
     robot = world.add_robot(add_franka_to_stage(name="franka", prim_path="/World/franka"))
@@ -82,7 +82,7 @@ def main():
     if args.test:
         _test_frames = {"count": 0}
 
-        def _test_done_cb():
+        def _test_done_cb() -> bool:
             _test_frames["count"] += 1
             return _test_frames["count"] >= 10
 

@@ -63,6 +63,7 @@ fi
 case "$HOST_ARCH" in
     aarch64) HOST_ARCH=arm64 ;;
     x86_64)  HOST_ARCH=amd64 ;;
+    *) ;;
 esac
 NATIVE_PLATFORM="linux/$HOST_ARCH"
 if docker buildx inspect 2>/dev/null | grep -q "$CONTAINER_PLATFORM"; then

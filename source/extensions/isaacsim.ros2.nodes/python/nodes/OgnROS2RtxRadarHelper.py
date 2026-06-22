@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import traceback
+from typing import Any
 
 import carb
 import omni
@@ -32,7 +33,6 @@ class OgnROS2RtxRadarHelperInternalState(BaseWriterNode):
     """Internal state for the ROS2RtxRadarHelper OmniGraph node."""
 
     def __init__(self) -> None:
-        """Initialize the ROS2 RTX radar helper internal state."""
         self.viewport = None
         self.viewport_name = ""
         self.resetSimulationTimeOnStop = False
@@ -50,12 +50,23 @@ class OgnROS2RtxRadarHelper:
 
     @staticmethod
     def internal_state() -> OgnROS2RtxRadarHelperInternalState:
-        """Return the internal state object for this node."""
+        """Return the internal state object for this node.
+
+        Returns:
+            Internal state object for this node.
+        """
         return OgnROS2RtxRadarHelperInternalState()
 
     @staticmethod
-    def compute(db) -> bool:
-        """Compute the node."""
+    def compute(db: Any) -> bool:
+        """Configure ROS 2 PointCloud2 publishing for an RTX radar render product.
+
+        Args:
+            db: OmniGraph database for the node.
+
+        Returns:
+            True if the node was configured or can retry later, otherwise False.
+        """
         state = db.per_instance_state
 
         if state.initialized:
@@ -90,14 +101,14 @@ class OgnROS2RtxRadarHelper:
             if db.inputs.resetSimulationTimeOnStop:
                 carb.log_warn("System timestamp is being used. Ignoring resetSimulationTimeOnStop input")
 
-        init_params = dict(
-            frameId=db.inputs.frameId,
-            nodeNamespace=collect_namespace(db.inputs.nodeNamespace, render_product_path),
-            queueSize=db.inputs.queueSize,
-            topicName=db.inputs.topicName,
-            context=db.inputs.context,
-            qosProfile=db.inputs.qosProfile,
-        )
+        init_params = {
+            "frameId": db.inputs.frameId,
+            "nodeNamespace": collect_namespace(db.inputs.nodeNamespace, render_product_path),
+            "queueSize": db.inputs.queueSize,
+            "topicName": db.inputs.topicName,
+            "context": db.inputs.context,
+            "qosProfile": db.inputs.qosProfile,
+        }
 
         # Collect enabled metadata field names.
         metadata = []
@@ -133,8 +144,13 @@ class OgnROS2RtxRadarHelper:
         return True
 
     @staticmethod
-    def release_instance(node, graph_instance_id) -> None:
-        """Release resources for a graph instance."""
+    def release_instance(node: Any, graph_instance_id: Any) -> None:
+        """Release resources for a graph instance.
+
+        Args:
+            node: OmniGraph node being released.
+            graph_instance_id: Graph instance identifier.
+        """
         try:
             state = OgnROS2RtxRadarHelperInternalState.per_instance_internal_state(node)
         except Exception:

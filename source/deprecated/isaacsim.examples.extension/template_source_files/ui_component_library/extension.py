@@ -32,24 +32,6 @@ from omni.kit.menu.utils import add_menu_items, remove_menu_items
 from .global_variables import EXTENSION_TITLE
 from .ui_builder import UIBuilder
 
-"""
-This file serves as a basic template for the standard boilerplate operations
-that make a UI-based extension appear on the toolbar.
-
-This implementation is meant to cover most use-cases without modification.
-Various callbacks are hooked up to a seperate class UIBuilder in .ui_builder.py
-Most users will be able to make their desired UI extension by interacting solely with
-UIBuilder.
-
-This class sets up standard useful callback functions in UIBuilder:
-    on_menu_callback: Called when extension is opened
-    on_timeline_event: Called when timeline is stopped, paused, or played
-    on_physics_step: Called on every physics step
-    on_stage_event: Called when stage is opened or closed
-    cleanup: Called when resources such as physics subscriptions should be cleaned up
-    build_ui: User function that creates the UI they want.
-"""
-
 
 class Extension(omni.ext.IExt):
     """Extension class for the UI component library template."""

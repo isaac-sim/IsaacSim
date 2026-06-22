@@ -13,14 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for randint crash when BFS finds no reachable endpoints.
+"""Verifies path planner handling when breadth-first search finds no reachable endpoints. The tests ensure empty visited sets raise or report friendly errors while nonempty inputs still produce valid samples."""
 
-GeneratePathsOutput is a plain dataclass so it can be constructed directly
-without the C++ _path_planner binding.  Runs standalone.
-"""
-
-import random
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -42,7 +36,14 @@ GeneratePathsOutput = _globs["GeneratePathsOutput"]
 
 
 def _make_output(visited: np.ndarray) -> "GeneratePathsOutput":
-    """Construct a GeneratePathsOutput with the given visited grid."""
+    """Construct a GeneratePathsOutput with the given visited grid.
+
+    Args:
+        visited: Visited-cell grid.
+
+    Returns:
+        A path planner output object using ``visited`` and empty predecessor arrays.
+    """
     shape = visited.shape
     return GeneratePathsOutput(
         visited=visited,
@@ -60,13 +61,13 @@ class TestSampleRandomEndPointEmptyBFS(omni.kit.test.AsyncTestCase):
     before calling randint.
     """
 
-    async def test_empty_visited_raises_value_error(self):
+    async def test_empty_visited_raises_value_error(self) -> None:
         """With no visited cells, sample_random_end_point currently raises ValueError."""
         output = _make_output(np.zeros((5, 5), dtype=np.int64))
         with self.assertRaises((ValueError, Exception)):
             output.sample_random_end_point()
 
-    async def test_nonempty_visited_succeeds(self):
+    async def test_nonempty_visited_succeeds(self) -> None:
         """With visited cells present, sample_random_end_point must return a valid index."""
         visited = np.zeros((5, 5), dtype=np.int64)
         visited[2, 3] = 1
@@ -75,7 +76,7 @@ class TestSampleRandomEndPointEmptyBFS(omni.kit.test.AsyncTestCase):
         row, col = output.sample_random_end_point()
         self.assertIn((row, col), [(2, 3), (1, 1)])
 
-    async def test_empty_visited_returns_friendly_error(self):
+    async def test_empty_visited_returns_friendly_error(self) -> None:
         """After the fix, empty BFS should raise a clear RuntimeError, not ValueError."""
         output = _make_output(np.zeros((5, 5), dtype=np.int64))
         with self.assertRaises(RuntimeError):

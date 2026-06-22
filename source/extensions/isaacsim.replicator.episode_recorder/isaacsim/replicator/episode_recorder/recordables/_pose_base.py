@@ -40,6 +40,11 @@ class _PoseBase(Recordable):
     :meth:`consume_pose_batch`, so every-tick pose reads fold into a single
     ``XformPrim.get_world_poses()`` across all batch participants rather than one
     call per recordable.
+
+    Args:
+        group: Recordable HDF5 group path.
+        prim_path: USD prim path bound to the recordable.
+        space: Coordinate space tag for sampled poses.
     """
 
     def __init__(self, *, group: str, prim_path: str, space: str = "world") -> None:
@@ -76,6 +81,9 @@ class _PoseBase(Recordable):
         Local-space sampling goes through ``XformPrim.get_local_poses()``, which has
         different semantics than the world-space batch; keeping it on the per-recordable
         path avoids invalidating the batch invariants.
+
+        Returns:
+            Prim paths for shared pose batching, or None when disabled.
         """
         if self.space != "world" or not self.prim_path:
             return None

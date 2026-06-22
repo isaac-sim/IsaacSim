@@ -1137,13 +1137,14 @@ protected:
      *
      * @tparam ArrayType The ROS array type
      * @tparam ArrayInit Function pointer to array initialization function
+     * @tparam ArrayFini Function pointer to array finalization function
      * @tparam RosType The underlying ROS data type
      *
      * @param[in] member Pointer to the message member definition
      * @param[out] data Pointer to the message data
      * @param[in] value JSON value containing the array data
      */
-    template <typename ArrayType, auto ArrayInit, typename RosType>
+    template <typename ArrayType, auto ArrayInit, auto ArrayFini, typename RosType>
     void _setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
                    uint8_t* data,
                    const nlohmann::json& value);
@@ -1155,6 +1156,7 @@ protected:
      *
      * @tparam ArrayType The ROS array type
      * @tparam ArrayInit Function pointer to array initialization function
+     * @tparam ArrayFini Function pointer to array finalization function
      * @tparam RosType The underlying ROS data type
      * @tparam OgnType The source OmniGraph data type
      *
@@ -1163,7 +1165,7 @@ protected:
      * @param[in] valuePtr Shared pointer to the source data
      * @param[in] fromOgnType Whether the source is in OmniGraph format
      */
-    template <typename ArrayType, auto ArrayInit, typename RosType, typename OgnType>
+    template <typename ArrayType, auto ArrayInit, auto ArrayFini, typename RosType, typename OgnType>
     void _setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
                    uint8_t* data,
                    const std::shared_ptr<void>& valuePtr,
@@ -1176,13 +1178,14 @@ protected:
      *
      * @tparam ArrayType The ROS array type
      * @tparam ArrayInit Function pointer to array initialization function
+     * @tparam ArrayFini Function pointer to array finalization function
      * @tparam RosType The underlying ROS data type
      *
      * @param[in] member Pointer to the message member definition
      * @param[out] data Pointer to the message data
      * @param[in] array Vector containing the source data
      */
-    template <typename ArrayType, auto ArrayInit, typename RosType>
+    template <typename ArrayType, auto ArrayInit, auto ArrayFini, typename RosType>
     void _setArray(const rosidl_typesupport_introspection_c__MessageMember* member,
                    uint8_t* data,
                    const std::vector<RosType>& array);

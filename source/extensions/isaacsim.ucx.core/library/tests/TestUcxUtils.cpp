@@ -134,7 +134,7 @@ TEST_SUITE("UcxUtils")
         UCXListenerRegistry::removeListener(port);
     }
 
-    TEST_CASE("waitForRequestWithTimeout - infinite timeout (zero)")
+    TEST_CASE("waitForRequestWithTimeout - infinite timeout (UINT32_MAX sentinel)")
     {
         // Create a context and listener
         auto context = ucxx::createContext({}, ucxx::Context::defaultFeatureFlags);
@@ -177,6 +177,46 @@ TEST_SUITE("UcxUtils")
         senderThread.join();
 
         // Clean up
+        UCXListenerRegistry::removeListener(port);
+    }
+
+    TEST_CASE("waitForRequestWithTimeout - literal zero is infinite wait")
+    {
+        // Verifies the user-facing OGN sentinel: timeoutMs == 0 must mean "wait indefinitely",
+        // matching the OGN docstrings (e.g. OgnUCXPublishJointState.ogn: "If 0, waits indefinitely").
+        // Without this guarantee, OGN nodes using the default value (0) would time out immediately.
+        auto context = ucxx::createContext({}, ucxx::Context::defaultFeatureFlags);
+        auto listener = UCXListenerRegistry::addListener(0);
+        uint16_t port = listener->getPort();
+        listener->startProgressThread();
+
+        TestClient client(listener->getWorker(), "127.0.0.1", port);
+        REQUIRE(listener->waitForConnection(5000));
+
+        std::vector<uint8_t> sendData(1024, 99);
+        std::vector<uint8_t> recvData(1024);
+
+        // Sender delays 200 ms; with timeoutMs=0 treated as "fail immediately" (the old bug),
+        // this receive would return eTimedOut before the data arrives. With the documented
+        // "0 = infinite" behavior, it must wait for the send to complete.
+        std::thread senderThread(
+            [&client, &sendData]()
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                auto sendRequest = client.tagSend(sendData.data(), sendData.size(), 300);
+                while (!sendRequest->isCompleted())
+                {
+                    std::this_thread::sleep_for(std::chrono::microseconds(100));
+                }
+            });
+
+        std::string errorMsg;
+        auto result =
+            listener->tagReceive(recvData.data(), recvData.size(), 300, 0xFFFFFFFFFFFFFFFF, errorMsg, /*timeout=*/0);
+        CHECK(result == UcxReceiveResult::eSuccess);
+        CHECK(recvData == sendData);
+
+        senderThread.join();
         UCXListenerRegistry::removeListener(port);
     }
 

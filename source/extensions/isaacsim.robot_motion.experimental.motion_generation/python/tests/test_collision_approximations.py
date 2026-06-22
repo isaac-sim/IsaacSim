@@ -13,7 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for collision approximation utilities used in robot motion generation."""
+"""Verify collision approximation helpers used by motion-generation world binding.
+
+The tests cover oriented bounds that ignore unreferenced mesh vertices,
+world-axis-aligned bounds for equivalent cube and mesh geometry, and
+triangulation failure handling for meshes with no authored faces.
+"""
 
 import numpy as np
 import omni.kit.test
@@ -48,7 +53,7 @@ class TestCollisionApproximations(omni.kit.test.AsyncTestCase):
     """
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment before each test."""
         await create_new_stage_async()
 
@@ -58,7 +63,7 @@ class TestCollisionApproximations(omni.kit.test.AsyncTestCase):
         self._timeline = omni.timeline.get_timeline_interface()
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test environment after each test."""
         # Stop timeline if running
         if self._timeline.is_playing():
@@ -70,7 +75,7 @@ class TestCollisionApproximations(omni.kit.test.AsyncTestCase):
 
         await get_app().next_update_async()
 
-    async def test_oriented_bounding_box(self):
+    async def test_oriented_bounding_box(self) -> None:
         """Test that oriented bounding box computation correctly handles mesh geometry.
 
         Verifies that the OBB calculation ignores unreferenced vertices and produces correct
@@ -155,7 +160,7 @@ class TestCollisionApproximations(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.isclose(obb.center, [0.0, 0.0, 0.0]).all())
         self.assertTrue(np.isclose(obb.half_side_lengths, [0.5, 0.5, 0.5]).all())
 
-    async def test_world_axis_aligned_bounding_box(self):
+    async def test_world_axis_aligned_bounding_box(self) -> None:
         """Test that world axis-aligned bounding box computation produces consistent results.
 
         Verifies that AABB calculations for geometrically equivalent Cube and Mesh objects
@@ -335,7 +340,7 @@ class TestCollisionApproximations(omni.kit.test.AsyncTestCase):
     #     self.assertIsNotNone(convex_hull_data.points)
     #     self.assertIsNotNone(convex_hull_data.triangles)
 
-    async def test_triangulate_mesh_no_faces_raises(self):
+    async def test_triangulate_mesh_no_faces_raises(self) -> None:
         """Test that triangulate_mesh raises ValueError for meshes without faces.
 
         Verifies that attempting to triangulate a mesh with no face specifications

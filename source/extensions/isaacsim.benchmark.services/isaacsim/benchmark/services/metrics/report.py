@@ -148,7 +148,14 @@ class Report:
         return logs
 
     def _wrap_inner(self, text: str) -> list[str]:
-        """Split text into lines that fit the boxed inner width (no truncation)."""
+        """Split text into lines that fit the boxed inner width.
+
+        Args:
+            text: Text to wrap.
+
+        Returns:
+            Wrapped lines without truncation.
+        """
         if len(text) <= self._report_width:
             return [text]
         return textwrap.wrap(
@@ -159,7 +166,14 @@ class Report:
         )
 
     def _boxed_inner_lines(self, inner: str) -> list[str]:
-        """Full-width bordered lines for inner content, wrapping when needed."""
+        """Create full-width bordered lines for inner content.
+
+        Args:
+            inner: Inner content to wrap and place inside the report border.
+
+        Returns:
+            Bordered report lines.
+        """
         return [f"| {row:<{self._report_width}} |" for row in self._wrap_inner(inner)]
 
     def _format_measurement(self, measurement: measurements.SingleMeasurement) -> list[str]:

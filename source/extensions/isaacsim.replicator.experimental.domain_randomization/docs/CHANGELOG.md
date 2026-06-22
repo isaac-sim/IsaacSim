@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.5] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.2.4] - 2026-04-22
 ### Fixed
 - Fix module-level physics view state not cleaned up on stage close/reload, causing stale views to accumulate across sessions

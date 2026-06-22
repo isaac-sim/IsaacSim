@@ -1,5 +1,5 @@
 [package]
-version = "1.4.3"
+version = "1.4.4"
 category = "Simulation"
 title = "Omniverse MJCF Importer UI"
 description = "UI components for the MJCF Importer - provides the graphical interface for importing MuJoCo MJCF files into Omniverse USD scenes."

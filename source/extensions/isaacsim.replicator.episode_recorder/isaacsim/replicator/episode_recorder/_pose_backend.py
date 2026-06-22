@@ -28,8 +28,8 @@ to ``"usd"`` instead of crashing the writer.
 from __future__ import annotations
 
 from collections.abc import Generator
-from contextlib import contextmanager, nullcontext
-from typing import ContextManager, Literal
+from contextlib import AbstractContextManager, contextmanager, nullcontext
+from typing import Literal
 
 import carb
 import carb.settings
@@ -54,6 +54,12 @@ def normalize_pose_backend(backend: str | None) -> PoseBackend:
     warning so typos don't silently degrade a session). Non-USD backends
     with FSD off are also coerced to ``"usd"`` here; :func:`pose_backend_ctx`
     re-validates per tick so a mid-session FSD toggle is also handled.
+
+    Args:
+        backend: Pose backend selector to normalize.
+
+    Returns:
+        Normalized pose backend selector.
     """
     if backend is None:
         return _DEFAULT_BACKEND
@@ -72,13 +78,19 @@ def normalize_pose_backend(backend: str | None) -> PoseBackend:
     return backend
 
 
-def pose_backend_ctx(backend: PoseBackend) -> ContextManager[None]:
+def pose_backend_ctx(backend: PoseBackend) -> AbstractContextManager[None]:
     """Return a context manager that activates ``backend`` for ``XformPrim`` ops.
 
     ``"usd"`` is a free :class:`contextlib.nullcontext`. ``"usdrt"`` /
     ``"fabric"`` delegate to ``use_backend`` and re-check FSD first;
     when FSD is off the backend silently demotes to ``"usd"`` with a
     one-shot warning so writes never crash on a missing fabric stage.
+
+    Args:
+        backend: Pose backend selector to normalize.
+
+    Returns:
+        Context manager for the selected pose backend.
     """
     if backend == "usd":
         return nullcontext()

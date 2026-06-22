@@ -129,7 +129,6 @@ def setup_scene_and_controller() -> tuple[RmpFlowController, CumotionRobot, Arti
     Returns:
         Tuple of (controller, cumotion_robot, articulation, world_binding, target_object).
     """
-
     # UR10FollowTarget spawns the robot, ground plane, and a draggable target cube.
     follow = UR10FollowTarget()
     follow.setup_scene()

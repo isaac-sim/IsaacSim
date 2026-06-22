@@ -209,7 +209,14 @@ def read_loop_joints(desc: RobotDescription, link_name_map: dict[str, str]) -> l
 
 
 def _get_loop_joint_type(prim: Usd.Prim) -> str:
-    """Map USD joint type to a URDF-compatible loop joint type string."""
+    """Map USD joint type to a URDF-compatible loop joint type string.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        URDF-compatible loop joint type.
+    """
     if prim.IsA(UsdPhysics.RevoluteJoint):
         return "revolute"
     if prim.IsA(UsdPhysics.PrismaticJoint):
@@ -222,7 +229,15 @@ def _get_loop_joint_type(prim: Usd.Prim) -> str:
 def _get_loop_joint_frame(
     joint: UsdPhysics.Joint, body_index: int
 ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-    """Read the local frame (xyz, rpy) for one side of a loop joint."""
+    """Read the local frame (xyz, rpy) for one side of a loop joint.
+
+    Args:
+        joint: Joint data or USD physics joint to read.
+        body_index: Body relationship index to read.
+
+    Returns:
+        Local frame translation and rotation.
+    """
     from pxr import Gf
 
     from .transform_utils import _get_local_transform, matrix4_to_origin
@@ -234,7 +249,15 @@ def _get_loop_joint_frame(
 
 
 def _is_world_joint(joint_prim: Usd.Prim, desc: RobotDescription) -> bool:
-    """Check if this is the root joint connecting the robot to the world."""
+    """Check if this is the root joint connecting the robot to the world.
+
+    Args:
+        joint_prim: USD joint prim to read.
+        desc: Robot description to read.
+
+    Returns:
+        True if the joint connects the robot to the world, False otherwise.
+    """
     if not joint_prim.IsA(UsdPhysics.FixedJoint):
         return False
 
@@ -273,7 +296,19 @@ def _read_single_joint(
     axis_flips: dict[str, bool] | None = None,
     actuator_map: dict[str, Usd.Prim] | None = None,
 ) -> JointData | None:
-    """Read a single joint's data from its USD prim."""
+    """Read a single joint's data from its USD prim.
+
+    Args:
+        joint_prim: USD joint prim to read.
+        link_name_map: Mapping from link prim paths to URDF link names.
+        stage: USD stage to read.
+        urdf_frames: Mapping from link prim paths to URDF frames.
+        axis_flips: Mapping from joint prim paths to axis flip flags.
+        actuator_map: Mapping from joint prim paths to actuator prims.
+
+    Returns:
+        Joint data, or None if the joint cannot be exported.
+    """
     jd = JointData(name=get_prim_name(joint_prim))
 
     joint = UsdPhysics.Joint(joint_prim)
@@ -324,6 +359,12 @@ def _get_joint_type(prim: Usd.Prim) -> str:
 
     Returns sentinel values ``"spherical"`` and ``"d6"`` for multi-DOF
     joints that require chain expansion.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        URDF joint type string.
     """
     if prim.IsA(UsdPhysics.RevoluteJoint):
         rev = UsdPhysics.RevoluteJoint(prim)
@@ -362,6 +403,14 @@ def _read_axis(joint_prim: Usd.Prim, joint: UsdPhysics.Joint, flipped: bool = Fa
     the axis in the URDF child frame is simply the axis token direction.
     When localRot1 flips the axis (detected by build_urdf_frames), the
     URDF axis is negated.
+
+    Args:
+        joint_prim: USD joint prim to read.
+        joint: Joint data or USD physics joint to read.
+        flipped: Whether to negate the joint axis.
+
+    Returns:
+        Joint axis vector.
     """
     axis_attr = joint_prim.GetAttribute("physics:axis")
     axis_token = str(axis_attr.Get()).upper() if axis_attr and axis_attr.IsValid() else "X"
@@ -376,7 +425,13 @@ def _read_axis(joint_prim: Usd.Prim, joint: UsdPhysics.Joint, flipped: bool = Fa
 
 
 def _read_limits(joint_prim: Usd.Prim, jd: JointData, actuator_map: dict[str, Usd.Prim] | None = None) -> None:
-    """Read joint position limits (converting degrees to radians for revolute)."""
+    """Read joint position limits (converting degrees to radians for revolute).
+
+    Args:
+        joint_prim: USD joint prim to read.
+        jd: Joint data to populate.
+        actuator_map: Mapping from joint prim paths to actuator prims.
+    """
     is_revolute = joint_prim.IsA(UsdPhysics.RevoluteJoint)
 
     if is_revolute:
@@ -409,6 +464,11 @@ def _read_dynamics(joint_prim: Usd.Prim, jd: JointData, actuator_map: dict[str, 
     attrs (``mjc:damping``, ``mjc:frictionloss``) are valid sources.
     DriveAPI values are actuation data and belong in the
     ``isaac:source_drive`` breadcrumb, not here.
+
+    Args:
+        joint_prim: USD joint prim to read.
+        jd: Joint data to populate.
+        actuator_map: Mapping from joint prim paths to actuator prims.
     """
     damping = _get_float_attr(joint_prim, "urdf:dynamics:damping")
     if damping is None:
@@ -422,7 +482,12 @@ def _read_dynamics(joint_prim: Usd.Prim, jd: JointData, actuator_map: dict[str, 
 
 
 def _read_calibration(joint_prim: Usd.Prim, jd: JointData) -> None:
-    """Read calibration attributes."""
+    """Read calibration attributes.
+
+    Args:
+        joint_prim: USD joint prim to read.
+        jd: Joint data to populate.
+    """
     jd.calibration_rising = _get_float_attr(joint_prim, "urdf:calibration:rising")
     jd.calibration_falling = _get_float_attr(joint_prim, "urdf:calibration:falling")
     ref_pos = _get_float_attr(joint_prim, "urdf:calibration:reference_position")
@@ -432,7 +497,12 @@ def _read_calibration(joint_prim: Usd.Prim, jd: JointData) -> None:
 
 
 def _read_safety_controller(joint_prim: Usd.Prim, jd: JointData) -> None:
-    """Read safety controller attributes (only from urdf: custom attrs)."""
+    """Read safety controller attributes (only from urdf: custom attrs).
+
+    Args:
+        joint_prim: USD joint prim to read.
+        jd: Joint data to populate.
+    """
     jd.safety_k_velocity = _get_float_attr(joint_prim, "urdf:safety_controller:k_velocity")
     jd.safety_k_position = _get_float_attr(joint_prim, "urdf:safety_controller:k_position")
     jd.safety_soft_lower = _get_float_attr(joint_prim, "urdf:safety_controller:soft_lower_limit")
@@ -440,7 +510,12 @@ def _read_safety_controller(joint_prim: Usd.Prim, jd: JointData) -> None:
 
 
 def _read_mimic(joint_prim: Usd.Prim, jd: JointData) -> None:
-    """Read mimic joint data from NewtonMimicAPI or PhysxMimicJointAPI."""
+    """Read mimic joint data from NewtonMimicAPI or PhysxMimicJointAPI.
+
+    Args:
+        joint_prim: USD joint prim to read.
+        jd: Joint data to populate.
+    """
     if joint_prim.HasAPI("NewtonMimicAPI"):
         coef1 = _get_float_attr(joint_prim, "newton:mimicCoef1")
         coef0 = _get_float_attr(joint_prim, "newton:mimicCoef0")
@@ -475,6 +550,12 @@ def _find_physx_mimic_instance(prim: Usd.Prim) -> str | None:
 
     Multi-apply schemas appear in GetAppliedSchemas() as
     "PhysxMimicJointAPI:<instanceName>" (e.g. "PhysxMimicJointAPI:rotZ").
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Mimic API instance name, or None if absent.
     """
     prefix = "PhysxMimicJointAPI:"
     for schema in prim.GetAppliedSchemas():
@@ -485,7 +566,13 @@ def _find_physx_mimic_instance(prim: Usd.Prim) -> str | None:
 
 
 def _resolve_mimic_names(joints: list[JointData], joint_name_map: dict[str, str], desc: RobotDescription) -> None:
-    """Resolve mimic joint prim paths to URDF joint names."""
+    """Resolve mimic joint prim paths to URDF joint names.
+
+    Args:
+        joints: Joint data or prims to process.
+        joint_name_map: Mapping from joint prim paths to URDF joint names.
+        desc: Robot description to read.
+    """
     for jd in joints:
         if jd.mimic_joint:
             jd.mimic_joint = joint_name_map.get(jd.mimic_joint, jd.mimic_joint)
@@ -503,10 +590,11 @@ def _analyze_multi_dof_axes(
     six possible axis tokens.  An axis is considered free when its
     low limit is strictly less than its high limit.
 
-    Returns:
-        List of ``(axis_token, is_rotational, low, high)`` for each
-        free axis, in canonical order (rotX..transZ).
+    Args:
+        prim: USD prim to read.
 
+    Returns:
+        Free axes discovered on the joint.
     """
     free_axes: list[tuple[str, bool, float, float]] = []
     for token in _D6_AXIS_TOKENS:
@@ -533,7 +621,14 @@ def _analyze_multi_dof_axes(
 def _read_joint_local_poses(
     joint: UsdPhysics.Joint,
 ) -> dict:
-    """Read localPos0/1 and localRot0/1 as serialisable lists."""
+    """Read localPos0/1 and localRot0/1 as serialisable lists.
+
+    Args:
+        joint: Joint data or USD physics joint to read.
+
+    Returns:
+        Serializable local pose data.
+    """
     result: dict = {}
     for idx in (0, 1):
         pos_attr = joint.GetLocalPos0Attr() if idx == 0 else joint.GetLocalPos1Attr()
@@ -553,7 +648,15 @@ def _read_joint_local_poses(
 
 
 def _read_per_axis_drives(prim: Usd.Prim, axis_tokens: list[str]) -> dict:
-    """Read DriveAPI parameters for each axis token."""
+    """Read DriveAPI parameters for each axis token.
+
+    Args:
+        prim: USD prim to read.
+        axis_tokens: Axis tokens to inspect.
+
+    Returns:
+        Drive parameters keyed by axis token.
+    """
     drives: dict = {}
     for token in axis_tokens:
         if not prim.HasAPI(UsdPhysics.DriveAPI, token):
@@ -583,10 +686,12 @@ def _expand_multi_dof_joint(
     For a SphericalJoint the free axes are always rotX/rotY/rotZ.
     For D6 or generic joints the free axes come from ``_analyze_multi_dof_axes``.
 
-    Returns:
-        ``(chain_joints, ghost_links)`` -- empty lists if the joint
-        cannot be expanded (caller should fall back to ``fixed``).
+    Args:
+        joint_prim: USD joint prim to read.
+        base_jd: Base joint data to expand.
 
+    Returns:
+        Expanded joint chain and generated ghost links.
     """
     from .link_reader import LinkData
 
@@ -676,7 +781,15 @@ def _expand_multi_dof_joint(
 
 
 def _get_float_attr(prim: Usd.Prim, attr_name: str) -> float | None:
-    """Read a float attribute value, returning None if not present."""
+    """Read a float attribute value, returning None if not present.
+
+    Args:
+        prim: USD prim to read.
+        attr_name: Value to use.
+
+    Returns:
+        Float attribute value, or None if absent.
+    """
     attr = prim.GetAttribute(attr_name)
     if attr and attr.IsValid():
         val = attr.Get()
@@ -688,7 +801,16 @@ def _get_float_attr(prim: Usd.Prim, attr_name: str) -> float | None:
 def _read_urdf_attr_or_physx(
     prim: Usd.Prim, urdf_attr: str, physx_fallback: Callable[[Usd.Prim], float | None]
 ) -> float | None:
-    """Read from urdf: custom attr first, then PhysxJointAPI fallback."""
+    """Read from urdf: custom attr first, then PhysxJointAPI fallback.
+
+    Args:
+        prim: USD prim to read.
+        urdf_attr: URDF custom attribute name.
+        physx_fallback: Value to use.
+
+    Returns:
+        Attribute value from URDF metadata or PhysX fallback.
+    """
     val = _get_float_attr(prim, urdf_attr)
     if val is not None:
         return val
@@ -696,7 +818,14 @@ def _read_urdf_attr_or_physx(
 
 
 def _read_drive_max_force(prim: Usd.Prim) -> float | None:
-    """Read maxForce from DriveAPI."""
+    """Read maxForce from DriveAPI.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Drive maximum force, or None if absent.
+    """
     instance = "angular" if prim.IsA(UsdPhysics.RevoluteJoint) else "linear"
     if prim.HasAPI(UsdPhysics.DriveAPI, instance):
         drive = UsdPhysics.DriveAPI(prim, instance)
@@ -707,7 +836,14 @@ def _read_drive_max_force(prim: Usd.Prim) -> float | None:
 
 
 def _read_drive_damping(prim: Usd.Prim) -> float | None:
-    """Read damping from DriveAPI."""
+    """Read damping from DriveAPI.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Drive damping, or None if absent.
+    """
     instance = "angular" if prim.IsA(UsdPhysics.RevoluteJoint) else "linear"
     if prim.HasAPI(UsdPhysics.DriveAPI, instance):
         drive = UsdPhysics.DriveAPI(prim, instance)
@@ -718,7 +854,14 @@ def _read_drive_damping(prim: Usd.Prim) -> float | None:
 
 
 def _read_drive_target_position(prim: Usd.Prim) -> float | None:
-    """Read targetPosition from DriveAPI."""
+    """Read targetPosition from DriveAPI.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Drive target position, or None if absent.
+    """
     instance = "angular" if prim.IsA(UsdPhysics.RevoluteJoint) else "linear"
     if prim.HasAPI(UsdPhysics.DriveAPI, instance):
         drive = UsdPhysics.DriveAPI(prim, instance)
@@ -729,7 +872,14 @@ def _read_drive_target_position(prim: Usd.Prim) -> float | None:
 
 
 def _read_physx_max_velocity(prim: Usd.Prim) -> float | None:
-    """Read maxJointVelocity from PhysxJointAPI (deg/s -> rad/s)."""
+    """Read maxJointVelocity from PhysxJointAPI (deg/s -> rad/s).
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Maximum joint velocity, or None if absent.
+    """
     attr = prim.GetAttribute(PhysxAttr.JOINT_MAX_VELOCITY.name)
     if attr and attr.Get() is not None:
         return float(attr.Get()) * math.pi / 180.0
@@ -737,7 +887,14 @@ def _read_physx_max_velocity(prim: Usd.Prim) -> float | None:
 
 
 def _read_physx_friction(prim: Usd.Prim) -> float | None:
-    """Read jointFriction from PhysxJointAPI."""
+    """Read jointFriction from PhysxJointAPI.
+
+    Args:
+        prim: USD prim to read.
+
+    Returns:
+        Joint friction, or None if absent.
+    """
     attr = prim.GetAttribute(PhysxAttr.JOINT_FRICTION.name)
     if attr and attr.Get() is not None:
         return float(attr.Get())
@@ -752,6 +909,13 @@ def _read_mjc_effort(joint_prim: Usd.Prim, actuator_map: dict[str, Usd.Prim] | N
 
     Checks mjc:actuatorfrcrange:max on the joint first, then
     mjc:forceRange:max on the MjcActuator targeting this joint.
+
+    Args:
+        joint_prim: USD joint prim to read.
+        actuator_map: Mapping from joint prim paths to actuator prims.
+
+    Returns:
+        Effort limit, or None if absent.
     """
     val = _get_float_attr(joint_prim, "mjc:actuatorfrcrange:max")
     if val is not None:
@@ -768,6 +932,13 @@ def _read_actuator_damping(joint_prim: Usd.Prim, actuator_map: dict[str, Usd.Pri
 
     Only returns a value for supported gain/bias patterns (position PD
     or velocity control with gainType=fixed, biasType=affine).
+
+    Args:
+        joint_prim: USD joint prim to read.
+        actuator_map: Mapping from joint prim paths to actuator prims.
+
+    Returns:
+        Actuator damping, or None if unavailable.
     """
     if not actuator_map:
         return None
@@ -793,6 +964,12 @@ def _decode_actuator_gains(actuator: Usd.Prim) -> tuple[float | None, float | No
         -> stiffness = 0, damping = kd
 
     Returns (None, None) for unsupported or missing gain/bias data.
+
+    Args:
+        actuator: Actuator prim to read.
+
+    Returns:
+        Decoded stiffness and damping values.
     """
     gain_prm = _get_array_attr(actuator, "mjc:gainPrm")
     bias_prm = _get_array_attr(actuator, "mjc:biasPrm")
@@ -830,7 +1007,15 @@ def _decode_actuator_gains(actuator: Usd.Prim) -> tuple[float | None, float | No
 
 
 def _get_array_attr(prim: Usd.Prim, attr_name: str) -> object | None:
-    """Read an array attribute, returning None if not authored."""
+    """Read an array attribute, returning None if not authored.
+
+    Args:
+        prim: USD prim to read.
+        attr_name: Value to use.
+
+    Returns:
+        Array attribute value, or None if absent.
+    """
     attr = prim.GetAttribute(attr_name)
     if attr and attr.IsValid():
         return attr.Get()
@@ -838,7 +1023,15 @@ def _get_array_attr(prim: Usd.Prim, attr_name: str) -> object | None:
 
 
 def _get_token_attr(prim: Usd.Prim, attr_name: str) -> str | None:
-    """Read a token/string attribute, returning None if not authored."""
+    """Read a token/string attribute, returning None if not authored.
+
+    Args:
+        prim: USD prim to read.
+        attr_name: Value to use.
+
+    Returns:
+        Token attribute value, or None if absent.
+    """
     attr = prim.GetAttribute(attr_name)
     if attr and attr.IsValid():
         val = attr.Get()
@@ -851,7 +1044,14 @@ def _get_token_attr(prim: Usd.Prim, attr_name: str) -> str | None:
 
 
 def _read_armature(joint_prim: Usd.Prim) -> float | None:
-    """Read armature (reflected rotor inertia) from PhysxJointAPI or mjc: attr."""
+    """Read armature (reflected rotor inertia) from PhysxJointAPI or mjc: attr.
+
+    Args:
+        joint_prim: USD joint prim to read.
+
+    Returns:
+        Armature value, or None if absent.
+    """
     attr = joint_prim.GetAttribute(PhysxAttr.JOINT_ARMATURE.name)
     if attr and attr.Get() is not None:
         return float(attr.Get())
@@ -859,7 +1059,14 @@ def _read_armature(joint_prim: Usd.Prim) -> float | None:
 
 
 def _read_actuator_attrs(actuator: Usd.Prim) -> dict:
-    """Serialize all gain-relevant attributes from an MjcActuator prim."""
+    """Serialize all gain-relevant attributes from an MjcActuator prim.
+
+    Args:
+        actuator: Actuator prim to read.
+
+    Returns:
+        Serialized actuator attributes.
+    """
     result: dict = {}
     gain_prm = _get_array_attr(actuator, "mjc:gainPrm")
     if gain_prm is not None:
@@ -883,7 +1090,15 @@ def _read_actuator_attrs(actuator: Usd.Prim) -> dict:
 
 
 def _read_drive_attrs(prim: Usd.Prim, instance: str) -> dict:
-    """Serialize authored DriveAPI attributes for a given instance."""
+    """Serialize authored DriveAPI attributes for a given instance.
+
+    Args:
+        prim: USD prim to read.
+        instance: Value to use.
+
+    Returns:
+        Serialized drive attributes.
+    """
     if not prim.HasAPI(UsdPhysics.DriveAPI, instance):
         return {}
     drv = UsdPhysics.DriveAPI(prim, instance)
@@ -911,6 +1126,13 @@ def _collect_source_drive_breadcrumb(
 
     MuJoCo MjcActuator takes precedence over PhysX DriveAPI.
     Returns None when there is nothing to preserve.
+
+    Args:
+        joint_prim: USD joint prim to read.
+        actuator_map: Mapping from joint prim paths to actuator prims.
+
+    Returns:
+        Source drive breadcrumb data, or None if absent.
     """
     is_revolute = joint_prim.IsA(UsdPhysics.RevoluteJoint)
     is_prismatic = joint_prim.IsA(UsdPhysics.PrismaticJoint)

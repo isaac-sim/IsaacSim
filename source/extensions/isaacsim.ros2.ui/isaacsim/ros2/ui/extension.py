@@ -37,7 +37,12 @@ class Extension(omni.ext.IExt, MenuHelperExtensionFull):
     """Extension providing ROS 2 OmniGraph shortcut menu items."""
 
     def on_startup(self, ext_id: str) -> None:
-        """Initialize the extension."""
+        """Initialize the extension.
+
+        Args:
+            ext_id: Extension identifier assigned by Kit.
+
+        """
         self._ext_id = ext_id
         carb.log_info("ROS2 Shortcuts Menu startup")
 
@@ -157,7 +162,15 @@ class Extension(omni.ext.IExt, MenuHelperExtensionFull):
     def create_asset(
         self, usd_path: str, stage_path: str, camera_position: Optional[Any] = None, camera_target: Optional[Any] = None
     ) -> None:
-        """Create a USD asset reference on the stage."""
+        """Create a USD asset reference on the stage.
+
+        Args:
+            usd_path: USD asset path relative to the Isaac Sim assets root.
+            stage_path: Stage prim path where the reference should be created.
+            camera_position: Optional viewport camera position to apply after creating the reference.
+            camera_target: Optional viewport camera target to apply after creating the reference.
+
+        """
         self._assets_root_path = get_assets_root_path()
         if self._assets_root_path is None:
             carb.log_error("Could not find Isaac Sim assets folder")

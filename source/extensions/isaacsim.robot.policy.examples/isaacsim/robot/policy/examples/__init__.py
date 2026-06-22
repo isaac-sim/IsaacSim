@@ -15,4 +15,4 @@
 
 """Examples and demonstrations for robot policies in Isaac Sim."""
 
-from . import robots
+from . import robots as robots

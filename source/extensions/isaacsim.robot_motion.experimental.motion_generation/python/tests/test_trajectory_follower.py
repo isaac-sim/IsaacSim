@@ -15,7 +15,12 @@
 
 # Import extension python module we are testing with absolute import path, as if we are an external user (i.e. a different extension)
 
-"""Unit tests for the TrajectoryFollower functionality in the motion generation module."""
+"""Verify trajectory follower setpoint generation.
+
+The test checks trajectory assignment, reset requirements, start-time offsets,
+initial and final joint setpoints, and cleanup behavior when requested times
+fall outside the active trajectory interval.
+"""
 
 import isaacsim.robot_motion.experimental.motion_generation as mg
 import numpy as np
@@ -42,16 +47,14 @@ class TestTrajectoryFollower(omni.kit.test.AsyncTestCase):
     """
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures before each test method is run."""
-        pass
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test fixtures after each test method is run."""
-        pass
 
-    async def test_trajectory_follower(self):
+    async def test_trajectory_follower(self) -> None:
         """Test trajectory follower functionality including trajectory setting, state tracking, and time-based execution."""
         # create a trajectory:
         path = mg.Path(waypoints=np.array([[0.0], [1.0], [2.0]]))

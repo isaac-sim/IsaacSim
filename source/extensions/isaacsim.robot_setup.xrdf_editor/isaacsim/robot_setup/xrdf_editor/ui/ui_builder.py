@@ -45,16 +45,14 @@ class UIBuilder:
     are constructed in :py:meth:`__init__`, the actual ``omni.ui`` widgets are
     materialised in :py:meth:`build_ui` whenever the window becomes visible,
     and :py:meth:`cleanup` is invoked on extension shutdown.
+
+    Args:
+        ext_id: Owning extension identifier.
+        source_file: Path to the extension's ``extension.py`` used to locate
+            the info-panel logo asset.
     """
 
     def __init__(self, ext_id: str, source_file: str) -> None:
-        """Construct the domain state and UI panels.
-
-        Args:
-            ext_id: Owning extension identifier.
-            source_file: Path to the extension's ``extension.py`` (used to
-                locate the info-panel logo asset).
-        """
         # Frame and wrapped-UI-element bookkeeping, kept to mirror the standard
         # isaacsim UIBuilder contract. Wrapped element cleanup is delegated to
         # the panels which own the actual ``element_wrappers`` instances.
@@ -105,6 +103,9 @@ class UIBuilder:
         :py:meth:`on_simulation_start_play` and
         :py:meth:`on_simulation_stop_play`) instead of the global timeline
         events. Kept for interface parity with other isaacsim UIBuilders.
+
+        Args:
+            event: Timeline event payload.
         """
 
     def on_physics_step(self, step: float) -> None:
@@ -144,7 +145,6 @@ class UIBuilder:
         Args:
             event: Stage closed event payload (unused).
         """
-        pass
 
     def on_simulation_start_play(self, event: object) -> None:
         """Begin tracking the selected articulation when simulation starts.
@@ -200,11 +200,19 @@ class UIBuilder:
     ###################################################################################
 
     def _on_articulation_selected_from_ui(self, prim_path: str) -> None:
-        """SelectionPanel -> orchestrator: a new articulation was picked."""
+        """Handle a new articulation picked by the selection panel.
+
+        Args:
+            prim_path: Selected articulation path.
+        """
         self._select_articulation_path(prim_path)
 
     def _on_link_selected_from_ui(self, link_name: str) -> None:
-        """SelectionPanel -> orchestrator: a new link was picked."""
+        """Handle a new link picked by the selection panel.
+
+        Args:
+            link_name: Selected link subpath.
+        """
         self._sphere_editor_panel.on_link_selected(link_name)
         self._editor_tools_panel.on_link_selected(link_name)
 

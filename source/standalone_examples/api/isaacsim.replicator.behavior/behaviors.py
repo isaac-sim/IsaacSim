@@ -21,6 +21,7 @@ simulation_app = SimulationApp({"headless": False})
 
 import inspect
 import os
+from typing import Any
 
 import carb.settings
 import omni.kit.app
@@ -55,7 +56,7 @@ carb.settings.get_settings().set_bool("/app/scripting/ignoreWarningDialog", True
 simulation_app.update()
 
 
-def setup_stage():
+def setup_stage() -> None:
     """Set up a new stage with a dome light."""
     omni.usd.get_context().new_stage()
     stage = omni.usd.get_context().get_stage()
@@ -63,7 +64,9 @@ def setup_stage():
     dome_light.CreateAttribute("inputs:intensity", Sdf.ValueTypeNames.Float).Set(500.0)
 
 
-def add_behavior_script_with_parameters(prim_path, behavior_class, exposed_variables={}):
+def add_behavior_script_with_parameters(
+    prim_path: str, behavior_class: type, exposed_variables: dict[str, Any] | None = None
+) -> None:
     """Add a behavior script to a prim and set exposed variable values."""
     stage = omni.usd.get_context().get_stage()
     prim = stage.GetPrimAtPath(prim_path)
@@ -82,7 +85,7 @@ def add_behavior_script_with_parameters(prim_path, behavior_class, exposed_varia
 
     # Append the exposed variables with the corresponding namespace and set them as properties on the prim
     variable_ns = f"{EXPOSED_ATTR_NS}:{behavior_class.BEHAVIOR_NS}"
-    for var_name, var_value in exposed_variables.items():
+    for var_name, var_value in (exposed_variables or {}).items():
         full_var_name = f"{variable_ns}:{var_name}"
         exposed_var_attr = prim.GetAttribute(full_var_name)
         if not exposed_var_attr:
@@ -90,7 +93,7 @@ def add_behavior_script_with_parameters(prim_path, behavior_class, exposed_varia
         exposed_var_attr.Set(var_value)
 
 
-def remove_all_scripts(prim_paths):
+def remove_all_scripts(prim_paths: list[str]) -> None:
     """Remove all behavior scripts from the given prim paths."""
     stage = omni.usd.get_context().get_stage()
     for prim_path in prim_paths:
@@ -103,7 +106,7 @@ def remove_all_scripts(prim_paths):
         scripts_attr.Set(Sdf.AssetPathArray())
 
 
-def create_prims_single(prim_path, prim_type):
+def create_prims_single(prim_path: str, prim_type: str) -> None:
     """Create a single prim at the given path for randomization."""
     stage = omni.usd.get_context().get_stage()
     prim = stage.DefinePrim(prim_path, prim_type)
@@ -111,7 +114,9 @@ def create_prims_single(prim_path, prim_type):
         raise RuntimeError(f"Failed to create prim of type {prim_type} at {prim_path}")
 
 
-def create_prims_multi(root_path, num_prims=1, prim_type="SphereLight", prim_name="light"):
+def create_prims_multi(
+    root_path: str, num_prims: int = 1, prim_type: str = "SphereLight", prim_name: str = "light"
+) -> None:
     """Create multiple child prims under a root path for randomization."""
     stage = omni.usd.get_context().get_stage()
 

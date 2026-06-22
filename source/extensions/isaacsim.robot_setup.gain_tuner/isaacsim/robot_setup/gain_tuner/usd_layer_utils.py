@@ -32,7 +32,14 @@ _STANDARD_PHYSICS_REL_PATHS = (
 
 
 def is_physics_layer(layer_identifier: str) -> bool:
-    """Return True if ``layer_identifier`` names a robot physics payload layer."""
+    """Return True if ``layer_identifier`` names a robot physics payload layer.
+
+    Args:
+        layer_identifier: Layer identifier or path to inspect.
+
+    Returns:
+        True if the identifier matches a conventional physics layer name.
+    """
     return _PHYSICS_LAYER_RE.search(layer_identifier) is not None
 
 
@@ -47,7 +54,14 @@ def _layer_files_match(layer_a: Sdf.Layer, layer_b: Sdf.Layer) -> bool:
 
 
 def get_layer_save_identifier(layer: Sdf.Layer | None) -> str | None:
-    """Return the identifier used for save dialogs and ``Sdf.Layer.Find``."""
+    """Return the identifier used for save dialogs and ``Sdf.Layer.Find``.
+
+    Args:
+        layer: Layer to resolve.
+
+    Returns:
+        Real path when available, otherwise the layer identifier, or ``None``.
+    """
     if layer is None:
         return None
     if layer.realPath:
@@ -56,7 +70,14 @@ def get_layer_save_identifier(layer: Sdf.Layer | None) -> str | None:
 
 
 def find_layer_by_save_identifier(layer_id: str) -> Sdf.Layer | None:
-    """Find a layer from a save identifier (``realPath`` or ``identifier``)."""
+    """Find a layer from a save identifier (``realPath`` or ``identifier``).
+
+    Args:
+        layer_id: Real path or layer identifier.
+
+    Returns:
+        Matching loaded or opened layer, or ``None``.
+    """
     layer = Sdf.Layer.Find(layer_id)
     if layer is not None:
         return layer
@@ -66,7 +87,14 @@ def find_layer_by_save_identifier(layer_id: str) -> Sdf.Layer | None:
 
 
 def is_layer_savable(layer: Sdf.Layer | None) -> bool:
-    """Return True when gain edits can be written and saved on ``layer``."""
+    """Return True when gain edits can be written and saved on ``layer``.
+
+    Args:
+        layer: Layer to inspect.
+
+    Returns:
+        True when the layer can be edited and saved.
+    """
     if layer is None:
         return False
     if layer.permissionToEdit and layer.permissionToSave:
@@ -83,6 +111,13 @@ def iter_stage_layers(stage: Usd.Stage, *, include_session_layers: bool = False)
     ``Usd.Stage.GetLayerStack()`` lists payload and reference layers, but physics
     layers are often nested as subLayers (for example ``physx.usda`` sublayering
     ``physics.usda``). This walks those subLayer trees as well.
+
+    Args:
+        stage: Stage whose composed layers should be traversed.
+        include_session_layers: Whether to include session layers from the stage layer stack.
+
+    Yields:
+        Layers from the stage layer stack and nested subLayer trees.
     """
     if stage is None:
         return
@@ -102,7 +137,14 @@ def iter_stage_layers(stage: Usd.Stage, *, include_session_layers: bool = False)
 
 
 def _physics_layer_paths_near_root(root_layer: Sdf.Layer) -> list[str]:
-    """Return absolute paths to conventional robot physics layers next to the root asset."""
+    """Return absolute paths to conventional robot physics layers next to the root asset.
+
+    Args:
+        root_layer: Root layer of the stage.
+
+    Returns:
+        Candidate physics layer paths near the root asset.
+    """
     root_dir = root_layer.realPath or root_layer.identifier
     if root_dir.startswith("file:"):
         root_dir = root_dir[5:]
@@ -111,7 +153,14 @@ def _physics_layer_paths_near_root(root_layer: Sdf.Layer) -> list[str]:
 
 
 def find_physics_layer_from_prim(prim: pxr.Usd.Prim) -> Sdf.Layer | None:
-    """Find a physics layer that authors ``prim`` (walks the prim stack)."""
+    """Find a physics layer that authors ``prim`` (walks the prim stack).
+
+    Args:
+        prim: Prim whose authored layer stack should be inspected.
+
+    Returns:
+        Physics layer from the prim stack, or ``None``.
+    """
     if not prim or not prim.IsValid():
         return None
     for prim_spec in prim.GetPrimStack():
@@ -121,7 +170,14 @@ def find_physics_layer_from_prim(prim: pxr.Usd.Prim) -> Sdf.Layer | None:
 
 
 def find_physics_layer_on_disk(stage: Usd.Stage) -> Sdf.Layer | None:
-    """Open the standard ``payloads/Physics/physics.usda`` next to the stage root if present."""
+    """Open the standard ``payloads/Physics/physics.usda`` next to the stage root if present.
+
+    Args:
+        stage: Stage used to locate the root layer.
+
+    Returns:
+        Opened physics layer on disk, or ``None``.
+    """
     if stage is None:
         return None
     root_layer = stage.GetRootLayer()
@@ -141,6 +197,13 @@ def find_physics_layer(stage: Usd.Stage, anchor_prim: pxr.Usd.Prim | None = None
     1. Prim stack of ``anchor_prim`` (joint or robot) when provided.
     2. All stage layers and nested subLayers.
     3. Conventional ``payloads/Physics/physics.usda`` beside the root asset file.
+
+    Args:
+        stage: Stage to inspect.
+        anchor_prim: Optional prim used as the first place to search.
+
+    Returns:
+        Resolved physics layer, or ``None``.
     """
     if stage is None:
         return None
@@ -164,7 +227,15 @@ def find_physics_layer(stage: Usd.Stage, anchor_prim: pxr.Usd.Prim | None = None
 
 
 def get_property_path_for_layer(attr: pxr.Usd.Attribute, target_layer: Sdf.Layer) -> Sdf.Path:
-    """Return the property path to author on ``target_layer`` for ``attr``."""
+    """Return the property path to author on ``target_layer`` for ``attr``.
+
+    Args:
+        attr: USD attribute to map into the target layer.
+        target_layer: Layer where the attribute should be authored.
+
+    Returns:
+        Property path in ``target_layer``, or an empty path when unavailable.
+    """
     if not attr or target_layer is None:
         return Sdf.Path()
 
@@ -282,7 +353,15 @@ def remap_edits_to_physics_layer(
     edits: dict[str, list[tuple[Sdf.Path, object]]],
     physics_layer: Sdf.Layer,
 ) -> dict[str, list[tuple[Sdf.Path, object]]]:
-    """Merge pending edits so they are all authored on ``physics_layer``."""
+    """Merge pending edits so they are all authored on ``physics_layer``.
+
+    Args:
+        edits: Pending edits keyed by layer save identifier.
+        physics_layer: Physics layer that should receive all edits.
+
+    Returns:
+        Pending edits remapped to the physics layer save identifier.
+    """
     if physics_layer is None:
         return edits
 

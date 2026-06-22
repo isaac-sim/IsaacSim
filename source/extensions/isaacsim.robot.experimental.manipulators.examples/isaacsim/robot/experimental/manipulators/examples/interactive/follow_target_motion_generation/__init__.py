@@ -19,7 +19,7 @@ from isaacsim.robot.experimental.manipulators.examples.interactive.follow_target
     FollowTarget,
 )
 from isaacsim.robot.experimental.manipulators.examples.interactive.follow_target_motion_generation.follow_target_extension import (
-    FollowTargetExtension,
+    FollowTargetExtension as FollowTargetExtension,
 )
 
 __all__ = ["FollowTarget"]

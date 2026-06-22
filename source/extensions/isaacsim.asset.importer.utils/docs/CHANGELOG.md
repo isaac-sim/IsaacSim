@@ -1,7 +1,10 @@
 # Changelog
 
-## [1.8.0] - 2026-05-14
+## [1.8.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
 
+## [1.8.0] - 2026-05-14
 ### Added
 - `parse_robot_name` helper in `importer_utils` for validating input file extension and parse name
 - Collapse multiple single-axis joints sharing the same body pair into a single PhysX D6 joint and remove the redundant joints from the PhysX variant
@@ -12,8 +15,6 @@
 
 ### Changed
 - Added `__all__` to `asset_utils` and added `create_robot_schema` / `ROBOT_TYPE_TOKENS` to `importer_utils.__all__` so the package re-exports cover every name documented in `config/python_api.md`.
-
-
 
 ## [1.7.0] - 2026-05-07
 ### Changed

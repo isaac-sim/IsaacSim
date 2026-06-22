@@ -26,10 +26,10 @@ from .newton_schemas import NewtonUiDefinitions, get_newton_schema_names
 class PhysicsNewtonUIExtension(omni.ext.IExt):
     """Extension that registers Newton and Mujoco schema names and property UI."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
-    def on_startup(self, _ext_id: str):
+    def on_startup(self, _ext_id: str) -> None:
         """Register Newton/Mujoco schema names, property widgets, and variant switcher.
 
         Args:
@@ -81,7 +81,7 @@ class PhysicsNewtonUIExtension(omni.ext.IExt):
             ["mjcPhysics", "newton"],
         )
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Unregister Newton and Mujoco property schema groups and widgets."""
         # Unregister PhysX property widgets
         property.unregister_parent_schema_group("Newton")

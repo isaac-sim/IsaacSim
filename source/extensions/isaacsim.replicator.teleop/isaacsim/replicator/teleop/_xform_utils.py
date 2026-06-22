@@ -35,6 +35,9 @@ class WorldPosePrimCache:
     `usdrt`/`fabric` backend so callers can reuse upstream
     `isaacsim.core.experimental.utils.xform.get_world_pose()` without resolving
     the prim path on every read.
+
+    Args:
+        prim_path: Value for prim path.
     """
 
     def __init__(self, prim_path: str = "") -> None:
@@ -43,11 +46,19 @@ class WorldPosePrimCache:
 
     @property
     def prim_path(self) -> str:
-        """Return the cached prim path."""
+        """Return the cached prim path.
+
+        Returns:
+            The requested value.
+        """
         return self._prim_path
 
     def set_prim_path(self, prim_path: str) -> None:
-        """Update the cached prim path and invalidate stored prim handles."""
+        """Update the cached prim path and invalidate stored prim handles.
+
+        Args:
+            prim_path: Value for prim path.
+        """
         if prim_path != self._prim_path:
             self._prim_path = prim_path
             self.clear()
@@ -58,7 +69,11 @@ class WorldPosePrimCache:
         self._cached_prims["usdrt"] = None
 
     def get_current_prim(self) -> object | None:
-        """Return the cached prim for the active teleop backend."""
+        """Return the cached prim for the active teleop backend.
+
+        Returns:
+            The requested value.
+        """
         if not self._prim_path:
             return None
 
@@ -77,17 +92,35 @@ class WorldPosePrimCache:
 
 
 def get_world_pose_backend_key() -> Literal["usd", "usdrt"]:
-    """Return the backend key used for teleop world-pose reads."""
+    """Return the backend key used for teleop world-pose reads.
+
+    Returns:
+        The requested value.
+    """
     return "usd" if get_teleop_backend() == "usd" else "usdrt"
 
 
 def _is_valid_prim(prim: object | None) -> bool:
-    """Check whether a cached prim handle is still valid."""
+    """Check whether a cached prim handle is still valid.
+
+    Args:
+        prim: Value for prim.
+
+    Returns:
+        The requested value.
+    """
     return bool(prim is not None and hasattr(prim, "IsValid") and prim.IsValid())
 
 
 def _resolve_world_pose_target(target: str | WorldPosePrimCache | object) -> object:
-    """Resolve a world-pose read target to a backend-specific prim handle."""
+    """Resolve a world-pose read target to a backend-specific prim handle.
+
+    Args:
+        target: Value for target.
+
+    Returns:
+        The requested value.
+    """
     if isinstance(target, WorldPosePrimCache):
         prim = target.get_current_prim()
     elif isinstance(target, str):
@@ -108,7 +141,7 @@ def to_numpy_array(values: object, *, copy: bool = False) -> np.ndarray:
         copy: Return an owned copy instead of a view.
 
     Returns:
-        NumPy array containing the input data.
+        The requested value.
     """
     array = values.numpy() if hasattr(values, "numpy") else np.asarray(values)
     return array.copy() if copy else array
@@ -122,7 +155,7 @@ def unpack_world_pose(position_array: np.ndarray, orientation_array: np.ndarray)
         orientation_array: Quaternion array in `[w, x, y, z]` layout.
 
     Returns:
-        Position and quaternion as `Gf` values.
+        The requested value.
     """
     position = position_array.reshape(-1, 3)[0]
     orientation = orientation_array.reshape(-1, 4)[0]
@@ -147,7 +180,7 @@ def read_world_pose_arrays(
         copy: Return owned NumPy copies instead of backend views.
 
     Returns:
-        Position and orientation arrays.
+        The requested value.
     """
     positions, orientations = core_xform_utils.get_world_pose(_resolve_world_pose_target(target))
     return to_numpy_array(positions, copy=copy), to_numpy_array(orientations, copy=copy)
@@ -160,6 +193,6 @@ def read_world_pose_gf(target: str | WorldPosePrimCache | object) -> tuple[Gf.Ve
         target: Prim path, cached prim resolver, or backend-specific prim handle.
 
     Returns:
-        Position and quaternion as `Gf` values.
+        The requested value.
     """
     return unpack_world_pose(*read_world_pose_arrays(target))

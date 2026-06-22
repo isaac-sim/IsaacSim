@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.6] - 2026-06-10
+### Fixed
+- Add warmup steps to motion blur example test to make it more stable in CI
+
+## [1.11.5] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.11.4] - 2026-05-21
 ### Changed
 - Augmentation examples now use custom event-based randomization

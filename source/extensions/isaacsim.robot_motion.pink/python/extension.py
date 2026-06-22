@@ -16,6 +16,8 @@
 
 """Extension for PINK inverse kinematics integration within Isaac Sim."""
 
+from typing import Any
+
 import omni.ext
 
 
@@ -28,7 +30,7 @@ class Extension(omni.ext.IExt):
     tasks, limits, and safety barriers.
     """
 
-    def on_startup(self, ext_id) -> None:
+    def on_startup(self, ext_id: Any) -> None:
         """Startup the extension.
 
         Args:

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for prim."""
+"""Verifies prim utility helpers for lookup, traversal, API checks, variants, and attributes. Covers path and prim normalization, child and parent matching, articulation link detection, and attribute value and name queries."""
 
 import isaacsim.core.experimental.utils.backend as backend_utils
 import isaacsim.core.experimental.utils.foundation as foundation_utils
@@ -29,19 +29,19 @@ from pxr import Sdf, Usd, UsdGeom, UsdLux, UsdPhysics
 class TestPrim(omni.kit.test.AsyncTestCase):
     """Test prim."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # create new stage
         await stage_utils.create_new_stage_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
-    async def test_prim_variants(self):
+    async def test_prim_variants(self) -> None:
         """Test prim variants."""
         assets_root_path = await get_assets_root_path_async(skip_check=True)
         prim = stage_utils.add_reference_to_stage(
@@ -63,7 +63,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
         ground_truth = [("Gripper", "AlternateFinger"), ("Mesh", "Quality")]
         self.assertEqual(prim_utils.get_prim_variants(prim), ground_truth, "Wrong authored variants")
 
-    async def test_prim_and_path(self):
+    async def test_prim_and_path(self) -> None:
         """Test prim and path."""
         usd_prim = stage_utils.define_prim("/World/A", "Cube")
         with backend_utils.use_backend("usdrt"):
@@ -87,7 +87,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
         # - Invalid path
         self.assertFalse(prim_utils.get_prim_at_path("/World/C").IsValid())
 
-    async def test_find_matching_prim_paths(self):
+    async def test_find_matching_prim_paths(self) -> None:
         """Test find matching prim paths."""
         stage_utils.define_prim("/World/A")
         for i in range(2):
@@ -144,7 +144,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
                 ]
                 self.assertEqual(prim_utils.find_matching_prim_paths(".*C.*", traverse=True), match)
 
-    async def test_get_all_matching_child_prims(self):
+    async def test_get_all_matching_child_prims(self) -> None:
         """Test get all matching child prims."""
         stage_utils.define_prim("/World")
         stage_utils.define_prim("/World/A0", "Sphere")
@@ -197,7 +197,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
             ValueError, prim_utils.get_all_matching_child_prims, "/World/A0", predicate=predicate, max_depth=-1
         )
 
-    async def test_get_first_matching_child_prim(self):
+    async def test_get_first_matching_child_prim(self) -> None:
         """Test get first matching child prim."""
         stage_utils.define_prim("/World")
         stage_utils.define_prim("/World/A")
@@ -227,7 +227,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
         child = prim_utils.get_first_matching_child_prim("/World", predicate=predicate, include_self=False)
         self.assertEqual(prim_utils.get_prim_path(child), "/World/A")
 
-    async def test_get_first_matching_parent_prim(self):
+    async def test_get_first_matching_parent_prim(self) -> None:
         """Test get first matching parent prim."""
         stage_utils.define_prim("/World")
         stage_utils.define_prim("/World/Cube", "Cube")
@@ -259,7 +259,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
             prim_utils.get_first_matching_parent_prim("/World/Cube/Sphere", predicate=predicate, include_self=False)
         )
 
-    async def test_has_api(self):
+    async def test_has_api(self) -> None:
         """Test has api."""
         prim = stage_utils.define_prim("/World/A", "Cube")
         UsdPhysics.RigidBodyAPI.Apply(prim)
@@ -286,7 +286,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
         # exceptions
         self.assertRaises(ValueError, prim_utils.has_api, "/World/A", "UnexistingAPI", test="unknown")
 
-    async def test_attributes(self):
+    async def test_attributes(self) -> None:
         """Test attributes."""
         stage_utils.define_prim(path := "/World/A", "Xform")
         for i, format_ in enumerate([str, Sdf.ValueTypeNames, usdrt.Sdf.ValueTypeNames]):
@@ -301,7 +301,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
                         with self.assertRaises(RuntimeError):
                             prim_utils.create_prim_attribute(path, name=name, type_name=value_type_name, exist_ok=False)
 
-    async def test_is_prim_non_root_articulation_link(self):
+    async def test_is_prim_non_root_articulation_link(self) -> None:
         """Test is prim non root articulation link."""
         assets_root_path = await get_assets_root_path_async(skip_check=True)
         stage_utils.add_reference_to_stage(
@@ -320,7 +320,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
                 self.assertFalse(prim_utils.is_prim_non_root_articulation_link("/franka/panda_hand/geometry"))
                 self.assertFalse(prim_utils.is_prim_non_root_articulation_link("/franka/rootJoint"))
 
-    async def test_get_prim_attribute_value(self):
+    async def test_get_prim_attribute_value(self) -> None:
         """Test get prim attribute value."""
         # create a Cube prim (has scalar 'size' attribute)
         prim = stage_utils.define_prim("/World/Cube", "Cube")
@@ -343,7 +343,7 @@ class TestPrim(omni.kit.test.AsyncTestCase):
         with self.assertRaises(ValueError):
             prim_utils.get_prim_attribute_value("/World/Cube", "nonexistent_attr")
 
-    async def test_get_prim_attribute_names(self):
+    async def test_get_prim_attribute_names(self) -> None:
         """Test get prim attribute names."""
         for backend in ["usd", "usdrt", "fabric"]:
             with backend_utils.use_backend(backend):

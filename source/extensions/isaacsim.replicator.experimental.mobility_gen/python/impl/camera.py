@@ -166,25 +166,41 @@ class MobilityGenCamera(Module):
                 # Replicator returns a flat (H*W*4,) buffer on some builds; reshape to (H, W, 4).
                 w, h = self._resolution
                 self.rgb_image.set_value(data.reshape(h, w, -1)[:, :, :3])
+        # An annotator can briefly return an empty (0,) buffer before the renderer has
+        # produced a frame; writing one to a PNG raises "tile cannot extend outside
+        # image" and aborts the batch (RGB above already guards this). Keep the prior
+        # value rather than clear it — MobilityGenReader expects one image per step.
         if self._segmentation_annotator is not None:
             data = self._segmentation_annotator.get_data(do_array_copy=True)
             seg_image = data["data"]
-            seg_info = data["info"]
-            self.segmentation_image.set_value(seg_image)
-            self.segmentation_info.set_value(seg_info)
+            if seg_image is not None and seg_image.size > 0:
+                self.segmentation_image.set_value(seg_image)
+                self.segmentation_info.set_value(data["info"])
+            else:
+                carb.log_warn(f"MobilityGenCamera: empty segmentation buffer at '{self._prim_path}'; skipping frame")
 
         if self._depth_annotator is not None:
-            self.depth_image.set_value(self._depth_annotator.get_data(do_array_copy=True))
+            depth_data = self._depth_annotator.get_data(do_array_copy=True)
+            if depth_data is not None and depth_data.size > 0:
+                self.depth_image.set_value(depth_data)
+            else:
+                carb.log_warn(f"MobilityGenCamera: empty depth buffer at '{self._prim_path}'; skipping frame")
 
         if self._instance_id_segmentation_annotator is not None:
             data = self._instance_id_segmentation_annotator.get_data(do_array_copy=True)
             id_seg_image = data["data"]
-            id_seg_info = data["info"]
-            self.instance_id_segmentation_image.set_value(id_seg_image)
-            self.instance_id_segmentation_info.set_value(id_seg_info)
+            if id_seg_image is not None and id_seg_image.size > 0:
+                self.instance_id_segmentation_image.set_value(id_seg_image)
+                self.instance_id_segmentation_info.set_value(data["info"])
+            else:
+                carb.log_warn(f"MobilityGenCamera: empty instance-id buffer at '{self._prim_path}'; skipping frame")
 
         if self._normals_annotator is not None:
-            self.normals_image.set_value(self._normals_annotator.get_data(do_array_copy=True))
+            normals_data = self._normals_annotator.get_data(do_array_copy=True)
+            if normals_data is not None and normals_data.size > 0:
+                self.normals_image.set_value(normals_data)
+            else:
+                carb.log_warn(f"MobilityGenCamera: empty normals buffer at '{self._prim_path}'; skipping frame")
 
         # Use USD directly (no warp tensors) to avoid a CPU-GPU sync every step.
         xform = UsdGeom.Xformable(self._prim)

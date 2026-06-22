@@ -6,7 +6,7 @@ pyproject.keywords = ["nvidia", "omniverse", "isaacsim", "asset", "import", "exp
 pyproject.dependencies.all = [
     "isaacsim-robot-schema==1.0.0",
     "usd-exchange>=2.2.2",
-    "urdf-usd-converter==0.1.2",
+    "urdf-usd-converter==0.1.3",
     "mujoco==3.8.0",
     "newton-usd-schemas==0.2.0",
     "mujoco-usd-converter==0.2.0",

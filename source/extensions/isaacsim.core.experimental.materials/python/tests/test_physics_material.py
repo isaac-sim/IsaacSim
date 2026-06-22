@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for physics material."""
+"""Verifies PhysicsMaterial instance discovery from USD physics material prims. Covers fetching physics material wrappers from authored stage prims."""
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.test
@@ -28,17 +28,17 @@ from isaacsim.core.experimental.materials import (
 class TestVisualMaterial(omni.kit.test.AsyncTestCase):
     """Test visual material."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
-    async def test_fetch_instances(self):
+    async def test_fetch_instances(self) -> None:
         """Test fetch instances."""
         await stage_utils.create_new_stage_async()
         # create materials

@@ -48,6 +48,17 @@ class LMIKController:
     - **Joint-step clamp**: caps total joint change per frame.
     - **Joint limits**: hard clamp every iteration via cached DOF limits.
     - **Convergence check**: early exit when pose error drops below threshold.
+
+    Args:
+        robot: Value for robot.
+        ee_link: Value for ee link.
+        ee_link_index: Value for ee link index.
+        num_arm_dofs: Value for num arm dofs.
+        damping: Value for damping.
+        max_iters: Value for max iters.
+        convergence_threshold: Value for convergence threshold.
+        vr_target_filter: Value for vr target filter.
+        max_joint_step_rad: Value for max joint step rad.
     """
 
     def __init__(
@@ -93,27 +104,47 @@ class LMIKController:
 
     @property
     def reachable(self) -> bool:
-        """Whether the last compute() produced a valid solution."""
+        """Whether the last compute() produced a valid solution.
+
+        Returns:
+            The requested value.
+        """
         return self._reachable
 
     @property
     def vr_target_filter(self) -> float:
-        """Return the EMA low-pass filter strength for VR targets."""
+        """Return the EMA low-pass filter strength for VR targets.
+
+        Returns:
+            The requested value.
+        """
         return float(self._vr_target_filter)
 
     @vr_target_filter.setter
     def vr_target_filter(self, value: float) -> None:
-        """Set the EMA low-pass filter strength for VR targets."""
+        """Set the EMA low-pass filter strength for VR targets.
+
+        Args:
+            value: Value for value.
+        """
         self._vr_target_filter = np.clip(value, 0.0, 0.99)
 
     @property
     def max_joint_step_rad(self) -> float:
-        """Return the maximum allowed joint change per step in radians."""
+        """Return the maximum allowed joint change per step in radians.
+
+        Returns:
+            The requested value.
+        """
         return float(self._max_joint_step_rad)
 
     @max_joint_step_rad.setter
     def max_joint_step_rad(self, value: float) -> None:
-        """Set the maximum allowed joint change per step in radians."""
+        """Set the maximum allowed joint change per step in radians.
+
+        Args:
+            value: Value for value.
+        """
         self._max_joint_step_rad = max(0.0, value)
 
     # ------------------------------------------------------------------
@@ -125,7 +156,12 @@ class LMIKController:
         position: tuple[float, float, float],
         orientation: tuple[float, float, float, float] | None,
     ) -> None:
-        """Set the 6DOF goal pose (sim coordinates, xyzw quaternion)."""
+        """Set the 6DOF goal pose (sim coordinates, xyzw quaternion).
+
+        Args:
+            position: Value for position.
+            orientation: Value for orientation.
+        """
         self._raw_position = np.array([list(position)], dtype=np.float64)
         if orientation is not None:
             self._raw_orientation = xyzw_to_wxyz(orientation)
@@ -152,8 +188,7 @@ class LMIKController:
         """Run multi-iteration LM solve and return absolute joint positions.
 
         Returns:
-            Joint positions for the first ``num_arm_dofs`` DOFs as a 1-D
-            numpy array, or None if no target / physics not ready.
+            The requested value.
         """
         if self._filtered_position is None:
             return None

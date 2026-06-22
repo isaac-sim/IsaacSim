@@ -143,6 +143,12 @@ class RTSPStreamWriter(Writer):
         holds C++/pybind11 binding objects that do not support Python's
         pickle/copy protocol.  Constructing a new instance sidesteps this
         by obtaining a fresh annotator from the registry.
+
+        Args:
+            memo: Object memoization dictionary passed by ``copy.deepcopy``.
+
+        Returns:
+            Fresh RTSP stream writer configured with the same parameters.
         """
         return RTSPStreamWriter(
             port=self._port,
@@ -159,6 +165,9 @@ class RTSPStreamWriter(Writer):
         The data dict is keyed by annotator name.  Replicator appends a
         render-product suffix to the key (e.g. ``"LdrColor-<rp_name>"``),
         so we match with ``startswith`` rather than an exact lookup.
+
+        Args:
+            data: Replicator annotator output keyed by annotator name.
         """
         sim_time_s = 0.0
         for key in data:
@@ -242,6 +251,9 @@ class RTSPStreamWriter(Writer):
         On failure the server is torn down and ``_stream_failed`` is set,
         which causes all subsequent calls to short-circuit silently until
         :meth:`detach` clears the flag.
+
+        Args:
+            cuda_data: CUDA RGBA frame buffer from the LdrColor annotator.
         """
         if self._stream_failed:
             return

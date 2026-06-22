@@ -42,7 +42,14 @@ _SANITIZE_PATTERN = re.compile(r"[^0-9A-Za-z_]")
 
 
 def sanitize_name(name: str) -> str:
-    """Convert an arbitrary string into a safe HDF5 group name (``[A-Za-z0-9_]+``)."""
+    """Convert an arbitrary string into a safe HDF5 group name (``[A-Za-z0-9_]+``).
+
+    Args:
+        name: Name to sanitize.
+
+    Returns:
+        Sanitized name.
+    """
     clean = _SANITIZE_PATTERN.sub("_", name).strip("_")
     if not clean:
         clean = "prim"
@@ -55,6 +62,13 @@ def assign_unique_name(base: str, used: set[str]) -> str:
     """Return a variant of ``base`` that is not present in ``used``. Adds a numeric suffix on collision.
 
     Mutates ``used`` in-place by adding the chosen name.
+
+    Args:
+        base: Base name to make unique.
+        used: Set of names already assigned.
+
+    Returns:
+        Unique name derived from the base name.
     """
     if base not in used:
         used.add(base)
@@ -67,7 +81,7 @@ def assign_unique_name(base: str, used: set[str]) -> str:
     return name
 
 
-def _iter_descendants(stage: Any, root_path: str, *, max_depth: int | None):
+def _iter_descendants(stage: Any, root_path: str, *, max_depth: int | None) -> object:
     """Yield ``Usd.Prim`` descendants of ``root_path`` (exclusive), honoring ``max_depth``.
 
     Traversal is depth-first with children pushed onto a stack; ``stack.pop()`` consumes the
@@ -75,7 +89,15 @@ def _iter_descendants(stage: Any, root_path: str, *, max_depth: int | None):
     This is stable and deterministic for a given stage layout — important because
     :func:`assign_unique_name` resolves collisions based on discovery order, so the first
     prim of a pair wins the clean name and the second gets the numeric suffix.
-    """
+
+    Args:
+        stage: USD stage to use.
+        root_path: Root prim path whose descendants are traversed.
+        max_depth: Maximum descendant depth to traverse, or None for no limit.
+
+    Yields:
+        Descendant prims under the root path.
+    """  # noqa: DOC201, DOC403
     from pxr import Sdf
 
     if not root_path:
@@ -102,7 +124,14 @@ def _iter_descendants(stage: Any, root_path: str, *, max_depth: int | None):
 
 
 def _get_stage(stage: Any | None) -> Any:
-    """Resolve a stage argument: use ``stage`` if given, else fetch the active ``omni.usd`` stage."""
+    """Resolve a stage argument: use ``stage`` if given, else fetch the active ``omni.usd`` stage.
+
+    Args:
+        stage: USD stage to use.
+
+    Returns:
+        Resolved USD stage.
+    """
     if stage is not None:
         return stage
     import omni.usd

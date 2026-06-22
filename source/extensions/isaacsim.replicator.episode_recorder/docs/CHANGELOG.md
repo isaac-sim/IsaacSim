@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.4] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [0.1.3] - 2026-05-17
 ### Fixed
 - Suppressed the known `h5py` HDF5 ABI warning during recorder storage import so Windows native Python tests do not treat the warning stderr as a failure.

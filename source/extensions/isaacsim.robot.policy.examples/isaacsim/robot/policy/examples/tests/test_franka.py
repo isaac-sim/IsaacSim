@@ -49,7 +49,7 @@ class TestFrankaExampleExtension(omni.kit.test.AsyncTestCase):
     to a specified threshold. It uses CPU-based simulation by default with a 200Hz physics rate.
     """
 
-    def get_device(self):
+    def get_device(self) -> object:
         """Return the device to use for tensors. Override in subclasses.
 
         Returns:
@@ -57,7 +57,7 @@ class TestFrankaExampleExtension(omni.kit.test.AsyncTestCase):
         """
         return torch.device("cpu")
 
-    def get_physics_rate(self):
+    def get_physics_rate(self) -> int:
         """Return the physics rate for the drawer opening test.
 
         Returns:
@@ -65,7 +65,7 @@ class TestFrankaExampleExtension(omni.kit.test.AsyncTestCase):
         """
         return 200  # CPU needs a lower rate
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up the test environment with physics scene, ground plane, and cabinet."""
         await stage_utils.create_new_stage_async()
         # This needs to be set so that kit updates match physics updates
@@ -101,7 +101,7 @@ class TestFrankaExampleExtension(omni.kit.test.AsyncTestCase):
         self._timeline = omni.timeline.get_timeline_interface()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test environment by stopping timeline and deregistering callbacks."""
         await omni.kit.app.get_app().next_update_async()
         self._timeline.stop()
@@ -112,7 +112,7 @@ class TestFrankaExampleExtension(omni.kit.test.AsyncTestCase):
             await asyncio.sleep(1.0)
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_franka_add(self):
+    async def test_franka_add(self) -> None:
         """Test adding a Franka robot to the scene and verify its properties."""
         await self.spawn_franka()
         await omni.kit.app.get_app().next_update_async()
@@ -133,7 +133,7 @@ class TestFrankaExampleExtension(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(cabinet_prim, "Cabinet prim should exist in stage at /World/cabinet")
         self.assertTrue(cabinet_prim.IsValid(), "Cabinet prim should be valid")
 
-    async def test_franka_open_drawer(self):
+    async def test_franka_open_drawer(self) -> None:
         """Test the Franka robot's ability to open a drawer using the FrankaOpenDrawerPolicy."""
         await self.spawn_franka()
         await omni.kit.app.get_app().next_update_async()
@@ -141,7 +141,7 @@ class TestFrankaExampleExtension(omni.kit.test.AsyncTestCase):
         drawer_link_idx = self.cabinet.get_dof_indices("drawer_top_joint")
         min_drawer_opening = 0.25
 
-        def is_drawer_open():
+        def is_drawer_open() -> object:
             nonlocal max_drawer_opening
             drawer_joint_position = self.cabinet.get_dof_positions(indices=[0], dof_indices=drawer_link_idx)
             drawer_position_numpy = drawer_joint_position.numpy()
@@ -156,8 +156,16 @@ class TestFrankaExampleExtension(omni.kit.test.AsyncTestCase):
         # to at least 0.3
         self.assertTrue(condition_met, f"Expected drawer to open past {min_drawer_opening}, got {max_drawer_opening}")
 
-    async def simulate_until_condition(self, condition_func, max_frames=180):
-        """Simulate until condition is met or maximum frames reached."""
+    async def simulate_until_condition(self, condition_func: object, max_frames: object = 180) -> bool:
+        """Simulate until condition is met or maximum frames reached.
+
+        Args:
+            condition_func: Callable returning True when the target condition is met.
+            max_frames: Maximum number of app updates to simulate.
+
+        Returns:
+            True if the condition was met before the frame limit.
+        """
         frames_run = 0
         while frames_run < max_frames:
             await omni.kit.app.get_app().next_update_async()
@@ -166,7 +174,7 @@ class TestFrankaExampleExtension(omni.kit.test.AsyncTestCase):
                 return True
         return False
 
-    async def spawn_franka(self, name: str = "franka", add_physics_callback: bool = True):
+    async def spawn_franka(self, name: str = "franka", add_physics_callback: bool = True) -> None:
         """Spawn a Franka robot with drawer opening policy in the simulation.
 
         Args:
@@ -214,7 +222,7 @@ class TestFrankaGPU(TestFrankaExampleExtension):
     CPU-based testing.
     """
 
-    def get_device(self):
+    def get_device(self) -> object:
         """Return the device to use for tensors.
 
         Returns:
@@ -222,7 +230,7 @@ class TestFrankaGPU(TestFrankaExampleExtension):
         """
         return torch.device("cuda")
 
-    def get_physics_rate(self):
+    def get_physics_rate(self) -> int:
         """Return the physics rate for the drawer opening test.
 
         Returns:

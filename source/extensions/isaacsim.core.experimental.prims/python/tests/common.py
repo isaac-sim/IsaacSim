@@ -18,7 +18,8 @@
 from __future__ import annotations
 
 import os
-from typing import Callable, Literal
+from collections.abc import Callable
+from typing import Any, Literal
 
 import carb
 import numpy as np
@@ -27,22 +28,33 @@ import warp as wp
 from isaacsim.core.simulation_manager import SimulationManager
 
 
-def cprint(message):
-    """Cprint."""
+def cprint(message: str) -> None:
+    """Print a message when verbose test logging is enabled.
+
+    Args:
+        message: Message to print when verbose test logging is enabled.
+    """
     if os.environ.get("ISAACSIM_TEST_VERBOSE", "0").lower() in ["1", "true", "yes"]:
         print(message)
 
 
 # simple decorator to skip test if default engine is not in supported engines
-def requires_engines(supported_engines: list[Literal["physx", "newton"]] = ["physx", "newton"]):
-    """Requires engines."""
+def requires_engines(supported_engines: list[Literal["physx", "newton"]] = ["physx", "newton"]) -> Callable:
+    """Requires engines.
 
-    def decorator(func):
-        async def wrapper(self, *args, **kwargs):
+    Args:
+        supported_engines: Physics engines supported by the decorated test.
+
+    Returns:
+        Decorator that skips tests when the active engine is unsupported.
+    """
+
+    def decorator(func: Callable) -> Callable:
+        async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
             default_engine = SimulationManager.get_default_engine()
             if default_engine and default_engine.lower() not in supported_engines:
                 cprint(f"  |-- Skipping test: engine '{default_engine}' not in supported engines {supported_engines}")
-                return
+                return None
             return await func(self, *args, **kwargs)
 
         return wrapper
@@ -62,11 +74,27 @@ def parametrize(
     populate_stage_func: Callable[[int, Literal["wrap", "create"]], None],
     populate_stage_func_kwargs: dict = {},
     max_num_prims: int = 5,
-):
-    """Parametrize."""
+) -> Callable:
+    """Parametrize.
 
-    def decorator(func):
-        async def wrapper(self):
+    Args:
+        devices: Devices to include in the generated test cases.
+        backends: Backends to include in the generated test cases.
+        instances: Instance modes to include in the generated test cases.
+        operations: Stage population operations to include in the generated test cases.
+        supported_engines: Physics engines supported by the decorated test.
+        prim_class: Prim wrapper class used by generated test cases.
+        prim_class_kwargs: Keyword arguments passed to the prim wrapper class.
+        populate_stage_func: Callable used to populate the test stage.
+        populate_stage_func_kwargs: Keyword arguments passed to the stage population callable.
+        max_num_prims: Maximum number of prims to create for a test case.
+
+    Returns:
+        Decorator that runs a test over the requested prim configurations.
+    """
+
+    def decorator(func: Callable) -> Callable:
+        async def wrapper(self: Any) -> None:
             # Switch to the default engine if specified in settings
             default_engine = SimulationManager.get_default_engine()
             if default_engine:
@@ -127,8 +155,15 @@ def check_array(
     shape: list[int] | None = None,
     dtype: type | None = None,
     device: str | wp.Device | None = None,
-):
-    """Check array."""
+) -> None:
+    """Check array.
+
+    Args:
+        a: Value to check.
+        shape: Expected array shape.
+        dtype: Expected data type.
+        device: Device under test.
+    """
     for i, x in enumerate(a if isinstance(a, (list, tuple)) else [a]):
         assert isinstance(x, wp.array), f"[{i}]: {repr(x)} ({type(x)}) is not a Warp array"
         if shape is not None:
@@ -139,8 +174,18 @@ def check_array(
             assert x.device == wp.get_device(device), f"[{i}]: Unexpected device: expected {device}, got {x.device}"
 
 
-def check_lists(a: list, b: list, *, check_value: bool = True, check_type: bool = True, predicate: callable = None):
-    """Check lists."""
+def check_lists(
+    a: list, b: list, *, check_value: bool = True, check_type: bool = True, predicate: callable = None
+) -> None:
+    """Check lists.
+
+    Args:
+        a: Value to check.
+        b: Expected value to compare against.
+        check_value: Value passed by the caller.
+        check_type: Value passed by the caller.
+        predicate: Optional transform applied before comparing values.
+    """
     assert len(a) == len(b), f"Unexpected length: expected {len(a)}, got {len(b)}"
     for x, y in zip(a, b):
         if check_value:
@@ -157,8 +202,14 @@ def check_equal(
     b: wp.array | np.ndarray | list[wp.array] | list[np.ndarray],
     *,
     given: list | None = None,
-):
-    """Check equal."""
+) -> None:
+    """Check equal.
+
+    Args:
+        a: Value to check.
+        b: Expected value to compare against.
+        given: Original input values used to produce the compared values.
+    """
     msg = ""
     a = a if isinstance(a, (list, tuple)) else [a]
     b = b if isinstance(b, (list, tuple)) else [b]
@@ -181,8 +232,16 @@ def check_allclose(
     rtol: float = 1e-03,
     atol: float = 1e-05,
     given: list | None = None,
-):
-    """Check allclose."""
+) -> None:
+    """Check allclose.
+
+    Args:
+        a: Value to check.
+        b: Expected value to compare against.
+        rtol: Relative tolerance for value comparisons.
+        atol: Absolute tolerance for value comparisons.
+        given: Original input values used to produce the compared values.
+    """
     msg = ""
     a = a if isinstance(a, (list, tuple)) else [a]
     b = b if isinstance(b, (list, tuple)) else [b]
@@ -204,13 +263,26 @@ def draw_sample(
     *,
     shape: tuple,
     dtype: type,
-    types=[list, np.ndarray, wp.array],
+    types: list = [list, np.ndarray, wp.array],
     low: int | float = 0.0,
     high: int | float = 1.0,
     normalized: bool = False,
     transform: callable = None,
-):
-    """Draw sample."""
+) -> list:
+    """Draw sample.
+
+    Args:
+        shape: Expected array shape.
+        dtype: Expected data type.
+        types: Container types to generate.
+        low: Lower bound for generated samples.
+        high: Upper bound for generated samples.
+        normalized: Whether to normalize generated samples.
+        transform: Optional transform applied to generated samples.
+
+    Returns:
+        Generated samples for each requested container type.
+    """
     samples = []
     for _type in types:
         # sample according to dtype
@@ -263,7 +335,15 @@ def draw_sample(
 
 
 def draw_choice(*, shape: tuple, choices: list) -> list:
-    """Draw choice."""
+    """Draw choice.
+
+    Args:
+        shape: Expected array shape.
+        choices: Value passed by the caller.
+
+    Returns:
+        Requested value.
+    """
     sample = np.random.choice(np.array(choices, dtype=object).flatten(), size=shape)
     # create single sample and broadcasted sample
     if sample.ndim == 1:
@@ -282,8 +362,17 @@ def draw_choice(*, shape: tuple, choices: list) -> list:
     return samples
 
 
-def draw_indices(*, count: int, step: int = 2, types=[list, np.ndarray, wp.array, None]):
-    """Draw indices."""
+def draw_indices(*, count: int, step: int = 2, types: list = [list, np.ndarray, wp.array, None]) -> list:
+    """Draw indices.
+
+    Args:
+        count: Expected number of contact records.
+        step: Value passed by the caller.
+        types: Container types to generate.
+
+    Returns:
+        Requested value.
+    """
     indices = list(range(0, count, step))
     indices_list = []
     for _type in types:

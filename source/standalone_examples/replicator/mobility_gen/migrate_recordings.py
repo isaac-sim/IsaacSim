@@ -68,6 +68,7 @@ def _migrate_recording(recording_path: str) -> int:
 
 
 def main() -> None:
+    """Parse CLI arguments and migrate selected MobilityGen recordings."""
     parser = argparse.ArgumentParser(
         description=(
             "Migrate MobilityGen recordings from .npy to .npz format.\n\n"

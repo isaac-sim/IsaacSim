@@ -13,25 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the StructuredLightCamera authoring class.
-
-Organized into three groups:
-
-* **Group A — Authoring API**: exercise the class in isolation (prim structure,
-  timestamp validation, manual pattern switching, time-based pattern selection,
-  pose defaults, destroy/post_reset).
-* **Group B — CameraSensor integration**: verify that a ``StructuredLightCamera``
-  can be wrapped in :class:`CameraSensor` and that data is retrievable.
-* **Group C — Replicator Orchestrator capture**: exercise the full
-  ``rep.orchestrator.step`` + ``CameraSensor.get_data`` pipeline with the
-  timestamp-based pattern cycling.
-"""
+"""Verify StructuredLightCamera projector authoring, timing, pose handling, CameraSensor RGB, and orchestrator capture."""
 
 from __future__ import annotations
 
 from fractions import Fraction
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -62,6 +51,13 @@ def _make_placeholder_patterns(num: int, temp_dir: str) -> list[Path]:
 
     Some USD asset-resolver code paths probe for file existence at set time;
     writing a minimal valid PNG keeps those probes quiet during tests.
+
+    Args:
+        num: Number of placeholder patterns to create.
+        temp_dir: Directory where placeholder patterns are written.
+
+    Returns:
+        Paths to the placeholder pattern files.
     """
     import struct
     import zlib
@@ -130,8 +126,16 @@ class _StructuredLightCameraTestBase(omni.kit.test.AsyncTestCase):
                 pass
         super().tearDown()
 
-    def _make_camera(self, *args, **kwargs) -> StructuredLightCamera:
-        """Construct a StructuredLightCamera and register it for automatic cleanup."""
+    def _make_camera(self, *args: Any, **kwargs: Any) -> StructuredLightCamera:
+        """Construct a StructuredLightCamera and register it for automatic cleanup.
+
+        Args:
+            *args: Positional arguments forwarded to StructuredLightCamera.
+            **kwargs: Keyword arguments forwarded to StructuredLightCamera.
+
+        Returns:
+            Constructed structured-light camera.
+        """
         instance = StructuredLightCamera(*args, **kwargs)
         self._cameras.append(instance)
         return instance
@@ -146,6 +150,7 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
     """Authoring-only tests: no CameraSensor, no Replicator, no rendering."""
 
     async def setUp(self) -> None:
+        """Create placeholder projector patterns for structured-light authoring tests."""
         await super().setUp()
         await stage_utils.create_new_stage_async()
         stage_utils.define_prim("/World", "Xform")
@@ -154,7 +159,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
 
     # -- initialization / prim structure --
 
-    async def test_initialization(self):
+    async def test_initialization(self) -> None:
+        """Initialize a structured-light camera and verify default projector timing metadata."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -169,7 +175,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
         self.assertEqual(cam.get_projector_prim_path(), "/World/camera/projectors")
         self.assertEqual(cam.get_projector_direction_texture(), _PLACEHOLDER_DIRECTION_TEXTURE)
 
-    async def test_rect_light_creation(self):
+    async def test_rect_light_creation(self) -> None:
+        """Create one projector RectLight prim for each structured-light pattern."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -182,7 +189,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
             self.assertEqual(str(prim.GetPath()), f"/World/camera/projectors/RectLight_{i:02d}")
             self.assertTrue(prim.IsA(UsdLux.RectLight))
 
-    async def test_shaping_api_applied(self):
+    async def test_shaping_api_applied(self) -> None:
+        """Apply UsdLux ShapingAPI to every structured-light projector RectLight."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -191,7 +199,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
         for prim in cam.get_rect_light_prims():
             self.assertTrue(prim.HasAPI(UsdLux.ShapingAPI))
 
-    async def test_projector_attributes(self):
+    async def test_projector_attributes(self) -> None:
+        """Author projector texture and primary-ray visibility attributes on each RectLight."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -203,7 +212,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
             texture_path = prim.GetAttribute("inputs:texture:file").Get()
             self.assertIn(f"pattern_{i:02d}.png", str(texture_path.path))
 
-    async def test_direction_texture_set_on_all_rect_lights(self):
+    async def test_direction_texture_set_on_all_rect_lights(self) -> None:
+        """Author the projector direction texture on every structured-light RectLight."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -215,9 +225,10 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
             direction_path = direction_attr.Get()
             self.assertEqual(str(direction_path.path), str(_PLACEHOLDER_DIRECTION_TEXTURE))
 
-    async def test_url_asset_paths_preserved(self):
+    async def test_url_asset_paths_preserved(self) -> None:
         # Asset-resolver paths (e.g. omniverse://) must be forwarded verbatim, not
         # run through pathlib.absolute() which would corrupt the scheme.
+        """Preserve omniverse:// projector pattern and direction-texture asset paths verbatim."""
         url_patterns = [f"omniverse://server.example/patterns/image_{i:02d}.png" for i in range(3)]
         url_direction = "omniverse://server.example/direction.exr"
         cam = self._make_camera(
@@ -231,8 +242,9 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
             direction_path = prim.GetAttribute("projector:directionTexture:file").Get()
             self.assertEqual(str(direction_path.path), url_direction)
 
-    async def test_nonexistent_patterns_and_direction_texture_accepted(self):
+    async def test_nonexistent_patterns_and_direction_texture_accepted(self) -> None:
         # USD handles missing-file validation at render time; authoring must not probe.
+        """Accept missing projector texture paths without probing files during authoring."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=[Path("/nonexistent/p0.png")],
@@ -242,7 +254,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
 
     # -- timestamps / cycle period --
 
-    async def test_projector_timestamps_get_set(self):
+    async def test_projector_timestamps_get_set(self) -> None:
+        """Store structured-light projector timestamps as reduced rational pairs."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -255,8 +268,9 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
             [(0, 1), (1, 1000), (1, 500), (3, 1000), (1, 250)],
         )
 
-    async def test_projector_timestamps_validation(self):
+    async def test_projector_timestamps_validation(self) -> None:
         # Non-zero first entry → ValueError.
+        """Reject invalid structured-light projector pattern schedules and assets."""
         with self.assertRaises(ValueError):
             StructuredLightCamera(
                 "/World/bad0",
@@ -303,7 +317,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
                 projector_direction_texture=None,
             )
 
-    async def test_single_pattern_accepted(self):
+    async def test_single_pattern_accepted(self) -> None:
+        """Accept a single structured-light projector pattern and infer its cycle period."""
         cam = self._make_camera(
             "/World/camera_single",
             projector_light_patterns=[self._patterns[0]],
@@ -312,7 +327,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
         self.assertEqual(cam.get_num_patterns(), 1)
         self.assertEqual(cam.get_projector_cycle_period(), (1, 30))
 
-    async def test_cycle_period_inferred(self):
+    async def test_cycle_period_inferred(self) -> None:
+        """Infer projector cycle period from the last timestamp plus first interval."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -322,7 +338,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
         # Inferred cycle = timestamps[-1] + (timestamps[1] - timestamps[0]) = 10/1000 + 1/1000 = 11/1000
         self.assertEqual(cam.get_projector_cycle_period(), (11, 1000))
 
-    async def test_cycle_period_explicit(self):
+    async def test_cycle_period_explicit(self) -> None:
+        """Preserve an explicitly supplied structured-light projector cycle period."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -332,7 +349,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
         )
         self.assertEqual(cam.get_projector_cycle_period(), (1, 10))
 
-    async def test_explicit_cycle_period_preserved_on_set_timestamps(self):
+    async def test_explicit_cycle_period_preserved_on_set_timestamps(self) -> None:
+        """Keep an explicit cycle period and prior timestamps when schedule updates fail."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -358,7 +376,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
             "failed set_projector_timestamps must leave explicit cycle period intact",
         )
 
-    async def test_implicit_cycle_period_reinferred_on_set_timestamps(self):
+    async def test_implicit_cycle_period_reinferred_on_set_timestamps(self) -> None:
+        """Reinfer the projector cycle period when timestamps are changed without an explicit period."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -368,7 +387,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
         # New cycle = 4/1000 + 1/1000 = 5/1000 = 1/200
         self.assertEqual(cam.get_projector_cycle_period(), (1, 200))
 
-    async def test_set_projector_cycle_period(self):
+    async def test_set_projector_cycle_period(self) -> None:
+        """Set, validate, and reinfer the structured-light projector cycle period."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -385,7 +405,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
 
     # -- pattern selection / visibility --
 
-    async def test_initial_pattern_visibility(self):
+    async def test_initial_pattern_visibility(self) -> None:
+        """Make only the first projector pattern visible after structured-light camera creation."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -397,7 +418,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
             expected = UsdGeom.Tokens.inherited if i == 0 else UsdGeom.Tokens.invisible
             self.assertEqual(vis, expected, f"pattern {i}: expected {expected}, got {vis}")
 
-    async def test_manual_pattern_switching(self):
+    async def test_manual_pattern_switching(self) -> None:
+        """Switch the active structured-light projector pattern manually and update visibility."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -410,7 +432,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
             expected = UsdGeom.Tokens.inherited if i == 3 else UsdGeom.Tokens.invisible
             self.assertEqual(vis, expected)
 
-    async def test_pattern_index_bounds(self):
+    async def test_pattern_index_bounds(self) -> None:
+        """Reject manual structured-light projector pattern indices outside the available range."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -421,8 +444,9 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
         with self.assertRaises(IndexError):
             cam.set_active_pattern_manual(-1)
 
-    async def test_time_based_pattern_selection(self):
+    async def test_time_based_pattern_selection(self) -> None:
         # Use tight but unambiguous timestamps so each slot is easy to hit.
+        """Select structured-light projector patterns by simulation time within a cycle."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -443,7 +467,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
             idx = cam._pattern_index_at_time(t)
             self.assertEqual(idx, expected, f"t={t}s expected {expected} got {idx}")
 
-    async def test_pattern_index_at_cycle_boundary(self):
+    async def test_pattern_index_at_cycle_boundary(self) -> None:
+        """Handle structured-light projector pattern selection exactly at cycle boundaries."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -459,7 +484,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
 
     # -- projector pose --
 
-    async def test_default_projector_path(self):
+    async def test_default_projector_path(self) -> None:
+        """Use a projectors child prim under the camera when no projector path is provided."""
         cam = self._make_camera(
             "/World/my_camera",
             projector_light_patterns=self._patterns,
@@ -467,10 +493,11 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
         )
         self.assertEqual(cam.get_projector_prim_path(), "/World/my_camera/projectors")
 
-    async def test_default_projector_pose_is_identity_when_child_of_camera(self):
+    async def test_default_projector_pose_is_identity_when_child_of_camera(self) -> None:
         # When the projector is a child of the camera and no explicit pose is
         # supplied, its local transform must be identity so USD composition inherits
         # the camera's world pose.
+        """Keep child projector local pose at identity so it inherits the camera pose."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -485,9 +512,10 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
         self.assertAlmostEqual(float(translate[1]), 0.0, places=5)
         self.assertAlmostEqual(float(translate[2]), 0.0, places=5)
 
-    async def test_default_projector_pose_copies_camera_pose_when_sibling(self):
+    async def test_default_projector_pose_copies_camera_pose_when_sibling(self) -> None:
         # When the projector lives at a path outside the camera's subtree, its
         # world pose must match the camera's world pose.
+        """Copy the camera world pose to a sibling structured-light projector prim."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -503,7 +531,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
         self.assertAlmostEqual(float(translate[1]), 2.0, places=5)
         self.assertAlmostEqual(float(translate[2]), 3.0, places=5)
 
-    async def test_explicit_projector_position_orientation(self):
+    async def test_explicit_projector_position_orientation(self) -> None:
+        """Author an explicit structured-light projector position and orientation."""
         position = np.array([10.0, 20.0, 30.0])
         orientation = np.array([1.0, 0.0, 0.0, 0.0])
         cam = self._make_camera(
@@ -524,10 +553,11 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
 
     # -- construction-time safety --
 
-    async def test_rect_light_type_collision_rolls_back_camera_prim(self):
+    async def test_rect_light_type_collision_rolls_back_camera_prim(self) -> None:
         # Pre-create a caller-authored RectLight_00 of the wrong type under a
         # known projector path. Construction must raise and cleanup must undo
         # ONLY the prims it created — pre-existing caller data must survive.
+        """Roll back created camera prims without deleting caller-authored projector children."""
         stage_utils.define_prim("/World/external_projector", "Xform")
         stage_utils.define_prim("/World/external_projector/RectLight_00", "Xform")
         stage = stage_utils.get_current_stage()
@@ -555,7 +585,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
         self.assertTrue(existing_rect_light.IsValid(), "caller-authored RectLight_00 was deleted by rollback")
         self.assertEqual(existing_rect_light.GetTypeName(), "Xform")
 
-    async def test_inheritance_from_rtx_camera(self):
+    async def test_inheritance_from_rtx_camera(self) -> None:
+        """Expose StructuredLightCamera as an RtxCamera with a valid Camera prim and wrapper."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -569,7 +600,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
 
     # -- lifecycle --
 
-    async def test_destroy_nulls_subscription(self):
+    async def test_destroy_nulls_subscription(self) -> None:
+        """Destroy the structured-light app-update subscription idempotently."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -582,7 +614,8 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
         cam.destroy()
         self.assertIsNone(cam._app_update_sub)
 
-    async def test_post_reset(self):
+    async def test_post_reset(self) -> None:
+        """Reset structured-light pattern state, warning state, and cached simulation time."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -606,6 +639,7 @@ class TestStructuredLightCameraWithCameraSensor(_StructuredLightCameraTestBase):
     """Integration tests wrapping a StructuredLightCamera in :class:`CameraSensor`."""
 
     async def setUp(self) -> None:
+        """Create a lit scene and placeholder structured-light assets for CameraSensor tests."""
         await super().setUp()
         await stage_utils.create_new_stage_async()
         await ViewportManager.wait_for_viewport_async()
@@ -620,7 +654,8 @@ class TestStructuredLightCameraWithCameraSensor(_StructuredLightCameraTestBase):
         self._direction_texture = Path(self._temp_dir.name) / "direction.exr"
         self._direction_texture.write_bytes(b"")  # empty placeholder — USD tolerates it
 
-    async def test_camera_sensor_creation(self):
+    async def test_camera_sensor_creation(self) -> None:
+        """Wrap a StructuredLightCamera in CameraSensor with RGB annotator and fixed resolution."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -638,7 +673,8 @@ class TestStructuredLightCameraWithCameraSensor(_StructuredLightCameraTestBase):
             del sensor
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_camera_sensor_rgb_shape(self):
+    async def test_camera_sensor_rgb_shape(self) -> None:
+        """Capture RGB data from a StructuredLightCamera-backed CameraSensor."""
         cam = self._make_camera(
             "/World/camera",
             projector_light_patterns=self._patterns,
@@ -679,6 +715,7 @@ class TestStructuredLightCameraOrchestrator(_StructuredLightCameraTestBase):
     ]
 
     async def setUp(self) -> None:
+        """Create a lit scene and timed structured-light assets for orchestrator capture tests."""
         await super().setUp()
         await stage_utils.create_new_stage_async()
         await ViewportManager.wait_for_viewport_async()
@@ -702,7 +739,8 @@ class TestStructuredLightCameraOrchestrator(_StructuredLightCameraTestBase):
         sensor = CameraSensor(cam, resolution=_RESOLUTION, annotators=["rgb"])
         return cam, sensor
 
-    async def test_orchestrator_single_step_capture(self):
+    async def test_orchestrator_single_step_capture(self) -> None:
+        """Capture one orchestrator RGB step and verify the first projector pattern stays active."""
         cam, sensor = await self._make_camera_and_sensor()
         try:
             await rep.orchestrator.step_async(rt_subframes=2, delta_time=0.0)
@@ -721,7 +759,8 @@ class TestStructuredLightCameraOrchestrator(_StructuredLightCameraTestBase):
         finally:
             del sensor
 
-    async def test_orchestrator_pattern_cycle(self):
+    async def test_orchestrator_pattern_cycle(self) -> None:
+        """Advance orchestrator steps through each projector interval and verify pattern cycling."""
         cam, sensor = await self._make_camera_and_sensor()
         try:
             fractions = [Fraction(*ts) for ts in self._TIMESTAMPS]

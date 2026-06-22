@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""CLI wrapper for replaying MobilityGen recordings and rendering sensor data.
+r"""CLI wrapper for replaying MobilityGen recordings and rendering sensor data.
 
 Example usage (from the Isaac Sim build directory):
 
@@ -23,12 +23,11 @@ Example usage (from the Isaac Sim build directory):
         --enable isaacsim.replicator.mobility_gen.examples \\
         --input ~/MobilityGenData/recordings \\
         --output ~/MobilityGenData/replays
-
-Note: multi_gpu is disabled to avoid crashes on Kit 110.1.x with multiple GPUs.
 """
 
 from isaacsim import SimulationApp
 
+# multi_gpu disabled: segfaults on Kit 110.1.x (unsolved).
 simulation_app = SimulationApp(launch_config={"headless": True, "multi_gpu": False})
 
 import argparse
@@ -50,18 +49,46 @@ app_utils.enable_extension("isaacsim.replicator.mobility_gen.examples")
 simulation_app.update()
 
 from isaacsim.replicator.experimental.mobility_gen import (
+    COMPLETE_MARKER_NAME,
+    REPLAY_CONFIG_NAME,
     MobilityGenReader,
     MobilityGenWriter,
-    apply_nurec_replay_overrides,
     apply_sensor_overrides,
+    is_complete,
     load_scenario,
     log_camera_properties,
+    mark_replay_complete,
+    replay_config_from_args,
+    setup_for_replay,
+    write_replay_config,
 )
 
 if "MOBILITY_GEN_DATA" in os.environ:
     DATA_DIR = os.environ["MOBILITY_GEN_DATA"]
 else:
     DATA_DIR = os.path.expanduser("~/MobilityGenData")
+
+
+# Rendered-sensor state subdirs a replay (re)generates. state/common (recorded
+# poses) is excluded: it is the replay's input, not a regenerated output.
+_RENDERED_STATE_DIRS = ("rgb", "segmentation", "depth", "normals")
+
+
+def clear_replay_outputs(output_path: str) -> None:
+    """Remove the files a replay regenerates, leaving any source data in place.
+
+    Lets --output equal --input: the recorded poses, scene, and config survive
+    while the rendered sensor outputs and manifest are refreshed.
+    """
+    targets = [os.path.join(output_path, "state", name) for name in _RENDERED_STATE_DIRS]
+    targets.append(os.path.join(output_path, REPLAY_CONFIG_NAME))
+    targets.append(os.path.join(output_path, COMPLETE_MARKER_NAME))
+    for target in targets:
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+        elif os.path.isfile(target):
+            os.remove(target)
+
 
 if __name__ == "__main__":
 
@@ -114,6 +141,15 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--self_contained",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Copy the full scene into each replay output so it stands alone "
+        "(--self_contained / --no-self_contained). When disabled (default), the output holds only "
+        "the rendered state and a replay_config.yaml that links back to the source recording.",
+    )
+
+    parser.add_argument(
         "--render_rt_subframes",
         type=int,
         default=1,
@@ -129,15 +165,54 @@ if __name__ == "__main__":
         "some timesteps missing images.",
     )
 
+    parser.add_argument(
+        "--max_frames",
+        type=int,
+        default=None,
+        help="If set, stop after rendering this many frames per recording (for quick test runs); 0 or unset renders all frames.",
+    )
+
+    parser.add_argument(
+        "--warmup_frames",
+        type=int,
+        default=4,
+        help="Render and discard this many frames before starting the replay, to warm the RTX "
+        "temporal accumulator (the first frames are otherwise cold/noisy). 0 disables.",
+    )
+
+    parser.add_argument(
+        "--skip_completed",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Skip recordings whose output already finished (has a .complete marker), so an "
+        "interrupted batch can be resumed without re-rendering completed recordings. The stored "
+        "replay_config.yaml must match the requested settings.",
+    )
+
     cli_args, unknown = parser.parse_known_args()
 
     cli_args.input = os.path.expanduser(cli_args.input)
     cli_args.output = os.path.expanduser(cli_args.output)
 
-    recording_paths = glob.glob(os.path.join(cli_args.input, "*"))
+    if cli_args.render_interval < 1:
+        parser.error("--render_interval must be >= 1")
+    if cli_args.render_rt_subframes < 1:
+        parser.error("--render_rt_subframes must be >= 1")
+    if cli_args.warmup_frames < 0:
+        parser.error("--warmup_frames must be >= 0")
+    if cli_args.max_frames is not None and cli_args.max_frames <= 0:
+        cli_args.max_frames = None
+
+    # Recording dirs (those with a config.json) under --input, in stable order; skip --output.
+    output_abs = os.path.abspath(cli_args.output)
+    recording_paths = sorted(
+        p
+        for p in glob.glob(os.path.join(cli_args.input, "*"))
+        if os.path.isdir(p) and os.path.isfile(os.path.join(p, "config.json")) and os.path.abspath(p) != output_abs
+    )
 
     for i, recording_path in enumerate(recording_paths, start=1):
-        # Per-iteration copy of the CLI namespace: apply_nurec_replay_overrides
+        # Per-iteration copy of the CLI namespace: ensure_nurec_replay_flags
         # mutates this in place when a NuRec stage is detected. Without a fresh
         # copy each iteration, a NuRec recording would silently disable non-RGB
         # modalities for every subsequent non-NuRec recording in the batch.
@@ -149,11 +224,18 @@ if __name__ == "__main__":
 
         scenario = load_scenario(recording_path)
 
-        # If the loaded stage is NuRec (contains ParticleField prims), force
-        # the per-modality replay flags to the supported subset (RGB only)
-        # and re-assert the gaussian-pass tonemap setting (which the stage's
-        # customLayerData can revert on open). No-op on non-NuRec stages.
-        apply_nurec_replay_overrides(args, get_current_stage())
+        # Set up the loaded stage for replay: NuRec render overrides + RGB-only replay flags
+        # (no-op on non-NuRec stages).
+        setup_for_replay(args, get_current_stage())
+
+        replay_config = replay_config_from_args(recording_path, args)
+        if args.skip_completed and is_complete(
+            output_path,
+            replay_config,
+            replay_label=f"{i} / {len(recording_paths)}: {name}",
+            log_warn=carb.log_warn,
+        ):
+            continue
 
         SimulationManager.initialize_physics()
 
@@ -175,22 +257,29 @@ if __name__ == "__main__":
         # Re-enable hydra texture updates now that all annotators are attached.
         scenario.finalize_rendering()
 
-        rep.orchestrator.step(rt_subframes=args.render_rt_subframes, delta_time=0.0, pause_timeline=False)
+        # captureOnPlay=1 (set in the mobility_gen extension.toml) gates capture on a
+        # playing timeline, which initialize_physics() does not start; without play()
+        # the annotators capture nothing. This also inits the render graph before
+        # apply_sensor_overrides() below. Do NOT replace this with a warmup
+        # orchestrator.step(): a pre-loop orchestrator step leaves every subsequent
+        # capture empty (the "tile cannot extend outside image" PNG crash).
+        omni.timeline.get_timeline_interface().play()
+        simulation_app.update()
 
-        # Apply camera calibration overrides after the render graph is fully
-        # initialised — applying them earlier causes Kit to queue a USD change
-        # notice that races with SDGPipeline construction and crashes OmniGraph.
+        # Apply overrides only after the render graph is initialised (above); doing it
+        # earlier races a USD change notice with SDGPipeline construction, crashing OmniGraph.
         apply_sensor_overrides("/World/robot", recording_path)
         log_camera_properties(get_current_stage(), "/World/robot")
 
         reader = MobilityGenReader(recording_path)
         num_steps = len(reader)
 
-        if os.path.exists(output_path):
-            shutil.rmtree(output_path)
+        clear_replay_outputs(output_path)
 
         writer = MobilityGenWriter(output_path)
-        writer.copy_init(recording_path)
+        if args.self_contained:
+            writer.copy_init(recording_path)
+        write_replay_config(output_path, replay_config)
 
         carb.log_warn(f"============== Replaying {i} / {len(recording_paths)} ==============")
         carb.log_warn(f"\tInput path: {recording_path}")
@@ -199,10 +288,29 @@ if __name__ == "__main__":
         carb.log_warn(f"\tSegmentation enabled: {args.segmentation_enabled}")
         carb.log_warn(f"\tRendering RT subframes: {args.render_rt_subframes}")
         carb.log_warn(f"\tRender interval: {args.render_interval}")
+        carb.log_warn(f"\tWarmup frames: {args.warmup_frames}")
+        carb.log_warn(f"\tMax frames: {args.max_frames}")
+        carb.log_warn(f"\tSelf contained: {args.self_contained}")
+
+        # Warm the RTX temporal accumulator before capturing: render and discard
+        # `warmup_frames` frames at the start pose. Simulation time advances during these
+        # frames but the robot is re-asserted to the start pose each frame (held stationary),
+        # and the frames are not written. The recorded state has no timestamp, so this
+        # affects only render history, not the captured data.
+        if args.warmup_frames > 0 and num_steps > 0:
+            warmup_state = reader.read_state_dict(index=0)
+            for _ in range(args.warmup_frames):
+                scenario.load_state_dict(warmup_state)
+                scenario.write_replay_data()
+                SimulationManager.step(steps=1)
+                simulation_app.update()
+                rep.orchestrator.step(rt_subframes=args.render_rt_subframes, delta_time=0.0, pause_timeline=False)
 
         t0 = time.perf_counter()
         count = 0
         for step in range(0, num_steps, args.render_interval):
+            if args.max_frames is not None and count >= args.max_frames:
+                break
 
             carb.log_warn(f"{step} / {num_steps}")
             state_dict_original = reader.read_state_dict(index=step)
@@ -244,11 +352,16 @@ if __name__ == "__main__":
             count += 1
         t1 = time.perf_counter()
 
-        carb.log_warn(f"Process time per frame: {count / (t1 - t0)}")
+        if count:
+            carb.log_warn(f"Process time per frame: {(t1 - t0) / count:.4f} s")
 
         rep.orchestrator.wait_until_complete()
+        # Stop the timeline before disable_rendering()/the next load_scenario();
+        # leaving it playing across teardown crashes Kit natively.
+        omni.timeline.get_timeline_interface().stop()
         scenario.disable_rendering()
         writer.close()
+        mark_replay_complete(output_path, count)
 
     # Stop the timeline so Kit's shutdown sequence receives the stop event and
     # can clean up physics properly.  Without this, the timeline is left paused

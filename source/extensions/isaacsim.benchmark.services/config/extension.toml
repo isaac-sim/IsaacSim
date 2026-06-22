@@ -1,5 +1,5 @@
 [package]
-version = "4.2.1"
+version = "4.2.3"
 category = "Simulation"
 title = "Benchmark Services"
 description = "Provides a comprehensive framework for performance benchmarking including data collection, metrics recording, and report generation for CPU, GPU, memory, and frame time analysis."

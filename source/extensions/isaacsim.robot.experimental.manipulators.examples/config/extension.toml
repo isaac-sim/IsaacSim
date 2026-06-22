@@ -1,5 +1,5 @@
 [package]
-version = "0.2.0"
+version = "0.2.1"
 category = "example"
 title = "Manipulators Examples (Experimental)"
 description = "Provides experimental example implementations for Franka and Universal Robots manipulators demonstrating pick-and-place, follow target, and stacking tasks."

@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.1.5] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.1.4] - 2026-05-11
 ### Fixed
 - `get_gripper_joint_states` returns POSIX joint keys on Windows (replaced `os.path.relpath` with a string slice).

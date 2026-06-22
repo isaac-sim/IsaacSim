@@ -50,7 +50,7 @@ from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.robot.experimental.manipulators.examples.franka import FrankaPickPlace
 
 
-def main():
+def main() -> None:
     """Run Franka pick-and-place simulation loop."""
     print("Starting Simple Franka Pick-and-Place Demo")
     SimulationManager.set_physics_sim_device(args.device)

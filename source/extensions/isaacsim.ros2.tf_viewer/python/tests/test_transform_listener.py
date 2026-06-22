@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test suite for validating ROS 2 transform listener functionality with Isaac Sim."""
+"""Validate the ROS 2 TF viewer listener against a published Franka transform tree."""
 
 import os
 
@@ -57,9 +57,9 @@ class TestTransformListener(omni.kit.test.AsyncTestCase):
 
     # ----------------------------------------------------------------------
     async def test_transform_listener(self) -> None:
-        """Tests the ROS2 transform listener functionality with a Franka Panda robot.
+        """Validate the ROS 2 transform listener with a Franka Panda robot.
 
-        Verifies that the transform listener correctly receives and processes transform data published via ROS2 /tf
+        Verifies that the transform listener correctly receives and processes transform data published via ROS 2 /tf
         topic. The test adds a Franka Panda robot to the stage, creates an action graph to publish transform tree
         data, initializes the transform listener plugin, runs the simulation, and validates that all expected frames,
         transforms, and parent-child relations are correctly captured.
@@ -137,7 +137,7 @@ class TestTransformListener(omni.kit.test.AsyncTestCase):
             self.assertIn(frame, frames)
 
         # check transforms
-        self.assertTupleEqual(transforms.get("panda_link0", tuple()), ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)))
+        self.assertTupleEqual(transforms.get("panda_link0", ()), ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)))
 
         # check relations
         gt_relations = [

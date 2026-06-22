@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test joint state sensor functionality."""
+"""Verifies joint state sensor readings after play, physics-only stepping, DOF metadata, load-dependent updates, lifecycle transitions, units, defaults, and agreement with controlled articulation state."""
 
 import asyncio
+from typing import Any
 
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -35,8 +36,8 @@ from .common import step_simulation
 class TestJointStateSensor(omni.kit.test.AsyncTestCase):
     """Test joint state sensor."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Cache the asset root and timeline used by SimpleArticulation joint-state tests."""
         self._assets_root_path = await get_assets_root_path_async()
         if self._assets_root_path is None:
             carb.log_error("Could not find Isaac Sim assets folder")
@@ -44,8 +45,12 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
         self._timeline = omni.timeline.get_timeline_interface()
         self.joint_state_sensor = None
 
-    async def create_simple_articulation(self, physics_rate=60):
-        """Create simple articulation."""
+    async def create_simple_articulation(self, physics_rate: Any = 60) -> None:
+        """Create simple articulation.
+
+        Args:
+            physics_rate: Physics simulation rate in Hz.
+        """
         await stage_utils.open_stage_async(
             self._assets_root_path + "/Isaac/Robots/IsaacSim/SimpleArticulation/simple_articulation.usd"
         )
@@ -65,8 +70,8 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Stop playback, invalidate physics, and release any active joint-state sensor."""
         if self._timeline.is_playing():
             self._timeline.stop()
         SimulationManager.invalidate_physics()
@@ -78,7 +83,7 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
             await asyncio.sleep(1.0)
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_reading_returns_valid_after_play(self):
+    async def test_reading_returns_valid_after_play(self) -> None:
         """Play sim, assert is_valid=True and dof_names is non-empty."""
         await self.create_simple_articulation()
 
@@ -94,7 +99,7 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(reading.dof_types), len(reading.dof_names), "dof_types length must match dof_names")
         self.assertGreater(reading.stage_meters_per_unit, 0.0, "Expected positive stage_meters_per_unit when valid")
 
-    async def test_physics_only_step_outputs_joint_state_data(self):
+    async def test_physics_only_step_outputs_joint_state_data(self) -> None:
         """JointStateSensor produces data when stepping physics without app/render updates."""
         await self.create_simple_articulation()
 
@@ -121,7 +126,7 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
                 self._timeline.stop()
                 await omni.kit.app.get_app().next_update_async()
 
-    async def test_dof_names_populated(self):
+    async def test_dof_names_populated(self) -> None:
         """Verify DOF name strings are non-empty."""
         await self.create_simple_articulation()
 
@@ -137,7 +142,7 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
             self.assertIsInstance(name, str)
             self.assertGreater(len(name), 0, f"DOF name should be non-empty, got: {name!r}")
 
-    async def test_reading_updates_over_time(self):
+    async def test_reading_updates_over_time(self) -> None:
         """Verify sensor reading updates as simulation steps (time advances)."""
         await self.create_simple_articulation()
 
@@ -159,7 +164,7 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
             "Expected sensor reading time to advance as simulation steps",
         )
 
-    async def test_reading_changes_when_load_changes(self):
+    async def test_reading_changes_when_load_changes(self) -> None:
         """Verify positions, velocities, and efforts all change when we add a cube to the arm (like effort sensor test)."""
         await self.create_simple_articulation()
 
@@ -192,7 +197,7 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
             "Expected efforts to change after adding cube load (arm + cube)",
         )
 
-    async def test_reading_invalid_before_play(self):
+    async def test_reading_invalid_before_play(self) -> None:
         """Assert is_valid=False before simulation starts."""
         await self.create_simple_articulation()
 
@@ -205,7 +210,7 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(reading.dof_types), 0)
         self.assertEqual(reading.stage_meters_per_unit, 0.0)
 
-    async def test_stop_start(self):
+    async def test_stop_start(self) -> None:
         """Stop/restart timeline, verify readings resume."""
         await self.create_simple_articulation()
 
@@ -234,7 +239,7 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
         self.assertTrue(second_reading.is_valid)
         self.assertEqual(len(second_reading.dof_names), len(first_reading.dof_names))
 
-    async def test_disable_enable(self):
+    async def test_disable_enable(self) -> None:
         """Set enabled=False/True, verify validity changes accordingly."""
         await self.create_simple_articulation()
 
@@ -263,7 +268,7 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
         reading = self.joint_state_sensor.get_sensor_reading()
         self.assertTrue(reading.is_valid)
 
-    async def test_all_arrays_same_length(self):
+    async def test_all_arrays_same_length(self) -> None:
         """Assert len(positions) == len(velocities) == len(efforts) == len(dof_names) == len(dof_types)."""
         await self.create_simple_articulation()
 
@@ -283,7 +288,7 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(reading.efforts), n)
         self.assertEqual(len(reading.dof_types), n)
 
-    async def test_reading_defaults(self):
+    async def test_reading_defaults(self) -> None:
         """Verify JointStateSensorReading default construction values."""
         reading = JointStateSensorReading()
         self.assertFalse(reading.is_valid)
@@ -295,7 +300,7 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(reading.dof_types), 0)
         self.assertEqual(reading.stage_meters_per_unit, 0.0)
 
-    async def test_dof_types_and_stage_units(self):
+    async def test_dof_types_and_stage_units(self) -> None:
         """Verify dof_types (0=revolute, 1=prismatic) and stage_meters_per_unit match stage."""
         await self.create_simple_articulation()
 
@@ -317,7 +322,7 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
                 f"dof_types[{i}] must be 0 (revolute) or 1 (prismatic), got {dt}",
             )
 
-    async def test_reading_matches_articulation_under_control(self):
+    async def test_reading_matches_articulation_under_control(self) -> None:
         """Apply position control, step sim, verify joint state sensor reports valid state close to commanded targets."""
         await self.create_simple_articulation()
 
@@ -355,7 +360,7 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
                 msg=f"Sensor should be close to target for DOF {dof_name!r}: sensor={sensor_positions[i]}, target={target_positions[art_idx]}",
             )
 
-    async def test_reading_velocities_under_velocity_control(self):
+    async def test_reading_velocities_under_velocity_control(self) -> None:
         """Apply velocity control, step sim, verify joint state sensor reports velocities close to commanded."""
         await self.create_simple_articulation()
 

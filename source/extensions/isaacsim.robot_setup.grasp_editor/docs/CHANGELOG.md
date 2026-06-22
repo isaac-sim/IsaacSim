@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.3.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [2.3.2] - 2026-05-12
 ### Fixed
 - Wrong shape on forces/torques being added into the RigidBody during simulation.

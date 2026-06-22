@@ -52,7 +52,11 @@ class TestBehaviorsBasic(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
 
     async def check_exposed_variables(self, behavior_class: type) -> None:
-        """Verify exposed variables are correctly created and removed for a behavior class."""
+        """Verify exposed variables are correctly created and removed for a behavior class.
+
+        Args:
+            behavior_class: Behavior class whose exposed variables should be checked.
+        """
         # Make sure behavior_class is of type BehaviorScript
         self.assertTrue(
             issubclass(behavior_class, BehaviorScript),

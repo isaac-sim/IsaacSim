@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verify the getting-started Replicator SDG examples and their expected output files."""
+
 import tempfile
+from typing import Any
 
 import carb.settings
 import omni.kit
@@ -22,7 +25,10 @@ from isaacsim.test.utils.file_validation import validate_folder_contents
 
 
 class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Covers BasicWriter, PoseWriter, randomizers, physics capture, and Fabric write examples."""
+
+    async def setUp(self) -> None:
+        """Create a clean stage and save settings changed by the getting-started examples."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
@@ -31,7 +37,8 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
             "/exts/omni.replicator.core/enableWriteToFabric"
         )
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Close the stage, wait for pending loads, and restore render and Fabric settings."""
         omni.usd.get_context().close_stage()
         await omni.kit.app.get_app().next_update_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
@@ -43,9 +50,8 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
                 "/exts/omni.replicator.core/enableWriteToFabric", self.original_write_to_fabric
             )
 
-    async def test_sdg_getting_started_01(self):
-        import os
-
+    async def test_sdg_getting_started_01(self) -> None:
+        """Capture a labeled cube with BasicWriter RGB and tight 2D bounding-box annotators."""
         import carb.settings
         import omni.replicator.core as rep
         import omni.usd
@@ -53,7 +59,8 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
         out_dir = tempfile.mkdtemp(prefix="test_sdg_basic_writer_")
         print(f"Output directory: {out_dir}")
 
-        async def run_example_async():
+        async def run_example_async() -> None:
+            """Create the cube scene, step three captures, and flush BasicWriter output."""
             # Create a new stage and disable capture on play
             omni.usd.get_context().new_stage()
             rep.orchestrator.set_capture_on_play(False)
@@ -98,9 +105,8 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
         )
         self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {out_dir}")
 
-    async def test_sdg_getting_started_02(self):
-        import os
-
+    async def test_sdg_getting_started_02(self) -> None:
+        """Capture two camera views with direct RGB annotators, a custom writer, and PoseWriter."""
         import carb.settings
         import omni.replicator.core as rep
         import omni.usd
@@ -111,7 +117,7 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
 
         # Create a custom writer to access annotator data
         class MyWriter(Writer):
-            def __init__(self, camera_params: bool = True, bounding_box_3d: bool = True):
+            def __init__(self, camera_params: bool = True, bounding_box_3d: bool = True) -> None:
                 # Organize data from render product perspective (legacy, annotator, renderProduct)
                 self.data_structure = "renderProduct"
                 self.annotators = []
@@ -121,7 +127,7 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
                     self.annotators.append(rep.annotators.get("bounding_box_3d"))
                 self._frame_id = 0
 
-            def write(self, data: dict):
+            def write(self, data: dict) -> None:
                 print(f"[MyWriter][{self._frame_id}] data:")
                 for key, value in data.items():
                     print(f"  {key}: {value}")
@@ -130,7 +136,8 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
         # Register the writer
         rep.writers.register_writer(MyWriter)
 
-        async def run_example_async():
+        async def run_example_async() -> None:
+            """Write pose/debug outputs while reading RGB data directly from two render products."""
             # Create a new stage and disable capture on play
             omni.usd.get_context().new_stage()
             rep.orchestrator.set_capture_on_play(False)
@@ -200,8 +207,8 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
         folder_contents_success = validate_folder_contents(path=out_dir, expected_counts={"png": 12, "json": 6})
         self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {out_dir}")
 
-    async def test_sdg_getting_started_03(self):
-        import os
+    async def test_sdg_getting_started_03(self) -> None:
+        """Mix a Python position randomizer with a custom-event light randomizer and validate output."""
         import random
 
         import carb.settings
@@ -212,11 +219,12 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
         print(f"Output directory: {out_dir}")
 
         # Randomize the location of a prim without the graph-based randomizer
-        def randomize_location(prim):
+        def randomize_location(prim: Any) -> None:
             random_pos = (random.uniform(-1, 1), random.uniform(-1, 1), random.uniform(-1, 1))
             rep.functional.modify.position(prim, random_pos)
 
-        async def run_example_async():
+        async def run_example_async() -> None:
+            """Randomize cube pose each frame, trigger light changes on selected frames, and capture."""
             # Create a new stage and disable capture on play
             omni.usd.get_context().new_stage()
             rep.orchestrator.set_capture_on_play(False)
@@ -274,9 +282,8 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
         folder_contents_success = validate_folder_contents(path=out_dir, expected_counts={"png": 6, "json": 3})
         self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {out_dir}")
 
-    async def test_sdg_getting_started_04(self):
-        import os
-
+    async def test_sdg_getting_started_04(self) -> None:
+        """Capture a falling rigid cube at distance intervals, including hidden-cube segmentation frames."""
         import carb.settings
         import omni.kit.app
         import omni.replicator.core as rep
@@ -288,7 +295,8 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
         out_dir = tempfile.mkdtemp(prefix="test_sdg_basic_writer_sim_")
         print(f"Output directory: {out_dir}")
 
-        async def run_example_async():
+        async def run_example_async() -> None:
+            """Run physics, capture at drop-height thresholds, and resume the timeline between captures."""
             # Create a new stage and disable capture on play
             omni.usd.get_context().new_stage()
             rep.orchestrator.set_capture_on_play(False)
@@ -386,7 +394,8 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
         folder_contents_success = validate_folder_contents(path=out_dir, expected_counts={"png": 12, "json": 6})
         self.assertTrue(folder_contents_success, f"Output directory contents validation failed for {out_dir}")
 
-    async def test_sdg_getting_started_05(self):
+    async def test_sdg_getting_started_05(self) -> None:
+        """Compare capture output for wait-for-render and Fabric-write randomization configurations."""
         import os
         import time
 
@@ -399,7 +408,7 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
         test_root = tempfile.mkdtemp(prefix="test_sdg_fabric_")
         print(f"Test output root: {test_root}")
 
-        async def run_example_async(wait_for_render, write_to_fabric):
+        async def run_example_async(wait_for_render: Any, write_to_fabric: Any) -> None:
             print(f"\n[SDG] Running with wait_for_render={wait_for_render}, write_to_fabric={write_to_fabric}")
             omni.usd.get_context().new_stage()
             rep.orchestrator.set_capture_on_play(False)
@@ -477,7 +486,7 @@ class TestSDGGettingStarted(omni.kit.test.AsyncTestCase):
             writer.detach()
             rp.destroy()
 
-        async def run_examples_async():
+        async def run_examples_async() -> None:
             # Run with different configurations to compare performance
             await run_example_async(wait_for_render=True, write_to_fabric=False)
             await run_example_async(wait_for_render=False, write_to_fabric=False)

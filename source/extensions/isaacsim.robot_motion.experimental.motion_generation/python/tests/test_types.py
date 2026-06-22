@@ -13,7 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for motion generation data types in the isaacsim.robot_motion.experimental.motion_generation extension."""
+"""Verify motion-generation state containers.
+
+The tests cover joint, spatial, root, and complete robot states; construction by
+name and index; ordering and combination semantics; read-only behavior; and
+mixed NumPy and Warp backing arrays.
+"""
 
 # Import extension python module we are testing with absolute import path, as if we are an external user (i.e. a different extension)
 import numpy as np
@@ -48,16 +53,14 @@ class TestJointState(omni.kit.test.AsyncTestCase):
     """
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Sets up the test environment before each test method."""
-        pass
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Cleans up the test environment after each test method."""
-        pass
 
-    async def test_joint_state_from_name(self):
+    async def test_joint_state_from_name(self) -> None:
         """Tests creating JointState objects using joint names for various configurations.
 
         Verifies joint state creation with different joint spaces, partial states,
@@ -308,7 +311,7 @@ class TestJointState(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(joint_state.effort_names), 4)
         self.assertTrue(np.allclose(joint_state.positions.numpy(), [0.0, 5.0, 10.0, 15.0, 19.0]))
 
-    async def test_joint_state_from_index(self):
+    async def test_joint_state_from_index(self) -> None:
         """Tests creating JointState objects using joint indices for various configurations.
 
         Verifies joint state creation with different joint spaces, partial states,
@@ -610,7 +613,7 @@ class TestJointState(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(joint_state.effort_names), 4)
         self.assertTrue(np.allclose(joint_state.positions.numpy(), [0.0, 5.0, 10.0, 15.0, 19.0]))
 
-    async def test_joint_state_constructor(self):
+    async def test_joint_state_constructor(self) -> None:
         """Tests creating JointState objects using the direct constructor.
 
         Verifies joint state creation with raw data and valid arrays,
@@ -825,7 +828,7 @@ class TestJointState(omni.kit.test.AsyncTestCase):
         self.assertEqual(joint_state.velocity_names, ["joint_1"])
         self.assertEqual(joint_state.effort_names, ["joint_2"])
 
-    async def test_joint_state_is_read_only(self):
+    async def test_joint_state_is_read_only(self) -> None:
         """Tests that JointState objects are immutable after creation.
 
         Verifies that all properties of a JointState cannot be modified
@@ -880,16 +883,14 @@ class TestSpatialState(omni.kit.test.AsyncTestCase):
     """
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Sets up test fixtures before each test method."""
-        pass
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Tears down test fixtures after each test method."""
-        pass
 
-    async def test_spatial_state_from_name(self):
+    async def test_spatial_state_from_name(self) -> None:
         """Tests creating SpatialState instances using the from_name method with various configurations and validates error handling."""
         # can create a spatial state:
         spatial_state = SpatialState.from_name(
@@ -1261,7 +1262,7 @@ class TestSpatialState(omni.kit.test.AsyncTestCase):
             )
         )
 
-    async def test_spatial_state_from_index(self):
+    async def test_spatial_state_from_index(self) -> None:
         """Tests creating SpatialState instances using the from_index method with various configurations and validates error handling."""
         # can create a spatial state:
         spatial_state = SpatialState.from_index(
@@ -1658,7 +1659,7 @@ class TestSpatialState(omni.kit.test.AsyncTestCase):
             )
         )
 
-    async def test_spatial_state_constructor(self):
+    async def test_spatial_state_constructor(self) -> None:
         """Tests creating SpatialState instances using the direct constructor with various array configurations and validates error handling."""
         # can create a spatial state with valid arrays:
         spatial_space = ["frame_0", "frame_1", "frame_2"]
@@ -2030,7 +2031,7 @@ class TestSpatialState(omni.kit.test.AsyncTestCase):
         self.assertEqual(spatial_state.linear_velocity_names, ["frame_2"])
         self.assertEqual(spatial_state.angular_velocity_names, ["frame_0"])
 
-    async def test_spatial_state_is_read_only(self):
+    async def test_spatial_state_is_read_only(self) -> None:
         """Tests that SpatialState fields are read-only and cannot be modified after creation."""
         spatial_state = SpatialState.from_name(
             spatial_space=["frame_0", "frame_1", "frame_2"],
@@ -2091,7 +2092,7 @@ class TestRootState(omni.kit.test.AsyncTestCase):
     and maintains immutability of state objects after creation.
     """
 
-    async def test_root_state(self):
+    async def test_root_state(self) -> None:
         """Test RootState creation and functionality.
 
         Tests creating RootState objects with different combinations of parameters,
@@ -2372,7 +2373,7 @@ class TestRootState(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.allclose(root_state.linear_velocity.numpy(), [4.0, 5.0, 6.0]))
         self.assertIsNone(root_state.angular_velocity)
 
-    async def test_root_state_is_read_only(self):
+    async def test_root_state_is_read_only(self) -> None:
         """Test that RootState fields are read-only.
 
         Verifies that all fields of a RootState object cannot be modified after creation,
@@ -2405,7 +2406,7 @@ class TestRobotState(omni.kit.test.AsyncTestCase):
     and validates that state data is correctly preserved during operations.
     """
 
-    async def test_construct_robot_state(self):
+    async def test_construct_robot_state(self) -> None:
         """Test creation of RobotState instances with various component combinations.
 
         Verifies that RobotState can be created with different combinations of joint states,
@@ -2486,14 +2487,13 @@ class TestRobotState(omni.kit.test.AsyncTestCase):
         self.assertIsNone(robot_state.links)
         self.assertIsNone(robot_state.sites)
 
-    async def test_combine_robot_state(self):
+    async def test_combine_robot_state(self) -> None:
         """Test combining robot states with various component types and configurations.
 
         Verifies successful combination of non-overlapping states within the same spaces,
         failure cases for overlapping states, and proper handling of different state types
         including joint states, root states, link states, and site states.
         """
-
         #########################################################
         ######### Create different control spaces ###############
         #########################################################
@@ -2815,7 +2815,7 @@ class TestRobotState(omni.kit.test.AsyncTestCase):
         )
         self.assertIsNone(combine_robot_states(partial_overlap_link_1, partial_overlap_link_2))
 
-    async def test_different_joint_state_order(self):
+    async def test_different_joint_state_order(self) -> None:
         """Test that robot states with different joint space ordering cannot be combined.
 
         Verifies that combine_robot_states returns None when attempting to combine robot states

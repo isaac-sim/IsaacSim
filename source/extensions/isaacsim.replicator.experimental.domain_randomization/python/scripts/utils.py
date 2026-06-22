@@ -16,13 +16,13 @@
 """Utility functions and classes for domain randomization operations in Isaac Sim Replicator."""
 
 import json
-from typing import Dict, List
+from typing import Any
 
 import numpy as np
 from omni.replicator.core.utils import ReplicatorItem
 
 
-def set_distribution_params(distribution: ReplicatorItem, parameters: Dict):
+def set_distribution_params(distribution: ReplicatorItem, parameters: dict) -> None:
     """Set parameters on a replicator distribution object.
 
     Args:
@@ -43,7 +43,7 @@ def set_distribution_params(distribution: ReplicatorItem, parameters: Dict):
         node.get_attribute(attribute_name).set(value)
 
 
-def get_distribution_params(distribution: ReplicatorItem, parameters: List[str]) -> List:
+def get_distribution_params(distribution: ReplicatorItem, parameters: list[str]) -> list:
     """Get parameters from a replicator distribution object.
 
     Args:
@@ -57,7 +57,7 @@ def get_distribution_params(distribution: ReplicatorItem, parameters: List[str])
         ValueError: If the distribution does not have the specified parameter.
     """
     node = distribution.node
-    params = list()
+    params = []
 
     for parameter in parameters:
         attribute_name = "inputs:" + parameter
@@ -70,7 +70,7 @@ def get_distribution_params(distribution: ReplicatorItem, parameters: List[str])
     return params
 
 
-def get_image_space_points(points, view_proj_matrix):
+def get_image_space_points(points: Any, view_proj_matrix: Any) -> Any:
     """Project world space points into image space.
 
     Args:
@@ -89,7 +89,7 @@ def get_image_space_points(points, view_proj_matrix):
     return image_space_points
 
 
-def calculate_truncation_ratio_simple(corners, img_width, img_height):
+def calculate_truncation_ratio_simple(corners: Any, img_width: Any, img_height: Any) -> Any:
     """Calculate the truncation ratio of a cuboid using a simplified bounding box method.
 
     Args:
@@ -120,7 +120,7 @@ def calculate_truncation_ratio_simple(corners, img_width, img_height):
 class NumpyEncoder(json.JSONEncoder):
     """JSON encoder that handles numpy arrays."""
 
-    def default(self, obj):
+    def default(self, obj: Any) -> Any:
         """Convert numpy arrays to JSON-serializable format.
 
         Args:

@@ -333,7 +333,15 @@ class PinkIKController(mg.BaseController):
         return True
 
     def _extract_joint_positions(self, state: mg.RobotState) -> dict[str, float] | None:
-        """Extract controlled joint positions from a RobotState as a name->value dict."""
+        """Extract controlled joint positions from a RobotState.
+
+        Args:
+            state: Robot state containing joint positions.
+
+        Returns:
+            Mapping from controlled joint names to positions, or None if joint
+            data is missing or incomplete.
+        """
         if state.joints is None:
             return None
 
@@ -350,7 +358,15 @@ class PinkIKController(mg.BaseController):
         return result
 
     def _update_configuration_from_state(self, state: mg.RobotState) -> np.ndarray | None:
-        """Update the PINK configuration from estimated joint positions."""
+        """Update the PINK configuration from estimated joint positions.
+
+        Args:
+            state: Robot state containing current joint positions.
+
+        Returns:
+            Updated Pinocchio configuration vector, or None if controlled joint
+            positions cannot be extracted.
+        """
         joint_positions = self._extract_joint_positions(state)
         if joint_positions is None:
             return None
@@ -366,7 +382,11 @@ class PinkIKController(mg.BaseController):
         return q
 
     def _update_targets_from_setpoint(self, setpoint: mg.RobotState) -> None:
-        """Update task targets from the setpoint state."""
+        """Update task targets from the setpoint state.
+
+        Args:
+            setpoint: Robot state containing site pose and joint posture targets.
+        """
         # Update frame task from site poses
         if setpoint.sites is not None:
             tool_position = self._extract_tool_position(setpoint)
@@ -404,6 +424,10 @@ class PinkIKController(mg.BaseController):
         iterable of Limit objects. Passing a
         non-None iterable replaces PINK's defaults, so custom limits must be
         appended after the model's default limit objects.
+
+        Returns:
+            PINK limit objects with extra limits appended, or None to use PINK's
+            default limits.
         """
         if not self._extra_limits:
             return None
@@ -420,14 +444,28 @@ class PinkIKController(mg.BaseController):
         return limits_for_pink
 
     def _extract_tool_position(self, state: mg.RobotState) -> np.ndarray | None:
-        """Extract tool frame position from a RobotState's sites."""
+        """Extract tool frame position from a RobotState's sites.
+
+        Args:
+            state: Robot state containing site positions.
+
+        Returns:
+            Tool frame position, or None if site data or the tool frame is missing.
+        """
         if state.sites is None or self._tool_frame not in state.sites.position_names:
             return None
         idx = state.sites.position_names.index(self._tool_frame)
         return state.sites.positions.numpy()[idx]
 
     def _extract_tool_orientation(self, state: mg.RobotState) -> np.ndarray | None:
-        """Extract tool frame orientation from a RobotState's sites."""
+        """Extract tool frame orientation from a RobotState's sites.
+
+        Args:
+            state: Robot state containing site orientations.
+
+        Returns:
+            Tool frame orientation, or None if site data or the tool frame is missing.
+        """
         if state.sites is None or self._tool_frame not in state.sites.orientation_names:
             return None
         idx = state.sites.orientation_names.index(self._tool_frame)
@@ -435,7 +473,14 @@ class PinkIKController(mg.BaseController):
 
 
 def _to_numpy_flat(arr: np.ndarray | wp.array | list[float]) -> np.ndarray:
-    """Convert to a flat numpy array."""
+    """Convert input to a flat numpy array.
+
+    Args:
+        arr: Array-like input to convert.
+
+    Returns:
+        Flattened numpy array.
+    """
     if isinstance(arr, wp.array):
         return arr.numpy().flatten()
     return np.asarray(arr, dtype=np.float64).flatten()
@@ -451,7 +496,20 @@ def _solve_ik(
     limits: list[Any] | None,
     barriers: list[Any] | None,
 ) -> np.ndarray:
-    """Solve PINK IK, pre-sparsifying OSQP matrices to avoid stderr warnings."""
+    """Solve PINK IK, pre-sparsifying OSQP matrices to avoid stderr warnings.
+
+    Args:
+        configuration: PINK configuration at the current robot state.
+        tasks: PINK task objective list.
+        dt: Integration timestep in seconds.
+        solver: QP solver backend name.
+        damping: Tikhonov regularization passed to PINK.
+        limits: PINK limit objects, or None for PINK defaults.
+        barriers: PINK barrier constraints, or None when no barriers are active.
+
+    Returns:
+        Joint velocity solution in Pinocchio tangent space.
+    """
     if solver != "osqp":
         return pink.solve_ik(
             configuration,

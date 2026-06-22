@@ -31,7 +31,14 @@ import omni.kit.test
 
 
 def _llround_seconds_to_ns(sec: float) -> int:
-    """Match C++ ``std::llround(sec * 1e9)`` (half away from zero)."""
+    """Match C++ ``std::llround(sec * 1e9)`` (half away from zero).
+
+    Args:
+        sec: Seconds to convert to signed nanoseconds.
+
+    Returns:
+        Rounded nanosecond value.
+    """
     x = sec * 1e9
     if x >= 0.0:
         return int(math.floor(x + 0.5))
@@ -39,7 +46,11 @@ def _llround_seconds_to_ns(sec: float) -> int:
 
 
 def _pick_free_port() -> int:
-    """Pick an available localhost TCP port."""
+    """Pick an available localhost TCP port.
+
+    Returns:
+        Available TCP port on localhost.
+    """
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(("127.0.0.1", 0))

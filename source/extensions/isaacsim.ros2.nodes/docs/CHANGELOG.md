@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.18.13] - 2026-06-12
+### Fixed
+- `OgnROS2CameraInfoHelper`: defer the `cv2` import to first use.
+
+## [1.18.12] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.18.11] - 2026-05-26
 ### Fixed
 - `OgnROS2RtxLidarHelper`: drop the legacy `Camera + IsaacRtxLidarSensorAPI` branch from render-product validation; validation now only accepts `OmniLidar + OmniSensorGenericLidarCoreAPI`.
@@ -12,7 +20,7 @@
 ### Fixed
 - `test_rtx_sensor.TestROS2LaserScanRTX`: dedup GMO snapshots by `gmo.timestampNs` so each unique scan has a single entry, and look up by the closest annotator wall-clock across every frame the scan was observed (fixes a flaky wrong-scan match when the GMO annotator and the publisher latched different scans on the same simulation frame). Reconstruct the flat-scan bin index using float32 arithmetic to mirror `OgnROS2PublishLaserScan::publishFromGMO` and accept a ±1 bin shift between the publisher's prim-authored `azimuthRange`/`horizontalResolution` and the test's deg→rad→deg round-trip of `angle_min`/`angle_increment` (the C++ binning and the Python recovery can disagree on the integer slot for rays within one ULP of a bin boundary). Adds a diagnostic `carb.log_warn` whenever a strict elementwise comparison would have failed so future regressions surface scan identity, observation history, and per-slot diffs.
 
-## [1.18.8] - 2026-05-17
+## [1.18.8] - 2026-05-18
 ### Fixed
 - `test_joint_state_position_publisher_from_sensor`: command the target via `Articulation.set_dof_position_targets` and wait for joints to converge before asserting (previously compared an uncommanded transient).
 - `test_spinning_camera_golden_images`: use a `depth=100` subscriber QoS for both camera streams so the rclpy executor doesn't drop frames under CI load.
@@ -20,7 +28,6 @@
 ## [1.18.7] - 2026-05-18
 ### Changed
 - Add `-> None` annotations to extension lifecycle methods and annotate `srtx_instance` parameters; remove blank lines after docstrings in `ros2_common.py`
-
 
 ## [1.18.6] - 2026-05-15
 ### Changed

@@ -13,19 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Newton tensor backend articulation tests.
+"""Validate Newton articulation tensor views against omni.physics.tensors contracts.
 
-Ported from omni.physics.tensors.tests for the Newton backend.
+The tests cover view counts and shared metatype metadata, DOF limits and drive
+properties, full and indexed state writes, body mass/COM/inertia properties,
+actuation forces, and simulation-view gravity for Newton-backed articulations.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 import numpy as np
 import omni.physics.tensors as tensors
 import warp as wp
 from pxr import Gf
 
-from .test_helpers import NewtonTensorTestBase, get_asset_root, run_on_device_configs, warp_utils
+from .test_helpers import NewtonTensorTestBase, run_on_device_configs, warp_utils
 
 # ---------------------------------------------------------------------------
 # TestArticulationViewCartpole
@@ -37,7 +41,8 @@ from .test_helpers import NewtonTensorTestBase, get_asset_root, run_on_device_co
 class TestArticulationViewCartpole(NewtonTensorTestBase):
     """CartPole articulation view: counts, metatype, paths."""
 
-    async def test_articulation_view_counts(self):
+    async def test_articulation_view_counts(self) -> None:
+        """Verify cartpole articulation view counts, link count, DOF count, and homogeneity."""
         num_envs = self.setup_cartpole_grid()
         sim = await self.create_sim()
 
@@ -45,7 +50,8 @@ class TestArticulationViewCartpole(NewtonTensorTestBase):
         self.check_articulation_view(cartpoles, num_envs, 3, 2)
         self.assertTrue(cartpoles.is_homogeneous)
 
-    async def test_articulation_view_metatype(self):
+    async def test_articulation_view_metatype(self) -> None:
+        """Verify cartpole shared metatype maps expected link and DOF names to stable indices."""
         num_envs = self.setup_cartpole_grid()
         sim = await self.create_sim()
 
@@ -65,7 +71,8 @@ class TestArticulationViewCartpole(NewtonTensorTestBase):
         self.assertEqual(mt.dof_indices["cartJoint"], 0)
         self.assertEqual(mt.dof_indices["poleJoint"], 1)
 
-    async def test_articulation_view_paths(self):
+    async def test_articulation_view_paths(self) -> None:
+        """Verify cartpole articulation view expands the wildcard pattern to every environment path."""
         num_envs = self.setup_cartpole_grid()
         sim = await self.create_sim()
 
@@ -84,7 +91,8 @@ class TestArticulationViewCartpole(NewtonTensorTestBase):
 class TestArticulationViewHumanoid(NewtonTensorTestBase):
     """Humanoid articulation view: metatype names, DOF types, DOF limits."""
 
-    async def test_humanoid_metatype_names(self):
+    async def test_humanoid_metatype_names(self) -> None:
+        """Verify humanoid shared metatype preserves the expected link and DOF name ordering."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
 
@@ -139,7 +147,8 @@ class TestArticulationViewHumanoid(NewtonTensorTestBase):
         self.assertSequenceEqual(mt.link_names, expected_link_names)
         self.assertSequenceEqual(mt.dof_names, expected_dof_names)
 
-    async def test_humanoid_dof_types(self):
+    async def test_humanoid_dof_types(self) -> None:
+        """Verify every humanoid DOF is reported as a rotational DOF."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
 
@@ -149,7 +158,8 @@ class TestArticulationViewHumanoid(NewtonTensorTestBase):
         expected = np.repeat(np.uint8(tensors.DofType.Rotation), humanoids.max_dofs)
         self.assertTrue(np.array_equal(dof_types_np, expected))
 
-    async def test_humanoid_dof_limits(self):
+    async def test_humanoid_dof_limits(self) -> None:
+        """Verify humanoid DOF limits match the authored joint ranges after conversion from radians."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
 
@@ -200,7 +210,8 @@ class TestArticulationViewHumanoid(NewtonTensorTestBase):
 class TestArticulationDofProperties(NewtonTensorTestBase):
     """DOF property get/set: limits, stiffness, damping, max forces, max velocities, armature."""
 
-    async def test_dof_limits(self):
+    async def test_dof_limits(self) -> None:
+        """Verify DOF limits can be set for all humanoids and overwritten for an indexed subset."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
 
@@ -219,7 +230,8 @@ class TestArticulationDofProperties(NewtonTensorTestBase):
         humanoids.set_dof_limits(self.to_warp(limits), idx)
         self.assertTrue(np.allclose(humanoids.get_dof_limits().numpy(), limits))
 
-    async def test_dof_stiffness(self):
+    async def test_dof_stiffness(self) -> None:
+        """Verify DOF stiffness values round-trip for all humanoids and an indexed subset."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
 
@@ -235,7 +247,8 @@ class TestArticulationDofProperties(NewtonTensorTestBase):
         humanoids.set_dof_stiffnesses(self.to_warp(stiffness), idx)
         self.assertTrue(np.allclose(humanoids.get_dof_stiffnesses().numpy(), stiffness))
 
-    async def test_dof_damping(self):
+    async def test_dof_damping(self) -> None:
+        """Verify DOF damping values round-trip for all humanoids and an indexed subset."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
 
@@ -251,7 +264,8 @@ class TestArticulationDofProperties(NewtonTensorTestBase):
         humanoids.set_dof_dampings(self.to_warp(damping), idx)
         self.assertTrue(np.allclose(humanoids.get_dof_dampings().numpy(), damping))
 
-    async def test_dof_max_forces(self):
+    async def test_dof_max_forces(self) -> None:
+        """Verify maximum DOF force values round-trip for all humanoids and an indexed subset."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
 
@@ -267,7 +281,8 @@ class TestArticulationDofProperties(NewtonTensorTestBase):
         humanoids.set_dof_max_forces(self.to_warp(max_force), idx)
         self.assertTrue(np.allclose(humanoids.get_dof_max_forces().numpy(), max_force))
 
-    async def test_dof_max_velocities(self):
+    async def test_dof_max_velocities(self) -> None:
+        """Verify maximum DOF velocity values preserve per-environment data and subset updates."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
 
@@ -285,7 +300,8 @@ class TestArticulationDofProperties(NewtonTensorTestBase):
         humanoids.set_dof_max_velocities(self.to_warp(max_vel), idx)
         self.assertTrue(np.allclose(humanoids.get_dof_max_velocities().numpy(), max_vel))
 
-    async def test_dof_armature(self):
+    async def test_dof_armature(self) -> None:
+        """Verify DOF armature values round-trip for all humanoids and an indexed subset."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
 
@@ -314,7 +330,7 @@ class TestArticulationGetSet(NewtonTensorTestBase):
 
     ATOL = 1e-5
 
-    async def _setup_ant(self):
+    async def _setup_ant(self) -> Any:
         num_envs = self.setup_ant_grid()
         sim = await self.create_sim()
         ants = sim.create_articulation_view("/envs/*/ant/torso")
@@ -325,7 +341,8 @@ class TestArticulationGetSet(NewtonTensorTestBase):
 
     # -- DOF positions --
 
-    async def test_get_set_dof_positions(self):
+    async def test_get_set_dof_positions(self) -> None:
+        """Verify ant DOF positions can be read, offset, written, and read back for every articulation."""
         sim, ants, all_indices = await self._setup_ant()
         self.step(1)
 
@@ -337,7 +354,8 @@ class TestArticulationGetSet(NewtonTensorTestBase):
         result = ants.get_dof_positions().numpy().reshape((ants.count, num_dof))
         self.assertTrue(np.allclose(result, submitted, atol=self.ATOL))
 
-    async def test_get_set_dof_positions_subset(self):
+    async def test_get_set_dof_positions_subset(self) -> None:
+        """Verify indexed DOF position writes update only the selected ant articulations."""
         sim, ants, all_indices = await self._setup_ant()
         self.step(1)
 
@@ -354,7 +372,8 @@ class TestArticulationGetSet(NewtonTensorTestBase):
 
     # -- DOF velocities --
 
-    async def test_get_set_dof_velocities(self):
+    async def test_get_set_dof_velocities(self) -> None:
+        """Verify ant DOF velocities can be read, offset, written, and read back."""
         sim, ants, all_indices = await self._setup_ant()
         self.step(1)
 
@@ -368,7 +387,8 @@ class TestArticulationGetSet(NewtonTensorTestBase):
 
     # -- DOF position targets --
 
-    async def test_get_set_dof_position_targets(self):
+    async def test_get_set_dof_position_targets(self) -> None:
+        """Verify ant DOF position targets round-trip through the tensor view."""
         sim, ants, all_indices = await self._setup_ant()
         self.step(1)
 
@@ -382,7 +402,8 @@ class TestArticulationGetSet(NewtonTensorTestBase):
 
     # -- DOF velocity targets --
 
-    async def test_get_set_dof_velocity_targets(self):
+    async def test_get_set_dof_velocity_targets(self) -> None:
+        """Verify ant DOF velocity targets round-trip through the tensor view."""
         sim, ants, all_indices = await self._setup_ant()
         self.step(1)
 
@@ -396,7 +417,8 @@ class TestArticulationGetSet(NewtonTensorTestBase):
 
     # -- DOF actuation forces --
 
-    async def test_get_set_dof_actuation_forces(self):
+    async def test_get_set_dof_actuation_forces(self) -> None:
+        """Verify ant DOF actuation forces round-trip through the tensor view."""
         sim, ants, all_indices = await self._setup_ant()
         self.step(1)
 
@@ -410,7 +432,8 @@ class TestArticulationGetSet(NewtonTensorTestBase):
 
     # -- Root transforms --
 
-    async def test_get_set_root_transforms(self):
+    async def test_get_set_root_transforms(self) -> None:
+        """Verify root transform writes move every ant articulation by the submitted offset."""
         sim, ants, all_indices = await self._setup_ant()
         self.step(1)
 
@@ -422,7 +445,8 @@ class TestArticulationGetSet(NewtonTensorTestBase):
         result = ants.get_root_transforms().numpy().reshape((ants.count, 7))
         self.assertTrue(np.allclose(result[:, 2], roots[:, 2] + 1, atol=self.ATOL))
 
-    async def test_get_set_root_transforms_subset(self):
+    async def test_get_set_root_transforms_subset(self) -> None:
+        """Verify indexed root transform writes move only the selected ant articulations."""
         sim, ants, all_indices = await self._setup_ant()
         self.step(1)
 
@@ -439,7 +463,8 @@ class TestArticulationGetSet(NewtonTensorTestBase):
 
     # -- Root velocities --
 
-    async def test_get_set_root_velocities(self):
+    async def test_get_set_root_velocities(self) -> None:
+        """Verify root linear and angular velocities round-trip for every ant articulation."""
         sim, ants, all_indices = await self._setup_ant()
         self.step(1)
 
@@ -450,7 +475,8 @@ class TestArticulationGetSet(NewtonTensorTestBase):
         result = ants.get_root_velocities().numpy().reshape((ants.count, 6))
         self.assertTrue(np.allclose(result, submitted, atol=self.ATOL))
 
-    async def test_get_set_root_velocities_subset(self):
+    async def test_get_set_root_velocities_subset(self) -> None:
+        """Verify indexed root velocity writes update only the selected ant articulations."""
         sim, ants, all_indices = await self._setup_ant()
         self.step(1)
 
@@ -475,7 +501,8 @@ class TestArticulationGetSet(NewtonTensorTestBase):
 class TestArticulationBodyProperties(NewtonTensorTestBase):
     """Body-level properties: mass, inverse mass, COM, inertia."""
 
-    async def test_body_masses(self):
+    async def test_body_masses(self) -> None:
+        """Verify humanoid link masses can be written and read back for every articulation."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
 
@@ -487,7 +514,8 @@ class TestArticulationBodyProperties(NewtonTensorTestBase):
         humanoids.set_masses(self.to_warp(masses), all_indices)
         self.assertTrue(np.allclose(humanoids.get_masses().numpy(), masses))
 
-    async def test_body_inv_masses_shape(self):
+    async def test_body_inv_masses_shape(self) -> None:
+        """Verify inverse-mass tensors are shaped by humanoid count and maximum link count."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
 
@@ -495,7 +523,8 @@ class TestArticulationBodyProperties(NewtonTensorTestBase):
         inv_masses = humanoids.get_inv_masses().numpy()
         self.assertEqual(inv_masses.shape, (num_envs, humanoids.max_links))
 
-    async def test_body_coms(self):
+    async def test_body_coms(self) -> None:
+        """Verify humanoid center-of-mass transforms can be modified and read back."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
 
@@ -507,7 +536,8 @@ class TestArticulationBodyProperties(NewtonTensorTestBase):
         humanoids.set_coms(self.to_warp(com), all_indices)
         self.assertTrue(np.allclose(humanoids.get_coms().numpy(), com))
 
-    async def test_body_inertias(self):
+    async def test_body_inertias(self) -> None:
+        """Verify humanoid inertia matrices can be modified and read back."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
 
@@ -519,7 +549,8 @@ class TestArticulationBodyProperties(NewtonTensorTestBase):
         humanoids.set_inertias(self.to_warp(inertias), all_indices)
         self.assertTrue(np.allclose(humanoids.get_inertias().numpy(), inertias))
 
-    async def test_body_inv_inertias_shape(self):
+    async def test_body_inv_inertias_shape(self) -> None:
+        """Verify inverse-inertia tensors are shaped by humanoid count, link count, and matrix entries."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
 
@@ -538,8 +569,12 @@ class TestArticulationBodyProperties(NewtonTensorTestBase):
 class TestDofEffortsMovement(NewtonTensorTestBase):
     """Verify that applied joint efforts produce motion after stepping."""
 
-    async def _setup_cartpole_no_drives(self):
-        """Set up cartpoles with zero PD gains so only applied forces drive motion."""
+    async def _setup_cartpole_no_drives(self) -> Any:
+        """Set up cartpoles with zero PD gains so only applied forces drive motion.
+
+        Returns:
+            Tuple of simulation view, cartpole articulation view, and all cartpole indices.
+        """
         try:
             import newton
 
@@ -588,7 +623,8 @@ class TestDofEffortsMovement(NewtonTensorTestBase):
 
         return sim, cartpoles, all_indices
 
-    async def test_effort_causes_velocity_change(self):
+    async def test_effort_causes_velocity_change(self) -> None:
+        """Verify applied cartpole joint effort changes velocity when PD gains are disabled."""
         sim, cartpoles, all_indices = await self._setup_cartpole_no_drives()
 
         vel_before = cartpoles.get_dof_velocities().numpy().reshape(cartpoles.count, cartpoles.max_dofs).copy()
@@ -604,7 +640,8 @@ class TestDofEffortsMovement(NewtonTensorTestBase):
         for i in range(cartpoles.count):
             self.assertGreater(delta[i], 0.01, f"Env {i}: DOF 0 velocity should change after applying effort")
 
-    async def test_effort_causes_position_change(self):
+    async def test_effort_causes_position_change(self) -> None:
+        """Verify sustained cartpole joint effort changes position when PD gains are disabled."""
         sim, cartpoles, all_indices = await self._setup_cartpole_no_drives()
 
         dt = self.get_sim_dt()
@@ -649,7 +686,8 @@ class TestDofEffortsMovement(NewtonTensorTestBase):
         for i in range(cartpoles.count):
             self.assertGreater(delta[i], 0.001, f"Env {i}: DOF 1 position should change after applying effort")
 
-    async def test_zero_effort_no_extra_motion(self):
+    async def test_zero_effort_no_extra_motion(self) -> None:
+        """Verify zero commanded effort does not introduce unbounded extra joint motion."""
         sim, cartpoles, all_indices = await self._setup_cartpole_no_drives()
 
         zero_vel = np.zeros((cartpoles.count, cartpoles.max_dofs), dtype=np.float32)
@@ -678,11 +716,13 @@ class TestDofEffortsMovement(NewtonTensorTestBase):
 class TestSimulationView(NewtonTensorTestBase):
     """Simulation-level tests: creation and gravity."""
 
-    async def test_create_simulation_view(self):
+    async def test_create_simulation_view(self) -> None:
+        """Verify a Newton tensor simulation view can be created for the test stage."""
         sim = await self.create_sim()
         self.assertIsNotNone(sim)
 
-    async def test_set_get_gravity(self):
+    async def test_set_get_gravity(self) -> None:
+        """Verify simulation gravity can be set and queried through the tensor view."""
         sim = await self.create_sim()
         new_gravity = Gf.Vec3f(0, 0, -10.0)
         sim.set_gravity(new_gravity)

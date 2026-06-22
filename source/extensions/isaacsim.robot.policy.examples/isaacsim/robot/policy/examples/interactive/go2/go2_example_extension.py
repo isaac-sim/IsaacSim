@@ -26,7 +26,7 @@ from isaacsim.robot.policy.examples.interactive.go2 import Go2Example
 class Go2ExampleExtension(omni.ext.IExt):
     """Register the Go2 locomotion example in the examples browser."""
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Register the Go2 example on extension startup.
 
         Args:
@@ -64,6 +64,6 @@ class Go2ExampleExtension(omni.ext.IExt):
             category=self.category,
         )
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Deregister the Go2 example on extension shutdown."""
         get_browser_instance().deregister_example(name=self.example_name, category=self.category)

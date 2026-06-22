@@ -372,7 +372,14 @@ def get_joint_state(joint_prim: Usd.Prim) -> tuple[float, float]:
 
 
 def _disable_scene_auto_updates(physics_scene: UsdPhysics.Scene) -> tuple[Usd.Attribute, str | None, bool]:
-    """Disable automatic updates for a PhysX scene and return its previous update state."""
+    """Disable automatic updates for a PhysX scene and return its previous update state.
+
+    Args:
+        physics_scene: USD physics scene whose PhysX update type should be disabled.
+
+    Returns:
+        Update-type attribute, previous value, and whether the value was authored.
+    """
     physx_scene_api = PhysxSchema.PhysxSceneAPI.Apply(physics_scene.GetPrim())
     update_type_attr = physx_scene_api.GetUpdateTypeAttr()
     original_update_type = update_type_attr.Get() if update_type_attr else None
@@ -386,7 +393,13 @@ def _disable_scene_auto_updates(physics_scene: UsdPhysics.Scene) -> tuple[Usd.At
 def _restore_scene_auto_updates(
     update_type_attr: Usd.Attribute, original_update_type: str | None, original_update_type_authored: bool
 ) -> None:
-    """Restore a PhysX scene update type captured by `_disable_scene_auto_updates()`."""
+    """Restore a PhysX scene update type captured by `_disable_scene_auto_updates()`.
+
+    Args:
+        update_type_attr: PhysX scene update-type attribute to restore.
+        original_update_type: Previous authored update type, if any.
+        original_update_type_authored: Whether the previous update type was authored.
+    """
     if original_update_type_authored and original_update_type is not None:
         update_type_attr.Set(original_update_type)
     else:

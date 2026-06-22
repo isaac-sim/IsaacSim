@@ -33,6 +33,12 @@ def _get_sources(connectable: Any) -> list:
     """Safely extract the sources list from GetConnectedSources().
 
     GetConnectedSources() returns (list[ConnectionSourceInfo], list[SdfPath]).
+
+    Args:
+        connectable: Connectable USD shading object.
+
+    Returns:
+        Connected source information.
     """
     result = connectable.GetConnectedSources()
     if not result:
@@ -131,7 +137,13 @@ def read_material(material: UsdShade.Material, output_dir: str | None = None) ->
 
 
 def _read_preview_surface(shader: UsdShade.Shader, data: MaterialData, output_dir: str | None) -> None:
-    """Extract color and texture from a UsdPreviewSurface shader."""
+    """Extract color and texture from a UsdPreviewSurface shader.
+
+    Args:
+        shader: USD shader to read.
+        data: Material data to populate.
+        output_dir: Directory for copied texture files.
+    """
     diffuse_input = shader.GetInput("diffuseColor")
     if diffuse_input:
         sources = _get_sources(diffuse_input)
@@ -155,7 +167,14 @@ def _read_preview_surface(shader: UsdShade.Shader, data: MaterialData, output_di
 
 
 def _read_opacity(shader: UsdShade.Shader) -> float:
-    """Read opacity from a UsdPreviewSurface shader."""
+    """Read opacity from a UsdPreviewSurface shader.
+
+    Args:
+        shader: USD shader to read.
+
+    Returns:
+        Opacity value.
+    """
     opacity_input = shader.GetInput("opacity")
     if opacity_input:
         val = opacity_input.Get()
@@ -165,7 +184,13 @@ def _read_opacity(shader: UsdShade.Shader) -> float:
 
 
 def _read_texture_shader(shader: UsdShade.Shader, data: MaterialData, output_dir: str | None) -> None:
-    """Read texture file path from a UsdUVTexture or image shader."""
+    """Read texture file path from a UsdUVTexture or image shader.
+
+    Args:
+        shader: USD shader to read.
+        data: Material data to populate.
+        output_dir: Directory for copied texture files.
+    """
     if not shader:
         return
 

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for startup contract."""
+"""Verifies prim data services are available immediately when the extension starts. Covers provider extension enablement and manager interface acquisition at startup."""
 
 import carb
 import omni.kit.app
@@ -24,7 +24,11 @@ _PROVIDER_SETTING = "/exts/isaacsim.core.experimental.prims/prim_data_reader_pro
 
 
 def _resolve_provider_name() -> str:
-    """Resolve the provider extension name using the same logic as the implementation."""
+    """Resolve the provider extension name using the same logic as the implementation.
+
+    Returns:
+        Provider name resolved from the extension manager, or None when it cannot be resolved.
+    """
     settings = carb.settings.get_settings()
     configured = settings.get(_PROVIDER_SETTING) if settings is not None else None
     if isinstance(configured, str) and configured.strip():
@@ -40,7 +44,7 @@ class TestStartupContract(omni.kit.test.AsyncTestCase):
     that it only validates the on_startup eager-load path.
     """
 
-    async def test_provider_extension_enabled_at_startup(self):
+    async def test_provider_extension_enabled_at_startup(self) -> None:
         """The resolved provider extension must be enabled by on_startup, not by on-demand loading."""
         provider = _resolve_provider_name()
         ext_manager = omni.kit.app.get_app().get_extension_manager()
@@ -49,7 +53,7 @@ class TestStartupContract(omni.kit.test.AsyncTestCase):
             f"Provider extension '{provider}' should be enabled after isaacsim.core.experimental.prims startup",
         )
 
-    async def test_manager_interface_acquirable_at_startup(self):
+    async def test_manager_interface_acquirable_at_startup(self) -> None:
         """IPrimDataReaderManager must be registered and acquirable after on_startup."""
         from isaacsim.core.experimental.prims import _prims_reader
 

@@ -105,7 +105,12 @@ class PhysicsStepIntervalRecorder(MeasurementDataRecorder):
         self._samples.append(round(interval_ms, 6))
 
     def get_data(self) -> MeasurementData:
-        """Return physics step interval measurements."""
+        """Return physics step interval measurements.
+
+        Returns:
+            Measurement data containing interval statistics, or empty data if
+            no samples were collected or the phase changed.
+        """
         if self.context and self._phase != self.context.phase:
             return MeasurementData()
 

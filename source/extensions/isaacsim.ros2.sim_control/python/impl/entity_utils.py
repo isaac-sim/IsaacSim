@@ -34,6 +34,13 @@ def resolve_source_path(src: str, assets_root_path: str | None) -> str:
     local filesystem are treated as Nucleus-relative and prefixed with
     *assets_root_path*.  Already-absolute Nucleus URIs and real local
     paths are returned unchanged.
+
+    Args:
+        src: User-supplied source path or URI.
+        assets_root_path: Asset root URI to prefix for Nucleus-relative paths.
+
+    Returns:
+        Resolved source path or URI.
     """
     if assets_root_path and is_local_path(src) and not os.path.exists(src):
         return assets_root_path + src if src.startswith("/") else assets_root_path + "/" + src

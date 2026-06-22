@@ -13,19 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the Newton CTRL_DIRECT actuator bridge through the high-level SDK.
+"""Validate Newton tensor actuation through the high-level Articulation API.
 
-These tests drive the Newton tensor backend through
-``isaacsim.core.experimental.prims.Articulation`` to confirm that applied
-efforts, position targets, and PD gains produce the expected joint motion
-once the values cross the C++ tensor bridge into MuJoCo's ``CTRL_DIRECT``
-actuators. A 12-DOF quadruped from Mujoco Menagerie is used as the
-articulation fixture. Tests that run pure effort control with ``kp=kd=0``
-disable gravity on the physics scene so applied efforts are not dominated by
-gravitational joint torques on the legs.
+The tests drive a 12-DOF MuJoCo Go2 articulation and verify that SDK effort
+commands, position targets, and PD gains cross the Newton C++ tensor bridge
+into MuJoCo ``CTRL_DIRECT`` actuators. Effort-only checks disable gravity where
+needed so joint velocity assertions measure commanded torque rather than leg
+gravity loads.
 """
 
 import asyncio
+from typing import Any
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
@@ -39,8 +37,14 @@ from isaacsim.storage.native import get_assets_root_path
 from pxr import UsdGeom, UsdPhysics
 
 
-def _set_robot_height(stage, prim_path: str, height: float) -> None:
-    """Set the robot's root prim z-translate without adding constraints."""
+def _set_robot_height(stage: Any, prim_path: str, height: float) -> None:
+    """Set the robot's root prim z-translate without adding constraints.
+
+    Args:
+        stage: USD stage containing the robot.
+        prim_path: Path to the robot root prim.
+        height: Z translation to write on the robot root.
+    """
     from pxr import Gf
 
     robot_prim = stage.GetPrimAtPath(prim_path)
@@ -55,8 +59,14 @@ def _set_robot_height(stage, prim_path: str, height: float) -> None:
     xformable.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, height))
 
 
-def _fix_robot_base(stage, prim_path: str, robot_height: float = 1.0) -> None:
-    """Fix the robot base to the world frame using a FixedJoint under the articulation."""
+def _fix_robot_base(stage: Any, prim_path: str, robot_height: float = 1.0) -> None:
+    """Fix the robot base to the world frame using a FixedJoint under the articulation.
+
+    Args:
+        stage: USD stage containing the robot.
+        prim_path: Path to the robot root prim.
+        robot_height: Initial z-position of the robot root [m].
+    """
     from pxr import Usd
 
     robot_prim = stage.GetPrimAtPath(prim_path)
@@ -80,8 +90,13 @@ def _fix_robot_base(stage, prim_path: str, robot_height: float = 1.0) -> None:
     _set_robot_height(stage, prim_path, robot_height)
 
 
-def _set_mujoco_variant(stage, prim_path: str) -> None:
-    """Set the Physics variant to mujoco on the robot reference."""
+def _set_mujoco_variant(stage: Any, prim_path: str) -> None:
+    """Set the Physics variant to mujoco on the robot reference.
+
+    Args:
+        stage: USD stage containing the robot.
+        prim_path: Path to the robot root prim.
+    """
     prim = stage.GetPrimAtPath(prim_path)
     if not prim.IsValid():
         return
@@ -121,15 +136,23 @@ class TestNewtonActuatorBridge(omni.kit.test.AsyncTestCase):
     STAND_KP = 60.0
     STAND_KD = 5.0
 
-    def _get_stand_targets(self, robot) -> np.ndarray:
-        """Build standing target array matching the robot's DOF ordering."""
+    def _get_stand_targets(self, robot: Any) -> np.ndarray:
+        """Build standing target array matching the robot's DOF ordering.
+
+        Args:
+            robot: Articulation view with DOF names.
+
+        Returns:
+            Standing target positions ordered by robot DOF index.
+        """
         targets = np.zeros(robot.num_dofs, dtype=np.float32)
         for i, name in enumerate(robot.dof_names):
             if name in self.STAND_TARGETS_BY_NAME:
                 targets[i] = self.STAND_TARGETS_BY_NAME[name]
         return targets
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Create a Newton CPU scene with ground and a MuJoCo-variant Go2 robot."""
         await stage_utils.create_new_stage_async()
         self._physics_rate = 200
         self._physics_dt = 1.0 / self._physics_rate
@@ -157,7 +180,8 @@ class TestNewtonActuatorBridge(omni.kit.test.AsyncTestCase):
 
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Stop the timeline and wait for pending USD loading before the next test."""
         self._timeline.stop()
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await asyncio.sleep(1.0)
@@ -169,6 +193,9 @@ class TestNewtonActuatorBridge(omni.kit.test.AsyncTestCase):
         Args:
             fixed_base: if True, attach the robot base to the world with a FixedJoint.
             robot_height: initial z-position of the robot root [m].
+
+        Returns:
+            Articulation view for the robot prim.
         """
         if fixed_base:
             _fix_robot_base(self._stage, self._prim_path, robot_height)
@@ -182,11 +209,11 @@ class TestNewtonActuatorBridge(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         return robot
 
-    async def _step(self, n: int = 1):
+    async def _step(self, n: int = 1) -> Any:
         for _ in range(n):
             await omni.kit.app.get_app().next_update_async()
 
-    def _reset_state(self, robot, positions: np.ndarray | None = None) -> None:
+    def _reset_state(self, robot: Any, positions: np.ndarray | None = None) -> None:
         """Reset DOF positions and zero velocities.
 
         Args:
@@ -217,19 +244,36 @@ class TestNewtonActuatorBridge(omni.kit.test.AsyncTestCase):
         if scene:
             scene.CreateGravityMagnitudeAttr().Set(0.0)
 
-    def _get_base_height(self, robot) -> float:
-        """Get the z-position of the robot's root link."""
+    def _get_base_height(self, robot: Any) -> float:
+        """Get the z-position of the robot's root link.
+
+        Args:
+            robot: Articulation view.
+
+        Returns:
+            Root link z-position [m].
+        """
         positions, _ = robot.get_world_poses()
         return float(positions.numpy().flatten()[2])
 
-    def _compute_pd_efforts(self, robot, targets: np.ndarray, kp: np.ndarray, kd: np.ndarray) -> np.ndarray:
-        """Compute PD control efforts: F = Kp * (target - pos) - Kd * vel."""
+    def _compute_pd_efforts(self, robot: Any, targets: np.ndarray, kp: np.ndarray, kd: np.ndarray) -> np.ndarray:
+        """Compute PD control efforts: F = Kp * (target - pos) - Kd * vel.
+
+        Args:
+            robot: Articulation view.
+            targets: Target DOF positions.
+            kp: Per-DOF proportional gains.
+            kd: Per-DOF derivative gains.
+
+        Returns:
+            Effort command array with shape ``(1, num_dofs)``.
+        """
         pos = robot.get_dof_positions().numpy().flatten()
         vel = robot.get_dof_velocities().numpy().flatten()
         efforts = kp * (targets - pos) - kd * vel
         return efforts.reshape(1, -1).astype(np.float32)
 
-    async def test_effort_pd_converges_to_stand(self):
+    async def test_effort_pd_converges_to_stand(self) -> None:
         """Manual PD efforts (via set_dof_efforts) drive the robot to standing pose."""
         robot = await self._create_robot()
         self.assertEqual(robot.num_dofs, self.NUM_DOFS)
@@ -261,7 +305,7 @@ class TestNewtonActuatorBridge(omni.kit.test.AsyncTestCase):
                 f"Expected {stand_targets[i]:.3f}, got {pos_final[i]:.3f}",
             )
 
-    async def test_effort_pd_converges_to_stand_freestanding(self):
+    async def test_effort_pd_converges_to_stand_freestanding(self) -> None:
         """Manual PD efforts drive the free-standing robot to stand on its legs."""
         robot = await self._create_robot(fixed_base=False, robot_height=self.FREESTANDING_HEIGHT)
         self.assertEqual(robot.num_dofs, self.NUM_DOFS)
@@ -296,7 +340,7 @@ class TestNewtonActuatorBridge(omni.kit.test.AsyncTestCase):
                 f"(freestanding). Expected {stand_targets[i]:.3f}, got {pos_final[i]:.3f}",
             )
 
-    async def test_effort_produces_velocity(self):
+    async def test_effort_produces_velocity(self) -> None:
         """Applying constant effort should produce nonzero velocity on all DOFs."""
         self._disable_gravity()
         robot = await self._create_robot()
@@ -322,7 +366,7 @@ class TestNewtonActuatorBridge(omni.kit.test.AsyncTestCase):
                 f"DOF {i}: effort should produce nonzero velocity, got {vel[i]:.4f}",
             )
 
-    async def test_opposite_efforts_produce_opposite_velocities(self):
+    async def test_opposite_efforts_produce_opposite_velocities(self) -> None:
         """Reversing effort sign should reverse the velocity direction on most DOFs."""
         self._disable_gravity()
         robot = await self._create_robot()
@@ -366,7 +410,7 @@ class TestNewtonActuatorBridge(omni.kit.test.AsyncTestCase):
                 f"pos_vel={vel_pos[i]:.4f}, neg_vel={vel_neg[i]:.4f}",
             )
 
-    async def test_larger_effort_produces_larger_velocity(self):
+    async def test_larger_effort_produces_larger_velocity(self) -> None:
         """Larger effort magnitude should produce larger velocity magnitude."""
         self._disable_gravity()
         robot = await self._create_robot()
@@ -402,7 +446,7 @@ class TestNewtonActuatorBridge(omni.kit.test.AsyncTestCase):
                 f"small={vel_small[i]:.4f}, large={vel_large[i]:.4f}",
             )
 
-    async def test_position_target_moves_joints(self):
+    async def test_position_target_moves_joints(self) -> None:
         """Setting standing targets with SDK gains should move all DOFs from zero."""
         robot = await self._create_robot()
         await self._step(5)
@@ -433,7 +477,7 @@ class TestNewtonActuatorBridge(omni.kit.test.AsyncTestCase):
                     f"Before: {pos_before[i]:.4f}, After: {pos_after[i]:.4f}",
                 )
 
-    async def test_position_target_converges_to_stand(self):
+    async def test_position_target_converges_to_stand(self) -> None:
         """With SDK gains and enough steps, DOFs should converge to the standing pose."""
         robot = await self._create_robot()
         await self._step(5)
@@ -464,7 +508,7 @@ class TestNewtonActuatorBridge(omni.kit.test.AsyncTestCase):
                 f"Expected {stand_targets[i]:.3f}, got {pos_final[i]:.3f}",
             )
 
-    async def test_position_target_converges_to_stand_freestanding(self):
+    async def test_position_target_converges_to_stand_freestanding(self) -> None:
         """Position targets drive the free-standing robot to stand on its legs."""
         robot = await self._create_robot(fixed_base=False, robot_height=self.FREESTANDING_HEIGHT)
         self.assertEqual(robot.num_dofs, self.NUM_DOFS)
@@ -499,7 +543,7 @@ class TestNewtonActuatorBridge(omni.kit.test.AsyncTestCase):
                 f"(freestanding). Expected {stand_targets[i]:.3f}, got {pos_final[i]:.3f}",
             )
 
-    async def test_higher_stiffness_closer_to_target(self):
+    async def test_higher_stiffness_closer_to_target(self) -> None:
         """Higher stiffness should bring DOFs closer to standing targets."""
         robot = await self._create_robot()
         await self._step(5)
@@ -537,7 +581,7 @@ class TestNewtonActuatorBridge(omni.kit.test.AsyncTestCase):
             f"kp=10 mean error: {mean_error_low:.4f}, kp=200 mean error: {mean_error_high:.4f}",
         )
 
-    async def test_gains_override_usd_authored_gains(self):
+    async def test_gains_override_usd_authored_gains(self) -> None:
         """Setting gains via the API should override gains from the USD asset."""
         robot = await self._create_robot()
         await self._step(5)

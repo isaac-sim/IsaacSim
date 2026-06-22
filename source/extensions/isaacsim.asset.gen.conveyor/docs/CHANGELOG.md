@@ -1,4 +1,9 @@
 # Changelog
+
+## [1.2.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.2.2] - 2026-05-22
 ### Fixed
 - `create_conveyor_belt` now applies `UsdPhysics.MeshCollisionAPI` with the `convexHull` approximation when authoring the physics APIs on a `UsdGeomMesh` prim (i.e. when the target mesh and its ancestors do not already have `UsdPhysics.RigidBodyAPI`). Without it PhysX rejected the default `meshSimplification` approximation on the resulting dynamic body and emitted a per-parse error. The API is only authored for mesh prims; analytic shapes (Cube/Sphere/Cylinder/Capsule) keep their schema-correct collision representation.

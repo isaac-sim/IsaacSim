@@ -49,7 +49,7 @@ class PytorchWriter(Writer):
 
     def __init__(
         self, listener: PytorchListener, output_dir: str = None, tiled_sensor: bool = False, device: str = "cuda"
-    ):
+    ) -> None:
         # If output directory is specified, writer will write annotated data to the given directory
         if output_dir:
             self.backend = BackendDispatch({"paths": {"out_dir": output_dir}})
@@ -69,7 +69,7 @@ class PytorchWriter(Writer):
         self.device = device
         self.version = __version__
 
-    def write(self, data: dict):
+    def write(self, data: dict) -> None:
         """Send data captured by the attached render products to the PytorchListener and will write data to.
 
         the output directory if specified during initialization.
@@ -78,7 +78,7 @@ class PytorchWriter(Writer):
             data: Data to be pinged to the listener and written to the output directory if specified.
         """
         # breakpoint()
-        for annotator in data.keys():
+        for annotator in data:
             if annotator.startswith("rp"):
                 rp_info = data[annotator]
 
@@ -90,14 +90,14 @@ class PytorchWriter(Writer):
         self._frame_id += 1
 
     @carb.profiler.profile
-    def _write_rgb(self, data: dict, rp_info: dict):
+    def _write_rgb(self, data: dict, rp_info: dict) -> None:
         """Write RGB data to the output directory as PNG files.
 
         Args:
             data: Dictionary containing annotator data with RGB information.
             rp_info: Render product information containing resolution and other metadata.
         """
-        for annotator in data.keys():
+        for annotator in data:
             if annotator.startswith("LdrColor"):
                 render_product_name = annotator.split("-")[-1]
                 file_path = f"rgb_{self._frame_id}_{render_product_name}.png"
@@ -129,7 +129,7 @@ class PytorchWriter(Writer):
             raise Exception("Data is Null")
         # breakpoint()
         data_tensors = []
-        for annotator in data.keys():
+        for annotator in data:
             if annotator.startswith("LdrColor"):
                 data_tensors.append(wp.to_torch(data[annotator]).unsqueeze(0))
             elif annotator.startswith("RtxSensor"):

@@ -41,6 +41,10 @@ class TeleoperationScenario(MobilityGenScenario):
 
     Provides rainbow-gradient path visualization (red at start → violet at current position)
     and a yellow heading arrow drawn on the occupancy map.
+
+    Args:
+        robot: Robot controlled by the teleoperation scenario.
+        occupancy_map: Occupancy map used for pose sampling and visualization.
     """
 
     def __init__(self, robot: MobilityGenRobot, occupancy_map: OccupancyMap) -> None:
@@ -60,10 +64,13 @@ class TeleoperationScenario(MobilityGenScenario):
         self.position_history.append((pose.x, pose.y))
 
     def get_visualization_image(self) -> PIL.Image.Image:
-        """Returns the occupancy map with a rainbow path and yellow heading arrow overlaid.
+        """Return the occupancy map with a rainbow path and yellow heading arrow overlaid.
 
         The traveled path is drawn as a color gradient from red (start) to violet (current
         position). A yellow arrow indicates the robot's current heading direction.
+
+        Returns:
+            Occupancy map image with the current path and heading overlays.
         """
         image = self.occupancy_map.ros_image().copy().convert("RGBA")
         draw = ImageDraw.Draw(image)

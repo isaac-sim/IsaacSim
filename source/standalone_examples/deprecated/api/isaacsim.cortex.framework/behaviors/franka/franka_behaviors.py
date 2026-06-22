@@ -16,6 +16,7 @@
 """Define Franka behavior modules and context state monitoring."""
 
 import sys
+from typing import Any
 
 if __name__ == "__main__":
     print(
@@ -49,10 +50,10 @@ class ContextStateMonitor(DfDiagnosticsMonitor):
     behavior implements its own monitor to update that.
     """
 
-    def __init__(self, print_dt, diagnostic_fn=None):
+    def __init__(self, print_dt: float, diagnostic_fn: Any = None) -> None:
         super().__init__(print_dt=print_dt)
 
-    def print_diagnostics(self, context):
+    def print_diagnostics(self, context: Any) -> None:
         """Print diagnostic messages from the context."""
         if hasattr(context, "diagnostics_message"):
             print("====================================")

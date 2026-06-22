@@ -69,7 +69,7 @@ def rgb_to_bgr_wp(data_in: wp.array3d(dtype=wp.uint8), data_out: wp.array3d(dtyp
     data_out[i, j, 3] = data_in[i, j, 3]
 
 
-def gaussian_noise_depth_np(data_in, sigma: float, seed: int):
+def gaussian_noise_depth_np(data_in, sigma, seed):
     """Add Gaussian noise to depth values using NumPy (CPU)."""
     np.random.seed(seed)
     result = data_in.astype(np.float32) + np.random.randn(*data_in.shape) * sigma
@@ -98,7 +98,7 @@ rep.annotators.register_augmentation(
 )
 
 
-def convert_depth_to_uint8(data):
+def convert_depth_to_uint8(data: np.ndarray | wp.array) -> np.ndarray:
     """Normalize depth data and convert it to uint8 grayscale."""
     if isinstance(data, wp.array):
         data = data.numpy()

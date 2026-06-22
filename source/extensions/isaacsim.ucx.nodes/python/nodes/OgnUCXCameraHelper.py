@@ -40,7 +40,12 @@ class OgnUCXCameraHelperInternalState(BaseWriterNode):
         super().__init__(initialize=False)
 
     def post_attach(self, writer: rep.Writer, render_product: str | list[str]) -> None:
-        """Configure node attributes after attaching a writer to a render product."""
+        """Configure node attributes after attaching a writer to a render product.
+
+        Args:
+            writer: Writer attached to the render product.
+            render_product: Render product path or paths the writer is attached to.
+        """
         try:
             if self.rv != "":
                 omni.syntheticdata.SyntheticData.Get().set_node_attributes(
@@ -60,12 +65,23 @@ class OgnUCXCameraHelper:
 
     @staticmethod
     def internal_state() -> OgnUCXCameraHelperInternalState:
-        """Return a new internal state instance."""
+        """Return a new internal state instance.
+
+        Returns:
+            Internal state used by the UCX camera helper node.
+        """
         return OgnUCXCameraHelperInternalState()
 
     @staticmethod
     def compute(db: og.Database) -> bool:
-        """Compute the node output by initializing and attaching camera writers."""
+        """Compute the node output by initializing and attaching camera writers.
+
+        Args:
+            db: OmniGraph database for the node instance.
+
+        Returns:
+            True if the node computes successfully, otherwise false.
+        """
         if db.per_instance_state.initialized is False:
             db.per_instance_state.initialized = True
             stage = omni.usd.get_context().get_stage()
@@ -123,7 +139,12 @@ class OgnUCXCameraHelper:
 
     @staticmethod
     def release_instance(node: object, graph_instance_id: int) -> None:
-        """Release resources when a node instance is destroyed."""
+        """Release resources when a node instance is destroyed.
+
+        Args:
+            node: OmniGraph node instance being released.
+            graph_instance_id: Graph instance identifier for the released node.
+        """
         try:
             state = OgnUCXCameraHelperInternalState.per_instance_internal_state(node)
         except Exception:

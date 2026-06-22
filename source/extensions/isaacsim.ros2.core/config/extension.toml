@@ -1,5 +1,5 @@
 [package]
-version = "1.9.1"
+version = "1.9.4"
 category = "Simulation"
 title = "ROS 2 Core"
 description = "The ROS 2 core extension containing backend libraries required to run the ROS 2 bridge."

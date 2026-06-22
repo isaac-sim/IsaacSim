@@ -98,7 +98,7 @@ class TestExampleBrowserModel(omni.kit.test.AsyncTestCase):
         roots = model.get_category_items(None)
 
         class _FakeWidget:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.category_selection = []
 
         fake_widget = _FakeWidget()
@@ -126,7 +126,7 @@ class TestExampleBrowserModel(omni.kit.test.AsyncTestCase):
         model.get_category_items(None)
 
         class _FakeWidget:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.category_selection = ["sentinel"]
 
         fake_widget = _FakeWidget()

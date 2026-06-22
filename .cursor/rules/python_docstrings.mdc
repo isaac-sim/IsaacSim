@@ -41,7 +41,7 @@ You are an expert at writing and maintaining Python docstrings to document funct
   - For classes, a noun phrase is also acceptable: `"""RTX-based Lidar sensor implementation."""`
 - Long description, separated by an empty line.
   The long description should only appear as long as it is worthwhile to add relevant
-  information to clarify complex logic, help explain calling conventions, or edge cases.
+  information to clarify behavior, calling conventions, or edge cases (see "Docstring Content").
 - List of all parameters defined under the 'Args' section (without types - types are in the signature).
 - Return description defined under the 'Returns' section (without type - type is in the signature).
   **Do NOT use an unescaped colon (`:`) in the Returns description** — Sphinx interprets text before
@@ -50,6 +50,21 @@ You are an expert at writing and maintaining Python docstrings to document funct
 - Usage example, for public functions and class properties and methods, under the 'Example:' section using the `.. code-block:: python` directive.
   Code must be separated by an empty line from the 'Example:' header.
 - Example sections for deprecated methods are optional and not required.
+
+## Docstring Content (what to say, what to omit)
+
+Docstrings describe the **contract**, not the implementation or its history.
+
+- **Intent and scope only**: what the code does, its inputs/outputs, and what the caller
+  needs to know to use it correctly (side effects, raised exceptions, edge cases).
+- **No internal implementation details**: how the work is done internally belongs in inline
+  comments in the body, not the docstring. Observable behavior that affects the caller (e.g.,
+  "blocks until rendering completes", "synchronizes the GPU") IS in scope.
+- **No history or rationale**: never write "was previously", "refactored", "now uses",
+  "instead of X", performance comparisons, or contrasts with alternatives. Use the
+  `{deprecated}` directive for deprecations; everything else lives in the commit/MR.
+- **Plain language**: strip internal jargon and write as if the code always existed this way.
+  Describe the current behavior, not the change that produced it.
 
 ## Class docstrings
 

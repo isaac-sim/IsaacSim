@@ -28,7 +28,7 @@ from isaacsim.storage.native import get_assets_root_path_async
 class TestWheeledRobotValidation(omni.kit.test.AsyncTestCase):
     """Tests for WheeledRobot input validation."""
 
-    async def test_requires_wheel_dof_names_or_indices(self):
+    async def test_requires_wheel_dof_names_or_indices(self) -> None:
         """Verify missing wheel DOF identifiers fail with a clear exception."""
         with self.assertRaises(ValueError):
             WheeledRobot("/World/MissingWheelConfig")
@@ -37,7 +37,7 @@ class TestWheeledRobotValidation(omni.kit.test.AsyncTestCase):
 class TestWheeledRobot(omni.kit.test.AsyncTestCase):
     """Tests for the WheeledRobot experimental class."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment with a Jetbot wheeled robot."""
         assets_root_path = await get_assets_root_path_async()
         self._jetbot_usd = assets_root_path + "/Isaac/Robots/NVIDIA/Jetbot/jetbot.usd"
@@ -53,14 +53,14 @@ class TestWheeledRobot(omni.kit.test.AsyncTestCase):
         app_utils.play()
         await app_utils.update_app_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Stop simulation and wait for stage cleanup."""
         app_utils.stop()
         await app_utils.update_app_async()
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await app_utils.update_app_async()
 
-    async def test_wheeled_robot(self):
+    async def test_wheeled_robot(self) -> None:
         """Verify construction, DOF resolution, and wheel actions."""
         stage = omni.usd.get_context().get_stage()
         self.assertTrue(stage.GetPrimAtPath("/World/Jetbot").IsValid())

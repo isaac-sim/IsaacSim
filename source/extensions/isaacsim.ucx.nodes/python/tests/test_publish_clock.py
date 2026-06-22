@@ -62,14 +62,29 @@ class TestUCXPublishClock(UCXTestCase):
         await omni.kit.app.get_app().next_update_async()
 
     def _unpack_clock_message(self, buffer: object) -> float:
-        """Unpack a FlatBuffers clock message into seconds."""
+        """Unpack a FlatBuffers clock message into seconds.
+
+        Args:
+            buffer: Buffer containing the serialized clock message.
+
+        Returns:
+            Clock timestamp in seconds.
+        """
         time_msg = Time.Time.GetRootAs(bytearray(buffer.tobytes()), 0)
         return time_msg.TimeNs() / 1e9
 
     async def trigger_and_receive_clock_messages(
         self, tags: tuple[int, ...] = (DEFAULT_TEST_TAG,), timeout_frames: int = RECEIVE_TIMEOUT_FRAMES
     ) -> tuple[float, ...]:
-        """Arm clock receives, trigger the graph, and wait for all messages."""
+        """Arm clock receives, trigger the graph, and wait for all messages.
+
+        Args:
+            tags: UCX tags to receive clock messages on.
+            timeout_frames: Maximum number of frames to wait for all messages.
+
+        Returns:
+            Clock timestamps in seconds, ordered to match the requested tags.
+        """
         buffers = [np.zeros(CLOCK_MESSAGE_SIZE_BYTES, dtype=np.uint8) for _ in tags]
         requests = [
             self.client_endpoint.tag_recv(Array(buffer), tag=ucx_api.UCXXTag(tag)) for buffer, tag in zip(buffers, tags)

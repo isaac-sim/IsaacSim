@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.4] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [0.3.3] - 2026-05-05
 ### Changed
 - Locomotion panel exposes per-app-update step sizes (Slide Step / Turn Step) and round-trips them through profiles, matching the renamed `LocomotionController` API.

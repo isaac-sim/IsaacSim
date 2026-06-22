@@ -1,5 +1,5 @@
 [package]
-version = "0.2.5"
+version = "0.2.10"
 category = "Simulation"
 title = "MobilityGen"
 description = "A toolset for generating mobility data for robots."
@@ -19,7 +19,9 @@ writeTarget.platform = true
 "isaacsim.core.nodes" = {}
 "isaacsim.core.rendering_manager" = {}
 "isaacsim.core.simulation_manager" = {}
+"isaacsim.replicator.nurec_utils" = {}
 "omni.kit.pip_archive" = {}
+"omni.kit.usd.collect" = {}
 "omni.kit.usdz_export" = {}
 "omni.replicator.core" = {}
 
@@ -39,6 +41,7 @@ args = [
 
 [[test]]
 dependencies = [
+    "isaacsim.replicator.mobility_gen.examples",
 ]
 args = [
     "--enable",
@@ -91,4 +94,7 @@ args = [
 stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
     '*parse_sensor_entries: skipping camera*',
+    # test_nurec_viewport binds a synthetic RenderProduct at this exact path to a live viewport;
+    # hydra logs this for the fake prim. Path-specific so it cannot mask a real RenderProduct error.
+    "*Was not able to get a RenderProduct from the path: '/Render/rp'*",
 ]

@@ -43,7 +43,11 @@ def register_annotator_spec(name: str, spec: dict) -> None:
 
 
 def unregister_annotator_spec(name: str) -> None:
-    """Remove a previously registered annotator spec."""
+    """Remove a previously registered annotator spec.
+
+    Args:
+        name: Short annotator name to remove.
+    """
     ANNOTATOR_SPEC.pop(name, None)
 
 
@@ -63,5 +67,9 @@ def register_writer_spec(name: str, spec: dict) -> None:
 
 
 def unregister_writer_spec(name: str) -> None:
-    """Remove a previously registered writer spec."""
+    """Remove a previously registered writer spec.
+
+    Args:
+        name: Short writer name to remove.
+    """
     WRITER_SPEC.pop(name, None)

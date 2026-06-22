@@ -24,7 +24,12 @@ from pxr import Sdf, Usd, UsdGeom, UsdPhysics
 
 
 def _build_urdf_stage() -> Usd.Stage:
-    """Build an in-memory stage mimicking URDF-imported joint prims."""
+    """Build an in-memory stage mimicking URDF-imported joint prims.
+
+    Returns:
+        Stage containing URDF-style joint metadata and drives.
+
+    """
     stage = Usd.Stage.CreateInMemory()
     root = UsdGeom.Xform.Define(stage, "/robot").GetPrim()
     stage.SetDefaultPrim(root)

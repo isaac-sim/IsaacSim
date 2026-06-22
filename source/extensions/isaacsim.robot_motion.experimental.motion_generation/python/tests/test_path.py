@@ -15,7 +15,11 @@
 
 # Import extension python module we are testing with absolute import path, as if we are an external user (i.e. a different extension)
 
-"""Tests for Path functionality in the motion generation extension."""
+"""Verify motion-generation ``Path`` construction and waypoint access.
+
+The tests cover NumPy, Warp, and list-backed waypoint data, waypoint count and
+retrieval APIs, and validation for malformed dimensions or out-of-range indices.
+"""
 
 import isaacsim.robot_motion.experimental.motion_generation as mg
 import numpy as np
@@ -33,16 +37,14 @@ class TestPath(omni.kit.test.AsyncTestCase):
     """
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures before each test method is run."""
-        pass
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after each test method is run."""
-        pass
 
-    async def test_path(self):
+    async def test_path(self) -> None:
         """Test Path creation and manipulation with various input types.
 
         Tests creating Path objects with NumPy arrays, Warp arrays, and lists.

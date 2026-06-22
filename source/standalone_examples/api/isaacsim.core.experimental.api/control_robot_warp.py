@@ -147,11 +147,12 @@ def differential_inverse_kinematics(
     goal_position: wp.array,
     goal_orientation: wp.array | None = None,
     method: str = "damped-least-squares",
-    method_cfg: dict[str, float] = {"scale": 1.0, "damping": 0.05, "min_singular_value": 1e-5},
+    method_cfg: dict[str, float] | None = None,
 ) -> wp.array:
     """Compute delta DOF positions via differential inverse kinematics."""
     batch_size = jacobian_end_effector.shape[0]
     device = jacobian_end_effector.device
+    method_cfg = {"scale": 1.0, "damping": 0.05, "min_singular_value": 1e-5} if method_cfg is None else method_cfg
     scale = method_cfg.get("scale", 1.0)
     # Compute velocity error
     error = wp.empty(shape=(batch_size, 6, 1), dtype=wp.float32, device=device)

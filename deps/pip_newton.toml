@@ -11,7 +11,7 @@
 # SWIPAT Dependencies List:
 # -------------------------
 # Package              | Version                  | License     | Source
-# newton[sim]          | 1.2.0                    | Apache-2.0  | PyPI
+# newton[sim]          | 1.2.1                    | Apache-2.0  | PyPI
 # newton-actuators     | 0.1.0                    | Apache-2.0  | PyPI
 # newton-usd-schemas   | 0.2.0                    | Apache-2.0  | PyPI
 # mujoco-usd-converter | 0.2.0                    | Apache-2.0  | PyPI
@@ -35,7 +35,7 @@ packages = [
     "mujoco==3.8.0",
     "mujoco-warp==3.8.0.3",
     # Newton physics library (uses mujoco~=3.8.0, warp-lang>=1.13.0)
-    "newton[sim]==1.2.0",
+    "newton[sim]==1.2.1",
     # Newton actuators library (core dependency)
     "newton-actuators==0.1.0",
     # Newton USD schemas for physics attributes

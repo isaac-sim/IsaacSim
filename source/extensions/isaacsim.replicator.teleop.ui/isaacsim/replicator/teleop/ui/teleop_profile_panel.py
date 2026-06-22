@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from typing import Any
 
 import carb.settings
 import omni.kit.window.popup_dialog
@@ -57,12 +58,25 @@ _SETTINGS_PREFIX = "/persistent/exts/isaacsim.replicator.teleop/teleop_profiles"
 
 
 def set_status(label: ui.Label | None, text: str, color: int = CLR_DIM, emit_terminal: bool = False) -> None:
-    """Set the status label text and color for this panel."""
+    """Set the status label text and color for this panel.
+
+    Args:
+        label: Label widget to update.
+        text: Status text to display.
+        color: Label text color.
+        emit_terminal: Whether to print the status change to the terminal.
+    """
     _set_status_base(label, text, color, source=_LOG_NAMESPACE, emit_terminal=emit_terminal)
 
 
 class TeleopProfilePanel:
-    """Save and load unified teleop profiles."""
+    """Save and load unified teleop profiles.
+
+    Args:
+        collect_profile: Callback that collects the current teleop profile.
+        apply_profile: Callback that applies a loaded teleop profile.
+        collapsed_states: Mutable panel collapsed-state cache.
+    """
 
     def __init__(
         self,
@@ -226,7 +240,11 @@ class TeleopProfilePanel:
         )
 
     def remember_last_profile(self, filepath: str) -> None:
-        """Store the most recent profile path and refresh the profile list."""
+        """Store the most recent profile path and refresh the profile list.
+
+        Args:
+            filepath: Profile path to remember.
+        """
         if not filepath:
             return
         self._settings.set_string(f"{_SETTINGS_PREFIX}/last_profile", filepath)
@@ -276,7 +294,12 @@ class TeleopProfilePanel:
         )
 
     def _perform_delete(self, filepath: str, display_name: str) -> None:
-        """Perform the actual deletion. Public-test-friendly entry point."""
+        """Perform the actual deletion.
+
+        Args:
+            filepath: Profile path to delete.
+            display_name: Display name to show in the status message.
+        """
         self._pending_delete_path = ""
         try:
             os.remove(filepath)
@@ -331,7 +354,11 @@ class TeleopProfilePanel:
         self._perform_save(filepath)
 
     def _perform_save(self, filepath: str) -> None:
-        """Perform the actual save (with or without overwrite). Public-test-friendly entry point."""
+        """Perform the actual save.
+
+        Args:
+            filepath: Profile path to write.
+        """
         self._pending_overwrite_path = ""
         profile = self._collect_profile()
         ok, message = save_teleop_profile(filepath, profile)
@@ -380,10 +407,19 @@ class TeleopProfilePanel:
         on_ok: Callable[[], None],
         on_cancel: Callable[[], None] | None = None,
     ) -> None:
-        """Show a modal yes/cancel confirm dialog and route the answer to ``on_ok`` / ``on_cancel``."""
+        """Show a modal yes/cancel confirm dialog and route the answer.
+
+        Args:
+            title: Dialog title.
+            message: Dialog body text.
+            ok_label: Label for the confirmation button.
+            cancel_label: Label for the cancellation button.
+            on_ok: Callback invoked when the user confirms.
+            on_cancel: Optional callback invoked when the user cancels.
+        """
         self._dismiss_confirm_dialog()
 
-        def _handle_ok(dialog) -> None:
+        def _handle_ok(dialog: Any) -> None:
             try:
                 dialog.hide()
             finally:
@@ -393,7 +429,7 @@ class TeleopProfilePanel:
             except Exception as exc:  # noqa: BLE001
                 set_status(self._status_label, f"Action failed: {exc}", CLR_RED, emit_terminal=True)
 
-        def _handle_cancel(dialog) -> None:
+        def _handle_cancel(dialog: Any) -> None:
             try:
                 dialog.hide()
             finally:

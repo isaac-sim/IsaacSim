@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.11.7] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [0.11.6] - 2026-05-10
 ### Fixed
 - Preserve unselected articulation default gains during partial stiffness/damping updates (6042276)

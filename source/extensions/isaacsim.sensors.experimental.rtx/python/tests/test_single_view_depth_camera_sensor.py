@@ -72,7 +72,13 @@ class TestSingleViewDepthCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_sensor_baseline(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that the sensor baseline can be set and retrieved correctly."""
+        """Test that the sensor baseline can be set and retrieved correctly.
+
+        Args:
+            prim: Single-view depth camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for v0, expected_v0 in draw_sample(shape=(num_prims, 1), dtype=wp.float32, types=[list]):
             prim.set_sensor_baseline(np.array(v0).item())
             output = prim.get_sensor_baseline()
@@ -84,7 +90,13 @@ class TestSingleViewDepthCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_sensor_disparity_confidence(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that the sensor disparity confidence can be set and retrieved correctly."""
+        """Test that the sensor disparity confidence can be set and retrieved correctly.
+
+        Args:
+            prim: Single-view depth camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for v0, expected_v0 in draw_sample(shape=(num_prims, 1), dtype=wp.float32, types=[list]):
             prim.set_sensor_disparity_confidence(np.array(v0).item())
             output = prim.get_sensor_disparity_confidence()
@@ -96,7 +108,13 @@ class TestSingleViewDepthCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_sensor_maximum_disparity(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that the sensor maximum disparity can be set and retrieved correctly."""
+        """Test that the sensor maximum disparity can be set and retrieved correctly.
+
+        Args:
+            prim: Single-view depth camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for v0, expected_v0 in draw_sample(shape=(num_prims, 1), dtype=wp.float32, types=[list]):
             prim.set_sensor_maximum_disparity(np.array(v0).item())
             output = prim.get_sensor_maximum_disparity()
@@ -108,7 +126,13 @@ class TestSingleViewDepthCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_enabled_post_processing(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that the enabled post processing flag can be set and retrieved correctly."""
+        """Test that the enabled post processing flag can be set and retrieved correctly.
+
+        Args:
+            prim: Single-view depth camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for item in [False, True]:
             prim.set_enabled_post_processing(item)
             output = prim.get_enabled_post_processing()
@@ -120,7 +144,13 @@ class TestSingleViewDepthCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_sensor_focal_length(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that the sensor focal length can be set and retrieved correctly."""
+        """Test that the sensor focal length can be set and retrieved correctly.
+
+        Args:
+            prim: Single-view depth camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for v0, expected_v0 in draw_sample(shape=(num_prims, 1), dtype=wp.float32, types=[list]):
             prim.set_sensor_focal_length(np.array(v0).item())
             output = prim.get_sensor_focal_length()
@@ -132,7 +162,13 @@ class TestSingleViewDepthCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_sensor_distance_cutoffs(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that the sensor distance cutoffs can be set and retrieved correctly."""
+        """Test that the sensor distance cutoffs can be set and retrieved correctly.
+
+        Args:
+            prim: Single-view depth camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for (v0, expected_v0), (v1, expected_v1) in zip(
             draw_sample(shape=(num_prims, 1), dtype=wp.float32, types=[list]),
             draw_sample(shape=(num_prims, 1), dtype=wp.float32, types=[list]),
@@ -148,7 +184,13 @@ class TestSingleViewDepthCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_sensor_disparity_noise_downscale(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that the sensor disparity noise downscale can be set and retrieved correctly."""
+        """Test that the sensor disparity noise downscale can be set and retrieved correctly.
+
+        Args:
+            prim: Single-view depth camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for v0, expected_v0 in draw_sample(shape=(num_prims, 1), dtype=wp.float32, types=[list]):
             prim.set_sensor_disparity_noise_downscale(np.array(v0).item())
             output = prim.get_sensor_disparity_noise_downscale()
@@ -160,7 +202,13 @@ class TestSingleViewDepthCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_sensor_noise_parameters(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that the sensor noise parameters can be set and retrieved correctly."""
+        """Test that the sensor noise parameters can be set and retrieved correctly.
+
+        Args:
+            prim: Single-view depth camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for (v0, expected_v0), (v1, expected_v1) in zip(
             draw_sample(shape=(num_prims, 1), dtype=wp.float32, types=[list]),
             draw_sample(shape=(num_prims, 1), dtype=wp.float32, types=[list]),
@@ -176,7 +224,13 @@ class TestSingleViewDepthCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_enabled_outlier_removal(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that the enabled outlier removal flag can be set and retrieved correctly."""
+        """Test that the enabled outlier removal flag can be set and retrieved correctly.
+
+        Args:
+            prim: Single-view depth camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for v0, expected_v0 in draw_sample(shape=(num_prims, 1), dtype=wp.bool, types=[list]):
             prim.set_enabled_outlier_removal(np.array(v0).item())
             output = prim.get_enabled_outlier_removal()
@@ -188,7 +242,13 @@ class TestSingleViewDepthCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_sensor_output_mode(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that the sensor output mode can be set and retrieved correctly."""
+        """Test that the sensor output mode can be set and retrieved correctly.
+
+        Args:
+            prim: Single-view depth camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for v0, expected_v0 in draw_sample(shape=(num_prims, 1), dtype=wp.int32, low=0, high=8, types=[list]):
             prim.set_sensor_output_mode(np.array(v0).item())
             output = prim.get_sensor_output_mode()
@@ -200,7 +260,13 @@ class TestSingleViewDepthCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_sensor_size(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that the sensor size can be set and retrieved correctly."""
+        """Test that the sensor size can be set and retrieved correctly.
+
+        Args:
+            prim: Single-view depth camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for v0, expected_v0 in draw_sample(shape=(num_prims, 1), dtype=wp.float32, types=[list]):
             prim.set_sensor_size(np.array(v0).item())
             output = prim.get_sensor_size()
@@ -214,7 +280,13 @@ class TestSingleViewDepthCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_data(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that sensor data is correctly retrieved for all annotators."""
+        """Test that sensor data is correctly retrieved for all annotators.
+
+        Args:
+            prim: Single-view depth camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         prim.camera.set_focal_lengths(1.814756)
         prim.camera.set_focus_distances(400.0)
         prim.set_sensor_baseline(55)

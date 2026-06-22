@@ -60,7 +60,14 @@ class OgnHolonomicControllerInternalState(BaseResetNode):
         self.initialized = True
 
     def forward(self, command: np.ndarray) -> np.ndarray:
-        """Run the controller forward pass and return joint velocity commands."""
+        """Run the controller forward pass and return joint velocity commands.
+
+        Args:
+            command: Desired chassis velocity command array.
+
+        Returns:
+            Joint velocity command array.
+        """
         return self.controller_handle.forward(command)
 
     def custom_reset(self) -> None:
@@ -75,14 +82,24 @@ class OgnHolonomicController:
 
     @staticmethod
     def init_instance(node: og.Node, graph_instance_id: int) -> None:
-        """Initialize the per-instance state for this node."""
+        """Initialize the per-instance state for this node.
+
+        Args:
+            node: OmniGraph node instance.
+            graph_instance_id: Graph instance identifier.
+        """
         state = OgnHolonomicControllerDatabase.get_internal_state(node, graph_instance_id)
         state.node = node
         state.graph_id = graph_instance_id
 
     @staticmethod
     def release_instance(node: og.Node, graph_instance_id: int) -> None:
-        """Release the per-instance state when the node instance is removed."""
+        """Release the per-instance state when the node instance is removed.
+
+        Args:
+            node: OmniGraph node instance being released.
+            graph_instance_id: Graph instance identifier being released.
+        """
         try:
             state = OgnHolonomicControllerDatabase.get_internal_state(node, graph_instance_id)
         except Exception:
@@ -94,12 +111,24 @@ class OgnHolonomicController:
 
     @staticmethod
     def internal_state() -> OgnHolonomicControllerInternalState:
-        """Return a new internal state instance."""
+        """Return a new internal state instance.
+
+        Returns:
+            Per-instance holonomic controller state.
+        """
         return OgnHolonomicControllerInternalState()
 
     @staticmethod
     def compute(db: OgnHolonomicControllerDatabase) -> bool:
-        """Compute joint velocity commands from the holonomic drive model."""
+        """Compute joint velocity commands from the holonomic drive model.
+
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            True when joint velocity commands are computed, False when inputs are invalid
+            or controller execution fails.
+        """
         state = db.per_instance_state
 
         try:

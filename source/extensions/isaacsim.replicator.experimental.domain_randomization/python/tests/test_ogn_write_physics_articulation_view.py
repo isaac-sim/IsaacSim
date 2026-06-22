@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test suite for validating the OgnWritePhysicsArticulationView node in the experimental DR extension."""
+"""Verifies the OgnWritePhysicsArticulationView node writes randomized articulation properties into physics views. The tests cover joint gains, friction, poses, velocities, DOF limits, efforts, masses, inertias, material properties, and contact offsets."""
+
+from typing import Any
 
 import isaacsim.replicator.experimental.domain_randomization as dr
 import numpy as np
@@ -34,7 +36,7 @@ class TestOgnWritePhysicsArticulationView(omni.kit.test.AsyncTestCase):
     dynamics properties, and physics simulation settings using a Franka Panda robot.
     """
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up the test environment with a physics simulation, articulation view, and Franka robot."""
         await create_new_stage_async()
 
@@ -73,16 +75,16 @@ class TestOgnWritePhysicsArticulationView(omni.kit.test.AsyncTestCase):
         dr.physics_view.register_articulation_view(self._articulation_view, name="franka")
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up the test environment by stopping the simulation and clearing resources."""
         self._iface.stop()
-        dr.physics_view._articulation_views = dict()
-        dr.physics_view._articulation_views_initial_values = dict()
-        dr.physics_view._articulation_views_reset_values = dict()
-        dr.physics_view._current_tendon_properties = dict()
+        dr.physics_view._articulation_views = {}
+        dr.physics_view._articulation_views_initial_values = {}
+        dr.physics_view._articulation_views_reset_values = {}
+        dr.physics_view._current_tendon_properties = {}
         omni.usd.get_context().close_stage()
 
-    async def _setup_random_attribute(self, attribute_name, value):
+    async def _setup_random_attribute(self, attribute_name: Any, value: Any) -> None:
         """Set up a random attribute for the articulation view node with the specified value.
 
         Args:
@@ -105,28 +107,28 @@ class TestOgnWritePhysicsArticulationView(omni.kit.test.AsyncTestCase):
         await self._controller.evaluate(self._graph)
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_randomize_stiffness(self):
+    async def test_randomize_stiffness(self) -> None:
         """Test randomization of joint stiffness values in the articulation view."""
         value = [100, 200, 300, 400, 500, 600, 700, 800, 900]
         await self._setup_random_attribute(attribute_name="stiffness", value=value)
         stiffness = np.asarray(self._articulation_view._physics_articulation_view.get_dof_stiffnesses())
         self.assertTrue(np.all(np.isclose(stiffness, value)))
 
-    async def test_randomize_damping(self):
+    async def test_randomize_damping(self) -> None:
         """Test randomization of joint damping values in the articulation view."""
         value = [100, 200, 300, 400, 500, 600, 700, 800, 900]
         await self._setup_random_attribute(attribute_name="damping", value=value)
         damping = np.asarray(self._articulation_view._physics_articulation_view.get_dof_dampings())
         self.assertTrue(np.all(np.isclose(damping, value)))
 
-    async def test_randomize_joint_friction(self):
+    async def test_randomize_joint_friction(self) -> None:
         """Test randomization of joint friction coefficients in the articulation view."""
         value = [100, 200, 300, 400, 500, 600, 700, 800, 900]
         await self._setup_random_attribute(attribute_name="joint_friction", value=value)
         dof_friction = np.asarray(self._articulation_view._physics_articulation_view.get_dof_friction_coefficients())
         self.assertTrue(np.all(np.isclose(dof_friction, value)))
 
-    async def test_randomize_position(self):
+    async def test_randomize_position(self) -> None:
         """Test randomization of the root position of the articulation."""
         value = [100, 200, 300]
         await self._setup_random_attribute(attribute_name="position", value=value)
@@ -134,7 +136,7 @@ class TestOgnWritePhysicsArticulationView(omni.kit.test.AsyncTestCase):
         root_position = np.asarray(root_position)
         self.assertTrue(np.all(np.isclose(root_position, value)))
 
-    async def test_randomize_orientation(self):
+    async def test_randomize_orientation(self) -> None:
         """Test randomization of the root orientation of the articulation."""
         value = [0, np.pi, 0]
         await self._setup_random_attribute(attribute_name="orientation", value=value)
@@ -142,7 +144,7 @@ class TestOgnWritePhysicsArticulationView(omni.kit.test.AsyncTestCase):
         root_orientation = np.asarray(root_orientation)
         self.assertTrue(np.all(np.isclose(root_orientation, [0, 0, 1, 0], atol=1e-04)))
 
-    async def test_randomize_velocities(self):
+    async def test_randomize_velocities(self) -> None:
         """Test randomization of the articulation velocities."""
         value = [10] * 6
         await self._setup_random_attribute(attribute_name="velocity", value=value)
@@ -150,61 +152,61 @@ class TestOgnWritePhysicsArticulationView(omni.kit.test.AsyncTestCase):
         velocities = np.concatenate([np.asarray(lin_vel), np.asarray(ang_vel)], axis=-1)
         self.assertTrue(np.all(np.isclose(value, velocities, atol=1e-04)))
 
-    async def test_randomize_joint_positions(self):
+    async def test_randomize_joint_positions(self) -> None:
         """Test randomization of joint positions in the articulation."""
         value = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
         await self._setup_random_attribute(attribute_name="joint_positions", value=value)
         dof_positions = np.asarray(self._articulation_view.get_dof_positions())
         self.assertTrue(np.all(np.isclose(dof_positions, value)))
 
-    async def test_randomize_joint_velocities(self):
+    async def test_randomize_joint_velocities(self) -> None:
         """Test randomization of joint velocities for the articulation view."""
         value = [100, 200, 300, 400, 500, 600, 700, 800, 900]
         await self._setup_random_attribute(attribute_name="joint_velocities", value=value)
         dof_velocities = np.asarray(self._articulation_view.get_dof_velocities())
         self.assertTrue(np.all(np.isclose(dof_velocities, value)))
 
-    async def test_randomize_lower_dof_limits(self):
+    async def test_randomize_lower_dof_limits(self) -> None:
         """Test randomization of lower degree of freedom limits for the articulation view."""
         value = [-10, -20, -30, -40, -50, -60, -70, -80, -90]
         await self._setup_random_attribute(attribute_name="lower_dof_limits", value=value)
         lower_dof_limits = np.asarray(self._articulation_view._physics_articulation_view.get_dof_limits())[..., 0]
         self.assertTrue(np.all(np.isclose(lower_dof_limits, value)))
 
-    async def test_randomize_upper_dof_limits(self):
+    async def test_randomize_upper_dof_limits(self) -> None:
         """Test randomization of upper degree of freedom limits for the articulation view."""
         value = [100, 200, 300, 400, 500, 600, 700, 800, 900]
         await self._setup_random_attribute(attribute_name="upper_dof_limits", value=value)
         upper_dof_limits = np.asarray(self._articulation_view._physics_articulation_view.get_dof_limits())[..., 1]
         self.assertTrue(np.all(np.isclose(upper_dof_limits, value)))
 
-    async def test_randomize_max_efforts(self):
+    async def test_randomize_max_efforts(self) -> None:
         """Test randomization of maximum effort values for the articulation view."""
         value = [100, 200, 300, 400, 500, 600, 700, 800, 900]
         await self._setup_random_attribute(attribute_name="max_efforts", value=value)
         dof_max_forces = np.asarray(self._articulation_view._physics_articulation_view.get_dof_max_forces())
         self.assertTrue(np.all(np.isclose(dof_max_forces, value)))
 
-    async def test_randomize_armature(self):
+    async def test_randomize_armature(self) -> None:
         """Test randomization of joint armature values for the articulation view."""
         value = [100, 200, 300, 400, 500, 600, 700, 800, 900]
         await self._setup_random_attribute(attribute_name="joint_armatures", value=value)
         new_values = np.asarray(self._articulation_view._physics_articulation_view.get_dof_armatures())
         self.assertTrue(np.all(np.isclose(new_values, value)))
 
-    async def test_randomize_max_velocities(self):
+    async def test_randomize_max_velocities(self) -> None:
         """Test randomization of maximum velocity values for the articulation view."""
         value = [100, 200, 300, 400, 500, 600, 700, 800, 900]
         await self._setup_random_attribute(attribute_name="joint_max_velocities", value=value)
         new_values = np.asarray(self._articulation_view._physics_articulation_view.get_dof_max_velocities())
         self.assertTrue(np.all(np.isclose(new_values, value)))
 
-    async def test_randomize_joint_efforts(self):
+    async def test_randomize_joint_efforts(self) -> None:
         """Test randomization of joint effort values for the articulation view."""
         value = [100, 200, 300, 400, 500, 600, 700, 800, 900]
         await self._setup_random_attribute(attribute_name="joint_efforts", value=value)
 
-    async def test_randomize_masses(self):
+    async def test_randomize_masses(self) -> None:
         """Test randomization of body mass values for the articulation view (CPU only)."""
         if SimulationManager.get_physics_sim_device() == "cpu":
             physics_view = self._articulation_view._physics_articulation_view
@@ -213,7 +215,7 @@ class TestOgnWritePhysicsArticulationView(omni.kit.test.AsyncTestCase):
             new_value = np.asarray(physics_view.get_masses())
             self.assertTrue(np.all(np.isclose(new_value, value)))
 
-    async def test_randomize_inertias(self):
+    async def test_randomize_inertias(self) -> None:
         """Test randomization of body inertia values for the articulation view (CPU only)."""
         if SimulationManager.get_physics_sim_device() == "cpu":
             physics_view = self._articulation_view._physics_articulation_view
@@ -223,7 +225,7 @@ class TestOgnWritePhysicsArticulationView(omni.kit.test.AsyncTestCase):
             diagonal = new_value[:, :, [0, 4, 8]]
             self.assertTrue(np.all(np.isclose(diagonal.flatten(), inertias)))
 
-    async def test_randomize_material_properties(self):
+    async def test_randomize_material_properties(self) -> None:
         """Test randomization of material properties for the articulation view."""
         physics_view = self._articulation_view._physics_articulation_view
         value = [0.5] * len(self._articulation_view) * physics_view.max_shapes * 3
@@ -231,7 +233,7 @@ class TestOgnWritePhysicsArticulationView(omni.kit.test.AsyncTestCase):
         new_value = np.asarray(physics_view.get_material_properties()).flatten()
         self.assertTrue(np.all(np.isclose(new_value, value)))
 
-    async def test_randomize_contact_offsets(self):
+    async def test_randomize_contact_offsets(self) -> None:
         """Test randomization of contact offsets for the articulation view."""
         physics_view = self._articulation_view._physics_articulation_view
         value = [0.05] * len(self._articulation_view) * physics_view.max_shapes
@@ -239,7 +241,7 @@ class TestOgnWritePhysicsArticulationView(omni.kit.test.AsyncTestCase):
         new_value = np.asarray(physics_view.get_contact_offsets())
         self.assertTrue(np.all(np.isclose(new_value, value)))
 
-    async def test_randomize_rest_offset(self):
+    async def test_randomize_rest_offset(self) -> None:
         """Test randomization of rest offsets for the articulation view."""
         physics_view = self._articulation_view._physics_articulation_view
         value = np.asarray(physics_view.get_contact_offsets()) / 2

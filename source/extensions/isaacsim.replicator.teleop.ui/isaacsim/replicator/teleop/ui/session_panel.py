@@ -52,7 +52,14 @@ _LOG_NAMESPACE = "Session"
 
 
 def set_status(label: ui.Label | None, text: str, color: int = CLR_DIM, emit_terminal: bool = False) -> None:
-    """Set the status label text and color for this panel."""
+    """Set the status label text and color for this panel.
+
+    Args:
+        label: Label widget to update.
+        text: Status text to display.
+        color: Label text color.
+        emit_terminal: Whether to print the status change to the terminal.
+    """
     _set_status_base(label, text, color, source=_LOG_NAMESPACE, emit_terminal=emit_terminal)
 
 
@@ -78,7 +85,13 @@ _MARKER_BACKENDS = [
 
 
 class SessionPanel:
-    """Teleop session panel: connection, frame markers, and synthetic debug controls."""
+    """Teleop session panel: connection, frame markers, and synthetic debug controls.
+
+    Args:
+        teleop_manager: Shared teleop manager for session state.
+        markers_manager: Manager for session marker prims.
+        collapsed_states: Mutable panel collapsed-state cache.
+    """
 
     def __init__(
         self,
@@ -541,7 +554,11 @@ class SessionPanel:
     # ------------------------------------------------------------------
 
     def _on_debug_tracking_toggled(self, enabled: bool) -> None:
-        """Ensure markers exist before enabling debug tracking mode."""
+        """Ensure markers exist before enabling debug tracking mode.
+
+        Args:
+            enabled: Whether debug tracking should be enabled.
+        """
         if enabled:
             if self._tm.is_connected:
                 if self._debug_tracking_cb:
@@ -711,16 +728,12 @@ class SessionPanel:
     def _activate_tracking_space(self, path: str) -> tuple[bool, bool, str]:
         """Activate the given path or fall back to the built-in anchor.
 
+        Args:
+            path: Tracking-space prim path to activate.
+
         Returns:
-            Tuple of ``(ok, deferred, message)``:
-              * ``ok`` — operation succeeded (the message-bus / status row may
-                still surface it as an info / yellow status when ``deferred``).
-              * ``deferred`` — activation was queued, not applied immediately
-                (typically because session markers are not visible yet); the
-                UI shows this as a yellow informational status instead of a
-                green confirmation. Decoupled from the message string so a
-                future copy edit can't silently flip the status color.
-              * ``message`` — human-readable message to surface in the UI / log.
+            Tuple containing whether the operation succeeded, whether activation
+            was deferred, and the message to surface in the UI or log.
         """
         if not path or path.startswith(MarkersManager.MARKERS_SCOPE):
             if not self._mm.has_active_markers:
@@ -738,7 +751,14 @@ class SessionPanel:
         return ok, False, msg
 
     def _is_valid_xformable(self, path: str) -> bool:
-        """Return True when ``path`` resolves to a valid Xformable prim on the active stage."""
+        """Return True when ``path`` resolves to a valid Xformable prim on the active stage.
+
+        Args:
+            path: Prim path to validate.
+
+        Returns:
+            True if the path resolves to a valid Xformable prim, False otherwise.
+        """
         stage = omni.usd.get_context().get_stage()
         if stage is None or not Sdf.Path.IsValidPathString(path):
             return False
@@ -752,6 +772,9 @@ class SessionPanel:
         state so Clear remains available while activation is deferred (no
         markers / no stage), and so editing the field after a Set still
         offers Clear as the obvious revert action.
+
+        Returns:
+            True if the tracking-space field can be cleared, False otherwise.
         """
         if self._tracking_space_field is None:
             return False
@@ -802,7 +825,11 @@ class SessionPanel:
         self._tm.set_xr_anchor_fixed_height(fixed)
 
     def collect_profile(self) -> TeleopSettingsProfile:
-        """Collect the current session panel values into a teleop settings profile."""
+        """Collect the current session panel values into a teleop settings profile.
+
+        Returns:
+            Teleop settings profile section.
+        """
         coordinate_system = CoordinateSystem.ISAAC_SIM.value
         if self._coord_system_combo is not None:
             index = self._coord_system_combo.model.get_item_value_model().get_value_as_int()
@@ -842,7 +869,12 @@ class SessionPanel:
         )
 
     def apply_profile(self, profile: TeleopSettingsProfile, resolve_stage: bool) -> None:
-        """Apply a teleop settings profile to the panel and shared manager state."""
+        """Apply a teleop settings profile to the panel and shared manager state.
+
+        Args:
+            profile: Teleop settings profile section to apply.
+            resolve_stage: Whether to validate profile paths against the active stage.
+        """
         coord_index = 0
         for index, (_, system) in enumerate(_COORD_SYSTEMS):
             if system.value == profile.coordinate_system:

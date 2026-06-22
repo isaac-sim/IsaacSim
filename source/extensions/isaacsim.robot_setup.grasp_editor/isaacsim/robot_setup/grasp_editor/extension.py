@@ -32,24 +32,6 @@ from omni.kit.menu.utils import add_menu_items, remove_menu_items
 from .global_variables import EXTENSION_TITLE
 from .ui_builder import UIBuilder
 
-"""
-This file serves as a basic template for the standard boilerplate operations
-that make a UI-based extension appear on the toolbar.
-
-This implementation is meant to cover most use-cases without modification.
-Various callbacks are hooked up to a seperate class UIBuilder in .ui_builder.py
-Most users will be able to make their desired UI extension by interacting solely with
-UIBuilder.
-
-This class sets up standard useful callback functions in UIBuilder:
-    on_menu_callback: Called when extension is opened
-    on_timeline_event: Called when timeline is stopped, paused, or played
-    on_physics_step: Called on every physics step
-    on_stage_event: Called when stage is opened or closed
-    cleanup: Called when resources such as physics subscriptions should be cleaned up
-    build_ui: User function that creates the UI they want.
-"""
-
 
 class Extension(omni.ext.IExt):
     """Extension class for the isaacsim.robot_setup.grasp_editor extension.
@@ -70,7 +52,7 @@ class Extension(omni.ext.IExt):
     for UI-based extensions with standard boilerplate operations for toolbar integration.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize extension and UI elements.
 
         Args:
@@ -109,7 +91,7 @@ class Extension(omni.ext.IExt):
         self._stage_event_sub = None
         self._timeline = omni.timeline.get_timeline_interface()
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Cleanup extension resources and remove UI elements."""
         self._models = {}
         remove_menu_items(self._menu_items, "Tools")
@@ -173,16 +155,16 @@ class Extension(omni.ext.IExt):
             self._timeline_event_sub_stop = None
             self.ui_builder.cleanup()
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
         """Build the extension's UI components and dock the window."""
         with self._window.frame:
             with ui.VStack(spacing=5, height=0):
                 self._build_extension_ui()
 
-        async def dock_window():
+        async def dock_window() -> None:
             await omni.kit.app.get_app().next_update_async()
 
-            def dock(space, name, location, pos=0.5):
+            def dock(space: object, name: object, location: object, pos: object = 0.5) -> object:
                 window = omni.ui.Workspace.get_window(name)
                 if window and space:
                     window.dock_in(space, location, pos)
@@ -198,7 +180,7 @@ class Extension(omni.ext.IExt):
     # Functions below this point call user functions
     #################################################################
 
-    def _menu_callback(self):
+    def _menu_callback(self) -> None:
         """Handle menu item selection to toggle window visibility."""
         self._window.visible = not self._window.visible
         self.ui_builder.on_menu_callback()
@@ -273,7 +255,7 @@ class Extension(omni.ext.IExt):
         """
         self.ui_builder.on_simulation_stop_play()
 
-    def _build_extension_ui(self):
+    def _build_extension_ui(self) -> None:
         """Builds the extension's user interface.
 
         Delegates UI construction to the UIBuilder instance by calling its build_ui method.

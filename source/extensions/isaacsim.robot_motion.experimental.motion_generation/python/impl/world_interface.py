@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, NoReturn
 
 import warp as wp
 
@@ -47,7 +47,7 @@ class WorldInterface:
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> NoReturn:
         """Add sphere obstacles to the planning world.
 
         Args:
@@ -71,7 +71,7 @@ class WorldInterface:
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> NoReturn:
         """Add cube obstacles to the planning world.
 
         Args:
@@ -97,7 +97,7 @@ class WorldInterface:
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> NoReturn:
         """Add cone obstacles to the planning world.
 
         Args:
@@ -125,7 +125,7 @@ class WorldInterface:
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> NoReturn:
         """Add plane obstacles to the planning world.
 
         Args:
@@ -153,7 +153,7 @@ class WorldInterface:
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> NoReturn:
         """Add capsule obstacles to the planning world.
 
         Args:
@@ -181,7 +181,7 @@ class WorldInterface:
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> NoReturn:
         """Add cylinder obstacles to the planning world.
 
         Args:
@@ -210,7 +210,7 @@ class WorldInterface:
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> NoReturn:
         """Add mesh obstacles to the planning world.
 
         Args:
@@ -238,7 +238,7 @@ class WorldInterface:
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> NoReturn:
         """Add triangulated mesh obstacles to the planning world.
 
         Args:
@@ -277,7 +277,7 @@ class WorldInterface:
         safety_tolerances: wp.array,
         poses: tuple[wp.array, wp.array],
         enabled_array: wp.array,
-    ):
+    ) -> NoReturn:
         """Add oriented bounding box obstacles to the planning world.
 
         Args:
@@ -303,7 +303,7 @@ class WorldInterface:
         self,
         prim_paths: list[str],
         poses: tuple[wp.array, wp.array],
-    ):
+    ) -> NoReturn:
         """Update world transforms for existing obstacles.
 
         Args:
@@ -319,7 +319,7 @@ class WorldInterface:
         self,
         prim_paths: list[str],
         poses: tuple[wp.array, wp.array],
-    ):
+    ) -> NoReturn:
         """Update twist velocities for existing obstacles.
 
         Args:
@@ -335,7 +335,7 @@ class WorldInterface:
         self,
         prim_paths: list[str],
         enabled_array: wp.array,
-    ):
+    ) -> NoReturn:
         """Update collision enabled state for existing obstacles.
 
         Args:
@@ -351,7 +351,7 @@ class WorldInterface:
         self,
         prim_paths: list[str],
         scales: wp.array,
-    ):
+    ) -> NoReturn:
         """Update local scales for existing obstacles.
 
         Args:
@@ -371,7 +371,7 @@ class WorldInterface:
         self,
         prim_paths: list[str],
         radii: wp.array | None,
-    ):
+    ) -> NoReturn:
         """Update sphere-specific properties for existing obstacles.
 
         Args:
@@ -387,7 +387,7 @@ class WorldInterface:
         self,
         prim_paths: list[str],
         sizes: wp.array | None,
-    ):
+    ) -> NoReturn:
         """Update cube-specific properties for existing obstacles.
 
         Args:
@@ -405,7 +405,7 @@ class WorldInterface:
         axes: list[Literal["X", "Y", "Z"]] | None,
         radii: wp.array | None,
         lengths: wp.array | None,
-    ):
+    ) -> NoReturn:
         """Update cone-specific properties for existing obstacles.
 
         Args:
@@ -425,7 +425,7 @@ class WorldInterface:
         axes: list[Literal["X", "Y", "Z"]] | None,
         lengths: wp.array | None,
         widths: wp.array | None,
-    ):
+    ) -> NoReturn:
         """Update plane-specific properties for existing obstacles.
 
         Args:
@@ -445,7 +445,7 @@ class WorldInterface:
         axes: list[Literal["X", "Y", "Z"]] | None,
         radii: wp.array | None,
         lengths: wp.array | None,
-    ):
+    ) -> NoReturn:
         """Update capsule-specific properties for existing obstacles.
 
         Args:
@@ -465,7 +465,7 @@ class WorldInterface:
         axes: list[Literal["X", "Y", "Z"]] | None,
         radii: wp.array | None,
         lengths: wp.array | None,
-    ):
+    ) -> NoReturn:
         """Update cylinder-specific properties for existing obstacles.
 
         Args:
@@ -486,7 +486,7 @@ class WorldInterface:
         face_vertex_indices: list[wp.array] | None,
         face_vertex_counts: list[wp.array] | None,
         normals: list[wp.array] | None,
-    ):
+    ) -> NoReturn:
         """Update mesh-specific properties for existing obstacles.
 
         Args:
@@ -506,7 +506,7 @@ class WorldInterface:
         prim_paths: list[str],
         points: list[wp.array] | None,
         face_vertex_indices: list[wp.array] | None,
-    ):
+    ) -> NoReturn:
         """Update triangulated mesh-specific properties for existing obstacles.
 
         Args:
@@ -527,7 +527,7 @@ class WorldInterface:
         centers: wp.array | None,
         rotations: wp.array | None,
         half_side_lengths: wp.array | None,
-    ):
+    ) -> NoReturn:
         """Update oriented bounding box-specific properties for existing obstacles.
 
         Args:

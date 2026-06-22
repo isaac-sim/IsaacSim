@@ -57,7 +57,6 @@ class Ros2CameraGraph(MenuHelperWindow):
     """
 
     def __init__(self) -> None:
-        """Initialize the ROS2 camera graph window."""
         super().__init__("ROS2 Camera Graph", width=500, height=600)
         # Initialize parameters
         self._og_path = "/Graph/ROS_Camera"
@@ -731,7 +730,6 @@ class Ros2RtxLidarGraph(MenuHelperWindow):
     """
 
     def __init__(self) -> None:
-        """Initialize the ROS2 RTX lidar graph window."""
         super().__init__("ROS2 RTX Lidar Graph", width=400, height=650)
         self._og_path = "/Graph/ROS_LidarRTX"
         self._frame_id = "sim_lidar"

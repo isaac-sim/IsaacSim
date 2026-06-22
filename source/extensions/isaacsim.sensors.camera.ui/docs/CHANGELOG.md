@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.7.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [0.7.1] - 2026-05-12
 ### Fixed
 - Depth sensor wrappers returned by `_wrap_depth_sensor_cameras` are now stored in `Extension._depth_sensors` instead of being discarded, preventing a create/destroy cycle that corrupted the RTX pipeline and made asset materials invisible.

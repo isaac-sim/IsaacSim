@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Regression tests for invalid quaternion inputs on navigation OmniGraph nodes."""
+"""Regression coverage for navigation OmniGraph nodes when goal or pose inputs contain default zero quaternions. The tests verify those inputs are treated as zero yaw instead of producing invalid rotations."""
 
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -27,12 +27,14 @@ class TestNavigationQuaternionGuards(ogts.OmniGraphTestCase):
     """Validate navigation nodes tolerate default invalid quaternion inputs."""
 
     async def setUp(self) -> None:
+        """Prepare the Navigation Quaternion Guards test fixture."""
         await stage_utils.create_new_stage_async()
         stage_utils.set_stage_up_axis("Z")
         stage_utils.set_stage_units(meters_per_unit=1.0)
         await app_utils.update_app_async()
 
     async def tearDown(self) -> None:
+        """Clean up the Navigation Quaternion Guards test fixture."""
         app_utils.stop()
         await app_utils.update_app_async()
         await omni.kit.stage_templates.new_stage_async()

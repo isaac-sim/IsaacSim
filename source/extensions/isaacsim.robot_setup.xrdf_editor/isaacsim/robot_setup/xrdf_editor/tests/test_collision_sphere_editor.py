@@ -33,7 +33,8 @@ _LINK2_PATH = "/World/robot/link2"
 class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     """Test CollisionSphereEditor API."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Set up test fixtures."""
         super().setUp()
         await stage_utils.create_new_stage_async()
         stage_utils.define_prim(_ROBOT_PATH, "Xform")
@@ -41,7 +42,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
         stage_utils.define_prim(_LINK2_PATH, "Xform")
         self.editor = CollisionSphereEditor()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Clean up test fixtures."""
         self.editor.on_shutdown()
         super().tearDown()
 
@@ -49,35 +51,41 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # add_sphere / delete_sphere
     # -------------------------------------------------------------------------
 
-    async def test_add_sphere_returns_valid_path(self):
+    async def test_add_sphere_returns_valid_path(self) -> None:
+        """Test add sphere returns valid path."""
         sphere_path = self.editor.add_sphere(_LINK1_PATH, np.array([0.1, 0.0, 0.0]), 0.05)
         self.assertIsNotNone(sphere_path)
         self.assertIn(sphere_path, self.editor.path_2_spheres)
         prim = prim_utils.get_prim_at_path(sphere_path)
         self.assertTrue(prim and prim.IsValid())
 
-    async def test_add_sphere_path_nested_under_link(self):
+    async def test_add_sphere_path_nested_under_link(self) -> None:
+        """Test add sphere path nested under link."""
         sphere_path = self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.assertTrue(sphere_path.startswith(_LINK1_PATH))
 
-    async def test_add_multiple_spheres_unique_paths(self):
+    async def test_add_multiple_spheres_unique_paths(self) -> None:
+        """Test add multiple spheres unique paths."""
         path1 = self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         path2 = self.editor.add_sphere(_LINK1_PATH, np.array([0.1, 0.0, 0.0]), 0.05)
         self.assertNotEqual(path1, path2)
         self.assertEqual(len(self.editor.path_2_spheres), 2)
 
-    async def test_delete_sphere_removes_from_dict(self):
+    async def test_delete_sphere_removes_from_dict(self) -> None:
+        """Test delete sphere removes from dict."""
         sphere_path = self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.editor.delete_sphere(sphere_path)
         self.assertNotIn(sphere_path, self.editor.path_2_spheres)
 
-    async def test_delete_sphere_removes_prim(self):
+    async def test_delete_sphere_removes_prim(self) -> None:
+        """Test delete sphere removes prim."""
         sphere_path = self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.editor.delete_sphere(sphere_path)
         prim = prim_utils.get_prim_at_path(sphere_path)
         self.assertFalse(prim and prim.IsValid())
 
-    async def test_delete_nonexistent_sphere_is_safe(self):
+    async def test_delete_nonexistent_sphere_is_safe(self) -> None:
+        """Test delete nonexistent sphere is safe."""
         # Should not raise even when the path is not tracked.
         self.editor.delete_sphere("/World/robot/link1/nonexistent_sphere")
 
@@ -85,17 +93,20 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # clear_spheres / clear_link_spheres
     # -------------------------------------------------------------------------
 
-    async def test_clear_spheres_removes_all(self):
+    async def test_clear_spheres_removes_all(self) -> None:
+        """Test clear spheres removes all."""
         self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.editor.add_sphere(_LINK2_PATH, np.ones(3) * 0.1, 0.05)
         self.editor.clear_spheres()
         self.assertEqual(len(self.editor.path_2_spheres), 0)
 
-    async def test_clear_spheres_on_empty_editor_is_safe(self):
+    async def test_clear_spheres_on_empty_editor_is_safe(self) -> None:
+        """Test clear spheres on empty editor is safe."""
         self.editor.clear_spheres()
         self.assertEqual(len(self.editor.path_2_spheres), 0)
 
-    async def test_clear_link_spheres_removes_only_target_link(self):
+    async def test_clear_link_spheres_removes_only_target_link(self) -> None:
+        """Test clear link spheres removes only target link."""
         self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.editor.add_sphere(_LINK1_PATH, np.array([0.1, 0.0, 0.0]), 0.05)
         link2_path = self.editor.add_sphere(_LINK2_PATH, np.zeros(3), 0.05)
@@ -107,20 +118,23 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # get_sphere_names_by_link
     # -------------------------------------------------------------------------
 
-    async def test_get_sphere_names_by_link_returns_correct_count(self):
+    async def test_get_sphere_names_by_link_returns_correct_count(self) -> None:
+        """Test get sphere names by link returns correct count."""
         self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.editor.add_sphere(_LINK1_PATH, np.array([0.1, 0.0, 0.0]), 0.05)
         self.editor.add_sphere(_LINK2_PATH, np.zeros(3), 0.05)
         names = self.editor.get_sphere_names_by_link(_LINK1_PATH)
         self.assertEqual(len(names), 2)
 
-    async def test_get_sphere_names_by_link_are_relative(self):
+    async def test_get_sphere_names_by_link_are_relative(self) -> None:
+        """Test get sphere names by link are relative."""
         self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         names = self.editor.get_sphere_names_by_link(_LINK1_PATH)
         for name in names:
             self.assertTrue(name.startswith("/"), f"Expected relative path starting with '/', got: {name}")
 
-    async def test_get_sphere_names_by_link_empty_when_none(self):
+    async def test_get_sphere_names_by_link_empty_when_none(self) -> None:
+        """Test get sphere names by link empty when none."""
         self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         names = self.editor.get_sphere_names_by_link(_LINK2_PATH)
         self.assertEqual(names, [])
@@ -129,13 +143,15 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # scale_spheres
     # -------------------------------------------------------------------------
 
-    async def test_scale_spheres_doubles_radius(self):
+    async def test_scale_spheres_doubles_radius(self) -> None:
+        """Test scale spheres doubles radius."""
         sphere_path = self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.1)
         self.editor.scale_spheres(_LINK1_PATH, 2.0)
         radius = self.editor.path_2_spheres[sphere_path].get_radii().numpy()[0]
         self.assertAlmostEqual(radius, 0.2, places=4)
 
-    async def test_scale_spheres_only_affects_matching_prefix(self):
+    async def test_scale_spheres_only_affects_matching_prefix(self) -> None:
+        """Test scale spheres only affects matching prefix."""
         path1 = self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.1)
         path2 = self.editor.add_sphere(_LINK2_PATH, np.zeros(3), 0.1)
         self.editor.scale_spheres(_LINK1_PATH, 3.0)
@@ -144,7 +160,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(radius1, 0.3, places=4)
         self.assertAlmostEqual(radius2, 0.1, places=4)
 
-    async def test_scale_spheres_records_operation(self):
+    async def test_scale_spheres_records_operation(self) -> None:
+        """Test scale spheres records operation."""
         self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.1)
         ops_before = len(self.editor._operations)
         self.editor.scale_spheres(_LINK1_PATH, 2.0)
@@ -154,19 +171,22 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # undo / redo
     # -------------------------------------------------------------------------
 
-    async def test_undo_add_removes_sphere(self):
+    async def test_undo_add_removes_sphere(self) -> None:
+        """Test undo add removes sphere."""
         sphere_path = self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.editor.undo()
         self.assertNotIn(sphere_path, self.editor.path_2_spheres)
         prim = prim_utils.get_prim_at_path(sphere_path)
         self.assertFalse(prim and prim.IsValid())
 
-    async def test_undo_add_populates_redo_stack(self):
+    async def test_undo_add_populates_redo_stack(self) -> None:
+        """Test undo add populates redo stack."""
         self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.editor.undo()
         self.assertEqual(len(self.editor._redo), 1)
 
-    async def test_redo_after_undo_add_restores_sphere(self):
+    async def test_redo_after_undo_add_restores_sphere(self) -> None:
+        """Test redo after undo add restores sphere."""
         sphere_path = self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.editor.undo()
         self.editor.redo()
@@ -174,14 +194,16 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
         prim = prim_utils.get_prim_at_path(sphere_path)
         self.assertTrue(prim and prim.IsValid())
 
-    async def test_undo_scale_restores_original_radius(self):
+    async def test_undo_scale_restores_original_radius(self) -> None:
+        """Test undo scale restores original radius."""
         sphere_path = self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.1)
         self.editor.scale_spheres(_LINK1_PATH, 3.0)
         self.editor.undo()
         radius = self.editor.path_2_spheres[sphere_path].get_radii().numpy()[0]
         self.assertAlmostEqual(radius, 0.1, places=4)
 
-    async def test_undo_clear_spheres_restores_sphere(self):
+    async def test_undo_clear_spheres_restores_sphere(self) -> None:
+        """Test undo clear spheres restores sphere."""
         sphere_path = self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.editor.clear_spheres()
         self.editor.undo()
@@ -189,15 +211,18 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
         prim = prim_utils.get_prim_at_path(sphere_path)
         self.assertTrue(prim and prim.IsValid())
 
-    async def test_undo_on_empty_stack_is_safe(self):
+    async def test_undo_on_empty_stack_is_safe(self) -> None:
+        """Test undo on empty stack is safe."""
         self.editor.undo()
         self.assertEqual(len(self.editor.path_2_spheres), 0)
 
-    async def test_redo_on_empty_stack_is_safe(self):
+    async def test_redo_on_empty_stack_is_safe(self) -> None:
+        """Test redo on empty stack is safe."""
         self.editor.redo()
         self.assertEqual(len(self.editor.path_2_spheres), 0)
 
-    async def test_add_sphere_clears_redo_stack(self):
+    async def test_add_sphere_clears_redo_stack(self) -> None:
+        """Test add sphere clears redo stack."""
         self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.editor.undo()
         self.assertEqual(len(self.editor._redo), 1)
@@ -209,13 +234,15 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # interpolate_spheres
     # -------------------------------------------------------------------------
 
-    async def test_interpolate_spheres_creates_correct_count(self):
+    async def test_interpolate_spheres_creates_correct_count(self) -> None:
+        """Test interpolate spheres creates correct count."""
         path1 = self.editor.add_sphere(_LINK1_PATH, np.array([0.0, 0.0, 0.0]), 0.05)
         path2 = self.editor.add_sphere(_LINK1_PATH, np.array([0.6, 0.0, 0.0]), 0.05)
         self.editor.interpolate_spheres(path1, path2, num_spheres=3)
         self.assertEqual(len(self.editor.path_2_spheres), 5)  # 2 original + 3 interpolated
 
-    async def test_interpolate_spheres_positions_between_endpoints(self):
+    async def test_interpolate_spheres_positions_between_endpoints(self) -> None:
+        """Test interpolate spheres positions between endpoints."""
         p0 = np.array([0.0, 0.0, 0.0])
         p1 = np.array([1.0, 0.0, 0.0])
         path1 = self.editor.add_sphere(_LINK1_PATH, p0, 0.05)
@@ -234,16 +261,19 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # set_sphere_colors
     # -------------------------------------------------------------------------
 
-    async def test_set_sphere_colors_updates_filter(self):
+    async def test_set_sphere_colors_updates_filter(self) -> None:
+        """Test set sphere colors updates filter."""
         self.editor.set_sphere_colors(_LINK1_PATH)
         self.assertEqual(self.editor.filter, _LINK1_PATH)
 
-    async def test_set_sphere_colors_updates_color_in(self):
+    async def test_set_sphere_colors_updates_color_in(self) -> None:
+        """Test set sphere colors updates color in."""
         color = np.array([1.0, 0.0, 0.0])
         self.editor.set_sphere_colors(_LINK1_PATH, color_in=color)
         np.testing.assert_array_equal(self.editor.filter_in_sphere_color, color)
 
-    async def test_set_sphere_colors_updates_color_out(self):
+    async def test_set_sphere_colors_updates_color_out(self) -> None:
+        """Test set sphere colors updates color out."""
         color = np.array([0.0, 1.0, 0.0])
         self.editor.set_sphere_colors(_LINK1_PATH, color_out=color)
         np.testing.assert_array_equal(self.editor.filter_out_sphere_color, color)
@@ -252,20 +282,23 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # write_spheres_to_dict
     # -------------------------------------------------------------------------
 
-    async def test_write_spheres_to_dict_populates_link_key(self):
+    async def test_write_spheres_to_dict_populates_link_key(self) -> None:
+        """Test write spheres to dict populates link key."""
         self.editor.add_sphere(_LINK1_PATH, np.array([0.1, 0.2, 0.3]), 0.05)
         link_to_spheres = {}
         self.editor.write_spheres_to_dict(_ROBOT_PATH, link_to_spheres)
         self.assertIn("link1", link_to_spheres)
 
-    async def test_write_spheres_to_dict_correct_radius(self):
+    async def test_write_spheres_to_dict_correct_radius(self) -> None:
+        """Test write spheres to dict correct radius."""
         self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.07)
         link_to_spheres = {}
         self.editor.write_spheres_to_dict(_ROBOT_PATH, link_to_spheres)
         sphere_data = link_to_spheres["link1"][0]
         self.assertAlmostEqual(sphere_data["radius"], 0.07, places=2)
 
-    async def test_write_spheres_to_dict_multiple_links(self):
+    async def test_write_spheres_to_dict_multiple_links(self) -> None:
+        """Test write spheres to dict multiple links."""
         self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.editor.add_sphere(_LINK2_PATH, np.zeros(3), 0.05)
         link_to_spheres = {}
@@ -277,7 +310,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # load_xrdf_spheres
     # -------------------------------------------------------------------------
 
-    async def test_load_xrdf_spheres_v1_creates_spheres(self):
+    async def test_load_xrdf_spheres_v1_creates_spheres(self) -> None:
+        """Test load xrdf spheres v1 creates spheres."""
         parsed = {
             "format_version": 1.0,
             "collision": {"geometry": "default"},
@@ -294,7 +328,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
         sphere_path = next(iter(self.editor.path_2_spheres))
         self.assertTrue(sphere_path.startswith(_LINK1_PATH))
 
-    async def test_load_xrdf_spheres_v2_creates_spheres(self):
+    async def test_load_xrdf_spheres_v2_creates_spheres(self) -> None:
+        """Test load xrdf spheres v2 creates spheres."""
         parsed = {
             "format_version": 2.0,
             "world_collision": {"geometry": "default"},
@@ -310,7 +345,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
         self.editor.load_xrdf_spheres(_ROBOT_PATH, parsed)
         self.assertEqual(len(self.editor.path_2_spheres), 2)
 
-    async def test_load_xrdf_spheres_clears_existing_spheres(self):
+    async def test_load_xrdf_spheres_clears_existing_spheres(self) -> None:
+        """Test load xrdf spheres clears existing spheres."""
         self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         parsed = {
             "format_version": 1.0,
@@ -329,7 +365,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
         sphere_path = next(iter(self.editor.path_2_spheres))
         self.assertTrue(sphere_path.startswith(_LINK2_PATH))
 
-    async def test_load_xrdf_spheres_resets_undo_history(self):
+    async def test_load_xrdf_spheres_resets_undo_history(self) -> None:
+        """Test load xrdf spheres resets undo history."""
         self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         parsed = {
             "format_version": 1.0,
@@ -347,7 +384,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(self.editor._operations), 1)
         self.assertEqual(self.editor._operations[0][0], "ADD")
 
-    async def test_load_xrdf_spheres_missing_collision_key_is_safe(self):
+    async def test_load_xrdf_spheres_missing_collision_key_is_safe(self) -> None:
+        """Test load xrdf spheres missing collision key is safe."""
         parsed = {"format_version": 1.0}
         self.editor.load_xrdf_spheres(_ROBOT_PATH, parsed)
         self.assertEqual(len(self.editor.path_2_spheres), 0)
@@ -356,7 +394,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # on_shutdown
     # -------------------------------------------------------------------------
 
-    async def test_on_shutdown_removes_all_spheres(self):
+    async def test_on_shutdown_removes_all_spheres(self) -> None:
+        """Test on shutdown removes all spheres."""
         self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.editor.add_sphere(_LINK2_PATH, np.ones(3) * 0.1, 0.05)
         self.editor.on_shutdown()
@@ -366,7 +405,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # clear_preview
     # -------------------------------------------------------------------------
 
-    async def test_clear_preview_does_not_affect_regular_spheres(self):
+    async def test_clear_preview_does_not_affect_regular_spheres(self) -> None:
+        """Test clear preview does not affect regular spheres."""
         sphere_path = self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.editor.clear_preview()
         self.assertIn(sphere_path, self.editor.path_2_spheres)
@@ -376,7 +416,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # save_spheres / load_spheres round-trip (Lula robot description YAML)
     # -------------------------------------------------------------------------
 
-    async def test_save_spheres_load_spheres_round_trip_preserves_data(self):
+    async def test_save_spheres_load_spheres_round_trip_preserves_data(self) -> None:
+        """Test save spheres load spheres round trip preserves data."""
         # Authored data — distinct centers and radii so each sphere is uniquely
         # identifiable after the load.
         authored = [
@@ -429,7 +470,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
                 pass
             os.rmdir(tmp_dir)
 
-    async def test_save_spheres_skips_spheres_outside_robot_path(self):
+    async def test_save_spheres_skips_spheres_outside_robot_path(self) -> None:
+        """Test save spheres skips spheres outside robot path."""
         # Sphere under the robot path is included; a sphere created under a
         # foreign root is skipped (warning is logged, not asserted).
         stage_utils.define_prim("/World/other_robot", "Xform")
@@ -449,7 +491,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # load_spheres error handling (Lula robot description YAML)
     # -------------------------------------------------------------------------
 
-    async def test_load_spheres_handles_malformed_yaml(self):
+    async def test_load_spheres_handles_malformed_yaml(self) -> None:
+        """Test load spheres handles malformed yaml."""
         # Regression: previously raised UnboundLocalError because `parsed_file`
         # was never assigned on the YAMLError branch.
         tmp_dir = tempfile.mkdtemp()
@@ -468,7 +511,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
                 pass
             os.rmdir(tmp_dir)
 
-    async def test_load_spheres_handles_non_mapping_yaml_root(self):
+    async def test_load_spheres_handles_non_mapping_yaml_root(self) -> None:
+        """Test load spheres handles non mapping yaml root."""
         # An empty or list-rooted YAML file is not a robot description; should
         # bail out cleanly rather than raising AttributeError on `.get()`.
         tmp_dir = tempfile.mkdtemp()
@@ -490,7 +534,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # interpolate_spheres additional branches
     # -------------------------------------------------------------------------
 
-    async def test_interpolate_spheres_skips_when_endpoints_under_different_links(self):
+    async def test_interpolate_spheres_skips_when_endpoints_under_different_links(self) -> None:
+        """Test interpolate spheres skips when endpoints under different links."""
         # Regression: the function logged a warning then continued, producing
         # interpolated spheres on path1's link even though path2 lived on a
         # different link. After the fix it must return without adding spheres.
@@ -502,7 +547,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
 
         self.assertEqual(len(self.editor.path_2_spheres), count_before)
 
-    async def test_interpolate_spheres_general_radius_branch(self):
+    async def test_interpolate_spheres_general_radius_branch(self) -> None:
+        """Test interpolate spheres general radius branch."""
         # Exercises the `relative_offsets = (rads - rad_1) / (rad_2 - rad_1)`
         # branch — only reached when the two endpoint radii differ enough.
         path1 = self.editor.add_sphere(_LINK1_PATH, np.array([0.0, 0.0, 0.0]), 0.02)
@@ -525,7 +571,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
             self.assertGreater(radius, 0.02)
             self.assertLess(radius, 0.20)
 
-    async def test_interpolate_spheres_invalid_path_is_safe(self):
+    async def test_interpolate_spheres_invalid_path_is_safe(self) -> None:
+        """Test interpolate spheres invalid path is safe."""
         # Either invalid endpoint should early-return without raising.
         path_valid = self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         count_before = len(self.editor.path_2_spheres)
@@ -537,7 +584,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # load_xrdf_spheres — clone traversal in _get_sphere_list_from_xrdf_geometries
     # -------------------------------------------------------------------------
 
-    async def test_load_xrdf_spheres_clone_single_level(self):
+    async def test_load_xrdf_spheres_clone_single_level(self) -> None:
+        """Test load xrdf spheres clone single level."""
         parsed = {
             "format_version": 1.0,
             "collision": {"geometry": "primary"},
@@ -559,7 +607,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
         self.assertTrue(any(p.startswith(_LINK1_PATH) for p in paths))
         self.assertTrue(any(p.startswith(_LINK2_PATH) for p in paths))
 
-    async def test_load_xrdf_spheres_clone_transitive(self):
+    async def test_load_xrdf_spheres_clone_transitive(self) -> None:
+        """Test load xrdf spheres clone transitive."""
         # primary -> mid -> leaf chain. Leaf's spheres should land on the stage.
         parsed = {
             "format_version": 1.0,
@@ -584,7 +633,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(paths), 2)
         self.assertTrue(any(p.startswith(_LINK2_PATH) for p in paths))
 
-    async def test_load_xrdf_spheres_clone_cycle_does_not_loop_forever(self):
+    async def test_load_xrdf_spheres_clone_cycle_does_not_loop_forever(self) -> None:
+        """Test load xrdf spheres clone cycle does not loop forever."""
         # primary -> other -> primary cycle. The handled_groups guard must
         # break the cycle (regression scaffolding: if the guard is ever
         # removed, this test will hang the runner).
@@ -606,7 +656,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
 
         self.assertEqual(len(self.editor.path_2_spheres), 2)
 
-    async def test_load_xrdf_spheres_clone_missing_target_is_safe(self):
+    async def test_load_xrdf_spheres_clone_missing_target_is_safe(self) -> None:
+        """Test load xrdf spheres clone missing target is safe."""
         # Referencing a non-existent clone group should be silently skipped,
         # not crash.
         parsed = {
@@ -626,7 +677,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # load_xrdf_spheres — format_version / buffer_distance branches
     # -------------------------------------------------------------------------
 
-    async def test_load_xrdf_spheres_unsupported_format_version_is_safe(self):
+    async def test_load_xrdf_spheres_unsupported_format_version_is_safe(self) -> None:
+        """Test load xrdf spheres unsupported format version is safe."""
         parsed = {
             "format_version": 3.0,
             "world_collision": {"geometry": "default"},
@@ -638,7 +690,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
         self.editor.load_xrdf_spheres(_ROBOT_PATH, parsed)
         self.assertEqual(len(self.editor.path_2_spheres), 0)
 
-    async def test_load_xrdf_spheres_buffer_distance_inflates_only_targeted_link(self):
+    async def test_load_xrdf_spheres_buffer_distance_inflates_only_targeted_link(self) -> None:
+        """Test load xrdf spheres buffer distance inflates only targeted link."""
         # Regression: previously used a bare prefix compare, so a buffer
         # distance keyed on "link1" also affected sibling links whose names
         # *start* with "link1" (e.g. "link10").
@@ -679,7 +732,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
         # `link10` must be unaffected by the buffer keyed on `link1`.
         self.assertAlmostEqual(link10_radii[0], base_radius_link10, places=4)
 
-    async def test_load_xrdf_spheres_spheres_value_none_is_safe(self):
+    async def test_load_xrdf_spheres_spheres_value_none_is_safe(self) -> None:
+        """Test load xrdf spheres spheres value none is safe."""
         # `spheres: null` in YAML parses to None; loader must coerce to {}
         # instead of crashing on `for key, val in None.items()`.
         parsed = {
@@ -694,7 +748,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # redo — DEL and SCALE branches (ADD is covered above)
     # -------------------------------------------------------------------------
 
-    async def test_redo_after_undo_clear_spheres_re_deletes(self):
+    async def test_redo_after_undo_clear_spheres_re_deletes(self) -> None:
+        """Test redo after undo clear spheres re deletes."""
         sphere_path = self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.05)
         self.editor.clear_spheres()
         # Undo restores the sphere; redo of that DEL op must remove it again.
@@ -705,7 +760,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
         prim = prim_utils.get_prim_at_path(sphere_path)
         self.assertFalse(prim and prim.IsValid())
 
-    async def test_redo_after_undo_scale_re_applies_scale(self):
+    async def test_redo_after_undo_scale_re_applies_scale(self) -> None:
+        """Test redo after undo scale re applies scale."""
         sphere_path = self.editor.add_sphere(_LINK1_PATH, np.zeros(3), 0.1)
         self.editor.scale_spheres(_LINK1_PATH, 3.0)
         # Undo restores 0.1; redo of the SCALE op must re-apply the 3x factor
@@ -727,7 +783,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
     # generate_spheres — non-triangle mesh rejection
     # -------------------------------------------------------------------------
 
-    async def test_generate_spheres_rejects_non_triangle_mesh(self):
+    async def test_generate_spheres_rejects_non_triangle_mesh(self) -> None:
+        """Test generate spheres rejects non triangle mesh."""
         # Quad mesh (vertex count 4 per face) must be rejected before Lula is
         # invoked. The function logs a warning and returns without adding any
         # spheres.
@@ -756,7 +813,8 @@ class TestCollisionSphereEditor(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(self.editor.path_2_spheres), 0)
         self.assertEqual(len(self.editor._preview_spheres), 0)
 
-    async def test_generate_spheres_rejects_mixed_face_topology(self):
+    async def test_generate_spheres_rejects_mixed_face_topology(self) -> None:
+        """Test generate spheres rejects mixed face topology."""
         # Mixed triangle + quad face counts is also rejected (the unique check
         # fails before the value check).
         points = np.array(

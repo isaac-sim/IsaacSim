@@ -60,7 +60,10 @@ class _FakeTeleopManager:
 
 
 class TestTeleopSessionInjector(omni.kit.test.AsyncTestCase):
+    """Test TestTeleopSessionInjector behavior."""
+
     async def setUp(self) -> None:
+        """Set up the test fixture."""
         self._saved_injectors = registered_session_injectors()
         clear_session_injectors()
         settings = carb.settings.get_settings()
@@ -70,6 +73,7 @@ class TestTeleopSessionInjector(omni.kit.test.AsyncTestCase):
         settings.set_bool(_RECORD_HEAD_KEY, True)
 
     async def tearDown(self) -> None:
+        """Tear down the test fixture."""
         clear_session_injectors()
         for injector in self._saved_injectors:
             register_session_injector(injector)
@@ -84,6 +88,7 @@ class TestTeleopSessionInjector(omni.kit.test.AsyncTestCase):
             settings.set_bool(_RECORD_HEAD_KEY, bool(self._saved_record_head))
 
     async def test_injector_adds_controller_and_head_recordables(self) -> None:
+        """Run the injector adds controller and head recordables test."""
         unregister = install_teleop_session_injector(_FakeTeleopManager())
         recorder = _FakeRecorder()
 
@@ -100,6 +105,7 @@ class TestTeleopSessionInjector(omni.kit.test.AsyncTestCase):
         self.assertEqual(recorder_after_unregister.recordables(), [])
 
     async def test_injector_respects_settings_and_existing_groups(self) -> None:
+        """Run the injector respects settings and existing groups test."""
         settings = carb.settings.get_settings()
         settings.set_bool(_RECORD_AIM_KEY, False)
         settings.set_bool(_RECORD_HEAD_KEY, False)

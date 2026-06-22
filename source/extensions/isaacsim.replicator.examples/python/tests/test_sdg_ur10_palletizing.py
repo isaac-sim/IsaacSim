@@ -13,9 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verify the UR10 palletizing SDG workflow writes expected bin-flip and pallet datasets."""
+
 import os
 import tempfile
 import unittest
+from typing import Any
 
 import carb.settings
 import omni.kit
@@ -24,14 +27,21 @@ from isaacsim.test.utils.file_validation import validate_folder_contents
 
 
 class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
+    """Runs the palletizing demo and validates annotator and BasicWriter capture outputs."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Create a clean stage and preserve the DLSS setting used by palletizing captures."""
         await omni.kit.app.get_app().next_update_async()
         await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
         self.original_dlss_exec_mode = carb.settings.get_settings().get("rtx/post/dlss/execMode")
 
-    async def tearDown(self):
+    async def tearDown(self) -> Any:
+        """Close the stage, wait for pending loads, and restore the DLSS setting.
+
+        Returns:
+            None.
+        """
         omni.usd.get_context().close_stage()
         await omni.kit.app.get_app().next_update_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
@@ -40,7 +50,8 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
         carb.settings.get_settings().set("rtx/post/dlss/execMode", self.original_dlss_exec_mode)
 
     @unittest.skipIf(os.getenv("ETM_ACTIVE"), "Skipped in ETM.")
-    async def test_sdg_ur10_palletizing(self):
+    async def test_sdg_ur10_palletizing(self) -> None:
+        """Capture bin-flip annotator frames and pallet BasicWriter frames during UR10 bin stacking."""
         import asyncio
         import json
         import os
@@ -67,7 +78,7 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
             FLIP_HELPER_PATH = "/World/Ur10Table/pallet_holder"
             PALLET_PRIM_MESH_PATH = "/World/Ur10Table/pallet/Xform/Mesh_015"
 
-            def __init__(self, output_dir=None):
+            def __init__(self, output_dir: Any | None = None) -> None:
                 # There are 36 bins in total
                 self._bin_counter = 0
                 self._num_captures = MAX_BINS
@@ -97,17 +108,17 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
                 )
                 print(f"[PalletizingSDGDemo] Output directory: {self._output_dir}")
 
-            def start(self, num_captures, bin_flip_frames, pallet_frames):
+            def start(self, num_captures: Any, bin_flip_frames: Any, pallet_frames: Any) -> Any:
                 self._num_captures = num_captures if 1 <= num_captures <= 36 else 36
                 self._bin_flip_frames = bin_flip_frames
                 self._pallet_frames = pallet_frames
                 if self._init():
                     self._start()
 
-            def is_running(self):
+            def is_running(self) -> Any:
                 return self._in_running_state
 
-            def _init(self):
+            def _init(self) -> None:
                 self._stage = omni.usd.get_context().get_stage()
                 self._active_bin = self._stage.GetPrimAtPath(f"{self.BINS_FOLDER_PATH}/bin_{self._bin_counter}")
 
@@ -136,7 +147,7 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
 
                 return True
 
-            def _start(self):
+            def _start(self) -> None:
                 self._timeline_sub = carb.eventdispatcher.get_eventdispatcher().observe_event(
                     event_name=omni.timeline.GLOBAL_EVENT_CURRENT_TIME_TICKED,
                     on_event=self._on_timeline_event,
@@ -150,7 +161,7 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
                 self._in_running_state = True
                 print("[PalletizingSDGDemo] Starting the palletizing SDG demo..")
 
-            def clear(self):
+            def clear(self) -> None:
                 if self._timeline_sub:
                     self._timeline_sub.reset()
                     self._timeline_sub = None
@@ -163,14 +174,14 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
                 if self._stage.GetPrimAtPath("/Replicator"):
                     omni.kit.commands.execute("DeletePrimsCommand", paths=["/Replicator"])
 
-            def _on_stage_closing_event(self, e: carb.eventdispatcher.Event):
+            def _on_stage_closing_event(self, e: carb.eventdispatcher.Event) -> None:
                 # Make sure the subscribers are unsubscribed for new stages
                 self.clear()
 
-            def _on_timeline_event(self, e: carb.eventdispatcher.Event):
+            def _on_timeline_event(self, e: carb.eventdispatcher.Event) -> None:
                 self._check_bin_overlaps()
 
-            def _check_bin_overlaps(self):
+            def _check_bin_overlaps(self) -> Any:
                 bin_pose = omni.usd.get_world_transform_matrix(self._active_bin)
                 origin = bin_pose.ExtractTranslation()
                 quat_gf = bin_pose.ExtractRotation().GetQuaternion()
@@ -189,7 +200,7 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
                     any_hit_flag,
                 )
 
-            def _on_overlap_hit(self, hit):
+            def _on_overlap_hit(self, hit: Any) -> None:
                 # Skip self-hits
                 if hit.rigid_body == self._active_bin.GetPrimPath():
                     return True
@@ -215,15 +226,15 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
 
                 return True  # No relevant hit, return True to continue the query
 
-            def _switch_to_pathtracing(self, spp=32, total_spp=32):
+            def _switch_to_pathtracing(self, spp: int = 32, total_spp: int = 32) -> None:
                 carb.settings.get_settings().set("/rtx/rendermode", "PathTracing")
                 carb.settings.get_settings().set("/rtx/pathtracing/spp", spp)
                 carb.settings.get_settings().set("/rtx/pathtracing/totalSpp", total_spp)
 
-            def _switch_to_realtime_pathtracing(self):
+            def _switch_to_realtime_pathtracing(self) -> None:
                 carb.settings.get_settings().set("/rtx/rendermode", "RealTimePathTracing")
 
-            async def _run_bin_flip_scenario(self):
+            async def _run_bin_flip_scenario(self) -> Any:
                 await omni.kit.app.get_app().next_update_async()
                 print(f"[PalletizingSDGDemo] Running bin flip scenario for bin {self._bin_counter}..")
 
@@ -279,11 +290,11 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
                 )
                 self._timeline.play()
 
-            def _create_bin_flip_graph(self):
+            def _create_bin_flip_graph(self) -> Any:
                 # Create new random lights using the color palette for the color attribute
                 color_palette = [(1, 0, 0), (0, 1, 0), (0, 0, 1)]
 
-                def randomize_bin_flip_lights():
+                def randomize_bin_flip_lights() -> None:
                     lights = rep.create.light(
                         light_type="Sphere",
                         temperature=rep.distribution.normal(6500, 2000),
@@ -313,7 +324,7 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
                             look_at=(0.78, 0.72, -0.1),
                         )
 
-            async def _run_pallet_scenario(self):
+            async def _run_pallet_scenario(self) -> None:
                 await omni.kit.app.get_app().next_update_async()
                 print(f"[PalletizingSDGDemo] Running pallet scenario for bin {self._bin_counter}..")
                 mesh_to_orig_mats = {}
@@ -375,7 +386,7 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
                 )
                 self._timeline.play()
 
-            def _create_bin_and_pallet_graph(self):
+            def _create_bin_and_pallet_graph(self) -> Any:
                 # Bin material randomization
                 bin_paths = [
                     f"{self.BINS_FOLDER_PATH}/bin_{i}/Visuals/FOF_Mesh_Magenta_Box"
@@ -413,7 +424,7 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
                             look_at=(pallet_loc[0], pallet_loc[1], pallet_loc[2]),
                         )
 
-            def _next_bin(self):
+            def _next_bin(self) -> None:
                 self._bin_counter += 1
                 if self._bin_counter >= self._num_captures:
                     self.clear()
@@ -424,7 +435,9 @@ class TestSDGUR10Palletizing(omni.kit.test.AsyncTestCase):
                 self._bin_flip_scenario_done = False
                 return True
 
-        async def run_example_async(num_captures, bin_flip_frames, pallet_frames, output_dir=None):
+        async def run_example_async(
+            num_captures: Any, bin_flip_frames: Any, pallet_frames: Any, output_dir: Any | None = None
+        ) -> None:
             import random
 
             from isaacsim.cortex.examples.ur10_palletizing.ur10_palletizing import (

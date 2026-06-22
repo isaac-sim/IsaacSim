@@ -145,6 +145,9 @@ class PhysxMimicAttr(Enum):
 
         Args:
             axis: Axis instance token (e.g. ``"rotX"``, ``"rotZ"``).
+
+        Returns:
+            Formatted PhysxMimicJointAPI attribute name for ``axis``.
         """
         return self.value[0].format(axis)
 
@@ -170,5 +173,8 @@ class PhysxMimicRel(Enum):
 
         Args:
             axis: Axis instance token (e.g. ``"rotX"``, ``"rotZ"``).
+
+        Returns:
+            Formatted PhysxMimicJointAPI relationship name for ``axis``.
         """
         return self.value.format(axis)

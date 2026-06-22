@@ -77,9 +77,13 @@ class BinFillingUI(BaseSampleUITemplate):
 
     Provides a "Start Bin Filling" button that triggers the pick-and-place state
     machine with cube spawning.
+
+    Args:
+        *args: Variable length argument list passed to the parent class.
+        **kwargs: Additional keyword arguments passed to the parent class.
     """
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
 
     def build_extra_frames(self) -> None:

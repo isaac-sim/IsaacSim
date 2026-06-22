@@ -47,6 +47,12 @@ _TIME_FRACTION_LIMIT = 10**9
 def _to_fraction(value: tuple[int, int]) -> Fraction:
     """Convert a ``(numerator, denominator)`` tuple to a :class:`fractions.Fraction`.
 
+    Args:
+        value: Rational tuple to convert.
+
+    Returns:
+        Fraction with the same rational value.
+
     Raises:
         TypeError: If either element is not an ``int``.
     """
@@ -61,12 +67,19 @@ def _to_fraction(value: tuple[int, int]) -> Fraction:
 
 
 def _fraction_to_tuple(value: Fraction) -> tuple[int, int]:
-    """Convert a :class:`fractions.Fraction` to a ``(numerator, denominator)`` tuple."""
+    """Convert a :class:`fractions.Fraction` to a ``(numerator, denominator)`` tuple.
+
+    Args:
+        value: Fraction to convert.
+
+    Returns:
+        Rational tuple with the same value.
+    """
     return (value.numerator, value.denominator)
 
 
 class StructuredLightCamera(RtxCamera):
-    """Structured light camera sensor: an :class:`RtxCamera` with cycling projectors.
+    r"""Structured light camera sensor: an :class:`RtxCamera` with cycling projectors.
 
     Extends :class:`RtxCamera` by creating a set of :class:`UsdLux.RectLight` prims
     (one per projector pattern) under a shared parent Xform and cycling through them
@@ -335,7 +348,15 @@ class StructuredLightCamera(RtxCamera):
         timestamps: list[tuple[int, int]],
         expected_count: int,
     ) -> list[Fraction]:
-        """Convert raw tuples to :class:`Fraction` values and validate the schedule."""
+        """Convert raw tuples to :class:`Fraction` values and validate the schedule.
+
+        Args:
+            timestamps: Raw activation timestamp tuples.
+            expected_count: Expected number of timestamps.
+
+        Returns:
+            Validated activation timestamps.
+        """
         if not isinstance(timestamps, (list, tuple)):
             raise ValueError(
                 f"'projector_timestamps' must be a list of (numerator, denominator) tuples; got {type(timestamps).__name__}"
@@ -372,11 +393,18 @@ class StructuredLightCamera(RtxCamera):
         timestamps_frac: list[Fraction],
         cycle_period: tuple[int, int] | None,
     ) -> Fraction:
-        """Resolve the projector cycle period as a :class:`Fraction`.
+        r"""Resolve the projector cycle period as a :class:`Fraction`.
 
         If ``cycle_period`` is not provided, it is inferred as
         ``timestamps[-1] + (timestamps[1] - timestamps[0])`` for :math:`N \\geq 2`
         or ``Fraction(1, 30)`` for :math:`N = 1`.
+
+        Args:
+            timestamps_frac: Validated activation timestamps.
+            cycle_period: Explicit cycle period, or None to infer it.
+
+        Returns:
+            Resolved cycle period.
         """
         if cycle_period is not None:
             try:
@@ -408,6 +436,14 @@ class StructuredLightCamera(RtxCamera):
         no explicit pose is supplied, an identity local transform is used so the
         projector inherits the camera's world pose via USD composition. Otherwise, any
         missing component defaults to the camera's world pose.
+
+        Args:
+            projector_position: Explicit projector position, or None to use the default.
+            projector_orientation: Explicit projector orientation, or None to use the default.
+            inherit_from_parent: Whether the projector Xform inherits from the camera.
+
+        Returns:
+            Projector position and orientation to author on the Xform.
         """
         if projector_position is not None and projector_orientation is not None:
             return np.asarray(projector_position, dtype=np.float64), np.asarray(projector_orientation, dtype=np.float64)
@@ -518,6 +554,9 @@ class StructuredLightCamera(RtxCamera):
 
         If the Xform already has translate/orient ops, their values are overwritten;
         otherwise the ops are added.
+
+        Args:
+            projector_xform_prim: Projector parent Xform prim.
         """
         xformable = UsdGeom.Xformable(projector_xform_prim)
         existing_ops = {op.GetOpType(): op for op in xformable.GetOrderedXformOps()}
@@ -536,7 +575,11 @@ class StructuredLightCamera(RtxCamera):
     # -- app-update callback and pattern selection --
 
     def _on_app_update(self, event: carb.eventdispatcher.Event) -> None:
-        """Select the active pattern based on the current simulation time."""
+        """Select the active pattern based on the current simulation time.
+
+        Args:
+            event: App update event.
+        """
         current_time = omni.timeline.get_timeline_interface().get_current_time()
         if current_time is None or current_time < 0:
             return
@@ -563,7 +606,14 @@ class StructuredLightCamera(RtxCamera):
             self._set_active_pattern(new_index)
 
     def _pattern_index_at_time(self, current_time: float) -> int:
-        """Return the active pattern index for the given simulation time (seconds)."""
+        """Return the active pattern index for the given simulation time.
+
+        Args:
+            current_time: Current simulation time in seconds.
+
+        Returns:
+            Active pattern index.
+        """
         t_frac = Fraction(current_time).limit_denominator(_TIME_FRACTION_LIMIT)
         phase = t_frac % self._cycle_period_frac
         active_idx = 0
@@ -575,7 +625,11 @@ class StructuredLightCamera(RtxCamera):
         return active_idx
 
     def _check_coarse_dt(self, dt: float) -> None:
-        """Warn once if the observed simulation dt is larger than the minimum pattern interval."""
+        """Warn once if the observed simulation dt is larger than the minimum pattern interval.
+
+        Args:
+            dt: Observed simulation time step in seconds.
+        """
         if self._warned_coarse_dt or len(self._timestamps_frac) < 2:
             return
         min_interval_frac = min(
@@ -597,6 +651,9 @@ class StructuredLightCamera(RtxCamera):
 
         Invalid prims (e.g., when the stage is closing) are skipped; the active index
         is still updated so the caller's view of state stays consistent.
+
+        Args:
+            pattern_index: Pattern index to activate.
         """
         for i, prim in enumerate(self._rect_light_prims):
             if not prim.IsValid():
@@ -657,7 +714,11 @@ class StructuredLightCamera(RtxCamera):
             self._set_active_pattern(0)
 
     def get_active_pattern_index(self) -> int:
-        """Return the index of the currently active projector pattern (0-based)."""
+        """Return the index of the currently active projector pattern.
+
+        Returns:
+            Currently active pattern index.
+        """
         return self._active_pattern_index
 
     def set_active_pattern_manual(self, pattern_index: int) -> None:
@@ -679,23 +740,43 @@ class StructuredLightCamera(RtxCamera):
         self._set_active_pattern(pattern_index)
 
     def get_num_patterns(self) -> int:
-        """Return the number of projector patterns."""
+        """Return the number of projector patterns.
+
+        Returns:
+            Number of projector patterns.
+        """
         return len(self._projector_patterns)
 
     def get_projector_prim_path(self) -> str:
-        """Return the prim path of the projector parent Xform."""
+        """Return the prim path of the projector parent Xform.
+
+        Returns:
+            Projector parent Xform prim path.
+        """
         return self._projector_prim_path
 
     def get_rect_light_prims(self) -> list[Usd.Prim]:
-        """Return the list of :class:`UsdLux.RectLight` prims, one per pattern."""
+        """Return the list of :class:`UsdLux.RectLight` prims, one per pattern.
+
+        Returns:
+            RectLight prims for the projector patterns.
+        """
         return list(self._rect_light_prims)
 
     def get_projector_direction_texture(self) -> str | Path:
-        """Return the projector direction texture identifier as supplied at construction."""
+        """Return the projector direction texture identifier as supplied at construction.
+
+        Returns:
+            Projector direction texture identifier.
+        """
         return self._projector_direction_texture
 
     def get_projector_timestamps(self) -> list[tuple[int, int]]:
-        """Return the projector activation timestamps as rational tuples."""
+        """Return the projector activation timestamps as rational tuples.
+
+        Returns:
+            Projector activation timestamps.
+        """
         return [_fraction_to_tuple(f) for f in self._timestamps_frac]
 
     def set_projector_timestamps(self, timestamps: list[tuple[int, int]]) -> None:
@@ -739,7 +820,11 @@ class StructuredLightCamera(RtxCamera):
             self._set_active_pattern(0)
 
     def get_projector_cycle_period(self) -> tuple[int, int]:
-        """Return the projector cycle period as a rational tuple."""
+        """Return the projector cycle period as a rational tuple.
+
+        Returns:
+            Projector cycle period.
+        """
         return _fraction_to_tuple(self._cycle_period_frac)
 
     def set_projector_cycle_period(self, period: tuple[int, int] | None) -> None:

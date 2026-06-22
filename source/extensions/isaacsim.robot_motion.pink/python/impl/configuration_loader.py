@@ -57,7 +57,14 @@ class PinkRobot:
 
 
 def _get_controlled_joint_names(model: pin.Model) -> list[str]:
-    """Extract actuated joint names from a Pinocchio model, excluding the universe joint."""
+    """Extract actuated joint names from a Pinocchio model, excluding the universe joint.
+
+    Args:
+        model: Pinocchio model to inspect.
+
+    Returns:
+        Ordered names of joints with configuration variables.
+    """
     names = []
     for i in range(1, model.njoints):
         joint = model.joints[i]

@@ -24,15 +24,15 @@ import isaacsim.test.docstring
 class TestExtensionDocstrings(isaacsim.test.docstring.AsyncDocTestCase):
     """Test that docstring examples in the storage native extension execute correctly."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # create new stage
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
 
-    async def test_nucleus_docstrings(self):
+    async def test_nucleus_docstrings(self) -> None:
         """Test docstring examples in the nucleus module."""
         await self.assertDocTests(nucleus)

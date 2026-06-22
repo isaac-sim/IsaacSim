@@ -13,6 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Validate Newton rigid contact tensor views and filter handling.
+
+The tests build simple rigid-body contact scenes and check net contact forces,
+per-filter force matrices, raw contact buffers, actor-id to path lookup, and a
+multi-sensor/multi-filter regression case for contact count indexing.
+"""
+
 from __future__ import annotations
 
 import math
@@ -38,7 +45,8 @@ class TestRigidContactNetForces(NewtonTensorTestBase):
     BOX_MASS = 1.0
     GRAVITY = 9.81
 
-    async def test_net_contact_forces(self):
+    async def test_net_contact_forces(self) -> None:
+        """Verify settled box sensors report upward net contact force near ``mass * gravity``."""
         self.setup_box_on_ground(num_envs=self.NUM_ENVS, mass=self.BOX_MASS, half_extent=0.3, height=0.3)
 
         sim = await self.create_sim()
@@ -76,7 +84,8 @@ class TestRigidContactForceMatrix(NewtonTensorTestBase):
     BOX_MASS = 1.0
     BALL_MASS = 1.0
 
-    async def test_force_matrix(self):
+    async def test_force_matrix(self) -> None:
+        """Verify box contact filters decompose net force into ground and ball contributions."""
         create_ground_plane(self.stage)
 
         env_template_path = Sdf.Path("/envTemplate")
@@ -144,7 +153,8 @@ class TestRawContactData(NewtonTensorTestBase):
     GRAVITY = 9.81
     BOX_MASS = 1.0
 
-    async def test_raw_contact_data(self):
+    async def test_raw_contact_data(self) -> None:
+        """Verify raw contact counts, normals, forces, and actor IDs for stacked boxes."""
         create_ground_plane(self.stage)
 
         env_template_path = Sdf.Path("/envTemplate")
@@ -238,7 +248,8 @@ class TestRigidContactMultiSensorMultiFilter(NewtonTensorTestBase):
     BOX_MASS = 1.0
     GRAVITY = 9.81
 
-    async def test_multi_sensor_multi_filter(self):
+    async def test_multi_sensor_multi_filter(self) -> None:
+        """Verify multi-sensor contact filters keep per-pair counts finite and in range."""
         create_ground_plane(self.stage)
 
         env_template_path = Sdf.Path("/envTemplate")

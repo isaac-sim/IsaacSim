@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test suite for PINK configuration loader functions."""
+"""Verifies PINK robot configuration loading from supported robot names and filesystem paths, including joint names, model dimensions, neutral configuration, collision model options, frame presence, and invalid URDF inputs."""
 
 import os
 import tempfile
@@ -61,12 +61,14 @@ class TestConfigurationLoader(omni.kit.test.AsyncTestCase):
     """Test suite for PinkRobot loading from URDF."""
 
     async def setUp(self) -> None:
+        """Prepare the Configuration Loader test fixture."""
         self._tmpdir = tempfile.mkdtemp()
         self._urdf_path = os.path.join(self._tmpdir, "robot.urdf")
         with open(self._urdf_path, "w") as f:
             f.write(_TEST_URDF)
 
     async def tearDown(self) -> None:
+        """Clean up the Configuration Loader test fixture."""
         if os.path.exists(self._urdf_path):
             os.remove(self._urdf_path)
         if os.path.exists(self._tmpdir):

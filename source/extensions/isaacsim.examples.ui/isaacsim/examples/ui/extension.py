@@ -436,7 +436,11 @@ class Extension(omni.ext.IExt):
                 ui.Spacer()
 
     def toggle_app_step(self, val: bool | None = None) -> None:
-        """Toggle the app step subscription for time series plot data."""
+        """Toggle the app step subscription for time series plot data.
+
+        Args:
+            val: Whether the subscription should be enabled.
+        """
         print("You've clicked time_series_plot_data:", val)
         if val and self._app_event_sub is None:
             self._app_event_sub = carb.eventdispatcher.get_eventdispatcher().observe_event(
@@ -457,7 +461,11 @@ class Extension(omni.ext.IExt):
         self._models["timeseries_plot"].set_data(*self._plot_data)
 
     def toggle_app_step_1(self, val: bool | None = None) -> None:
-        """Toggle the app step subscription for histogram plot data."""
+        """Toggle the app step subscription for histogram plot data.
+
+        Args:
+            val: Whether the subscription should be enabled.
+        """
         print("You've clicked time_series_plot_data:", val)
         if val and self._app_event_sub is None:
             self._app_event_sub = carb.eventdispatcher.get_eventdispatcher().observe_event(
@@ -478,7 +486,11 @@ class Extension(omni.ext.IExt):
         self._models["timeseries_plot_hist"].set_data(*self._plot_data)
 
     def toggle_app_step_2(self, val: bool | None = None) -> None:
-        """Toggle the app step subscription for XYZ plot data."""
+        """Toggle the app step subscription for XYZ plot data.
+
+        Args:
+            val: Whether the subscription should be enabled.
+        """
         print("You've clicked time_series_plot_data:", val)
         if val and self._app_event_sub is None:
             self._app_event_sub = carb.eventdispatcher.get_eventdispatcher().observe_event(

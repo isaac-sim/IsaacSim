@@ -22,7 +22,7 @@ dependencies = [
     "isaacsim-asset-importer-utils==1.0.0",
     "isaacsim-asset-transformer==1.0.0",
     "isaacsim-asset-transformer-rules==1.0.0",
-    "urdf-usd-converter==0.1.2",
+    "urdf-usd-converter==0.1.3",
     "usd-exchange>=2.2.2",
 ]
 readme = "docs/Overview.md"

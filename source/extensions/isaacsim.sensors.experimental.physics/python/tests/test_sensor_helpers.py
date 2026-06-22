@@ -13,15 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for sensor creation via the class-based create() API.
+"""Verifies helper APIs for creating and wrapping IMU, contact, and raycast sensors. The tests cover default-prim path resolution, hierarchy validation, authoring-only objects, runtime wrappers, attribute propagation, unique paths, and invalid parent or prim cases."""
 
-These tests verify that ContactSensor(Contact.create()), IMUSensor(IMU.create()), and
-RaycastSensor(Raycast.create()) create prims at the correct paths, especially when the
-stage has a default prim.
-
-The key behavior being tested is that sensor paths should NOT be prepended with
-the stage's default prim - they should be created exactly where specified.
-"""
+from typing import Any
 
 import carb
 import isaacsim.core.experimental.utils.prim as prim_utils
@@ -47,24 +41,26 @@ from .common import setup_ant_scene
 class TestSensorCreate(omni.kit.test.AsyncTestCase):
     """Test sensor class create() methods for correct path handling."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Cache the Isaac assets root used by sensor path and Ant-scene tests."""
         self._assets_root_path = await get_assets_root_path_async()
         if self._assets_root_path is None:
             carb.log_error("Could not find Isaac Sim assets folder")
             return
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Close the stage created by each sensor authoring test."""
         stage_utils.close_stage()
         await omni.kit.app.get_app().next_update_async()
 
-    async def _create_empty_stage_with_world(self):
+    async def _create_empty_stage_with_world(self) -> Any:
         await stage_utils.create_new_stage_async()
         stage = omni.usd.get_context().get_stage()
         stage_utils.define_prim("/World", type_name="Xform")
         await omni.kit.app.get_app().next_update_async()
         return stage
 
-    async def _create_stage_with_default_prim(self):
+    async def _create_stage_with_default_prim(self) -> Any:
         await stage_utils.create_new_stage_async()
         stage = omni.usd.get_context().get_stage()
         default_prim = stage_utils.define_prim("/DefaultRoot", type_name="Xform")
@@ -75,7 +71,8 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
 
     # ==================== IMU Sensor Tests ====================
 
-    async def test_imu_sensor_path_no_default_prim(self):
+    async def test_imu_sensor_path_no_default_prim(self) -> None:
+        """Create an IMU under a rigid cube and verify it keeps the requested absolute path."""
         await self._create_empty_stage_with_world()
 
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -89,7 +86,8 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         self.assertEqual(sensor.imu.paths[0], expected_path)
         self.assertTrue(prim_utils.get_prim_at_path(expected_path).IsValid())
 
-    async def test_imu_sensor_path_with_default_prim(self):
+    async def test_imu_sensor_path_with_default_prim(self) -> None:
+        """Verify IMU authoring does not prepend the stage default prim to absolute paths."""
         stage = await self._create_stage_with_default_prim()
 
         self.assertTrue(stage.HasDefaultPrim())
@@ -112,7 +110,8 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         self.assertEqual(created_path, expected_path)
         self.assertFalse(prim_utils.get_prim_at_path("/DefaultRoot/World/Cube/Imu_Sensor").IsValid())
 
-    async def test_imu_sensor_with_ant_scene(self):
+    async def test_imu_sensor_with_ant_scene(self) -> None:
+        """Verify IMU authoring ignores the Ant default prim when creating a sensor under /World."""
         await setup_ant_scene()
         stage = stage_utils.get_current_stage()
 
@@ -132,7 +131,8 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         self.assertFalse(created_path.startswith("/Ant/"))
         self.assertEqual(created_path, expected_path)
 
-    async def test_imu_sensor_nested_hierarchy(self):
+    async def test_imu_sensor_nested_hierarchy(self) -> None:
+        """Create an IMU below a nested rigid cube and verify the full hierarchy is preserved."""
         await self._create_stage_with_default_prim()
 
         stage_utils.define_prim("/World/Level1", type_name="Xform")
@@ -147,7 +147,8 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(sensor)
         self.assertEqual(sensor.imu.paths[0], expected_path)
 
-    async def test_imu_sensor_attributes(self):
+    async def test_imu_sensor_attributes(self) -> None:
+        """Verify IMU schema attributes for offsets, orientation, and filter widths."""
         await self._create_empty_stage_with_world()
 
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -173,7 +174,7 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         self.assertEqual(schema_prim.GetOrientationFilterWidthAttr().Get(), 7)
         self.assertEqual(usd_prim.GetTypeName(), "IsaacImuSensor")
 
-    async def test_imu_sensor_world_positions(self):
+    async def test_imu_sensor_world_positions(self) -> None:
         """Verify ``positions`` (world-frame) successfully routes through XformPrim.set_world_poses."""
         await self._create_empty_stage_with_world()
 
@@ -188,7 +189,7 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         positions_np = world_positions.numpy()
         self.assertAlmostEqual(float(positions_np[0][0]), 5.0, places=4)
 
-    async def test_sensor_multi_prim_path_rejected(self):
+    async def test_sensor_multi_prim_path_rejected(self) -> None:
         """A path matching multiple existing prims raises ValueError."""
         await self._create_empty_stage_with_world()
 
@@ -215,7 +216,7 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         with self.assertRaises(ValueError):
             RaycastSensor("/World/Cube.*/Raycast")
 
-    async def test_sensor_wrap_wrong_prim_type_rejected(self):
+    async def test_sensor_wrap_wrong_prim_type_rejected(self) -> None:
         """Wrapping a prim whose type doesn't match the sensor's _PRIM_TYPE raises ValueError."""
         await self._create_empty_stage_with_world()
 
@@ -234,7 +235,7 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         with self.assertRaises(ValueError):
             RaycastSensor("/World/Cube")
 
-    async def test_imu_sensor_positions_translations_conflict(self):
+    async def test_imu_sensor_positions_translations_conflict(self) -> None:
         """Specifying both ``positions`` and ``translations`` raises ValueError."""
         await self._create_empty_stage_with_world()
 
@@ -251,7 +252,8 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
                 )
             )
 
-    async def test_imu_sensor_enabled_attribute(self):
+    async def test_imu_sensor_enabled_attribute(self) -> None:
+        """Verify newly authored IMU sensors default to enabled in IsaacBaseSensor."""
         await self._create_empty_stage_with_world()
 
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -264,7 +266,8 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         base_sensor = IsaacSensorSchema.IsaacBaseSensor(sensor.imu.prims[0])
         self.assertTrue(base_sensor.GetEnabledAttr().Get())
 
-    async def test_imu_sensor_requires_parent(self):
+    async def test_imu_sensor_requires_parent(self) -> None:
+        """Reject creating an IMU sensor without a parent rigid body prim."""
         await self._create_empty_stage_with_world()
 
         with self.assertRaises(RuntimeError):
@@ -272,7 +275,8 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
 
     # ==================== Contact Sensor Tests ====================
 
-    async def test_contact_sensor_path_no_default_prim(self):
+    async def test_contact_sensor_path_no_default_prim(self) -> None:
+        """Create a contact sensor under a rigid collider and verify its absolute path."""
         await self._create_empty_stage_with_world()
 
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -286,7 +290,8 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(sensor)
         self.assertEqual(sensor.contact.paths[0], expected_path)
 
-    async def test_contact_sensor_path_with_default_prim(self):
+    async def test_contact_sensor_path_with_default_prim(self) -> None:
+        """Verify contact sensor authoring does not prepend the stage default prim."""
         await self._create_stage_with_default_prim()
 
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -302,7 +307,8 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         self.assertFalse(created_path.startswith("/DefaultRoot/"))
         self.assertEqual(created_path, expected_path)
 
-    async def test_contact_sensor_attributes(self):
+    async def test_contact_sensor_attributes(self) -> None:
+        """Verify contact thresholds, radius, color, and parent contact-report API authoring."""
         stage = await self._create_empty_stage_with_world()
 
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -328,7 +334,7 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         parent_prim = stage.GetPrimAtPath("/World/Cube")
         self.assertTrue(parent_prim.HasAPI(PhysxSchema.PhysxContactReportAPI))
 
-    async def test_contact_sensor_nested_under_rigid_body_keeps_requested_path(self):
+    async def test_contact_sensor_nested_under_rigid_body_keeps_requested_path(self) -> None:
         """Nested contact sensors are authored at the requested path and report on the rigid ancestor."""
         stage = await self._create_empty_stage_with_world()
 
@@ -346,7 +352,7 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         self.assertTrue(stage.GetPrimAtPath("/World/Cube").HasAPI(PhysxSchema.PhysxContactReportAPI))
         self.assertFalse(mount.HasAPI(PhysxSchema.PhysxContactReportAPI))
 
-    async def test_contact_sensor_collision_only_parent_rejected(self):
+    async def test_contact_sensor_collision_only_parent_rejected(self) -> None:
         """Contact authoring rejects parents that the C++ runtime cannot bind as rigid bodies."""
         await self._create_empty_stage_with_world()
 
@@ -357,7 +363,8 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         with self.assertRaises(ValueError):
             Contact.create("/World/StaticCollider/Contact")
 
-    async def test_contact_sensor_requires_parent(self):
+    async def test_contact_sensor_requires_parent(self) -> None:
+        """Reject creating a contact sensor at the stage root without a rigid parent."""
         await self._create_empty_stage_with_world()
 
         with self.assertRaises(RuntimeError):
@@ -365,13 +372,15 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
 
     # ==================== Raycast Sensor Tests ====================
 
-    async def test_raycast_sensor_requires_parent(self):
+    async def test_raycast_sensor_requires_parent(self) -> None:
+        """Reject creating a raycast sensor at the stage root without a rigid parent."""
         await self._create_empty_stage_with_world()
 
         with self.assertRaises(RuntimeError):
             RaycastSensor(Raycast.create("/Raycast_Sensor"))
 
-    async def test_raycast_sensor_path_with_default_prim(self):
+    async def test_raycast_sensor_path_with_default_prim(self) -> None:
+        """Verify raycast sensor authoring preserves an absolute path despite a default prim."""
         await self._create_stage_with_default_prim()
 
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -392,7 +401,8 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         self.assertFalse(created_path.startswith("/DefaultRoot/"))
         self.assertEqual(created_path, expected_path)
 
-    async def test_raycast_sensor_attributes(self):
+    async def test_raycast_sensor_attributes(self) -> None:
+        """Verify raycast ranges, ray count, output frame, and hit-prim-path schema attributes."""
         await self._create_empty_stage_with_world()
 
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -425,7 +435,8 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
 
     # ==================== Path Edge Cases ====================
 
-    async def test_path_with_trailing_slash(self):
+    async def test_path_with_trailing_slash(self) -> None:
+        """Normalize a trailing slash from an authored sensor path without introducing //."""
         await self._create_empty_stage_with_world()
 
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -439,7 +450,8 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         self.assertEqual(sensor.imu.paths[0], expected_path)
         self.assertNotIn("//", sensor.imu.paths[0])
 
-    async def test_unique_path_generation(self):
+    async def test_unique_path_generation(self) -> None:
+        """Generate a unique path when a second IMU is authored at an existing sensor path."""
         await self._create_empty_stage_with_world()
 
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -460,7 +472,7 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
 
     # ==================== Authoring / Runtime Split ====================
 
-    async def test_authoring_only_imu_no_backend(self):
+    async def test_authoring_only_imu_no_backend(self) -> None:
         """``IMU`` (authoring) can be instantiated without bringing up a backend."""
         await self._create_empty_stage_with_world()
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -476,7 +488,7 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         schema_prim = IsaacSensorSchema.IsaacImuSensor(usd_prim)
         self.assertEqual(schema_prim.GetLinearAccelerationFilterWidthAttr().Get(), 7)
 
-    async def test_runtime_wraps_existing_authoring_object(self):
+    async def test_runtime_wraps_existing_authoring_object(self) -> None:
         """``IMUSensor(my_imu)`` reuses an existing authoring instance."""
         await self._create_empty_stage_with_world()
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -493,7 +505,7 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         self.assertTrue(hasattr(sensor, "_iface"), "Runtime should hold a C++ interface handle")
         self.assertTrue(hasattr(sensor, "_sensor_created"), "Runtime should track sensor creation state")
 
-    async def test_contact_runtime_forwards_to_authoring_via_attribute(self):
+    async def test_contact_runtime_forwards_to_authoring_via_attribute(self) -> None:
         """Calling ``sensor.contact.set_radius(...)`` writes USD without warnings."""
         import warnings
 
@@ -509,7 +521,7 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
             sensor.contact.set_radius(0.2)
             self.assertAlmostEqual(sensor.contact.get_radius(), 0.2, places=5)
 
-    async def test_authoring_only_contact_no_backend(self):
+    async def test_authoring_only_contact_no_backend(self) -> None:
         """``Contact`` (authoring) can be instantiated without bringing up a backend."""
         await self._create_empty_stage_with_world()
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -524,7 +536,7 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(contact.get_min_threshold(), 2.5, places=5)
         self.assertAlmostEqual(contact.get_radius(), 0.05, places=5)
 
-    async def test_authoring_only_raycast_no_backend(self):
+    async def test_authoring_only_raycast_no_backend(self) -> None:
         """``Raycast`` (authoring) can be instantiated without bringing up a backend."""
         await self._create_empty_stage_with_world()
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -542,7 +554,7 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         schema_prim = IsaacSensorSchema.IsaacRaycastSensor(raycast.prims[0])
         self.assertEqual(schema_prim.GetNumRaysAttr().Get(), 2)
 
-    async def test_raycast_runtime_property_and_create(self):
+    async def test_raycast_runtime_property_and_create(self) -> None:
         """``Raycast.create`` and the ``raycast`` typed property work end-to-end."""
         await self._create_empty_stage_with_world()
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -561,7 +573,7 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         self.assertIsInstance(sensor.raycast, Raycast)
         self.assertIs(sensor.raycast, sensor.authoring_object)
 
-    async def test_contact_runtime_create_classmethod(self):
+    async def test_contact_runtime_create_classmethod(self) -> None:
         """``Contact.create`` followed by ``ContactSensor(authoring)`` constructs both layers."""
         await self._create_empty_stage_with_world()
         cube = Cube("/World/Cube", sizes=[1.0])
@@ -576,7 +588,7 @@ class TestSensorCreate(omni.kit.test.AsyncTestCase):
         self.assertIs(sensor.contact, sensor.authoring_object)
         self.assertAlmostEqual(sensor.contact.get_radius(), 0.07, places=5)
 
-    async def test_raycast_authoring_update_time_offsets_only(self):
+    async def test_raycast_authoring_update_time_offsets_only(self) -> None:
         """Wrapping an existing raycast and updating only ``ray_time_offsets`` works.
 
         Regression guard: ``_validate_ray_arrays`` must not assume ``num_rays = 1``

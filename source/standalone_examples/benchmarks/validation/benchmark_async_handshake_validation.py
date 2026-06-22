@@ -275,12 +275,12 @@ def validate_async_handshake_behavior(num_frames: int = 100) -> bool:
                 print("  (Frames marked [TRIMMED] are excluded from the ratio or unpaired.)")
                 print()
 
-            def is_trimmed(idx):
+            def is_trimmed(idx: int) -> bool:
                 boundary = trimming_active and (idx < TRIM_FRAMES or idx >= paired_count - TRIM_FRAMES)
                 unpaired = idx >= app_count or idx >= render_count
                 return boundary or unpaired
 
-            def format_row(i):
+            def format_row(i: int) -> str:
                 app_val = app_recorder.samples[i] if i < app_count else None
                 render_val = render_recorder.samples[i] if i < render_count else None
                 app_str = f"{app_val:.2f}" if app_val is not None else "-"
@@ -356,7 +356,7 @@ def validate_async_handshake_behavior(num_frames: int = 100) -> bool:
     return validation_passed
 
 
-def main():
+def main() -> None:
     """Main function."""
     try:
         validation_passed = validate_async_handshake_behavior(args.num_frames)

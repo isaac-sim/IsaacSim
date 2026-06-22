@@ -21,8 +21,6 @@ from typing import Any
 
 import carb
 import numpy as np
-import omni.kit.commands
-import omni.usd
 from isaacsim.replicator.behavior.global_variables import EXPOSED_ATTR_NS
 from isaacsim.replicator.behavior.utils.behavior_utils import (
     check_if_exposed_variables_should_be_removed,

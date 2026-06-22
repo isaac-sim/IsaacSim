@@ -35,6 +35,9 @@ def _write_1x1_png(path: str) -> None:
     PNG layout: 8-byte signature + IHDR + IDAT + IEND chunks with correct CRC32
     values. Used by tests that copy texture assets and verify the copied files
     remain valid images on disk.
+
+    Args:
+        path: Destination PNG path.
     """
 
     def _chunk(tag: bytes, data: bytes) -> bytes:
@@ -238,6 +241,62 @@ class TestManager(omni.kit.test.AsyncTestCase):
             with self.assertRaises(RuntimeError) as excinfo:
                 mgr.run(input_stage="missing.usda", profile=profile)
             self.assertIn("Failed to open source stage", str(excinfo.exception))
+
+    async def test_manager_runs_rule_deferred_deletion_after_release(self) -> None:
+        """Manager deletes a rule-deferred file only after dropping the working stage.
+
+        Regression for the Windows ``[WinError 5] Access is denied`` failure: a
+        rule cannot delete a file that backs the manager-owned working stage, so
+        it registers the path via ``request_deletion`` and the manager removes it
+        after releasing the stage. Uses real USD (no mocks) so the file handle is
+        genuinely held and released.
+        """
+
+        class _ConvertToUsdaRule(RuleInterface):
+            """Convert the working stage's root layer to .usda and defer the original's deletion."""
+
+            def process_rule(self) -> str:
+                root_layer = self.source_stage.GetRootLayer()
+                original = root_layer.realPath
+                new_path = os.path.splitext(original)[0] + ".usda"
+                root_layer.Export(new_path)
+                # The rule cannot delete ``original`` itself: it is the manager's
+                # working stage. Drop our handle and hand the path to the manager.
+                self.source_stage = None
+                self.request_deletion(original)
+                return new_path
+
+            def get_configuration_parameters(self) -> list[RuleConfigurationParam]:
+                return []
+
+        with tempfile.TemporaryDirectory() as root:
+            input_path = os.path.join(root, "input.usda")
+            stage = Usd.Stage.CreateNew(input_path)
+            UsdGeom.Xform.Define(stage, "/World")
+            stage.GetRootLayer().Save()
+            del stage
+
+            reg = RuleRegistry()
+            reg.register(_ConvertToUsdaRule)
+            rule_type = f"{_ConvertToUsdaRule.__module__}.{_ConvertToUsdaRule.__qualname__}"
+
+            out_root = os.path.join(root, "out")
+            profile = RuleProfile(
+                profile_name="p",
+                rules=[RuleSpec(name="convert", type=rule_type, destination="payloads")],
+                base_name="base.usd",
+            )
+            mgr = AssetTransformerManager()
+            report = mgr.run(input_stage=input_path, profile=profile, package_root=out_root)
+
+            self.assertTrue(report.results[0].success, report.results[0].error)
+            base_usd = os.path.join(out_root, "payloads", "base.usd")
+            base_usda = os.path.join(out_root, "payloads", "base.usda")
+            self.assertTrue(os.path.exists(base_usda), f"converted .usda missing: {base_usda}")
+            self.assertFalse(
+                os.path.exists(base_usd),
+                "manager must delete the rule-deferred file after releasing the working stage",
+            )
 
     async def test_collect_assets_rewrites_source_relative_paths(self) -> None:
         """Regression test: relative asset paths must remap when source and output sit at different depths.

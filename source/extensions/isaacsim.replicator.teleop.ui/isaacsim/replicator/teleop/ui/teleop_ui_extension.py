@@ -28,7 +28,11 @@ class TeleopUIExtension(omni.ext.IExt, MenuHelperExtensionFull):
     MENU_GROUP = "Tools/Replicator"
 
     def on_startup(self, ext_id: str) -> None:
-        """Initialize the extension."""
+        """Initialize the extension.
+
+        Args:
+            ext_id: Extension identifier assigned by Kit.
+        """
         self.menu_startup(
             lambda: TeleopWindow(title=self.WINDOW_NAME),
             self.WINDOW_NAME,

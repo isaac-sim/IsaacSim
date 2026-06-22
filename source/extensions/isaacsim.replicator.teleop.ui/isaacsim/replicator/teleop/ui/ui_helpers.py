@@ -48,7 +48,11 @@ GLYPHS = {
 
 
 def get_selected_prim_path() -> str | None:
-    """Return the first selected prim path in the stage, or None."""
+    """Return the first selected prim path in the stage, or None.
+
+    Returns:
+        First selected prim path, or None if the stage selection is empty.
+    """
     selection = omni.usd.get_context().get_selection()
     paths = selection.get_selected_prim_paths()
     if not paths:
@@ -72,6 +76,14 @@ def set_status(
     ``side`` is provided, the terminal message is tagged ``[Teleop][Source][Side]``
     (e.g. ``[Teleop][Floating][Left] Active``) so per-side logs can be
     distinguished at a glance.
+
+    Args:
+        label: Label widget to update.
+        text: Status text to display.
+        color: Label text color.
+        source: Optional terminal log source tag.
+        emit_terminal: Whether to print the status change to the terminal.
+        side: Optional controller side for terminal log tagging.
     """
     if label:
         if label.text == text:
@@ -105,6 +117,9 @@ def build_prim_path_row(
             and ``"apply"`` keys referencing the created ``ui.Button`` widgets
             so callers can enable/disable them.
         label_width: Width for the label widget in pixels.
+
+    Returns:
+        String field containing the prim path.
     """
     with ui.HStack(spacing=ROW_SPACING, height=ROW_HEIGHT):
         ui.Spacer(width=INDENT)

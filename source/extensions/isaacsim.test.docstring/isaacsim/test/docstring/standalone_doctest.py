@@ -89,16 +89,16 @@ class StandaloneDocTestCase(unittest.TestCase):
         **kwargs: Additional keyword arguments passed to the parent unittest.TestCase class.
     """
 
-    def __init__(self, *args: object, **kwargs: object):
+    def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self._doctest_checker = _doctest.DocTest()
 
-    def assertDocTest(
+    def _assert_doc_test_impl(
         self,
         expr: object,
         msg: str = "",
         flags: int = doctest.NORMALIZE_WHITESPACE | doctest.ELLIPSIS | doctest.FAIL_FAST,
-    ):
+    ) -> None:
         """Check that the examples in docstrings pass for a class/module member.
 
         Args:
@@ -122,7 +122,9 @@ class StandaloneDocTestCase(unittest.TestCase):
             sys.tracebacklimit = 0  # don't show test file tracing, only doctest
             self.fail("Examples in docstrings failed" if not msg else msg)
 
-    def assertDocTests(
+    assertDocTest = _assert_doc_test_impl
+
+    def _assert_doc_tests_impl(
         self,
         expr: object,
         msg: str = "",
@@ -130,7 +132,7 @@ class StandaloneDocTestCase(unittest.TestCase):
         order: list[tuple[object, int]] | None = None,
         exclude: list[object] | None = None,
         stop_on_failure: bool = False,
-    ):
+    ) -> None:
         """Check that the examples in docstrings pass for all class/module's members (names).
 
         Args:
@@ -162,9 +164,8 @@ class StandaloneDocTestCase(unittest.TestCase):
         # test docstrings examples
         failures = 0
         for obj in objects:
-            try:
-                name = obj.__name__
-            except:
+            name = getattr(obj, "__name__", None)
+            if name is None:
                 name = obj.fget.__name__
             print(f"  |-- checking: {name}")
             try:
@@ -177,3 +178,5 @@ class StandaloneDocTestCase(unittest.TestCase):
             self.fail(
                 f"Some tests failed: failed ({failures}), successful ({len(objects) - failures}), total ({len(objects)})"
             )
+
+    assertDocTests = _assert_doc_tests_impl

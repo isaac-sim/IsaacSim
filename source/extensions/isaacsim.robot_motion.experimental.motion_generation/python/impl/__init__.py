@@ -15,14 +15,22 @@
 
 """Internal implementation classes and functions for the robot motion generation system."""
 
-from .base_controller import BaseController
-from .controller_structures import ControllerContainer, ParallelController, SequentialController
-from .obstacle_strategy import ObstacleConfiguration, ObstacleRepresentation, ObstacleStrategy
-from .path import Path
-from .scene_query import SceneQuery
-from .trackable_api import TrackableApi
-from .trajectory import Trajectory
-from .trajectory_follower import TrajectoryFollower
-from .types import JointState, RobotState, RootState, SpatialState, combine_robot_states
-from .world_binding import WorldBinding
-from .world_interface import WorldInterface
+from .base_controller import BaseController as BaseController
+from .controller_structures import ControllerContainer as ControllerContainer
+from .controller_structures import ParallelController as ParallelController
+from .controller_structures import SequentialController as SequentialController
+from .obstacle_strategy import ObstacleConfiguration as ObstacleConfiguration
+from .obstacle_strategy import ObstacleRepresentation as ObstacleRepresentation
+from .obstacle_strategy import ObstacleStrategy as ObstacleStrategy
+from .path import Path as Path
+from .scene_query import SceneQuery as SceneQuery
+from .trackable_api import TrackableApi as TrackableApi
+from .trajectory import Trajectory as Trajectory
+from .trajectory_follower import TrajectoryFollower as TrajectoryFollower
+from .types import JointState as JointState
+from .types import RobotState as RobotState
+from .types import RootState as RootState
+from .types import SpatialState as SpatialState
+from .types import combine_robot_states as combine_robot_states
+from .world_binding import WorldBinding as WorldBinding
+from .world_interface import WorldInterface as WorldInterface

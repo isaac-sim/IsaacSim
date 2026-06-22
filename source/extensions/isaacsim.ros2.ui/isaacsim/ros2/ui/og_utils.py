@@ -51,7 +51,6 @@ class Ros2ClockGraph(MenuHelperWindow):
     """
 
     def __init__(self) -> None:
-        """Initialize the ROS2 clock graph window."""
         super().__init__("ROS2 Clock Graph", width=300, height=150)
         self._og_path = "/Graph/ROS_Clock"
 
@@ -199,7 +198,6 @@ class Ros2GenericPubGraph(MenuHelperWindow):
     """
 
     def __init__(self) -> None:
-        """Initialize the ROS2 generic publisher graph window."""
         super().__init__("ROS2 Generic Publisher Graph", width=350, height=180)
         self._og_path = "/Graph/ROS_GenericPub"
         self._dropdown_model = None
@@ -484,7 +482,6 @@ class Ros2JointStatesGraph(MenuHelperWindow):
     """
 
     def __init__(self) -> None:
-        """Initialize the ROS2 joint states graph window."""
         super().__init__("ROS2 Joint States Graph", width=450, height=350)
         self._og_path = "/Graph/ROS_JointStates"
         self._node_namespace = ""
@@ -833,7 +830,6 @@ class Ros2TfPubGraph(MenuHelperWindow):
     """
 
     def __init__(self) -> None:
-        """Initialize the ROS2 TF publisher graph window."""
         super().__init__("ROS2 TF Publisher Graph", width=450, height=450)
         self._og_path = "/Graph/ROS_TF"
         self._node_namespace = ""
@@ -1123,7 +1119,6 @@ class Ros2OdometryGraph(MenuHelperWindow):
     """
 
     def __init__(self) -> None:
-        """Initialize the ROS2 odometry graph window."""
         super().__init__("ROS2 Odometry Graph", width=450, height=350)
         self._og_path = "/Graph/ROS_Odometry"
         self._node_namespace = ""

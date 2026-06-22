@@ -20,7 +20,6 @@ import json
 import os
 
 # python
-import typing
 from collections import namedtuple
 from urllib.parse import urlparse
 
@@ -57,7 +56,7 @@ class Version(namedtuple("Version", "major minor patch")):
         '1.2.3'
     """
 
-    def __new__(cls, s: str):
+    def __new__(cls, s: str) -> "Version":
         """Create a new Version instance from a version string.
 
         Args:
@@ -68,7 +67,7 @@ class Version(namedtuple("Version", "major minor patch")):
         """
         return super().__new__(cls, *map(int, s.split(".")))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """Return the string representation of the version.
 
         Returns:
@@ -105,7 +104,7 @@ def get_url_root(url: str) -> str:
     supported_list = ["omniverse", "http", "https"]
     protocol = urlparse(url).scheme
     if protocol not in supported_list:
-        raise RuntimeError("Unable to find root for {}".format(url))
+        raise RuntimeError(f"Unable to find root for {url}")
         return ""
     server = f"{protocol}://{urlparse(url).netloc}"
     return server
@@ -121,15 +120,15 @@ def create_folder(server: str, path: str) -> bool:
     Returns:
         True if folder is created successfully.
     """
-    carb.log_info("Create {} folder on {} Server".format(path, server))
+    carb.log_info(f"Create {path} folder on {server} Server")
     # Increase hang detection timeout
     omni.client.set_hang_detection_time_ms(10000)
-    result = omni.client.create_folder("{}{}".format(server, path))
+    result = omni.client.create_folder(f"{server}{path}")
     if result == Result.OK:
-        carb.log_info("Success: {} Server has {} folder created".format(server, path))
+        carb.log_info(f"Success: {server} Server has {path} folder created")
         return True
     else:
-        carb.log_warn("Failure: Server {} not able to create {} folder".format(server, path))
+        carb.log_warn(f"Failure: Server {server} not able to create {path} folder")
         return False
 
 
@@ -143,19 +142,19 @@ def delete_folder(server: str, path: str) -> bool:
     Returns:
         True if folder is deleted successfully.
     """
-    carb.log_info("Cleanup {} folder on {} Server".format(path, server))
+    carb.log_info(f"Cleanup {path} folder on {server} Server")
     # Increase hang detection timeout
     omni.client.set_hang_detection_time_ms(10000)
-    result = omni.client.delete("{}{}".format(server, path))
+    result = omni.client.delete(f"{server}{path}")
     if result == Result.OK:
-        carb.log_info("Success: {} Server has {} folder deleted".format(server, path))
+        carb.log_info(f"Success: {server} Server has {path} folder deleted")
         return True
     else:
-        carb.log_warn("Failure: Server {} not able to delete {} folder".format(server, path))
+        carb.log_warn(f"Failure: Server {server} not able to delete {path} folder")
         return False
 
 
-async def _list_files(url: str) -> typing.Tuple[str, typing.List]:
+async def _list_files(url: str) -> tuple[str, list]:
     """List files under a URL.
 
     Args:
@@ -199,28 +198,24 @@ async def download_assets_async(
     result = Result.ERROR
 
     if copy_after_delete and check_server(dst, ""):
-        carb.log_info("Deleting existing folder {}".format(dst))
+        carb.log_info(f"Deleting existing folder {dst}")
         delete_folder(dst, "")
 
     sem = asyncio.Semaphore(concurrency)
-    carb.log_info("Listing {} ...".format(src))
-    root_source, paths = await _list_files("{}".format(src))
+    carb.log_info(f"Listing {src} ...")
+    root_source, paths = await _list_files(f"{src}")
     total = len(paths)
-    carb.log_info("Found {} files from {}".format(total, root_source))
+    carb.log_info(f"Found {total} files from {root_source}")
 
     for entry in reversed(paths):
         count += 1
         path = os.path.relpath(entry, root_source).replace("\\", "/")
 
-        carb.log_info(
-            "Downloading asset {} of {} from {}/{} to {}/{}".format(count, total, root_source, path, dst, path)
-        )
+        carb.log_info(f"Downloading asset {count} of {total} from {root_source}/{path} to {dst}/{path}")
         try:
             async with sem:
                 result = await asyncio.wait_for(
-                    omni.client.copy_async(
-                        "{}/{}".format(root_source, path), "{}/{}".format(dst, path), copy_behaviour
-                    ),
+                    omni.client.copy_async(f"{root_source}/{path}", f"{dst}/{path}", copy_behaviour),
                     timeout=timeout,
                 )
             if result != Result.OK:
@@ -248,15 +243,15 @@ def check_server(server: str, path: str, timeout: float = 10.0) -> bool:
     Returns:
         True if folder is found.
     """
-    carb.log_info("Checking path: {}{}".format(server, path))
+    carb.log_info(f"Checking path: {server}{path}")
     # Increase hang detection timeout
     omni.client.set_hang_detection_time_ms(20000)
-    result, _ = omni.client.stat("{}{}".format(server, path))
+    result, _ = omni.client.stat(f"{server}{path}")
     if result == Result.OK:
-        carb.log_info("Success: {}{}".format(server, path))
+        carb.log_info(f"Success: {server}{path}")
         return True
     else:
-        carb.log_info("Failure: {}{} not accessible".format(server, path))
+        carb.log_info(f"Failure: {server}{path} not accessible")
         return False
 
 
@@ -277,7 +272,7 @@ async def check_server_async(server: str, path: str, timeout: float = 10.0) -> b
     Returns:
         True if folder is found, False otherwise.
     """
-    carb.log_info("Checking path: {}{}".format(server, path))
+    carb.log_info(f"Checking path: {server}{path}")
 
     settings = carb.settings.get_settings()
     retry_attempts = settings.get(DEFAULT_ASSET_ROOT_RETRY_ATTEMPTS_SETTING)
@@ -288,12 +283,12 @@ async def check_server_async(server: str, path: str, timeout: float = 10.0) -> b
         retry_base_delay = 0.5
 
     delay = float(retry_base_delay)
-    server_path = "{}{}".format(server, path)
+    server_path = f"{server}{path}"
     for attempt in range(1, retry_attempts + 1):
         try:
             result, _ = await asyncio.wait_for(omni.client.stat_async(server_path), timeout)
             if result == Result.OK:
-                carb.log_info("Success: {}".format(server_path))
+                carb.log_info(f"Success: {server_path}")
                 return True
             if result == Result.ERROR_CONNECTION and attempt < retry_attempts:
                 carb.log_warn(
@@ -302,7 +297,7 @@ async def check_server_async(server: str, path: str, timeout: float = 10.0) -> b
                 await asyncio.sleep(delay)
                 delay *= 2
                 continue
-            carb.log_info("Failure: {} not accessible".format(server_path))
+            carb.log_info(f"Failure: {server_path} not accessible")
             return False
         except asyncio.TimeoutError:
             if attempt < retry_attempts:
@@ -321,7 +316,7 @@ async def check_server_async(server: str, path: str, timeout: float = 10.0) -> b
     return False
 
 
-def build_server_list() -> typing.List:
+def build_server_list() -> list:
     """Return list with all known servers to check.
 
     Retrieves the list of mounted Nucleus server drives from the persistent settings.
@@ -341,7 +336,7 @@ def build_server_list() -> typing.List:
     return all_servers
 
 
-def find_nucleus_server(suffix: str) -> typing.Tuple[bool, str]:
+def find_nucleus_server(suffix: str) -> tuple[bool, str]:
     """Attempts to determine best Nucleus server to use based on existing mountedDrives setting.
 
     .. deprecated::
@@ -358,7 +353,7 @@ def find_nucleus_server(suffix: str) -> typing.Tuple[bool, str]:
     return False, ""
 
 
-def get_server_path(suffix: str = "") -> typing.Union[str, None]:
+def get_server_path(suffix: str = "") -> str | None:
     """Tries to find a Nucleus server with specific path.
 
     Args:
@@ -377,10 +372,10 @@ def get_server_path(suffix: str = "") -> typing.Union[str, None]:
         result = check_server(server_root, suffix)
         if result:
             return server_root
-    raise RuntimeError("Could not find Nucleus server with {} folder".format(suffix))
+    raise RuntimeError(f"Could not find Nucleus server with {suffix} folder")
 
 
-async def get_server_path_async(suffix: str = "") -> typing.Union[str, None]:
+async def get_server_path_async(suffix: str = "") -> str | None:
     """Tries to find a Nucleus server with specific path (asynchronous version).
 
     Args:
@@ -399,10 +394,10 @@ async def get_server_path_async(suffix: str = "") -> typing.Union[str, None]:
         result = await check_server_async(server_root, suffix)
         if result:
             return server_root
-    raise RuntimeError("Could not find Nucleus server with {} folder".format(suffix))
+    raise RuntimeError(f"Could not find Nucleus server with {suffix} folder")
 
 
-def verify_asset_root_path(path: str) -> typing.Tuple[omni.client.Result, str]:
+def verify_asset_root_path(path: str) -> tuple[omni.client.Result, str]:
     """Attempts to determine Isaac assets version and check if there are updates.
 
     Reads the version.txt file from the asset root path and compares it against
@@ -460,7 +455,7 @@ def verify_asset_root_path(path: str) -> typing.Tuple[omni.client.Result, str]:
         return Result.OK, ver_asset
 
 
-def get_full_asset_path(path: str) -> typing.Union[str, None]:
+def get_full_asset_path(path: str) -> str | None:
     """Tries to find the full asset path on connected servers.
 
     Searches for the asset path first in the default asset root, then in all
@@ -480,7 +475,7 @@ def get_full_asset_path(path: str) -> typing.Union[str, None]:
     if default_asset_root:
         result = check_server(default_asset_root, path)
         if result:
-            carb.log_info("Asset path found at {}{}".format(default_asset_root, path))
+            carb.log_info(f"Asset path found at {default_asset_root}{path}")
             return default_asset_root + path
 
     # 2 - Check mountedDrives setting
@@ -489,13 +484,13 @@ def get_full_asset_path(path: str) -> typing.Union[str, None]:
         for server_name in connected_servers:
             result = check_server(server_name, path)
             if result:
-                carb.log_info("Asset path found at {}{}".format(server_name, path))
+                carb.log_info(f"Asset path found at {server_name}{path}")
                 return server_name + path
 
-    raise RuntimeError("Could not find assets path: {}".format(path))
+    raise RuntimeError(f"Could not find assets path: {path}")
 
 
-async def get_full_asset_path_async(path: str) -> typing.Union[str, None]:
+async def get_full_asset_path_async(path: str) -> str | None:
     """Tries to find the full asset path on connected servers (asynchronous version).
 
     Searches for the asset path first in the default asset root, then in all
@@ -515,7 +510,7 @@ async def get_full_asset_path_async(path: str) -> typing.Union[str, None]:
     if default_asset_root:
         result = await check_server_async(default_asset_root, path)
         if result:
-            carb.log_info("Asset path found at {}{}".format(default_asset_root, path))
+            carb.log_info(f"Asset path found at {default_asset_root}{path}")
             return default_asset_root + path
 
     # 2 - Check mountedDrives setting
@@ -524,13 +519,13 @@ async def get_full_asset_path_async(path: str) -> typing.Union[str, None]:
         for server_name in connected_servers:
             result = await check_server_async(server_name, path)
             if result:
-                carb.log_info("Asset path found at {}{}".format(server_name, path))
+                carb.log_info(f"Asset path found at {server_name}{path}")
                 return server_name + path
 
-    raise RuntimeError("Could not find assets path: {}".format(path))
+    raise RuntimeError(f"Could not find assets path: {path}")
 
 
-def get_nvidia_asset_root_path() -> typing.Union[str, None]:
+def get_nvidia_asset_root_path() -> str | None:
     """Get the NVIDIA asset root path.
 
     .. deprecated::
@@ -544,7 +539,7 @@ def get_nvidia_asset_root_path() -> typing.Union[str, None]:
     return None
 
 
-def get_isaac_asset_root_path() -> typing.Union[str, None]:
+def get_isaac_asset_root_path() -> str | None:
     """Get the Isaac Sim asset root path.
 
     .. deprecated::
@@ -631,7 +626,7 @@ async def get_assets_root_path_async(*, skip_check: bool = False) -> str:
     raise RuntimeError(f"Could not find assets root folder: {default_asset_root}")
 
 
-def get_assets_server() -> typing.Union[str, None]:
+def get_assets_server() -> str | None:
     """Tries to find a server with the Isaac Sim assets.
 
     .. deprecated::
@@ -644,7 +639,7 @@ def get_assets_server() -> typing.Union[str, None]:
     return None
 
 
-async def _collect_files(url: str) -> typing.Tuple[str, typing.List]:
+async def _collect_files(url: str) -> tuple[str, list]:
     """Collect files under a URL.
 
     Args:
@@ -739,7 +734,7 @@ def is_file(path: str) -> bool:
     return False if file.flags & omni.client.ItemFlags.CAN_HAVE_CHILDREN > 0 else True
 
 
-async def recursive_list_folder(path: str) -> typing.List:
+async def recursive_list_folder(path: str) -> list:
     """Recursively list all files.
 
     Args:
@@ -765,7 +760,7 @@ async def recursive_list_folder(path: str) -> typing.List:
     return paths
 
 
-async def list_folder(path: str) -> typing.Tuple[typing.List, typing.List]:
+async def list_folder(path: str) -> tuple[list, list]:
     """List files and sub-folders from root path.
 
     Args:

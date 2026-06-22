@@ -38,7 +38,17 @@ EXTENSION_NAME = "Physics Raycast Sensor Example"
 def _generate_solid_state_rays(
     h_count: int = 10, v_count: int = 5, h_fov: float = 60.0, v_fov: float = 20.0
 ) -> tuple[list[list[float]], list[list[float]], None]:
-    """Generate a rectangular grid of rays for a solid state physics raycast sensor."""
+    """Generate a rectangular grid of rays for a solid state physics raycast sensor.
+
+    Args:
+        h_count: Number of horizontal rays.
+        v_count: Number of vertical rays.
+        h_fov: Horizontal field of view in degrees.
+        v_fov: Vertical field of view in degrees.
+
+    Returns:
+        Ray origins, ray directions, and no time offsets.
+    """
     origins = []
     directions = []
     for vi in range(v_count):
@@ -61,6 +71,15 @@ def _generate_rotating_rays(
     Each azimuthal column is assigned a time offset within one sweep
     period.  The C++ plugin fires only the rays whose offsets fall inside
     the current physics step, producing a sweeping beam pattern.
+
+    Args:
+        v_count: Number of vertical rays per azimuth step.
+        azimuth_steps: Number of azimuth columns in one sweep.
+        v_fov: Vertical field of view in degrees.
+        rotation_rate: Sweep rotation rate in hertz.
+
+    Returns:
+        Ray origins, ray directions, and per-ray time offsets.
     """
     period = 1.0 / rotation_rate
     origins = []
@@ -83,7 +102,15 @@ def _generate_rotating_rays(
 def _generate_curtain_rays(
     beam_count: int = 16, curtain_height: float = 0.75
 ) -> tuple[list[list[float]], list[list[float]], None]:
-    """Generate parallel rays spread vertically for a beam curtain physics raycast sensor."""
+    """Generate parallel rays spread vertically for a beam curtain physics raycast sensor.
+
+    Args:
+        beam_count: Number of vertical curtain beams.
+        curtain_height: Total vertical spread of the curtain.
+
+    Returns:
+        Ray origins, ray directions, and no time offsets.
+    """
     origins = []
     directions = []
     for i in range(beam_count):

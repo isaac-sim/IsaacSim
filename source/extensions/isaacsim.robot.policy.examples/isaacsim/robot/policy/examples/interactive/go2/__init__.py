@@ -13,5 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from isaacsim.robot.policy.examples.interactive.go2.go2_example import Go2Example
-from isaacsim.robot.policy.examples.interactive.go2.go2_example_extension import Go2ExampleExtension
+from isaacsim.robot.policy.examples.interactive.go2.go2_example import Go2Example as Go2Example
+from isaacsim.robot.policy.examples.interactive.go2.go2_example_extension import (
+    Go2ExampleExtension as Go2ExampleExtension,
+)

@@ -155,7 +155,11 @@ class SelectedConveyorWidget:
             self.on_anchor_changed_callback(new_anchor)
 
     def get_current_anchor(self) -> str:
-        """Get the name of the currently selected anchor point."""
+        """Get the name of the currently selected anchor point.
+
+        Returns:
+            Anchor name at ``current_anchor``, or empty string if no conveyor is selected.
+        """
         if self.selected_conveyor:
             return self.available_anchors[self.current_anchor]
         return ""

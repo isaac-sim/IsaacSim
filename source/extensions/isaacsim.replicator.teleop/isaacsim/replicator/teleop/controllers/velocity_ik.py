@@ -59,6 +59,17 @@ class VelocityBasedIKController:
         set_target(position, orientation)
         compute() -> np.ndarray | None
         reset()
+
+    Args:
+        robot: Value for robot.
+        ee_link: Value for ee link.
+        ee_link_index: Value for ee link index.
+        num_arm_dofs: Value for num arm dofs.
+        method: Value for method.
+        damping: Value for damping.
+        min_singular_value: Value for min singular value.
+        gain: Value for gain.
+        max_joint_step_rad: Value for max joint step rad.
     """
 
     def __init__(
@@ -90,37 +101,65 @@ class VelocityBasedIKController:
 
     @property
     def reachable(self) -> bool:
-        """Whether the last compute() produced a valid solution."""
+        """Whether the last compute() produced a valid solution.
+
+        Returns:
+            The requested value.
+        """
         return self._reachable
 
     @property
     def gain(self) -> float:
-        """Return the velocity IK proportional gain."""
+        """Return the velocity IK proportional gain.
+
+        Returns:
+            The requested value.
+        """
         return self._gain
 
     @gain.setter
     def gain(self, value: float) -> None:
-        """Set the velocity IK proportional gain."""
+        """Set the velocity IK proportional gain.
+
+        Args:
+            value: Value for value.
+        """
         self._gain = max(0.01, value)
 
     @property
     def max_joint_step_rad(self) -> float:
-        """Return the maximum allowed joint change per step in radians."""
+        """Return the maximum allowed joint change per step in radians.
+
+        Returns:
+            The requested value.
+        """
         return float(self._max_joint_step_rad)
 
     @max_joint_step_rad.setter
     def max_joint_step_rad(self, value: float) -> None:
-        """Set the maximum allowed joint change per step in radians."""
+        """Set the maximum allowed joint change per step in radians.
+
+        Args:
+            value: Value for value.
+        """
         self._max_joint_step_rad = max(0.0, value)
 
     @property
     def method(self) -> str:
-        """Return the differential IK method name."""
+        """Return the differential IK method name.
+
+        Returns:
+            The requested value.
+        """
         return self._method
 
     @method.setter
     def method(self, value: str) -> None:
-        """Set the differential IK method by name."""
+        """Set the differential IK method by name.
+
+        Args:
+            value: Value for value.
+        """
         allowed = {
             "damped-least-squares",
             "pseudoinverse",
@@ -133,29 +172,50 @@ class VelocityBasedIKController:
 
     @property
     def damping(self) -> float:
-        """Return the damping factor for the DLS method."""
+        """Return the damping factor for the DLS method.
+
+        Returns:
+            The requested value.
+        """
         return float(self._damping)
 
     @damping.setter
     def damping(self, value: float) -> None:
-        """Set the damping factor for DLS method."""
+        """Set the damping factor for DLS method.
+
+        Args:
+            value: Value for value.
+        """
         self._damping = max(1e-6, value)
 
     @property
     def vr_target_filter(self) -> float:
-        """Return the VR target filter strength (always 0 for velocity IK)."""
+        """Return the VR target filter strength (always 0 for velocity IK).
+
+        Returns:
+            The requested value.
+        """
         return 0.0
 
     @vr_target_filter.setter
     def vr_target_filter(self, value: float) -> None:
-        """No-op; velocity IK does not support VR target filtering."""
+        """No-op; velocity IK does not support VR target filtering.
+
+        Args:
+            value: Value for value.
+        """
 
     def set_target(
         self,
         position: tuple[float, float, float],
         orientation: tuple[float, float, float, float] | None,
     ) -> None:
-        """Set the 6DOF goal pose (sim coordinates, xyzw quaternion)."""
+        """Set the 6DOF goal pose (sim coordinates, xyzw quaternion).
+
+        Args:
+            position: Value for position.
+            orientation: Value for orientation.
+        """
         self._goal_position = np.array([list(position)], dtype=np.float64)
         if orientation is not None:
             self._goal_orientation = xyzw_to_wxyz(orientation)
@@ -166,8 +226,7 @@ class VelocityBasedIKController:
         """Compute one IK step via pseudoinverse Jacobian with velocity integration.
 
         Returns:
-            Absolute joint positions for the first ``num_arm_dofs`` DOFs
-            as a 1-D numpy array, or None if no target / physics not ready.
+            The requested value.
         """
         if self._goal_position is None:
             return None
@@ -215,7 +274,15 @@ class VelocityBasedIKController:
         self._reachable = True
 
     def _compute_joint_velocity(self, jacobian_ee: np.ndarray, x_error: np.ndarray) -> np.ndarray:
-        """Compute velocity-space joint update with selectable Jacobian method."""
+        """Compute velocity-space joint update with selectable Jacobian method.
+
+        Args:
+            jacobian_ee: Value for jacobian ee.
+            x_error: Value for x error.
+
+        Returns:
+            The requested value.
+        """
         batch_size = jacobian_ee.shape[0]
         dofs = jacobian_ee.shape[2]
         dq = np.zeros((batch_size, dofs), dtype=np.float64)

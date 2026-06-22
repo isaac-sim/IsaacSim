@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test hello world task with cloned sphere and cuboid environments."""
+"""Verifies that a custom BaseTask can clone dynamic sphere and cuboid objects across multiple environments and collect torch-backed rigid prim observations."""
 
 from isaacsim import SimulationApp
 
@@ -21,6 +21,7 @@ simulation_app = SimulationApp({"headless": False})
 
 import argparse
 from abc import abstractmethod
+from typing import Any
 
 import numpy as np
 from isaacsim.core.api import World
@@ -40,7 +41,7 @@ args, unknown = parser.parse_known_args()
 class HelloWorld(BaseTask):
     """Base task that clones objects across multiple environments."""
 
-    def __init__(self, name, num_envs, env_spacing, offset=None) -> None:
+    def __init__(self, name: str, num_envs: int, env_spacing: float, offset: Any = None) -> None:
         """Initialize the HelloWorld task with environment configuration."""
         BaseTask.__init__(self, name=name, offset=offset)
 
@@ -51,7 +52,7 @@ class HelloWorld(BaseTask):
 
         return
 
-    def set_up_scene(self, scene) -> None:
+    def set_up_scene(self, scene: Any) -> None:
         """Set up the simulation scene with cloned objects.
 
         Args:
@@ -72,7 +73,7 @@ class HelloWorld(BaseTask):
         return
 
     @abstractmethod
-    def set_object(self):
+    def set_object(self) -> Any:
         """Create and return the object to clone across environments."""
         raise NotImplementedError
 
@@ -100,11 +101,11 @@ class HelloWorld(BaseTask):
 class HelloWorldSphere(HelloWorld):
     """HelloWorld task using dynamic sphere objects."""
 
-    def __init__(self, name, num_envs, env_spacing, offset=None) -> None:
+    def __init__(self, name: str, num_envs: int, env_spacing: float, offset: Any = None) -> None:
         """Initialize the HelloWorldSphere task with sphere objects."""
         super().__init__(name=name, num_envs=num_envs, env_spacing=env_spacing, offset=offset)
 
-    def set_object(self):
+    def set_object(self) -> DynamicSphere:
         """Create and return a dynamic sphere object."""
         radius = 0.1
         density = 1000.0
@@ -115,11 +116,11 @@ class HelloWorldSphere(HelloWorld):
 class HelloWorldCuboid(HelloWorld):
     """HelloWorld task using dynamic cuboid objects."""
 
-    def __init__(self, name, num_envs, env_spacing, offset=None) -> None:
+    def __init__(self, name: str, num_envs: int, env_spacing: float, offset: Any = None) -> None:
         """Initialize the HelloWorldCuboid task with cuboid objects."""
         super().__init__(name=name, num_envs=num_envs, env_spacing=env_spacing, offset=offset)
 
-    def set_object(self):
+    def set_object(self) -> DynamicCuboid:
         """Create and return a dynamic cuboid object."""
         size = np.array([0.2, 0.2, 0.2])
         density = 1000.0

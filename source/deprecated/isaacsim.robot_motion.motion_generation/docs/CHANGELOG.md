@@ -1,4 +1,9 @@
 # Changelog
+
+## [8.2.9] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [8.2.8] - 2026-05-12
 ### Fixed
 - `ArticulationTrajectory.get_action_at_time`: raise `ValueError` immediately after `carb.log_error` for out-of-bounds time instead of falling through to `get_joint_targets` and returning a structurally valid but semantically wrong action (6131126)

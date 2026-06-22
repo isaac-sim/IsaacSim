@@ -13,9 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for shape."""
+"""Validate generic Shape dispatch and shared shape display attributes.
 
-from typing import Literal
+The suite creates each supported geometric shape type, verifies
+``Shape.fetch_instances`` returns concrete wrappers, and checks display-color
+normalization through a representative USD-backed shape collection.
+"""
+
+from typing import Any, Literal
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.commands
@@ -24,8 +29,14 @@ from isaacsim.core.experimental.objects import Capsule, Cone, Cube, Cylinder, Pl
 from isaacsim.core.experimental.prims.tests.common import cprint, draw_choice, draw_indices, parametrize
 
 
-async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"], **kwargs) -> None:
-    """Populate stage."""
+async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"], **kwargs: Any) -> None:
+    """Create a fresh stage and author existing sphere prims for wrap-mode tests.
+
+    Args:
+        max_num_prims: Maximum number of prims to prepare on the stage.
+        operation: Operation mode selected by parametrization.
+        **kwargs: Additional arguments supplied by parametrization.
+    """
     # create new stage
     await stage_utils.create_new_stage_async()
     # define prims
@@ -35,19 +46,19 @@ async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"
 
 
 class TestShape(omni.kit.test.AsyncTestCase):
-    """Test shape."""
+    """Exercise generic Shape instance dispatch and shared color APIs."""
 
-    async def setUp(self):
-        """Method called to prepare the test fixture."""
+    async def setUp(self) -> None:
+        """Initialize the async fixture; parametrized cases create their own stages."""
         super().setUp()
 
-    async def tearDown(self):
-        """Method called immediately after the test method has been called."""
+    async def tearDown(self) -> None:
+        """Finalize the async fixture without additional shape cleanup."""
         super().tearDown()
 
     # --------------------------------------------------------------------
 
-    async def test_fetch_instances(self):
+    async def test_fetch_instances(self) -> None:
         """Test fetch instances."""
         await stage_utils.create_new_stage_async()
         # create shapes
@@ -80,8 +91,15 @@ class TestShape(omni.kit.test.AsyncTestCase):
         self.assertIsInstance(instances[6], Sphere)
 
     @parametrize(backends=["usd"], prim_class=Sphere, populate_stage_func=populate_stage)
-    async def test_display_colors(self, prim, num_prims, device, backend):
-        """Test display colors."""
+    async def test_display_colors(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Test display colors.
+
+        Args:
+            prim: Object wrapper collection under test.
+            num_prims: Number of prims in the parametrized collection.
+            device: Device expected for returned arrays.
+            backend: Backend name selected by parametrization.
+        """
         choices = [
             (0.1, 0.2, 0.3),  # RGB tuple
             "#aBc",  # case-insensitive short hex RGB

@@ -28,7 +28,11 @@ EXT_NAME = "isaacsim.robot.experimental.manipulators.examples"
 
 
 def _get_data_file() -> str:
-    """Get the path to the example data file in this extension's data/ folder."""
+    """Get the path to the example data file in this extension's data/ folder.
+
+    Returns:
+        Absolute path to the example data file.
+    """
     mgr = omni.kit.app.get_app().get_extension_manager()
     ext_root = mgr.get_extension_path(mgr.get_enabled_extension_id(EXT_NAME))
     return os.path.join(ext_root, "data", "example_data_file.json")

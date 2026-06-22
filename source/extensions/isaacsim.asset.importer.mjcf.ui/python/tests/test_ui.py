@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""UI tests for the MJCF importer extension."""
+"""Verifies the MJCF importer UI workflow for loading assets and applying import options. Covers UI selection state, parity with direct importer configuration, and per-file option isolation in multi-select imports."""
 
 import asyncio
 import gc
@@ -107,7 +107,6 @@ class TestImporterUI(MenuUITestCase):
         Returns:
             The matching label widget, or ``None`` if not found.
         """
-
         carb.log_info(f"Finding file {filename} in window {window_name}")
         for widget in ui_test.find_all(f"{window_name}//Frame/**/TreeView[*]"):
             for file_widget in widget.find_all("**/Label[*]"):
@@ -306,7 +305,6 @@ class TestImporterUI(MenuUITestCase):
 
     async def test_mjcf_ui_match_mjcf_importer(self) -> None:
         """Test mjcf ui match mjcf importer."""
-
         # UI workflow
         await self.test_import_ant_from_ui(delete_output_on_success=False)
 

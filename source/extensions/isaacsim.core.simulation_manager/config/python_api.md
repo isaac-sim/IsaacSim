@@ -2,6 +2,16 @@
 
 ## Classes
 
+- class IsaacEvents(Enum)
+  - PHYSICS_WARMUP: str
+  - SIMULATION_VIEW_CREATED: str
+  - PHYSICS_READY: str
+  - POST_RESET: str
+  - PRIM_DELETION: str
+  - PRE_PHYSICS_STEP: str
+  - POST_PHYSICS_STEP: str
+  - TIMELINE_STOP: str
+
 - class PhysicsScene
   - def __init__(self, prim: str | Usd.Prim)
   - [property] def path(self) -> str
@@ -61,15 +71,15 @@
   - PRIM_DELETED: str
 
 - class SimulationManager
-  - class def get_active_physics_engine(cls) -> Literal[physx]
+  - class def get_active_physics_engine(cls) -> Literal[physx, newton, remotesim]
   - class def get_default_engine(cls) -> str
   - class def get_available_physics_engines(cls, verbose: bool = False) -> list[tuple[str, bool]]
-  - class def switch_physics_engine(cls, engine_name: Literal[physx, newton], verbose: bool = False) -> bool
+  - class def switch_physics_engine(cls, engine_name: Literal[physx, newton, remotesim], verbose: bool = False) -> bool
   - class def initialize_physics(cls)
   - class def invalidate_physics(cls)
   - class def setup_simulation(cls, dt: float | None = None, device: str | wp.Device | None = None)
   - class def get_physics_scenes(cls) -> list[PhysicsScene]
-  - class def get_physics_simulation_view(cls) -> 'SimulationView' | None
+  - class def get_physics_simulation_view(cls) -> Any | None
   - class def get_simulation_time(cls) -> float
   - class def get_num_physics_steps(cls) -> int
   - class def is_simulating(cls) -> bool
@@ -79,12 +89,12 @@
   - class def get_device(cls) -> wp.Device
   - class def enable_fabric(cls, enable: bool)
   - class def is_fabric_enabled(cls) -> bool
-  - class def register_callback(cls, callback: Callable, event: SimulationEvent | IsaacEvents, **kwargs) -> int
+  - class def register_callback(cls, callback: Callable, event: SimulationEvent | IsaacEvents, **kwargs: Any) -> int
   - class def deregister_callback(cls, uid: int) -> bool
   - class def deregister_all_callbacks(cls)
   - class def enable_usd_notice_handler(cls, enable: bool)
-  - class def enable_fabric_usd_notice_handler(cls, stage_id, enable: bool)
-  - class def is_fabric_usd_notice_handler_enabled(cls, stage_id)
+  - class def enable_fabric_usd_notice_handler(cls, stage_id: int, enable: bool)
+  - class def is_fabric_usd_notice_handler_enabled(cls, stage_id: int) -> bool
   - class def assets_loading(cls) -> bool
   - class def enable_default_callbacks(cls)
   - class def enable_all_default_callbacks(cls, enable: bool = True)
@@ -96,10 +106,10 @@
   - class def enable_stage_open_callback(cls, enable: bool = True)
   - class def set_backend(cls, val: str)
   - class def get_backend(cls) -> str
-  - class def get_physics_sim_view(cls)
+  - class def get_physics_sim_view(cls) -> Any
   - class def set_default_physics_scene(cls, physics_scene_prim_path: str)
   - class def get_default_physics_scene(cls) -> str
-  - class def set_physics_sim_device(cls, val)
+  - class def set_physics_sim_device(cls, val: str)
   - class def get_physics_sim_device(cls) -> str
   - class def set_physics_dt(cls, dt: float = 1.0 / 60.0, physics_scene: str = None)
   - class def get_physics_dt(cls, physics_scene: str | None = None) -> float
@@ -113,13 +123,3 @@
   - class def get_solver_type(cls, physics_scene: str | None = None) -> str
   - class def enable_stablization(cls, flag: bool, physics_scene: str | None = None)
   - class def is_stablization_enabled(cls, physics_scene: str = None) -> bool
-
-- class IsaacEvents(Enum)
-  - PHYSICS_WARMUP: str
-  - SIMULATION_VIEW_CREATED: str
-  - PHYSICS_READY: str
-  - POST_RESET: str
-  - PRIM_DELETION: str
-  - PRE_PHYSICS_STEP: str
-  - POST_PHYSICS_STEP: str
-  - TIMELINE_STOP: str

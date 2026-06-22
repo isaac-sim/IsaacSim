@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies RenderingManager frame events, delta-time reporting, and callback registration during asynchronous rendering updates. The tests confirm render stepping emits the expected RenderingEvent payloads and callback lifecycles."""
+
 import asyncio
+from typing import Any
 
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -24,7 +27,9 @@ _SETTING_RATE_LIMIT_ENABLED = "/app/runLoops/main/rateLimitEnabled"
 
 
 class TestRenderingManager(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Tests rendering frame stepping, delta time settings, and callback dispatch."""
+
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # ---------------
@@ -35,7 +40,7 @@ class TestRenderingManager(omni.kit.test.AsyncTestCase):
         await stage_utils.create_new_stage_async()
         # ---------------
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         # ------------------
         carb.settings.get_settings().set_bool(_SETTING_RATE_LIMIT_ENABLED, self._rate_limit_enabled)
@@ -45,18 +50,20 @@ class TestRenderingManager(omni.kit.test.AsyncTestCase):
 
     # --------------------------------------------------------------------
 
-    def _callback(self, *args, **kwargs):
+    def _callback(self, *args: Any, **kwargs: Any) -> None:
         self._callback_call[0] += 1
         self._callback_call_stack.append(self._callback_call[:])
         self._fire_order.append("class")
 
     # --------------------------------------------------------------------
 
-    async def test_render(self):
+    async def test_render(self) -> None:
+        """Advance multiple asynchronous render frames without raising errors."""
         for _ in range(10):
             await RenderingManager.render_async()
 
-    async def test_dt(self):
+    async def test_dt(self) -> None:
+        """Verify default and custom render delta times for rate-limit modes."""
         # get default vale
         for enabled in [False, True]:
             carb.settings.get_settings().set_bool(_SETTING_RATE_LIMIT_ENABLED, enabled)
@@ -78,7 +85,8 @@ class TestRenderingManager(omni.kit.test.AsyncTestCase):
                 msg=f"Expected {1 / custom_dt} Hz. Got {1 / current_dt} Hz (rateLimitEnabled: {enabled})",
             )
 
-    async def test_callback(self):
+    async def test_callback(self) -> None:
+        """Verify NEW_FRAME callback ids, firing order, deregistration, and stale-id handling."""
         # NEW_FRAME events are pumped by Hydra's GPU completion check; with the default
         # rendering pipeline a single render_async() may yield 0, 1, or more NEW_FRAME
         # dispatches. A strict 1:1 mapping only holds under /app/hydraEngine/waitIdle=true
@@ -93,7 +101,7 @@ class TestRenderingManager(omni.kit.test.AsyncTestCase):
         #   - deregister_all_callbacks removes every subscription
         #   - deregistering a stale id is a safe no-op
 
-        def callback(*args, **kwargs):
+        def callback(*args: Any, **kwargs: Any) -> None:
             self._callback_call[1] += 1
             self._callback_call_stack.append(self._callback_call[:])
             self._fire_order.append("local")
@@ -105,11 +113,11 @@ class TestRenderingManager(omni.kit.test.AsyncTestCase):
 
         RENDERS_PER_PHASE = 5
 
-        async def run_renders():
+        async def run_renders() -> None:
             for _ in range(RENDERS_PER_PHASE):
                 await RenderingManager.render_async()
 
-        def snapshot():
+        def snapshot() -> tuple[int, int, int]:
             return self._callback_call[0], self._callback_call[1], len(self._fire_order)
 
         # phase A: only the local callback is registered

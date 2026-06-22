@@ -13,11 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test script to count and list enabled extensions in Isaac Sim."""
+"""Counts enabled Isaac Sim extensions after SimulationApp startup and optionally prints their names for validation and reporting."""
 
 import argparse
 import sys
-from typing import Dict
 
 # Initialize simulation app first
 from isaacsim import SimulationApp
@@ -42,7 +41,7 @@ simulation_app.update()
 import omni.kit.app  # noqa: E402
 
 
-def get_enabled_extensions() -> Dict[str, bool]:
+def get_enabled_extensions() -> dict[str, bool]:
     """Retrieve a dictionary of enabled extensions.
 
     Returns:
@@ -52,7 +51,7 @@ def get_enabled_extensions() -> Dict[str, bool]:
     ext_manager = app.get_extension_manager()
     ext_summaries = ext_manager.get_extensions()
 
-    enabled_exts: Dict[str, bool] = {}
+    enabled_exts: dict[str, bool] = {}
 
     for ext_summary in ext_summaries:
         ext_name = ext_summary["name"]
@@ -63,7 +62,7 @@ def get_enabled_extensions() -> Dict[str, bool]:
     return enabled_exts
 
 
-def main():
+def main() -> None:
     """Main execution function."""
     try:
         enabled_exts = get_enabled_extensions()

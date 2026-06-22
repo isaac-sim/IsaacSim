@@ -40,7 +40,11 @@ _NOOP_TYPE_ID = "_test_timeline_controller_noop"
 
 
 class _NoopRecordable(Recordable):
-    """Minimal :class:`Recordable` that doesn't touch the stage or produce frames."""
+    """Minimal :class:`Recordable` that doesn't touch the stage or produce frames.
+
+    Args:
+        group: Recordable HDF5 group path.
+    """
 
     TYPE_ID = _NOOP_TYPE_ID
 
@@ -50,20 +54,20 @@ class _NoopRecordable(Recordable):
     def describe_channels(self) -> dict[str, ChannelDescriptor]:
         return {"value": ChannelDescriptor(shape=(), dtype="i8")}
 
-    def on_session_open(self, stage) -> None:
+    def on_session_open(self, stage: object) -> None:
         pass
 
     def sample(self) -> dict[str, np.ndarray]:
         return {"value": np.int64(0)}
 
-    def apply(self, frame, *, policy: ReplayPolicy) -> None:
+    def apply(self, frame: object, *, policy: ReplayPolicy) -> None:
         pass
 
     def to_manifest(self) -> dict[str, object]:
         return {"type": self.TYPE_ID, "group": self.group}
 
     @classmethod
-    def from_manifest(cls, entry):
+    def from_manifest(cls, entry: object) -> object:
         return cls(group=str(entry["group"]))
 
 
@@ -81,7 +85,10 @@ def _make_open_recorder(output_dir: str) -> EpisodeRecorder:
 
 
 class TimelineControllerTests(omni.kit.test.AsyncTestCase):
+    """Define TimelineControllerTests behavior."""
+
     async def setUp(self) -> None:
+        """Set up the test fixture."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
@@ -89,6 +96,7 @@ class TimelineControllerTests(omni.kit.test.AsyncTestCase):
             register_recordable(_NoopRecordable)
 
     async def tearDown(self) -> None:
+        """Tear down the test fixture."""
         if _NOOP_TYPE_ID in registered_types():
             unregister_recordable(_NOOP_TYPE_ID)
         omni.usd.get_context().close_stage()
@@ -97,6 +105,7 @@ class TimelineControllerTests(omni.kit.test.AsyncTestCase):
             await omni.kit.app.get_app().next_update_async()
 
     async def test_auto_start_on_play_true_triggers_start(self) -> None:
+        """Run the auto start on play true triggers start test."""
         with tempfile.TemporaryDirectory(prefix="timeline_ctrl_test_") as tmp_dir:
             rec = _make_open_recorder(tmp_dir)
             try:
@@ -111,6 +120,7 @@ class TimelineControllerTests(omni.kit.test.AsyncTestCase):
                 rec.close_session()
 
     async def test_auto_start_on_play_false_skips_start(self) -> None:
+        """Run the auto start on play false skips start test."""
         with tempfile.TemporaryDirectory(prefix="timeline_ctrl_test_") as tmp_dir:
             rec = _make_open_recorder(tmp_dir)
             try:
@@ -122,6 +132,7 @@ class TimelineControllerTests(omni.kit.test.AsyncTestCase):
                 rec.close_session()
 
     async def test_set_auto_start_on_play_toggles_gating_live(self) -> None:
+        """Run the set auto start on play toggles gating live test."""
         with tempfile.TemporaryDirectory(prefix="timeline_ctrl_test_") as tmp_dir:
             rec = _make_open_recorder(tmp_dir)
             try:
@@ -142,6 +153,7 @@ class TimelineControllerTests(omni.kit.test.AsyncTestCase):
                 rec.close_session()
 
     async def test_stop_always_ends_active_episode(self) -> None:
+        """Run the stop always ends active episode test."""
         with tempfile.TemporaryDirectory(prefix="timeline_ctrl_test_") as tmp_dir:
             rec = _make_open_recorder(tmp_dir)
             try:

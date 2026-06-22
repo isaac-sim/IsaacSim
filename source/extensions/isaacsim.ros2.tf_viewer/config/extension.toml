@@ -1,5 +1,5 @@
 [package]
-version = "2.3.2"
+version = "2.3.3"
 category = "Utility"
 title = "TF Viewer"
 description = "Show the tf transform tree in the viewport"

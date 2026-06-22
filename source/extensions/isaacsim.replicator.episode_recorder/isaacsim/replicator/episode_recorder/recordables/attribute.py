@@ -30,7 +30,14 @@ _CHANNEL_NAME = "value"
 
 
 def _infer_shape_dtype(value: Any) -> tuple[tuple[int, ...], str]:
-    """Return ``(shape, dtype_code)`` for a USD attribute probe value."""
+    """Return ``(shape, dtype_code)`` for a USD attribute probe value.
+
+    Args:
+        value: Value to process.
+
+    Returns:
+        Shape and dtype inferred from the value.
+    """
     if value is None:
         return ((), "f4")
     if isinstance(value, bool):
@@ -82,6 +89,11 @@ class AttributeRecordable(Recordable):
         self._stage: Any = None
 
     def describe_channels(self) -> dict[str, ChannelDescriptor]:
+        """Describe the recorded channels.
+
+        Returns:
+            Channel descriptors keyed by channel name.
+        """
         shape = self._shape if self._shape is not None else ()
         dtype = self._dtype if self._dtype is not None else "f4"
         return {_CHANNEL_NAME: ChannelDescriptor(shape=shape, dtype=dtype)}
@@ -96,6 +108,11 @@ class AttributeRecordable(Recordable):
         return attr
 
     def on_session_open(self, stage: Any) -> None:
+        """Open the recordable session.
+
+        Args:
+            stage: USD stage to use.
+        """
         self._stage = stage
         attr = self._get_attr()
         if self._shape is None or self._dtype is None:
@@ -107,9 +124,15 @@ class AttributeRecordable(Recordable):
                 self._dtype = dtype
 
     def on_session_close(self) -> None:
+        """Close the recordable session."""
         self._stage = None
 
     def sample(self) -> dict[str, np.ndarray]:
+        """Sample one frame of data.
+
+        Returns:
+            Sampled frame data keyed by channel name.
+        """
         attr = self._get_attr()
         value = attr.Get()
         if value is None:
@@ -120,6 +143,12 @@ class AttributeRecordable(Recordable):
         return {_CHANNEL_NAME: arr.astype(self._dtype or arr.dtype.str.lstrip("<>|="), copy=False)}
 
     def apply(self, frame: Mapping[str, np.ndarray], *, policy: ReplayPolicy) -> None:
+        """Apply one recorded frame.
+
+        Args:
+            frame: Frame data keyed by channel name.
+            policy: Replay policy controlling error handling.
+        """
         if self._stage is None:
             if policy.strictness == "strict":
                 raise RuntimeError(f"AttributeRecordable {self.prim_path}.{self.attribute_name}: not bound.")
@@ -147,6 +176,11 @@ class AttributeRecordable(Recordable):
             carb.log_warn(f"[AttributeRecordable {self.prim_path}.{self.attribute_name}] apply failed: {exc}")
 
     def to_manifest(self) -> dict[str, Any]:
+        """Serialize this object to a manifest entry.
+
+        Returns:
+            JSON-friendly manifest entry.
+        """
         return {
             "type": self.TYPE_ID,
             "group": self.group,
@@ -158,6 +192,14 @@ class AttributeRecordable(Recordable):
 
     @classmethod
     def from_manifest(cls, entry: Mapping[str, Any]) -> AttributeRecordable:
+        """Create an instance from a manifest entry.
+
+        Args:
+            entry: Manifest entry used to reconstruct the recordable.
+
+        Returns:
+            Recordable reconstructed from the manifest entry.
+        """
         shape = entry.get("shape")
         shape_t = tuple(shape) if shape is not None else None
         return cls(

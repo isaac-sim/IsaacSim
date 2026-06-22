@@ -36,17 +36,17 @@ from isaacsim.storage.native.impl.file_utils import _URL_SCHEMES
 class TestPathJoin(omni.kit.test.AsyncTestCase):
     """Tests for path_join covering all URL schemes and local paths."""
 
-    def _base(self, scheme):
+    def _base(self, scheme: str) -> str:
         return f"{scheme}server/folder"
 
-    def test_basic_join_all_schemes(self):
+    def test_basic_join_all_schemes(self) -> None:
         """Forward-slash join for every URL scheme — no backslashes on Windows."""
         for scheme in _URL_SCHEMES:
             base = self._base(scheme)
             result = path_join(base, "file.usd")
             self.assertEqual(result, f"{base}/file.usd", f"Failed for scheme: {scheme}")
 
-    def test_trailing_slash_stripped(self):
+    def test_trailing_slash_stripped(self) -> None:
         """Trailing slash on base is stripped before joining."""
         for scheme in _URL_SCHEMES:
             base = self._base(scheme) + "/"
@@ -54,14 +54,14 @@ class TestPathJoin(omni.kit.test.AsyncTestCase):
             self.assertNotIn("//file.usd", result, f"Double slash for scheme: {scheme}")
             self.assertTrue(result.endswith("/file.usd"), f"Failed for scheme: {scheme}")
 
-    def test_dot_slash_prefix_stripped(self):
+    def test_dot_slash_prefix_stripped(self) -> None:
         """Leading ./ on name is stripped."""
         for scheme in _URL_SCHEMES:
             base = self._base(scheme)
             result = path_join(base, "./sub/file.usd")
             self.assertEqual(result, f"{base}/sub/file.usd", f"Failed for scheme: {scheme}")
 
-    def test_parent_traversal(self):
+    def test_parent_traversal(self) -> None:
         """../ traversal uses forward-slash split, not os.path.dirname."""
         for scheme in _URL_SCHEMES:
             base = f"{scheme}server/a/b"
@@ -69,7 +69,7 @@ class TestPathJoin(omni.kit.test.AsyncTestCase):
             self.assertEqual(result, f"{scheme}server/a/file.usd", f"Failed for scheme: {scheme}")
             self.assertNotIn("\\", result, f"Backslash found for scheme: {scheme}")
 
-    def test_local_path_uses_os_join(self):
+    def test_local_path_uses_os_join(self) -> None:
         """Local paths fall through to os.path.join."""
         import os
 
@@ -80,18 +80,18 @@ class TestPathJoin(omni.kit.test.AsyncTestCase):
 class TestIsLocalPath(omni.kit.test.AsyncTestCase):
     """Tests for is_local_path covering all URL schemes and local paths."""
 
-    def test_url_schemes_are_not_local(self):
+    def test_url_schemes_are_not_local(self) -> None:
         """Every URL scheme must return False."""
         for scheme in _URL_SCHEMES:
             path = f"{scheme}server/path/file.usd"
             self.assertFalse(is_local_path(path), f"Expected False for scheme: {scheme}")
 
-    def test_local_paths_are_local(self):
+    def test_local_paths_are_local(self) -> None:
         """Absolute and relative local paths return True."""
         for path in ("/home/user/file.usd", "relative/file.usd", "/mnt/data/file.usd"):
             self.assertTrue(is_local_path(path), f"Expected True for: {path}")
 
-    def test_empty_path_is_local(self):
+    def test_empty_path_is_local(self) -> None:
         """Empty string is treated as local."""
         self.assertTrue(is_local_path(""))
 
@@ -103,15 +103,15 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
     connectivity functions.
     """
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures before each test method."""
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after each test method."""
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_get_assets_root_path(self):
+    async def test_get_assets_root_path(self) -> None:
         """Test asset root path retrieval with various settings configurations.
 
         Verifies that get_assets_root_path and get_assets_root_path_async correctly
@@ -151,7 +151,7 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
         # reset settings
         carb.settings.get_settings().set("/persistent/isaac/asset_root/default", default_assets_url)
 
-    async def test_find_filtered_files_async_basic_discovery(self):
+    async def test_find_filtered_files_async_basic_discovery(self) -> None:
         """Test basic USD file discovery without filters.
 
         This test verifies that the find_filtered_files_async function can discover
@@ -176,7 +176,7 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
                 f"File should have valid USD extension: {file_path}",
             )
 
-    async def test_find_filtered_files_async_pattern_filtering_any_mode(self):
+    async def test_find_filtered_files_async_pattern_filtering_any_mode(self) -> None:
         """Test regex pattern filtering with match_all=False (any pattern matches).
 
         This test verifies that when multiple patterns are provided and match_all=False,
@@ -206,7 +206,7 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
                     f"File '{file_path}' should match at least one pattern ['room', 'Props'] in ANY mode",
                 )
 
-    async def test_find_filtered_files_async_pattern_filtering_all_mode(self):
+    async def test_find_filtered_files_async_pattern_filtering_all_mode(self) -> None:
         """Test regex pattern filtering with match_all=True (all patterns must match).
 
         This test verifies that when match_all=True, only files matching ALL patterns
@@ -236,7 +236,7 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
                     f"File '{file_path}' should match ALL patterns ['Towel', 'Room'] in ALL mode",
                 )
 
-    async def test_find_filtered_files_async_filepath_exclusion(self):
+    async def test_find_filtered_files_async_filepath_exclusion(self) -> None:
         """Test filepath exclusion functionality.
 
         This test verifies that files containing excluded substrings are filtered out
@@ -267,7 +267,7 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
         for file_path in filtered_files:
             self.assertNotIn("Props", file_path, f"Excluded file should not contain 'Props': {file_path}")
 
-    async def test_find_filtered_files_async_max_depth_limiting(self):
+    async def test_find_filtered_files_async_max_depth_limiting(self) -> None:
         """Test max_depth parameter functionality.
 
         This test verifies that the max_depth parameter correctly limits the directory
@@ -292,7 +292,7 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
         self.assertLessEqual(len(shallow_result), len(deeper_result))
         self.assertTrue(set(shallow_result).issubset(set(deeper_result)))
 
-    async def test_find_filtered_files_async_async_behavior(self):
+    async def test_find_filtered_files_async_async_behavior(self) -> None:
         """Test that the function properly executes asynchronously.
 
         This test verifies that find_filtered_files_async doesn't block the event loop
@@ -314,7 +314,7 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
             # All concurrent calls with same parameters should return same results
             self.assertEqual(result, results[0], f"Task {i} should return consistent results")
 
-    async def test_find_filtered_files_async_error_handling(self):
+    async def test_find_filtered_files_async_error_handling(self) -> None:
         """Test error handling for invalid paths and edge cases.
 
         This test verifies that the function gracefully handles invalid paths,
@@ -349,7 +349,7 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
         self.assertIsInstance(result, set)
         # Should still work, just might not apply the invalid pattern
 
-    async def test_find_filtered_files_async_combined_parameters(self):
+    async def test_find_filtered_files_async_combined_parameters(self) -> None:
         """Test combining multiple parameters together.
 
         This test verifies that all parameters work correctly when used together:
@@ -419,7 +419,7 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
                 has_warehouse and has_shelves, f"File '{file_path}' should match ALL patterns ['warehouse', 'shelves']"
             )
 
-    async def test_resolve_asset_path_resolves_with_assets_root(self):
+    async def test_resolve_asset_path_resolves_with_assets_root(self) -> None:
         """Test resolve_asset_path resolves using assets root when original is bare path.
 
         Verifies that when given a relative path like '/Isaac/...', the function
@@ -433,7 +433,7 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(resolved)
         self.assertEqual(resolved, assets_root + original_relative)
 
-    async def test_resolve_asset_path_returns_original_if_exists(self):
+    async def test_resolve_asset_path_returns_original_if_exists(self) -> None:
         """Test resolve_asset_path returns original when full path already exists.
 
         Verifies that when given a complete, valid path, the function returns
@@ -447,7 +447,7 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(resolved)
         self.assertEqual(resolved, full_path)
 
-    async def test_resolve_asset_path_returns_none_if_missing(self):
+    async def test_resolve_asset_path_returns_none_if_missing(self) -> None:
         """Test resolve_asset_path returns None when neither path exists.
 
         Verifies that when given a path that does not exist in either its

@@ -13,24 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Regression tests for OmniGraph node behavior when the user targets an `IsaacRobotAPI` root prim
-whose `UsdPhysicsArticulationRootAPI` lives on a deeper link.
+"""Verifies OmniGraph nodes resolve IsaacRobotAPI root prims whose articulation root lives on a descendant link. Covers transform-tree link expansion, Isaac site descendants, odometry articulation resolution, joint-name resolver descent, and self-loop avoidance."""
 
-Asset layout (mirrors the `tb3_burger_processed.usda` shape that surfaced this gap):
-
-::
-
-    /World/Robot                          IsaacRobotAPI, isaac:physics:robotLinks -> [base_link, wheel_left, wheel_right]
-    /World/Robot/base_link                IsaacLinkAPI, UsdPhysicsRigidBodyAPI, UsdPhysicsArticulationRootAPI
-    /World/Robot/wheel_left               IsaacLinkAPI, UsdPhysicsRigidBodyAPI
-    /World/Robot/wheel_right              IsaacLinkAPI, UsdPhysicsRigidBodyAPI
-
-`IsaacComputeTransformTree` and `IsaacComputeOdometry` must consult `IsaacRobotAPI.robotLinks` to
-resolve targets when their `UsdPhysicsArticulationRootAPI`/`RigidBodyAPI` check on the supplied
-prim itself comes up empty. Without that fallback, `IsaacComputeTransformTree` emits one frame
-(the root) instead of one per link, and `IsaacComputeOdometry` raises a logError plus an unguarded
-`physx-tensors` warning for the non-rigid-body root.
-"""
+from typing import Any
 
 import omni.graph.core as og
 import omni.graph.core.tests as ogts
@@ -41,8 +26,14 @@ from pxr import Gf, Sdf, UsdGeom, UsdPhysics
 from usdrt import Sdf as RtSdf
 
 
-def _add_rigid_link(stage, path, position):
-    """Define a Cube + RigidPrim at @p path so PhysX recognizes it as a rigid body."""
+def _add_rigid_link(stage: Any, path: Any, position: Any) -> None:
+    """Define a Cube and RigidPrim at path so PhysX recognizes it as a rigid body.
+
+    Args:
+        stage: Stage associated with the test.
+        path: Prim path for the rigid link.
+        position: Position for the rigid link.
+    """
     Cube(path, sizes=1.0)
     RigidPrim(
         path,
@@ -53,34 +44,46 @@ def _add_rigid_link(stage, path, position):
     GeomPrim(path, apply_collision_apis=True)
 
 
-async def _next_update():
+async def _next_update() -> None:
     await omni.kit.app.get_app().next_update_async()
 
 
 class TestRobotApiAutoExpansion(ogts.OmniGraphTestCase):
-    """Validate that OG nodes fall back to `IsaacRobotAPI.robotLinks` when the supplied prim does
-    not itself carry `UsdPhysicsArticulationRootAPI` / `UsdPhysicsRigidBodyAPI`."""
+    """Verify OG nodes fall back to `IsaacRobotAPI.robotLinks` for non-physics root prims.
+
+    The supplied root prim does not itself carry `UsdPhysicsArticulationRootAPI` or
+    `UsdPhysicsRigidBodyAPI`; the nodes must resolve through its robot-schema links.
+    """
 
     GRAPH_PATH = "/ActionGraph"
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Create a fresh stage with a physics scene for robot-schema fallback tests."""
         await omni.usd.get_context().new_stage_async()
         self._stage = omni.usd.get_context().get_stage()
         self._timeline = omni.timeline.get_timeline_interface()
         UsdPhysics.Scene.Define(self._stage, "/World/physicsScene")
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Stop the timeline and release the test stage reference."""
         self._timeline.stop()
         await _next_update()
         self._stage = None
 
-    async def _build_robot(self, robot_path="/World/Robot", add_site=False):
+    async def _build_robot(self, robot_path: str = "/World/Robot", add_site: bool = False) -> Any:
         """Construct the asset hierarchy described in the module docstring and return link paths.
 
-        When @p add_site is True, also author an `IsaacSiteAPI` Xform under `base_link`
+        When add_site is True, also author an `IsaacSiteAPI` Xform under `base_link`
         (mirroring how `imu_link` sits under `base_link` in `tb3_burger_processed.usda`).
         Sites are deliberately *not* added to `isaac:physics:robotLinks` because the schema
         treats them as a separate concept from links.
+
+        Args:
+            robot_path: Root path for the generated robot.
+            add_site: Whether to add an Isaac site under the base link.
+
+        Returns:
+            Robot root path and generated link paths.
         """
         # Create the IsaacRobotAPI root as a plain Xform (no physics APIs).
         UsdGeom.Xform.Define(self._stage, robot_path)
@@ -137,7 +140,7 @@ class TestRobotApiAutoExpansion(ogts.OmniGraphTestCase):
         await _next_update()
         return robot_path, link_paths
 
-    def _create_transform_tree_graph(self, target_prim_paths, parent_prim_path=None):
+    def _create_transform_tree_graph(self, target_prim_paths: Any, parent_prim_path: Any = None) -> None:
         set_values = [
             ("ComputeTransformTree.inputs:targetPrims", [RtSdf.Path(p) for p in target_prim_paths]),
         ]
@@ -158,8 +161,13 @@ class TestRobotApiAutoExpansion(ogts.OmniGraphTestCase):
             },
         )
 
-    def _create_joint_name_resolver_graph(self, robot_target_path, joint_names):
-        """Create an action graph with `IsaacJointNameResolver` targeting `robot_target_path`."""
+    def _create_joint_name_resolver_graph(self, robot_target_path: Any, joint_names: Any) -> None:
+        """Create an action graph with `IsaacJointNameResolver` targeting `robot_target_path`.
+
+        Args:
+            robot_target_path: Robot prim path connected to the resolver.
+            joint_names: Joint names to feed into the resolver.
+        """
         og.Controller.edit(
             {"graph_path": self.GRAPH_PATH, "evaluator_name": "execution"},
             {
@@ -177,7 +185,7 @@ class TestRobotApiAutoExpansion(ogts.OmniGraphTestCase):
             },
         )
 
-    def _create_odometry_graph(self, chassis_prim_path):
+    def _create_odometry_graph(self, chassis_prim_path: Any) -> None:
         og.Controller.edit(
             {"graph_path": self.GRAPH_PATH, "evaluator_name": "execution"},
             {
@@ -194,15 +202,17 @@ class TestRobotApiAutoExpansion(ogts.OmniGraphTestCase):
             },
         )
 
-    async def _step(self, num_steps=1):
+    async def _step(self, num_steps: Any = 1) -> None:
         for _ in range(num_steps):
             await _next_update()
 
-    async def test_transform_tree_expands_robot_api_root_to_links(self):
-        """Targeting an `IsaacRobotAPI` root prim must emit one transform pair per `robotLinks`
-        entry, with parent frames reconstructed from `isaac:physics:robotJoints`. Pre-fix this
+    async def test_transform_tree_expands_robot_api_root_to_links(self) -> None:
+        """Targeting an `IsaacRobotAPI` root prim must emit one transform pair per robot link.
+
+        Parent frames are reconstructed from `isaac:physics:robotJoints`. Pre-fix this
         returned a single frame for the root only; pre-topology-fix it returned every link
-        parented to `world` instead of mirroring the joint graph."""
+        parented to `world` instead of mirroring the joint graph.
+        """
         robot_path, link_paths = await self._build_robot()
 
         self._create_transform_tree_graph([robot_path])
@@ -226,7 +236,7 @@ class TestRobotApiAutoExpansion(ogts.OmniGraphTestCase):
         # Wheels are body1 of `joint_left` / `joint_right` whose body0 is `base_link`, so their
         # parents must resolve to `base_link` rather than the flat-to-world behavior of the
         # pre-topology-fix code path.
-        parent_by_child = {child: parent for child, parent in zip(child_frames, parent_frames)}
+        parent_by_child = dict(zip(child_frames, parent_frames))
         self.assertEqual(
             parent_by_child.get("base_link"),
             "world",
@@ -243,12 +253,13 @@ class TestRobotApiAutoExpansion(ogts.OmniGraphTestCase):
             f"Expected wheel_right's parent to be 'base_link', got {parent_by_child}",
         )
 
-    async def test_transform_tree_skips_self_loop_when_parent_in_robot_links(self):
-        """When `parentPrim` is set to a link that also appears in `robotLinks`, the IsaacRobotAPI
-        fallback must NOT emit that link as one of its own children. Pre-fix this produced a
-        degenerate `base_link -> base_link` transform that ROS TF rejects with
+    async def test_transform_tree_skips_self_loop_when_parent_in_robot_links(self) -> None:
+        """When `parentPrim` is also a robot link, the fallback must not emit a self-loop.
+
+        Pre-fix this produced a degenerate `base_link -> base_link` transform that ROS TF rejects with
         `TF_SELF_TRANSFORM: Ignoring transform from authority "default_authority" with frame_id
-        and child_frame_id "base_link" because they are the same`."""
+        and child_frame_id "base_link" because they are the same`.
+        """
         robot_path, _ = await self._build_robot()
         base_link_path = f"{robot_path}/base_link"
 
@@ -271,12 +282,13 @@ class TestRobotApiAutoExpansion(ogts.OmniGraphTestCase):
         self.assertIn(("base_link", "wheel_left"), pairs, f"wheel_left missing or wrongly parented: {pairs}")
         self.assertIn(("base_link", "wheel_right"), pairs, f"wheel_right missing or wrongly parented: {pairs}")
 
-    async def test_transform_tree_publishes_isaac_site_descendants(self):
-        """`IsaacSiteAPI` prims under a robotLink (e.g. an `imu_link` sensor mount under
-        `base_link`) must be published as TF frames parented to the link they descend from.
-        Sites are part of the robot schema but not authored into `isaac:physics:robotLinks`,
-        so without this branch the user-visible TF tree from the IsaacRobotAPI shortcut is
-        missing sensor frames that the manual-list workaround would publish."""
+    async def test_transform_tree_publishes_isaac_site_descendants(self) -> None:
+        """`IsaacSiteAPI` prims under a robot link must be published as TF frames.
+
+        For example, an `imu_link` sensor mount under `base_link` should be parented to that link.
+        Sites are part of the robot schema but are not authored into `isaac:physics:robotLinks`,
+        so the IsaacRobotAPI shortcut must discover them separately.
+        """
         robot_path, _ = await self._build_robot(add_site=True)
         base_link_path = f"{robot_path}/base_link"
 
@@ -299,9 +311,11 @@ class TestRobotApiAutoExpansion(ogts.OmniGraphTestCase):
         self.assertIn(("base_link", "wheel_left"), pairs, f"wheel_left missing: {pairs}")
         self.assertIn(("base_link", "wheel_right"), pairs, f"wheel_right missing: {pairs}")
 
-    async def test_odometry_resolves_robot_api_root_to_articulation_link(self):
-        """Pointing `chassisPrim` at an `IsaacRobotAPI` root must succeed by resolving through
-        `robotLinks` to the link that carries `UsdPhysicsArticulationRootAPI` / `RigidBodyAPI`.
+    async def test_odometry_resolves_robot_api_root_to_articulation_link(self) -> None:
+        """Pointing `chassisPrim` at an `IsaacRobotAPI` root must resolve through robot links.
+
+        The node should find the descendant link that carries `UsdPhysicsArticulationRootAPI` and
+        `RigidBodyAPI`.
 
         Pre-fix this raised a `logError` (`'/World/Robot' is not a valid rigid body or articulation
         root'`) and triggered an `omni.physx.tensors` warning because the root prim has neither API
@@ -310,7 +324,8 @@ class TestRobotApiAutoExpansion(ogts.OmniGraphTestCase):
 
         We assert the post-fix behavior by warming up physics for long enough that an actually-
         attached chassis would have measurably fallen under gravity. A pre-fix run sits at exactly
-        zero forever, post-fix the articulation root pose follows physx."""
+        zero forever, post-fix the articulation root pose follows physx.
+        """
         robot_path, _ = await self._build_robot()
 
         self._create_odometry_graph(robot_path)
@@ -341,10 +356,11 @@ class TestRobotApiAutoExpansion(ogts.OmniGraphTestCase):
             "A zero result means odometry did not resolve through IsaacRobotAPI to the articulation link.",
         )
 
-    async def test_joint_name_resolver_descends_to_articulation_root(self):
-        """Pointing `IsaacJointNameResolver` at an `IsaacRobotAPI` root prim must succeed by
-        descending into the prim hierarchy to find the `UsdPhysicsArticulationRootAPI` link, then
-        building the `isaac:nameOverride` map from that subtree.
+    async def test_joint_name_resolver_descends_to_articulation_root(self) -> None:
+        """`IsaacJointNameResolver` should descend from an `IsaacRobotAPI` root to the articulation.
+
+        It finds the `UsdPhysicsArticulationRootAPI` link, then builds the `isaac:nameOverride`
+        map from that subtree.
 
         Pre-fix this raised a `logError` (`'Articulation not found for prim /World/Robot'`) because
         the root prim lacks `UsdPhysicsArticulationRootAPI` directly. The `compute()` then

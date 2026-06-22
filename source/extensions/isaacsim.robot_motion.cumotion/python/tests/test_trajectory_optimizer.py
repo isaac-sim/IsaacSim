@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test suite for TrajectoryOptimizer class."""
+"""Verifies cuMotion trajectory optimizer setup and planning for Franka joint-space, task-space, goal-set, constrained-path, and obstacle-aware targets. The tests also cover invalid inputs, configuration access, and returned trajectory properties."""
 
 import cumotion
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -30,7 +30,7 @@ from omni.kit.app import get_app
 class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
     """Test suite for TrajectoryOptimizer with Franka robot."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment before each test."""
         await stage_utils.create_new_stage_async()
         await get_app().next_update_async()
@@ -49,7 +49,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
             tracked_collision_api=mg.TrackableApi.PHYSICS_COLLISION,
         )
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after each test."""
         # Stop timeline if running
         if self._timeline.is_playing():
@@ -60,7 +60,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
     # ============================================================================
     # Test initialization
     # ============================================================================
-    async def test_trajectory_optimizer_initialization(self):
+    async def test_trajectory_optimizer_initialization(self) -> None:
         """Test that TrajectoryOptimizer initializes correctly."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -72,7 +72,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(trajectory_optimizer.get_trajectory_optimizer_config())
         self.assertIsNotNone(trajectory_optimizer.get_cumotion_robot())
 
-    async def test_trajectory_optimizer_with_custom_tool_frame(self):
+    async def test_trajectory_optimizer_with_custom_tool_frame(self) -> None:
         """Test initialization with explicitly specified tool frame."""
         tool_frames = self.cumotion_robot.robot_description.tool_frame_names()
         self.assertGreater(len(tool_frames), 0)
@@ -86,7 +86,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertIsNotNone(trajectory_optimizer)
 
-    async def test_trajectory_optimizer_with_default_tool_frame(self):
+    async def test_trajectory_optimizer_with_default_tool_frame(self) -> None:
         """Test initialization with default tool frame (None specified)."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -97,7 +97,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
 
         self.assertIsNotNone(trajectory_optimizer)
 
-    async def test_trajectory_optimizer_invalid_joint_space(self):
+    async def test_trajectory_optimizer_invalid_joint_space(self) -> None:
         """Test that invalid joint space raises ValueError."""
         # Create a joint space that doesn't contain all controlled joints
         invalid_joint_space = ["joint1", "joint2"]  # Not a superset of controlled joints
@@ -165,7 +165,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
     # Test plan_to_goal with CSpaceTarget
     # ============================================================================
 
-    async def test_plan_to_cspace_target(self):
+    async def test_plan_to_cspace_target(self) -> None:
         """Test planning to a configuration space target."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -194,7 +194,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsInstance(trajectory, cu_mg.CumotionTrajectory)
         self.assertGreater(trajectory.duration, 0.0)
 
-    async def test_plan_to_cspace_target_numpy_array(self):
+    async def test_plan_to_cspace_target_numpy_array(self) -> None:
         """Test planning with numpy array input."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -219,7 +219,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(trajectory)
         self.assertIsInstance(trajectory, cu_mg.CumotionTrajectory)
 
-    async def test_plan_to_cspace_target_warp_array(self):
+    async def test_plan_to_cspace_target_warp_array(self) -> None:
         """Test planning with warp array input."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -245,7 +245,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(trajectory)
         self.assertIsInstance(trajectory, cu_mg.CumotionTrajectory)
 
-    async def test_plan_to_cspace_target_list(self):
+    async def test_plan_to_cspace_target_list(self) -> None:
         """Test planning with list input."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -276,7 +276,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
     # Test plan_to_goal with TaskSpaceTarget
     # ============================================================================
 
-    async def test_plan_to_task_space_target(self):
+    async def test_plan_to_task_space_target(self) -> None:
         """Test planning to a task space target."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -315,7 +315,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
                 f"Target: {target_position}, Final: {final_pose.translation}",
             )
 
-    async def test_plan_to_task_space_target_with_orientation(self):
+    async def test_plan_to_task_space_target_with_orientation(self) -> None:
         """Test planning to a task space target with orientation constraint."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -344,7 +344,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(trajectory)
         self.assertIsInstance(trajectory, cu_mg.CumotionTrajectory)
 
-    async def test_plan_to_task_space_target_with_linear_path_constraint(self):
+    async def test_plan_to_task_space_target_with_linear_path_constraint(self) -> None:
         """Test planning with linear translation path constraint."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -376,7 +376,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
     # Test plan_to_goal with TaskSpaceTargetGoalset
     # ============================================================================
 
-    async def test_plan_to_task_space_goalset(self):
+    async def test_plan_to_task_space_goalset(self) -> None:
         """Test planning to a task space goalset."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -412,7 +412,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
     # Test error handling
     # ============================================================================
 
-    async def test_plan_to_goal_invalid_goal_type(self):
+    async def test_plan_to_goal_invalid_goal_type(self) -> None:
         """Test that invalid goal type raises ValueError."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -428,7 +428,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
         with self.assertRaises(ValueError):
             trajectory_optimizer.plan_to_goal(q_initial, invalid_goal)
 
-    async def test_plan_to_goal_invalid_initial_position_dimensions(self):
+    async def test_plan_to_goal_invalid_initial_position_dimensions(self) -> None:
         """Test that invalid initial position dimensions raise RuntimeError."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -450,7 +450,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
         with self.assertRaises(ValueError):
             trajectory_optimizer.plan_to_goal(q_initial_wrong, cspace_target)
 
-    async def test_plan_to_goal_planning_failure_returns_none(self):
+    async def test_plan_to_goal_planning_failure_returns_none(self) -> None:
         """Test that planning failures return None instead of raising exceptions."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -476,7 +476,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
     # Test configuration access
     # ============================================================================
 
-    async def test_get_cumotion_robot(self):
+    async def test_get_cumotion_robot(self) -> None:
         """Test getting the robot configuration."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -488,7 +488,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(config)
         self.assertEqual(config, self.cumotion_robot)
 
-    async def test_get_trajectory_optimizer_config(self):
+    async def test_get_trajectory_optimizer_config(self) -> None:
         """Test getting the trajectory optimizer configuration."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -500,7 +500,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(config)
         self.assertIsInstance(config, cumotion.TrajectoryOptimizerConfig)
 
-    async def test_modify_trajectory_optimizer_config(self):
+    async def test_modify_trajectory_optimizer_config(self) -> None:
         """Test modifying trajectory optimizer configuration parameters."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -523,7 +523,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
     # Test planning with obstacles
     # ============================================================================
 
-    async def test_plan_to_goal_with_obstacles(self):
+    async def test_plan_to_goal_with_obstacles(self) -> None:
         """Test planning around obstacles."""
         # Create world binding with obstacles
         world_binding = mg.WorldBinding(
@@ -567,7 +567,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
     # Test edge cases
     # ============================================================================
 
-    async def test_plan_to_goal_same_start_and_target(self):
+    async def test_plan_to_goal_same_start_and_target(self) -> None:
         """Test planning when start and target are the same."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -591,7 +591,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsInstance(trajectory, cu_mg.CumotionTrajectory)
         self.assertGreater(trajectory.duration, 0.0)
 
-    async def test_plan_to_goal_trajectory_properties(self):
+    async def test_plan_to_goal_trajectory_properties(self) -> None:
         """Test that generated trajectory has valid properties."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -634,7 +634,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
         state_end = trajectory.get_target_state(trajectory.duration)
         self.assertIsNotNone(state_end)
 
-    async def test_plan_to_goal_with_cspace_target_path_constraints(self):
+    async def test_plan_to_goal_with_cspace_target_path_constraints(self) -> None:
         """Test planning with CSpaceTarget that has path constraints."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,
@@ -659,7 +659,7 @@ class TestTrajectoryOptimizerFranka(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(trajectory)
         self.assertIsInstance(trajectory, cu_mg.CumotionTrajectory)
 
-    async def test_plan_to_goal_with_orientation_axis_constraint(self):
+    async def test_plan_to_goal_with_orientation_axis_constraint(self) -> None:
         """Test planning with orientation axis constraint."""
         trajectory_optimizer = cu_mg.TrajectoryOptimizer(
             cumotion_robot=self.cumotion_robot,

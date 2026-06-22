@@ -30,7 +30,7 @@ NUM_CUBES = 100
 NUM_CAPTURES = 10
 
 
-def run_example(wait_for_render, write_to_fabric):
+def run_example(wait_for_render: bool, write_to_fabric: bool) -> None:
     """Run SDG with the given render wait and fabric write settings."""
     print(f"\n[SDG] Running with wait_for_render={wait_for_render}, write_to_fabric={write_to_fabric}")
     omni.usd.get_context().new_stage()

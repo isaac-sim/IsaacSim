@@ -57,7 +57,11 @@ class SessionManifest:
     )
 
     def track_groups(self) -> list[str]:
-        """Return HDF5 group paths of all tracks in insertion order."""
+        """Return HDF5 group paths of all tracks in insertion order.
+
+        Returns:
+            Track group paths in insertion order.
+        """
         return [entry["group"] for entry in self.tracks]
 
 
@@ -68,7 +72,17 @@ def build_manifest(
     session_metadata: dict[str, Any] | None = None,
     coord_conventions: dict[str, Any] | None = None,
 ) -> SessionManifest:
-    """Assemble a :class:`SessionManifest` from plugin-provided entries and config."""
+    """Assemble a :class:`SessionManifest` from plugin-provided entries and config.
+
+    Args:
+        recordable_entries: Recordable manifest entries to include.
+        sampling: Sampling metadata to write into the manifest.
+        session_metadata: Session metadata to write into the manifest.
+        coord_conventions: Coordinate convention metadata to write into the manifest.
+
+    Returns:
+        Constructed session manifest.
+    """
     manifest = SessionManifest(
         tracks=list(recordable_entries),
         session=dict(session_metadata or {}),
@@ -97,6 +111,10 @@ def write_manifest(h5_file: Any, manifest: SessionManifest) -> None:
     """Write manifest JSON blobs under ``/manifest/*`` and set ``schema_version``.
 
     Overwrites existing manifest datasets if present.
+
+    Args:
+        h5_file: Open HDF5 file handle.
+        manifest: Session manifest to write.
     """
     _validate_manifest(manifest)
     h5_file.attrs["schema_version"] = SCHEMA_VERSION
@@ -116,9 +134,11 @@ def write_manifest(h5_file: Any, manifest: SessionManifest) -> None:
 def read_manifest(h5_file: Any) -> SessionManifest:
     """Read manifest JSON blobs from ``/manifest/*``.
 
-    Raises:
-        ValueError: If the file has a different ``schema_version`` or the manifest
-            group is missing / incomplete.
+    Args:
+        h5_file: Open HDF5 file handle.
+
+    Returns:
+        Session manifest read from the file.
     """
     version = int(h5_file.attrs.get("schema_version", 0))
     if version != SCHEMA_VERSION:
@@ -148,7 +168,14 @@ def read_manifest(h5_file: Any) -> SessionManifest:
 
 
 def _json_default(obj: Any) -> Any:
-    """Coerce common non-JSON types (NumPy, dataclasses, tuples) into JSON-safe ones."""
+    """Coerce common non-JSON types (NumPy, dataclasses, tuples) into JSON-safe ones.
+
+    Args:
+        obj: Obj to use.
+
+    Returns:
+        JSON-serializable representation of the object.
+    """
     try:
         import numpy as np
 

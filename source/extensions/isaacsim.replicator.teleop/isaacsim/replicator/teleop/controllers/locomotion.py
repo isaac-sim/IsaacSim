@@ -107,45 +107,81 @@ class LocomotionController:
 
     @property
     def prim_path(self) -> str:
-        """USD path of the locomotion target prim."""
+        """USD path of the locomotion target prim.
+
+        Returns:
+            The requested value.
+        """
         return self._prim_path
 
     @property
     def tracking_space_prim_path(self) -> str:
-        """USD path of the tracking-space prim used for carry."""
+        """USD path of the tracking-space prim used for carry.
+
+        Returns:
+            The requested value.
+        """
         return self._tracking_space_prim_path
 
     @property
     def linear_step(self) -> float:
-        """Linear movement distance in metres per app update."""
+        """Linear movement distance in metres per app update.
+
+        Returns:
+            The requested value.
+        """
         return self._linear_step
 
     @property
     def angular_step(self) -> float:
-        """Yaw rotation angle in radians per app update."""
+        """Yaw rotation angle in radians per app update.
+
+        Returns:
+            The requested value.
+        """
         return self._angular_step
 
     @property
     def is_running(self) -> bool:
-        """True if the locomotion controller is active."""
+        """True if the locomotion controller is active.
+
+        Returns:
+            The requested value.
+        """
         return self._running
 
     def set_prim_path(self, path: str) -> None:
-        """Set the USD path of the locomotion target prim."""
+        """Set the USD path of the locomotion target prim.
+
+        Args:
+            path: Value for path.
+        """
         self._prim_path = path
         self._base_world_pose_cache.set_prim_path(path)
 
     def set_tracking_space_prim_path(self, path: str) -> None:
-        """Set the tracking-space prim carried with the base when Carry Tracking Space is enabled."""
+        """Set the tracking-space prim carried with the base when Carry Tracking Space is enabled.
+
+        Args:
+            path: Value for path.
+        """
         self._tracking_space_prim_path = path
         self._refresh_tracking_space_xform()
 
     def set_linear_step(self, step: float) -> None:
-        """Set the linear movement distance per app update."""
+        """Set the linear movement distance per app update.
+
+        Args:
+            step: Value for step.
+        """
         self._linear_step = max(0.0, step)
 
     def set_angular_step(self, step: float) -> None:
-        """Set the yaw rotation angle per app update."""
+        """Set the yaw rotation angle per app update.
+
+        Args:
+            step: Value for step.
+        """
         self._angular_step = max(0.0, step)
 
     def set_edit_layer(self, layer: Sdf.Layer | None) -> None:
@@ -154,6 +190,9 @@ class LocomotionController:
         Marker prims have their xformOps in an anonymous session sublayer.
         Without directing writes to that layer, ``set_world_poses`` writes
         to the root layer, which is shadowed by the session sublayer.
+
+        Args:
+            layer: Value for layer.
         """
         self._edit_layer = layer
 
@@ -169,7 +208,7 @@ class LocomotionController:
         When a reset is necessary the original local scale is preserved.
 
         Returns:
-            (is_valid, message) tuple.
+            The requested value.
         """
         stage = get_current_stage()
         if not stage:
@@ -202,7 +241,7 @@ class LocomotionController:
         """Validates, caches initial poses, and enables the controller.
 
         Returns:
-            (success, message) tuple.
+            The requested value.
         """
         ok, msg = self.validate()
         if not ok:
@@ -283,20 +322,43 @@ class LocomotionController:
 
     @staticmethod
     def _get_input(ctrl: Any, attr: str) -> float:
-        """Safely reads a float attribute from a VR controller snapshot."""
+        """Safely reads a float attribute from a VR controller snapshot.
+
+        Args:
+            ctrl: Value for ctrl.
+            attr: Value for attr.
+
+        Returns:
+            The requested value.
+        """
         if ctrl is None:
             return 0.0
         return getattr(ctrl.inputs, attr, 0.0)
 
     @staticmethod
     def _get_bool_input(ctrl: Any, attr: str) -> bool:
-        """Safely reads a bool attribute from a VR controller snapshot."""
+        """Safely reads a bool attribute from a VR controller snapshot.
+
+        Args:
+            ctrl: Value for ctrl.
+            attr: Value for attr.
+
+        Returns:
+            The requested value.
+        """
         if ctrl is None:
             return False
         return bool(getattr(ctrl.inputs, attr, False))
 
     def _apply_deadzone(self, value: float) -> float:
-        """Zeros out values within the deadzone, remaps the rest to [0, 1]."""
+        """Zeros out values within the deadzone, remaps the rest to [0, 1].
+
+        Args:
+            value: Value for value.
+
+        Returns:
+            The requested value.
+        """
         if abs(value) < self.DEADZONE:
             return 0.0
         sign = 1.0 if value > 0 else -1.0
@@ -309,6 +371,12 @@ class LocomotionController:
         Pre-reset fallback: runs before ``XformPrim`` normalizes xformOps, so it
         cannot use ``XformPrim.get_local_scales()`` (which requires an authored
         ``xformOp:scale`` property).
+
+        Args:
+            prim: Value for prim.
+
+        Returns:
+            The requested value.
         """
         xformable = UsdGeom.Xformable(prim)
         if not xformable:
@@ -329,6 +397,13 @@ class LocomotionController:
         Validates that ``_edit_layer`` is still in the stage's layer stack
         before creating the ``Usd.EditContext`` to avoid crashes when the
         anonymous marker layer has been dropped between sessions.
+
+        Args:
+            stage: Value for stage.
+            prim_path: Value for prim path.
+
+        Returns:
+            The requested value.
         """
         if (
             self._edit_layer is not None
@@ -412,6 +487,9 @@ class LocomotionController:
         marker to reposition floating grippers.  Moving the base
         already moves the tracking space, so no explicit carry toggle
         is needed.
+
+        Returns:
+            The requested value.
         """
         return bool(self._tracking_space_prim_path and self._tracking_space_prim_path == self._prim_path)
 
@@ -438,6 +516,13 @@ class LocomotionController:
         marker.  Moving the base already moves the VR workspace, so
         carry is implicit and the toggle has no additional effect.
         This is useful for floating grippers that have no physical base.
+
+        Args:
+            delta_forward: Value for delta forward.
+            delta_lateral: Value for delta lateral.
+            delta_up: Value for delta up.
+            delta_yaw: Value for delta yaw.
+            carry_tracking_space: Value for carry tracking space.
         """
         if self._base_xform is None or not self._base_xform.valid:
             return
@@ -509,7 +594,14 @@ class LocomotionController:
         pos: np.ndarray,
         orient_wxyz: np.ndarray,
     ) -> None:
-        """Write a single pose into the pre-allocated ``(1, 3)`` / ``(1, 4)`` buffers."""
+        """Write a single pose into the pre-allocated ``(1, 3)`` / ``(1, 4)`` buffers.
+
+        Args:
+            pos_buf: Value for pos buf.
+            orient_buf: Value for orient buf.
+            pos: Value for pos.
+            orient_wxyz: Value for orient wxyz.
+        """
         pos_buf[0, 0] = pos[0]
         pos_buf[0, 1] = pos[1]
         pos_buf[0, 2] = pos[2]

@@ -40,6 +40,16 @@ _RE_TIMESTAMP_BASENAME = re.compile(r"^(\w+)_(\d+\.\d+)\.png$", re.IGNORECASE)
 class Validator:
     """Utility class for capturing and validating render-product images in benchmarks.
 
+    Args:
+        tolerance: Mean-difference threshold used during validation.
+        blur_kernel: Gaussian-blur kernel size. Use 0 to disable blurring.
+        regenerate_golden: Whether to replace golden reference images instead of
+            validating against them.
+        output_root: Base directory where capture folders are created.
+        golden_root: Base directory storing golden reference images.
+        auto_cleanup: Whether the last capture folder is deleted automatically
+            after :py:meth:`validate_images` completes.
+
     Example usage:
 
         from isaacsim.benchmark.services.validation import Validator
@@ -74,18 +84,6 @@ class Validator:
         golden_root: str = "golden_data",
         auto_cleanup: bool = True,
     ) -> None:
-        """Create a new *Validator* instance.
-
-        Args:
-            tolerance: Mean-difference threshold used during validation.
-            blur_kernel: Gaussian-blur kernel size (0 disables blurring).
-            regenerate_golden: Replace the golden reference images instead of
-                validating against them.
-            output_root: Base directory where capture folders are created.
-            golden_root: Base directory storing golden reference images.
-            auto_cleanup: If *True* the last capture folder is deleted
-                automatically after :py:meth:`validate_images` completes.
-        """
         self.tolerance: float = tolerance
         self.blur_kernel: int = blur_kernel
         self.regenerate_golden: bool = regenerate_golden
@@ -182,6 +180,13 @@ class Validator:
         The behaviour (overwrite vs. create timestamped directory) is controlled
         by *self.regenerate_golden*.
 
+        Args:
+            stage: USD stage containing render products to capture.
+            benchmark_name: Name used for the output capture folder.
+            output_root: Base directory for captures, overriding the instance value.
+            golden_root: Base directory for golden images, overriding the instance value.
+            writer_name: Replicator writer registered with the writer registry.
+
         Returns:
             Absolute path of the directory where PNGs were written.
         """
@@ -249,6 +254,13 @@ class Validator:
                 recent directory returned by :py:meth:`capture_images` is used.
             golden_dir: Directory with golden PNGs.  If *None* the *golden_root*
                 provided at construction time is used.
+
+        Returns:
+            True if all captured images match their golden images within the
+            configured tolerance, False otherwise.
+
+        Raises:
+            ValueError: If no captured directory is available.
         """
         if captured_dir is None:
             captured_dir = self._last_capture_path
@@ -364,6 +376,12 @@ class Validator:
 
         Otherwise, falls back to listing immediate subdirectories of *roots* and
         returning their intersection.
+
+        Args:
+            *roots: Root directories to scan for render product subdirectories.
+
+        Returns:
+            Sorted render product names that exist under every root.
         """
         if self.render_product_map:
             nice_names = sorted(self.render_product_map.values())
@@ -510,7 +528,13 @@ class Validator:
         """Parse simulation time (seconds) from a timestamp-based filename.
 
         Expects basename like ``rgb_12.500000.png`` (prefix_timestamp.png).
-        Returns None if the basename does not match the timestamp pattern.
+
+        Args:
+            basename: Filename basename to parse.
+
+        Returns:
+            Parsed simulation timestamp, or None if the basename does not
+            match the timestamp pattern.
         """
         m = _RE_TIMESTAMP_BASENAME.match(basename)
         if m is None:
@@ -523,6 +547,10 @@ class Validator:
         Walks all subdirs and renames files matching ``<prefix>_<index>.png`` to
         ``<prefix>_<timestamp>.6f.png`` using *frame_timestamps*[index]. Skips
         files whose index is out of range.
+
+        Args:
+            run_dir: Directory tree containing captured PNGs to rename.
+            frame_timestamps: Simulation timestamps indexed by captured frame number.
         """
         for root, _dirs, files in os.walk(run_dir, topdown=False):
             for f in files:
@@ -557,6 +585,17 @@ class Validator:
         For each captured file, finds the golden file with closest timestamp within
         *time_tolerance_sec* and compares image content. Returns the same shape as
         :py:meth:`validate_frames` with ``total``/``passed``/``failed`` as frame counts.
+
+        Args:
+            captured_run_dir: Directory containing captured render product folders.
+            golden_benchmark_dir: Directory containing golden render product folders.
+            time_tolerance_sec: Maximum timestamp delta allowed for a match.
+
+        Returns:
+            Dictionary with validation results per render product and frame pair counts.
+
+        Raises:
+            ValueError: If the captured or golden directory does not exist.
         """
         import cv2
         import numpy as np
@@ -705,7 +744,14 @@ class Validator:
 
     @staticmethod
     def _ensure_rgb(arr: np.ndarray) -> np.ndarray:
-        """Return a three-channel RGB *view* of *arr* (H×W×C)."""
+        """Return a three-channel RGB view of an image array.
+
+        Args:
+            arr: Image array to normalize to RGB channels.
+
+        Returns:
+            Three-channel RGB image array.
+        """
         import cv2
 
         if arr.ndim == 2:  # Gray ⇒ RGB
@@ -716,7 +762,12 @@ class Validator:
 
     @staticmethod
     def _write_png(path: str, rgb: np.ndarray) -> None:
-        """Write *rgb* (RGB) to *path* as PNG using cv2 (expects BGR)."""
+        """Write an RGB image to a PNG path using cv2.
+
+        Args:
+            path: Output PNG path.
+            rgb: RGB image array to write.
+        """
         import cv2
 
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
@@ -731,8 +782,12 @@ class Validator:
     ) -> bool:
         """Full pipeline: discover → capture → validate.
 
-        Returns *True* if validation passes (or when *regenerate_golden* is
-        *True*); *False* otherwise.
+        Args:
+            stage: USD stage containing render products to validate.
+            benchmark_name: Name used for capture and golden directories.
+
+        Returns:
+            True if validation passes or golden regeneration is enabled, False otherwise.
         """
         self.build_render_product_map(stage)
         self.capture_images(stage, benchmark_name=benchmark_name)
@@ -756,6 +811,13 @@ class Validator:
         The following attribute names are read if present: ``tolerance`` (DEFAULT_TOLERANCE), ``blur_kernel``
         (DEFAULT_BLUR), ``regenerate_golden`` (False), ``output_dir`` ("captures"),
         ``golden_dir`` ("golden_data").
+
+        Args:
+            args: Argument object containing optional validator configuration.
+            auto_cleanup: Cleanup override, or None to use the default behavior.
+
+        Returns:
+            Validator configured from the argument object.
         """
         tol = getattr(args, "tolerance", DEFAULT_TOLERANCE)
         blur = getattr(args, "blur_kernel", DEFAULT_BLUR)
@@ -789,18 +851,16 @@ class CoordinateValidator:
     using a voting system that combines three statistical methods: tolerance-based
     bounds checking, 3-Sigma outlier detection, and Interquartile Range (IQR)
     outlier detection.
+
+    Args:
+        historical_data_path: Path to the JSON file containing historical
+            coordinate data for statistical validation.
     """
 
     def __init__(
         self,
         historical_data_path: str = "standalone_examples/benchmarks/validation/golden_data/benchmark_robots_nova_carter_ros2/historical_coordinates_data.json",
     ) -> None:
-        """Create a new CoordinateValidator instance.
-
-        Args:
-            historical_data_path: Path to the JSON file containing historical
-                coordinate data for statistical validation.
-        """
         self.historical_data_path = historical_data_path
         self.historical_positions: list[list[float]] = []
         self.historical_rotations: list[list[float]] = []

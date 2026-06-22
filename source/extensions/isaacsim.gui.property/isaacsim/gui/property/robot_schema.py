@@ -438,14 +438,28 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
 
     # --- Attribute helpers ---
     def _get_attr_str(self, attr_def: object) -> str:
-        """Read a string attribute from the prim, returning '' if missing."""
+        """Read a string attribute from the prim, returning an empty string if missing.
+
+        Args:
+            attr_def: Attribute definition to read.
+
+        Returns:
+            Authored attribute value, or an empty string when unavailable.
+        """
         attr = self._prim.GetAttribute(attr_def.name)
         if attr and attr.Get() is not None:
             return str(attr.Get())
         return ""
 
     def _get_allowed_tokens(self, attr_def: object) -> list[str]:
-        """Read the allowedTokens metadata from a token attribute on the prim."""
+        """Read the allowedTokens metadata from a token attribute on the prim.
+
+        Args:
+            attr_def: Attribute definition to query.
+
+        Returns:
+            Allowed token values from metadata.
+        """
         attr = self._prim.GetAttribute(attr_def.name)
         if attr:
             tokens = attr.GetMetadata("allowedTokens")
@@ -454,43 +468,75 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
         return []
 
     def _set_attr_str(self, attr_def: object, value: str) -> None:
-        """Write a string attribute on the prim."""
+        """Write a string attribute on the prim.
+
+        Args:
+            attr_def: Attribute definition to write.
+            value: Value to author.
+        """
         attr = self._prim.GetAttribute(attr_def.name)
         if attr:
             attr.Set(value)
 
     def _get_attr_str_array(self, attr_def: object) -> list[str]:
-        """Read a string array attribute from the prim, returning [] if missing."""
+        """Read a string array attribute from the prim, returning an empty value if missing.
+
+        Args:
+            attr_def: Attribute definition to read.
+
+        Returns:
+            Authored array values, or an empty value when unavailable.
+        """
         attr = self._prim.GetAttribute(attr_def.name)
         if attr and attr.Get() is not None:
             return list(attr.Get())
         return []
 
     def _set_attr_str_array(self, attr_def: object, values: list[str]) -> None:
-        """Write a string array attribute on the prim."""
+        """Write a string array attribute on the prim.
+
+        Args:
+            attr_def: Attribute definition to write.
+            values: Values to author.
+        """
         attr = self._prim.GetAttribute(attr_def.name)
         if attr:
             attr.Set(Vt.StringArray(values))
 
     def _get_relationship_targets(self, rel_def: object) -> list[str]:
-        """Read relationship targets as a list of path strings."""
+        """Read relationship targets as path strings.
+
+        Args:
+            rel_def: Relationship definition to read.
+
+        Returns:
+            Authored target paths.
+        """
         rel = self._prim.GetRelationship(rel_def.name)
         if rel:
             return [str(t) for t in rel.GetTargets()]
         return []
 
     def _set_relationship_targets(self, rel_def: object, targets: list[str]) -> None:
-        """Write relationship targets from a list of path strings."""
+        """Write relationship targets from path strings.
+
+        Args:
+            rel_def: Relationship definition to write.
+            targets: Target paths to author.
+        """
         rel = self._prim.GetRelationship(rel_def.name)
         if rel:
             rel.SetTargets([Sdf.Path(t) for t in targets])
 
     # --- Sub-robot helpers ---
     def _target_has_robot_api(self, path: str) -> bool:
-        """Returns True if the prim at the given path has Robot API applied.
+        """Return True if the prim at the given path has Robot API applied.
 
         Args:
             path: USD prim path to check.
+
+        Returns:
+            True if the target prim has Robot API applied.
         """
         stage = self._payload.get_stage()
         if not stage:
@@ -544,11 +590,22 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
 
     @staticmethod
     def _display_name_for_path(path: str) -> str:
-        """Returns the last path segment as a human-readable display name."""
+        """Return the last path segment as a human-readable display name.
+
+        Args:
+            path: Path to display.
+
+        Returns:
+            Last path segment.
+        """
         return path.rsplit("/", 1)[-1] if "/" in path else path
 
     def _navigate_to_prim(self, path: str) -> None:
-        """Selects the prim at the given path in the USD stage and frames it in the viewport."""
+        """Select the prim at the given path in the USD stage and frame it in the viewport.
+
+        Args:
+            path: USD prim path to select.
+        """
         ctx = omni.usd.get_context()
         if not ctx:
             return
@@ -560,7 +617,12 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
 
     # --- Field row helper ---
     def _field_row(self, label_text: str, widget_builder: callable) -> None:
-        """One row: label left, input widget right."""
+        """Build one field row with the label left and input widget right.
+
+        Args:
+            label_text: Label text for the row.
+            widget_builder: Callback that builds the input widget.
+        """
         with ui.HStack(height=_ROW_HEIGHT):
             ui.Spacer(width=4)
             ui.Label(
@@ -594,7 +656,11 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
                     ui.Spacer(height=8)
 
     def _build_string_field(self, attr_def: object) -> None:
-        """Creates a StringField bound to a USD attribute."""
+        """Create a StringField bound to a USD attribute.
+
+        Args:
+            attr_def: Attribute definition to bind.
+        """
         field = ui.StringField(height=20)
         field.model.set_value(self._get_attr_str(attr_def))
         field.model.add_end_edit_fn(lambda m, a=attr_def: self._set_attr_str(a, m.get_value_as_string()))
@@ -826,7 +892,11 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
             ui.Spacer(height=8)
 
     def _on_force_update_changed(self, model: ui.AbstractValueModel) -> None:
-        """Persist the Force Update checkbox state on the widget."""
+        """Persist the Force Update checkbox state on the widget.
+
+        Args:
+            model: Checkbox value model.
+        """
         self._force_update_recalculate = bool(model.get_value_as_bool())
 
     def _build_robot_type_field(self) -> None:
@@ -858,7 +928,11 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
                 )
 
     def _on_robot_type_combo_changed(self, model: object) -> None:
-        """Handles robot type combo selection changes."""
+        """Handle robot type combo selection changes.
+
+        Args:
+            model: Combo box model carrying the selected item.
+        """
         idx = model.get_item_value_model().get_value_as_int()
         options = self._robot_type_tokens + ["(Other)"]
         selected = options[idx]
@@ -943,7 +1017,11 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
             self._changelog_frame.rebuild()
 
     def _on_remove_changelog_entry(self, index: int) -> None:
-        """Removes a changelog entry at the given index and rebuilds the list."""
+        """Remove a changelog entry at the given index and rebuild the list.
+
+        Args:
+            index: Changelog entry index to remove.
+        """
         entries = self._get_attr_str_array(robot_schema.Attributes.CHANGELOG)
         if 0 <= index < len(entries):
             entries.pop(index)
@@ -952,7 +1030,12 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
                 self._changelog_frame.rebuild()
 
     def _on_changelog_entry_changed(self, index: int, value: str) -> None:
-        """Updates a changelog entry at the given index."""
+        """Update a changelog entry at the given index.
+
+        Args:
+            index: Changelog entry index to update.
+            value: New changelog text.
+        """
         entries = self._get_attr_str_array(robot_schema.Attributes.CHANGELOG)
         if 0 <= index < len(entries):
             entries[index] = value
@@ -1181,7 +1264,13 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
                     )
 
     def _build_grab_handle(self, drag_data: str, index_text: str, path: str) -> None:
-        """Builds a drag grab handle (3 vertical bars)."""
+        """Build a drag grab handle.
+
+        Args:
+            drag_data: Drag payload to emit.
+            index_text: Display index text for the row.
+            path: Path represented by the row.
+        """
         GRIP_COLOR = style.GRIP_COLOR
         with ui.ZStack(width=ui.Pixel(14), height=ui.Pixel(_TABLE_ROW_HEIGHT)) as handle:
             ui.Rectangle(style={"background_color": _CELL_BG})
@@ -1207,7 +1296,11 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
 
     # --- Expand / collapse sub-robot rows ---
     def _toggle_joint_expand(self, index: int) -> None:
-        """Toggle expansion of a joint row that has Robot API."""
+        """Toggle expansion of a joint row that has Robot API.
+
+        Args:
+            index: Joint row index to toggle.
+        """
         if index in self._expanded_joints:
             self._expanded_joints.discard(index)
         else:
@@ -1215,7 +1308,11 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
         self._rebuild_joints_list()
 
     def _toggle_link_expand(self, index: int) -> None:
-        """Toggle expansion of a link row that has Robot API."""
+        """Toggle expansion of a link row that has Robot API.
+
+        Args:
+            index: Link row index to toggle.
+        """
         if index in self._expanded_links:
             self._expanded_links.discard(index)
         else:
@@ -1340,7 +1437,11 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
         self._joint_picker.show(0, on_targets_selected=self._on_joint_targets_selected)
 
     def _on_joint_targets_selected(self, paths: list) -> None:
-        """Appends picker-selected joint paths to the relationship, skipping duplicates."""
+        """Append picker-selected joint paths to the relationship, skipping duplicates.
+
+        Args:
+            paths: Selected target paths.
+        """
         if not paths:
             return
         joints = self._get_relationship_targets(robot_schema.Relations.ROBOT_JOINTS)
@@ -1375,7 +1476,11 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
         self._link_picker.show(0, on_targets_selected=self._on_link_targets_selected)
 
     def _on_link_targets_selected(self, paths: list) -> None:
-        """Appends picker-selected link paths to the relationship, skipping duplicates."""
+        """Append picker-selected link paths to the relationship, skipping duplicates.
+
+        Args:
+            paths: Selected target paths.
+        """
         if not paths:
             return
         links = self._get_relationship_targets(robot_schema.Relations.ROBOT_LINKS)
@@ -1387,7 +1492,11 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
         self._rebuild_links_list()
 
     def _on_remove_joint(self, index: int) -> None:
-        """Removes a joint target at the given index from the relationship."""
+        """Remove a joint target at the given index from the relationship.
+
+        Args:
+            index: Joint target index to remove.
+        """
         joints = self._get_relationship_targets(robot_schema.Relations.ROBOT_JOINTS)
         if 0 <= index < len(joints):
             joints.pop(index)
@@ -1400,7 +1509,11 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
             self._rebuild_joints_list()
 
     def _on_remove_link(self, index: int) -> None:
-        """Removes a link target at the given index from the relationship."""
+        """Remove a link target at the given index from the relationship.
+
+        Args:
+            index: Link target index to remove.
+        """
         links = self._get_relationship_targets(robot_schema.Relations.ROBOT_LINKS)
         if 0 <= index < len(links):
             links.pop(index)
@@ -1435,7 +1548,12 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
         return selected
 
     def _on_reorder_joint(self, target_index: int, drag_data: object) -> None:
-        """Reorders a joint in the relationship targets based on drag-and-drop."""
+        """Reorder a joint in the relationship targets based on drag-and-drop.
+
+        Args:
+            target_index: Drop target index.
+            drag_data: Drag payload identifying the source row.
+        """
         for ind in self._joint_drop_indicators:
             ind.set_style({"background_color": _DROP_INDICATOR_TRANSPARENT})
         try:
@@ -1455,7 +1573,12 @@ class RobotAPIWidget(_RobotSchemaWidgetBase):
         self._rebuild_joints_list()
 
     def _on_reorder_link(self, target_index: int, drag_data: object) -> None:
-        """Reorders a link in the relationship targets based on drag-and-drop."""
+        """Reorder a link in the relationship targets based on drag-and-drop.
+
+        Args:
+            target_index: Drop target index.
+            drag_data: Drag payload identifying the source row.
+        """
         for ind in self._link_drop_indicators:
             ind.set_style({"background_color": _DROP_INDICATOR_TRANSPARENT})
         try:
@@ -1548,7 +1671,14 @@ class AttachmentPointAPIWidget(_RobotSchemaWidgetBase):
         )
 
     def _button_show(self, objects: dict) -> bool:
-        """Show the menu entry only for physics joint prims that lack the API."""
+        """Show the menu entry only for physics joint prims that lack the API.
+
+        Args:
+            objects: Selection payload from the property window.
+
+        Returns:
+            True if the menu entry should be shown.
+        """
         stage = objects.get("stage")
         prim_list = objects.get("prim_list")
         if not stage or not prim_list:
@@ -1560,7 +1690,11 @@ class AttachmentPointAPIWidget(_RobotSchemaWidgetBase):
         return False
 
     def _button_onclick(self, payload: PrimSelectionPayload) -> None:
-        """Apply ``IsaacAttachmentPointAPI`` to all selected physics joint prims."""
+        """Apply ``IsaacAttachmentPointAPI`` to all selected physics joint prims.
+
+        Args:
+            payload: Selected prim paths.
+        """
         stage = self._payload.get_stage() if self._payload else omni.usd.get_context().get_stage()
         if not stage:
             return

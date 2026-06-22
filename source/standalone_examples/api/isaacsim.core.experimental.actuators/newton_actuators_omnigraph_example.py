@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-================================================================================
+"""Drive an actuated robot from OmniGraph with Newton actuators.
+
 Companion script for the Newton Actuators "Drive an Actuated Robot from
 OmniGraph" tutorial.  Loads a Franka, authors Newton actuators onto it,
 builds the example Action Graph programmatically, and keeps the kit window
@@ -24,7 +24,6 @@ open so the user can inspect the graph live in
 In a typical workflow you would author this graph by hand in the Action
 Graph editor — see the OmniGraph tutorial.  This script exists to let a
 user reproduce the example graph quickly, without driving the editor.
-================================================================================
 
 Run with:
 
@@ -106,13 +105,13 @@ def author_actuators_on_franka(franka_path: str) -> None:
     from isaacsim.core.experimental.prims import Articulation
 
     JOINT_PARAMS = {
-        "panda_joint1": dict(kp=64.0, kd=8.0, max_effort=1000.0),
-        "panda_joint2": dict(kp=64.0, kd=8.0, max_effort=1000.0),
-        "panda_joint3": dict(kp=64.0, kd=8.0, max_effort=1000.0),
-        "panda_joint4": dict(kp=64.0, kd=8.0, max_effort=1000.0),
-        "panda_joint5": dict(kp=64.0, kd=8.0, max_effort=1000.0),
-        "panda_joint6": dict(kp=64.0, kd=8.0, max_effort=1000.0),
-        "panda_joint7": dict(kp=64.0, kd=8.0, max_effort=1000.0),
+        "panda_joint1": {"kp": 64.0, "kd": 8.0, "max_effort": 1000.0},
+        "panda_joint2": {"kp": 64.0, "kd": 8.0, "max_effort": 1000.0},
+        "panda_joint3": {"kp": 64.0, "kd": 8.0, "max_effort": 1000.0},
+        "panda_joint4": {"kp": 64.0, "kd": 8.0, "max_effort": 1000.0},
+        "panda_joint5": {"kp": 64.0, "kd": 8.0, "max_effort": 1000.0},
+        "panda_joint6": {"kp": 64.0, "kd": 8.0, "max_effort": 1000.0},
+        "panda_joint7": {"kp": 64.0, "kd": 8.0, "max_effort": 1000.0},
     }
 
     for joint_name, p in JOINT_PARAMS.items():
@@ -219,6 +218,7 @@ def build_action_graph(franka_path: str) -> None:
 # Entry point
 # ============================================================================
 def main() -> None:
+    """Build the graph, start simulation, and keep the app running."""
     SimulationManager.set_physics_dt(1.0 / 60.0)
     franka_path = simulation_app.run_coroutine(setup_stage_with_franka())
     author_actuators_on_franka(franka_path)

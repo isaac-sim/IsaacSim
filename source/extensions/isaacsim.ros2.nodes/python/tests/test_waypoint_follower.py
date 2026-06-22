@@ -13,9 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 waypoint follower OmniGraph node."""
+"""Verify ROS 2 Nav2 waypoint follower graph behavior.
+
+Covers duplicate graph handling, waypoint limits, waypoint generation, and
+action-graph modes for waypoint and patrol workflows.
+"""
 
 import asyncio
+from typing import Any
 
 import omni.appwindow
 import omni.ext
@@ -38,7 +43,7 @@ from ast import literal_eval
 try:
     from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
     from geometry_msgs.msg import PoseStamped
-except:
+except BaseException:
     pass
 
 import carb.events
@@ -56,7 +61,7 @@ class WaypointFollower(BaseResetNode):
         try:
             rclpy.init()
             self._navigator = BasicNavigator()
-        except:
+        except BaseException:
             pass
         self.initialized = True
 
@@ -131,7 +136,7 @@ class WaypointFollower(BaseResetNode):
             elif result == TaskResult.FAILED:
                 post_notification("Goal failed!", status=NotificationStatus.WARNING)
                 print("Goal canceled")
-        except:
+        except BaseException:
             pass
 
     # Overriding a function from BaseResetNode.
@@ -165,7 +170,7 @@ def test_waypoint_script(db: og.Database):
 
     try:
         rclpy.init()
-    except:
+    except BaseException:
         pass
 
     node = rclpy.create_node('waypoint_publisher')
@@ -185,14 +190,14 @@ def test_waypoint_script(db: og.Database):
             publisher.publish(msg)
             print(f"published: {msg.data}")
             time.sleep(0.5)
-        except:
+        except BaseException:
             print("Context was destroyed")
             break
 
     node.destroy_node()
     try:
         rclpy.shutdown()
-    except:
+    except BaseException:
         pass
 
 def setup(db: og.Database):
@@ -249,7 +254,7 @@ from ast import literal_eval
 try:
     from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
     from geometry_msgs.msg import PoseStamped
-except:
+except BaseException:
     pass
 
 import carb.events
@@ -268,7 +273,7 @@ class Patrolling(BaseResetNode):
         try:
             rclpy.init()
             self._navigator = BasicNavigator()
-        except:
+        except BaseException:
             pass
         self.initialized = True
 
@@ -341,7 +346,7 @@ class Patrolling(BaseResetNode):
                     post_notification(f'Round {self._counter} is either Failed or Cancelled!', status=NotificationStatus.WARNING)
                     print(f'Round {self._counter} is completed')
                     break
-            except:
+            except BaseException:
                 pass
 
     # Overriding a function from BaseResetNode.
@@ -372,7 +377,7 @@ def test_patrolling_script(db: og.Database):
 
     try:
         rclpy.init()
-    except:
+    except BaseException:
         pass
 
     node = rclpy.create_node('patrolling_publisher')
@@ -392,14 +397,14 @@ def test_patrolling_script(db: og.Database):
             publisher.publish(msg)
             print(f"published: {msg.data}")
             time.sleep(0.5)
-        except:
+        except BaseException:
             print("Context was destroyed")
             break
 
     node.destroy_node()
     try:
         rclpy.shutdown()
-    except:
+    except BaseException:
         pass
 
 def setup(db: og.Database):
@@ -476,10 +481,10 @@ def compute(db: og.Database):
 
 
 class TestRos2Nav2WaypointFollower(ROS2TestCase):
-    """Test suite for ros2 nav2 waypoint follower."""
+    """Verify Nav2 waypoint follower graph creation and waypoint publishing."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Initialize waypoint follower settings and create a fresh stage."""
         await super().setUp()
 
         self._og_path = "/Graph/ROS_Nav2_Waypoint_Follower"
@@ -496,13 +501,13 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
 
         await stage_utils.create_new_stage_async()
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Run shared ROS 2 cleanup after waypoint follower graph tests."""
         await super().tearDown()
 
     # ----------------------------------------------------------------------
     # TODO: Import from main script
-    def _create_ros_action_graph(self):
+    def _create_ros_action_graph(self) -> Any:
         keys = og.Controller.Keys
 
         if self._enable_multi_robot:
@@ -602,7 +607,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
 
         return True
 
-    def _create_waypoints(self, waypoint, xform_path):
+    def _create_waypoints(self, waypoint: Any, xform_path: Any) -> Any:
         """Create a waypoint xform prim with translation, orientation, and scale.
 
         Args:
@@ -637,25 +642,25 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
             xform_prim.AddTranslateOp().Set(translation)
             xform_prim.AddOrientOp().Set(quaternion)
             xform_prim.AddScaleOp().Set(scale)
-        except:
+        except BaseException:
             return False
 
         return True
 
     # TODO: Import from main script
-    def _check_params(self):
+    def _check_params(self) -> Any:
         try:
             if self._enable_patrolling:
                 if self._number_of_waypoints < 2 or self._number_of_waypoints > 50:
                     return False
             else:
                 self._number_of_waypoints = 1
-        except:
+        except BaseException:
             return False
 
         return True
 
-    async def test_duplicate_graph(self):
+    async def test_duplicate_graph(self) -> None:
         """Test duplicate graph."""
         # Test to verify duplicate graphs present in the stage
         self.assertTrue(self._create_ros_action_graph(), "ActionGraph is not created.")
@@ -668,7 +673,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
         self._enable_multi_robot = True
         self.assertTrue(self._create_ros_action_graph(), "ActionGraph is not created for multi robot case.")
 
-    async def test_waypoint_limit(self):
+    async def test_waypoint_limit(self) -> None:
         """Test waypoint limit."""
         # Test to verify waypoint limit should be between 2 to 50 inclusive
         self._enable_patrolling = True
@@ -689,7 +694,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
         self._number_of_waypoints = 31
         self.assertTrue(self._check_params(), "Waypoint limit is incorrect.")
 
-    async def test_waypoint_generation(self):
+    async def test_waypoint_generation(self) -> None:
         """Test waypoint generation."""
         # Test to verify waypoint is generated or not
         _dummy_waypoint = [1.0, 2.0, 0.0, 1.0, 0.0, 0.0, 0.0]
@@ -701,7 +706,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
 
         self.assertFalse(self._create_waypoints(_dummy_waypoint, _prim_path), "Waypoint with same name is created!")
 
-    def _get_normalized_quaternion_components(self, qw, qx, qy, qz):
+    def _get_normalized_quaternion_components(self, qw: Any, qx: Any, qy: Any, qz: Any) -> Any:
         """Get normalized quaternion components using Gf.Quatf for test comparison.
 
         Args:
@@ -718,7 +723,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
         imaginary = normalized_quat.GetImaginary()
         return (imaginary[0], imaginary[1], imaginary[2], normalized_quat.GetReal())
 
-    def _compare_waypoint_results(self, received_msg, expected_result, tolerance=1e-3):
+    def _compare_waypoint_results(self, received_msg: Any, expected_result: Any, tolerance: Any = 1e-3) -> Any:
         """Compare received waypoint message with expected result using floating point tolerance.
 
         Args:
@@ -754,7 +759,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
             print(f"Error comparing results: {e}")
             return False
 
-    async def test_waypoint_mode_action_graph(self):
+    async def test_waypoint_mode_action_graph(self) -> None:
         """Test waypoint mode action graph."""
         from std_msgs.msg import String
 
@@ -784,7 +789,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
         self._create_ros_action_graph()
 
         # Define a callback function that will be called when a message is received
-        def listener_callback(msg):
+        def listener_callback(msg: Any) -> None:
             print(f"Received: {msg.data}")
             self.__result = self._compare_waypoint_results(msg.data, self.__expected_result)
 
@@ -803,7 +808,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
 
         self.assertTrue(self.__result, "Waypoint Mode Graph is not generated properly.")
 
-    async def test_patrolling_mode_action_graph(self):
+    async def test_patrolling_mode_action_graph(self) -> None:
         """Test patrolling mode action graph."""
         from std_msgs.msg import String
 
@@ -837,7 +842,7 @@ class TestRos2Nav2WaypointFollower(ROS2TestCase):
         self._create_ros_action_graph()
 
         # Define a callback function that will be called when a message is received
-        def listener_callback(msg):
+        def listener_callback(msg: Any) -> None:
             print(f"Received: {msg.data}")
             self.__result = self._compare_waypoint_results(msg.data, self.__expected_result)
 

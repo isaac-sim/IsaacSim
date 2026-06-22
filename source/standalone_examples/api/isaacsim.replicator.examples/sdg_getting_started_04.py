@@ -29,7 +29,7 @@ from isaacsim.core.experimental.prims import RigidPrim
 from pxr import UsdGeom
 
 
-def run_example():
+def run_example() -> None:
     """Run physics simulation and capture data at height-based intervals."""
     # Create a new stage and disable capture on play
     omni.usd.get_context().new_stage()

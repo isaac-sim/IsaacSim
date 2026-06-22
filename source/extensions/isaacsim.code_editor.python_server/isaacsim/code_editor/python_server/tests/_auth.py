@@ -24,17 +24,35 @@ _AUTH_HEADER_PREFIX = "# isaacsim-python-server-token:"
 
 
 def get_auth_token() -> str:
-    """Return the configured test auth token."""
+    """Return the configured test auth token.
+
+    Returns:
+        The authentication token stored in Carbonite settings.
+    """
     return carb.settings.get_settings().get_as_string(f"{_SETTINGS_PREFIX}/auth_token")
 
 
 def add_auth_header(source: str) -> str:
-    """Prefix raw Python source with the authentication header."""
+    """Prefix raw Python source with the authentication header.
+
+    Args:
+        source: The raw Python source to authenticate.
+
+    Returns:
+        The source prefixed with the authentication header.
+    """
     return f"{_AUTH_HEADER_PREFIX} {get_auth_token()}\n{source}"
 
 
 def add_auth_to_envelope(envelope: dict) -> dict:
-    """Return a copy of *envelope* with the configured authentication token."""
+    """Return a copy of *envelope* with the configured authentication token.
+
+    Args:
+        envelope: The request envelope to authenticate.
+
+    Returns:
+        A shallow copy of *envelope* containing an ``auth_token`` entry.
+    """
     authenticated = dict(envelope)
     authenticated.setdefault("auth_token", get_auth_token())
     return authenticated

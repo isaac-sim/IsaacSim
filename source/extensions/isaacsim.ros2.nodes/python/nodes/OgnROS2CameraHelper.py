@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import traceback
+from typing import Any
 
 import carb
 import omni
@@ -118,7 +119,6 @@ class OgnROS2CameraHelperInternalState(BaseWriterNode):
     """Internal state for the ROS2CameraHelper OmniGraph node."""
 
     def __init__(self) -> None:
-        """Initialize the ROS2 camera helper internal state."""
         self.rv = ""
         self.resetSimulationTimeOnStop = False
         self.publishStepSize = 1
@@ -137,8 +137,13 @@ class OgnROS2CameraHelperInternalState(BaseWriterNode):
         cleanup_srtx_state(self)
         super().custom_reset()
 
-    def post_attach(self, writer, render_product) -> None:
-        """Configure writer attributes after attaching to a render product."""
+    def post_attach(self, writer: Any, render_product: Any) -> None:
+        """Configure writer attributes after attaching to a render product.
+
+        Args:
+            writer: Writer attached to the render product.
+            render_product: Render product path or prim.
+        """
         try:
             if self.rv != "":
                 omni.syntheticdata.SyntheticData.Get().set_node_attributes(
@@ -156,11 +161,17 @@ class OgnROS2CameraHelper:
 
     @staticmethod
     def internal_state() -> OgnROS2CameraHelperInternalState:
-        """Return the internal state object for this node."""
+        """Return the internal state object for this node.
+
+        Returns:
+            Internal state object for this node.
+        """
         return OgnROS2CameraHelperInternalState()
 
     @staticmethod
-    def _setup_srtx(config, init_params, render_product_path, sensor_type, state, compression_type) -> bool:
+    def _setup_srtx(
+        config: Any, init_params: Any, render_product_path: Any, sensor_type: Any, state: Any, compression_type: Any
+    ) -> bool:
         if not config["srtx"]:
             carb.log_error(
                 f"Sensor type '{sensor_type}' is not supported with SRTX. "
@@ -223,8 +234,15 @@ class OgnROS2CameraHelper:
         return True
 
     @staticmethod
-    def compute(db) -> bool:
-        """Compute the node outputs."""
+    def compute(db: Any) -> bool:
+        """Configure ROS 2 camera publishing for the requested render product and sensor type.
+
+        Args:
+            db: OmniGraph database for the node.
+
+        Returns:
+            True if the node was configured or can retry later, otherwise False.
+        """
         state = db.per_instance_state
         if not db.inputs.enabled:
             if state.initialized:
@@ -263,14 +281,14 @@ class OgnROS2CameraHelper:
 
         state.rv = ""
 
-        init_params = dict(
-            frameId=db.inputs.frameId,
-            nodeNamespace=collect_namespace(db.inputs.nodeNamespace, render_product_path),
-            queueSize=db.inputs.queueSize,
-            topicName=db.inputs.topicName,
-            context=db.inputs.context,
-            qosProfile=db.inputs.qosProfile,
-        )
+        init_params = {
+            "frameId": db.inputs.frameId,
+            "nodeNamespace": collect_namespace(db.inputs.nodeNamespace, render_product_path),
+            "queueSize": db.inputs.queueSize,
+            "topicName": db.inputs.topicName,
+            "context": db.inputs.context,
+            "qosProfile": db.inputs.qosProfile,
+        }
 
         if sensor_type == "rgb_h264":
             rv = omni.syntheticdata.SyntheticData.convert_sensor_type_to_rendervar(
@@ -336,8 +354,13 @@ class OgnROS2CameraHelper:
         return True
 
     @staticmethod
-    def release_instance(node, graph_instance_id) -> None:
-        """Release resources for a graph instance."""
+    def release_instance(node: Any, graph_instance_id: Any) -> None:
+        """Release resources for a graph instance.
+
+        Args:
+            node: OmniGraph node being released.
+            graph_instance_id: Graph instance identifier.
+        """
         try:
             state = OgnROS2CameraHelperInternalState.per_instance_internal_state(node)
         except Exception:

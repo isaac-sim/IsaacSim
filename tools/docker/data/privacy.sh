@@ -20,7 +20,7 @@ echo 'address) based on our legitimate interest in improving your experience. To
 echo 'and diagnostic purposes of our software, we also collect session behavior, error and crash logs.'
 echo
 echo 'Data Collection in container mode is completely anonymous unless specified. You may opt-out of this collection'
-echo 'anytime by not setting the OMNI_ENV_PRIVACY_CONSENT environment variable.'
+echo 'anytime by not setting the PRIVACY_CONSENT environment variable.'
 echo
-echo 'To opt-in set the OMNI_ENV_PRIVACY_CONSENT environment variable when running the container. Set the '
-echo 'OMNI_ENV_PRIVACY_USERID environment variable tag the telemetry data with a user ID.'
+echo 'To opt-in set the PRIVACY_CONSENT environment variable when running the container. Set the '
+echo 'PRIVACY_USERID environment variable to tag the telemetry data with a user ID.'

@@ -29,7 +29,11 @@ if TYPE_CHECKING:
 
 
 class JointPropertiesPanel:
-    """Per-joint UI for default position, acceleration/jerk limits, and active/fixed status."""
+    """Per-joint UI for default position, acceleration/jerk limits, and active/fixed status.
+
+    Args:
+        state: Shared editor state.
+    """
 
     def __init__(self, state: "EditorState") -> None:
         self._state = state
@@ -75,6 +79,9 @@ class JointPropertiesPanel:
 
         The orchestrator's physics-step callback uses this to apply the position
         change to the articulation and zero its velocity.
+
+        Returns:
+            True if a pending joint-position update was consumed.
         """
         if self._set_joint_positions_on_step:
             self._set_joint_positions_on_step = False

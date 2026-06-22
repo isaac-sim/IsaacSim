@@ -15,8 +15,6 @@
 
 """Utilities for importing and managing grasp specifications from isaac_grasp YAML files."""
 
-from typing import List, Tuple
-
 import carb
 import isaacsim.core.experimental.utils.transform as transform_utils
 import numpy as np
@@ -35,10 +33,10 @@ class GraspSpec:
         imported_data: Dictionary containing grasp specifications parsed from an isaac_grasp YAML file, including grasp names, poses, confidence values, and joint configurations.
     """
 
-    def __init__(self, imported_data: dict):
+    def __init__(self, imported_data: dict) -> None:
         self._imported_data = imported_data
 
-    def get_grasp_names(self) -> List[str]:
+    def get_grasp_names(self) -> list[str]:
         """Get a list of valid grasp names stored in the imported `isaac_grasp` file.
 
         Returns:
@@ -84,7 +82,7 @@ class GraspSpec:
 
     def compute_gripper_pose_from_rigid_body_pose(
         self, grasp_name: str, rb_trans: np.array, rb_quat: np.array
-    ) -> Tuple[np.array, np.array]:
+    ) -> tuple[np.array, np.array]:
         """Given a position of the rigid body in the world or robot frame, compute the position of.
 
         the gripper in that same frame to replicate the grasp associated `grasp_name`.
@@ -118,7 +116,7 @@ class GraspSpec:
 
     def compute_rigid_body_pose_from_gripper_pose(
         self, grasp_name: str, gripper_trans: np.array, gripper_quat: np.array
-    ) -> Tuple[np.array, np.array]:
+    ) -> tuple[np.array, np.array]:
         """Given a position of the gripper in the world or robot frame, compute the position of.
 
         the rigid body in that same frame to replicate the grasp associated `grasp_name`.

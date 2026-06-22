@@ -13,15 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-The Kit extension system tests for Python has additional wrapping.
+"""Smoke-test discovery of the experimental motion-generation extension tests.
 
-to make test auto-discoverable add support for async/await tests.
-The easiest way to set up the test class is to have it derive from
-the omni.kit.test.AsyncTestCase class that implements them.
-
-Visit the next link for more details:
-  https://docs.omniverse.nvidia.com/kit/docs/kit-manual/latest/guide/testing_exts_python.html
+This file intentionally keeps the assertion minimal; its purpose is to confirm
+that Kit can collect and execute the extension's async Python test case.
 """
 
 import omni.kit.test
@@ -35,14 +30,14 @@ class TestExtension(omni.kit.test.AsyncTestCase):
     the Omniverse Kit testing framework for extension validation.
     """
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # ---------------
         # Do custom setUp
         # ---------------
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         # ------------------
         # Do custom tearDown
@@ -51,7 +46,7 @@ class TestExtension(omni.kit.test.AsyncTestCase):
 
     # --------------------------------------------------------------------
 
-    async def test_extension(self):
+    async def test_extension(self) -> None:
         """Test case for the extension functionality."""
         # Kit extension system test for Python is based on the unittest module.
         # Visit https://docs.python.org/3/library/unittest.html to see the

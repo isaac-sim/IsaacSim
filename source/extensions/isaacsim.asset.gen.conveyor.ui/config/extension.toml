@@ -1,5 +1,5 @@
 [package]
-version = "2.3.0"
+version = "2.3.1"
 category = "Simulation"
 title = "Isaac Sim Conveyor belt utility UI"
 description="UI components for isaacsim.asset.gen.conveyor. It provides menu entries to support UI-based creation of Custom Conveyor Bodies, and a Conveyor Track tool that creates a system of fixed conveyor belts from a dataset."

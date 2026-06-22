@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.19] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [2.0.18] - 2025-11-28
 ### Changed
 - Add missing docstrings

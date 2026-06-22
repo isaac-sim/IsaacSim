@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Process-wide hooks for attaching extra :class:`Recordable`\\ s to a session.
+r"""Process-wide hooks for attaching extra :class:`Recordable`\\ s to a session.
 
 A session injector is any callable that receives a freshly created
 :class:`EpisodeRecorder` (before :meth:`EpisodeRecorder.open_session` is invoked)
@@ -73,6 +73,12 @@ def register_session_injector(fn: SessionInjector) -> Callable[[], None]:
     Returns a zero-arg handle that removes the injector when called. The handle is
     idempotent: invoking it more than once is safe. Re-registering the same callable
     appends a second entry and therefore produces a second handle.
+
+    Args:
+        fn: Session injector callback.
+
+    Returns:
+        register session injector result.
     """
     _injectors.append(fn)
     removed = False
@@ -91,7 +97,14 @@ def register_session_injector(fn: SessionInjector) -> Callable[[], None]:
 
 
 def unregister_session_injector(fn: SessionInjector) -> bool:
-    """Remove the first registration of ``fn``. Returns ``True`` if removed."""
+    """Remove the first registration of ``fn``. Returns ``True`` if removed.
+
+    Args:
+        fn: Session injector callback.
+
+    Returns:
+        unregister session injector result.
+    """
     try:
         _injectors.remove(fn)
         return True
@@ -100,7 +113,11 @@ def unregister_session_injector(fn: SessionInjector) -> bool:
 
 
 def registered_session_injectors() -> tuple[SessionInjector, ...]:
-    """Snapshot of currently registered injectors (registration order)."""
+    """Snapshot of currently registered injectors (registration order).
+
+    Returns:
+        Registered session injector callbacks.
+    """
     return tuple(_injectors)
 
 
@@ -115,6 +132,9 @@ def apply_session_injectors(recorder: "EpisodeRecorder") -> None:
     Injectors are called in registration order. Exceptions are logged but not
     re-raised so a single misbehaving injector cannot break session setup; the
     offending injector simply contributes no recordables.
+
+    Args:
+        recorder: Episode recorder receiving injected session data.
     """
     for fn in list(_injectors):
         try:

@@ -42,12 +42,12 @@ dof_ptr = art.get_dof_index("panda_joint2")
 simulation_context.play()
 
 
-def step_callback_1(step_size):
+def step_callback_1(step_size: float) -> None:
     """Set the target joint position for panda_joint2."""
     art.set_joint_positions([[-1.5]], joint_indices=[dof_ptr])
 
 
-def step_callback_2(step_size):
+def step_callback_2(step_size: float) -> None:
     """Print the current joint position and simulation time."""
     print(
         "Current joint 2 position @ step "
@@ -58,7 +58,7 @@ def step_callback_2(step_size):
     print("TIME: ", simulation_context.current_time)
 
 
-def render_callback(event):
+def render_callback(event: object) -> None:
     """Print a message on each render frame."""
     print("Render Frame")
 

@@ -28,7 +28,11 @@ class Extension(omni.ext.IExt):
     """
 
     def on_startup(self, ext_id: str) -> None:
-        """Initialize the URDF exporter extension."""
+        """Initialize the URDF exporter extension.
+
+        Args:
+            ext_id: Extension identifier provided by the extension manager.
+        """
 
     def on_shutdown(self) -> None:
         """Clean up the URDF exporter extension."""

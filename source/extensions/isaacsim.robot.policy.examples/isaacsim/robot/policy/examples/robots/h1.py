@@ -45,7 +45,7 @@ class H1FlatTerrainPolicy(PolicyController):
         orientation: list[float] | None = None,
         policy_path: str | None = None,
         env_config_path: str | None = None,
-    ):
+    ) -> None:
         assets_root_path = get_assets_root_path()
         policy_dir = assets_root_path + "/Isaac/Samples/Policies/h1"
         if usd_path is None:
@@ -143,7 +143,7 @@ class H1FlatTerrainPolicy(PolicyController):
 
         self._policy_counter += 1
 
-    def initialize(self):
+    def initialize(self) -> None:
         """Overloads the default initialize function to use default articulation root properties in the USD."""
         self._policy_counter = 0
         super().initialize(set_articulation_props=False)

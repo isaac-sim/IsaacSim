@@ -1,5 +1,9 @@
 # Changelog
 
+## [5.2.12] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [5.2.11] - 2026-05-28
 ### Fixed
 - Conditional use of asset until menagerie assets are tested with Isaac lab
@@ -13,7 +17,6 @@
 
 ### Changed
 - Extract the snapshot/restore physics-state logic shared by the interactive Quadruped, Go2, and Humanoid examples into `isaacsim.robot.policy.examples.interactive.utils`
-
 
 ## [5.2.9] - 2026-05-21
 ### Fixed

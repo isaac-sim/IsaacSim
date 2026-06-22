@@ -478,7 +478,7 @@ class TestRotations(omni.kit.test.AsyncTestCase):
     implementations to ensure consistency in quaternion and Euler angle calculations.
     """
 
-    async def test_rotation_no_nan_outputs(self):
+    async def test_rotation_no_nan_outputs(self) -> None:
         """Verify that rotation utilities do not produce NaN values.
 
         Tests that quaternion and Euler angle outputs from numpy, experimental,
@@ -505,7 +505,7 @@ class TestRotations(omni.kit.test.AsyncTestCase):
                 f"NaN found for experimental rotation outputs with {entry}",
             )
 
-    async def test_rotation_quaternion_matches(self):
+    async def test_rotation_quaternion_matches(self) -> None:
         """Verify quaternion consistency across rotation implementations.
 
         Tests that quaternions computed from the same Euler angles match across
@@ -525,7 +525,7 @@ class TestRotations(omni.kit.test.AsyncTestCase):
             self.assertTrue(comparison["quat_match"], f"experimental vs numpy mismatch: {entry}")
             self.assertTrue(comparison["quat_match_usd_numpy"], f"USD vs numpy mismatch: {entry}")
 
-    async def test_rotation_matrix_matches(self):
+    async def test_rotation_matrix_matches(self) -> None:
         """Verify rotation matrix consistency across implementations.
 
         Tests that rotation matrices derived from quaternions match across

@@ -46,12 +46,12 @@ class FrankaOpenDrawerPolicy(PolicyController):
         usd_path: str | None = None,
         position: list[float] | None = None,
         orientation: list[float] | None = None,
-    ):
+    ) -> None:
 
         assets_root_path = get_assets_root_path()
 
         policy_path = assets_root_path + "/Isaac/Samples/Policies/Franka_Policies/Open_Drawer_Policy/"
-        if usd_path == None:
+        if usd_path is None:
             usd_path = assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd"
 
         super().__init__(prim_path, root_path, usd_path, position, orientation)
@@ -74,7 +74,7 @@ class FrankaOpenDrawerPolicy(PolicyController):
         print(self.franka_hand_prim.paths)
         print(self.drawer_handle_top_prim.paths)
 
-    def _compute_observation(self):
+    def _compute_observation(self) -> object:
         """Compute the observation vector for the policy.
 
         The observation includes robot joint states, drawer state, relative positioning
@@ -181,7 +181,7 @@ class FrankaOpenDrawerPolicy(PolicyController):
 
         self._policy_counter += 1
 
-    def initialize(self):
+    def initialize(self) -> None:
         """Initializes the Franka arm articulation with position control mode and configures solver parameters.
 
         Sets up drawer link indices and specific physics solver settings for stable manipulation.

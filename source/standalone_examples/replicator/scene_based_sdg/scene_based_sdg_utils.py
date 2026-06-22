@@ -39,7 +39,7 @@ from pxr import Gf, Usd, UsdGeom
 def setup_writer(config: dict) -> rep.Writer | None:
     """Setup and initialize writer with optional backend support and error handling."""
 
-    def normalize_output_dir(params):
+    def normalize_output_dir(params: dict) -> None:
         """Convert relative output_dir to absolute path."""
         if "output_dir" in params and not os.path.isabs(params["output_dir"]):
             params["output_dir"] = os.path.join(os.getcwd(), params["output_dir"])
@@ -216,7 +216,7 @@ def create_scatter_plane_for_prim(
 
 
 def setup_cone_placement_corners(
-    forklift_prim: Usd.Prim, bb_cache=None, scale_factor: float = 1.3
+    forklift_prim: Usd.Prim, bb_cache: UsdGeom.BBoxCache | None = None, scale_factor: float = 1.3
 ) -> tuple[list[list[float]], tuple[float, float, float]]:
     """Calculate forklift OBB corners for cone placement."""
     if bb_cache is None:

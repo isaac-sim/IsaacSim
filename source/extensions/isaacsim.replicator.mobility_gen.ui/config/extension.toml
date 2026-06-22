@@ -1,5 +1,5 @@
 [package]
-version = "0.4.4"
+version = "0.4.8"
 category = "Simulation"
 title = "MobilityGen UI"
 description = "User interface for recording data with MobilityGen"
@@ -19,6 +19,7 @@ writeTarget.kit = true
 "isaacsim.gui.components" = {}
 "isaacsim.replicator.experimental.mobility_gen" = {}
 "isaacsim.replicator.mobility_gen.examples" = {}
+"isaacsim.replicator.nurec_utils" = {}
 "omni.kit.pip_archive" = {}
 "omni.kit.uiapp" = {}
 "omni.kit.usdz_export" = {}

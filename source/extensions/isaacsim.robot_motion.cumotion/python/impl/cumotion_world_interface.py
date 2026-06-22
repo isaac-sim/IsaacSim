@@ -1275,6 +1275,9 @@ class CumotionWorldInterface(mg.WorldInterface):
 
         Memoized and invalidated whenever the base-frame transform is updated
         via ``_update_world_to_robot_root_transforms``.
+
+        Returns:
+            Position and quaternion arrays for the base-to-world transform.
         """
         if self._position_base_to_world_np is None:
             self._position_base_to_world_np = np.asarray(self._position_base_to_world.numpy(), dtype=np.float32)

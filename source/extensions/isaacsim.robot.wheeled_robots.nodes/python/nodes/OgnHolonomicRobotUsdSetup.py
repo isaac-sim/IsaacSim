@@ -49,18 +49,35 @@ class OgnHolonomicRobotUsdSetup:
 
     @staticmethod
     def init_instance(node: og.Node, graph_instance_id: int) -> None:
-        """Initialize the per-instance state for this node."""
+        """Initialize the per-instance state for this node.
+
+        Args:
+            node: OmniGraph node instance.
+            graph_instance_id: Graph instance identifier.
+        """
         state = OgnHolonomicRobotUsdSetupDatabase.get_internal_state(node, graph_instance_id)
         state.node = node
 
     @staticmethod
     def internal_state() -> OgnHolonomicRobotUsdSetupInternalState:
-        """Return a new internal state instance."""
+        """Return a new internal state instance.
+
+        Returns:
+            Per-instance holonomic robot USD setup state.
+        """
         return OgnHolonomicRobotUsdSetupInternalState()
 
     @staticmethod
     def compute(db: OgnHolonomicRobotUsdSetupDatabase) -> bool:
-        """Read robot parameters from USD and output wheel configuration data."""
+        """Read robot parameters from USD and output wheel configuration data.
+
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            True when robot parameters are read and outputs are written, False when
+            inputs are missing, setup is incomplete, or USD parameter validation fails.
+        """
         try:
             # check about the using path vs bundle thing
             state = db.per_instance_state

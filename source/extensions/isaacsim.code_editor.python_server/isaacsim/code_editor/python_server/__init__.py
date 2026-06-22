@@ -17,4 +17,4 @@
 
 from .extension import Extension  # noqa: F401 (Extension loaded for side effects)
 
-__all__: list[str] = []
+__all__ = []

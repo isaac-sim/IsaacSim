@@ -57,7 +57,15 @@ class OgnAckermannControllerInternalState(BaseResetNode):
         self.initialized = True
 
     def forward(self, command: np.ndarray) -> tuple:
-        """Run the controller forward pass and return (positions, velocities)."""
+        """Run the controller forward pass and return (positions, velocities).
+
+        Args:
+            command: Ackermann command array containing steering angle, steering angle
+                velocity, speed, acceleration, and time step.
+
+        Returns:
+            Tuple of wheel position and velocity command arrays.
+        """
         return self.controller_handle.forward(command)
 
     def custom_reset(self) -> None:
@@ -71,19 +79,35 @@ class OgnAckermannController:
 
     @staticmethod
     def init_instance(node: og.Node, graph_instance_id: int) -> None:
-        """Initialize the per-instance state for this node."""
+        """Initialize the per-instance state for this node.
+
+        Args:
+            node: OmniGraph node instance.
+            graph_instance_id: Graph instance identifier.
+        """
         state = OgnAckermannControllerDatabase.get_internal_state(node, graph_instance_id)
         state.node = node
         state.graph_id = graph_instance_id
 
     @staticmethod
     def internal_state() -> OgnAckermannControllerInternalState:
-        """Return a new internal state instance."""
+        """Return a new internal state instance.
+
+        Returns:
+            Per-instance Ackermann controller state.
+        """
         return OgnAckermannControllerInternalState()
 
     @staticmethod
     def compute(db: OgnAckermannControllerDatabase) -> bool:
-        """Compute wheel angles and velocities from the Ackermann steering model."""
+        """Compute wheel angles and velocities from the Ackermann steering model.
+
+        Args:
+            db: OmniGraph database for this node.
+
+        Returns:
+            True when wheel commands are computed, False when controller execution fails.
+        """
         state = db.per_instance_state
 
         try:
@@ -127,7 +151,12 @@ class OgnAckermannController:
 
     @staticmethod
     def release_instance(node: og.Node, graph_instance_id: int) -> None:
-        """Release the per-instance state when the node instance is removed."""
+        """Release the per-instance state when the node instance is removed.
+
+        Args:
+            node: OmniGraph node instance being released.
+            graph_instance_id: Graph instance identifier being released.
+        """
         try:
             state = OgnAckermannControllerDatabase.get_internal_state(node, graph_instance_id)
         except Exception:

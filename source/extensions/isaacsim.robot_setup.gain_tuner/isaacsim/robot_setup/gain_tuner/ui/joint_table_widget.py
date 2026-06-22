@@ -21,7 +21,6 @@ from enum import IntEnum
 from functools import partial
 from types import SimpleNamespace
 
-import numpy as np
 import omni.ui as ui
 import pxr
 
@@ -40,7 +39,13 @@ _CELL_BG_INAPPLICABLE = "treeview_item_inapplicable"
 
 
 def _set_gain_cell_field_state(item: object, column_id: int, *, applicable: bool) -> None:
-    """Show an editable cell, or a blank lighter-gray cell when the parameter does not apply."""
+    """Show an editable cell, or a blank lighter-gray cell when the parameter does not apply.
+
+    Args:
+        item: Joint table item containing value fields and cell backgrounds.
+        column_id: Column identifier for the cell to update.
+        applicable: True when the value applies to the current joint configuration.
+    """
     field = item.value_field.get(column_id)
     backgrounds = getattr(item, "_cell_backgrounds", {})
     rect = backgrounds.get(column_id)
@@ -61,7 +66,14 @@ def _set_gain_cell_field_state(item: object, column_id: int, *, applicable: bool
 
 
 def _tunable_value_column_ids(item: object) -> tuple[int, int]:
-    """Return the two numeric column ids used for the current table tuning mode."""
+    """Return the two numeric column ids used for the current table tuning mode.
+
+    Args:
+        item: Joint table item whose tuning mode selects the columns.
+
+    Returns:
+        Pair of column identifiers for the editable gain values.
+    """
     if item.mode == JointSettingMode.STIFFNESS:
         return WidgetColumns.STIFFNESS, WidgetColumns.DAMPING
     return WidgetColumns.NATURAL_FREQUENCY, WidgetColumns.DAMPING_RATIO

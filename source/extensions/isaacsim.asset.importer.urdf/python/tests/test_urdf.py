@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test urdf functionality."""
+"""Verifies URDF importer behavior across basic, textured, saved, scaled, floating-base, and asset-backed robot imports. Covers joint limits, mimic parsing, materials, collision generation, missing assets, debug mode, and generated USD output."""
 
 import asyncio
 import gc
@@ -110,7 +110,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
         Args:
             prim_path: USD path to the root prim to validate.
         """
-
         self.assertAlmostEqual(UsdGeom.GetStageMetersPerUnit(self._stage), 1.0)
 
         prim = self._stage.GetPrimAtPath(prim_path)
@@ -264,7 +263,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_urdf_save_to_file(self) -> None:
         """Import URDF and save to a specified file path."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(os.path.join(self._extension_path, "data", "urdf", "tests", "test_basic.urdf"))
         )
@@ -299,7 +297,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_urdf_save_twice_to_file(self) -> None:
         """Import URDF twice to the same location and verify no conflicts."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(os.path.join(self._extension_path, "data", "urdf", "tests", "test_basic.urdf"))
         )
@@ -313,7 +310,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_urdf_textured_obj(self) -> None:
         """Import URDF with OBJ mesh textures and validate texture import."""
-
         urdf_path = os.path.normpath(
             os.path.join(self._extension_path, "data", "urdf", "tests", "test_textures_urdf", "cube_obj.urdf")
         )
@@ -326,7 +322,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_urdf_textured_in_memory(self) -> None:
         """Import URDF with textures and validate in-memory processing."""
-
         base_path = os.path.normpath(os.path.join(self._extension_path, "data", "urdf", "tests", "test_textures_urdf"))
         basename = "cube_obj"
 
@@ -338,7 +333,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
     @unittest.skipIf(os.getenv("ETM_ACTIVE"), "Skipped in ETM: Unknown reason for ETM failing to load DAE.")
     async def test_urdf_textured_dae(self) -> None:
         """Import URDF with DAE mesh textures and validate texture import."""
-
         base_path = os.path.normpath(os.path.join(self._extension_path, "data", "urdf", "tests", "test_textures_urdf"))
         basename = "cube_dae"
 
@@ -355,7 +349,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_urdf_overwrite_file(self) -> None:
         """Import URDF twice to overwrite existing file and validate results."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(os.path.join(self._extension_path, "data", "urdf", "tests", "test_basic.urdf"))
         )
@@ -400,7 +393,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
     # advanced urdf test: test for all the categories of inputs that an urdf can hold
     async def test_urdf_advanced(self) -> None:
         """Import advanced URDF with various features and validate all categories."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(os.path.join(self._extension_path, "data", "urdf", "tests", "test_advanced.urdf"))
         )
@@ -438,7 +430,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_urdf_mtl(self) -> None:
         """Import URDF with MTL material files and validate material binding."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(os.path.join(self._extension_path, "data", "urdf", "tests", "test_mtl.urdf"))
         )
@@ -451,7 +442,7 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
         self.assertTrue(Gf.IsClose(mat.GetInput("diffuseColor").Get(), Gf.Vec3f(0.60383, 0.0, 0.0), 1e-5))
         self._success = True
 
-    async def test_urdf_material(self):
+    async def test_urdf_material(self) -> None:
         """Import URDF with material and validate material binding."""
         urdf_path = os.path.abspath(self._extension_path + "/data/urdf/tests/test_material.urdf")
 
@@ -466,7 +457,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_urdf_mtl_stl(self) -> None:
         """Import URDF with STL meshes and MTL materials and validate material binding."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(os.path.join(self._extension_path, "data", "urdf", "tests", "test_mtl_stl.urdf"))
         )
@@ -481,7 +471,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_urdf_carter(self) -> None:
         """Import Carter robot URDF and validate basic structure."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(
                 os.path.join(self._extension_path, "data", "urdf", "robots", "carter", "urdf", "carter.urdf")
@@ -493,7 +482,7 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         self._success = True
 
-    async def test_urdf_parse_mimic(self):
+    async def test_urdf_parse_mimic(self) -> None:
         """Test urdf parse mimic."""
         urdf_path = os.path.abspath(self._extension_path + "/data/urdf/tests/test_mimic.urdf")
         _, prim_path = self._import_urdf(urdf_path)
@@ -535,7 +524,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_urdf_franka(self) -> None:
         """Import Franka robot URDF and validate mesh geometry."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(
                 os.path.join(
@@ -556,7 +544,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_urdf_ur10(self) -> None:
         """Import UR10 robot URDF and validate mesh geometry."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(os.path.join(self._extension_path, "data", "urdf", "robots", "ur10", "urdf", "ur10.urdf"))
         )
@@ -567,7 +554,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_urdf_kaya(self) -> None:
         """Import Kaya robot URDF and validate mesh geometry."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(os.path.join(self._extension_path, "data", "urdf", "robots", "kaya", "urdf", "kaya.urdf"))
         )
@@ -578,7 +564,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_missing(self) -> None:
         """Import URDF with missing mesh files and validate error handling."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(os.path.join(self._extension_path, "data", "urdf", "tests", "test_missing.urdf"))
         )
@@ -656,7 +641,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
     # basic urdf test: joints and links are imported correctly
     async def test_urdf_floating(self) -> None:
         """Import URDF with floating base and validate link transforms."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(os.path.join(self._extension_path, "data", "urdf", "tests", "test_floating.urdf"))
         )
@@ -693,7 +677,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_urdf_scale(self) -> None:
         """Import URDF and validate stage units and scaling."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(os.path.join(self._extension_path, "data", "urdf", "tests", "test_basic.urdf"))
         )
@@ -715,7 +698,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_urdf_drive_none(self) -> None:
         """Import URDF and validate joint drive API presence for appropriate joints."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(os.path.join(self._extension_path, "data", "urdf", "tests", "test_basic.urdf"))
         )
@@ -739,7 +721,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
 
     async def test_urdf_usd(self) -> None:
         """Import URDF referencing USD geometry and validate USD prim import."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(os.path.join(self._extension_path, "data", "urdf", "tests", "test_usd.urdf"))
         )
@@ -760,7 +741,6 @@ class TestUrdf(omni.kit.test.AsyncTestCase):
     # test negative joint limits
     async def test_urdf_limits(self) -> None:
         """Import URDF with negative joint limits and validate limit configuration."""
-
         urdf_path = os.path.normpath(
             os.path.abspath(os.path.join(self._extension_path, "data", "urdf", "tests", "test_limits.urdf"))
         )

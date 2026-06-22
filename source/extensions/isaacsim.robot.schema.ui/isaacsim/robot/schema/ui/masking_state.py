@@ -593,10 +593,16 @@ class MaskingState:
     # -- internal ---------------------------------------------------------
 
     def _do_mask(self, path: str) -> bool:
-        """Call mask operation; returns True iff the backend reported success.
+        """Call mask operation.
 
         When no operations backend is configured, returns ``True`` so the
         state machine can be exercised standalone (e.g. in unit tests).
+
+        Args:
+            path: Original stage prim path string.
+
+        Returns:
+            True iff the backend reported success.
         """
         if self._operations:
             try:
@@ -607,9 +613,15 @@ class MaskingState:
         return True
 
     def _do_unmask(self, path: str) -> bool:
-        """Call unmask operation; returns True iff the backend reported success.
+        """Call unmask operation.
 
         When no operations backend is configured, returns ``True``.
+
+        Args:
+            path: Original stage prim path string.
+
+        Returns:
+            True iff the backend reported success.
         """
         if self._operations:
             try:
@@ -663,9 +675,15 @@ class MaskingState:
         return (True, None)
 
     def _do_anchor(self, path: str) -> bool:
-        """Call anchor operation; returns True iff the backend reported success.
+        """Call anchor operation.
 
         When no operations backend is configured, returns ``True``.
+
+        Args:
+            path: Original stage prim path string.
+
+        Returns:
+            True iff the backend reported success.
         """
         if self._operations:
             try:
@@ -676,9 +694,15 @@ class MaskingState:
         return True
 
     def _do_unanchor(self, path: str) -> bool:
-        """Call unanchor operation; returns True iff the backend reported success.
+        """Call unanchor operation.
 
         When no operations backend is configured, returns ``True``.
+
+        Args:
+            path: Original stage prim path string.
+
+        Returns:
+            True iff the backend reported success.
         """
         if self._operations:
             try:

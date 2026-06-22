@@ -82,7 +82,7 @@ class Extension(omni.ext.IExt):
     and as copyable text output for use in other applications or scripts.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize extension and UI elements.
 
         Args:
@@ -123,7 +123,7 @@ class Extension(omni.ext.IExt):
 
         self._camera_state_subscriber = None
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up extension resources and remove menu items."""
         self._usd_context = None
         remove_menu_items(self._menu_items, "Tools")
@@ -150,11 +150,11 @@ class Extension(omni.ext.IExt):
             self._usd_context = None
             self._camera_state_subscriber = None
 
-    def _menu_callback(self):
+    def _menu_callback(self) -> None:
         """Toggle the window visibility when the menu item is clicked."""
         self._window.visible = not self._window.visible
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
         """Build the main UI components including info panel and camera controls."""
         with self._window.frame:
             with ui.VStack(spacing=5, height=0):
@@ -165,10 +165,10 @@ class Extension(omni.ext.IExt):
 
                 self._on_refresh()
 
-        async def dock_window():
+        async def dock_window() -> None:
             await omni.kit.app.get_app().next_update_async()
 
-            def dock(space, name, location, pos=0.5):
+            def dock(space: Any, name: str, location: Any, pos: float = 0.5) -> Any:
                 window = omni.ui.Workspace.get_window(name)
                 if window and space:
                     window.dock_in(space, location, pos)
@@ -258,7 +258,7 @@ class Extension(omni.ext.IExt):
 
         self._update_camera_stats_ui()
 
-    def _on_create_viewport(self):
+    def _on_create_viewport(self) -> None:
         """Create a viewport for the current camera.
 
         Creates a new viewport window configured to display the view from the currently selected camera.
@@ -272,7 +272,7 @@ class Extension(omni.ext.IExt):
         else:
             carb.log_warn("No camera selected. Cannot create viewport.")
 
-    def _on_assign_camera(self):
+    def _on_assign_camera(self) -> None:
         """Assigns the selected camera to the selected viewport."""
         if self._selected_camera is not None and self._selected_viewport is not None:
             omni.kit.commands.execute(
@@ -287,7 +287,7 @@ class Extension(omni.ext.IExt):
     # UI Builders
     ##################################
 
-    def _build_info_ui(self):
+    def _build_info_ui(self) -> None:
         """Builds the information UI section with extension title, documentation link, and overview."""
         title = EXTENSION_NAME
         doc_link = "https://docs.isaacsim.omniverse.nvidia.com/latest/sensors/isaacsim_sensors_camera.html#camera-inspector-extension"
@@ -297,7 +297,7 @@ class Extension(omni.ext.IExt):
 
         setup_ui_headers(self._ext_id, __file__, title, doc_link, overview)
 
-    def _build_camera_pane(self):
+    def _build_camera_pane(self) -> None:
         """Builds the main camera pane containing all camera-related UI controls and display elements."""
         self._frame = ui.CollapsableFrame(
             title="Cameras",
@@ -400,7 +400,7 @@ class Extension(omni.ext.IExt):
 
             add_line_rect_flourish(draw_line=False)
 
-            def on_clicked_wrapper(model, val):
+            def on_clicked_wrapper(model: Any, val: Any) -> None:
                 if dropdown_fn is not None:
                     dropdown_fn(model.get_item_value_model().as_int)
 
@@ -410,12 +410,12 @@ class Extension(omni.ext.IExt):
         self,
         label: str = "",
         default_val: int = 0,
-        items: list = [],
+        items: list[str] | None = None,
         tooltip: str = "",
         on_clicked_fn: Callable[[int], None] | None = None,
         add_line: bool = False,
         label_width: int = LABEL_WIDTH,
-    ):
+    ) -> Any:
         """Builds a single dropdown UI element with label.
 
         Args:
@@ -430,12 +430,13 @@ class Extension(omni.ext.IExt):
         Returns:
             The ComboBox model for the created dropdown.
         """
+        items = items or []
         with ui.HStack():
             ui.Label(label, width=label_width, alignment=ui.Alignment.LEFT_CENTER, tooltip=tooltip)
             combo_box = ui.ComboBox(default_val, *items, name="ComboBox", alignment=ui.Alignment.LEFT_CENTER).model
             add_line_rect_flourish(add_line)
 
-            def on_clicked_wrapper(model, val):
+            def on_clicked_wrapper(model: Any, val: Any) -> None:
                 if on_clicked_fn is not None:
                     on_clicked_fn(model.get_item_value_model().as_int)
 
@@ -444,7 +445,7 @@ class Extension(omni.ext.IExt):
 
         return combo_box
 
-    def _build_pos_quat_display(self, label: str = "World"):
+    def _build_pos_quat_display(self, label: str = "World") -> list[Any]:
         """Builds position and quaternion display UI elements for camera transform visualization.
 
         Args:
@@ -455,7 +456,7 @@ class Extension(omni.ext.IExt):
         """
         models = []
 
-        def _build_model(label, all_axis):
+        def _build_model(label: str, all_axis: list[str]) -> None:
             with ui.HStack():
                 with ui.HStack(width=LABEL_WIDTH):
                     ui.Label(label, name="transform", width=50)
@@ -490,7 +491,7 @@ class Extension(omni.ext.IExt):
     # UI Updaters
     ##################################
 
-    def _update_camera_dropdown(self):
+    def _update_camera_dropdown(self) -> None:
         """Updates the camera dropdown with the current list of available cameras in the scene."""
         # Remove all old camera names
         for child in self._task_ui_elements["Combo Camera"].get_item_children():
@@ -500,7 +501,7 @@ class Extension(omni.ext.IExt):
         for camera in self._all_cameras:
             self._task_ui_elements["Combo Camera"].append_child_item(None, ui.SimpleStringModel(camera.paths[0]))
 
-    def _update_viewport_dropdown(self):
+    def _update_viewport_dropdown(self) -> None:
         """Updates the viewport dropdown with the current list of available viewport windows."""
         # Remove all old viewport names
         for child in self._task_ui_elements["Combo Viewport"].get_item_children():
@@ -541,11 +542,11 @@ class Extension(omni.ext.IExt):
             self._task_ui_elements["CameraTextField"].set_text(status)
         else:
             for i in range(3):
-                self._task_ui_elements["World Camera Position"][i].set_value(float(0.0))
-                self._task_ui_elements["Local Camera Position"][i].set_value(float(0.0))
+                self._task_ui_elements["World Camera Position"][i].set_value(0.0)
+                self._task_ui_elements["Local Camera Position"][i].set_value(0.0)
             for i in range(4):
-                self._task_ui_elements["World Camera Orientation"][i].set_value(float(0.0))
-                self._task_ui_elements["Local Camera Orientation"][i].set_value(float(0.0))
+                self._task_ui_elements["World Camera Orientation"][i].set_value(0.0)
+                self._task_ui_elements["Local Camera Orientation"][i].set_value(0.0)
 
             self._task_ui_elements["CameraTextField"].set_text(
                 "# No camera selected. Please use dropdown to select a camera."

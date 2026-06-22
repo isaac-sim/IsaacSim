@@ -1,5 +1,5 @@
 [package]
-version = "0.3.1"
+version = "0.3.2"
 category = "GUI"
 title = "Isaac Sim Example Browser"
 description = "A browser for Isaac Sim assets"

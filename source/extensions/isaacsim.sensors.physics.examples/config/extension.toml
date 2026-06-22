@@ -1,5 +1,5 @@
 [package]
-version = "1.2.3"
+version = "1.2.4"
 category = "Simulation"
 title = "Isaac Sim Physics Sensor Simulation Examples"
 description = "Isaac Sim Physics Sensor Simulation Examples extension provides example usage and snippets for Isaac Sim physics-based sensors."

@@ -1,5 +1,5 @@
 [package]
-version = "1.6.2"
+version = "1.6.4"
 category = "Simulation"
 title = "Isaac Sim Property Extensions"
 description = "Adds Isaac Sim Specific Property Utils"
@@ -37,6 +37,10 @@ name = "startup"
 timeout = 120
 dependencies = [
     "omni.kit.ui_test",
+]
+
+stdoutFailPatterns.exclude = [
+    '*The NumPy module was reloaded*',
 ]
 
 [documentation]

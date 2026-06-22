@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test for stage."""
+"""Verifies stage utility helpers for context management, lifecycle operations, references, prim edits, and stage metadata. Covers creating, opening, saving, closing, moving, and deleting prims, plus units, up axis, time codes, loading state, and free path generation."""
 
 import os
 import tempfile
@@ -32,14 +32,14 @@ from pxr import Usd, UsdGeom, UsdLux, UsdPhysics, UsdUtils
 class TestStage(omni.kit.test.AsyncTestCase):
     """Test stage."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
         # ---------------
         # Warning: don't create stage in the setUp method since we test the stage creation
         # ---------------
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         # ------------------
         stage_utils.close_stage()
@@ -48,7 +48,7 @@ class TestStage(omni.kit.test.AsyncTestCase):
 
     # --------------------------------------------------------------------
 
-    async def test_context_manager(self):
+    async def test_context_manager(self) -> None:
         """Test context manager."""
         await stage_utils.create_new_stage_async()
         stage_in_memory = Usd.Stage.CreateInMemory()
@@ -83,7 +83,7 @@ class TestStage(omni.kit.test.AsyncTestCase):
                 self.assertIsInstance(stage_utils.get_current_stage(), usdrt.Usd.Stage)
             self.assertIsInstance(stage_utils.get_current_stage(), usdrt.Usd.Stage)
 
-    async def test_create_new_stage(self):
+    async def test_create_new_stage(self) -> None:
         """Test create new stage."""
         templates = sorted([name for item in omni.kit.stage_templates.get_stage_template_list() for name in item])
         self.assertEqual(templates, ["default stage", "empty", "sunlight"], f"Available templates: {templates}")
@@ -109,12 +109,12 @@ class TestStage(omni.kit.test.AsyncTestCase):
                 f"Invalid stage content for the given template: {template}",
             )
 
-    async def test_is_stage_loading(self):
+    async def test_is_stage_loading(self) -> None:
         """Test is stage loading."""
         await stage_utils.create_new_stage_async()
         stage_utils.is_stage_loading()
 
-    async def test_open_stage(self):
+    async def test_open_stage(self) -> None:
         """Test open stage."""
         assets_root_path = await get_assets_root_path_async(skip_check=True)
         # test cases
@@ -132,7 +132,7 @@ class TestStage(omni.kit.test.AsyncTestCase):
         self.assertTrue(result, "Failed to open stage")
         self.assertTrue(stage.GetPrimAtPath("/panda/panda_hand").IsValid())
 
-    async def test_save_close_stage(self):
+    async def test_save_close_stage(self) -> None:
         """Test save close stage."""
         assets_root_path = await get_assets_root_path_async(skip_check=True)
         # create and populate stage
@@ -156,7 +156,7 @@ class TestStage(omni.kit.test.AsyncTestCase):
             self.assertTrue(result)
             self.assertTrue(stage.GetPrimAtPath("/World/panda/panda_hand").IsValid())
 
-    async def test_add_reference_to_stage(self):
+    async def test_add_reference_to_stage(self) -> None:
         """Test add reference to stage."""
         assets_root_path = await get_assets_root_path_async(skip_check=True)
         # create and populate stage
@@ -171,7 +171,7 @@ class TestStage(omni.kit.test.AsyncTestCase):
         self.assertEqual(prim.GetVariantSet("Gripper").GetVariantSelection(), "AlternateFinger")
         self.assertEqual(prim.GetVariantSet("Mesh").GetVariantSelection(), "Performance")
 
-    async def test_define_prim(self):
+    async def test_define_prim(self) -> None:
         """Test define prim."""
         await stage_utils.create_new_stage_async()
         specs = [
@@ -214,7 +214,7 @@ class TestStage(omni.kit.test.AsyncTestCase):
         # - prim already exists with a different type
         self.assertRaises(RuntimeError, stage_utils.define_prim, "/Sphere", type_name="Cube")
 
-    async def test_delete_prim(self):
+    async def test_delete_prim(self) -> None:
         """Test delete prim."""
         assets_root_path = await get_assets_root_path_async(skip_check=True)
         # create and populate stage
@@ -232,7 +232,7 @@ class TestStage(omni.kit.test.AsyncTestCase):
         # exceptions
         self.assertRaisesRegex(ValueError, "not a valid prim", stage_utils.delete_prim, "/World/A")
 
-    async def test_move_prim(self):
+    async def test_move_prim(self) -> None:
         """Test move prim."""
         stage = await stage_utils.create_new_stage_async()
         prim_a = stage_utils.define_prim("/World/A", "Xform")
@@ -270,7 +270,7 @@ class TestStage(omni.kit.test.AsyncTestCase):
         # - destination path has unexisting parents
         self.assertRaisesRegex(ValueError, "unexisting parent", stage_utils.move_prim, "/World/B", "/World/X/Y")
 
-    async def test_stage_units(self):
+    async def test_stage_units(self) -> None:
         """Test stage units."""
         await stage_utils.create_new_stage_async()
         # test cases
@@ -281,7 +281,7 @@ class TestStage(omni.kit.test.AsyncTestCase):
             stage_utils.set_stage_units(meters_per_unit=meters_per_unit, kilograms_per_unit=kilograms_per_unit)
             self.assertEqual(stage_utils.get_stage_units(), (meters_per_unit, kilograms_per_unit))
 
-    async def test_stage_up_axis(self):
+    async def test_stage_up_axis(self) -> None:
         """Test stage up axis."""
         await stage_utils.create_new_stage_async()
         # test cases
@@ -292,7 +292,7 @@ class TestStage(omni.kit.test.AsyncTestCase):
             stage_utils.set_stage_up_axis(up_axis)
             self.assertEqual(stage_utils.get_stage_up_axis(), up_axis.upper())
 
-    async def test_stage_time_code(self):
+    async def test_stage_time_code(self) -> None:
         """Test stage time code."""
         await stage_utils.create_new_stage_async()
         # test cases
@@ -307,7 +307,7 @@ class TestStage(omni.kit.test.AsyncTestCase):
             )
             self.assertEqual(stage_utils.get_stage_time_code(), (start_time_code, end_time_code, time_codes_per_second))
 
-    async def test_generate_next_free_path(self):
+    async def test_generate_next_free_path(self) -> None:
         """Test generate next free path."""
         await stage_utils.create_new_stage_async()
         stage_utils.get_current_stage(backend="usd").SetDefaultPrim(stage_utils.define_prim("/World"))

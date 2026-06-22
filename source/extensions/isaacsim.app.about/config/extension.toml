@@ -1,5 +1,5 @@
 [package]
-version = "2.3.0"
+version = "2.3.1"
 category = "Internal"
 title = "Isaac Sim About Window"
 description = "Displays an About dialog window showing the application name, version, Kit SDK version, client library version, and a list of all loaded plugins."

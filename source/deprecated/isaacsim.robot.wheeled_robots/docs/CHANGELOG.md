@@ -1,5 +1,9 @@
 # Changelog
 
+## [5.2.4] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [5.2.3] - 2026-05-11
 ### Fixed
 - Raise an error when `quintic_polynomials_planner()` cannot find a trajectory satisfying acceleration and jerk constraints.

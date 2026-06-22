@@ -730,7 +730,7 @@ def test_current_frame_output(camera_default: Camera, camera_cpu: Camera, camera
     print("---")
     test_1_passed = True
     # Current frame from the default and cpu cameras should only have numpy arrays
-    for key in current_frame_default.keys():
+    for key in current_frame_default:
         data = current_frame_default[key]
         if isinstance(data, dict) and "data" in data:
             data = data["data"]
@@ -755,7 +755,7 @@ def test_current_frame_output(camera_default: Camera, camera_cpu: Camera, camera
     print("Current frame from Camera(annotator_device='cpu'):")
     print("---")
     test_2_passed = True
-    for key in current_frame_cpu.keys():
+    for key in current_frame_cpu:
         data = current_frame_cpu[key]
         if isinstance(data, dict) and "data" in data:
             data = data["data"]
@@ -781,7 +781,7 @@ def test_current_frame_output(camera_default: Camera, camera_cpu: Camera, camera
     print("---")
     test_3_passed = True
     # Current frame from the cuda camera should have wp.arrays for cuda supported annotators and numpy arrays for the rest
-    for key in current_frame_cuda.keys():
+    for key in current_frame_cuda:
         data = current_frame_cuda[key]
         if isinstance(data, dict) and "data" in data:
             data = data["data"]

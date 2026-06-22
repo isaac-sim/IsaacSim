@@ -24,7 +24,12 @@ from pxr import Sdf, Usd, UsdGeom, UsdPhysics
 
 
 def _build_mjc_stage() -> Usd.Stage:
-    """Build an in-memory stage with MJCF actuator and joint prims."""
+    """Build an in-memory stage with MJCF actuator and joint prims.
+
+    Returns:
+        Stage containing MJCF actuator metadata and a driven joint.
+
+    """
     stage = Usd.Stage.CreateInMemory()
     root = UsdGeom.Xform.Define(stage, "/robot").GetPrim()
     stage.SetDefaultPrim(root)

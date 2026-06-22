@@ -13,17 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Tests for simulation time drift behavior in the production onPhysicsStep code path.
-
-These tests verify that simulation time derived from integer step count and
-steps-per-second (via IPhysicsSimulation APIs) does not accumulate floating-point
-drift over many physics steps, and that the runtime steps-per-second value
-agrees with the USD scene attribute at various rates.
-"""
-
-import os
-import unittest
+"""Verifies that production physics-step timekeeping derives simulation time from integer step counts without accumulating floating-point drift. The tests compare runtime steps-per-second with USD scene settings and check time reset and monotonic behavior across stop and start cycles."""
 
 import omni.kit.app
 import omni.kit.test
@@ -35,21 +25,21 @@ from isaacsim.core.simulation_manager import PhysxScene, SimulationManager
 class TestSimulationTimeDrift(omni.kit.test.AsyncTestCase):
     """Test simulation time drift."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment."""
         super().setUp()
         await create_new_stage_async()
         SimulationManager.set_physics_dt(1.0 / 60.0)
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Tear down test environment."""
         timeline = omni.timeline.get_timeline_interface()
         timeline.stop()
         await omni.kit.app.get_app().next_update_async()
         super().tearDown()
 
-    async def test_simulation_time_drift_after_many_steps(self):
+    async def test_simulation_time_drift_after_many_steps(self) -> None:
         """Verify simulation time stays accurate after many physics steps.
 
         With dt=1/60 and 12000 steps (200 seconds of sim time), the old
@@ -75,7 +65,7 @@ class TestSimulationTimeDrift(omni.kit.test.AsyncTestCase):
         error = abs(sim_time - expected_time)
         self.assertLess(error, 1e-6, f"Drift of {error * 1e6:.3f} us exceeds 1 us after {total_steps} steps")
 
-    async def test_simulation_time_resets_on_stop(self):
+    async def test_simulation_time_resets_on_stop(self) -> None:
         """Verify simulation time resets to zero on stop."""
         timeline = omni.timeline.get_timeline_interface()
         timeline.play()
@@ -88,7 +78,7 @@ class TestSimulationTimeDrift(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         self.assertEqual(SimulationManager.get_simulation_time(), 0.0)
 
-    async def test_simulation_time_matches_usd_steps_per_second(self):
+    async def test_simulation_time_matches_usd_steps_per_second(self) -> None:
         """Verify simulation time uses the same stepsPerSecond as the USD attribute.
 
         The C++ onPhysicsStep derives simulation time via
@@ -160,7 +150,7 @@ class TestSimulationTimeDrift(omni.kit.test.AsyncTestCase):
             timeline.stop()
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_monotonic_time_persists_across_stop_start(self):
+    async def test_monotonic_time_persists_across_stop_start(self) -> None:
         """Verify monotonic simulation time does not reset on stop/start."""
         timeline = omni.timeline.get_timeline_interface()
         iface = SimulationManager._simulation_manager_interface

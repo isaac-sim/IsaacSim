@@ -28,31 +28,60 @@ from isaacsim.replicator.teleop import build_teleop_recorder
 class _StubTeleopManager:
     """Minimal manager implementing the observer hooks recordables expect."""
 
-    def add_controller_inputs_observer(self, _cb):  # noqa: ANN001
+    def add_controller_inputs_observer(self, _cb: object) -> object:
+        """Add a controller inputs observer.
+
+        Args:
+            _cb: Value for  cb.
+
+        Returns:
+            The requested value.
+        """
         return lambda: None
 
-    def add_head_observer(self, _cb):  # noqa: ANN001
+    def add_head_observer(self, _cb: object) -> object:
+        """Add a head observer.
+
+        Args:
+            _cb: Value for  cb.
+
+        Returns:
+            The requested value.
+        """
         return lambda: None
 
 
 class _StubTeleopManagerNoHead:
-    def add_controller_inputs_observer(self, _cb):  # noqa: ANN001
+    def add_controller_inputs_observer(self, _cb: object) -> object:
+        """Add a controller inputs observer.
+
+        Args:
+            _cb: Value for  cb.
+
+        Returns:
+            The requested value.
+        """
         return lambda: None
 
 
 class TestBuildTeleopRecorder(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Test TestBuildTeleopRecorder behavior."""
+
+    async def setUp(self) -> None:
+        """Set up the test fixture."""
         await omni.kit.app.get_app().next_update_async()
         omni.usd.get_context().new_stage()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Tear down the test fixture."""
         omni.usd.get_context().close_stage()
         await omni.kit.app.get_app().next_update_async()
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_composes_expected_recordables(self):
+    async def test_composes_expected_recordables(self) -> None:
+        """Run the composes expected recordables test."""
         with tempfile.TemporaryDirectory(prefix="build_teleop_recorder_test_") as output_dir:
             tm = _StubTeleopManager()
             rec = build_teleop_recorder(
@@ -74,7 +103,8 @@ class TestBuildTeleopRecorder(omni.kit.test.AsyncTestCase):
         self.assertEqual(by_group["teleop/right"], "TeleopControllerRecordable")
         self.assertEqual(by_group["teleop/head"], "TeleopHeadRecordable")
 
-    async def test_head_recordable_skipped_without_observer_api(self):
+    async def test_head_recordable_skipped_without_observer_api(self) -> None:
+        """Run the head recordable skipped without observer api test."""
         with tempfile.TemporaryDirectory(prefix="build_teleop_recorder_test_") as output_dir:
             tm = _StubTeleopManagerNoHead()
             rec = build_teleop_recorder(
@@ -85,7 +115,8 @@ class TestBuildTeleopRecorder(omni.kit.test.AsyncTestCase):
         groups = {r.group for r in rec.recordables()}
         self.assertNotIn("teleop/head", groups)
 
-    async def test_head_skipped_when_disabled(self):
+    async def test_head_skipped_when_disabled(self) -> None:
+        """Run the head skipped when disabled test."""
         with tempfile.TemporaryDirectory(prefix="build_teleop_recorder_test_") as output_dir:
             tm = _StubTeleopManager()
             rec = build_teleop_recorder(
@@ -96,13 +127,15 @@ class TestBuildTeleopRecorder(omni.kit.test.AsyncTestCase):
         groups = {r.group for r in rec.recordables()}
         self.assertNotIn("teleop/head", groups)
 
-    async def test_pose_backend_defaults_to_usd(self):
+    async def test_pose_backend_defaults_to_usd(self) -> None:
+        """Run the pose backend defaults to usd test."""
         with tempfile.TemporaryDirectory(prefix="build_teleop_recorder_test_") as output_dir:
             tm = _StubTeleopManager()
             rec = build_teleop_recorder(output_dir, teleop_manager=tm)
         self.assertEqual(rec.pose_backend, "usd")
 
-    async def test_pose_backend_propagated_to_recorder(self):
+    async def test_pose_backend_propagated_to_recorder(self) -> None:
+        """Run the pose backend propagated to recorder test."""
         with tempfile.TemporaryDirectory(prefix="build_teleop_recorder_test_") as output_dir:
             tm = _StubTeleopManager()
             # Unknown / FSD-disabled backends fall back to usd inside EpisodeRecorder

@@ -3,7 +3,7 @@ reloadable = false
 order = 0
 
 [package]
-version = "2.18.3"
+version = "2.18.4"
 category = "Simulation"
 title = "Isaac Sim Kit Helpers"
 description = "This Extension that provides a way to launch a python app"

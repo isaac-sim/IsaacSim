@@ -1,5 +1,9 @@
 # Changelog
 
+## [15.17.1] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [15.17.0] - 2026-05-07
 ### Changed
 - Multitick now enabled by default. Scan accumulation controlled by omni:sensor:Core:accumulateOutputs on OmniLidar prim.

@@ -1,44 +1,47 @@
 # Overview
 
-This extension provides the UI components for the URDF Importer. It includes:
-
-- **Asset Importer Integration**: Registers URDF file type with the Asset Importer
-- **Options Panel**: Configuration for links, colliders, and import settings
+The URDF Importer UI extension adds a graphical import workflow for robot URDF files in Isaac Sim. Use it from **File > Import** to convert a URDF into USD and place the robot on the stage. Core parsing and conversion are handled by the companion `isaacsim.asset.importer.urdf` extension.
 
 ![URDF Importer UI](../data/preview.png)
 
 ## Dependencies
 
-This extension depends on:
-- `isaacsim.asset.importer.urdf`: Core URDF parsing and importing functionality
+- **isaacsim.asset.importer.urdf** — converts URDF files to USD
 
 ## Usage
 
 ### Accessing the URDF Importer
 
-1. **Enable the Extension**: Go to the Extension Manager menu and enable `isaacsim.asset.importer.urdf.ui`
-2. **Open the Asset Importer**: Navigate to **File > Import** in the main menu
-3. **Select URDF File**: In the file picker, navigate to and select a `.urdf` or `.URDF` file
-4. **Configure Import Settings**: Use the options panel on the right side of the file picker to configure import settings
-5. **Import**: Click the **Import** button to begin the import process
+1. In **Window > Extensions**, enable **isaacsim.asset.importer.urdf.ui** if it is not already loaded.
+2. Choose **File > Import** and select a `.urdf` file.
+3. Adjust settings in the panel on the right side of the import window.
+4. Click **Import** to add the robot to the stage.
 
-### UI Options
+### Import settings
 
-The URDF Importer UI provides three main configuration sections:
+The options panel is organized into three sections you can expand or collapse:
 
-#### Model Section
-- **USD Output**: Specify the output directory for the generated USD file. By default, the USD file is saved in the same directory as the imported URDF file.
-- **ROS Package List**: Add ROS package name/path mappings to resolve `package://` URLs in the URDF file. Click "Add Row" to add multiple package mappings.
+#### Model
 
-#### Colliders Section
-- **Collision From Visuals**: When enabled, collision geometry is generated from visual geometries instead of using the collision meshes defined in the URDF.
-- **Collision Type**: (Visible when "Collision From Visuals" is enabled) Select the type of collision geometry to generate:
-  - **Convex Hull**: Creates a convex hull around the visual mesh
-  - **Convex Decomposition**: Decomposes the mesh into multiple convex shapes
-  - **Bounding Sphere**: Uses a sphere that bounds the visual mesh
-  - **Bounding Cube**: Uses a box that bounds the visual mesh
-- **Allow Self-Collision**: When enabled, allows the robot to collide with itself. Note that this can cause instability if collision meshes between links are self-intersecting.
+- **USD Output** — Where to save the generated USD. The default **Same as Imported Model (Default)** saves next to your URDF file. Click **Select File** to pick another folder.
+- **ROS Package List** — Maps ROS package names to folders on disk so `package://` links in the URDF resolve correctly. Click **Add Row** to add entries; use the row delete control to remove them.
 
-#### Options Section
-- **Merge Mesh**: When enabled, merges meshes where possible to optimize the model and reduce memory usage.
-- **Debug Mode**: When enabled, keeps intermediate output files and generates additional logging information for debugging purposes.
+#### Colliders
+
+- **Collision From Visuals** — Builds collision shapes from the robot’s visual meshes instead of collision meshes in the URDF. When checked, **Collision Type** appears below.
+- **Collision Type** — How to approximate collision when generating from visuals:
+  - **Convex Hull**
+  - **Convex Decomposition**
+  - **Bounding Sphere**
+  - **Bounding Cube**
+- **Allow Self-Collision** — Lets parts of the robot collide with each other. Turn this off if the model becomes unstable or parts interpenetrate at rest.
+
+#### Options
+
+- **Robot Type** — Category label for the imported robot (for example Manipulator, Humanoid, or Wheeled). Choose **Default** if unsure.
+- **Base Type** — Whether the robot is fixed in the world or free to move:
+  - **Source** — Keep the URDF as authored.
+  - **Fixed** — Bolt the base to the world.
+  - **Mobile** — Allow the base to move and rotate.
+- **Merge Mesh** — Combines meshes where possible for a lighter, faster asset.
+- **Debug Mode** — Keeps extra output files and log detail for troubleshooting imports.

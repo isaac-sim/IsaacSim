@@ -214,7 +214,12 @@ class FollowTarget(BaseSample):
             self._remove_physics_callback()
 
     def _physics_step(self, dt: float, context: object) -> None:
-        """Per-step callback: reset or advance the RMPflow controller."""
+        """Per-step callback: reset or advance the RMPflow controller.
+
+        Args:
+            dt: Physics step size in seconds.
+            context: Callback context supplied by the simulation manager.
+        """
         if self._robot is None or self._controller is None:
             return
 
@@ -278,5 +283,9 @@ class FollowTarget(BaseSample):
         stage_utils.delete_prim(path)
 
     def obstacles_exist(self) -> bool:
-        """Return whether any dynamically added obstacles remain."""
+        """Return whether any dynamically added obstacles remain.
+
+        Returns:
+            True if any dynamically added obstacles remain.
+        """
         return len(self._obstacles) > 0

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.4] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [0.2.3] - 2026-04-28
 ### Added
 - Added `isaacsim.examples.browser` as a dependency so `register_example` is available at startup

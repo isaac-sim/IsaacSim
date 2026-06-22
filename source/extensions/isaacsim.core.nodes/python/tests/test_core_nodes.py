@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies core simulation OmniGraph nodes report simulation time and physics step counts. Covers timeline-driven simulation updates through the SimulationManager."""
+
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.test
@@ -21,7 +23,9 @@ from isaacsim.storage.native import get_assets_root_path_async
 
 
 class TestCoreNodes(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Verify core simulation timing nodes on a loaded Franka stage."""
+
+    async def setUp(self) -> None:
         """Set up  test environment, to be torn down when done."""
         self._timeline = omni.timeline.get_timeline_interface()
         # add franka robot for test
@@ -32,12 +36,13 @@ class TestCoreNodes(omni.kit.test.AsyncTestCase):
         await stage_utils.open_stage_async(assets_root_path + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd")
 
     # ----------------------------------------------------------------------
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Get rid of temporary data used by the test."""
         await omni.kit.stage_templates.new_stage_async()
 
     # ----------------------------------------------------------------------
-    async def test_simulation_time(self):
+    async def test_simulation_time(self) -> None:
+        """Verify IsaacReadSimulationTime outputs the SimulationManager simulation time."""
         await omni.kit.app.get_app().next_update_async()
         a = SimulationManager.get_simulation_time()
         b = SimulationManager._simulation_manager_interface.get_simulation_time_monotonic()
@@ -56,7 +61,8 @@ class TestCoreNodes(omni.kit.test.AsyncTestCase):
         c = SimulationManager._simulation_manager_interface.get_system_time_at_time((0, 0))
 
     # ----------------------------------------------------------------------
-    async def test_physics_num_steps(self):
+    async def test_physics_num_steps(self) -> None:
+        """Verify IsaacReadSimulationTime outputs the current physics step count."""
         steps = SimulationManager.get_num_physics_steps()
         self.assertEqual(steps, 0)
         self._timeline.play()

@@ -19,7 +19,7 @@ from isaacsim.robot.experimental.manipulators.examples.interactive.replay_follow
     ReplayFollowTarget,
 )
 from isaacsim.robot.experimental.manipulators.examples.interactive.replay_follow_target.replay_follow_target_extension import (
-    ReplayFollowTargetExtension,
+    ReplayFollowTargetExtension as ReplayFollowTargetExtension,
 )
 
 __all__ = ["ReplayFollowTarget"]

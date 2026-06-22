@@ -25,7 +25,14 @@ __all__ = ["Buffer", "Module"]
 
 
 def _join_sdf_paths(*subpaths: str) -> str:
-    """Join one or more USD path segments into a single SdfPath string."""
+    """Join one or more USD path segments into a single SdfPath string.
+
+    Args:
+        *subpaths: USD path segments to join.
+
+    Returns:
+        The joined USD path string.
+    """
     p = Sdf.Path(subpaths[0])
     for subpath in subpaths[1:]:
         subpath = subpath.strip("/")
@@ -145,6 +152,9 @@ class Module:
     def named_modules(self, prefix: str = "") -> dict[str, "Module"]:
         """Get a dictionary of all nested modules.
 
+        Args:
+            prefix: Prefix to prepend to nested module names. Defaults to "".
+
         Returns:
             The dictionary of all nested modules with
                 expanded names as keys.
@@ -167,6 +177,11 @@ class Module:
         self, prefix: str = "", include_tags: list[str] | None = None, exclude_tags: list[str] | None = None
     ) -> dict[str, "Buffer"]:
         """Get a dictionary of all nested buffers.
+
+        Args:
+            prefix: Prefix to prepend to nested buffer names. Defaults to "".
+            include_tags: Tags that each included buffer must contain. Defaults to None.
+            exclude_tags: Tags that each included buffer must not contain. Defaults to None.
 
         Returns:
             The dictionary of all nested buffers with
@@ -408,6 +423,9 @@ class Module:
 
         This method only updates the state buffer values, and does not modify the
         simulation.  This is accomplished using other methods.
+
+        Args:
+            state_dict: Dictionary of buffer names to values to load.
         """
         for k, v in self.named_buffers().items():
             if k in state_dict:

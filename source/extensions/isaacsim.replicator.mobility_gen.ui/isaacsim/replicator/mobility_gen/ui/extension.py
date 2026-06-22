@@ -16,11 +16,11 @@
 """Extension for generating mobility data using teleoperated robots in Omniverse."""
 
 import asyncio
-import datetime
 import glob
 import os
 import shutil
 import tempfile
+from typing import Any
 
 import carb
 import isaacsim.core.experimental.utils.app as app_utils
@@ -30,25 +30,25 @@ import isaacsim.replicator.mobility_gen.examples  # noqa: F401
 import omni.ext
 import omni.kit
 import omni.ui as ui
-from isaacsim.core.experimental.objects import GroundPlane
-from isaacsim.core.experimental.utils.stage import get_current_stage, open_stage_async, save_stage
+import omni.usd
+from isaacsim.core.experimental.utils.stage import get_current_stage, open_stage_async
 from isaacsim.core.rendering_manager import ViewportManager
 from isaacsim.core.simulation_manager import SimulationEvent, SimulationManager
 from isaacsim.replicator.experimental.mobility_gen import (
     ROBOTS,
     SCENARIOS,
-    Config,
     GamepadDriver,
     KeyboardDriver,
-    MobilityGenScenario,
-    MobilityGenWriter,
     OccupancyMap,
-    save_sensor_overrides,
+    RecordingSession,
+    collect_input,
+    route_chase_through_ppisp,
 )
 from isaacsim.replicator.mobility_gen.examples import GamepadTeleoperationScenario, KeyboardTeleoperationScenario
+from isaacsim.replicator.nurec_utils.rendering_setup import setup_for_rendering
+from omni.kit.notification_manager import NotificationStatus, post_notification
 from omni.kit.widget.filebrowser import FileBrowserItem
 from omni.kit.window.filepicker import FilePickerDialog
-from pxr import Usd, UsdGeom
 
 if "MOBILITY_GEN_DATA" in os.environ:
     DATA_DIR = os.environ["MOBILITY_GEN_DATA"]
@@ -88,7 +88,11 @@ class MobilityGenExtension(omni.ext.IExt):
     """
 
     def on_startup(self, _ext_id: str) -> None:
-        """Initialize the MobilityGen extension."""
+        """Initialize the MobilityGen extension.
+
+        Args:
+            _ext_id: Extension identifier provided by Kit.
+        """
         self._init_state()
         self._build_visualization_window()
         self._build_control_window()
@@ -100,16 +104,8 @@ class MobilityGenExtension(omni.ext.IExt):
         Keeping defaults here ensures on_shutdown() is always safe even if
         startup fails partway through.
         """
-        # Scenario / build state
-        self.scenario: MobilityGenScenario | None = None
-        self.config: Config | None = None
-        self.cached_stage_path: str | None = None
-
-        # Recording state
-        self.writer: MobilityGenWriter | None = None
-        self.step: int = 0
-        self.recording_enabled: bool = False
-        self.recording_time: float = 0.0
+        # Build / recording orchestration (user-interface-free)
+        self.session = RecordingSession()
 
         # Visualization state
         self._omap_update_counter: int = 0
@@ -192,7 +188,7 @@ class MobilityGenExtension(omni.ext.IExt):
 
         self.update_recording_count()
 
-        def _on_settings_changed(_model=None):
+        def _on_settings_changed(_model: Any = None) -> None:
             self._build_button.enabled = True
 
         self.scene_usd_field_string_model.add_value_changed_fn(_on_settings_changed)
@@ -249,7 +245,12 @@ class MobilityGenExtension(omni.ext.IExt):
         )
 
     def _on_stage_file_selected(self, filename: str, dirname: str) -> None:
-        """Set the stage field to the selected file path and close the picker."""
+        """Set the stage field to the selected file path and close the picker.
+
+        Args:
+            filename: Name of the selected stage file.
+            dirname: Directory containing the selected stage file.
+        """
         self.scene_usd_field_string_model.set_value(os.path.join(dirname, filename))
         self._stage_file_picker.hide()
 
@@ -273,7 +274,12 @@ class MobilityGenExtension(omni.ext.IExt):
         )
 
     def _on_omap_file_selected(self, filename: str, dirname: str) -> None:
-        """Set the occupancy map field to the selected file path and close the picker."""
+        """Set the occupancy map field to the selected file path and close the picker.
+
+        Args:
+            filename: Name of the selected occupancy map file.
+            dirname: Directory containing the selected occupancy map file.
+        """
         self.omap_field_string_model.set_value(os.path.join(dirname, filename))
         self._omap_file_picker.hide()
 
@@ -282,7 +288,7 @@ class MobilityGenExtension(omni.ext.IExt):
 
         Creates an image widget to display the occupancy map visualization if a scenario is active.
         """
-        if self.scenario is not None:
+        if self.session.scenario is not None:
             with ui.VStack():
                 ui.ImageWithProvider(self._omap_image_provider)
 
@@ -292,8 +298,8 @@ class MobilityGenExtension(omni.ext.IExt):
         Retrieves the current visualization image from the scenario and updates the image provider for display
         in the UI.
         """
-        if self.scenario is not None:
-            image = self.scenario.get_visualization_image().copy().convert("RGBA")
+        if self.session.scenario is not None:
+            image = self.session.scenario.get_visualization_image().copy().convert("RGBA")
             data = list(image.tobytes())
             self._omap_image_provider.set_bytes_data(data, [image.width, image.height])
             self._omap_frame.rebuild()
@@ -326,39 +332,28 @@ class MobilityGenExtension(omni.ext.IExt):
             SimulationManager.deregister_callback(self._physics_callback_id)
             self._physics_callback_id = None
 
-    def start_new_recording(self) -> None:
-        """Start a new recording session.
-
-        Creates a timestamped recording directory, initializes the writer with config and occupancy map data,
-        and resets recording state.
-        """
-        recording_name = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
-        recording_path = os.path.join(RECORDINGS_DIR, recording_name)
-        writer = MobilityGenWriter(recording_path)
-        writer.write_config(self.config)
-        writer.write_occupancy_map(self.scenario.occupancy_map)
-        writer.copy_stage(self.cached_stage_path)
-        save_sensor_overrides(self.scenario.robot.prim_path, recording_path)
-        self.step = 0
-        self.recording_time = 0.0
+    def _on_recording_started(self) -> None:
+        """Refresh the recording name/duration labels and count for a new recording."""
+        recording_name = os.path.basename(self.session.recording_path) if self.session.recording_path else ""
         self.recording_name_label.text = f"Current recording name: {recording_name}"
-        self.recording_step_label.text = f"Current recording duration: {self.recording_time:.2f}s"
-        self.writer = writer
+        self.recording_step_label.text = f"Current recording duration: {self.session.recording_time:.2f}s"
         self.update_recording_count()
 
     def clear_recording(self) -> None:
         """Clear the current recording session.
 
-        Resets the writer and clears recording display labels.
+        Closes the writer and clears recording display labels.
         """
-        if self.writer is not None:
-            self.writer.close()
-        self.writer = None
+        self.session.clear_recording()
         self.recording_name_label.text = "Current recording name: "
         self.recording_step_label.text = "Current recording duration: "
 
     def _set_scenario_controls_enabled(self, enabled: bool) -> None:
-        """Enable or disable the buttons that require an active scenario."""
+        """Enable or disable the buttons that require an active scenario.
+
+        Args:
+            enabled: Whether scenario controls should be enabled.
+        """
         self._reset_button.enabled = enabled
         self._start_recording_button.enabled = enabled
         self._stop_recording_button.enabled = False
@@ -366,12 +361,9 @@ class MobilityGenExtension(omni.ext.IExt):
     def clear_scenario(self) -> None:
         """Clear the current scenario.
 
-        Resets the scenario instance and cleans up the cached stage temp directory.
+        Drops the scenario instance and cleans up the cached stage temp directory.
         """
-        if self.cached_stage_path is not None:
-            shutil.rmtree(os.path.dirname(self.cached_stage_path), ignore_errors=True)
-        self.scenario = None
-        self.cached_stage_path = None
+        self.session.clear()
         self._omap_update_counter = 0
         self._set_scenario_controls_enabled(False)
 
@@ -380,18 +372,19 @@ class MobilityGenExtension(omni.ext.IExt):
 
         Starts a new recording session if a scenario is active and recording is not already enabled.
         """
-        if not self.recording_enabled:
-            self.start_new_recording()
-            self.recording_enabled = True
+        if not self.session.recording_enabled:
+            self.session.enable_recording()
+            self._on_recording_started()
             self._reset_button.enabled = False
             self._start_recording_button.enabled = False
             self._stop_recording_button.enabled = True
 
     def disable_recording(self) -> None:
         """Disable data recording and clear the current recording session."""
-        self.recording_enabled = False
-        self.clear_recording()
-        if self.scenario is not None:
+        self.session.disable_recording()
+        self.recording_name_label.text = "Current recording name: "
+        self.recording_step_label.text = "Current recording duration: "
+        if self.session.scenario is not None:
             self._reset_button.enabled = True
             self._start_recording_button.enabled = True
             self._stop_recording_button.enabled = False
@@ -399,42 +392,38 @@ class MobilityGenExtension(omni.ext.IExt):
     def reset(self) -> None:
         """Reset the scenario to its initial state.
 
-        Clears the current recording writer, resets the scenario, and starts a new recording if recording is enabled.
+        Resets the scenario and starts a new recording if recording is enabled.
         """
-        if self.writer is not None:
-            self.writer.close()
-        self.writer = None
-        self.scenario.reset()
-        if self.recording_enabled:
-            self.start_new_recording()
+        self.session.reset()
+        if self.session.recording_enabled:
+            self._on_recording_started()
         self.draw_visualization_image()
 
-    def on_physics(self, step_size: int, _context=None) -> None:
+    def on_physics(self, step_size: int, _context: Any = None) -> None:
         """Physics step callback that advances the scenario and handles recording.
 
         Args:
             step_size: The physics step size in simulation time units.
-            context: Optional simulation context passed by the simulation manager.
+            _context: Optional simulation context passed by the simulation manager.
         """
-        if self.scenario is not None:
+        if self.session.scenario is None:
+            return
 
-            is_alive = self.scenario.step(step_size)
+        is_alive = self.session.step(step_size)
 
-            if not is_alive:
-                self.reset()
+        if not is_alive:
+            # The session restarted the recording on reset; refresh the labels.
+            if self.session.recording_enabled:
+                self._on_recording_started()
+            self.draw_visualization_image()
 
-            if self.writer is not None:
-                state_dict = self.scenario.state_dict_common()
-                self.writer.write_state_dict_common(state_dict, step=self.step)
-                self.step += 1
-                self.recording_time += step_size
-                if self.step % 15 == 0:
-                    self.recording_step_label.text = f"Current recording duration: {self.recording_time:.2f}s"
+        if self.session.writer is not None and self.session.step_count % 15 == 0:
+            self.recording_step_label.text = f"Current recording duration: {self.session.recording_time:.2f}s"
 
-            self._omap_update_counter += 1
-            if self._omap_update_counter >= 15:
-                self._omap_update_counter = 0
-                self.draw_visualization_image()
+        self._omap_update_counter += 1
+        if self._omap_update_counter >= 15:
+            self._omap_update_counter = 0
+            self.draw_visualization_image()
 
     def build_scenario(self) -> None:
         """Build and initialize a new mobility generation scenario based on UI parameters."""
@@ -470,8 +459,6 @@ class MobilityGenExtension(omni.ext.IExt):
         # Resolve types from UI
         scenario_type = SCENARIOS.get_index(self.scenario_combo_box.model.get_item_value_model().get_value_as_int())
         robot_type = ROBOTS.get_index(self.robot_combo_box.model.get_item_value_model().get_value_as_int())
-        scenario_type_str = scenario_type.__name__
-        robot_type_str = robot_type.__name__
         scene_usd_str = self.scene_usd_field_string_model.as_string
 
         try:
@@ -480,8 +467,6 @@ class MobilityGenExtension(omni.ext.IExt):
             carb.log_error(f"MobilityGen: failed to connect input drivers — {e}")
             self._build_button.enabled = True
             return
-
-        self.config = Config(scenario_type=scenario_type_str, robot_type=robot_type_str, scene_usd=scene_usd_str)
 
         omap_path = os.path.expanduser(self.omap_field_string_model.as_string)
         try:
@@ -497,20 +482,38 @@ class MobilityGenExtension(omni.ext.IExt):
             return
 
         try:
-            self.cached_stage_path = await self._cache_stage(scene_usd_str)
+            cached_stage_path = await self._cache_stage(scene_usd_str)
         except Exception as e:
             carb.log_error(f"MobilityGen: failed to cache stage — {e}")
             self._build_button.enabled = True
             return
 
+        # NuRec: apply the render carb overrides for the loaded stage. Abort the build (rather than
+        # render a black scene) if a launch prerequisite is unmet (e.g. omni.rtx.spg not enabled).
+        stage = get_current_stage()
+        success, nurec, spg, problems = setup_for_rendering(stage)
+        carb.log_warn(f"[nurec] teleop render setup: nurec={nurec} spg={spg} success={success} (stage={scene_usd_str})")
+        if not success:
+            post_notification("NuRec scene cannot render. " + " ".join(problems), status=NotificationStatus.WARNING)
+            self._build_button.enabled = True
+            return
+
         try:
-            SimulationManager.setup_simulation(dt=robot_type.physics_dt)
-            self._add_ground_plane()
-            robot = robot_type.build("/World/robot")
-            chase_camera_path = robot.build_chase_camera()
-            if ViewportManager.get_viewport_api() is not None:
-                ViewportManager.set_camera(chase_camera_path)
-            self.scenario = scenario_type.from_robot_occupancy_map(robot, occupancy_map)
+            self.session.build(
+                robot_type,
+                scenario_type,
+                occupancy_map,
+                scene_usd=scene_usd_str,
+                cached_stage_path=cached_stage_path,
+                recordings_dir=RECORDINGS_DIR,
+                add_ground_plane=True,
+                build_chase_camera=True,
+            )
+            if ViewportManager.get_viewport_api() is not None and self.session.chase_camera_path is not None:
+                # For an SPG scene, render the chase view through the export's authored PPISP graph;
+                # otherwise point the viewport straight at the chase camera.
+                if not (spg and route_chase_through_ppisp(stage, self.session.chase_camera_path)):
+                    ViewportManager.set_camera(self.session.chase_camera_path)
         except Exception as e:
             carb.log_error(f"MobilityGen: failed to set up scenario — {e}")
             self._build_button.enabled = True
@@ -521,7 +524,7 @@ class MobilityGenExtension(omni.ext.IExt):
         try:
             app_utils.play()
             await app_utils.update_app_async()
-            SimulationManager.initialize_physics()
+            self.session.initialize()
         except Exception as e:
             carb.log_error(f"MobilityGen: failed to start simulation — {e}")
             app_utils.stop()
@@ -537,58 +540,23 @@ class MobilityGenExtension(omni.ext.IExt):
         self.reset()
 
     async def _cache_stage(self, scene_usd_str: str) -> str:
-        """Open the stage, flatten composition arcs to a cached USD, return its path.
+        """Copy the input scene into a temporary folder and open it from there.
 
-        `export_as_stage` only collapses composition (sublayers, references,
-        payloads). Asset-path attributes (textures, MDL, sub-USDs referenced
-        through attribute strings) are left intact and still resolve to their
-        original on-disk locations; `MobilityGenWriter.copy_stage` collects and
-        rewrites those when the recording dir is produced.
+        The scene and the files it needs are copied first (see
+        :func:`collect_input`), then the stage is opened from the copy.
 
-        Kit-injected prims are stripped so they are never baked into recordings.
+        Args:
+            scene_usd_str: Path to the input scene USD file.
+
+        Returns:
+            Path to the copied stage.
         """
         tmp_dir = tempfile.mkdtemp()
-        cached_path = os.path.join(tmp_dir, "stage.usd")
         try:
-            await open_stage_async(scene_usd_str)
-            if not omni.usd.get_context().export_as_stage(cached_path):
-                raise RuntimeError(f"Failed to export stage to USD: {cached_path}")
-            self._strip_kit_prims(cached_path)
+            cached_path = await collect_input(scene_usd_str, tmp_dir)
+            await open_stage_async(cached_path)
         except Exception:
             shutil.rmtree(tmp_dir, ignore_errors=True)
             raise
 
         return cached_path
-
-    def _strip_kit_prims(self, usd_path: str) -> None:
-        """Remove Kit-injected prims from a USD file on disk.
-
-        Strips SDGPipeline prims (added by viewport rendering setup) and
-        OmniverseKit viewport cameras (captured by export_as_stage) so they
-        are never baked into recording stage copies.
-        """
-        _KIT_PRIMS = (
-            "/Render/PostProcess/SDGPipeline",
-            "/Render/PostRender/SDGPipeline",
-            "/Render/Simulation/SDGPipeline",
-            "/OmniverseKit_Persp",
-            "/OmniverseKit_Front",
-            "/OmniverseKit_Top",
-            "/OmniverseKit_Right",
-        )
-        stage = Usd.Stage.Open(usd_path)
-        changed = False
-        for prim_path in _KIT_PRIMS:
-            if stage.GetPrimAtPath(prim_path).IsValid():
-                stage.RemovePrim(prim_path)
-                changed = True
-        if changed:
-            stage.Save()
-        del stage
-
-    def _add_ground_plane(self) -> None:
-        """Add a physics-only ground plane, hidden to prevent z-fighting with the stage floor."""
-        gp = GroundPlane("/World/ground_plane", templates=None)
-        stage = get_current_stage()
-        for mp in gp.meshes.paths:
-            UsdGeom.Imageable(stage.GetPrimAtPath(mp)).MakeInvisible()

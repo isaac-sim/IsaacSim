@@ -91,9 +91,6 @@ class RobotTest:
         physics step.  On completion the generator returns a
         :class:`TestResult` via ``return``.
 
-        Yields:
-            None — control back to simulation loop.
-
         Returns:
             TestResult with all recorded data.
         """

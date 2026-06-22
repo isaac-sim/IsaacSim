@@ -69,7 +69,7 @@ class JointState:
         robot_joint_space: list[str],
         data_array: wp.array,
         valid_array: wp.array,
-    ):
+    ) -> None:
         if not isinstance(data_array, wp.array) or not (data_array.dtype is wp.float32) or (data_array.ndim != 2):
             raise ValueError(f"data_array must be a 2D wp.array with data-type wp.float32")
 
@@ -500,6 +500,12 @@ class JointState:
         ``wp.from_numpy`` would otherwise issue. The returned array is read-only in
         practice — callers that mutate it would alias ``valid_idx`` — but the
         existing API treats these arrays as immutable views.
+
+        Args:
+            valid_idx: Numpy array of valid joint indices.
+
+        Returns:
+            A 1D CPU Warp array view of ``valid_idx`` with int32 elements.
         """
         # ``_init_from_data`` will run ``np.asarray(valid_idx, dtype=np.int32)``
         # internally, performing the int64->int32 conversion if needed (without
@@ -507,7 +513,16 @@ class JointState:
         return wp.array(valid_idx, dtype=wp.int32, copy=False, device="cpu")
 
     def __build_data_array(self, row: int, valid_idx: np.ndarray) -> wp.array | None:
-        """Wrap a numpy slice of the data array as a CPU wp.array without an H2D copy."""
+        """Wrap a numpy slice of the data array as a CPU wp.array without an H2D copy.
+
+        Args:
+            row: Row in ``self.__data_array`` to gather from.
+            valid_idx: Numpy array of valid joint indices to gather.
+
+        Returns:
+            A 1D CPU Warp array containing the selected data values, or None if
+            ``valid_idx`` is empty.
+        """
         if len(valid_idx) == 0:
             return None
         # ``self.__data_array`` is built CPU-resident in ``from_name`` / ``from_index``,
@@ -580,7 +595,7 @@ class SpatialState:
         orientation_data: wp.array,
         angular_velocity_data: wp.array,
         valid_array: wp.array,
-    ):
+    ) -> None:
 
         if not len(set(spatial_space)) == len(spatial_space):
             raise ValueError("spatial_space is not valid: cannot have duplicated reference frame names.")
@@ -1034,7 +1049,7 @@ class SpatialState:
         return self.__linear_velocity_names
 
     @property
-    def linear_velocity_indices(self):
+    def linear_velocity_indices(self) -> wp.array:
         """List of frame indices that have valid linear velocities.
 
         Returns:
@@ -1045,7 +1060,7 @@ class SpatialState:
         return self.__linear_velocity_indices
 
     @property
-    def linear_velocities(self):
+    def linear_velocities(self) -> wp.array | None:
         """Valid linear velocities as a Warp array.
 
         Returns:
@@ -1059,7 +1074,7 @@ class SpatialState:
         return self.__valid_linear_velocities
 
     @property
-    def angular_velocity_names(self):
+    def angular_velocity_names(self) -> list[str]:
         """List of frame names that have valid angular velocities.
 
         Returns:
@@ -1068,7 +1083,7 @@ class SpatialState:
         return self.__angular_velocity_names
 
     @property
-    def angular_velocity_indices(self):
+    def angular_velocity_indices(self) -> wp.array:
         """List of frame indices that have valid angular velocities.
 
         Returns:
@@ -1079,7 +1094,7 @@ class SpatialState:
         return self.__angular_velocity_indices
 
     @property
-    def angular_velocities(self):
+    def angular_velocities(self) -> wp.array | None:
         """Valid angular velocities as a Warp array.
 
         Returns:
@@ -1093,7 +1108,7 @@ class SpatialState:
         return self.__valid_angular_velocities
 
     @property
-    def position_data(self):
+    def position_data(self) -> wp.array:
         """Full position data array.
 
         Returns:
@@ -1103,7 +1118,7 @@ class SpatialState:
         return self.__position_data
 
     @property
-    def orientation_data(self):
+    def orientation_data(self) -> wp.array:
         """Full orientation data array.
 
         Returns:
@@ -1113,7 +1128,7 @@ class SpatialState:
         return self.__orientation_data
 
     @property
-    def linear_velocity_data(self):
+    def linear_velocity_data(self) -> wp.array:
         """Full linear velocity data array.
 
         Returns:
@@ -1123,7 +1138,7 @@ class SpatialState:
         return self.__linear_velocity_data
 
     @property
-    def angular_velocity_data(self):
+    def angular_velocity_data(self) -> wp.array:
         """Full angular velocity data array.
 
         Returns:
@@ -1133,7 +1148,7 @@ class SpatialState:
         return self.__angular_velocity_data
 
     @property
-    def valid_array(self):
+    def valid_array(self) -> wp.array:
         """Valid flags array.
 
         Returns:
@@ -1150,6 +1165,12 @@ class SpatialState:
         directly via ``_init_from_ptr`` and skips the ``warp.copy`` call that
         ``wp.from_numpy`` would otherwise issue. The returned array is treated as
         immutable by the existing API.
+
+        Args:
+            valid_idx: Numpy array of valid frame indices.
+
+        Returns:
+            A 1D CPU Warp array view of ``valid_idx`` with int32 elements.
         """
         return wp.array(valid_idx, dtype=wp.int32, copy=False, device="cpu")
 
@@ -1160,6 +1181,14 @@ class SpatialState:
         ``.numpy()`` is a zero-copy view. Fancy-indexing produces a new contiguous
         numpy array; wrapping it with ``copy=False`` avoids the redundant
         ``wp.copy`` for the second hop.
+
+        Args:
+            data_array: Per-dimension data array to gather from.
+            valid_idx: Numpy array of valid frame indices to gather.
+
+        Returns:
+            A 2D CPU Warp array containing the selected rows of ``data_array``,
+            or None if ``valid_idx`` is empty.
         """
         if len(valid_idx) == 0:
             return None
@@ -1192,7 +1221,7 @@ class RootState:
         orientation: wp.array | None = None,
         linear_velocity: wp.array | None = None,
         angular_velocity: wp.array | None = None,
-    ):
+    ) -> None:
         if (position is None) and (orientation is None) and (linear_velocity is None) and (angular_velocity is None):
             raise ValueError("One of position, orientation, linear_velocity, or angular_velocity must be defined.")
 
@@ -1325,7 +1354,7 @@ class RobotState:
         root: RootState | None = None,
         links: SpatialState | None = None,
         sites: SpatialState | None = None,
-    ):
+    ) -> None:
         if (joints is not None) and not (isinstance(joints, JointState)):
             raise ValueError("joints must be of type JointState")
 

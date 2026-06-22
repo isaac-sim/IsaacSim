@@ -15,7 +15,12 @@
 
 # Import extension python module we are testing with absolute import path, as if we are an external user (i.e. a different extension)
 
-"""Test suite for validating the ObstacleStrategy functionality in robot motion generation."""
+"""Verify obstacle strategy configuration for motion-generation collision geometry.
+
+The tests cover legal shape-to-representation mappings, default and per-prim
+safety tolerances, string representation parsing, all-or-nothing override
+updates, shape-level overrides, and invalid prim or configuration handling.
+"""
 
 import omni.kit.test
 from isaacsim.core.experimental.objects import Capsule, Cone, Cube, Cylinder, Mesh, Plane, Sphere
@@ -50,21 +55,19 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
     """
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test fixtures before each test method is run."""
-        pass
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after each test method is run."""
-        pass
 
-    async def test_representation_as_string(self):
+    async def test_representation_as_string(self) -> None:
         """Test setting obstacle representation using a string value."""
         obstacle_strategy = ObstacleStrategy()
         obstacle_strategy.set_default_configuration(Mesh, ObstacleConfiguration("obb", 0.05))
 
-    async def test_sphere_strategies(self):
+    async def test_sphere_strategies(self) -> None:
         """Test obstacle strategy configurations for sphere objects.
 
         Verifies that valid configurations can be set for spheres and that invalid configurations
@@ -212,7 +215,7 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
             allow_negative_tolerance=False,
         )
 
-    async def test_cone_strategies(self):
+    async def test_cone_strategies(self) -> None:
         """Test obstacle strategy configurations for cone objects.
 
         Verifies that valid configurations can be set for cones and that invalid configurations
@@ -360,7 +363,7 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
             allow_negative_tolerance=False,
         )
 
-    async def test_cube_strategies(self):
+    async def test_cube_strategies(self) -> None:
         """Test obstacle strategy configurations for cube objects.
 
         Verifies that valid configurations can be set for cubes and that invalid configurations
@@ -508,7 +511,7 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
             allow_negative_tolerance=False,
         )
 
-    async def test_plane_strategies(self):
+    async def test_plane_strategies(self) -> None:
         """Test obstacle strategy configurations for plane objects.
 
         Verifies that valid configurations can be set for planes and that invalid configurations
@@ -647,7 +650,7 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
             allow_negative_tolerance=False,
         )
 
-    async def test_capsule_strategies(self):
+    async def test_capsule_strategies(self) -> None:
         """Test obstacle strategy configurations for capsule objects.
 
         Verifies that valid configurations can be set for capsules and that invalid configurations
@@ -785,7 +788,7 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
             allow_negative_tolerance=False,
         )
 
-    async def test_cylinder_strategies(self):
+    async def test_cylinder_strategies(self) -> None:
         """Test obstacle strategy configurations for cylinder objects.
 
         Verifies that valid configurations can be set for cylinders and that invalid configurations
@@ -923,7 +926,7 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
             allow_negative_tolerance=False,
         )
 
-    async def test_mesh_strategies(self):
+    async def test_mesh_strategies(self) -> None:
         """Test obstacle strategy configurations for mesh objects.
 
         Verifies that valid configurations can be set for meshes and that invalid configurations
@@ -1079,7 +1082,7 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
             allow_negative_tolerance=False,
         )
 
-    async def test_default_safety_tolerance(self):
+    async def test_default_safety_tolerance(self) -> None:
         """Test default safety tolerance settings for all obstacle types.
 
         Verifies that default safety tolerance can be set for all geometric shapes and that
@@ -1148,7 +1151,7 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
             obstacle_strategy.get_obstacle_configuration(specific_override_sphere_path).safety_tolerance, -0.1
         )
 
-    async def test_configuration_overrides_all_or_nothing(self):
+    async def test_configuration_overrides_all_or_nothing(self) -> None:
         """Tests that configuration overrides are applied atomically (all-or-nothing).
 
         Verifies that when setting multiple configuration overrides simultaneously,
@@ -1183,7 +1186,7 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
         )
         self.assertEqual(obstacle_strategy.get_obstacle_configuration(sphere_path).safety_tolerance, 0.0)
 
-    async def test_get_obstacle_configuration_invalid_prim(self):
+    async def test_get_obstacle_configuration_invalid_prim(self) -> None:
         """Tests that getting obstacle configuration for an invalid prim raises RuntimeError.
 
         Verifies that attempting to get obstacle configuration for a non-existent
@@ -1195,7 +1198,7 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
         with self.assertRaises(RuntimeError):
             obstacle_strategy.get_obstacle_configuration("/World/NotAShape")
 
-    async def test_set_configuration_overrides_invalid_prim(self):
+    async def test_set_configuration_overrides_invalid_prim(self) -> None:
         """Test that setting configuration overrides with invalid prims raise an error."""
         obstacle_strategy = ObstacleStrategy()
 
@@ -1210,13 +1213,13 @@ class TestObstacleStrategy(omni.kit.test.AsyncTestCase):
                 },
             )
 
-    async def test_invalid_representation_type(self):
+    async def test_invalid_representation_type(self) -> None:
         """Test that an invalid obstacle representation type raise a ValueError."""
         ObstacleRepresentation("sphere")
         with self.assertRaises(ValueError):
             ObstacleRepresentation("not_a_type")
 
-    async def test_shape_level_configuration_overrides(self):
+    async def test_shape_level_configuration_overrides(self) -> None:
         """Test shape-level configuration overrides for obstacle strategy."""
         obstacle_strategy = ObstacleStrategy()
 

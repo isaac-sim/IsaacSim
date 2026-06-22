@@ -13,7 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for SimulationView.get_object_type with the Newton backend."""
+"""Validate Newton object-type classification exposed by SimulationView.
+
+The tests cover standalone rigid bodies, articulation root and child links,
+articulation joints, non-physics xforms, and invalid paths so Newton matches
+the ``omni.physics.tensors`` object type contract.
+"""
 
 from __future__ import annotations
 
@@ -26,14 +31,16 @@ from .test_helpers import NewtonTensorTestBase, run_on_device_configs
 class TestObjectTypeRigidBody(NewtonTensorTestBase):
     """Standalone rigid bodies should be classified as RigidBody."""
 
-    async def test_rigid_body(self):
+    async def test_rigid_body(self) -> None:
+        """Classify a standalone rigid body prim as ``ObjectType.RigidBody``."""
         self.setup_ball_grid(num_envs=2)
         sim = await self.create_sim()
 
         otype = sim.get_object_type("/envs/env0/ball")
         self.assertEqual(otype, tensors.ObjectType.RigidBody, "Standalone rigid body should return RigidBody")
 
-    async def test_invalid_path(self):
+    async def test_invalid_path(self) -> None:
+        """Classify an unknown path as ``ObjectType.Invalid``."""
         self.setup_ball_grid(num_envs=2)
         sim = await self.create_sim()
 
@@ -45,7 +52,8 @@ class TestObjectTypeRigidBody(NewtonTensorTestBase):
 class TestObjectTypeArticulation(NewtonTensorTestBase):
     """Articulation links and joints should be classified correctly."""
 
-    async def test_articulation_root_link(self):
+    async def test_articulation_root_link(self) -> None:
+        """Classify the articulation root body as ``ArticulationRootLink``."""
         self.setup_ant_grid(num_envs=2)
         sim = await self.create_sim()
 
@@ -54,7 +62,8 @@ class TestObjectTypeArticulation(NewtonTensorTestBase):
             otype, tensors.ObjectType.ArticulationRootLink, "Articulation root body should return ArticulationRootLink"
         )
 
-    async def test_articulation_link(self):
+    async def test_articulation_link(self) -> None:
+        """Classify a non-root articulation body as ``ArticulationLink``."""
         self.setup_ant_grid(num_envs=2)
         sim = await self.create_sim()
 
@@ -63,7 +72,8 @@ class TestObjectTypeArticulation(NewtonTensorTestBase):
             otype, tensors.ObjectType.ArticulationLink, "Non-root articulation body should return ArticulationLink"
         )
 
-    async def test_articulation_joint(self):
+    async def test_articulation_joint(self) -> None:
+        """Classify a joint prim under the articulation as ``ArticulationJoint``."""
         self.setup_ant_grid(num_envs=2)
         sim = await self.create_sim()
 
@@ -72,7 +82,8 @@ class TestObjectTypeArticulation(NewtonTensorTestBase):
             otype, tensors.ObjectType.ArticulationJoint, "Articulation joint should return ArticulationJoint"
         )
 
-    async def test_nonphysics_xform(self):
+    async def test_nonphysics_xform(self) -> None:
+        """Classify the parent xform without physics APIs as invalid."""
         self.setup_ant_grid(num_envs=2)
         sim = await self.create_sim()
 

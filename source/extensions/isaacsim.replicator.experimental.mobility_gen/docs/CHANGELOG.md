@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.2.10] - 2026-06-12
+### Fixed
+- `occupancy_map`: defer the `cv2` import to first use.
+
+## [0.2.9] - 2026-06-10
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
+## [0.2.8] - 2026-06-09
+### Added
+- Teleop support for NuRec scenes with SPG (PPISP): the chase viewport renders through the scene's authored PPISP graph.
+
+### Changed
+- Depend on `isaacsim.replicator.nurec_utils`, deduplicating the local NuRec utilities.
+
+## [0.2.7] - 2026-06-07
+### Added
+- `collect_input()` (exported): caches a scene into a recording — `.usdz` byte-copied whole; `.usd`/`.usda`/`.usdc` collected via `omni.kit.usd.collect`.
+- `RecordingSession`: headless build-and-record control extracted from the UI, so recordings can be driven from a script.
+- Volume NuRec detection (`OmniNuRecFieldAsset` / `omni:nurec:isNuRecVolume`), in addition to particle scenes.
+- `replay_directory.py` options: `--warmup_frames`, `--max_frames`, `--skip_completed`, `--self_contained`.
+- `OccupancyMap.from_ros_yaml` loads occupancy maps from Omniverse/URL paths via `omni.client`.
+- Warn on NuRec replay when `render_rt_subframes` is below the recommended value.
+- Tests for NuRec detection, `RecordingSession`, scene collection, and replay completion-marker validation.
+
+### Changed
+- Scene caching copies the input scene and its dependencies instead of flattening the stage (much faster for large scenes).
+- Replay runs with multi-GPU rendering disabled.
+
+## [0.2.6] - 2026-06-04
+### Fixed
+- `MobilityGenCamera.update_state`: guard depth/segmentation/normals/instance-id against empty annotator buffers (as RGB already is), avoiding a "tile cannot extend outside image" crash on replay.
+
+### Removed
+- Stale `multiGpu` disable from `[[test]]` args; the Kit 110.1.1 multi-GPU startup crash no longer reproduces.
+
 ## [0.2.5] - 2026-05-15
 ### Added
 - `nurec_overrides` module exporting `is_nurec_stage` and `apply_nurec_replay_overrides`. Detects NuRec stages by traversing for `ParticleField` prims; when detected, forces replay flags to the supported subset (RGB only) and re-asserts `/rtx/rtpt/gaussian/skipTonemapping/enabled = False` so splat RGB matches the viewport. The RGB-only restriction and tonemap re-assert reflect the current state of NuRec support in Kit/Omniverse; non-RGB modalities and other render settings are gated here until they are addressed in future versions.

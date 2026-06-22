@@ -48,7 +48,7 @@ class SpotFlatTerrainPolicy(PolicyController):
         orientation: list[float] | None = None,
         policy_path: str | None = None,
         env_config_path: str | None = None,
-    ):
+    ) -> None:
         assets_root_path = get_assets_root_path()
         if usd_path is None:
             is_newton = SimulationManager.get_active_physics_engine() == "newton"

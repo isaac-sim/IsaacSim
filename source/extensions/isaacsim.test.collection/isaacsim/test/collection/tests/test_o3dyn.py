@@ -59,7 +59,7 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
         self.usd_path = self._assets_root_path + "/Isaac/Robots/Fraunhofer/O3dyn/o3dyn.usd"
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test environment and stop timeline."""
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
@@ -67,7 +67,7 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_loading(self):
+    async def test_loading(self) -> None:
         """Test that the O3dyn robot loads and settles at expected position."""
         result, error = await open_stage_async(self.usd_path)
 
@@ -93,7 +93,7 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
 
     # general, slowly building up speed testcase
-    async def test_add_as_reference(self):
+    async def test_add_as_reference(self) -> None:
         """Test loading O3dyn as a USD reference with ground plane."""
         await stage_utils.create_new_stage_async()
         stage = omni.usd.get_context().get_stage()
@@ -118,7 +118,7 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(translate[2], -0.05, delta=0.01)
         self._timeline.stop()
 
-    async def test_move_forward(self):
+    async def test_move_forward(self) -> None:
         """Test O3dyn moves forward when all wheels rotate in same direction."""
         await stage_utils.create_new_stage_async()
         stage = omni.usd.get_context().get_stage()
@@ -145,7 +145,7 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(translate[1], 0.00, delta=0.02)
         self._timeline.stop()
 
-    async def test_move_sideways(self):
+    async def test_move_sideways(self) -> None:
         """Test O3dyn moves sideways using mecanum wheel strafing."""
         await stage_utils.create_new_stage_async()
         stage = omni.usd.get_context().get_stage()
@@ -178,7 +178,7 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
         )
         self._timeline.stop()
 
-    async def test_rotate(self):
+    async def test_rotate(self) -> None:
         """Test O3dyn rotates in place using differential wheel speeds."""
         await stage_utils.create_new_stage_async()
         stage = omni.usd.get_context().get_stage()

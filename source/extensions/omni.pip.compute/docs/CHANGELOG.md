@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
+## [1.9.1] - 2026-06-05
+### Removed
+- Removed "pynvvideocodec==2.1.0"
+
 ## [1.9.0] - 2026-03-04
 ### Changed
 - Added python_api.md

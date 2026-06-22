@@ -20,6 +20,7 @@ from isaacsim import SimulationApp
 simulation_app = SimulationApp(launch_config={"headless": False})
 
 import os
+from typing import Any
 
 import carb
 import omni.replicator.core as rep
@@ -45,7 +46,7 @@ CARTER_NAV_POSITION = (-6, 4, 0)
 CARTER_NAV_TARGET_POSITION = (3, 3, 0)
 
 
-def advance_timeline_by_duration(duration: float, max_updates: int = 1000):
+def advance_timeline_by_duration(duration: float, max_updates: int = 1000) -> None:
     """Advance the simulation timeline by the specified duration in seconds."""
     timeline = omni.timeline.get_timeline_interface()
     current_time = timeline.get_current_time()
@@ -78,8 +79,13 @@ def advance_timeline_by_duration(duration: float, max_updates: int = 1000):
 
 
 def run_sdg_pipeline(
-    camera_path, num_clips, num_frames_per_clip, capture_interval, use_instance_id=True, segmentation_mapping=None
-):
+    camera_path: str,
+    num_clips: int,
+    num_frames_per_clip: int,
+    capture_interval: int,
+    use_instance_id: bool = True,
+    segmentation_mapping: dict[str, Any] | None = None,
+) -> None:
     """Run the synthetic data generation pipeline and capture video clips."""
     rp = rep.create.render_product(camera_path, (1280, 720))
     cosmos_writer = rep.WriterRegistry.get("CosmosWriter")
@@ -132,13 +138,13 @@ def run_sdg_pipeline(
 
 
 def run_example(
-    num_clips,
-    num_frames_per_clip,
-    capture_interval,
-    start_delay=0.0,
-    use_instance_id=True,
-    segmentation_mapping=None,
-):
+    num_clips: int,
+    num_frames_per_clip: int,
+    capture_interval: int,
+    start_delay: float = 0.0,
+    use_instance_id: bool = True,
+    segmentation_mapping: dict[str, Any] | None = None,
+) -> None:
     """Set up the warehouse scene and run the SDG pipeline."""
     assets_root_path = get_assets_root_path()
     stage_path = assets_root_path + STAGE_URL

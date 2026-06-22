@@ -16,6 +16,7 @@
 """Demonstrate a Franka robot following a movable sphere using a decider network."""
 
 import argparse
+from typing import Any
 
 from isaacsim import SimulationApp
 
@@ -41,28 +42,28 @@ class FollowState(DfState):
     """
 
     @property
-    def robot(self):
+    def robot(self) -> Any:
         """Return the robot from the context."""
         return self.context.robot
 
     @property
-    def follow_sphere(self):
+    def follow_sphere(self) -> Any:
         """Return the follow sphere from the robot."""
         return self.context.robot.follow_sphere
 
-    def enter(self):
+    def enter(self) -> None:
         """Close the gripper and initialize the follow sphere pose."""
         self.robot.gripper.close()
         self.follow_sphere.set_world_pose(*self.robot.arm.get_fk_pq().as_tuple())
 
-    def step(self):
+    def step(self) -> Any:
         """Send the end effector toward the follow sphere position."""
         target_position, _ = self.follow_sphere.get_world_pose()
         self.robot.arm.send_end_effector(target_position=target_position)
         return self  # Always transition back to this state.
 
 
-def main():
+def main() -> None:
     """Set up and run the Franka follow sphere example."""
     world = CortexWorld()
     robot = world.add_robot(add_franka_to_stage(name="franka", prim_path="/World/Franka"))
@@ -82,7 +83,7 @@ def main():
     if args.test:
         _test_frames = {"count": 0}
 
-        def _test_done_cb():
+        def _test_done_cb() -> bool:
             _test_frames["count"] += 1
             return _test_frames["count"] >= 10
 

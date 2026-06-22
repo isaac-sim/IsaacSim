@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import argparse
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -59,7 +61,7 @@ from isaacsim.robot_motion.motion_generation.examples.rmp_flow.scenario import F
 profiler = cProfile.Profile()
 
 
-def _load_franka_rmpflow_world(simulation_app) -> FrankaRmpFlowExample:
+def _load_franka_rmpflow_world(simulation_app: Any) -> FrankaRmpFlowExample:
     """Load the legacy Lula Franka example without ``UIBuilder._load_world_async``.
 
     The deprecated UI builds ``World`` before ``create_new_stage()``; opening a stage invalidates that
@@ -158,7 +160,9 @@ class _PhysicsStepTimingRecorder:
     enabled: bool = False
 
 
-def _make_physics_pre_step(scenario: FrankaRmpFlowExample, recorder: _PhysicsStepTimingRecorder):
+def _make_physics_pre_step(
+    scenario: FrankaRmpFlowExample, recorder: _PhysicsStepTimingRecorder
+) -> Callable[[float, object], None]:
     """Build callback for SimulationManager.register_callback(PHYSICS_PRE_STEP)."""
 
     def on_physics_pre_step(step_dt: float, context: object) -> None:

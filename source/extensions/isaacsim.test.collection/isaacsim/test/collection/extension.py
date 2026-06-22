@@ -25,12 +25,12 @@ class Extension(omni.ext.IExt):
     physics behavior, and various Isaac Sim subsystems.
     """
 
-    def on_startup(self, ext_id: str):
+    def on_startup(self, ext_id: str) -> None:
         """Initialize the extension when it is loaded.
 
         Args:
             ext_id: Extension identifier provided by the extension manager.
         """
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         """Clean up resources when the extension is unloaded."""

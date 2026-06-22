@@ -22,7 +22,12 @@ from .view_manipulator import ViewManipulator
 
 
 class ViewportScene:
-    """Manage a viewport scene overlay for TF frame visualization."""
+    """Manage a viewport scene overlay for TF frame visualization.
+
+    Args:
+        viewport_window: Viewport window that owns the scene frame.
+        ext_id: Extension identifier used to obtain the viewport frame.
+    """
 
     def __init__(self, viewport_window: ui.Window, ext_id: str) -> None:
         self._scene_view = None

@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.3] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings.
+
 ## [1.2.2] - 2026-05-13
 ### Fixed
 - Fixed nvbug 6107587: the example UI window content overflowed on normal displays, hiding the lower frames. Window content is now wrapped in a `ui.ScrollingFrame` with the vertical scrollbar always on, and the window is given an explicit default `height=600` so the scroll region has a usable bound.

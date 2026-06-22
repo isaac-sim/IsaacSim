@@ -47,7 +47,12 @@ import sys
 
 
 class ClockPeerDisconnected(Exception):
-    """Clock TCP peer closed the connection or reset (typical when simulation stops)."""
+    """Clock TCP peer closed the connection or reset.
+
+    Args:
+        bytes_received: Number of bytes read before the peer disconnected.
+        expected: Number of bytes expected for the current message.
+    """
 
     __slots__ = ("bytes_received", "expected")
 
@@ -72,7 +77,14 @@ def _recv_exact(conn: socket.socket, n: int) -> bytes:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the tutorial TCP playback bridge."""
+    """Run the tutorial TCP playback bridge.
+
+    Args:
+        argv: Command-line arguments to parse, or None to use ``sys.argv``.
+
+    Returns:
+        Process exit code.
+    """
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "--clock-host",

@@ -9,7 +9,7 @@
   - controlled_joint_names: list[str]
 
 - class CumotionWorldInterface(mg.WorldInterface)
-  - def __init__(self, world_to_robot_base: tuple[wp.array, wp.array] | None = None, visualize_debug_prims: bool = False, visual_debug_enabled_prim_rgb: list[float] | None = None, visual_debug_disabled_prim_rgb: list[float] | None = None, visual_debug_prim_alpha: float = 0.3)
+  - def __init__(self, world_to_robot_base: tuple[wp.array, wp.array] | None = None, visualize_debug_prims: bool = False, visual_debug_enabled_prim_rgb: list[float] | None = None, visual_debug_disabled_prim_rgb: list[float] | None = None, visual_debug_prim_alpha: float = 0.3, device: wp.DeviceLike = None)
   - [property] def world_view(self) -> cumotion.WorldView
   - def add_spheres(self, prim_paths: list[str], radii: wp.array, scales: wp.array, safety_tolerances: wp.array, poses: tuple[wp.array, wp.array], enabled_array: wp.array)
   - def add_cubes(self, prim_paths: list[str], sizes: wp.array, scales: wp.array, safety_tolerances: wp.array, poses: tuple[wp.array, wp.array], enabled_array: wp.array)
@@ -23,7 +23,7 @@
   - def update_world_to_robot_root_transforms(self, poses: tuple[wp.array, wp.array])
 
 - class RmpFlowController(mg.BaseController)
-  - def __init__(self, cumotion_robot: CumotionRobot, cumotion_world_interface: CumotionWorldInterface, robot_joint_space: list[str], robot_site_space: list[str], rmp_flow_configuration_filename: pathlib.Path | str = 'rmp_flow.yaml', tool_frame: str | None = None)
+  - def __init__(self, cumotion_robot: CumotionRobot, cumotion_world_interface: CumotionWorldInterface, robot_joint_space: list[str], robot_site_space: list[str], rmp_flow_configuration_filename: pathlib.Path | str = 'rmp_flow.yaml', tool_frame: str | None = None, maximum_substep_size: float = 1.0 / 120.0)
   - def get_rmp_flow_config(self) -> cumotion.RmpFlowConfig
   - def forward(self, estimated_state: mg.RobotState, setpoint_state: mg.RobotState | None, t: float, **kwargs: Any) -> mg.RobotState | None
   - def reset(self, estimated_state: mg.RobotState, setpoint_state: mg.RobotState | None, t: float, **kwargs: Any) -> bool

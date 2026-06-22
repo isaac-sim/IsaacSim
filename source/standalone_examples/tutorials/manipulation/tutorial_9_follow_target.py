@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tutorial 9, Part 3a: Follow Target
+"""Tutorial 9, Part 3a: Follow Target.
 
 A UR10e arm tracks a draggable target cube using cuMotion RmpFlowController
 for real-time motion planning with optional obstacle avoidance.
@@ -71,6 +71,7 @@ _TARGET_PATH = "/World/TargetCube"
 
 
 def get_estimated_state(articulation: Articulation) -> mg.RobotState:
+    """Get the current articulation state for RMPflow."""
     names = articulation.dof_names
     return mg.RobotState(
         joints=mg.JointState.from_name(
@@ -82,6 +83,7 @@ def get_estimated_state(articulation: Articulation) -> mg.RobotState:
 
 
 def create_setpoint_state(cumotion_robot: CumotionRobot, target_object: GeomPrim) -> mg.RobotState:
+    """Create an end-effector setpoint from the target object pose."""
     tool_frame = cumotion_robot.robot_description.tool_frame_names()[0]
     site_space = cumotion_robot.robot_description.tool_frame_names()
     target_positions, _ = target_object.get_world_poses()
@@ -100,6 +102,7 @@ def create_setpoint_state(cumotion_robot: CumotionRobot, target_object: GeomPrim
 async def setup_scene_and_controller(
     with_obstacle: bool,
 ) -> tuple[RmpFlowController, CumotionRobot, Articulation, mg.WorldBinding, GeomPrim]:
+    """Create the scene, world binding, cuMotion robot, and controller."""
     assets_root_path = await get_assets_root_path_async()
     stage_utils.add_reference_to_stage(
         usd_path=assets_root_path + "/Isaac/Samples/Rigging/Manipulator/configure_manipulator/ur10e/ur/ur_gripper.usd",
@@ -177,6 +180,7 @@ def reset_rmpflow(
     target_object: GeomPrim,
     t: float,
 ) -> None:
+    """Reset RMPflow using the current articulation and target states."""
     estimated = get_estimated_state(articulation)
     setpoint = create_setpoint_state(cumotion_robot, target_object)
     if not controller.reset(estimated, setpoint, t=t):
@@ -192,6 +196,7 @@ def run_step(
     target_object: GeomPrim,
     t: float,
 ) -> None:
+    """Advance one follow-target control step."""
     world_binding.get_world_interface().update_world_to_robot_root_transforms(articulation.get_world_poses())
     world_binding.synchronize_transforms()
 
@@ -213,6 +218,7 @@ def run_step(
 
 
 def main(args: argparse.Namespace, app: SimulationApp) -> None:
+    """Run the follow-target tutorial."""
     SimulationManager.setup_simulation(dt=1.0 / 60.0, device=args.device)
 
     controller, cumotion_robot, articulation, world_binding, target_object = app.run_coroutine(

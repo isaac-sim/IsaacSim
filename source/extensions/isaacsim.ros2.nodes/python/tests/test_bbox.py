@@ -13,7 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""ROS 2 bounding-box publishing tests for ROS2CameraHelper (2D tight/loose, 3D)."""
+"""Verify ROS 2 bounding-box publishing.
+
+Covers semantic detections, empty semantics, timestamp selection,
+viewpoint-sensitive 2D projection, occlusion, and golden CSV comparisons.
+"""
 
 from __future__ import annotations
 
@@ -22,6 +26,7 @@ import json
 import os
 import time
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import omni.graph.core as og
@@ -61,7 +66,11 @@ _DEBUG_BBOX_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "dat
 
 
 class _BBoxSet:
-    """class_id -> (x0, y0, x1, y1) pixel bounding boxes, with CSV I/O and overlay drawing."""
+    """Class ID to pixel bounding boxes, with CSV I/O and overlay drawing.
+
+    Args:
+        boxes: Bounding boxes keyed by class ID.
+    """
 
     def __init__(self, boxes: dict[str, tuple[float, float, float, float]]) -> None:
         self._boxes = dict(boxes)
@@ -71,11 +80,11 @@ class _BBoxSet:
         return (0, int(cid)) if cid.isdigit() else (1, cid)
 
     @staticmethod
-    def sort_detections(detections):
+    def sort_detections(detections: Any) -> Any:
         return sorted(detections, key=lambda d: str(d.results[0].hypothesis.class_id) if d.results else "999")
 
     @classmethod
-    def from_detections(cls, detections) -> "_BBoxSet":
+    def from_detections(cls, detections: Any) -> "_BBoxSet":
         boxes: dict[str, tuple[float, float, float, float]] = {}
         for d in cls.sort_detections(detections):
             if not d.results:
@@ -109,7 +118,7 @@ class _BBoxSet:
     def __getitem__(self, cid: str) -> tuple[float, float, float, float]:
         return self._boxes[cid]
 
-    def __iter__(self):
+    def __iter__(self) -> None:
         return iter(sorted(self._boxes, key=self._sort_key))
 
     def __len__(self) -> int:
@@ -145,18 +154,21 @@ class _BBoxSet:
 class TestROS2BboxPublishing(ROS2TestCase):
     """ROS 2 bounding box topics from OmniGraph ROS2CameraHelper nodes."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
+        """Set the viewport resolution used by bounding-box projection tests."""
         await super().setUp()
         viewport_api = omni.kit.viewport.utility.get_active_viewport()
         viewport_api.set_texture_resolution((1280, 720))
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_bbox(self):
+    async def test_bbox(self) -> Any:
         """Geometry and semantics for 2D tight/loose and 3D bbox (viewport render product).
 
         cube_1 partially occludes cube_2 so 2D tight areas are smaller than 2D loose for class "1".
-        """
 
+        Returns:
+            None.
+        """
         cube_1 = Cube("/cube_1", positions=[0, -4, 0.5], scales=[1.55, 0.4, 1.0], sizes=1.0)
         cube_2 = Cube("/cube_2", positions=[1.45, -1.9, 0.52], scales=[0.55, 0.55, 0.55], sizes=1.0)
         add_labels(cube_1.prims[0], labels=["Cube0"], taxonomy="class")
@@ -228,9 +240,8 @@ class TestROS2BboxPublishing(ROS2TestCase):
 
         await omni.kit.app.get_app().next_update_async()
 
-        received = {
-            k: None
-            for k in (
+        received = dict.fromkeys(
+            (
                 "bbox_2d_tight",
                 "bbox_2d_loose",
                 "bbox_3d",
@@ -240,7 +251,7 @@ class TestROS2BboxPublishing(ROS2TestCase):
                 "semantic_data_tight",
                 "semantic_data_loose",
             )
-        }
+        )
         _set = received.__setitem__
 
         node = self.create_node("bbox_tester")
@@ -258,7 +269,7 @@ class TestROS2BboxPublishing(ROS2TestCase):
         self.create_subscription(node, String, "semantic_labels_tight", lambda d: _set("semantic_data_tight", d), qos)
         self.create_subscription(node, String, "semantic_labels_loose", lambda d: _set("semantic_data_loose", d), qos)
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         await omni.kit.app.get_app().next_update_async()
@@ -290,10 +301,10 @@ class TestROS2BboxPublishing(ROS2TestCase):
         self.assertEqual(semantic_instance_dict["0"], "BACKGROUND")
         self.assertEqual(semantic_instance_dict["1"], "UNLABELLED")
 
-        def _json_has_prim(data, prim_path: str) -> bool:
+        def _json_has_prim(data: Any, prim_path: str) -> bool:
             tail = "/" + prim_path.strip("/").split("/")[-1]
 
-            def walk(o):
+            def walk(o: Any) -> Any:
                 if isinstance(o, str):
                     return o.startswith("/") and (o == prim_path or o.endswith(tail))
                 if isinstance(o, dict):
@@ -347,7 +358,7 @@ class TestROS2BboxPublishing(ROS2TestCase):
         self.assertEqual(len(tight_dets), 3, msg="expected three in-frustum class detections (tight)")
         self.assertEqual(len(loose_dets), 3, msg="expected three in-frustum class detections (loose)")
 
-        def _det(dets, cid):
+        def _det(dets: Any, cid: Any) -> Any:
             return next((d for d in dets if d.results and str(d.results[0].hypothesis.class_id) == cid), None)
 
         for cid in ("0", "1", "2"):
@@ -374,7 +385,7 @@ class TestROS2BboxPublishing(ROS2TestCase):
             self.assertAlmostEqual(float(t.bbox.center.position.x), float(l.bbox.center.position.x), delta=1.5)
             self.assertAlmostEqual(float(t.bbox.center.position.y), float(l.bbox.center.position.y), delta=1.5)
 
-    async def test_empty_semantics(self):
+    async def test_empty_semantics(self) -> None:
         """Verifies empty semantic labels don't cause a crash."""
         cube_3 = Cube("/cube_3", positions=[100, 0, 0], scales=[1, 1, 3], sizes=1.0)
         add_labels(cube_3.prims[0], labels=["Cube2"], taxonomy="class")
@@ -413,7 +424,7 @@ class TestROS2BboxPublishing(ROS2TestCase):
         self.create_subscription(node, Detection3DArray, "bbox_3d", lambda _: None, get_qos_profile())
         self.create_subscription(node, String, "semantic_labels", lambda d: _set("semantic", d), get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         await self.simulate_until_condition(lambda: False, max_frames=30)
@@ -431,7 +442,7 @@ class TestROS2BboxPublishing(ROS2TestCase):
         self.assertIn("time_stamp", semantic_dict)
         self.assertNotIn("0", semantic_dict)
 
-    async def test_bbox_helpers_use_system_time_with_render_product(self):
+    async def test_bbox_helpers_use_system_time_with_render_product(self) -> None:
         """Bbox-only graph on CreateRenderProduct: stamps use wall time when useSystemTime is set."""
         scene_path = "/Isaac/Environments/Grid/default_environment.usd"
         opened, _ = await stage_utils.open_stage_async(self._assets_root_path + scene_path)
@@ -487,7 +498,7 @@ class TestROS2BboxPublishing(ROS2TestCase):
 
         await omni.kit.app.get_app().next_update_async()
 
-        received = {k: None for k in ("tight", "loose", "3d")}
+        received = dict.fromkeys(("tight", "loose", "3d"))
         _set = received.__setitem__
         node = self.create_node("bbox_system_time_tester")
         self.create_subscription(node, Detection2DArray, "bbox_2d_tight", lambda d: _set("tight", d), get_qos_profile())
@@ -506,7 +517,7 @@ class TestROS2BboxPublishing(ROS2TestCase):
         await omni.kit.app.get_app().next_update_async()
         system_time = int(time.time())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         self._timeline.play()
@@ -520,7 +531,7 @@ class TestROS2BboxPublishing(ROS2TestCase):
         self.assertGreaterEqual(received["loose"].header.stamp.sec, system_time)
         self.assertGreaterEqual(received["3d"].header.stamp.sec, system_time)
 
-    async def test_bbox_2d_tight_projection_differs_across_viewpoints(self):
+    async def test_bbox_2d_tight_projection_differs_across_viewpoints(self) -> None:
         """2D tight boxes change in image space when the perspective camera orbits the scene."""
         cube_1 = Cube("/cube_1", positions=[2, 0, 0], scales=[1.5, 1, 1], sizes=1.0)
         cube_2 = Cube("/cube_2", positions=[-1.5, 0, 0], scales=[1, 2, 1], sizes=1.0)
@@ -564,7 +575,7 @@ class TestROS2BboxPublishing(ROS2TestCase):
             get_qos_profile(),
         )
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         eyes = [
@@ -692,7 +703,7 @@ class TestROS2BboxPublishing(ROS2TestCase):
         self.create_subscription(node, RosImage, rgb_topic, lambda d: _set("rgb", d), get_qos_profile())
         self.create_subscription(node, Detection2DArray, bbox_topic, lambda d: _set("bbox", d), get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         self._timeline.play()
@@ -729,10 +740,10 @@ class TestROS2BboxPublishing(ROS2TestCase):
             rgb=rgb_array,
         )
 
-    async def test_two_cube_bbox_pipeline_rgb_prerendered(self):
+    async def test_two_cube_bbox_pipeline_rgb_prerendered(self) -> None:
         """2D tight boxes (pixel xyxy) must match golden CSV within a few pixels."""
 
-        def setup():
+        def setup() -> None:
             c1 = Cube("/cube_1", positions=[2, 0, 0], scales=[1.5, 1, 1], sizes=1.0)
             c2 = Cube("/cube_2", positions=[-1.5, 0, 0], scales=[1, 2, 1], sizes=1.0)
             add_labels(c1.prims[0], labels=["Cube0"], taxonomy="class")
@@ -745,10 +756,10 @@ class TestROS2BboxPublishing(ROS2TestCase):
             setup_labeled_geometry=setup,
         )
 
-    async def test_mixed_primitives_bbox_pipeline_rgb_prerendered(self):
+    async def test_mixed_primitives_bbox_pipeline_rgb_prerendered(self) -> None:
         """Mixed primitives scene: same as two-cube test with four tight boxes."""
 
-        def setup():
+        def setup() -> None:
             s = Sphere(
                 "/bbox_golden/mixed_sphere",
                 positions=[-2.3, 0.35, 0.48],
@@ -788,7 +799,7 @@ class TestROS2BboxPublishing(ROS2TestCase):
             setup_labeled_geometry=setup,
         )
 
-    async def test_two_cube_occlusion_bbox_pipeline_rgb_prerendered_tight_loose(self):
+    async def test_two_cube_occlusion_bbox_pipeline_rgb_prerendered_tight_loose(self) -> None:
         """Partial occlusion: tight and loose 2D boxes each match their CSV; green-only overlays must differ."""
         tight_csv = os.path.join(_GOLDEN_BBOX_DIR, f"{_BBOX_GOLDEN_TWO_CUBES_OCCLUSION_TIGHT}.csv")
         loose_csv = os.path.join(_GOLDEN_BBOX_DIR, f"{_BBOX_GOLDEN_TWO_CUBES_OCCLUSION_LOOSE}.csv")
@@ -858,14 +869,14 @@ class TestROS2BboxPublishing(ROS2TestCase):
 
         await omni.kit.app.get_app().next_update_async()
 
-        received = {k: None for k in ("rgb", "tight", "loose")}
+        received = dict.fromkeys(("rgb", "tight", "loose"))
         _set = received.__setitem__
         node = self.create_node("bbox_occlusion_tester")
         self.create_subscription(node, RosImage, rgb_topic, lambda d: _set("rgb", d), get_qos_profile())
         self.create_subscription(node, Detection2DArray, tight_topic, lambda d: _set("tight", d), get_qos_profile())
         self.create_subscription(node, Detection2DArray, loose_topic, lambda d: _set("loose", d), get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         self._timeline.play()

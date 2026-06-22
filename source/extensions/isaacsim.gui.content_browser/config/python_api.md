@@ -11,4 +11,4 @@
   - def __init__(self)
   - def create_add_new_item(self) -> Optional[AddNewItem]
   - def create_child_item(self, name: str, path: str, is_folder: bool = True) -> Optional[IsaacConnectionItem]
-  - async def populate_children_async(self) -> Any
+  - async def populate_children_async(self)

@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 odometry publisher OmniGraph node."""
+"""Verifies ROS 2 odometry publishing for general, GPU, linear-only, and angular-only odometry paths."""
+
+from typing import Any
 
 import numpy as np
 import omni.graph.core as og
@@ -22,7 +24,6 @@ import omni.kit.test
 import omni.kit.usd
 import omni.kit.viewport.utility
 import usdrt.Sdf
-from isaacsim.core.deprecation_manager import import_module
 from isaacsim.core.experimental.objects import Cube, DistantLight, GroundPlane
 from isaacsim.core.experimental.prims import GeomPrim, RigidPrim, XformPrim
 from isaacsim.core.experimental.utils import stage as stage_utils
@@ -33,20 +34,24 @@ from .common import get_qos_profile
 
 
 class TestRos2Odometry(ROS2TestCase):
-    """Test suite for ros2 odometry."""
+    """Verify nav_msgs/Odometry output from simulated prim and robot motion."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Create a fresh stage for odometry publisher graph tests."""
         await super().setUp()
         self.CUBE_SCALE = 0.5
 
-    async def tearDown(self):
-        """Tear down test fixtures."""
+    async def tearDown(self) -> None:
+        """Run shared ROS 2 cleanup after odometry publisher tests."""
         await omni.kit.app.get_app().next_update_async()
         await super().tearDown()
 
-    def get_cube_velocities(self):
-        """Return a tuple (linear_velocity, angular_velocity) from the stored odometry message."""
+    def get_cube_velocities(self) -> Any:
+        """Return a tuple (linear_velocity, angular_velocity) from the stored odometry message.
+
+        Returns:
+            Linear and angular velocity values, or None values if unavailable.
+        """
         if self._cube_odometry_data is None:
             return None, None
         # Odometry.twist.twist contains the velocities.
@@ -54,8 +59,12 @@ class TestRos2Odometry(ROS2TestCase):
         angular_velocity = self._cube_odometry_data.twist.twist.angular
         return linear_velocity, angular_velocity
 
-    def get_cube_pose(self):
-        """Return a tuple (position, orientation) from the stored odometry message."""
+    def get_cube_pose(self) -> Any:
+        """Return a tuple (position, orientation) from the stored odometry message.
+
+        Returns:
+            Position and orientation values, or None values if unavailable.
+        """
         if self._cube_odometry_data is None:
             return None, None
         # Odometry.pose.pose contains the position and orientation
@@ -63,14 +72,14 @@ class TestRos2Odometry(ROS2TestCase):
         orientation = self._cube_odometry_data.pose.pose.orientation
         return position, orientation
 
-    async def test_ROS2_general_odometry_gpu(self):
+    async def test_ros2_general_odometry_gpu(self) -> None:
         """Test ROS2 general odometry gpu."""
         SimulationManager.set_backend("warp")
         SimulationManager.set_physics_sim_device("cuda")
         await omni.kit.app.get_app().next_update_async()
-        await self.test_ROS2_general_odometry()
+        await self.test_ros2_general_odometry()
 
-    async def test_ROS2_general_odometry(self):
+    async def test_ros2_general_odometry(self) -> None:
         """Test ROS2 general odometry."""
         import rclpy
         from nav_msgs.msg import Odometry
@@ -145,10 +154,10 @@ class TestRos2Odometry(ROS2TestCase):
         self._cube_odometry_data = None
         self._cube_odometry_global_data = None
 
-        def cube_odometry_callback(data: Odometry):
+        def cube_odometry_callback(data: Odometry) -> None:
             self._cube_odometry_data = data
 
-        def cube_odometry_global_callback(data: Odometry):
+        def cube_odometry_global_callback(data: Odometry) -> None:
             self._cube_odometry_global_data = data
             print(data.twist.twist.linear)
 
@@ -162,20 +171,20 @@ class TestRos2Odometry(ROS2TestCase):
 
         self.retrived_lin_vel = None
 
-        def set_cuboid_pose(cuboid_xform, positions, orientations):
+        def set_cuboid_pose(cuboid_xform: Any, positions: Any, orientations: Any) -> None:
             cuboid_xform.set_world_poses(
                 positions=np.array(positions),
                 orientations=np.array(orientations),
             )
 
-        def set_cuboid_commands(cuboid_rigid, lin_vel, ang_vel):
+        def set_cuboid_commands(cuboid_rigid: Any, lin_vel: Any, ang_vel: Any) -> None:
             cuboid_rigid.set_velocities(
                 linear_velocities=np.array(lin_vel, dtype=np.float64).reshape(1, 3),
                 angular_velocities=np.array(ang_vel, dtype=np.float64).reshape(1, 3),
             )
             self.retrived_lin_vel = cuboid_rigid.get_velocities()[1].numpy().flatten()
 
-        def spin():
+        def spin() -> None:
             if (self.lin_vel_cmd is not None) and (self.ang_vel_cmd is not None):
                 set_cuboid_commands(self.cuboid, self.lin_vel_cmd, self.ang_vel_cmd)
             rclpy.spin_once(ros2_node, timeout_sec=0.1)
@@ -186,7 +195,7 @@ class TestRos2Odometry(ROS2TestCase):
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
 
-        def standard_checks():
+        def standard_checks() -> None:
             # Check if odometry data was received.
             self.assertIsNotNone(self._cube_odometry_data, "Cube Odometry data was not recieved.")
 
@@ -388,10 +397,8 @@ class TestRos2Odometry(ROS2TestCase):
 
         ros2_node.destroy_node()
 
-        pass
-
-    async def test_ROS2_linear_odometry(self):
-        """Test odometry for Leatherback robot moving in a straight line, verifying linear velocity and position tracking."""
+    async def test_ros2_linear_odometry(self) -> None:
+        """Verify Leatherback straight-line odometry reports linear velocity and position."""
         if SimulationManager.get_active_physics_engine() == "newton":
             self.skipTest("Leatherback asset not yet supported by Newton backend")
         import rclpy
@@ -418,14 +425,14 @@ class TestRos2Odometry(ROS2TestCase):
         self._leatherback_odom = None
 
         # Callback to receive odometry data
-        def odometry_callback(data: Odometry):
+        def odometry_callback(data: Odometry) -> None:
             self._leatherback_odom = data
 
         # Subscribe to the odometry topic
         odom_sub = self.create_subscription(ros2_node, Odometry, "/odom", odometry_callback, get_qos_profile())
 
         # Function to process ROS messages
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(ros2_node, timeout_sec=0.1)
 
         # Start simulation
@@ -615,9 +622,7 @@ class TestRos2Odometry(ROS2TestCase):
         self._timeline.stop()
         ros2_node.destroy_node()
 
-        pass
-
-    async def test_ROS2_angular_odometry(self):
+    async def test_ros2_angular_odometry(self) -> None:
         """Test odometry with Leatherback robot going in a circle, verifying angular velocity."""
         if SimulationManager.get_active_physics_engine() == "newton":
             self.skipTest("Leatherback asset not yet supported by Newton backend")
@@ -645,14 +650,14 @@ class TestRos2Odometry(ROS2TestCase):
         self._leatherback_odom = None
 
         # Callback to receive odometry data
-        def odometry_callback(data: Odometry):
+        def odometry_callback(data: Odometry) -> None:
             self._leatherback_odom = data
 
         # Subscribe to the odometry topic
         odom_sub = self.create_subscription(ros2_node, Odometry, "/odom", odometry_callback, get_qos_profile())
 
         # Function to process ROS messages
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(ros2_node, timeout_sec=0.1)
 
         # Start simulation
@@ -799,5 +804,3 @@ class TestRos2Odometry(ROS2TestCase):
         # Clean up
         self._timeline.stop()
         ros2_node.destroy_node()
-
-        pass

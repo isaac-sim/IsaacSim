@@ -24,7 +24,7 @@ from isaacsim.core.experimental.utils.xform import get_world_pose
 from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 
 
-def get_qos_profile():
+def get_qos_profile() -> object:
     """Get ROS2 QoS profile for sensor data subscription.
 
     Returns:
@@ -56,7 +56,7 @@ class TestLeatherback(ROS2TestCase):
         stage_utils.set_stage_units(meters_per_unit=1.0)
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_drive_forward(self):
+    async def test_drive_forward(self) -> None:
         """Test that Leatherback drives forward via ROS2 Ackermann commands."""
         from ackermann_msgs.msg import AckermannDriveStamped
 
@@ -96,7 +96,7 @@ class TestLeatherback(ROS2TestCase):
         delta = np.linalg.norm(x - target)
         self.assertAlmostEqual(delta, 0, delta=0.01, msg=f"delta: {delta}, target: {target}, actual: {x}")
 
-    async def test_cameras(self):
+    async def test_cameras(self) -> None:
         """Test that RGB and depth cameras publish valid data via ROS2."""
         import rclpy
         from sensor_msgs.msg import Image
@@ -107,10 +107,10 @@ class TestLeatherback(ROS2TestCase):
         self._rgb = None
         self._depth = None
 
-        def rgb_callback(data):
+        def rgb_callback(data: object) -> None:
             self._rgb = data
 
-        def depth_callback(data):
+        def depth_callback(data: object) -> None:
             self._depth = data
 
         ros_rgb_topic = "/rgb"
@@ -119,7 +119,7 @@ class TestLeatherback(ROS2TestCase):
         self.create_subscription(node, Image, ros_rgb_topic, rgb_callback, get_qos_profile())
         self.create_subscription(node, Image, ros_depth_topic, depth_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         # Start Simulation and wait

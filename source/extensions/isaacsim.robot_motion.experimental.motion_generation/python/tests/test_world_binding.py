@@ -15,7 +15,13 @@
 
 # Import extension python module we are testing with absolute import path, as if we are an external user (i.e. a different extension)
 
-"""Tests for WorldBinding functionality that synchronizes USD stage objects with planning world interfaces."""
+"""Verify synchronization from USD obstacles into a planning-world interface.
+
+The tests cover empty and invalid bindings, collision API filtering, primitive
+property updates, mesh and triangulated-mesh insertion, oriented bounding boxes,
+transform-only versus property-only synchronization, motion-generation collision
+API tracking, and ancestor-scale validation.
+"""
 
 import numpy as np
 import omni.kit.test
@@ -68,7 +74,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
     """
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up test environment before each test."""
         await create_new_stage_async()
 
@@ -78,7 +84,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         self._timeline = omni.timeline.get_timeline_interface()
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up test environment after each test."""
         # Stop timeline if running
         if self._timeline.is_playing():
@@ -90,9 +96,8 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
 
         await get_app().next_update_async()
 
-    async def test_empty_world_binding(self):
+    async def test_empty_world_binding(self) -> None:
         """Test creating WorldBinding with empty world interface and handling non-existent prims."""
-
         # can create a WorldBinding, and initialize it with an empty world interface and no tracked prims:
         world_binding: WorldBinding[MirrorWorldInterface] = WorldBinding(
             world_interface=MirrorWorldInterface(),
@@ -121,7 +126,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         self.assertFalse(world_binding._initialized)
         self.assertRaises(RuntimeError, world_binding.synchronize)
 
-    async def test_world_binding_rejects_non_collision_api(self):
+    async def test_world_binding_rejects_non_collision_api(self) -> None:
         """Test that WorldBinding rejects non-collision APIs and validates API selection."""
         # Collision Enables have to use a collision API:
         self.assertRaises(
@@ -153,13 +158,12 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         world_binding_motion.initialize()
         self.assertTrue(world_binding_motion._initialized)
 
-    async def test_common_updates(self):
+    async def test_common_updates(self) -> None:
         """Test that the WorldBinding class can correctly update the world interface when the common tokens change.
 
         This includes the world transforms, the collision enabled outputs, and the local-transform which is
         used to track the scales.
         """
-
         # create a couple of prims to use:
         stage_sphere = Sphere(
             paths="/World/Sphere",
@@ -321,7 +325,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(planning_world_sphere)
         self.assertTrue(np.isclose(planning_world_sphere.scale, [1.0, 1.0, 1.0]).all())
 
-    async def test_update_sphere_properties(self):
+    async def test_update_sphere_properties(self) -> None:
         """Test updating sphere radius properties through WorldBinding synchronization."""
         # create a sphere:
         stage_sphere = Sphere(
@@ -363,7 +367,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         self.assertIsNotNone(planning_world_sphere)
         self.assertAlmostEqual(planning_world_sphere.radius, 0.1)
 
-    async def test_update_cube_properties(self):
+    async def test_update_cube_properties(self) -> None:
         """Test updating cube size properties through WorldBinding synchronization."""
         stage_cube = Cube(
             paths="/World/Cube",
@@ -397,7 +401,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         world_binding.synchronize()
         self.assertAlmostEqual(planning_world_cube.size, 0.25)
 
-    async def test_update_cone_properties(self):
+    async def test_update_cone_properties(self) -> None:
         """Test updating cone radius, height, and axis properties through WorldBinding synchronization."""
         stage_cone = Cone(
             paths="/World/Cone",
@@ -441,7 +445,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(planning_world_cone.length, 0.3)
         self.assertEqual(planning_world_cone.axis, "X")
 
-    async def test_update_plane_properties(self):
+    async def test_update_plane_properties(self) -> None:
         """Test updating plane length, width, and axis properties through WorldBinding synchronization."""
         stage_plane = Plane(
             paths="/World/Plane",
@@ -485,7 +489,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(planning_world_plane.width, 2.5)
         self.assertEqual(planning_world_plane.axis, "X")
 
-    async def test_update_capsule_properties(self):
+    async def test_update_capsule_properties(self) -> None:
         """Test updating capsule radius, height, and axis properties through WorldBinding synchronization."""
         stage_capsule = Capsule(
             paths="/World/Capsule",
@@ -529,7 +533,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(planning_world_capsule.length, 0.3)
         self.assertEqual(planning_world_capsule.axis, "Y")
 
-    async def test_update_cylinder_properties(self):
+    async def test_update_cylinder_properties(self) -> None:
         """Test that cylinder property updates synchronize correctly through WorldBinding."""
         stage_cylinder = Cylinder(
             paths="/World/Cylinder",
@@ -573,7 +577,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(planning_world_cylinder.length, 0.5)
         self.assertEqual(planning_world_cylinder.axis, "X")
 
-    async def test_add_mesh(self):
+    async def test_add_mesh(self) -> None:
         """Test that mesh objects are correctly added and tracked in WorldBinding."""
         stage_mesh = Mesh(
             paths="/World/Mesh",
@@ -685,7 +689,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.isclose(planning_world_mesh.scale, [1.0, 1.0, 1.0]).all())
         self.assertFalse(planning_world_mesh.enabled)
 
-    async def test_add_triangulated_mesh(self):
+    async def test_add_triangulated_mesh(self) -> None:
         """Test that triangulated mesh representation is correctly created and tracked."""
         stage_mesh = Mesh(
             paths="/World/Mesh",
@@ -793,7 +797,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         self.assertTrue(np.isclose(planning_world_mesh.pose[1], [0.0, 1.0, 0.0, 0.0]).all())
         self.assertTrue(np.isclose(planning_world_mesh.scale, [1.0, 1.0, 1.0]).all())
 
-    async def test_add_oriented_bounding_box(self):
+    async def test_add_oriented_bounding_box(self) -> None:
         """Test that oriented bounding box representation is correctly created and tracked."""
         sphere_path = "/World/Sphere"
         stage_sphere = Sphere(
@@ -866,7 +870,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         print(planning_world_obb.half_side_length)
         self.assertTrue(np.allclose(planning_world_obb.half_side_length, np.array([0.5, 0.5, 0.5], dtype=np.float32)))
 
-    async def test_world_binding_validates_ancestor_scaling(self):
+    async def test_world_binding_validates_ancestor_scaling(self) -> None:
         """Integration test to verify that WorldBinding performs scene validation and rejects prims with invalid ancestor scaling."""
         # Create a parent with non-identity scaling
         parent = Sphere(
@@ -909,7 +913,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         # Verify WorldBinding was not initialized
         self.assertFalse(world_binding._initialized)
 
-    async def test_synchronize_transforms(self):
+    async def test_synchronize_transforms(self) -> None:
         """Test that synchronize_transforms updates only poses without checking properties."""
         # Create a sphere
         stage_sphere = Sphere(
@@ -959,7 +963,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(planning_world_sphere.radius, 0.05)
         self.assertTrue(planning_world_sphere.enabled)
 
-    async def test_synchronize_properties(self):
+    async def test_synchronize_properties(self) -> None:
         """Test that synchronize_properties updates shape properties using change tracking."""
         # Create a sphere
         stage_sphere = Sphere(
@@ -1012,7 +1016,7 @@ class TestWorldBinding(omni.kit.test.AsyncTestCase):
         self.assertFalse(np.isclose(planning_world_sphere.pose[0], [5.0, 6.0, 7.0]).all())
         self.assertFalse(np.isclose(planning_world_sphere.pose[1], [0.0, 1.0, 0.0, 0.0]).all())
 
-    async def test_motion_generation_collision_api(self):
+    async def test_motion_generation_collision_api(self) -> None:
         """Test WorldBinding with the motion generation collision API."""
         import omni.usd
         from isaacsim.robot_motion.schema import apply_motion_planning_api

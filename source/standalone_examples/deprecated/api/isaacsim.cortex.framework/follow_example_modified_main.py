@@ -16,6 +16,7 @@
 """Demonstrate a modified Franka follow example with context monitors for gripper control."""
 
 import argparse
+from typing import Any
 
 from isaacsim import SimulationApp
 
@@ -41,20 +42,20 @@ class FollowState(DfState):
     """
 
     @property
-    def robot(self):
+    def robot(self) -> Any:
         """Return the robot from the context."""
         return self.context.robot
 
     @property
-    def follow_sphere(self):
+    def follow_sphere(self) -> Any:
         """Return the follow sphere from the robot."""
         return self.context.robot.follow_sphere
 
-    def enter(self):
+    def enter(self) -> None:
         """Initialize the follow sphere pose to the current end-effector position."""
         self.follow_sphere.set_world_pose(*self.robot.arm.get_fk_pq().as_tuple())
 
-    def step(self):
+    def step(self) -> Any:
         """Send the end effector toward the follow sphere, clamping height above the ground."""
         target_position, _ = self.follow_sphere.get_world_pose()
         target_position[2] = max(target_position[2], 0.02)
@@ -65,7 +66,7 @@ class FollowState(DfState):
 class FollowContext(DfRobotApiContext):
     """Extend the robot API context with end-effector and gripper monitors."""
 
-    def __init__(self, robot):
+    def __init__(self, robot: Any) -> None:
         super().__init__(robot)
         self.reset()
 
@@ -73,29 +74,29 @@ class FollowContext(DfRobotApiContext):
             [FollowContext.monitor_end_effector, FollowContext.monitor_gripper, FollowContext.monitor_diagnostics]
         )
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset the target-reached flag."""
         self.is_target_reached = False
 
-    def monitor_end_effector(self):
+    def monitor_end_effector(self) -> None:
         """Check whether the end effector has reached the target sphere."""
         eff_p = self.robot.arm.get_fk_p()
         target_p, _ = self.robot.follow_sphere.get_world_pose()
         self.is_target_reached = np.linalg.norm(target_p - eff_p) < 0.01
 
-    def monitor_gripper(self):
+    def monitor_gripper(self) -> None:
         """Close the gripper when the target is reached, otherwise open it."""
         if self.is_target_reached:
             self.robot.gripper.close()
         else:
             self.robot.gripper.open()
 
-    def monitor_diagnostics(self):
+    def monitor_diagnostics(self) -> None:
         """Print the current target-reached status."""
-        print("is_target_reached: {}".format(self.is_target_reached))
+        print(f"is_target_reached: {self.is_target_reached}")
 
 
-def main():
+def main() -> None:
     """Set up and run the modified Franka follow sphere example."""
     world = CortexWorld()
     robot = world.add_robot(add_franka_to_stage(name="franka", prim_path="/World/Franka"))
@@ -115,7 +116,7 @@ def main():
     if args.test:
         _test_frames = {"count": 0}
 
-        def _test_done_cb():
+        def _test_done_cb() -> bool:
             _test_frames["count"] += 1
             return _test_frames["count"] >= 10
 

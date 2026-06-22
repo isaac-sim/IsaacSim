@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Verifies effort sensor OmniGraph nodes for valid and invalid inputs, stop-play lifecycle behavior, and ignored deprecated enabled input handling."""
+
 import asyncio
 
 import isaacsim.core.experimental.utils.prim as prim_utils
@@ -30,15 +32,19 @@ from .common import step_simulation
 
 
 class TestEffortSensorOgn(omni.kit.test.AsyncTestCase):
-    async def setUp(self):
+    """Exercise the effort sensor read node on the SimpleArticulation revolute joint."""
+
+    async def setUp(self) -> None:
+        """Load the articulation, configure physics, and create the effort reader graph."""
         await stage_utils.create_new_stage_async()
         physics_rate = 60
         SimulationManager.setup_simulation(dt=1.0 / physics_rate)
         self._timeline = omni.timeline.get_timeline_interface()
-        await self.setUp_environment()
+        await self.setup_environment()
         await self.setup_ogn()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
+        """Stop playback, invalidate physics, and wait for any stage loading to finish."""
         if self._timeline.is_playing():
             self._timeline.stop()
         SimulationManager.invalidate_physics()
@@ -47,10 +53,9 @@ class TestEffortSensorOgn(omni.kit.test.AsyncTestCase):
             # print("tearDown, assets still loading, waiting to finish...")
             await asyncio.sleep(1.0)
         await omni.kit.app.get_app().next_update_async()
-        pass
 
-    async def setUp_environment(self):
-
+    async def setup_environment(self) -> None:
+        """Load SimpleArticulation and set the revolute joint axis used by effort reads."""
         assets_root_path = get_assets_root_path()
 
         asset_path = assets_root_path + "/Isaac/Robots/IsaacSim/SimpleArticulation/simple_articulation.usd"
@@ -60,7 +65,8 @@ class TestEffortSensorOgn(omni.kit.test.AsyncTestCase):
         joint = UsdPhysics.RevoluteJoint(arm_prim)
         joint.CreateAxisAttr("Y")
 
-    async def setup_ogn(self):
+    async def setup_ogn(self) -> None:
+        """Create an OnPlaybackTick-driven IsaacReadEffortSensor node graph."""
         self.graph_path = "/TestGraph"
 
         if prim_utils.get_prim_at_path(self.graph_path).IsValid():
@@ -84,7 +90,8 @@ class TestEffortSensorOgn(omni.kit.test.AsyncTestCase):
             print(e)
 
     # verifying force value and sensor time are non-zero in valid case
-    async def test_valid_effort_sensor_ogn(self):
+    async def test_valid_effort_sensor_ogn(self) -> None:
+        """Verify a valid revolute-joint prim produces nonzero effort and sensor time."""
         og.Controller.set(
             og.Controller.attribute(self.graph_path + "/ReadEffortNode.inputs:prim"),
             [usdrt.Sdf.Path("/Articulation/Arm/RevoluteJoint")],
@@ -98,7 +105,7 @@ class TestEffortSensorOgn(omni.kit.test.AsyncTestCase):
         sensor_time = og.Controller.attribute(self.graph_path + "/ReadEffortNode.outputs:sensorTime").get()
         self.assertNotEqual(sensor_time, 0.0)
 
-    async def test_invalid_effort_sensor_ogn(self):
+    async def test_invalid_effort_sensor_ogn(self) -> None:
         """Outputs remain zero when no prim is set."""
         self._timeline.play()
         await step_simulation(0.5)
@@ -109,7 +116,7 @@ class TestEffortSensorOgn(omni.kit.test.AsyncTestCase):
         sensor_time = og.Controller.attribute(self.graph_path + "/ReadEffortNode.outputs:sensorTime").get()
         self.assertEqual(sensor_time, 0.0)
 
-    async def test_effort_sensor_stop_play_lifecycle(self):
+    async def test_effort_sensor_stop_play_lifecycle(self) -> None:
         """Outputs reset to defaults after stop/play cycle and recover valid data."""
         og.Controller.set(
             og.Controller.attribute(self.graph_path + "/ReadEffortNode.inputs:prim"),
@@ -136,7 +143,7 @@ class TestEffortSensorOgn(omni.kit.test.AsyncTestCase):
         sensor_time_after = og.Controller.attribute(self.graph_path + "/ReadEffortNode.outputs:sensorTime").get()
         self.assertNotEqual(sensor_time_after, 0.0, "Should have non-zero time after stop/play")
 
-    async def test_effort_sensor_deprecated_enabled_input_ignored(self):
+    async def test_effort_sensor_deprecated_enabled_input_ignored(self) -> None:
         """Setting the deprecated 'enabled' input to False should not affect outputs."""
         og.Controller.set(
             og.Controller.attribute(self.graph_path + "/ReadEffortNode.inputs:prim"),

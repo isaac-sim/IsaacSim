@@ -174,7 +174,13 @@ class TestCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_data(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that camera sensor data is correctly retrieved for all annotators."""
+        """Test that camera sensor data is correctly retrieved for all annotators.
+
+        Args:
+            prim: Camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for path in prim.camera.paths:
             ViewportManager.set_camera_view(path, eye=[3.0, 1.25, 1.0], target=[0.0, 0.0, 0.25])
         # get frame
@@ -302,7 +308,13 @@ class TestCameraSensor(omni.kit.test.AsyncTestCase):
         populate_stage_func=populate_stage,
     )
     async def test_render_vars(self, prim: Any, num_prims: int, operation: str) -> None:
-        """Test that custom render_vars are accepted and the sensor still produces data."""
+        """Test that custom render_vars are accepted and the sensor still produces data.
+
+        Args:
+            prim: Camera sensor under test.
+            num_prims: Number of camera prims created by the parametrized fixture.
+            operation: Parametrized fixture operation name.
+        """
         for path in prim.camera.paths:
             ViewportManager.set_camera_view(path, eye=[3.0, 1.25, 1.0], target=[0.0, 0.0, 0.25])
         for i in range(10):

@@ -13,15 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the USD authoring utilities in `usd_authoring.py`.
-
-Each test authors one or more `NewtonActuator` prims via `add_actuator`, then
-either inspects the authored USD attributes directly on the prim (for value
-correctness) or constructs an `ArticulationActuators` and checks that the
-expected component types were discovered (for round-trip correctness).
-
-Physics does not need to be started for any test in this file.
-"""
+"""Verifies USD authoring helpers for Newton actuator components. Covers controller, clamping, and delay prim creation, authored attributes and relationships, target validation, overwrite behavior, discovery round trips, and invalid configuration errors."""
 
 from __future__ import annotations
 
@@ -53,7 +45,7 @@ from newton.actuators import (
     ControllerPID,
     Delay,
 )
-from pxr import Sdf, Usd
+from pxr import Usd
 
 _SIMPLE_ART_REL_PATH = "Isaac/Robots/IsaacSim/SimpleArticulation/simple_articulation.usd"
 _ART_ROOT = "/World/A_0"
@@ -95,6 +87,7 @@ class TestUsdAuthoring(omni.kit.test.AsyncTestCase):
     """Tests for `add_actuator` and the companion config dataclasses."""
 
     async def setUp(self) -> None:
+        """Prepare the USD authoring test stage."""
         super().setUp()
         await stage_utils.create_new_stage_async()
         stage_utils.define_prim("/World", "Xform")
@@ -103,6 +96,7 @@ class TestUsdAuthoring(omni.kit.test.AsyncTestCase):
         stage_utils.add_reference_to_stage(usd_path=usd_path, path=_ART_ROOT)
 
     async def tearDown(self) -> None:
+        """Clean up the USD authoring test stage."""
         super().tearDown()
 
     # ------------------------------------------------------------------
@@ -158,6 +152,13 @@ class TestUsdAuthoring(omni.kit.test.AsyncTestCase):
         which is the simplest path that ``newton.actuators.utils.load_checkpoint`` accepts.
         The networks are intentionally minimal — these tests verify the actuator can
         be *built* (i.e. parsed and constructed); they do not exercise ``compute()``.
+
+        Args:
+            tmp_dir: Directory where the checkpoint file is written.
+            model_type: Neural controller type to encode in checkpoint metadata.
+
+        Returns:
+            Absolute path to the saved checkpoint file.
         """
         if model_type == "mlp":
             net = _torch.nn.Sequential(_torch.nn.Linear(2, 1))

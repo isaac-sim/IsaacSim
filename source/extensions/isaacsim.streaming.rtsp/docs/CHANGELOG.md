@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.4] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [0.1.3] - 2026-04-27
 ### Added
 - Pass configured SRTX sensor-set names from `RTSPCameraHelper` to `RTSPStreamWriter` and into the `LdrColor` annotator `init_params`. Resolution is delegated to `omni.replicator.srtx.resolve_sensor_set_name_for_render_product()`.

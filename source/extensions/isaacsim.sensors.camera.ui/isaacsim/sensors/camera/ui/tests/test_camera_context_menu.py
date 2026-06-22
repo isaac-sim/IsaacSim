@@ -26,7 +26,7 @@ from isaacsim.test.utils import MenuUITestCase, count_menu_items, get_all_menu_p
 class TestCameraContextMenu(MenuUITestCase):
     """Test camera context menu."""
 
-    async def test_camera_context_menu_count(self):
+    async def test_camera_context_menu_count(self) -> None:
         """Test that all the Camera and Depth Sensor menu items are added correctly.
 
         The expected count is derived dynamically from ``Extension.SENSORS`` (the same
@@ -46,7 +46,7 @@ class TestCameraContextMenu(MenuUITestCase):
             f"The number of items in the Camera and Depth Sensors menu ({n_items}) does not match the expected ({expected_items})",
         )
 
-    async def test_camera_sensors_context_menu_click(self):
+    async def test_camera_sensors_context_menu_click(self) -> None:
         """Test the Camera and Depth Sensors are added to stage context menus correctly."""
         viewport_context_menu = await self.get_viewport_context_menu()
         self.assertIsNotNone(viewport_context_menu, "Failed to get viewport context menu")

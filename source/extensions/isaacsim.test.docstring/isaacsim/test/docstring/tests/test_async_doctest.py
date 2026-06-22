@@ -27,14 +27,14 @@ class TestAsyncDocTest(isaacsim.test.docstring.AsyncDocTestCase):
     """
 
     # Before running each test
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up the test fixture before each test method is run."""
 
     # After running each test
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up after each test method has run."""
 
-    async def test_async_doctest_case(self):
+    async def test_async_doctest_case(self) -> None:
         """Test AsyncDocTestCase docstring examples."""
         from isaacsim.test.docstring import AsyncDocTestCase
 

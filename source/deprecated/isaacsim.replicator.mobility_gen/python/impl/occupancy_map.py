@@ -18,7 +18,6 @@
 import enum
 import os
 
-import cv2
 import numpy as np
 import PIL.Image
 import yaml
@@ -374,6 +373,8 @@ resolution, origin, negate flag, occupied threshold, and free threshold."""
         Returns:
             The buffered (aka: dilated / padded) occupancy map.
         """
+        import cv2
+
         buffer_distance_pixels = int(buffer_distance_pixels)
 
         radius = buffer_distance_pixels

@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.17] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [2.0.16] - 2026-04-13
 ### Deprecated
 - Extension deprecated. Will be replaced in 7.0 with simple examples and open source equivalents.

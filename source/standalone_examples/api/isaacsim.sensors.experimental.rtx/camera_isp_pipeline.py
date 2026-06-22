@@ -116,7 +116,7 @@ _demosaic = _camera_image_utils._demosaic_nearest_neighbor
 _read_isp_ayuv = _camera_image_utils._read_isp_ayuv
 
 
-def _read_last_frame(bin_path, frame_bytes):
+def _read_last_frame(bin_path: str, frame_bytes: int) -> bytes:
     """Read the last *frame_bytes* from a (possibly multi-frame) binary file."""
     file_size = os.path.getsize(bin_path)
     if file_size < frame_bytes:
@@ -126,7 +126,7 @@ def _read_last_frame(bin_path, frame_bytes):
         return fh.read(frame_bytes)
 
 
-def _normalize_to_uint8(arr):
+def _normalize_to_uint8(arr: np.ndarray) -> np.ndarray:
     """Normalize a float/int array to uint8 [0, 255]."""
     arr = np.nan_to_num(arr.astype(np.float64), nan=0.0, posinf=0.0, neginf=0.0)
     max_val = arr.max()
@@ -135,7 +135,7 @@ def _normalize_to_uint8(arr):
     return (np.clip(arr, 0, 1) * 255).astype(np.uint8)
 
 
-def _convert_isp_bins_to_images(output_dir, height, width, cfa_pattern):
+def _convert_isp_bins_to_images(output_dir: str, height: int, width: int, cfa_pattern: str) -> None:
     """Convert ISP introspection .bin files to .png images."""
     import tempfile
 

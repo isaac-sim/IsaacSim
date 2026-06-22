@@ -1,5 +1,5 @@
 [package]
-version = "3.6.1"
+version = "3.6.2"
 category = "Simulation"
 title = "Robot Description Editor"
 description = "Generates and edit Lula robot_description YAML files"
@@ -74,8 +74,10 @@ args = [
     "--/rtx/descriptorSets=360000",
     "--/rtx/hydra/enableSemanticSchema=1",
     "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
     "--/rtx/materialDb/syncLoads=1",
     "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
     "--/rtx/reservedDescriptors=900000",
 ]
 stdoutFailPatterns.exclude = [

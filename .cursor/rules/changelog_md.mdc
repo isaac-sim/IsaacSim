@@ -1,0 +1,65 @@
+---
+description: Rules for writing and maintaining extension CHANGELOG.md files
+globs: source/extensions/**/docs/CHANGELOG.md,source/deprecated/**/docs/CHANGELOG.md
+---
+
+# Extension CHANGELOG.md Rules
+
+## Purpose
+
+Every Isaac Sim extension has a `docs/CHANGELOG.md` that records notable changes per
+version. It is a quick-scan history for users and maintainers, not a narrative or a
+substitute for the git log.
+
+## Keep It Concise
+
+Changelogs MUST be kept concise. Brevity is the priority.
+
+- An entry can be multiple sentences or span multiple lines when needed — just keep it
+  concise. Say what changed and why it matters, then stop.
+- Lead with the affected symbol/file when relevant (e.g., `` `ClassName.method`: ... ``),
+  then the change.
+- Omit empty sections. Only include headers that have entries.
+- Do NOT include: implementation walkthroughs, reasoning paragraphs, migration tutorials,
+  code blocks, screenshots, or restated diffs. Link or point to docs instead.
+- Do NOT duplicate Overview.md content or full API reference details.
+- Do NOT include task, bug, or issue tracker IDs. Describe the user-visible change instead;
+  internal references stay in the commit/MR, not the changelog.
+- Prefer the smallest set of entries that accurately captures user-visible impact. Collapse
+  many tiny internal tweaks into a single representative entry rather than listing each one.
+
+## Format
+
+Follow the [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) format.
+
+- `# Changelog` heading at the top of the file.
+- Changelogs are for humans, not machines — write notable changes, not a git log dump.
+- Newest version first (reverse chronological), using `## [X.Y.Z] - YYYY-MM-DD` with
+  ISO 8601 (`YYYY-MM-DD`) dates.
+- The version MUST match `version` in `config/extension.toml`, and versions should adhere to
+  [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+- Group entries under the standard Keep a Changelog headers, in this order when present:
+  `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed`, `### Security`.
+  - `Added` for new features.
+  - `Changed` for changes in existing functionality.
+  - `Deprecated` for soon-to-be removed features.
+  - `Removed` for now removed features.
+  - `Fixed` for bug fixes.
+  - `Security` for vulnerability fixes.
+- Group the same types of changes together; always list deprecations, removals, and breaking
+  changes so upgrades are predictable.
+- Use present/past tense consistently with existing entries; write in imperative or
+  descriptive mood ("Add ...", "Fix ...", or "Added ...", "Fixed ...").
+
+## Example
+
+```markdown
+# Changelog
+
+## [0.2.1] - 2026-04-27
+### Fixed
+- `MobilityGenRobot.get_pose_2d`: fix `NameError` for missing `np` import.
+
+### Changed
+- Replay runs with multi-GPU rendering disabled.
+```

@@ -52,7 +52,7 @@ class PolicyController(ABC):
         usd_path: str | None = None,
         position: list[float] | None = None,
         orientation: list[float] | None = None,
-    ):
+    ) -> None:
         prim = get_prim_at_path(prim_path)
 
         if not prim.IsValid():
@@ -126,7 +126,7 @@ class PolicyController(ABC):
         set_gains: bool = True,
         set_limits: bool = True,
         set_articulation_props: bool = True,
-    ):
+    ) -> None:
         """Initializes the robot and sets up the controller.
 
         Args:
@@ -170,7 +170,7 @@ class PolicyController(ABC):
         if set_articulation_props and not is_newton:
             self._set_articulation_props()
 
-    def _set_articulation_props(self):
+    def _set_articulation_props(self) -> None:
         """Sets the articulation root properties from the policy environment parameters."""
         articulation_prop = get_articulation_props(self.policy_env_params)
 
@@ -273,6 +273,6 @@ class PolicyController(ABC):
             "Forward needs to be implemented to compute and apply robot control from observations"
         )
 
-    def post_reset(self):
+    def post_reset(self) -> None:
         """Called after the controller is reset."""
         self.robot.reset_to_default_state()

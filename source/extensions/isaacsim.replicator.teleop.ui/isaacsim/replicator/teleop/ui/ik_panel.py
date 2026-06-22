@@ -67,7 +67,15 @@ def set_status(
     emit_terminal: bool = False,
     side: str | None = None,
 ) -> None:
-    """Set the status label text and color for this panel."""
+    """Set the status label text and color for this panel.
+
+    Args:
+        label: Label widget to update.
+        text: Status text to display.
+        color: Label text color.
+        emit_terminal: Whether to print the status change to the terminal.
+        side: Optional controller side for terminal log tagging.
+    """
     _set_status_base(label, text, color, source=_LOG_NAMESPACE, emit_terminal=emit_terminal, side=side)
 
 
@@ -75,7 +83,13 @@ _SETTINGS_PREFIX = "/persistent/exts/isaacsim.replicator.teleop/ik"
 
 
 class IKPanel:
-    """Panel for robot arm IK: path, EE link dropdown, tuning, enable/disable."""
+    """Panel for robot arm IK: path, EE link dropdown, tuning, enable/disable.
+
+    Args:
+        ik_controller: Controller backing robot IK tracking.
+        teleop_manager: Shared teleop manager for controller state.
+        collapsed_states: Mutable panel collapsed-state cache.
+    """
 
     def __init__(
         self,
@@ -169,7 +183,11 @@ class IKPanel:
     # ------------------------------------------------------------------
 
     def _build_arm_section(self, side: str) -> None:
-        """Build one arm section with all controls."""
+        """Build one arm section with all controls.
+
+        Args:
+            side: Controller side for the arm section.
+        """
         w = self._widgets[side]
         side_key = f"{_PANEL_NAME}:{side}"
         with ui.CollapsableFrame(
@@ -425,7 +443,15 @@ class IKPanel:
     # ------------------------------------------------------------------
 
     def _get_field(self, side: str, key: str) -> object:
-        """Return the widget stored under the given key for this side."""
+        """Return the widget stored under the given key for this side.
+
+        Args:
+            side: Controller side containing the widget.
+            key: Widget key to read.
+
+        Returns:
+            Stored widget, or None if the key is not present.
+        """
         return self._widgets[side].get(key)
 
     def _get_path(self, side: str) -> str:
@@ -443,7 +469,14 @@ class IKPanel:
         return ""
 
     def _set_combo_silent(self, side: str, guard_key: str, combo: object, value: int) -> None:
-        """Set a combo box value without triggering its change callback."""
+        """Set a combo box value without triggering its change callback.
+
+        Args:
+            side: Controller side owning the combo box.
+            guard_key: Guard flag suffix used while updating.
+            combo: Combo box widget to update.
+            value: Combo box index to set.
+        """
         guard = f"_updating_{guard_key}"
         flags = getattr(self, guard, None)
         if flags is None:
@@ -455,7 +488,14 @@ class IKPanel:
             flags[side] = False
 
     def _get_solver(self, side: str) -> IKSolverType:
-        """Return the current solver type from the controller."""
+        """Return the current solver type from the controller.
+
+        Args:
+            side: Controller side to query.
+
+        Returns:
+            Current solver type.
+        """
         return self._ik.get_solver_type(side)
 
     def _get_selected_pink_qp_solver(self, side: str) -> str:
@@ -478,7 +518,12 @@ class IKPanel:
         self._set_combo_silent(side, "pink_qp_solver_combo", combo, idx)
 
     def _populate_ee_combo(self, side: str, link_names: list[str]) -> None:
-        """Replace ComboBox items with the given link names."""
+        """Replace ComboBox items with the given link names.
+
+        Args:
+            side: Controller side owning the combo box.
+            link_names: Link names to display.
+        """
         self._link_names[side] = list(link_names)
         combo = self._get_field(side, "ee_combo")
         if combo is None:
@@ -496,7 +541,11 @@ class IKPanel:
             self._updating_ee_combo[side] = False
 
     def _push_side_settings(self, side: str) -> None:
-        """Push current widget values to the controller for one side."""
+        """Push current widget values to the controller for one side.
+
+        Args:
+            side: Controller side to update.
+        """
         path = self._get_path(side)
         if path:
             self._ik.set_articulation_path(side, path)
@@ -543,7 +592,12 @@ class IKPanel:
         self._apply_ee_selection(side, update_status=True)
 
     def _apply_ee_selection(self, side: str, update_status: bool) -> None:
-        """Apply current EE selection to controller and optionally refresh status."""
+        """Apply current EE selection to controller and optionally refresh status.
+
+        Args:
+            side: Controller side to update.
+            update_status: Whether to refresh the status label.
+        """
         ee_name = self._get_ee_link_name(side)
         self._ik.set_ee_link_name(side, ee_name)
         if ee_name:
@@ -570,7 +624,12 @@ class IKPanel:
     _ROTATION_OFFSET_LABELS = list(ROTATION_OFFSET_LABELS)
 
     def _on_solver_changed(self, side: str, index: int) -> None:
-        """Switch IK solver type (lightweight swap — no USD queries)."""
+        """Switch IK solver type without USD queries.
+
+        Args:
+            side: Controller side to update.
+            index: Solver combo index.
+        """
         if self._updating_solver_combo.get(side, False):
             return
         solver = self._available_solvers[index] if index < len(self._available_solvers) else IKSolverType.POSITION_BASED
@@ -605,7 +664,11 @@ class IKPanel:
         return IKMethod.SVD
 
     def _sync_method_combo(self, side: str) -> None:
-        """Sync the method combo index to match the controller's current method."""
+        """Sync the method combo index to match the controller's current method.
+
+        Args:
+            side: Controller side to sync.
+        """
         combo = self._get_field(side, "method_combo")
         if combo is None:
             return
@@ -707,7 +770,12 @@ class IKPanel:
     # ------------------------------------------------------------------
 
     def _apply_config_to_side(self, side: str, cfg: dict) -> None:
-        """Populate one side's widgets from a config dict (does not auto-configure)."""
+        """Populate one side's widgets from a config dict without auto-configuring.
+
+        Args:
+            side: Controller side to populate.
+            cfg: Profile settings for the side.
+        """
         w = self._widgets[side]
 
         if "robot_path" in cfg:
@@ -788,7 +856,14 @@ class IKPanel:
         self._sync_side_controls(side)
 
     def _collect_side_settings(self, side: str) -> dict:
-        """Read current widget values for a side into a config dict."""
+        """Read current widget values for a side into a config dict.
+
+        Args:
+            side: Controller side to read.
+
+        Returns:
+            Profile settings for the side.
+        """
         w = self._widgets[side]
         settings: dict = {}
         path_field = w.get("path")
@@ -839,7 +914,11 @@ class IKPanel:
         return settings
 
     def collect_profile(self) -> BimanualControllerProfile:
-        """Collect the current IK-controller state into a teleop profile section."""
+        """Collect the current IK-controller state into a teleop profile section.
+
+        Returns:
+            IK-controller profile section.
+        """
         return BimanualControllerProfile(
             left=ControllerSideProfile(
                 enabled=self._desired_enabled["left"],
@@ -852,7 +931,12 @@ class IKPanel:
         )
 
     def apply_profile(self, profile: BimanualControllerProfile, resolve_stage: bool) -> None:
-        """Apply an IK-controller teleop profile section."""
+        """Apply an IK-controller teleop profile section.
+
+        Args:
+            profile: IK-controller profile section to apply.
+            resolve_stage: Whether to validate profile paths against the active stage.
+        """
         for side, side_profile in (("left", profile.left), ("right", profile.right)):
             self._ik.disable(side)
             self._ik.destroy(side)
@@ -888,6 +972,9 @@ class IKPanel:
 
         Changing the path destroys any existing solver so stale resources
         are not kept.
+
+        Args:
+            side: Controller side to configure.
         """
         if self._is_playing:
             return
@@ -940,7 +1027,11 @@ class IKPanel:
         self._sync_side_controls(side)
 
     def _on_clear(self, side: str) -> None:
-        """Disable (if running) and destroys solver and articulation resources."""
+        """Disable and destroy solver and articulation resources.
+
+        Args:
+            side: Controller side to clear.
+        """
         if self._is_playing:
             return
         self._ik.disable(side)
@@ -983,7 +1074,11 @@ class IKPanel:
         self._sync_side_controls(side)
 
     def _sync_side_controls(self, side: str) -> None:
-        """Single method that synchronises all UI widgets from controller state."""
+        """Synchronize all UI widgets from controller state.
+
+        Args:
+            side: Controller side to sync.
+        """
         configured = self._configured[side]
         running = self._ik.is_running(side)
         solver = self._get_solver(side)
@@ -1040,7 +1135,12 @@ class IKPanel:
             self._sync_side_controls(side)
 
     def on_reachability_changed(self, side: str, reachable: bool) -> None:
-        """Called by the IK controller when reachability changes during play."""
+        """Handle IK reachability changes during play.
+
+        Args:
+            side: Controller side whose reachability changed.
+            reachable: Whether the current target is reachable.
+        """
         if not self._ik.is_running(side):
             return
         status = self._get_field(side, "status")

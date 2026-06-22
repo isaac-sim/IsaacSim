@@ -29,16 +29,15 @@ class PytorchListener:
         This class is deprecated and will be removed in a future version. No replacement is provided.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.data = {}
 
-    def write_data(self, data: dict):
+    def write_data(self, data: dict) -> None:
         """Update the existing data in the listener with the new data provided.
 
         Args:
             data: New data retrieved from writer.
         """
-
         self.data.update(data)
 
     def get_rgb_data(self) -> "torch.Tensor | None":
@@ -47,7 +46,6 @@ class PytorchListener:
         Returns:
             Images in batched pytorch tensor form.
         """
-
         if "pytorch_rgb" in self.data:
             images = self.data["pytorch_rgb"]
             images = images[..., :3]

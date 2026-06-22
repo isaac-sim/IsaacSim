@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.3.2] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.3.1] - 2026-04-02
 ### Fixed
 - Replace mutable default arguments (`[]`, `{}`) with `None` defaults across `_doctest.py`, `async_doctest.py`, and `standalone_doctest.py`

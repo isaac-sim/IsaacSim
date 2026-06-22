@@ -13,7 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ROS 2 joint state publisher OmniGraph node."""
+"""Verify ROS 2 joint state publishing and subscribing.
+
+Covers articulation publishers, joint state sensors, default and explicit joint
+names, subscriber commands, and joint-name overrides.
+"""
 
 import omni.graph.core as og
 
@@ -41,10 +45,10 @@ from .common import (
 
 
 class TestRos2JointStatePublisher(ROS2TestCase):
-    """Test suite for ros2 joint state publisher."""
+    """Verify JointState publishing from articulation target prims."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Load the simple articulation asset for publisher tests."""
         await super().setUp()
 
         ## load asset and setup ROS bridge
@@ -82,16 +86,14 @@ class TestRos2JointStatePublisher(ROS2TestCase):
         except Exception as e:
             print(e)
 
-        pass
-
-    async def test_joint_state_position_publisher(self):
+    async def test_joint_state_position_publisher(self) -> None:
         """Test joint state position publisher."""
         import rclpy
         from sensor_msgs.msg import JointState
 
         self.js_ros = JointState()
 
-        def js_callback(data: JointState):
+        def js_callback(data: JointState) -> None:
             self.js_ros.position = data.position
             self.js_ros.velocity = data.velocity
             self.js_ros.effort = data.effort
@@ -99,7 +101,7 @@ class TestRos2JointStatePublisher(ROS2TestCase):
         node = self.create_node("isaac_sim_test_joint_state_pub_sub")
         js_sub = self.create_subscription(node, JointState, "joint_states", js_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         default_position = [-80 * PI / 180.0, 0.4, 30 * PI / 180.0]
@@ -130,20 +132,20 @@ class TestRos2JointStatePublisher(ROS2TestCase):
         node.destroy_subscription(js_sub)
         node.destroy_node()
 
-    async def test_joint_state_velocity_publisher(self):
+    async def test_joint_state_velocity_publisher(self) -> None:
         """Test joint state velocity publisher."""
         import rclpy
         from sensor_msgs.msg import JointState
 
         self.js_ros = JointState()
 
-        def js_callback(data: JointState):
+        def js_callback(data: JointState) -> None:
             self.js_ros.velocity = data.velocity
 
         node = self.create_node("isaac_sim_test_joint_state_pub_sub")
         js_sub = self.create_subscription(node, JointState, "joint_states", js_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         test_velocities = [5 * PI / 180.0, 0.1, -2.5 * PI / 180.0]
@@ -183,10 +185,10 @@ class TestRos2JointStatePublisher(ROS2TestCase):
 
 
 class TestRos2JointStatePublisherFromSensor(ROS2TestCase):
-    """Test ROS2 Publish Joint State using the new path: Isaac Read Joint State outputs connected (no targetPrim)."""
+    """Verify JointState publishing from Isaac Read Joint State sensor outputs."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Load the simple articulation asset for sensor-output tests."""
         await super().setUp()
         if SimulationManager.get_active_physics_engine() == "newton":
             self.skipTest("IsaacReadJointState sensor node requires PhysX backend")
@@ -228,14 +230,14 @@ class TestRos2JointStatePublisherFromSensor(ROS2TestCase):
         except Exception as e:
             print(e)
 
-    async def test_joint_state_position_publisher_from_sensor(self):
+    async def test_joint_state_position_publisher_from_sensor(self) -> None:
         """Publish joint state from Isaac Read Joint State outputs; verify positions on joint_states topic."""
         import rclpy
         from sensor_msgs.msg import JointState
 
         self.js_ros = JointState()
 
-        def js_callback(data: JointState):
+        def js_callback(data: JointState) -> None:
             self.js_ros.position = data.position
             self.js_ros.velocity = data.velocity
             self.js_ros.effort = data.effort
@@ -243,7 +245,7 @@ class TestRos2JointStatePublisherFromSensor(ROS2TestCase):
         node = self.create_node("isaac_sim_test_joint_state_pub_sensor")
         js_sub = self.create_subscription(node, JointState, "joint_states", js_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         default_position = [-80 * PI / 180.0, 0.4, 30 * PI / 180.0]
@@ -274,20 +276,20 @@ class TestRos2JointStatePublisherFromSensor(ROS2TestCase):
         node.destroy_subscription(js_sub)
         node.destroy_node()
 
-    async def test_joint_state_velocity_publisher_from_sensor(self):
+    async def test_joint_state_velocity_publisher_from_sensor(self) -> None:
         """Publish joint state from Isaac Read Joint State; verify velocities on joint_states topic."""
         import rclpy
         from sensor_msgs.msg import JointState
 
         self.js_ros = JointState()
 
-        def js_callback(data: JointState):
+        def js_callback(data: JointState) -> None:
             self.js_ros.velocity = data.velocity
 
         node = self.create_node("isaac_sim_test_joint_state_pub_sensor_vel")
         js_sub = self.create_subscription(node, JointState, "joint_states", js_callback, get_qos_profile())
 
-        def spin():
+        def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
         joint_paths = [
@@ -323,10 +325,10 @@ class TestRos2JointStatePublisherFromSensor(ROS2TestCase):
 
 
 class TestRos2JointStateSubscriber(ROS2TestCase):
-    """Test suite for ros2 joint state subscriber."""
+    """Verify JointState subscriber command behavior and joint-name resolution."""
 
-    async def setUp(self):
-        """Set up test fixtures."""
+    async def setUp(self) -> None:
+        """Load the simple articulation asset for subscriber command tests."""
         await super().setUp()
 
         ## load asset and setup ROS bridge
@@ -373,9 +375,7 @@ class TestRos2JointStateSubscriber(ROS2TestCase):
         except Exception as e:
             print(e)
 
-        pass
-
-    async def test_joint_state_subscriber_node(self):
+    async def test_joint_state_subscriber_node(self) -> None:
         """Test if the joint state subscriber node is able to receive the joint state commands."""
         from sensor_msgs.msg import JointState
 
@@ -417,7 +417,7 @@ class TestRos2JointStateSubscriber(ROS2TestCase):
         self.assertAlmostEqual(efforts_received[1], js_position.effort[1], delta=1e-3)
         self.assertAlmostEqual(efforts_received[2], js_position.effort[2], delta=1e-3)
 
-    async def test_joint_state_subscriber(self):
+    async def test_joint_state_subscriber(self) -> None:
         """Test if the joint state subscriber is able to move the robot as expected."""
         from sensor_msgs.msg import JointState
 
@@ -439,7 +439,7 @@ class TestRos2JointStateSubscriber(ROS2TestCase):
 
         art_handle = Articulation("/Articulation")
 
-        def reset_robot():
+        def reset_robot() -> None:
             art_handle.set_dof_positions([0.0, 0.0, 0.0])
             post_reset = art_handle.get_dof_positions().numpy().flatten()
             self.assertAlmostEqual(post_reset[0], 0, delta=1e-3)
@@ -528,7 +528,7 @@ class TestRos2JointStateSubscriber(ROS2TestCase):
         ros2_node.destroy_publisher(ros2_publisher)
         ros2_node.destroy_node()
 
-    async def test_joint_state_subscriber_with_names(self):
+    async def test_joint_state_subscriber_with_names(self) -> None:
         """Test if the joint state subscriber is able to move the robot as expected."""
         # add the connection between joint names from subscriber and the controller
         graph_handle = og.get_graph_by_path("/ActionGraph")
@@ -558,7 +558,7 @@ class TestRos2JointStateSubscriber(ROS2TestCase):
 
         art_handle = Articulation("/Articulation")
 
-        def reset_robot():
+        def reset_robot() -> None:
             art_handle.set_dof_positions([0.0, 0.0, 0.0])
             post_reset = art_handle.get_dof_positions().numpy().flatten()
             self.assertAlmostEqual(post_reset[0], 0, delta=1e-3)
@@ -646,7 +646,7 @@ class TestRos2JointStateSubscriber(ROS2TestCase):
         ros2_node.destroy_publisher(ros2_publisher)
         ros2_node.destroy_node()
 
-    async def test_joint_state_subscriber_with_name_override(self):
+    async def test_joint_state_subscriber_with_name_override(self) -> None:
         """Test that JointNameResolver correctly maps overridden joint names to prim names."""
         from pxr import Sdf
         from sensor_msgs.msg import JointState

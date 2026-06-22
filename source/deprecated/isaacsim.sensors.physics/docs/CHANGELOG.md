@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.1.8] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
 ## [1.1.7] - 2026-05-10
 ### Fixed
 - Add `is_valid` to `IMUSensor.get_current_frame()` output

@@ -41,7 +41,7 @@ _PHYSICS_SCENE_PATH = "/World/PhysicsScene"
 class TestGraphPlannerGui(omni.kit.test.AsyncTestCase):
     """Test suite for the graph planner example GUI."""
 
-    async def setUp(self):
+    async def setUp(self) -> None:
         """Set up the UI builder before each test."""
         await omni.kit.app.get_app().next_update_async()
         await ensure_gui_class_warmup_once(
@@ -53,7 +53,7 @@ class TestGraphPlannerGui(omni.kit.test.AsyncTestCase):
         self.ui_builder.build_ui()
         await omni.kit.app.get_app().next_update_async()
 
-    async def tearDown(self):
+    async def tearDown(self) -> None:
         """Clean up the UI builder after each test."""
         self.ui_builder.cleanup()
         # Two frames: first lets the cancelled _load_task propagate its
@@ -62,12 +62,12 @@ class TestGraphPlannerGui(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         await omni.kit.app.get_app().next_update_async()
 
-    async def test_widgets_built(self):
+    async def test_widgets_built(self) -> None:
         """Verify that all expected widgets are created."""
         self.assertIsNotNone(self.ui_builder._load_btn)
         self.assertIsNotNone(self.ui_builder._to_cspace_btn)
 
-    async def test_load_creates_all_expected_assets(self):
+    async def test_load_creates_all_expected_assets(self) -> None:
         """LOAD populates every expected scenario object and prim on the stage."""
         self.ui_builder._load_btn.trigger_click()
 
@@ -98,7 +98,12 @@ class TestGraphPlannerGui(omni.kit.test.AsyncTestCase):
 
     @classmethod
     async def _load_until_sliders_on(cls, ui_builder: UIBuilder, *, timeout_sec: float) -> None:
-        """Trigger load and wait until joint sliders exist on ``ui_builder``."""
+        """Trigger load and wait until joint sliders exist on ``ui_builder``.
+
+        Args:
+            ui_builder: UI builder to load.
+            timeout_sec: Maximum time to wait for the sliders.
+        """
         ui_builder._load_btn.trigger_click()
         ok = await wait_until(
             lambda: len(ui_builder._joint_slider_models) > 0,
@@ -109,7 +114,12 @@ class TestGraphPlannerGui(omni.kit.test.AsyncTestCase):
 
     @classmethod
     async def _load_until_articulation_ready_on(cls, ui_builder: UIBuilder, *, timeout_sec: float) -> None:
-        """Trigger load and wait until sliders and articulation are ready."""
+        """Trigger load and wait until sliders and articulation are ready.
+
+        Args:
+            ui_builder: UI builder to load.
+            timeout_sec: Maximum time to wait for the articulation.
+        """
         await cls._load_until_sliders_on(ui_builder, timeout_sec=timeout_sec)
         ok = await wait_until(
             lambda: ui_builder._scenario._articulation is not None,
@@ -137,7 +147,7 @@ class TestGraphPlannerGui(omni.kit.test.AsyncTestCase):
         """
         await self._load_until_articulation_ready_on(self.ui_builder, timeout_sec=TEST_LOAD_TIMEOUT_SEC)
 
-    async def test_cspace_button_passes_slider_joint_values(self):
+    async def test_cspace_button_passes_slider_joint_values(self) -> None:
         """Values read from FloatField/Slider models must match ``q_target`` passed to planning."""
         await self._load_until_sliders()
 
@@ -155,7 +165,7 @@ class TestGraphPlannerGui(omni.kit.test.AsyncTestCase):
 
         captured: dict[str, object] = {}
 
-        def record_and_skip_plan(q_target=None):
+        def record_and_skip_plan(q_target: object = None) -> None:
             captured["q"] = q_target
             return
 
@@ -169,13 +179,13 @@ class TestGraphPlannerGui(omni.kit.test.AsyncTestCase):
         want = np.asarray(expected, dtype=np.float64)
         np.testing.assert_allclose(got, want, rtol=0.0, atol=1e-5)
 
-    async def test_task_space_button_passes_cube_position_and_orientation(self):
+    async def test_task_space_button_passes_cube_position_and_orientation(self) -> None:
         """Task-space planning receives a 3D position and a valid wxyz unit quaternion from the target cube."""
         await self._load_until_articulation_ready()
 
         captured: dict[str, object] = {}
 
-        def record_plan_to_pose(self, *args, **kwargs):
+        def record_plan_to_pose(self: object, *args: object, **kwargs: object) -> None:
             captured["position"] = kwargs["position"]
             captured["orientation"] = kwargs["orientation"]
             return

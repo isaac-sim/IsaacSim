@@ -43,6 +43,8 @@ class Contact(_PhysicsSensorAuthoring):
         positions: World-frame positions (shape ``(N, 3)``). Mutually exclusive with ``translations``.
         translations: Local-frame translations (shape ``(N, 3)``).
         orientations: Orientations as ``wxyz`` quaternions (shape ``(N, 4)``).
+        scales: Local scales forwarded to ``XformPrim``.
+        reset_xform_op_properties: Whether to reset existing xform op properties.
         min_threshold: Minimum force threshold in Newtons. When wrapping an
             existing prim, applied as an override; ``None`` leaves the prim
             unchanged.
@@ -108,10 +110,11 @@ class Contact(_PhysicsSensorAuthoring):
     def _find_physics_parent(self) -> str:
         """Walk ancestors and return the nearest C++ runtime-compatible rigid body path.
 
+        Returns:
+            Path to the nearest runtime-compatible rigid-body ancestor.
+
         Raises:
-            ValueError: If no ancestor matches the C++ backend's
-            ``findParentRigidBody`` criteria. The sensor would otherwise
-            silently never produce valid readings.
+            ValueError: If no ancestor matches the C++ backend's ``findParentRigidBody`` criteria.
         """
         parent_path = self._body_prim_path
         while parent_path and parent_path != "/":
@@ -134,6 +137,10 @@ class Contact(_PhysicsSensorAuthoring):
 
         Used by the wrap-existing-prim path so subsequent attribute updates
         target the rigid-body ancestor instead of an intermediate Xform.
+
+        Args:
+            prim: Existing USD prim being wrapped.
+            **_: Additional keyword arguments ignored by this hook.
         """
         self._body_prim_path = self._find_physics_parent()
 
@@ -146,7 +153,18 @@ class Contact(_PhysicsSensorAuthoring):
         color: Gf.Vec4f = Gf.Vec4f(1, 1, 1, 1),
         **_: Any,
     ) -> IsaacSensorSchema.IsaacContactSensor:
-        """Create a new IsaacContactSensor prim with default attributes applied."""
+        """Create a new IsaacContactSensor prim with default attributes applied.
+
+        Args:
+            min_threshold: Minimum force threshold in Newtons.
+            max_threshold: Maximum force threshold in Newtons.
+            radius: Contact detection radius.
+            color: Sensor visualization color as RGBA.
+            **_: Additional keyword arguments ignored by this hook.
+
+        Returns:
+            The schema-wrapped contact sensor prim.
+        """
         # The C++ backend requires a runtime-compatible rigid-body ancestor for
         # contact reporting to function. Validate at create time so we don't
         # silently produce a sensor that never returns valid readings. Don't
@@ -186,7 +204,14 @@ class Contact(_PhysicsSensorAuthoring):
         radius: float | None = None,
         **_: Any,
     ) -> None:
-        """Apply user-provided attribute overrides when wrapping an existing prim."""
+        """Apply user-provided attribute overrides when wrapping an existing prim.
+
+        Args:
+            min_threshold: Minimum force threshold in Newtons, or ``None`` to leave unchanged.
+            max_threshold: Maximum force threshold in Newtons, or ``None`` to leave unchanged.
+            radius: Contact detection radius, or ``None`` to leave unchanged.
+            **_: Additional keyword arguments ignored by this hook.
+        """
         if min_threshold is not None:
             self.set_min_threshold(min_threshold)
         if max_threshold is not None:

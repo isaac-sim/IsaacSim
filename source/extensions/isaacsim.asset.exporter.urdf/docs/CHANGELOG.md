@@ -1,4 +1,13 @@
 # Changelog
+
+## [2.0.5] - 2026-06-09
+### Fixed
+- Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.
+
+## [2.0.4] - 2026-05-27
+### Fixed
+- Fixed bug when nested rigid body are not discovered when the link holding the articulation root api is not a rigid body
+
 ## [2.0.3] - 2026-05-05
 ### Changed
 - Preview image

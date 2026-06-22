@@ -1,5 +1,5 @@
 [package]
-version = "5.10.4"
+version = "5.10.5"
 category = "Simulation"
 title = "Isaac Sim Core OmniGraph Nodes"
 description = "Provides OmniGraph nodes for Isaac Sim workflows including articulation control, simulation timing, camera info reading, viewport management, and physics step event handling."
