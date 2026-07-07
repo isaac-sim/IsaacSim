@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.8.2] - 2026-07-07
+### Fixed
+- Fix empty or partial pre-play articulation metadata (e.g. no joints listed in the Gain Tuner) when `ArticulationRootAPI` is authored on a prim that does not enclose the whole articulation, such as a fixed root joint (UR robots) or a floating-base root body (G1, ANYmal). The `add_usd` root is now resolved by widening the root path until the USD physics parser reports the queried articulation, and the resulting enumeration is filtered to that articulation so sibling articulations sharing the same container do not leak into the response.
+
 ## [0.8.1] - 2026-06-09
 ### Fixed
 - Fix linter errors and missing or incomplete docstrings.

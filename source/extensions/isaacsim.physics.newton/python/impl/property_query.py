@@ -25,7 +25,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import carb
-from pxr import Sdf, Usd, UsdUtils
+from pxr import Sdf, Usd, UsdPhysics, UsdUtils
 
 if TYPE_CHECKING:
     from .tensors.articulation_view import NewtonArticulationView
@@ -393,10 +393,19 @@ class NewtonPropertyQueryInterface:
 
         collapse_fixed_joints = self._get_collapse_fixed_joints_setting()
 
+        # ``ArticulationRootAPI`` may be authored on a prim that does not enclose
+        # the whole articulation: a fixed root joint (UR robots) or a floating-base
+        # root body (G1, ANYmal, ...). Rooting ``add_usd`` directly at such a prim
+        # parses only part of the articulation (or nothing). Resolve a root whose
+        # subtree the physics parser confirms contains this articulation by
+        # widening the root path until ``UsdPhysics.LoadUsdPhysicsFromRange`` (the
+        # same query ``add_usd`` runs internally) reports it.
+        root_path = self._resolve_add_usd_root_path(stage, articulation_prim)
+
         builder = newton.ModelBuilder()
         builder.add_usd(
             source=stage,
-            root_path=articulation_prim.GetPath().pathString,
+            root_path=root_path,
             collapse_fixed_joints=collapse_fixed_joints,
             schema_resolvers=[SchemaResolverNewton(), SchemaResolverPhysx()],
             only_load_enabled_rigid_bodies=True,
@@ -406,6 +415,33 @@ class NewtonPropertyQueryInterface:
             parse_mujoco_options=False,
             verbose=False,
         )
+
+        # The resolved root may enclose sibling articulations (e.g. two robots
+        # sharing a flat container). Restrict the enumeration to the queried
+        # articulation: its builder label is the ``ArticulationRootAPI`` prim path.
+        articulation_path = articulation_prim.GetPath().pathString
+        articulation_index: int | None = None
+        for index, label in enumerate(builder.articulation_label):
+            if label == articulation_path:
+                articulation_index = index
+                break
+
+        articulation_joint_indices: set[int] | None = None
+        articulation_body_indices: set[int] | None = None
+        if articulation_index is not None:
+            joint_start = builder.articulation_start[articulation_index]
+            joint_end = builder.articulation_end[articulation_index]
+            articulation_joint_indices = set(range(joint_start, joint_end))
+            articulation_body_indices = set()
+            for joint_index in articulation_joint_indices:
+                for body_index in (builder.joint_parent[joint_index], builder.joint_child[joint_index]):
+                    if body_index >= 0:
+                        articulation_body_indices.add(body_index)
+        elif builder.articulation_count > 1:
+            carb.log_warn(
+                f"Newton property query: articulation '{articulation_path}' not found among parsed "
+                f"articulation labels {builder.articulation_label}; returning all parsed bodies"
+            )
 
         # Mirror NewtonArticulationView's filtering rules so pre-physics metadata
         # matches what the runtime view publishes:
@@ -428,12 +464,16 @@ class NewtonPropertyQueryInterface:
                 continue
             if joint_index in articulation_root_joints:
                 continue
+            if articulation_joint_indices is not None and joint_index not in articulation_joint_indices:
+                continue
             if builder.joint_type[joint_index] not in included_joint_types:
                 continue
             body_to_inbound_joint.setdefault(child_body, joint_index)
 
         links: list[NewtonPropertyQueryArticulationLink] = []
         for body_index, body_label in enumerate(builder.body_label):
+            if articulation_body_indices is not None and body_index not in articulation_body_indices:
+                continue
             link = NewtonPropertyQueryArticulationLink()
             link._rigid_body = PhysicsSchemaTools.sdfPathToInt(Sdf.Path(body_label))
             joint_index = body_to_inbound_joint.get(body_index)  # type: ignore[assignment]
@@ -444,6 +484,77 @@ class NewtonPropertyQueryInterface:
                 link._joint_dof = linear_axes + angular_axes
             links.append(link)
         return links
+
+    @staticmethod
+    def _parser_reports_articulation(stage: Usd.Stage, articulation_path: str, range_path: str) -> bool:
+        """Return whether the USD physics parser reports the articulation under ``range_path``.
+
+        Runs ``UsdPhysics.LoadUsdPhysicsFromRange`` — the same query
+        ``newton.ModelBuilder.add_usd`` runs internally — rooted at ``range_path``
+        and checks that the articulation authored at ``articulation_path`` is
+        reported with a non-empty body set.
+
+        Args:
+            stage: USD stage to inspect.
+            articulation_path: Path of the prim with ``ArticulationRootAPI``.
+            range_path: Candidate ``add_usd`` root path.
+
+        Returns:
+            True if the parser reports the articulation with at least one body.
+        """
+        ret_dict = UsdPhysics.LoadUsdPhysicsFromRange(stage, [range_path], excludePaths=[])
+        if UsdPhysics.ObjectType.Articulation not in ret_dict:
+            return False
+        paths, descs = ret_dict[UsdPhysics.ObjectType.Articulation]
+        for path, desc in zip(paths, descs):
+            if str(path) != articulation_path:
+                continue
+            return any(str(p) for p in desc.articulatedBodies)
+        return False
+
+    @staticmethod
+    def _resolve_add_usd_root_path(stage: Usd.Stage, articulation_prim: Usd.Prim) -> str:
+        """Return the ``add_usd`` root path for the articulation of ``articulation_prim``.
+
+        ``newton.ModelBuilder.add_usd`` needs a ``root_path`` whose subtree actually
+        contains the articulation's rigid bodies *and* joints, otherwise the
+        pre-physics enumeration is empty or partial. ``ArticulationRootAPI`` may be
+        authored on a prim that does not enclose the articulation: a rigid-body
+        Xform, a fixed root joint, or a container.
+
+        Starting at the articulation prim, this widens the candidate root one
+        namespace level at a time until the USD physics parser
+        (``UsdPhysics.LoadUsdPhysicsFromRange``) reports the articulation with a
+        non-empty body set. Connectivity discovery stays owned by the physics
+        parser, so the resolved root always agrees with what ``add_usd`` parses.
+        Falls back to the parent-of-joint heuristic on any parser error.
+
+        Args:
+            stage: USD stage to inspect.
+            articulation_prim: USD prim passed to ``query_prim``.
+
+        Returns:
+            USD path string to use as the ``add_usd`` root.
+        """
+        articulation_path = articulation_prim.GetPath().pathString
+        try:
+            candidate = articulation_prim
+            while candidate is not None and candidate.IsValid() and not candidate.IsPseudoRoot():
+                candidate_path = candidate.GetPath().pathString
+                if NewtonPropertyQueryInterface._parser_reports_articulation(stage, articulation_path, candidate_path):
+                    return candidate_path
+                candidate = candidate.GetParent()
+        except Exception as exc:  # noqa: BLE001 - fall back to the safe heuristic on any failure
+            carb.log_warn(
+                f"Newton add_usd root resolution failed for {articulation_path}: {exc}; "
+                f"using parent-of-joint heuristic"
+            )
+        # Fallback: legacy parent-of-joint heuristic.
+        if articulation_prim.IsA(UsdPhysics.Joint):
+            parent = articulation_prim.GetParent()
+            if parent and parent.IsValid() and not parent.IsPseudoRoot():
+                return parent.GetPath().pathString
+        return articulation_path
 
     @staticmethod
     def _get_collapse_fixed_joints_setting() -> bool:
