@@ -25,7 +25,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import carb
-from pxr import Sdf, Usd, UsdUtils
+from pxr import Sdf, Usd, UsdPhysics, UsdUtils
 
 if TYPE_CHECKING:
     from .tensors.articulation_view import NewtonArticulationView
@@ -393,10 +393,38 @@ class NewtonPropertyQueryInterface:
 
         collapse_fixed_joints = self._get_collapse_fixed_joints_setting()
 
+        # ``ArticulationRootAPI`` may be authored on a prim that does not enclose
+        # the whole articulation: a fixed root joint (UR robots) or a floating-base
+        # root body (G1, ANYmal, ...). Rooting ``add_usd`` directly at such a prim
+        # parses only part of the articulation (or nothing).
+        #
+        # Ask the USD physics parser (the same query ``add_usd`` runs internally)
+        # for the articulation descriptor: the parser owns connectivity discovery,
+        # so its ``articulatedBodies``/``articulatedJoints`` are authoritative.
+        # The descriptor yields both the ``add_usd`` root (common ancestor of the
+        # articulation's prims) and the exact membership set used to exclude
+        # sibling articulations that share the same container.
+        articulation_path = articulation_prim.GetPath().pathString
+        member_bodies, member_joints = self._query_articulation_descriptor(stage, articulation_path)
+
+        if member_bodies:
+            root_path = self._common_ancestor_path({articulation_path} | member_bodies | member_joints)
+        else:
+            # Fallback: legacy parent-of-joint heuristic, no membership filter.
+            root_path = articulation_path
+            if articulation_prim.IsA(UsdPhysics.Joint):
+                parent = articulation_prim.GetParent()
+                if parent and parent.IsValid() and not parent.IsPseudoRoot():
+                    root_path = parent.GetPath().pathString
+            carb.log_warn(
+                f"Newton property query: USD physics parser did not report articulation "
+                f"'{articulation_path}'; falling back to root '{root_path}' without membership filtering"
+            )
+
         builder = newton.ModelBuilder()
         builder.add_usd(
             source=stage,
-            root_path=articulation_prim.GetPath().pathString,
+            root_path=root_path,
             collapse_fixed_joints=collapse_fixed_joints,
             schema_resolvers=[SchemaResolverNewton(), SchemaResolverPhysx()],
             only_load_enabled_rigid_bodies=True,
@@ -430,10 +458,14 @@ class NewtonPropertyQueryInterface:
                 continue
             if builder.joint_type[joint_index] not in included_joint_types:
                 continue
+            if member_joints and builder.joint_label[joint_index] not in member_joints:
+                continue
             body_to_inbound_joint.setdefault(child_body, joint_index)
 
         links: list[NewtonPropertyQueryArticulationLink] = []
         for body_index, body_label in enumerate(builder.body_label):
+            if member_bodies and body_label not in member_bodies:
+                continue
             link = NewtonPropertyQueryArticulationLink()
             link._rigid_body = PhysicsSchemaTools.sdfPathToInt(Sdf.Path(body_label))
             joint_index = body_to_inbound_joint.get(body_index)  # type: ignore[assignment]
@@ -444,6 +476,56 @@ class NewtonPropertyQueryInterface:
                 link._joint_dof = linear_axes + angular_axes
             links.append(link)
         return links
+
+    @staticmethod
+    def _query_articulation_descriptor(stage: Usd.Stage, articulation_path: str) -> tuple[set[str], set[str]]:
+        """Return the parser-reported membership of the articulation at ``articulation_path``.
+
+        Runs ``UsdPhysics.LoadUsdPhysicsFromRange`` — the same query
+        ``newton.ModelBuilder.add_usd`` runs internally — rooted at the stage
+        pseudo-root and returns the ``articulatedBodies``/``articulatedJoints``
+        of the matching articulation descriptor. Connectivity discovery stays
+        owned by the physics parser, so the membership always agrees with what
+        ``add_usd`` parses.
+
+        Args:
+            stage: USD stage to inspect.
+            articulation_path: Path of the prim with ``ArticulationRootAPI``.
+
+        Returns:
+            Two sets of prim path strings: (articulated bodies, articulated
+            joints). Both empty if the parser does not report the articulation.
+        """
+        try:
+            ret_dict = UsdPhysics.LoadUsdPhysicsFromRange(stage, [Sdf.Path.absoluteRootPath], excludePaths=[])
+        except Exception as exc:  # noqa: BLE001 - defensive: parser errors degrade to the legacy path
+            carb.log_warn(f"Newton property query: LoadUsdPhysicsFromRange failed: {exc}")
+            return set(), set()
+        if UsdPhysics.ObjectType.Articulation not in ret_dict:
+            return set(), set()
+        paths, descs = ret_dict[UsdPhysics.ObjectType.Articulation]
+        for path, desc in zip(paths, descs):
+            if str(path) != articulation_path:
+                continue
+            bodies = {str(p) for p in desc.articulatedBodies if p != Sdf.Path.emptyPath}
+            joints = {str(p) for p in desc.articulatedJoints if p != Sdf.Path.emptyPath}
+            return bodies, joints
+        return set(), set()
+
+    @staticmethod
+    def _common_ancestor_path(paths: set[str]) -> str:
+        """Return the deepest common ancestor path of ``paths``.
+
+        Args:
+            paths: Non-empty set of absolute USD prim path strings.
+
+        Returns:
+            USD path string of the deepest prim enclosing every input path.
+        """
+        common = Sdf.Path(next(iter(sorted(paths))))
+        for other in paths:
+            common = common.GetCommonPrefix(Sdf.Path(other))
+        return common.pathString
 
     @staticmethod
     def _get_collapse_fixed_joints_setting() -> bool:
