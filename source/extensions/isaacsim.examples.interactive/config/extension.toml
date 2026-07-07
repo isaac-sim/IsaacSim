@@ -62,6 +62,9 @@ stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
 ]
 
+[[python.module]]
+name = "isaacsim.examples.interactive.robot_joint_control"
+
 [[test]]
 timeout = 900
 dependencies = [
