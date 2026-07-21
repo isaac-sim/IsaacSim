@@ -838,12 +838,21 @@ class SimulationApp:
 
     @staticmethod
     def _flush_stdio() -> None:
-        """Flush Python's stdout and stderr, swallowing errors from closed/detached streams."""
+        """Flush Python and C stdout/stderr, swallowing errors from closed/detached streams."""
         for stream in (sys.stdout, sys.stderr):
             try:
                 stream.flush()
             except (ValueError, OSError, AttributeError):
                 pass
+        # Native Kit output (e.g. ``IApp.print_and_log``) goes through the C/C++ stdio
+        # buffers, which ``os._exit`` abandons unflushed. ``fflush(NULL)`` flushes every
+        # open C output stream, including ``std::cout`` (synchronized with C stdio).
+        try:
+            import ctypes
+
+            ctypes.CDLL(None).fflush(None)
+        except (OSError, AttributeError):
+            pass
 
     def close(self, wait_for_replicator: bool = True, skip_cleanup: bool = False, exit_code: int = 0) -> None:
         """Close the running Omniverse Toolkit application.
@@ -857,8 +866,9 @@ class SimulationApp:
             skip_cleanup: If True, performs immediate exit without cleanup.
                 If False, performs graceful shutdown with full cleanup.
             exit_code: Process exit status to preserve when fast shutdown terminates
-                the process. Nonzero values flush stdio and exit with the supplied
-                status before Kit's fast-shutdown path can replace it with 0.
+                the process. The same cleanup runs regardless of the value; a nonzero
+                status is applied at the point where Kit's fast-shutdown path would
+                otherwise terminate the process with 0.
 
         Example:
 
@@ -883,10 +893,6 @@ class SimulationApp:
         # the interpreter's normal flush-on-exit, so pending print() output would otherwise be lost.
         self._flush_stdio()
 
-        if exit_code != 0 and self.config.get("fast_shutdown", False):
-            self._exiting = True
-            os._exit(exit_code)
-
         # `post_quit()` can already stop Kit's run loop before callers reach `close()`.
         # In that state, forcing shutdown may block indefinitely.
         if not self._app.is_running():
@@ -904,6 +910,10 @@ class SimulationApp:
             _logging = carb.logging.acquire_logging()
             _logging.set_log_enabled(False)
             self._flush_stdio()
+            if exit_code != 0 and self.config.get("fast_shutdown", False):
+                # app.shutdown() under fast shutdown exits the process with status 0;
+                # preserve the caller's exit status instead.
+                os._exit(exit_code)
             self._arm_shutdown_watchdog()
             self._app.shutdown()
             return
@@ -960,6 +970,10 @@ class SimulationApp:
         # immediately.  When false it performs full extension teardown and returns;
         # the framework/plugin unload is left to process exit.
         self._flush_stdio()
+        if exit_code != 0 and self.config.get("fast_shutdown", False):
+            # app.shutdown() under fast shutdown exits the process with status 0;
+            # preserve the caller's exit status now that cleanup is complete.
+            os._exit(exit_code)
         self._arm_shutdown_watchdog()
         self._app.shutdown()
 
