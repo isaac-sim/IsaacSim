@@ -165,7 +165,7 @@ class UsdToUrdfConverter:
 
         for link_prim in desc.ordered_links:
             link_path = str(link_prim.GetPath())
-            link_data = read_link(link_prim)
+            link_data = read_link(link_prim, visualize_collision_meshes=self._visualize_collision_meshes)
             link_name_map[link_path] = link_data.name
 
             # Recompute geometry origins and export meshes
@@ -554,7 +554,7 @@ def _build_actuator_map(root_prim: Usd.Prim) -> dict[str, Usd.Prim]:
 
     Traverses the subtree under *root_prim* looking for ``MjcActuator``
     prims and resolves their ``mjc:target`` relationship to identify the
-    target joint.  Returns an empty dict when no actuators are present.
+    target joint. Returns an empty dict when no actuators are present.
 
     Args:
         root_prim: Robot root prim.
