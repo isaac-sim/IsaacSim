@@ -337,7 +337,7 @@ function create_test_experience_runner(name, config_path, config, kit_sdk_config
         end
         local executable = executable or exe
         -- local executable = "kit"
-        local arch = io.popen("arch", "r"):read("*l")
+        local arch = io.popen("arch 2>/dev/null || uname -m", "r"):read("*l")
         local platform_name = "linux"
 
         if os_target == "macosx" then
