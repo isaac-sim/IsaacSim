@@ -33,7 +33,7 @@ Mirrors the pattern in ``isaacsim.sensors.experimental.rtx``:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Self
 
 import carb
 import numpy as np
@@ -172,7 +172,7 @@ class _PhysicsSensorAuthoring(XformPrim):
         """
 
     @classmethod
-    def create(cls, path: str, **kwargs: Any) -> "_PhysicsSensorAuthoring":
+    def create(cls, path: str, **kwargs: Any) -> Self:
         """Create a new sensor at the specified path.
 
         Always creates a fresh prim, auto-numbering the path if it already
