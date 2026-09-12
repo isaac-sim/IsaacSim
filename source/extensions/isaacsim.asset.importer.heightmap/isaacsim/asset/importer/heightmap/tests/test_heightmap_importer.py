@@ -27,7 +27,7 @@ from isaacsim.asset.importer.heightmap.importer import (
     HeightmapImporter,
 )
 from PIL import Image
-from pxr import Gf
+from pxr import Gf, Usd, UsdGeom
 
 
 class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
@@ -47,6 +47,17 @@ class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
         """Test initialization without a provided stage."""
         importer = HeightmapImporter()
         self.assertIsNone(importer._stage)
+
+    def test_setup_stage_properties_uses_provided_stage(self) -> None:
+        """Stage metadata should be authored on the stage passed to the importer."""
+        stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.y)
+
+        importer = HeightmapImporter(stage)
+        importer._setup_stage_properties()
+
+        self.assertEqual(UsdGeom.GetStageUpAxis(stage), UsdGeom.Tokens.z)
+        self.assertEqual(UsdGeom.GetStageMetersPerUnit(stage), 1.0)
 
     @patch("isaacsim.asset.importer.heightmap.importer.omni.usd.get_context")
     def test_create_heightmap_with_none_image(self, mock_get_context: object) -> None:
@@ -114,25 +125,22 @@ class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
         self.assertIn("No USD stage available", str(context.exception))
 
     @patch("isaacsim.asset.importer.heightmap.importer.UsdPhysics")
-    @patch("isaacsim.asset.importer.heightmap.importer.stage_utils")
+    @patch("isaacsim.asset.importer.heightmap.importer.PhysicsSchemaTools")
     @patch("isaacsim.asset.importer.heightmap.importer.UsdGeom")
-    @patch("isaacsim.asset.importer.heightmap.importer.GroundPlane")
     @patch("isaacsim.asset.importer.heightmap.importer.UsdLux")
     def test_create_heightmap_success(
         self,
         mock_usd_lux: object,
-        mock_ground_plane: object,
         mock_usd_geom: object,
-        mock_stage_utils: object,
+        mock_physics_schema_tools: object,
         mock_usd_physics: object,
     ) -> None:
         """Test successful heightmap creation.
 
         Args:
             mock_usd_lux: Mock for UsdLux module.
-            mock_ground_plane: Mock for GroundPlane class.
             mock_usd_geom: Mock for UsdGeom module.
-            mock_stage_utils: Mock for stage_utils module.
+            mock_physics_schema_tools: Mock for PhysicsSchemaTools module.
             mock_usd_physics: Mock for UsdPhysics module.
         """
         # Create a simple test image with some black pixels
@@ -200,13 +208,14 @@ class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
         # Verify that cells were created (3 pixels below threshold)
         self.assertEqual(num_cells, 3)
 
-        # Verify that stage setup methods were called
-        mock_usd_geom.SetStageMetersPerUnit.assert_called_once()
-        mock_stage_utils.set_stage_up_axis.assert_called_once_with("Z")
+        # Verify that stage setup methods target the supplied stage.
+        mock_usd_geom.SetStageMetersPerUnit.assert_called_once_with(self.mock_stage, 1.0)
+        mock_usd_geom.SetStageUpAxis.assert_called_once_with(self.mock_stage, mock_usd_geom.Tokens.z)
 
-        # Verify collision API was applied
+        # Verify collision API was applied and the ground plane was authored on the supplied stage.
         mock_usd_physics.CollisionAPI.Apply.assert_called_once()
-        mock_ground_plane.assert_called_once()
+        mock_physics_schema_tools.addGroundPlane.assert_called_once()
+        self.assertIs(mock_physics_schema_tools.addGroundPlane.call_args.args[0], self.mock_stage)
 
     def test_generate_occupied_positions_with_simple_image(self) -> None:
         """Test position generation with a simple test image."""
@@ -368,120 +377,87 @@ class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
         mock_bbox_cache.ComputeWorldBound.return_value = mock_world_bound
         mock_usd_geom.BBoxCache.return_value = mock_bbox_cache
 
-    @patch("isaacsim.asset.importer.heightmap.importer.GroundPlane")
+    @patch("isaacsim.asset.importer.heightmap.importer.PhysicsSchemaTools")
     @patch("isaacsim.asset.importer.heightmap.importer.Usd")
     @patch("isaacsim.asset.importer.heightmap.importer.UsdGeom")
     def test_create_ground_plane_sizes_to_square_bounds(
-        self, mock_usd_geom: object, _mock_usd: object, mock_ground_plane: object
+        self, mock_usd_geom: object, _mock_usd: object, mock_physics_schema_tools: object
     ) -> None:
-        """Ground plane size for a square heightmap is dim + 2 * margin, centered on bbox.
-
-        Args:
-            mock_usd_geom: Mock for the UsdGeom module.
-            _mock_usd: Mock for the Usd module.
-            mock_ground_plane: Mock for the GroundPlane class.
-        """
+        """Ground plane size for a square heightmap is dim + 2 * margin, centered on bbox."""
         # 10x10 heightmap occupying X:[0,10], Y:[-10,0]
         self._stub_bbox_cache(mock_usd_geom, min_pt=(0.0, -10.0, 0.0), max_pt=(10.0, 0.0, 1.0))
 
         self.importer._create_ground_plane()
 
         mock_usd_geom.BBoxCache.return_value.ComputeWorldBound.assert_called_once()
-        # The world-bound was computed against the occupancy map prim, not some other prim.
         self.mock_stage.GetPrimAtPath.assert_any_call(OCCUPANCY_MAP_PATH)
 
-        mock_ground_plane.assert_called_once()
-        _, kwargs = mock_ground_plane.call_args
-        self.assertAlmostEqual(kwargs["sizes"], 10.0 + 2 * GROUND_PLANE_MARGIN)
-        self.assertEqual(kwargs["positions"], [[5.0, -5.0, 0.0]])
-        # No non-uniform scaling — that distorts the wireframe material.
-        self.assertNotIn("scales", kwargs)
+        mock_physics_schema_tools.addGroundPlane.assert_called_once()
+        args = mock_physics_schema_tools.addGroundPlane.call_args.args
+        self.assertIs(args[0], self.mock_stage)
+        self.assertAlmostEqual(args[3], (10.0 + 2 * GROUND_PLANE_MARGIN) / 2.0)
+        self.assertEqual(args[4], (5.0, -5.0, 0.0))
 
-    @patch("isaacsim.asset.importer.heightmap.importer.GroundPlane")
+    @patch("isaacsim.asset.importer.heightmap.importer.PhysicsSchemaTools")
     @patch("isaacsim.asset.importer.heightmap.importer.Usd")
     @patch("isaacsim.asset.importer.heightmap.importer.UsdGeom")
     def test_create_ground_plane_uses_max_dim_for_wide_bounds(
-        self, mock_usd_geom: object, _mock_usd: object, mock_ground_plane: object
+        self, mock_usd_geom: object, _mock_usd: object, mock_physics_schema_tools: object
     ) -> None:
-        """A wider-than-tall heightmap sizes the (square) ground plane to the longer dimension.
-
-        Args:
-            mock_usd_geom: Mock for the UsdGeom module.
-            _mock_usd: Mock for the Usd module.
-            mock_ground_plane: Mock for the GroundPlane class.
-        """
+        """A wider-than-tall heightmap sizes the (square) ground plane to the longer dimension."""
         # X width = 20, Y height = 5 — wider than tall.
         self._stub_bbox_cache(mock_usd_geom, min_pt=(0.0, -5.0, 0.0), max_pt=(20.0, 0.0, 1.0))
 
         self.importer._create_ground_plane()
 
-        _, kwargs = mock_ground_plane.call_args
-        self.assertAlmostEqual(kwargs["sizes"], 20.0 + 2 * GROUND_PLANE_MARGIN)
-        self.assertEqual(kwargs["positions"], [[10.0, -2.5, 0.0]])
+        args = mock_physics_schema_tools.addGroundPlane.call_args.args
+        self.assertAlmostEqual(args[3], (20.0 + 2 * GROUND_PLANE_MARGIN) / 2.0)
+        self.assertEqual(args[4], (10.0, -2.5, 0.0))
 
-    @patch("isaacsim.asset.importer.heightmap.importer.GroundPlane")
+    @patch("isaacsim.asset.importer.heightmap.importer.PhysicsSchemaTools")
     @patch("isaacsim.asset.importer.heightmap.importer.Usd")
     @patch("isaacsim.asset.importer.heightmap.importer.UsdGeom")
     def test_create_ground_plane_uses_max_dim_for_tall_bounds(
-        self, mock_usd_geom: object, _mock_usd: object, mock_ground_plane: object
+        self, mock_usd_geom: object, _mock_usd: object, mock_physics_schema_tools: object
     ) -> None:
-        """A taller-than-wide heightmap sizes the (square) ground plane to the longer dimension.
-
-        Args:
-            mock_usd_geom: Mock for the UsdGeom module.
-            _mock_usd: Mock for the Usd module.
-            mock_ground_plane: Mock for the GroundPlane class.
-        """
+        """A taller-than-wide heightmap sizes the (square) ground plane to the longer dimension."""
         # X width = 4, Y height = 30 — taller than wide.
         self._stub_bbox_cache(mock_usd_geom, min_pt=(0.0, -30.0, 0.0), max_pt=(4.0, 0.0, 1.0))
 
         self.importer._create_ground_plane()
 
-        _, kwargs = mock_ground_plane.call_args
-        self.assertAlmostEqual(kwargs["sizes"], 30.0 + 2 * GROUND_PLANE_MARGIN)
-        self.assertEqual(kwargs["positions"], [[2.0, -15.0, 0.0]])
+        args = mock_physics_schema_tools.addGroundPlane.call_args.args
+        self.assertAlmostEqual(args[3], (30.0 + 2 * GROUND_PLANE_MARGIN) / 2.0)
+        self.assertEqual(args[4], (2.0, -15.0, 0.0))
 
-    @patch("isaacsim.asset.importer.heightmap.importer.GroundPlane")
+    @patch("isaacsim.asset.importer.heightmap.importer.PhysicsSchemaTools")
     @patch("isaacsim.asset.importer.heightmap.importer.Usd")
     @patch("isaacsim.asset.importer.heightmap.importer.UsdGeom")
     def test_create_ground_plane_handles_off_origin_bounds(
-        self, mock_usd_geom: object, _mock_usd: object, mock_ground_plane: object
+        self, mock_usd_geom: object, _mock_usd: object, mock_physics_schema_tools: object
     ) -> None:
-        """Ground plane center follows the bbox midpoint even when bounds don't start at the origin.
-
-        Args:
-            mock_usd_geom: Mock for the UsdGeom module.
-            _mock_usd: Mock for the Usd module.
-            mock_ground_plane: Mock for the GroundPlane class.
-        """
+        """Ground plane center follows the bbox midpoint even when bounds don't start at the origin."""
         # Heightmap shifted into positive Y as well: X:[10, 20], Y:[5, 15]
         self._stub_bbox_cache(mock_usd_geom, min_pt=(10.0, 5.0, 0.0), max_pt=(20.0, 15.0, 1.0))
 
         self.importer._create_ground_plane()
 
-        _, kwargs = mock_ground_plane.call_args
-        self.assertEqual(kwargs["positions"], [[15.0, 10.0, 0.0]])
-        self.assertAlmostEqual(kwargs["sizes"], 10.0 + 2 * GROUND_PLANE_MARGIN)
+        args = mock_physics_schema_tools.addGroundPlane.call_args.args
+        self.assertEqual(args[4], (15.0, 10.0, 0.0))
+        self.assertAlmostEqual(args[3], (10.0 + 2 * GROUND_PLANE_MARGIN) / 2.0)
 
     @patch("isaacsim.asset.importer.heightmap.importer.carb")
-    @patch("isaacsim.asset.importer.heightmap.importer.GroundPlane")
+    @patch("isaacsim.asset.importer.heightmap.importer.PhysicsSchemaTools")
     @patch("isaacsim.asset.importer.heightmap.importer.Usd")
     @patch("isaacsim.asset.importer.heightmap.importer.UsdGeom")
     def test_create_ground_plane_skips_creation_for_empty_bounds(
         self,
         mock_usd_geom: object,
         _mock_usd: object,
-        mock_ground_plane: object,
+        mock_physics_schema_tools: object,
         mock_carb: object,
     ) -> None:
-        """If the occupancy map has no occupied cells, the bbox is empty and the plane is skipped.
-
-        Args:
-            mock_usd_geom: Mock for the UsdGeom module.
-            _mock_usd: Mock for the Usd module.
-            mock_ground_plane: Mock for the GroundPlane class.
-            mock_carb: Mock for the carb module.
-        """
+        """If the occupancy map has no occupied cells, the bbox is empty and the plane is skipped."""
         mock_world_bound = MagicMock()
         empty_range = MagicMock()
         empty_range.IsEmpty.return_value = True
@@ -490,31 +466,21 @@ class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
 
         self.importer._create_ground_plane()
 
-        mock_ground_plane.assert_not_called()
+        mock_physics_schema_tools.addGroundPlane.assert_not_called()
         mock_carb.log_warn.assert_called_once()
 
     @patch("isaacsim.asset.importer.heightmap.importer.UsdPhysics")
-    @patch("isaacsim.asset.importer.heightmap.importer.stage_utils")
+    @patch("isaacsim.asset.importer.heightmap.importer.PhysicsSchemaTools")
     @patch("isaacsim.asset.importer.heightmap.importer.UsdGeom")
-    @patch("isaacsim.asset.importer.heightmap.importer.GroundPlane")
     @patch("isaacsim.asset.importer.heightmap.importer.UsdLux")
     def test_create_heightmap_skips_ground_plane_when_disabled(
         self,
         _mock_usd_lux: object,
-        mock_ground_plane: object,
         mock_usd_geom: object,
-        _mock_stage_utils: object,
+        mock_physics_schema_tools: object,
         _mock_usd_physics: object,
     ) -> None:
-        """No ground plane is created when ``create_ground_plane=False``.
-
-        Args:
-            _mock_usd_lux: Mock for the UsdLux module.
-            mock_ground_plane: Mock for the GroundPlane class.
-            mock_usd_geom: Mock for the UsdGeom module.
-            _mock_stage_utils: Mock for the stage_utils module.
-            _mock_usd_physics: Mock for the UsdPhysics module.
-        """
+        """No ground plane is created when ``create_ground_plane=False``."""
         test_image = Image.new("RGBA", (3, 3), color=(0, 0, 0, 255))
         self.mock_stage.GetPrimAtPath.return_value = MagicMock()
         self.mock_stage.DefinePrim.return_value = MagicMock()
@@ -524,7 +490,7 @@ class TestHeightmapImporter(omni.kit.test.AsyncTestCase):
 
         self.importer.create_heightmap(test_image, cell_scale=1.0, create_ground_plane=False, create_lighting=False)
 
-        mock_ground_plane.assert_not_called()
+        mock_physics_schema_tools.addGroundPlane.assert_not_called()
         # BBoxCache shouldn't be hit either — there's no ground plane to size.
         mock_usd_geom.BBoxCache.assert_not_called()
 

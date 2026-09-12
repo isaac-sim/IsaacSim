@@ -18,12 +18,10 @@
 from typing import Optional
 
 import carb
-import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
 import omni.usd
-from isaacsim.core.experimental.objects import GroundPlane
 from PIL import Image
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics
+from pxr import Gf, PhysicsSchemaTools, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics
 
 # Heightmap generation constants
 DEFAULT_CUBE_HEIGHT = 2.0
@@ -146,7 +144,7 @@ class HeightmapImporter:
     def _setup_stage_properties(self) -> None:
         """Configure basic stage properties like units and up-axis."""
         UsdGeom.SetStageMetersPerUnit(self._stage, 1.0)
-        stage_utils.set_stage_up_axis("Z")
+        UsdGeom.SetStageUpAxis(self._stage, UsdGeom.Tokens.z)
         world_prim = self._stage.GetPrimAtPath(WORLD_PATH)
         if not world_prim.IsValid():
             UsdGeom.Xform.Define(self._stage, WORLD_PATH)
@@ -171,11 +169,13 @@ class HeightmapImporter:
         center_x = (min_pt[0] + max_pt[0]) / 2.0
         center_y = (min_pt[1] + max_pt[1]) / 2.0
 
-        GroundPlane(
+        PhysicsSchemaTools.addGroundPlane(
+            self._stage,
             GROUND_PLANE_PATH,
-            sizes=size,
-            positions=[[center_x, center_y, 0.0]],
-            colors=[1.0, 1.0, 1.0],
+            UsdGeom.Tokens.z,
+            size / 2.0,
+            (center_x, center_y, 0.0),
+            (1.0, 1.0, 1.0),
         )
 
     def _create_lighting(self) -> None:
