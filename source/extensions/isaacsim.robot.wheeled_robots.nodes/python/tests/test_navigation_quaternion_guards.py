@@ -163,6 +163,38 @@ class TestNavigationQuaternionGuards(ogts.OmniGraphTestCase):
             self.assertAlmostEqual(planned_yaw, np.radians(goal_yaw_deg), places=3)
             self.assertEqual(np.sign(planned_yaw), expected_sign)
 
+    async def test_quintic_path_planner_wraps_target_change_across_pi(self) -> None:
+        """QuinticPathPlanner should compare target yaw changes using the shortest wrapped angle."""
+        stage = omni.usd.get_context().get_stage()
+        goal_prim = UsdGeom.Xform.Define(stage, "/World/GoalWrap")
+        goal_prim.AddTranslateOp().Set(Gf.Vec3d(1.0, 0.0, 0.0))
+        rotate_op = goal_prim.AddRotateXYZOp()
+        rotate_op.Set(Gf.Vec3d(0.0, 0.0, 179.0))
+
+        graph, [planner_node], _, _ = og.Controller.edit(
+            {"graph_path": "/ActionGraphWrap"},
+            {
+                og.Controller.Keys.CREATE_NODES: [
+                    ("QuinticPathPlanner", "isaacsim.robot.wheeled_robots.QuinticPathPlanner"),
+                ],
+                og.Controller.Keys.SET_VALUES: [
+                    ("QuinticPathPlanner.inputs:currentPosition", [0.0, 0.0, 0.0]),
+                    ("QuinticPathPlanner.inputs:currentOrientation", [0.0, 0.0, 0.0, 1.0]),
+                    ("QuinticPathPlanner.inputs:maxAccel", 1000.0),
+                    ("QuinticPathPlanner.inputs:maxJerk", 1000.0),
+                    ("QuinticPathPlanner.inputs:targetPrim", [usdrt.Sdf.Path("/World/GoalWrap")]),
+                ],
+            },
+        )
+
+        await og.Controller.evaluate(graph)
+        target_changed = og.Controller.attribute("outputs:targetChanged", planner_node)
+        self.assertTrue(og.Controller(target_changed).get())
+
+        rotate_op.Set(Gf.Vec3d(0.0, 0.0, -179.0))
+        await og.Controller.evaluate(graph)
+        self.assertFalse(og.Controller(target_changed).get())
+
     async def test_stanley_control_uses_zero_yaw_for_default_zero_quaternion(self) -> None:
         """StanleyControlPID should not fail when its orientation input remains at the OGN zero default."""
         graph, [stanley_node], _, _ = og.Controller.edit(

@@ -160,7 +160,7 @@ def get_target_pos(inputs: object, state: OgnQuinticPathPlannerInternalState) ->
         len(state.target) > 0
         and abs(g[0] - state.target[0]) < 0.1
         and abs(g[1] - state.target[1]) < 0.1
-        and abs(g[2] - state.target[2]) < 0.05
+        and abs(normalize_angle(g[2] - state.target[2])) < 0.05
     ):  # if target diff from saved target is small enough to be negligible error
         return None
     else:
