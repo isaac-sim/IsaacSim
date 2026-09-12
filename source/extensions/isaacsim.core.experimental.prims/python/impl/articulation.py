@@ -3795,9 +3795,9 @@ class Articulation(XformPrim):
             dof_indices: Indices of DOFs to process (shape ``(D,)``). If not defined, all DOFs are processed.
 
         Returns:
-            The gravity compensation forces of the prims.
-            For fixed articulation base shape is ``(N, D)``. For non-fixed (floating) articulation base shape
-            is ``(N, D + 6)`` since the forces acting on the root are also provided.
+            The gravity compensation forces for the selected DOFs (shape ``(N, D)``).
+            For floating-base articulations, the six root-wrench values returned by the lower-level tensor API
+            are excluded.
 
         Raises:
             AssertionError: Wrapped prims are not valid.
@@ -3823,6 +3823,13 @@ class Articulation(XformPrim):
         data = (
             self._physics_articulation_view.get_gravity_compensation_forces()
         )  # shape: (N, max_dofs) or (N, max_dofs + 6)
+        if data.shape[1] == self.num_dofs + 6:
+            data = data[:, 6:]
+        elif data.shape[1] != self.num_dofs:
+            raise RuntimeError(
+                f"Unexpected gravity compensation force shape {data.shape}; expected {self.num_dofs} or "
+                f"{self.num_dofs + 6} values per articulation"
+            )
         indices = ops_utils.resolve_indices(indices, count=len(self), device=data.device)
         dof_indices = ops_utils.resolve_indices(dof_indices, count=self.num_dofs, device=data.device)
         return data[indices, dof_indices].contiguous().to(self._device)

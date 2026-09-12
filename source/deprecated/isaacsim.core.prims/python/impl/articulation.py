@@ -3288,8 +3288,7 @@ class Articulation(XFormPrim):
             indices: Indices to specify which prims to query. Shape (M,).
                 Where M <= size of the encapsulated prims in the view.
             joint_indices: Joint indices to specify which joints to query. Shape (K,).
-                Where K <= num of dofs for fixed-base articulations and K <= num of dofs + 6 for floating-base
-                articulations.
+                Where K <= num of dofs.
             joint_names: Joint names to specify which joints to manipulate. Cannot be specified together with
                 joint_indices. Shape (K,). Where K <= num of dofs.
             clone: True to return a clone of the internal buffer. Otherwise False.
@@ -3314,6 +3313,13 @@ class Articulation(XFormPrim):
             current_values = self._physics_view.get_gravity_compensation_forces()
             if clone:
                 current_values = self._backend_utils.clone_tensor(current_values, device=self._device)
+            if current_values.shape[-1] == self.num_dof + 6:
+                current_values = current_values[..., 6:]
+            elif current_values.shape[-1] != self.num_dof:
+                raise RuntimeError(
+                    f"Unexpected gravity compensation force shape {current_values.shape}; expected {self.num_dof} or "
+                    f"{self.num_dof + 6} values per articulation"
+                )
             result = current_values[
                 self._backend_utils.expand_dims(indices, 1) if self._backend != "warp" else indices, joint_indices
             ]
