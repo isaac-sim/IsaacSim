@@ -69,10 +69,12 @@ class OgnROS2RtxRadarHelper:
         """
         state = db.per_instance_state
 
-        if state.initialized:
+        if not db.inputs.enabled:
+            if state.initialized:
+                state.custom_reset()
             return True
 
-        if not db.inputs.enabled:
+        if state.initialized:
             return True
 
         stage = omni.usd.get_context().get_stage()
@@ -80,7 +82,8 @@ class OgnROS2RtxRadarHelper:
         if not render_product_path:
             carb.log_warn(f"Render product '{render_product_path}' not valid")
             return False
-        if stage.GetPrimAtPath(render_product_path) is None:
+        render_product_prim = stage.GetPrimAtPath(render_product_path)
+        if not render_product_prim or not render_product_prim.IsValid():
             carb.log_warn(f"Render product '{render_product_path}' not created yet, retrying on next call")
             return False
 
