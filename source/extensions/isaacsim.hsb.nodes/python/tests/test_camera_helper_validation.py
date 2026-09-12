@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Retry-state tests for HSBCameraHelper."""
+
+import importlib.util
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import omni.kit.test
+from pxr import Usd
+
+MODULE_PATH = Path(__file__).resolve().parents[1] / "nodes" / "OgnHSBCameraHelper.py"
+SPEC = importlib.util.spec_from_file_location("_hsb_camera_helper_validation", MODULE_PATH)
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+OgnHSBCameraHelper = MODULE.OgnHSBCameraHelper
+
+
+class TestHSBCameraHelperValidation(omni.kit.test.AsyncTestCase):
+    """Verify transient setup failures leave the helper retryable."""
+
+    @staticmethod
+    def _db() -> MagicMock:
+        db = MagicMock()
+        db.per_instance_state.initialized = False
+        db.inputs.renderProductPath = "/Render/Product"
+        db.inputs.resetSimulationTimeOnStop = True
+        db.inputs.useSystemTime = False
+        db.inputs.type = "vb1940_csi_linux"
+        db.inputs.ipAddress = "127.0.0.1"
+        db.inputs.dataPlaneType = 0
+        db.inputs.dataPlaneId = 0
+        db.inputs.sensorId = 0
+        return db
+
+    @patch.object(MODULE.omni.usd, "get_context")
+    async def test_missing_stage_leaves_state_uninitialized(self, mock_get_context: MagicMock) -> None:
+        db = self._db()
+        mock_get_context.return_value.get_stage.return_value = None
+
+        self.assertFalse(OgnHSBCameraHelper.compute(db))
+        self.assertFalse(db.per_instance_state.initialized)
+
+    @patch.object(MODULE.rep.writers, "get", side_effect=RuntimeError("temporary writer failure"))
+    @patch.object(MODULE.omni.syntheticdata.SyntheticData, "convert_sensor_type_to_rendervar", return_value="LdrColor")
+    @patch.object(MODULE.omni.usd, "get_context")
+    async def test_writer_failure_leaves_state_uninitialized(
+        self, mock_get_context: MagicMock, _mock_convert: MagicMock, _mock_writer_get: MagicMock
+    ) -> None:
+        db = self._db()
+        stage = Usd.Stage.CreateInMemory()
+        stage.DefinePrim("/Render/Product")
+        mock_get_context.return_value.get_stage.return_value = stage
+
+        self.assertFalse(OgnHSBCameraHelper.compute(db))
+        self.assertFalse(db.per_instance_state.initialized)

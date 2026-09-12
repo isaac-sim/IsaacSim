@@ -142,8 +142,10 @@ class OgnHSBCameraHelper:
             True if the node computed successfully.
         """
         if db.per_instance_state.initialized is False:
-            db.per_instance_state.initialized = True
             stage = omni.usd.get_context().get_stage()
+            if stage is None:
+                carb.log_warn("USD stage is not available yet, retrying on next call")
+                return False
             with Usd.EditContext(stage, stage.GetSessionLayer()):
                 render_product_path = db.inputs.renderProductPath
                 if not render_product_path:
@@ -227,6 +229,8 @@ class OgnHSBCameraHelper:
                     carb.log_error(f"HSBCameraHelper: Failed to setup writer: {e}")
                     print(traceback.format_exc())
                     return False
+
+                db.per_instance_state.initialized = True
 
         db.outputs.execOut = og.ExecutionAttributeState.ENABLED
         return True
