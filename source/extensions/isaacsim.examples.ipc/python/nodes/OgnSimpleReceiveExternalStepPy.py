@@ -82,6 +82,7 @@ class OgnSimpleReceiveExternalStepPy:
                 port = int(port_str)
             except ValueError:
                 return False
+            ls = None
             try:
                 ls = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 ls.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -89,7 +90,8 @@ class OgnSimpleReceiveExternalStepPy:
                 ls.listen(1)
                 ls.setblocking(False)  # non-blocking so accept() returns immediately when no client is waiting
             except OSError:
-                ls.close()
+                if ls is not None:
+                    ls.close()
                 return False
             state.listen_sock = ls
             state.uri = uri
