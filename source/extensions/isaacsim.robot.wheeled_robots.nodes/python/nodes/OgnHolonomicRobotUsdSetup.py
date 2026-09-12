@@ -95,6 +95,8 @@ class OgnHolonomicRobotUsdSetup:
             if (robot_prim_path != state.robot_prim_path) or (com_prim_path != state.com_prim_path):
                 state.robot_prim_path = robot_prim_path
                 state.com_prim_path = com_prim_path
+                state.robot_params = None
+                state.initialized = False
 
             if not state.initialized:
                 state.initialize()
