@@ -292,9 +292,16 @@ class SrtxCaptureState:
         paths = self._output_paths.setdefault(sensor_set_name, [])
         if output_path in paths:
             return
-        paths.append(output_path)
+
+        updated_paths = [*paths, output_path]
         srtx_instance.stop_continuous_capture(sensor_set_name)
-        srtx_instance.start_continuous_capture(sensor_set_name, paths)
+        try:
+            srtx_instance.start_continuous_capture(sensor_set_name, updated_paths)
+        except Exception:
+            if not paths:
+                self._output_paths.pop(sensor_set_name, None)
+            raise
+        self._output_paths[sensor_set_name] = updated_paths
 
     def stop_or_shrink(self, srtx_instance: object, sensor_set_name: str, output_paths_to_remove: list[str]) -> None:
         """Remove *output_paths_to_remove* from the SRTX continuous capture for *sensor_set_name*.
