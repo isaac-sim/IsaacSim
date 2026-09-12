@@ -140,7 +140,12 @@ class BaseWriterNode(BaseResetNode):
                         noop = rep.AnnotatorRegistry.get_annotator(
                             "IsaacNoop",
                         )
-                        noop.attach([request.render_product_path])
+                        render_products = (
+                            request.render_product_path
+                            if isinstance(request.render_product_path, list)
+                            else [request.render_product_path]
+                        )
+                        noop.attach(render_products)
                         carb.log_info(f"Attaching:\n{request}")
                     else:
                         request.writer.detach()
