@@ -11,7 +11,7 @@ The `DifferentialControllerWindow` serves as the primary interface for setting u
 **Graph Generation**: The window's main functionality centers around the `make_graph()` method, which creates complete OmniGraph networks for differential drive control. The generated graphs include:
 
 - Differential controller nodes for processing drive commands
-- Articulation controller nodes for robot joint management  
+- Articulation controller nodes for robot joint management
 - Optional keyboard control nodes for manual robot operation
 - Proper node connections and parameter configurations based on user input
 
@@ -26,6 +26,10 @@ The extension integrates with Isaac Sim's menu system by adding a "Differential 
 ### Controller Configuration
 
 The extension focuses specifically on differential drive systems, which are common in wheeled mobile robots. Users can configure wheel parameters, joint mappings, and control logic through the provided interface. The resulting OmniGraph networks can then be used to control actual wheeled robots in simulation.
+
+The differential controller's velocity command uses the wheel order `[left, right]`. When selecting joints by name or index, configure the articulation controller in the same order. For example, use `["wheel_left_joint", "wheel_right_joint"]`, or the corresponding left-wheel index followed by the right-wheel index. Reversing the joint order swaps the generated wheel commands and can cause the robot to rotate when a straight-line command is expected.
+
+The Differential Controller window preserves this ordering when it constructs the joint name or joint index array: the **Left Joint** value is written first and the **Right Joint** value second.
 
 ## Integration
 
