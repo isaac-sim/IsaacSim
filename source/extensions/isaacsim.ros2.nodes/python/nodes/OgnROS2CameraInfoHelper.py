@@ -304,6 +304,10 @@ class OgnROS2CameraInfoHelper:
         render_product_path_right = db.inputs.renderProductPathRight
 
         stage = omni.usd.get_context().get_stage()
+        if stage is None:
+            carb.log_warn("USD stage is not available yet, retrying on next call")
+            return False
+
         use_srtx = carb.settings.get_settings().get_as_bool(USE_SRTX_SETTING)
         if use_srtx and not validate_srtx_platform():
             return False
@@ -313,12 +317,14 @@ class OgnROS2CameraInfoHelper:
             if not render_product_path:
                 carb.log_warn(f"Render product '{render_product_path}' not valid")
                 return False
-            if stage.GetPrimAtPath(render_product_path) is None:
+            render_product_prim = stage.GetPrimAtPath(render_product_path)
+            if not render_product_prim or not render_product_prim.IsValid():
                 carb.log_warn(f"Render product '{render_product_path}' not created yet, retrying on next call")
                 return False
             if render_product_path_right:
                 is_stereo = True
-                if stage.GetPrimAtPath(render_product_path_right) is None:
+                render_product_prim_right = stage.GetPrimAtPath(render_product_path_right)
+                if not render_product_prim_right or not render_product_prim_right.IsValid():
                     carb.log_warn(
                         f"Render product '{render_product_path_right}' not created yet, retrying on next call"
                     )
