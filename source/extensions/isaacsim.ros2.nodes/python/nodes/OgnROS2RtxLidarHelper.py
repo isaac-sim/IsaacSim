@@ -315,7 +315,11 @@ class OgnROS2RtxLidarHelper:
         if not render_product_path:
             carb.log_warn(f"Render product '{render_product_path}' not valid")
             return False
-        if stage.GetPrimAtPath(render_product_path) is None:
+        if stage is None:
+            carb.log_warn("USD stage is not available yet, retrying on next call")
+            return False
+        render_product_prim = stage.GetPrimAtPath(render_product_path)
+        if not render_product_prim or not render_product_prim.IsValid():
             # Invalid Render Product Path
             carb.log_warn(f"Render product '{render_product_path}' not created yet, retrying on next call")
             return False
