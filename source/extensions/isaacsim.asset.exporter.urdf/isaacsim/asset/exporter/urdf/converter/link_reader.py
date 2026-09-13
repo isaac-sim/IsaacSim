@@ -60,7 +60,7 @@ class LinkData:
     collisions: list[CollisionData] = field(default_factory=list)
 
 
-def read_link(prim: Usd.Prim) -> LinkData:
+def read_link(prim: Usd.Prim, visualize_collision_meshes: bool = False) -> LinkData:
     """Read all URDF link data from a rigid body prim.
 
     Classifies children as visuals or collisions based on CollisionAPI
@@ -69,6 +69,8 @@ def read_link(prim: Usd.Prim) -> LinkData:
 
     Args:
         prim: USD prim with RigidBodyAPI.
+        visualize_collision_meshes: If True, include collision geometry in
+            both collision and visual output.
 
     Returns:
         LinkData with inertial, visuals, and collisions populated.
@@ -80,6 +82,14 @@ def read_link(prim: Usd.Prim) -> LinkData:
     for child in _iter_geometry_children(prim):
         is_collision = _is_collision_prim(child)
         is_visual = _is_visual_prim(child)
+        if is_collision:
+            imageable = UsdGeom.Imageable(child)
+            collision_only = (
+                imageable.ComputeVisibility() == UsdGeom.Tokens.invisible
+                or imageable.ComputePurpose() == UsdGeom.Tokens.guide
+            )
+            if collision_only:
+                is_visual = visualize_collision_meshes
 
         geom_list = read_geometry(child)
         if not geom_list:

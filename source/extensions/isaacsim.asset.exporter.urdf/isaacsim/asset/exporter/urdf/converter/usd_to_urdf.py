@@ -165,7 +165,7 @@ class UsdToUrdfConverter:
 
         for link_prim in desc.ordered_links:
             link_path = str(link_prim.GetPath())
-            link_data = read_link(link_prim)
+            link_data = read_link(link_prim, visualize_collision_meshes=self._visualize_collision_meshes)
             link_name_map[link_path] = link_data.name
 
             # Recompute geometry origins and export meshes

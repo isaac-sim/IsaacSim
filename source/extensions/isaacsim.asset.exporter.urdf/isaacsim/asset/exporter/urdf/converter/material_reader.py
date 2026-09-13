@@ -18,15 +18,161 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 from pxr import Sdf, Usd, UsdShade
 
 from .transform_utils import get_prim_name, linear_to_srgb
 
 _logger = logging.getLogger(__name__)
+
+_ENCODED_UDIM_TOKEN = re.compile(r"%3cudim%3e", re.IGNORECASE)
+
+
+def _texture_identifier(value: Any) -> str:
+    """Return the authored texture identifier from a shader input value."""
+    if isinstance(value, Sdf.AssetPath):
+        return value.path
+    return str(value)
+
+
+def _normalize_texture_identifier(identifier: str) -> str:
+    """Normalize encoded UDIM tokens without decoding unrelated URL content."""
+    return _ENCODED_UDIM_TOKEN.sub("<UDIM>", identifier)
+
+
+def texture_reference_filename(value: Any) -> str | None:
+    """Return a portable texture filename while preserving a UDIM token."""
+    identifier = _normalize_texture_identifier(_texture_identifier(value))
+    if not identifier:
+        return None
+    if "://" in identifier:
+        filename = unquote(os.path.basename(urlsplit(identifier).path))
+    else:
+        filename = os.path.basename(identifier)
+    return filename or None
+
+
+def _texture_identifiers(value: Any) -> list[str]:
+    """Return resolved and authored texture identifiers in preferred order."""
+    candidates: list[str] = []
+    if isinstance(value, Sdf.AssetPath):
+        for identifier in (value.resolvedPath, value.path):
+            normalized = _normalize_texture_identifier(identifier)
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
+    else:
+        normalized = _normalize_texture_identifier(str(value))
+        if normalized:
+            candidates.append(normalized)
+    return candidates
+
+
+def _authoring_layer(source_property: Any, prim: Usd.Prim) -> Sdf.Layer | None:
+    """Return the strongest layer authoring a texture input, then the stage root."""
+    attribute = source_property.GetAttr() if hasattr(source_property, "GetAttr") else source_property
+    if attribute and hasattr(attribute, "GetPropertyStack"):
+        try:
+            for property_spec in attribute.GetPropertyStack():
+                layer = getattr(property_spec, "layer", None)
+                if layer:
+                    return layer
+        except Exception as exc:
+            _logger.debug(f"Could not inspect texture property stack: {exc}")
+
+    stage = prim.GetStage() if prim else None
+    return stage.GetRootLayer() if stage else None
+
+
+def resolve_texture_paths(value: Any, prim: Usd.Prim, source_property: Any | None = None) -> list[str]:
+    """Resolve a texture input to concrete files, including all UDIM tiles."""
+    identifiers = _texture_identifiers(value)
+    if not identifiers:
+        return []
+
+    if any(UsdShade.UdimUtils.IsUdimIdentifier(identifier) for identifier in identifiers):
+        layer = _authoring_layer(source_property, prim)
+        if not layer:
+            _logger.warning(f"Cannot resolve UDIM texture without an authoring layer: {identifiers[0]}")
+            return []
+
+        for identifier in identifiers:
+            if not UsdShade.UdimUtils.IsUdimIdentifier(identifier):
+                continue
+            try:
+                tiles = UsdShade.UdimUtils.ResolveUdimTilePaths(identifier, layer)
+            except Exception as exc:
+                _logger.warning(f"Failed to resolve UDIM texture {identifier}: {exc}")
+                continue
+
+            resolved_paths: list[str] = []
+            for resolved_path, _tile in sorted(tiles, key=lambda item: item[1]):
+                normalized = _normalize_texture_identifier(resolved_path)
+                if normalized and normalized not in resolved_paths:
+                    resolved_paths.append(normalized)
+            if resolved_paths:
+                return resolved_paths
+
+        _logger.warning(f"No concrete tiles resolved for UDIM texture: {identifiers[0]}")
+        return []
+
+    return [identifiers[0]]
+
+
+def copy_texture_payload(source_path: str, output_dir: str) -> str | None:
+    """Copy a concrete local or remote texture beside exported mesh materials."""
+    if not source_path or not output_dir:
+        return None
+
+    normalized_source = _normalize_texture_identifier(source_path)
+    if UsdShade.UdimUtils.IsUdimIdentifier(normalized_source):
+        _logger.warning(f"Refusing to copy unresolved UDIM texture template: {source_path}")
+        return None
+
+    if "://" in normalized_source:
+        filename = unquote(os.path.basename(urlsplit(normalized_source).path))
+    else:
+        filename = os.path.basename(normalized_source)
+    if not filename:
+        _logger.warning(f"Texture source has no filename: {source_path}")
+        return None
+
+    os.makedirs(output_dir, exist_ok=True)
+    if not os.path.isdir(output_dir):
+        _logger.warning(f"Texture output directory is unavailable: {output_dir}")
+        return None
+
+    destination = os.path.join(output_dir, filename)
+    if os.path.isfile(destination):
+        return filename
+
+    if os.path.isfile(normalized_source):
+        try:
+            shutil.copy2(normalized_source, destination)
+        except OSError as exc:
+            _logger.warning(f"Failed to copy texture {normalized_source} to {destination}: {exc}")
+    elif "://" in normalized_source:
+        try:
+            import omni.client
+
+            destination_url = omni.client.make_file_url_if_possible(os.path.abspath(destination))
+            result = omni.client.copy(
+                normalized_source,
+                destination_url,
+                omni.client.CopyBehavior.OVERWRITE,
+            )
+            if result != omni.client.Result.OK:
+                _logger.warning(f"Failed to copy remote texture {normalized_source}: {result}")
+        except Exception as exc:
+            _logger.warning(f"Failed to copy remote texture {normalized_source} to {destination}: {exc}")
+    else:
+        _logger.warning(f"Resolved texture is not a readable file: {normalized_source}")
+
+    return filename if os.path.isfile(destination) else None
 
 
 def _get_sources(connectable: Any) -> list:
@@ -202,24 +348,31 @@ def _read_texture_shader(shader: UsdShade.Shader, data: MaterialData, output_dir
     if val is None:
         return
 
-    if isinstance(val, Sdf.AssetPath):
-        resolved = val.resolvedPath or val.path
-    else:
-        resolved = str(val)
+    identifier = _normalize_texture_identifier(_texture_identifier(val))
+    is_udim = UsdShade.UdimUtils.IsUdimIdentifier(identifier)
+    reference_filename = texture_reference_filename(val)
+    resolved_paths = resolve_texture_paths(val, shader.GetPrim(), file_input)
 
-    if not resolved:
-        return
+    if output_dir:
+        copied_filenames: list[str] = []
+        for resolved in resolved_paths:
+            filename = copy_texture_payload(resolved, output_dir)
+            if filename:
+                copied_filenames.append(filename)
+        if is_udim and copied_filenames and len(copied_filenames) == len(resolved_paths):
+            data.texture_filename = reference_filename
+        elif is_udim and copied_filenames:
+            _logger.warning(
+                f"Not emitting incomplete UDIM texture reference {identifier}: "
+                f"copied {len(copied_filenames)} of {len(resolved_paths)} tiles"
+            )
+        elif copied_filenames:
+            data.texture_filename = copied_filenames[0]
+    elif resolved_paths:
+        data.texture_filename = reference_filename if is_udim else resolved_paths[0]
 
-    if output_dir and os.path.isfile(resolved):
-        dest = os.path.join(output_dir, os.path.basename(resolved))
-        if not os.path.exists(dest):
-            try:
-                shutil.copy2(resolved, dest)
-            except OSError:
-                _logger.warning(f"Failed to copy texture {resolved} to {dest}")
-        data.texture_filename = os.path.basename(resolved)
-    else:
-        data.texture_filename = resolved
+    if is_udim and not resolved_paths:
+        _logger.warning(f"No concrete tiles resolved for UDIM texture: {identifier}")
 
     fallback_input = shader.GetInput("fallback")
     if fallback_input:
