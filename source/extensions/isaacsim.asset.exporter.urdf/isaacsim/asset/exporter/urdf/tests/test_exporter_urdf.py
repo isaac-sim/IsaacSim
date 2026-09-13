@@ -2326,9 +2326,7 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         texture.CreateIdAttr("UsdUVTexture")
         texture.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(Sdf.AssetPath(texture_path))
         texture.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
-        surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
-            texture.ConnectableAPI(), "rgb"
-        )
+        surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(texture.ConnectableAPI(), "rgb")
         UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(material)
 
         UsdGeom.Scope.Define(stage, "/robot/Physics")

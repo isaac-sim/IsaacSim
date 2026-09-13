@@ -561,17 +561,11 @@ def _resolve_face_material(
 
     expected_name = os.path.basename(data.texture_file.replace("<UDIM>", str(tile)))
     payload = next(
-        (
-            candidate
-            for candidate in data.texture_payloads
-            if os.path.basename(candidate) == expected_name
-        ),
+        (candidate for candidate in data.texture_payloads if os.path.basename(candidate) == expected_name),
         None,
     )
     if payload is None:
-        raise ValueError(
-            f"UDIM tile {tile} required by material {material_name!r} has no resolved payload"
-        )
+        raise ValueError(f"UDIM tile {tile} required by material {material_name!r} has no resolved payload")
 
     variant = _MtlData()
     variant.kd = data.kd
