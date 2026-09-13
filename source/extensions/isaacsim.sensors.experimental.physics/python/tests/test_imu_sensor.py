@@ -596,6 +596,144 @@ class TestIMUSensor(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(in_plane, expected_centripetal, delta=GRAVITY_TOLERANCE, msg=message)
         self.assertAlmostEqual(specific_force[2], EARTH_GRAVITY, delta=GRAVITY_TOLERANCE, msg=message)
 
+    async def test_offset_sensor_measures_its_own_lever_arm(self) -> None:
+        """A sensor mounted away from the centre of mass measures the motion of its own mount.
+
+        PhysX reports rigid-body velocities at the **centre of mass**, so buffering that velocity
+        and differencing it yields the acceleration of the centre of mass, not of the sensor. For a
+        rigid body the two differ by ``w x r`` over the lever arm between them, and dropping that
+        term costs the sensor the centripetal and tangential acceleration of its own mount.
+
+        This is the case ``test_centripetal_acceleration_in_circular_motion`` cannot see: that
+        sensor sits at the body origin with the centre of mass unauthored, so the lever arm is zero
+        and both the corrected and uncorrected code report the same answer.
+
+        Here two sensors ride the same carousel arm at different radii. The inner one sits on the
+        body origin and the outer one is mounted ``mount_offset`` further out along ``+x``, so the
+        outer sensor is turning on a strictly larger radius and must read a strictly larger
+        centripetal magnitude. Without the lever-arm term both sensors report the velocity of the
+        one shared centre of mass, so their readings are **identical** -- which is what the
+        difference assertion below pins.
+
+        Restricted to PhysX, for the reason given on the sibling carousel test: Newton does not
+        carry the body around a world-anchored revolute joint.
+        """
+        if not is_physx_engine():
+            return
+
+        radius = 2.0
+        angular_speed = 2.0  # rad/s
+        mount_offset = 0.5  # stage linear units, along the arm's +x, i.e. radially outward
+
+        await stage_utils.create_new_stage_async()
+        await omni.kit.app.get_app().next_update_async()
+        stage = stage_utils.get_current_stage()
+        stage_utils.set_stage_units(meters_per_unit=1.0)
+        # One physics step per app update, as the sibling carousel test explains: substepping
+        # refreshes the sensor world transform once per update and hides frame-order defects.
+        SimulationManager.setup_simulation(dt=1.0 / self._sensor_rate)
+
+        body_path = "/World/CarouselBody"
+        Cube(body_path, sizes=0.2, positions=[radius, 0.0, 0.0])
+        RigidPrim(body_path, masses=[1.0])
+        body_prim = stage.GetPrimAtPath(body_path)
+        # Damping would apply a torque the drive has to fight, leaving a steady-state rate error.
+        body_prim.CreateAttribute("physxRigidBody:linearDamping", Sdf.ValueTypeNames.Float).Set(0.0)
+        body_prim.CreateAttribute("physxRigidBody:angularDamping", Sdf.ValueTypeNames.Float).Set(0.0)
+        # Pin the centre of mass on the body origin. Unauthored it lands there anyway, but the
+        # lever arm is measured from this point, so the test states it rather than inheriting it.
+        UsdPhysics.MassAPI.Apply(body_prim).CreateCenterOfMassAttr().Set(Gf.Vec3f(0.0, 0.0, 0.0))
+
+        # World-anchored revolute joint: no body0, so localPos0 is the centre of rotation and
+        # localPos1 places the body one radius out along its own +x axis.
+        joint = UsdPhysics.RevoluteJoint.Define(stage, "/World/CarouselJoint")
+        joint.CreateBody1Rel().SetTargets([body_path])
+        joint.CreateAxisAttr("Z")
+        joint.CreateLocalPos0Attr(Gf.Vec3f(0.0, 0.0, 0.0))
+        joint.CreateLocalPos1Attr(Gf.Vec3f(-radius, 0.0, 0.0))
+        drive = UsdPhysics.DriveAPI.Apply(joint.GetPrim(), "angular")
+        drive.CreateTypeAttr().Set(UsdPhysics.Tokens.force)
+        drive.CreateStiffnessAttr().Set(0.0)
+        drive.CreateDampingAttr().Set(1.0e6)
+        drive.CreateTargetVelocityAttr().Set(math.degrees(angular_speed))
+
+        sensors = {}
+        for name, offset in (("hub_imu", 0.0), ("rim_imu", mount_offset)):
+            sensor = IMUSensor(
+                IMU.create(
+                    f"{body_path}/{name}",
+                    translations=[[offset, 0.0, 0.0]],
+                    orientations=[[1.0, 0.0, 0.0, 0.0]],  # wxyz, aligned with the body
+                    linear_acceleration_filter_size=1,
+                    angular_velocity_filter_size=1,
+                    orientation_filter_size=1,
+                )
+            )
+            self._imu_sensors[sensor.imu.paths[0]] = sensor
+            sensors[name] = sensor
+
+        await omni.kit.app.get_app().next_update_async()
+        self._timeline.play()
+        await omni.kit.app.get_app().next_update_async()
+
+        steps_before = SimulationManager.get_num_physics_steps()
+        await omni.kit.app.get_app().next_update_async()
+        steps_per_update = SimulationManager.get_num_physics_steps() - steps_before
+        self.assertEqual(
+            steps_per_update,
+            1,
+            msg=f"carousel needs one physics step per app update, got {steps_per_update}",
+        )
+
+        # Launch at the commanded rate so the motion is steady immediately: during a spin-up ramp
+        # the tangential term alpha x r dominates and the radius comparison below is not clean.
+        RigidPrim(body_path).set_velocities(
+            linear_velocities=[[0.0, angular_speed * radius, 0.0]],
+            angular_velocities=[[0.0, 0.0, angular_speed]],
+        )
+        await step_simulation(0.5)
+
+        # Guard the setup: with no rotation there is no lever-arm term and every assertion below
+        # would pass for the wrong reason.
+        hub_reading = sensors["hub_imu"].get_sensor_reading(read_gravity=False)
+        self.assertTrue(hub_reading.is_valid, "carousel IMU reading should be valid while spinning")
+        self.assertAlmostEqual(
+            hub_reading.angular_velocity_z,
+            angular_speed,
+            delta=ANGULAR_VEL_TOLERANCE,
+            msg=f"carousel drive should hold {angular_speed} rad/s, got {hub_reading.angular_velocity_z}",
+        )
+
+        hub = self._sensor_acceleration(sensors["hub_imu"], read_gravity=False)
+        rim = self._sensor_acceleration(sensors["rim_imu"], read_gravity=False)
+        message = f"hub {hub} rim {rim}"
+
+        hub_in_plane = math.hypot(hub[0], hub[1])
+        rim_in_plane = math.hypot(rim[0], rim[1])
+        # Each sensor turns about the same axis at the same rate on its own radius.
+        self.assertAlmostEqual(
+            hub_in_plane, angular_speed * angular_speed * radius, delta=GRAVITY_TOLERANCE, msg=message
+        )
+        self.assertAlmostEqual(
+            rim_in_plane,
+            angular_speed * angular_speed * (radius + mount_offset),
+            delta=GRAVITY_TOLERANCE,
+            msg=message,
+        )
+        # The discriminating assertion. Both sensors share one centre of mass, so without the
+        # lever-arm correction this difference is exactly zero however far apart they are mounted.
+        self.assertAlmostEqual(
+            rim_in_plane - hub_in_plane,
+            angular_speed * angular_speed * mount_offset,
+            delta=GRAVITY_TOLERANCE,
+            msg=message,
+        )
+        # Both point inward, along each sensor's -x, trailing it slightly for the reason the
+        # sibling carousel test records: the differenced acceleration is a step mean while the
+        # orientation rotating it is sampled one step behind.
+        for name, accel in (("hub", hub), ("rim", rim)):
+            trailing_angle_deg = abs(math.degrees(math.atan2(accel[1], -accel[0])))
+            self.assertLess(trailing_angle_deg, 5.0, msg=f"{name} direction: {message}")
     async def test_gravity_moon_m(self) -> None:
         """Test gravity moon m."""
         await self._setup_ant()

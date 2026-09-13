@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.3.1] - 2026-09-11
+### Fixed
+- `IMUSensor` acceleration now includes the rigid-body term `omega x r` over the lever arm from the parent body's centre of mass to the sensor mount. PhysX reports velocities at the centre of mass, so a sensor mounted away from it previously lost the centripetal and tangential acceleration of its own mount; two sensors on one body reported identical acceleration however far apart they were mounted.
+
 ## [3.3.0] - 2026-08-20
 ### Changed
 - `EffortSensor.change_buffer_size` validates its size, rejecting `0` and booleans (previously accepted) and accepting numpy integers.
