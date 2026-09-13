@@ -33,6 +33,7 @@
 #include <omni/usd/UsdContext.h>
 #include <pxr/usd/usdGeom/metrics.h>
 #include <pxr/usd/usdGeom/tokens.h>
+#include <pxr/usd/usdPhysics/massAPI.h>
 #include <pxr/usd/usdPhysics/rigidBodyAPI.h>
 #include <pxr/usd/usdPhysics/scene.h>
 #if defined(_WIN32)
@@ -193,6 +194,10 @@ public:
 
     omni::math::linalg::vec3d gravity{ 0.0, 0.0, 0.0 };
     omni::math::linalg::vec3d gravitySensorFrame{ 0.0, 0.0, 0.0 };
+    // Parent body centre of mass, in the parent body frame. The velocities the view reports are
+    // the body's centre-of-mass velocities, while the reading belongs at the sensor mount, so the
+    // lever arm between the two has to be added before the velocity is differenced.
+    omni::math::linalg::vec3d centerOfMassBody{ 0.0, 0.0, 0.0 };
 
     double timeSeconds = 0.0;
     double timeDelta = 0.0;
@@ -291,6 +296,37 @@ public:
         }
 
         gravity = readGravityFromStage(stage, cachedScenePath);
+        refreshCenterOfMass(stage);
+    }
+
+    // Read the parent body's centre of mass, in the parent body frame. PhysX reports rigid-body
+    // velocities at the centre of mass, so this is the point the buffered velocity belongs to.
+    // An unauthored physics:centerOfMass leaves the origin, which is what USD Physics specifies.
+    void refreshCenterOfMass(pxr::UsdStageRefPtr stage)
+    {
+        centerOfMassBody.Set(0.0, 0.0, 0.0);
+        if (parentRigidBodyPath.empty())
+        {
+            return;
+        }
+
+        pxr::UsdPrim bodyPrim = stage->GetPrimAtPath(pxr::SdfPath(parentRigidBodyPath));
+        if (!bodyPrim.IsValid())
+        {
+            return;
+        }
+
+        pxr::UsdPhysicsMassAPI massApi(bodyPrim);
+        if (!massApi)
+        {
+            return;
+        }
+
+        pxr::GfVec3f com(0.0f);
+        if (massApi.GetCenterOfMassAttr().Get(&com))
+        {
+            centerOfMassBody.Set(static_cast<double>(com[0]), static_cast<double>(com[1]), static_cast<double>(com[2]));
+        }
     }
 };
 
@@ -798,6 +834,33 @@ void ImuSensorImpl::_processSensor(ImplData& impl, const std::string& primPath, 
 
     omni::math::linalg::vec3d wB = rWb.TransformDir(wW);
     sensor.gravitySensorFrame = rWb.TransformDir(sensor.gravity);
+
+    // Move the velocity from the parent body's centre of mass out to the sensor mount. The view
+    // reports the centre-of-mass velocity of the parent rigid body, so a sensor mounted away from
+    // that point is missing the rigid-body term w x r over the lever arm between them. Without it
+    // the reading loses the centripetal and tangential acceleration of its own mount: the error
+    // grows with |w|^2 * |r| and is zero only for a sensor sitting on the centre of mass.
+    float parentPos[3] = {};
+    float parentOri[4] = {}; // [qw, qx, qy, qz]
+    if (sensor.rigidBodyView->getPrimWorldTransform(sensor.parentRigidBodyPath.c_str(), parentPos, parentOri))
+    {
+        usdrt::GfMatrix4d parentRotation(1.0);
+        parentRotation.SetRotate(usdrt::GfQuatd(static_cast<double>(parentOri[0]), static_cast<double>(parentOri[1]),
+                                                static_cast<double>(parentOri[2]), static_cast<double>(parentOri[3])));
+        // Both endpoints are world positions, so their difference is the lever arm in the world
+        // frame already; only the centre-of-mass offset has to be rotated out of the body frame.
+        const omni::math::linalg::vec3d comWorld =
+            omni::math::linalg::vec3d(static_cast<double>(parentPos[0]), static_cast<double>(parentPos[1]),
+                                      static_cast<double>(parentPos[2])) +
+            parentRotation.TransformDir(sensor.centerOfMassBody);
+        const omni::math::linalg::vec3d sensorWorld(static_cast<double>(sensorPos[0]),
+                                                   static_cast<double>(sensorPos[1]),
+                                                   static_cast<double>(sensorPos[2]));
+        const omni::math::linalg::vec3d leverArm = sensorWorld - comWorld;
+        vW.Set(vW[0] + wW[1] * leverArm[2] - wW[2] * leverArm[1],
+               vW[1] + wW[2] * leverArm[0] - wW[0] * leverArm[2],
+               vW[2] + wW[0] * leverArm[1] - wW[1] * leverArm[0]);
+    }
 
     sensor.pushRaw();
     ImuRawData& raw = sensor.rawAt(0);
