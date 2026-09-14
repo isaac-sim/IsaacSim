@@ -18,6 +18,7 @@
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.test
 from isaacsim.core.experimental.prims import Prim
+from pxr import UsdPhysics
 
 
 class TestPrim(omni.kit.test.AsyncTestCase):
@@ -32,6 +33,22 @@ class TestPrim(omni.kit.test.AsyncTestCase):
         super().tearDown()
 
     # --------------------------------------------------------------------
+
+    async def test_ensure_api_multiple_instances(self) -> None:
+        """Ensure the requested drive instance on every prim in a mixed batch."""
+        await stage_utils.create_new_stage_async()
+        prims = [stage_utils.define_prim(f"/World/Joint_{i}", "PhysicsJoint") for i in range(2)]
+        UsdPhysics.DriveAPI.Apply(prims[0], "transX")
+        UsdPhysics.DriveAPI.Apply(prims[1], "transY").CreateStiffnessAttr(100.0)
+
+        drives = Prim.ensure_api(prims, UsdPhysics.DriveAPI, "transY")
+        self.assertEqual(len(drives), len(prims))
+        for prim, drive in zip(prims, drives):
+            self.assertTrue(drive)
+            self.assertEqual(drive.GetPrim(), prim)
+            self.assertTrue(prim.HasAPI(UsdPhysics.DriveAPI, "transY"))
+        self.assertTrue(prims[0].HasAPI(UsdPhysics.DriveAPI, "transX"))
+        self.assertEqual(drives[1].GetStiffnessAttr().Get(), 100.0)
 
     async def test_resolve_paths(self) -> None:
         """Test resolve paths."""
