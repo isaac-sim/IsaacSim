@@ -41,6 +41,41 @@ class TestPrim(omni.kit.test.AsyncTestCase):
 
     # --------------------------------------------------------------------
 
+    async def test_ensure_api_multiple_instances(self) -> None:
+        """Apply each requested drive instance and preserve existing drive values."""
+        prim = stage_utils.define_prim("/World/Joint", "PhysicsJoint")
+        drive_x = prim_utils.ensure_api(prim, UsdPhysics.DriveAPI, "transX")
+        drive_x.CreateStiffnessAttr(100.0)
+
+        drive_y = prim_utils.ensure_api("/World/Joint", UsdPhysics.DriveAPI, name="transY")
+        self.assertTrue(drive_y)
+        self.assertTrue(prim.HasAPI(UsdPhysics.DriveAPI, "transX"))
+        self.assertTrue(prim.HasAPI(UsdPhysics.DriveAPI, "transY"))
+        self.assertEqual(drive_x.GetStiffnessAttr().Get(), 100.0)
+        self.assertEqual(drive_y.GetStiffnessAttr().Get(), 0.0)
+
+        # Reusing an instance from a weaker layer must not author a stronger opinion.
+        stage = stage_utils.get_current_stage(backend="usd")
+        session_layer = stage.GetSessionLayer()
+        with Usd.EditContext(stage, session_layer):
+            before = session_layer.ExportToString()
+            existing_drive = prim_utils.ensure_api(prim, UsdPhysics.DriveAPI, "transX")
+            self.assertTrue(existing_drive)
+            self.assertEqual(existing_drive.GetStiffnessAttr().Get(), 100.0)
+            self.assertEqual(session_layer.ExportToString(), before)
+
+    async def test_ensure_api_single_apply(self) -> None:
+        """Apply a single-apply schema and preserve its authored values on reuse."""
+        prim = stage_utils.define_prim("/World/Body", "Xform")
+        mass_api = prim_utils.ensure_api(prim, UsdPhysics.MassAPI)
+        self.assertTrue(mass_api)
+        mass_api.CreateMassAttr(2.0)
+
+        existing_api = prim_utils.ensure_api(prim, UsdPhysics.MassAPI)
+        self.assertTrue(existing_api)
+        self.assertEqual(existing_api.GetMassAttr().Get(), 2.0)
+        self.assertEqual(prim.GetAppliedSchemas().count("PhysicsMassAPI"), 1)
+
     async def test_prim_variants(self) -> None:
         """Test prim variants."""
         assets_root_path = await get_assets_root_path_async(skip_check=True)

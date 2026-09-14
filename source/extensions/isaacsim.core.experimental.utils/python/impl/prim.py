@@ -562,7 +562,9 @@ def ensure_api(prim: str | Usd.Prim, api: type, *args: Any, **kwargs: Any) -> An
         UsdLux.LightAPI(Usd.Prim(</World/Light>))
     """
     prim = stage_utils.get_current_stage().GetPrimAtPath(prim) if isinstance(prim, str) else prim
-    return api(prim, *args, **kwargs) if prim.HasAPI(api) else api.Apply(prim, *args, **kwargs)
+    # Check whether this specific API instance is already applied.
+    api_instance = api(prim, *args, **kwargs)
+    return api_instance if api_instance else api.Apply(prim, *args, **kwargs)
 
 
 def create_prim_attribute(

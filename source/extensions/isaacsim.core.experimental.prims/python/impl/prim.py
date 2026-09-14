@@ -205,7 +205,7 @@ class Prim(ABC):
             >>> usd_prims = [prim_utils.get_prim_at_path(f"/World/prim_{i}") for i in range(3)]
             >>> physics_apis = Prim.ensure_api(usd_prims, UsdPhysics.RigidBodyAPI)
         """
-        return [api(prim, *args, **kwargs) if prim.HasAPI(api) else api.Apply(prim, *args, **kwargs) for prim in prims]
+        return [prim_utils.ensure_api(prim, api, *args, **kwargs) for prim in prims]
 
     @staticmethod
     def resolve_paths(paths: str | list[str], raise_on_mixed_paths: bool = True) -> tuple[list[str], list[str]]:
