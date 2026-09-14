@@ -13,6 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#error "Intentional build failure for the public contribution workflow test."
+
 #define CARB_EXPORTS
 #include <carb/PluginUtils.h>
 
