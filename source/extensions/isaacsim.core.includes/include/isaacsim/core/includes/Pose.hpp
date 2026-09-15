@@ -216,8 +216,13 @@ static usdrt::GfMatrix4d computeWorldXformNoCache(pxr::UsdStageRefPtr usdStage,
         usdrt::GfMatrix4d localMat(1.0);
         if (PXR_NS::UsdGeomXformable xformable = PXR_NS::UsdGeomXformable(prim))
         {
-            bool dontCare;
-            xformable.GetLocalTransformation(reinterpret_cast<PXR_NS::GfMatrix4d*>(&localMat), &dontCare, timecode);
+            bool resetsXformStack = false;
+            xformable.GetLocalTransformation(
+                reinterpret_cast<PXR_NS::GfMatrix4d*>(&localMat), &resetsXformStack, timecode);
+            if (resetsXformStack)
+            {
+                return localMat;
+            }
         }
         pxr::UsdPrim parentPrim = prim.GetParent();
         usdrt::GfMatrix4d parentXform = usdrt::GfMatrix4d(1.0);
