@@ -27,7 +27,7 @@ on:
 jobs:
   test:
     name: "Test (${{ inputs.suite }}${{ inputs.bucket != '' && format(':{0}', inputs.bucket) || '' }})"
-    runs-on: [self-hosted, gpu-stg]
+    runs-on: [self-hosted, gpu]
     timeout-minutes: 120
     defaults:
       run:
