@@ -280,12 +280,9 @@ class VisualCuesManager:
     def _on_update(self, _event: object) -> None:
         if not self._active_sides:
             return
-        stage = (
-            stage_utils.get_current_stage()
-            if stage_utils.is_stage_set() or omni.usd.get_context().get_stage() is not None
-            else None
-        )
-        if stage is None:
+        try:
+            stage = stage_utils.get_current_stage()
+        except ValueError:
             self._invalidate_stale_layer()
             return
         if not self._layer_is_attached(stage):

@@ -15,15 +15,19 @@
 
 """Test OmniPVD OVD recording file generation."""
 
-import os
 import sys
+import tempfile
 from pathlib import Path
 
 from isaacsim import SimulationApp
 
+if not any(argument.startswith("--ovd") for argument in sys.argv[1:]):
+    pvd_output_dir = Path(tempfile.mkdtemp(prefix="isaacsim_ovd_"))
+    sys.argv.append(f"--ovd={pvd_output_dir}")
+
 kit = SimulationApp()
 
-import carb
+import carb  # noqa: E402
 
 for _ in range(10):
     kit.update()
@@ -32,9 +36,11 @@ for _ in range(10):
 pvd_output_dir = carb.settings.get_settings().get_as_string("/persistent/physics/omniPvdOvdRecordingDirectory")
 
 print("omniPvdOvdRecordingDirectory: ", pvd_output_dir)
-my_file = Path(os.path.join(pvd_output_dir, "tmp.ovd"))
-if not my_file.is_file():
+my_file = Path(pvd_output_dir) / "tmp.ovd"
+recording_exists = my_file.is_file()
+if not recording_exists:
     print(f"[fatal] {my_file} does not exist")
-    sys.exit(1)
 
-kit.close()
+exit_code = 0 if recording_exists else 1
+kit.close(exit_code=exit_code)
+sys.exit(exit_code)

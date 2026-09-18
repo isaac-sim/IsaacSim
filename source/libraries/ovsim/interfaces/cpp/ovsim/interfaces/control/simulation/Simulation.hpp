@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <variant>
@@ -28,20 +29,30 @@ namespace control
 namespace simulation
 {
 
-using InputParameterType = std::variant<bool, uintptr_t, int64_t, double, std::string>;
-using OutputParameterType = std::variant<bool, uintptr_t, int64_t, double, std::string>;
+/** @brief Values accepted by provider parameter setters. */
+using InputParameterType = std::variant<bool, std::uintptr_t, std::int64_t, double, std::string>;
+/** @brief Values returned by provider parameter getters. */
+using OutputParameterType = std::variant<bool, std::uintptr_t, std::int64_t, double, std::string>;
 
-using PlayFn = std::function<void()>;
-using PauseFn = std::function<void()>;
-using StopFn = std::function<void()>;
+/** @brief Callable signature for starting or resuming simulation. */
+using PlayFunction = std::function<void()>;
+/** @brief Callable signature for pausing simulation. */
+using PauseFunction = std::function<void()>;
+/** @brief Callable signature for stopping simulation. */
+using StopFunction = std::function<void()>;
 
-using InitializeFn = std::function<void()>;
-using InvalidateFn = std::function<void()>;
-using StepFn = std::function<void()>;
+/** @brief Callable signature for initializing simulation resources. */
+using InitializeFunction = std::function<void()>;
+/** @brief Callable signature for invalidating simulation resources. */
+using InvalidateFunction = std::function<void()>;
+/** @brief Callable signature for advancing simulation by one step. */
+using StepFunction = std::function<void()>;
 
-using SetParameterFn = std::function<void(
+/** @brief Callable signature for setting a named provider parameter. */
+using SetParameterFunction = std::function<void(
     const std::string& /*provider*/, const std::string& /*parameterName*/, const InputParameterType& /*value*/)>;
-using GetParameterFn =
+/** @brief Callable signature for getting a named provider parameter. */
+using GetParameterFunction =
     std::function<OutputParameterType(const std::string& /*provider*/, const std::string& /*parameterName*/)>;
 
 } // namespace simulation

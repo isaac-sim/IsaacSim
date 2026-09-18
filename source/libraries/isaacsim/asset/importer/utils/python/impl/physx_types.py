@@ -33,6 +33,7 @@ Example:
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 from enum import Enum
@@ -52,6 +53,19 @@ def _ensure_physx_schemas_registered() -> None:
     registry = Plug.Registry()
     if registry.GetPluginWithName("physxSchema"):
         return  # Full plugin already loaded.
+
+    # The standalone runtime ships the full schema package when it is available,
+    # but importing this utility can precede the package's normal initialization.
+    # Give the full package the first opportunity to register its plugin so the
+    # fallback never claims the same schema types in that environment.
+    try:
+        importlib.import_module("physx_usd_schemas")
+    except ModuleNotFoundError as exc:
+        if exc.name != "physx_usd_schemas":
+            raise
+
+    if registry.GetPluginWithName("physxSchema"):
+        return
 
     schemas_dir = os.path.join(os.path.dirname(__file__), "schemas")
     if not os.path.isdir(schemas_dir):

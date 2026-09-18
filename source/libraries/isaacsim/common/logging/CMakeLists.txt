@@ -24,11 +24,11 @@ isaacsim_add_module(
         isaacsim/common/logging/LoggingHost.h
     PUBLIC_CPP_HEADERS
         isaacsim/common/logging/Logging.hpp
-        isaacsim/common/logging/details/CarboniteBackend.hpp
         isaacsim/common/logging/details/LogMacros.hpp
     PUBLIC_C_SYMBOLS_FILE abi/c-api.symbols
     SOURCES
         src/CApi.cpp
+        src/details/CarboniteBackend.hpp
         src/details/CarboniteBackend.cpp
         src/details/LoggingHostInternal.hpp
         src/Logging.cpp

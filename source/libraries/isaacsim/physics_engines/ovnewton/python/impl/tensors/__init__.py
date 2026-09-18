@@ -42,15 +42,14 @@ from .backend import (
     RigidBodySet,
     RigidContactSet,
 )
-from .rigid_body_view import NewtonRigidBodyView
-from .rigid_contact_view import NewtonRigidContactView
-from .simulation_view import (
+from .entity_factories import (
     DEFAULT_SIMULATION_NAME,
     ENGINE_NAME,
-    NewtonSimulationView,
     register_with_umbrella,
     unregister_from_umbrella,
 )
+from .rigid_body_view import NewtonRigidBodyView
+from .rigid_contact_view import NewtonRigidContactView
 from .utils import find_matching_paths
 
 # Register Newton view factories on import.
@@ -62,7 +61,6 @@ __all__ = [
     "NewtonRigidBodyView",
     "NewtonRigidContactView",
     "NewtonSimView",
-    "NewtonSimulationView",
     "RigidBodySet",
     "RigidContactSet",
     "find_matching_paths",

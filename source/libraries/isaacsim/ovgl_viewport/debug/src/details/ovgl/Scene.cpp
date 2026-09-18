@@ -33,7 +33,7 @@
 
 #include <stb_image.h> /* implementation lives in gl/StbImageImplementation.c */
 
-#ifdef OVGL_HAS_CUDA
+#if defined(OVGL_HAS_CUDA)
 #    include <cuda_runtime.h>
 #endif
 
@@ -59,7 +59,7 @@ namespace
 
 thread_local std::string g_err;
 
-bool finish_enqueue(ovstage_instance_t* stage, ovstage_enqueue_result_t enqueue)
+bool finishEnqueue(ovstage_instance_t* stage, ovstage_enqueue_result_t enqueue)
 {
     if (!stage || enqueue.status != OVSTAGE_OK || enqueue.op_index == OVSTAGE_INVALID_OP_ID)
         return false;
@@ -87,7 +87,7 @@ struct ScopedQueryHandle
     ~ScopedQueryHandle()
     {
         if (stage && handle != OVSTAGE_INVALID_QUERY_HANDLE)
-            (void)finish_enqueue(stage, ovstage_release_query(stage, handle));
+            (void)finishEnqueue(stage, ovstage_release_query(stage, handle));
     }
 };
 
@@ -98,12 +98,12 @@ struct ScopedReadHandle
     ~ScopedReadHandle()
     {
         if (stage && handle != OVSTAGE_INVALID_READ_HANDLE)
-            (void)finish_enqueue(stage, ovstage_release_read(stage, handle));
+            (void)finishEnqueue(stage, ovstage_release_read(stage, handle));
     }
 };
 
 /* Per-attribute prefetch cache for the scene build: attr -> column (bytes per prim), keyed by
- * g_prim_index. read_attr_host builds and tears down a query per single prim, ~27x per mesh;
+ * g_prim_index. readAttributeHost builds and tears down a query per single prim, ~27x per mesh;
  * ovstage is columnar, so the build prefetches each column once with one batched read and
  * serves the loop from here. A covered prim with an empty entry has no value. Build-scoped;
  * cleared at the end so refresh_xforms/pick read the live store. Correctness relies on
@@ -118,7 +118,7 @@ struct BatchColumn
     std::vector<uint8_t> covered;
     /* Per-row column semantic (ovstage_attribute_semantic_t), captured from the
      * batched read groups so cached rows carry the same decode-space signal as
-     * live point reads: read_str_attr picks token-id vs path-id resolution by
+     * live point reads: readStringAttribute picks token-id vs path-id resolution by
      * it (token and path ids are overlapping small counters — see the
      * ID-semantic decode block below). NONE when the producer left the column
      * untagged. */
@@ -126,19 +126,19 @@ struct BatchColumn
 };
 std::unordered_map<std::string, BatchColumn> g_batch;
 std::unordered_map<std::string, size_t> g_prim_index;
-void batch_clear()
+void batchClear()
 {
     g_batch.clear();
     g_prim_index.clear();
 }
 
 long g_reads = 0;
-bool profile_load()
+bool profileLoad()
 {
-    static const bool on = std::getenv("OVGL_PROFILE_LOAD") != nullptr;
-    return on;
+    static const bool s_kEnabled = std::getenv("OVGL_PROFILE_LOAD") != nullptr;
+    return s_kEnabled;
 }
-double load_now_ms()
+double loadNowMs()
 {
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
@@ -184,14 +184,14 @@ uint64_t g_texture_build_serial = 0;
 
 /* How many stbi decodes this build actually paid for. Distinct from the number
  * of texture paths it resolved (the memo and the content dedup below both hand
- * back pixels without decoding) and from g_textures.size() (two colour spaces
+ * back pixels without decoding) and from g_textures.size() (two color spaces
  * over one image are two GPU textures off ONE decode). Reset per build; only
  * read by the OVGL_PROFILE_LOAD line, as is the digesting time beside it -- the
  * price content dedup charges up front for the decodes it then skips. */
 size_t g_texture_decodes = 0;
 double g_texture_hash_ms = 0.0;
 
-/* ── Content-hash texture dedup ────────────────────────────────────────────────
+/* Content-hash texture deduplication.
  *
  * g_texture_index dedups by PATH, which is the wrong key for how real asset
  * libraries ship. The mirrored franka_factory corpus is 23 PNGs, 11 unique by
@@ -212,7 +212,7 @@ double g_texture_hash_ms = 0.0;
  *
  * and the rendered frame is BYTE-IDENTICAL across all ten runs (one md5,
  * 5ed45cea10933aa3b7504224b2e2d816) -- deduplicating byte-identical inputs is a
- * pure optimisation, so any pixel difference would mean something merged that
+ * pure optimization, so any pixel difference would mean something merged that
  * should not have. 19 -> 7 rather than 19 -> 11 because this scene binds only 19
  * of the mirror's 23 PNGs: 18 CubeBox copies of 6 uniques (all 4096-square,
  * capped to 2048 here) plus one 1024-square plastic normal map. Two further
@@ -229,17 +229,17 @@ double g_texture_hash_ms = 0.0;
  *
  * THE KEY IS (CONTENT, IS_SRGB), NOT CONTENT ALONE. GpuOpenGles.c picks the GL
  * internal format per texture from is_srgb -- GL_SRGB8_ALPHA8 vs GL_RGBA8
- * (GpuOpenGles.c:1417-1418) -- so ONE image bound to a colour slot and to a data slot
+ * (GpuOpenGles.c:1417-1418) -- so ONE image bound to a color slot and to a data slot
  * legitimately wants TWO GPU textures. Merging those on content alone silently
  * corrupts one of them: a normal/ORM map sampled through sRGB, or an albedo
  * sampled linear and rendering too dark. The two entries still share ONE decode
  * and ONE pixel buffer (shared_ptr), so the disagreement costs GPU memory only,
  * never CPU time, and it is the format -- not the pixels -- that differs.
  *
- * HOW THIS COMPOSES WITH THE DECODED-SIZE CAP (box_downsample_rgba8, :811). The
+ * HOW THIS COMPOSES WITH THE DECODED-SIZE CAP (boxDownsampleRgba8, :811). The
  * cap is NOT in the key and must never be: it runs BETWEEN the decode and the
  * memo/content-cache inserts, and it is a pure function of (decoded w, decoded
- * h, the process-static max_texture_size()), so identical source bytes decode to
+ * h, the process-static maxTextureSize()), so identical source bytes decode to
  * identical dimensions and therefore take an identical cap decision. Two copies
  * of one image can never end up one capped and one not. This ordering is also
  * the only one that pays: the digest is taken BEFORE the decode precisely so a
@@ -270,30 +270,30 @@ std::unordered_map<std::string, int> g_texture_content_index;
 
 /* The is_srgb byte is the whole safety property of this key. Dropping it -- i.e.
  * returning `content` alone -- was BUILT AND MEASURED on a fixture that binds
- * three byte-identical copies of one PNG to two colour slots and one linear
+ * three byte-identical copies of one PNG to two color slots and one linear
  * occlusion/normal slot: the content-only key collapses all three to 1 GPU
  * texture instead of 2, and the data slot, sampled through GL_SRGB8_ALPHA8,
  * renders max_channel_error 112 with 7.69% of the frame off by more than 32.
  * With this key the same fixture is byte-identical to OVGL_TEXTURE_DEDUP=0.
  * Do not "simplify" it away. */
-std::string content_slot_key(const std::string& content, bool srgb)
+std::string contentSlotKey(const std::string& content, bool srgb)
 {
     return content + (srgb ? "\x01" : "\x00");
 }
 
-/* Index of an existing entry for `content`: the one whose colour space matches
- * `srgb`, or -- when `exact` is false -- the other colour space's entry, whose
+/* Index of an existing entry for `content`: the one whose color space matches
+ * `srgb`, or -- when `exact` is false -- the other color space's entry, whose
  * DECODED PIXELS are what the caller is really after. -1 when neither exists. */
-int find_content_entry(const std::string& content, bool srgb, bool exact)
+int findContentEntry(const std::string& content, bool srgb, bool exact)
 {
     if (content.empty())
         return -1;
-    auto hit = g_texture_content_index.find(content_slot_key(content, srgb));
+    auto hit = g_texture_content_index.find(contentSlotKey(content, srgb));
     if (hit != g_texture_content_index.end())
         return hit->second;
     if (exact)
         return -1;
-    hit = g_texture_content_index.find(content_slot_key(content, !srgb));
+    hit = g_texture_content_index.find(contentSlotKey(content, !srgb));
     return hit != g_texture_content_index.end() ? hit->second : -1;
 }
 
@@ -301,11 +301,11 @@ int find_content_entry(const std::string& content, bool srgb, bool exact)
  * through memcpy so unaligned source buffers are defined behavior. The digest
  * is little-endian-dependent and process-local -- nothing persists it, so that
  * costs nothing here. */
-inline uint64_t mm_rotl64(uint64_t x, int r)
+inline uint64_t mmRotl64(uint64_t x, int r)
 {
     return (x << r) | (x >> (64 - r));
 }
-inline uint64_t mm_fmix64(uint64_t k)
+inline uint64_t mmFmix64(uint64_t k)
 {
     k ^= k >> 33;
     k *= 0xff51afd7ed558ccdULL;
@@ -314,7 +314,7 @@ inline uint64_t mm_fmix64(uint64_t k)
     k ^= k >> 33;
     return k;
 }
-void murmur3_x64_128(const uint8_t* data, size_t len, uint64_t out[2])
+void murmur3X64128(const uint8_t* data, size_t len, uint64_t out[2])
 {
     const uint64_t c1 = 0x87c37b91114253d5ULL, c2 = 0x4cf5ad432745937fULL;
     uint64_t h1 = 0, h2 = 0;
@@ -325,17 +325,17 @@ void murmur3_x64_128(const uint8_t* data, size_t len, uint64_t out[2])
         std::memcpy(&k1, data + i * 16, 8);
         std::memcpy(&k2, data + i * 16 + 8, 8);
         k1 *= c1;
-        k1 = mm_rotl64(k1, 31);
+        k1 = mmRotl64(k1, 31);
         k1 *= c2;
         h1 ^= k1;
-        h1 = mm_rotl64(h1, 27);
+        h1 = mmRotl64(h1, 27);
         h1 += h2;
         h1 = h1 * 5 + 0x52dce729;
         k2 *= c2;
-        k2 = mm_rotl64(k2, 33);
+        k2 = mmRotl64(k2, 33);
         k2 *= c1;
         h2 ^= k2;
-        h2 = mm_rotl64(h2, 31);
+        h2 = mmRotl64(h2, 31);
         h2 += h1;
         h2 = h2 * 5 + 0x38495ab5;
     }
@@ -364,7 +364,7 @@ void murmur3_x64_128(const uint8_t* data, size_t len, uint64_t out[2])
     case 9:
         k2 ^= (uint64_t)tail[8];
         k2 *= c2;
-        k2 = mm_rotl64(k2, 33);
+        k2 = mmRotl64(k2, 33);
         k2 *= c1;
         h2 ^= k2;
         [[fallthrough]];
@@ -392,7 +392,7 @@ void murmur3_x64_128(const uint8_t* data, size_t len, uint64_t out[2])
     case 1:
         k1 ^= (uint64_t)tail[0];
         k1 *= c1;
-        k1 = mm_rotl64(k1, 31);
+        k1 = mmRotl64(k1, 31);
         k1 *= c2;
         h1 ^= k1;
         break;
@@ -403,8 +403,8 @@ void murmur3_x64_128(const uint8_t* data, size_t len, uint64_t out[2])
     h2 ^= len;
     h1 += h2;
     h2 += h1;
-    h1 = mm_fmix64(h1);
-    h2 = mm_fmix64(h2);
+    h1 = mmFmix64(h1);
+    h2 = mmFmix64(h2);
     h1 += h2;
     h2 += h1;
     out[0] = h1;
@@ -420,25 +420,25 @@ void murmur3_x64_128(const uint8_t* data, size_t len, uint64_t out[2])
  * OVGL_MAX_TEX_SIZE (:787) and OVGL_GRID_OVERLAY / OVGL_SS (Ovgl.cpp), so it
  * cannot change mid-process and split one build between deduped and non-deduped
  * textures. */
-bool texture_dedup_enabled()
+bool textureDedupEnabled()
 {
-    static const bool on = []
+    static const bool s_kEnabled = []
     {
         const char* e = std::getenv("OVGL_TEXTURE_DEDUP");
         return !(e && e[0] == '0' && e[1] == '\0');
     }();
-    return on;
+    return s_kEnabled;
 }
 
-std::string content_digest(const std::vector<uint8_t>& bytes)
+std::string contentDigest(const std::vector<uint8_t>& bytes)
 {
-    if (!texture_dedup_enabled())
+    if (!textureDedupEnabled())
         return {};
-    const double t0 = profile_load() ? load_now_ms() : 0.0;
+    const double t0 = profileLoad() ? loadNowMs() : 0.0;
     uint64_t h[2] = { 0, 0 };
-    murmur3_x64_128(bytes.data(), bytes.size(), h);
-    if (profile_load())
-        g_texture_hash_ms += load_now_ms() - t0;
+    murmur3X64128(bytes.data(), bytes.size(), h);
+    if (profileLoad())
+        g_texture_hash_ms += loadNowMs() - t0;
     char buf[64];
     std::snprintf(buf, sizeof buf, "%016llx%016llx:%llu", (unsigned long long)h[0], (unsigned long long)h[1],
                   (unsigned long long)bytes.size());
@@ -449,7 +449,7 @@ std::string content_digest(const std::vector<uint8_t>& bytes)
  * and then decoded from memory — the same two-step the packaged .usdz branch
  * has always taken. false leaves `out` unspecified and the caller negative-
  * caches the path, exactly as a decode failure did. */
-bool read_whole_file(const std::string& path, std::vector<uint8_t>& out)
+bool readWholeFile(const std::string& path, std::vector<uint8_t>& out)
 {
     std::FILE* f = std::fopen(path.c_str(), "rb");
     if (!f)
@@ -472,7 +472,7 @@ bool read_whole_file(const std::string& path, std::vector<uint8_t>& out)
  * plain file, or of the .usdz archive for a packaged "/pkg.usdz[inner]" path.
  * Empty when the file cannot be stat'ed — the caller then skips the memo and
  * decodes fresh (fail-open to today's behavior). */
-std::string texture_file_identity(const std::string& resolved)
+std::string textureFileIdentity(const std::string& resolved)
 {
     std::string file = resolved;
     const size_t bracket = resolved.find('[');
@@ -489,7 +489,7 @@ std::string texture_file_identity(const std::string& resolved)
 /* mesh path -> material path, for meshes whose binding lives on a child GeomSubset. USD lets a
  * mesh carry no binding of its own and bind per-face through GeomSubset children; Apple's
  * biplane binds its whole body, wings and wheels that way (one subset covering every face), so
- * without this they resolve to no material and render as flat grey displayColor. The nanousd
+ * without this they resolve to no material and render as flat gray displayColor. The nanousd
  * renderer has no GeomSubset support at all, so there is nothing to port -- this is the minimal
  * correct reading. NOT handled: a mesh split across SEVERAL subsets with DIFFERENT materials;
  * that needs the mesh broken into per-subset draws, and we take the first subset's material. */
@@ -508,16 +508,16 @@ enum
     TEX_OPACITY = 6,
 };
 
-struct TextureSlotDesc
+struct TextureSlotDescription
 {
     const char* input; /* UsdPreviewSurface input name */
     int slot; /* gl texture slot */
     bool srgb; /* color data (sRGB-encoded) vs data (linear) */
 };
 
-/* Colour slots are sRGB-encoded; normals/roughness/metallic/AO are linear DATA. Sampling data
- * as sRGB corrupts normals and PBR; sampling colour as linear renders it too dark. */
-constexpr TextureSlotDesc kTextureSlots[] = {
+/* Color slots are sRGB-encoded; normals/roughness/metallic/AO are linear DATA. Sampling data
+ * as sRGB corrupts normals and PBR; sampling color as linear renders it too dark. */
+constexpr TextureSlotDescription g_kTextureSlots[] = {
     { "inputs:diffuseColor", TEX_DIFFUSE_COLOR, true },
     { "inputs:normal", TEX_NORMAL, false },
     { "inputs:roughness", TEX_ROUGHNESS, false },
@@ -527,7 +527,7 @@ constexpr TextureSlotDesc kTextureSlots[] = {
     { "inputs:opacity", TEX_OPACITY, false },
 };
 
-ovx_string_t to_ovx(const std::string& s)
+ovx_string_t toOvx(const std::string& s)
 {
     ovx_string_t out{};
     out.ptr = s.c_str();
@@ -535,12 +535,12 @@ ovx_string_t to_ovx(const std::string& s)
     return out;
 }
 
-ovx_token_t intern_attr(ovstage_instance_t* stage, const std::string& name)
+ovx_token_t internAttribute(ovstage_instance_t* stage, const std::string& name)
 {
     path_dictionary_instance_t* dict = ovstage_get_path_dictionary(stage);
     if (!dict)
         return OVX_INVALID_TOKEN;
-    ovx_string_t s = to_ovx(name);
+    ovx_string_t s = toOvx(name);
     ovx_token_t tok = OVX_INVALID_TOKEN;
     if (path_dictionary_create_tokens_from_strings(dict, &s, 1, &tok).status != OVX_API_SUCCESS)
         return OVX_INVALID_TOKEN;
@@ -551,12 +551,12 @@ ovx_token_t intern_attr(ovstage_instance_t* stage, const std::string& name)
  * `semantic_out` (optional) receives the column's authored semantic from the read group
  * (OVSTAGE_SEMANTIC_NONE when untagged/unavailable) so string readers can pick the id
  * decode space deterministically instead of guessing. */
-bool read_attr_host(ovstage_instance_t* stage,
-                    ovstage_ordinal_t ordinal,
-                    const std::string& prim_path,
-                    const std::string& attr_name,
-                    std::vector<uint8_t>& out,
-                    ovstage_attribute_semantic_t* semantic_out = nullptr)
+bool readAttributeHost(ovstage_instance_t* stage,
+                       ovstage_ordinal_t ordinal,
+                       const std::string& prim_path,
+                       const std::string& attr_name,
+                       std::vector<uint8_t>& out,
+                       ovstage_attribute_semantic_t* semantic_out = nullptr)
 {
     out.clear();
     if (semantic_out)
@@ -579,9 +579,9 @@ bool read_attr_host(ovstage_instance_t* stage,
             }
         }
     }
-    if (profile_load())
+    if (profileLoad())
         ++g_reads;
-    ovx_token_t tok = intern_attr(stage, attr_name);
+    ovx_token_t tok = internAttribute(stage, attr_name);
     if (tok == OVX_INVALID_TOKEN)
     {
         g_err = "intern(" + attr_name + ")";
@@ -594,7 +594,7 @@ bool read_attr_host(ovstage_instance_t* stage,
         g_err = "no path dictionary";
         return false;
     }
-    const ovx_string_t path_string = to_ovx(prim_path);
+    const ovx_string_t path_string = toOvx(prim_path);
     ovx_primpath_list_t path_list = OVX_INVALID_PRIMPATH_LIST;
     ScopedPathListReference path_ref{ dict, path_list };
     if (path_dictionary_create_path_list_from_strings(dict, &path_string, 1, &path_list).status != OVX_API_SUCCESS ||
@@ -671,7 +671,7 @@ bool read_attr_host(ovstage_instance_t* stage,
                 out.resize(b1 - b0);
                 if (t0.device.device_type == kDLCUDA)
                 {
-#ifdef OVGL_HAS_CUDA
+#if defined(OVGL_HAS_CUDA)
                     const cudaError_t copy_status = cudaMemcpy(out.data(), base + b0, b1 - b0, cudaMemcpyDeviceToHost);
                     if (copy_status != cudaSuccess)
                     {
@@ -718,7 +718,7 @@ bool read_attr_host(ovstage_instance_t* stage,
             break;
         }
     }
-    if (!finish_enqueue(stage, er))
+    if (!finishEnqueue(stage, er))
     {
         g_err = "read operation(" + prim_path + "." + attr_name + ")";
         err = true;
@@ -729,7 +729,7 @@ bool read_attr_host(ovstage_instance_t* stage,
 /* Batched reads accept groups from either ovstage backend, so treat tensor metadata as
  * untrusted.  The bridge copies rows on the CPU and can only consume contiguous,
  * host-addressable tensors whose byte extent can be computed without overflow. */
-bool batch_tensor_extent(const DLTensor& tensor, size_t& element_count, size_t& element_bytes, size_t& total_bytes)
+bool batchTensorExtent(const DLTensor& tensor, size_t& element_count, size_t& element_bytes, size_t& total_bytes)
 {
     element_count = 0;
     element_bytes = 0;
@@ -771,7 +771,7 @@ bool batch_tensor_extent(const DLTensor& tensor, size_t& element_count, size_t& 
     return true;
 }
 
-bool batch_tensor_host_accessible(const DLTensor& tensor)
+bool batchTensorHostAccessible(const DLTensor& tensor)
 {
     switch (tensor.device.device_type)
     {
@@ -785,14 +785,14 @@ bool batch_tensor_host_accessible(const DLTensor& tensor)
     }
 }
 
-uint64_t batch_load_u64(const uint8_t* ptr)
+uint64_t batchLoadU64(const uint8_t* ptr)
 {
     uint64_t value = 0;
     std::memcpy(&value, ptr, sizeof(value));
     return value;
 }
 
-bool batch_mask_test(ovstage_mask_t mask, uint32_t index)
+bool batchMaskTest(ovstage_mask_t mask, uint32_t index)
 {
     return !mask || ((mask[index / 64] >> (index % 64)) & uint64_t{ 1 }) != 0;
 }
@@ -804,12 +804,12 @@ bool batch_mask_test(ovstage_mask_t mask, uint32_t index)
  * reordered, deduplicated, or masked data returned by another ovstage producer.
  * `semantics_out` (optional, sized/indexed like `out`) receives each assigned row's column
  * semantic (ovstage_attribute_semantic_t; NONE for unassigned rows) for the batch cache. */
-bool read_attr_batched(ovstage_instance_t* stage,
-                       ovstage_ordinal_t ordinal,
-                       const std::vector<std::string>& paths,
-                       const std::string& attr,
-                       std::vector<std::vector<uint8_t>>& out,
-                       std::vector<uint8_t>* semantics_out = nullptr)
+bool readBatchedAttributes(ovstage_instance_t* stage,
+                           ovstage_ordinal_t ordinal,
+                           const std::vector<std::string>& paths,
+                           const std::string& attr,
+                           std::vector<std::vector<uint8_t>>& out,
+                           std::vector<uint8_t>* semantics_out = nullptr)
 {
     out.assign(paths.size(), {});
     if (semantics_out)
@@ -847,7 +847,7 @@ bool read_attr_batched(ovstage_instance_t* stage,
         return false;
     }
 
-    ovx_token_t tok = intern_attr(stage, attr);
+    ovx_token_t tok = internAttribute(stage, attr);
     if (tok == OVX_INVALID_TOKEN)
     {
         g_err = "intern(batch " + attr + ")";
@@ -945,9 +945,9 @@ bool read_attr_batched(ovstage_instance_t* stage,
             {
                 const DLTensor& tv = g.data.tensors[0];
                 const DLTensor& to = g.data.tensors[1];
-                group_valid = batch_tensor_host_accessible(tv) && batch_tensor_host_accessible(to) &&
-                              batch_tensor_extent(tv, value_elements, value_element_bytes, value_total) &&
-                              batch_tensor_extent(to, offset_elements, offset_element_bytes, offset_total) &&
+                group_valid = batchTensorHostAccessible(tv) && batchTensorHostAccessible(to) &&
+                              batchTensorExtent(tv, value_elements, value_element_bytes, value_total) &&
+                              batchTensorExtent(to, offset_elements, offset_element_bytes, offset_total) &&
                               offset_element_bytes == sizeof(uint64_t);
                 if (group_valid)
                 {
@@ -963,8 +963,8 @@ bool read_attr_batched(ovstage_instance_t* stage,
                  * fixed multi-element row like extent is 2 float3 elements).
                  * Reject multi-tensor shapes instead of guessing. */
                 const DLTensor& tv = g.data.tensors[0];
-                group_valid = g.data.tensor_count == 1 && batch_tensor_host_accessible(tv) &&
-                              batch_tensor_extent(tv, value_elements, value_element_bytes, value_total);
+                group_valid = g.data.tensor_count == 1 && batchTensorHostAccessible(tv) &&
+                              batchTensorExtent(tv, value_elements, value_element_bytes, value_total);
                 if (group_valid)
                 {
                     value_rows = data_rows ? data_rows : 1;
@@ -989,7 +989,7 @@ bool read_attr_batched(ovstage_instance_t* stage,
                     group_valid = false;
                     break;
                 }
-                if (!batch_mask_test(g.data.mask, logical))
+                if (!batchMaskTest(g.data.mask, logical))
                     continue;
 
                 const uint32_t data_slot = g.data.index_map ? g.data.index_map[logical] : logical;
@@ -1006,8 +1006,8 @@ bool read_attr_batched(ovstage_instance_t* stage,
                         group_valid = false;
                         break;
                     }
-                    const uint64_t b0 = batch_load_u64(offsets + (size_t)data_slot * sizeof(uint64_t));
-                    const uint64_t b1 = batch_load_u64(offsets + ((size_t)data_slot + 1) * sizeof(uint64_t));
+                    const uint64_t b0 = batchLoadU64(offsets + (size_t)data_slot * sizeof(uint64_t));
+                    const uint64_t b1 = batchLoadU64(offsets + ((size_t)data_slot + 1) * sizeof(uint64_t));
                     if (b1 < b0 || b1 > value_total)
                     {
                         group_valid = false;
@@ -1025,8 +1025,8 @@ bool read_attr_batched(ovstage_instance_t* stage,
                     }
                     const DLTensor& row_tensor = g.data.tensors[data_slot];
                     size_t row_elements = 0, row_element_bytes = 0;
-                    group_valid = batch_tensor_host_accessible(row_tensor) &&
-                                  batch_tensor_extent(row_tensor, row_elements, row_element_bytes, row_bytes);
+                    group_valid = batchTensorHostAccessible(row_tensor) &&
+                                  batchTensorExtent(row_tensor, row_elements, row_element_bytes, row_bytes);
                     if (!group_valid)
                         break;
                     row_begin =
@@ -1062,7 +1062,7 @@ bool read_attr_batched(ovstage_instance_t* stage,
             break;
         }
     }
-    if (!finish_enqueue(stage, read_status))
+    if (!finishEnqueue(stage, read_status))
     {
         invalid_batch = true;
         g_err = "read operation(batch " + attr + ")";
@@ -1081,13 +1081,13 @@ bool read_attr_batched(ovstage_instance_t* stage,
  * a snapshot at the SAME sealed ordinal passed to ovgl_scene_build(). Paths can be discovered
  * incrementally (geometry -> materials -> shaders -> texture nodes); explicit coverage keeps
  * an attribute prefetched for an earlier path set from shadowing a later, unqueried path.
- * Failed/device-resident batch reads remain uncovered and therefore use read_attr_host's exact
- * point-read fallback. Nothing survives batch_clear() at the end of this build. */
-void batch_prefetch_attributes(ovstage_instance_t* stage,
-                               ovstage_ordinal_t ordinal,
-                               const std::vector<std::string>& paths,
-                               const char* const* attrs,
-                               size_t attr_count)
+ * Failed/device-resident batch reads remain uncovered and therefore use readAttributeHost's exact
+ * point-read fallback. Nothing survives batchClear() at the end of this build. */
+void batchPrefetchAttributes(ovstage_instance_t* stage,
+                             ovstage_ordinal_t ordinal,
+                             const std::vector<std::string>& paths,
+                             const char* const* attrs,
+                             size_t attr_count)
 {
     std::vector<std::string> unique_paths;
     unique_paths.reserve(paths.size());
@@ -1139,7 +1139,7 @@ void batch_prefetch_attributes(ovstage_instance_t* stage,
 
         std::vector<std::vector<uint8_t>> rows;
         std::vector<uint8_t> semantics;
-        if (!read_attr_batched(stage, ordinal, query_paths, attrs[a], rows, &semantics))
+        if (!readBatchedAttributes(stage, ordinal, query_paths, attrs[a], rows, &semantics))
             continue;
         for (size_t row = 0; row < query_slots.size(); ++row)
         {
@@ -1151,26 +1151,32 @@ void batch_prefetch_attributes(ovstage_instance_t* stage,
     }
 }
 
-float read_scalar(
-    ovstage_instance_t* stage, ovstage_ordinal_t ord, const std::string& path, const std::string& attr, float fallback)
+float readScalar(ovstage_instance_t* stage,
+                 ovstage_ordinal_t ordinal,
+                 const std::string& path,
+                 const std::string& attributeName,
+                 float fallback)
 {
-    std::vector<uint8_t> b;
-    if (!read_attr_host(stage, ord, path, attr, b) || b.empty())
+    std::vector<uint8_t> bytes;
+    if (!readAttributeHost(stage, ordinal, path, attributeName, bytes) || bytes.empty())
         return fallback;
-    if (b.size() >= sizeof(double))
-        return (float)*(const double*)b.data();
-    if (b.size() >= sizeof(float))
-        return *(const float*)b.data();
+    if (bytes.size() >= sizeof(double))
+        return (float)*(const double*)bytes.data();
+    if (bytes.size() >= sizeof(float))
+        return *(const float*)bytes.data();
     return fallback;
 }
 
-bool read_bool_attr(
-    ovstage_instance_t* stage, ovstage_ordinal_t ord, const std::string& path, const std::string& attr, bool fallback)
+bool readBooleanAttribute(ovstage_instance_t* stage,
+                          ovstage_ordinal_t ordinal,
+                          const std::string& path,
+                          const std::string& attributeName,
+                          bool fallback)
 {
-    std::vector<uint8_t> b;
-    if (!read_attr_host(stage, ord, path, attr, b) || b.empty())
+    std::vector<uint8_t> bytes;
+    if (!readAttributeHost(stage, ordinal, path, attributeName, bytes) || bytes.empty())
         return fallback;
-    return b[0] != 0;
+    return bytes[0] != 0;
 }
 
 /* First AUTHORED scalar among a list of spelling aliases; false (leaving *out
@@ -1182,21 +1188,21 @@ bool read_bool_attr(
  * shader prim and substring-match a lowercased copy (mdl_apply_float_param,
  * :3200-3253) because nanousd exposes nattribs/attribname; the ovstage bridge
  * reads BY NAME off an ordinal, so that sweep has to become an explicit alias
- * list. read_scalar has no authored/unauthored signal, hence the NaN sentinel:
+ * list. readScalar has no authored/unauthored signal, hence the NaN sentinel:
  * every authored float is finite, so a finite read is an authored read. */
-bool read_scalar_any(ovstage_instance_t* stage,
-                     ovstage_ordinal_t ord,
-                     const std::string& prim,
-                     const char* const* names,
-                     size_t count,
-                     float* out)
+bool readScalarAny(ovstage_instance_t* stage,
+                   ovstage_ordinal_t ordinal,
+                   const std::string& primPath,
+                   const char* const* names,
+                   size_t count,
+                   float* output)
 {
     for (size_t i = 0; i < count; ++i)
     {
-        const float v = read_scalar(stage, ord, prim, names[i], std::numeric_limits<float>::quiet_NaN());
-        if (std::isfinite(v))
+        const float value = readScalar(stage, ordinal, primPath, names[i], std::numeric_limits<float>::quiet_NaN());
+        if (std::isfinite(value))
         {
-            *out = v;
+            *output = value;
             return true;
         }
     }
@@ -1204,17 +1210,17 @@ bool read_scalar_any(ovstage_instance_t* stage,
 }
 
 /* worldMatrix (row-major double[16]) -> out16; identity if absent. */
-void read_world_matrix(ovstage_instance_t* stage, ovstage_ordinal_t ord, const std::string& path, double out16[16])
+void readWorldMatrix(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& path, double output[16])
 {
-    static const double I[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
-    std::vector<uint8_t> b;
-    if (read_attr_host(stage, ord, path, "omni:fabric:worldMatrix", b) && b.size() >= 16 * sizeof(double))
-        std::memcpy(out16, b.data(), 16 * sizeof(double));
+    static const double s_kIdentity[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+    std::vector<uint8_t> bytes;
+    if (readAttributeHost(stage, ordinal, path, "omni:fabric:worldMatrix", bytes) && bytes.size() >= 16 * sizeof(double))
+        std::memcpy(output, bytes.data(), 16 * sizeof(double));
     else
-        std::memcpy(out16, I, sizeof(I));
+        std::memcpy(output, s_kIdentity, sizeof(s_kIdentity));
 }
 
-/* ── Texture loading (port of nanousd-opengl-renderer/src/material.c) ─────────────────────
+/* Texture loading (port of nanousd-opengl-renderer/src/material.c).
  *
  * That renderer resolved texture paths against a scene directory and stbi_load()'d them, and
  * explicitly gave up on packages ("USDZ package contents are not exposed by the nanousd C
@@ -1230,11 +1236,11 @@ void read_world_matrix(ovstage_instance_t* stage, ovstage_ordinal_t ord, const s
  *    textures ALL live inside the package, actually show their materials.
  */
 
-/* ── Decoded-texture size cap (port of material.c's
- * materials_set_max_tex_size, :773-869) ───────────────────────────────────────
+/* Decoded-texture size cap (port of material.c's
+ * materials_set_max_tex_size, lines 773-869).
  *
  * The fork hard-capped EVERY texture at 512 px for its low-VRAM GLES target.
- * ovgl caps at kDefaultMaxTexSize and exposes the knob OVGL_MAX_TEX_SIZE=<px>;
+ * ovgl caps at g_kDefaultMaxTexSize and exposes the knob OVGL_MAX_TEX_SIZE=<px>;
  * an explicit 0 disables the cap entirely, and a negative or non-numeric value
  * falls back to the default rather than silently uncapping (an unparseable knob
  * must not be the one that puts 1.3 GB back on the GPU). Knob shape follows
@@ -1278,30 +1284,30 @@ void read_world_matrix(ovstage_instance_t* stage, ovstage_ordinal_t ord, const s
  * take the identical cap decision -- two copies of one image cannot end up one
  * capped and one not. Content hits return before the decode and so adopt the
  * already-capped pixels of the entry they join. */
-constexpr int kDefaultMaxTexSize = 2048;
+constexpr int g_kDefaultMaxTexSize = 2048;
 
-int max_texture_size()
+int maxTextureSize()
 {
-    static const int cap = []
+    static const int s_kMaximumTextureSize = []
     {
         const char* e = std::getenv("OVGL_MAX_TEX_SIZE");
         if (!e || !e[0])
-            return kDefaultMaxTexSize;
+            return g_kDefaultMaxTexSize;
         char* end = nullptr;
         const long v = std::strtol(e, &end, 10);
         if (end == e || *end)
-            return kDefaultMaxTexSize; /* unparseable */
+            return g_kDefaultMaxTexSize; /* unparseable */
         if (v == 0)
             return 0; /* explicit opt-out */
-        return v > 0 ? (int)v : kDefaultMaxTexSize;
+        return v > 0 ? (int)v : g_kDefaultMaxTexSize;
     }();
-    return cap;
+    return s_kMaximumTextureSize;
 }
 
 /* Halving BOX downsample of an RGBA8 image until both dimensions are <= cap.
  * Returns false (leaving the caller's pixels alone) when nothing to do.
  *
- * The fork's version (material.c:833-866) is labelled "Simple box downsample"
+ * The fork's version (material.c:833-866) is labeled "Simple box downsample"
  * but actually POINT-samples the source at the reduced grid -- `memcpy(resized +
  * ..., pixels + (oy * *w + ox) * 4, 4)` with ox/oy the truncated scaled index.
  * On a 4096 -> 512 reduction that keeps 1 texel in 64 and aliases hard on
@@ -1309,7 +1315,7 @@ int max_texture_size()
  * per halving step is the same single linear pass over each level, produces the
  * identical output dimensions (the fork's nw = (nw + 1) / 2 sequence), and is
  * what the comment already claimed. */
-bool box_downsample_rgba8(std::vector<uint8_t>& pixels, int& w, int& h, int cap)
+bool boxDownsampleRgba8(std::vector<uint8_t>& pixels, int& w, int& h, int cap)
 {
     if (cap <= 0 || (w <= cap && h <= cap) || w <= 0 || h <= 0)
         return false;
@@ -1343,11 +1349,11 @@ bool box_downsample_rgba8(std::vector<uint8_t>& pixels, int& w, int& h, int cap)
 }
 
 /* Point `resolved` at a GPU texture for these decoded pixels, reusing an entry
- * when one already carries the same (content, colour space) and appending one
+ * when one already carries the same (content, color space) and appending one
  * that SHARES the pixel buffer when it does not. `content` empty disables
  * content dedup for this registration (unhashable bytes, or OVGL_TEXTURE_DEDUP=0)
  * and leaves the entry addressable by path alone, i.e. exactly the pre-dedup
- * behaviour.
+ * behavior.
  *
  * `pixels` and `content` are taken BY VALUE on purpose: every caller but one
  * hands over an element of g_texture_pixels / g_texture_reg, and this function
@@ -1355,16 +1361,16 @@ bool box_downsample_rgba8(std::vector<uint8_t>& pixels, int& w, int& h, int cap)
  * either vector reallocated, mid-function.
  *
  * The pixels handed in are always POST-cap: the only site that decodes calls
- * box_downsample_rgba8 before it gets here, and every other site passes pixels
+ * boxDownsampleRgba8 before it gets here, and every other site passes pixels
  * that already came through that one. */
-int register_texture(const std::string& resolved,
-                     bool srgb,
-                     std::shared_ptr<std::vector<uint8_t>> pixels,
-                     int w,
-                     int h,
-                     std::string content)
+int registerTexture(const std::string& resolved,
+                    bool srgb,
+                    std::shared_ptr<std::vector<uint8_t>> pixels,
+                    int w,
+                    int h,
+                    std::string content)
 {
-    const int shared = find_content_entry(content, srgb, /*exact=*/true);
+    const int shared = findContentEntry(content, srgb, /*exact=*/true);
     if (shared >= 0)
     {
         ++g_texture_reg[(size_t)shared].paths;
@@ -1383,7 +1389,7 @@ int register_texture(const std::string& resolved,
 
     const int index = (int)g_textures.size() - 1;
     if (!content.empty())
-        g_texture_content_index[content_slot_key(content, srgb)] = index;
+        g_texture_content_index[contentSlotKey(content, srgb)] = index;
     g_texture_index[resolved] = index;
     return index;
 }
@@ -1391,9 +1397,9 @@ int register_texture(const std::string& resolved,
 /* Decode an image to RGBA8 and register it, returning its texture index (dedup'd by path,
  * then by source-byte content). Handles both a plain file and a "package[inner]" packaged
  * path. -1 on failure. */
-int find_or_add_texture(const std::string& resolved,
-                        bool srgb,
-                        isaacsim::ovgl_viewport::debug::details::ovgl::UsdzArchiveCache& archive_cache)
+int findOrAddTexture(const std::string& resolved,
+                     bool srgb,
+                     isaacsim::ovgl_viewport::debug::details::ovgl::UsdzArchiveCache& archive_cache)
 {
     if (resolved.empty())
         return -1;
@@ -1403,8 +1409,8 @@ int find_or_add_texture(const std::string& resolved,
         const int index = cached->second;
         if (index < 0)
             return index; /* negative cache */
-        /* A texture referenced as BOTH colour and data (rare, but a UsdUVTexture can be reused)
-         * must be decoded once; keep the first slot's colour space -- linear is the safe loser,
+        /* A texture referenced as BOTH color and data (rare, but a UsdUVTexture can be reused)
+         * must be decoded once; keep the first slot's color space -- linear is the safe loser,
          * since sampling data through sRGB corrupts it. */
         if (!srgb && g_textures[(size_t)index].is_srgb)
         {
@@ -1418,8 +1424,8 @@ int find_or_add_texture(const std::string& resolved,
                 const std::string& content = g_texture_reg[(size_t)index].content;
                 if (!content.empty())
                 {
-                    g_texture_content_index.erase(content_slot_key(content, true));
-                    g_texture_content_index.emplace(content_slot_key(content, false), index);
+                    g_texture_content_index.erase(contentSlotKey(content, true));
+                    g_texture_content_index.emplace(contentSlotKey(content, false), index);
                 }
             }
             else
@@ -1430,24 +1436,24 @@ int find_or_add_texture(const std::string& resolved,
                  * instead: this path gets its own linear entry over the SAME
                  * decoded pixels. Unreachable until a content merge has actually
                  * happened, so the single-path case above stays bit-for-bit the
-                 * pre-dedup behaviour.
+                 * pre-dedup behavior.
                  *
                  * The one semantic this cannot preserve: pre-dedup, the in-place
                  * demotion above reached BACKWARDS -- a material that had already
-                 * captured this index as a colour slot silently became linear
+                 * captured this index as a color slot silently became linear
                  * too. Splitting cannot reproduce that, because those captured
                  * indices are already sitting in GpuMaterialParams::tex_indices
                  * and there is nothing left to rewrite. What happens instead is
-                 * that every binding keeps the colour space it asked for, which
+                 * that every binding keeps the color space it asked for, which
                  * is the better answer as well as the only implementable one.
                  *
                  * MEASURED, and it is the ONLY frame difference this whole
-                 * change can produce. A fixture that binds one path as colour on
+                 * change can produce. A fixture that binds one path as color on
                  * two materials and as a linear slot on a third (so the entry is
                  * content-merged, paths=2, before the demote) renders 84339
                  * pixels differently between the two arms: MAE 5.012, max
                  * channel 90. Judged against a third render in which the linear
-                 * binding is simply absent -- where the colour materials are
+                 * binding is simply absent -- where the color materials are
                  * unarguably sRGB -- THIS branch is bit-exact (MAE 0.000 over
                  * those pixels) and the in-place demotion is MAE 39.937, max 90,
                  * mean level 188.1 against the correct 148.2. The split is the
@@ -1455,8 +1461,8 @@ int find_or_add_texture(const std::string& resolved,
                  * regression. No scene on this bench reaches it: franka_factory
                  * is byte-identical across the arms. */
                 --g_texture_reg[(size_t)index].paths;
-                return register_texture(resolved, false, g_texture_pixels[(size_t)index], g_textures[(size_t)index].width,
-                                        g_textures[(size_t)index].height, g_texture_reg[(size_t)index].content);
+                return registerTexture(resolved, false, g_texture_pixels[(size_t)index], g_textures[(size_t)index].width,
+                                       g_textures[(size_t)index].height, g_texture_reg[(size_t)index].content);
             }
         }
         return index;
@@ -1486,7 +1492,7 @@ int find_or_add_texture(const std::string& resolved,
      * identity so replacing the file's contents in place misses and decodes.
      * Carries the source digest, so this hit still joins the content dedup
      * without re-reading the file. Its pixels are already capped. */
-    const std::string identity = texture_file_identity(local_source);
+    const std::string identity = textureFileIdentity(local_source);
     const std::string memo_key = identity.empty() ? std::string() : resolved + "|" + identity;
     if (!memo_key.empty())
     {
@@ -1494,7 +1500,7 @@ int find_or_add_texture(const std::string& resolved,
         if (memo != g_texture_decode_memo.end())
         {
             memo->second.last_used_build = g_texture_build_serial;
-            return register_texture(
+            return registerTexture(
                 resolved, srgb, memo->second.pixels, memo->second.width, memo->second.height, memo->second.content);
         }
     }
@@ -1517,7 +1523,7 @@ int find_or_add_texture(const std::string& resolved,
             return -1;
         }
     }
-    else if (!read_whole_file(local_source, bytes))
+    else if (!readWholeFile(local_source, bytes))
     {
         g_err = "texture read failed: " + resolved;
         g_texture_index[resolved] = -1; /* negative-cache: do not retry every rebuild */
@@ -1533,12 +1539,12 @@ int find_or_add_texture(const std::string& resolved,
     }
     /* USDZ note: this hashes the EXTRACTED MEMBER bytes, not the package path --
      * the same image shipped inside two .usdz packages still merges. */
-    const std::string content = content_digest(bytes);
+    const std::string content = contentDigest(bytes);
 
-    /* Same bytes, same colour space, already registered this build: no read of
+    /* Same bytes, same color space, already registered this build: no read of
      * the twin, no decode, no second GL texture. The pixels adopted here were
      * capped by whichever registration decoded them. */
-    const int exact = find_content_entry(content, srgb, /*exact=*/true);
+    const int exact = findContentEntry(content, srgb, /*exact=*/true);
     if (exact >= 0)
     {
         ++g_texture_reg[(size_t)exact].paths;
@@ -1549,14 +1555,13 @@ int find_or_add_texture(const std::string& resolved,
                                         g_textures[(size_t)exact].height, g_texture_build_serial, content };
         return exact;
     }
-    /* Same bytes under the OTHER colour space: reuse the decode, take a second
+    /* Same bytes under the OTHER color space: reuse the decode, take a second
      * GL texture for the differing internal format. */
-    const int sibling = find_content_entry(content, srgb, /*exact=*/false);
+    const int sibling = findContentEntry(content, srgb, /*exact=*/false);
     if (sibling >= 0)
     {
-        const int index =
-            register_texture(resolved, srgb, g_texture_pixels[(size_t)sibling], g_textures[(size_t)sibling].width,
-                             g_textures[(size_t)sibling].height, content);
+        const int index = registerTexture(resolved, srgb, g_texture_pixels[(size_t)sibling],
+                                          g_textures[(size_t)sibling].width, g_textures[(size_t)sibling].height, content);
         if (!memo_key.empty())
             g_texture_decode_memo[memo_key] =
                 TextureDecodeMemoEntry{ g_texture_pixels[(size_t)index], g_textures[(size_t)index].width,
@@ -1581,15 +1586,15 @@ int find_or_add_texture(const std::string& resolved,
     stbi_image_free(pixels);
     /* Cap HERE -- after the decode, before BOTH the memo store and the content
      * index -- so every later sharer of this digest, whether it arrives through
-     * the memo or through find_content_entry, gets the one capped result. The
+     * the memo or through findContentEntry, gets the one capped result. The
      * cap is deliberately absent from the content key: it is a pure function of
      * (w, h, the process-static cap), so equal source bytes are already
      * guaranteed the same decision, and keying on it would only split entries
      * that are in fact identical. */
-    box_downsample_rgba8(*owned, w, h, max_texture_size());
+    boxDownsampleRgba8(*owned, w, h, maxTextureSize());
     if (!memo_key.empty())
         g_texture_decode_memo[memo_key] = TextureDecodeMemoEntry{ owned, w, h, g_texture_build_serial, content };
-    return register_texture(resolved, srgb, owned, w, h, content);
+    return registerTexture(resolved, srgb, owned, w, h, content);
 }
 
 /* Load-profile texture accounting (OVGL_PROFILE_LOAD=1). Reports what the build
@@ -1606,7 +1611,7 @@ int find_or_add_texture(const std::string& resolved,
  *
  * The dimensions counted are post-cap, so this reports what the GPU actually
  * holds under OVGL_MAX_TEX_SIZE, not what the source authored. */
-void log_texture_profile()
+void logTextureProfile()
 {
     uint64_t level0 = 0, mipchain = 0;
     for (const GpuTextureData& t : g_textures)
@@ -1630,51 +1635,51 @@ void log_texture_profile()
                  mipchain / 1048576.0);
 }
 
-static std::string resolve_token_id(ovstage_instance_t* stage, uint64_t v);
+static std::string resolveTokenId(ovstage_instance_t* stage, uint64_t identifier);
 
 /* Read an asset-valued attribute. Official OVStage stores the authored and
  * resolved values as a pair of token IDs. Retain the legacy NUL-delimited
  * representation for stages produced by the earlier prototype backend. */
-std::string read_asset_resolved(ovstage_instance_t* stage,
-                                ovstage_ordinal_t ord,
-                                const std::string& prim,
-                                const std::string& attr)
+std::string readAssetResolved(ovstage_instance_t* stage,
+                              ovstage_ordinal_t ordinal,
+                              const std::string& primPath,
+                              const std::string& attributeName)
 {
-    std::vector<uint8_t> b;
-    if (!read_attr_host(stage, ord, prim, attr, b) || b.empty())
+    std::vector<uint8_t> bytes;
+    if (!readAttributeHost(stage, ordinal, primPath, attributeName, bytes) || bytes.empty())
         return "";
 
-    if (b.size() == 2 * sizeof(uint64_t))
+    if (bytes.size() == 2 * sizeof(uint64_t))
     {
-        uint64_t token_ids[2]{};
-        std::memcpy(token_ids, b.data(), sizeof(token_ids));
-        const std::string authored = resolve_token_id(stage, token_ids[0]);
+        uint64_t tokenIdentifiers[2]{};
+        std::memcpy(tokenIdentifiers, bytes.data(), sizeof(tokenIdentifiers));
+        const std::string authored = resolveTokenId(stage, tokenIdentifiers[0]);
         if (!authored.empty())
         {
-            const std::string resolved = resolve_token_id(stage, token_ids[1]);
+            const std::string resolved = resolveTokenId(stage, tokenIdentifiers[1]);
             return resolved.empty() ? authored : resolved;
         }
     }
 
-    const auto authored_end = std::find(b.begin(), b.end(), uint8_t{ 0 });
-    const std::string authored(b.begin(), authored_end);
-    if (authored_end != b.end() && std::next(authored_end) != b.end())
+    const auto authoredEnd = std::find(bytes.begin(), bytes.end(), uint8_t{ 0 });
+    const std::string authored(bytes.begin(), authoredEnd);
+    if (authoredEnd != bytes.end() && std::next(authoredEnd) != bytes.end())
     {
-        const auto resolved_begin = std::next(authored_end);
-        const auto resolved_end = std::find(resolved_begin, b.end(), uint8_t{ 0 });
-        const std::string resolved(resolved_begin, resolved_end);
+        const auto resolvedBegin = std::next(authoredEnd);
+        const auto resolvedEnd = std::find(resolvedBegin, bytes.end(), uint8_t{ 0 });
+        const std::string resolved(resolvedBegin, resolvedEnd);
         if (!resolved.empty())
             return resolved;
     }
     return authored;
 }
 
-/* ── Official 0.1 ID-semantic decode (P1.3) ────────────────────────────────
+/* Official 0.1 ID-semantic decode (P1.3).
  * TOKEN_ID / RELATIONSHIP_PATH_ID / CONNECTION_PATH_ID columns now carry
  * pre-interned u64 ids; NONE-tagged columns from the ovrtx backend still carry
- * raw UTF-8. read_attr_host/read_attr_batched surface the column's SEMANTIC
+ * raw UTF-8. readAttributeHost/readBatchedAttributes surface the column's SEMANTIC
  * tag from the read group (ovpopulation writes it at serialize time), and
- * read_str_attr picks the decode space by that tag: TOKEN_ID rows resolve
+ * readStringAttribute picks the decode space by that tag: TOKEN_ID rows resolve
  * token-ONLY, RELATIONSHIP/CONNECTION rows resolve path-first.
  *
  * For untagged (NONE) columns the decode stays dictionary-led: dictionary ids
@@ -1689,87 +1694,94 @@ std::string read_asset_resolved(ovstage_instance_t* stage,
  * (and vice versa). The COLUMN SEMANTIC — or, for untagged columns, the
  * attribute's known value kind — must choose the space: token-valued columns
  * (SEMANTIC_TOKEN_ID: purpose, visibility, axis, orientation, joints, ...) go
- * through resolve_token_id(); only relationship/connection targets may use
- * the path-first resolve_u64_id(). Violations decode a token id into some
+ * through resolveTokenId(); only relationship/connection targets may use
+ * the path-first resolveU64Id(). Violations decode a token id into some
  * unrelated prim path SILENTLY: see the skel deformer reader below (collapsed
  * joint hierarchies) and test_axis_orientation_token_decode.py (quadric
  * `axis` fell back to Z, `orientation` comparisons went false). */
-static std::string resolve_token_id(ovstage_instance_t* stage, uint64_t v)
+static std::string resolveTokenId(ovstage_instance_t* stage, uint64_t identifier)
 {
-    path_dictionary_instance_t* dict = ovstage_get_path_dictionary(stage);
-    if (!dict || v == 0)
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(stage);
+    if (!dictionary || identifier == 0)
         return "";
-    ovx_string_t sv{};
-    if (path_dictionary_get_strings_from_tokens(dict, &v, 1, &sv).status == OVX_API_SUCCESS && sv.length)
-        return std::string(sv.ptr, sv.length);
+    ovx_string_t stringValue{};
+    if (path_dictionary_get_strings_from_tokens(dictionary, &identifier, 1, &stringValue).status == OVX_API_SUCCESS &&
+        stringValue.length)
+        return std::string(stringValue.ptr, stringValue.length);
     return "";
 }
 
-static std::string resolve_u64_id(ovstage_instance_t* stage, uint64_t v, uint64_t tok_pair)
+static std::string resolveU64Id(ovstage_instance_t* stage, uint64_t identifier, uint64_t tokenPairIdentifier)
 {
-    path_dictionary_instance_t* dict = ovstage_get_path_dictionary(stage);
-    if (!dict || v == 0)
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(stage);
+    if (!dictionary || identifier == 0)
         return "";
     /* path id first (relationship/connection); fall back to token id. */
-    size_t cap = 64;
-    while (cap <= (1u << 12))
+    size_t capacity = 64;
+    while (capacity <= (1u << 12))
     {
-        std::vector<ovx_token_t> buf(cap);
-        ovx_token_t* per_path = nullptr;
-        size_t per_path_n = 0, processed = 0;
-        if (path_dictionary_get_tokens_from_paths(dict, &v, 1, buf.data(), cap, &per_path, &per_path_n, &processed).status ==
-                OVX_API_SUCCESS &&
-            processed >= 1)
+        std::vector<ovx_token_t> buffer(capacity);
+        ovx_token_t* tokensForPath = nullptr;
+        size_t tokenCount = 0;
+        size_t processedCount = 0;
+        if (path_dictionary_get_tokens_from_paths(
+                dictionary, &identifier, 1, buffer.data(), capacity, &tokensForPath, &tokenCount, &processedCount)
+                    .status == OVX_API_SUCCESS &&
+            processedCount >= 1)
         {
-            std::string out;
-            for (size_t i = 0; i < per_path_n; ++i)
+            std::string output;
+            for (size_t i = 0; i < tokenCount; ++i)
             {
-                ovx_string_t sv{};
-                if (path_dictionary_get_strings_from_tokens(dict, &per_path[i], 1, &sv).status != OVX_API_SUCCESS)
+                ovx_string_t stringValue{};
+                if (path_dictionary_get_strings_from_tokens(dictionary, &tokensForPath[i], 1, &stringValue).status !=
+                    OVX_API_SUCCESS)
                     return "";
-                out += '/';
-                out.append(sv.ptr ? sv.ptr : "", sv.length);
+                output += '/';
+                output.append(stringValue.ptr ? stringValue.ptr : "", stringValue.length);
             }
-            if (tok_pair)
+            if (tokenPairIdentifier)
             {
-                ovx_string_t tv{};
-                if (path_dictionary_get_strings_from_tokens(dict, &tok_pair, 1, &tv).status == OVX_API_SUCCESS &&
-                    tv.length)
-                    out += "." + std::string(tv.ptr, tv.length);
+                ovx_string_t tokenPairString{};
+                if (path_dictionary_get_strings_from_tokens(dictionary, &tokenPairIdentifier, 1, &tokenPairString).status ==
+                        OVX_API_SUCCESS &&
+                    tokenPairString.length)
+                    output += "." + std::string(tokenPairString.ptr, tokenPairString.length);
             }
-            return out;
+            return output;
         }
-        if (processed == 0 && per_path_n == 0 && cap < (1u << 12))
+        if (processedCount == 0 && tokenCount == 0 && capacity < (1u << 12))
         {
-            cap *= 2;
+            capacity *= 2;
             continue;
         }
         break;
     }
-    ovx_string_t sv{};
-    if (path_dictionary_get_strings_from_tokens(dict, &v, 1, &sv).status == OVX_API_SUCCESS && sv.length)
-        return std::string(sv.ptr, sv.length);
+    ovx_string_t stringValue{};
+    if (path_dictionary_get_strings_from_tokens(dictionary, &identifier, 1, &stringValue).status == OVX_API_SUCCESS &&
+        stringValue.length)
+        return std::string(stringValue.ptr, stringValue.length);
     return "";
 }
 
-/* If `b` is an id row (8- or 16-byte stride u64s that resolve through the
+/* If `bytes` is an ID row (8- or 16-byte stride uint64 values that resolve through the
  * dictionary), return the FIRST element's string; else empty. */
-static std::string try_decode_id_row(ovstage_instance_t* stage, const std::vector<uint8_t>& b)
+static std::string tryDecodeIdRow(ovstage_instance_t* stage, const std::vector<uint8_t>& bytes)
 {
-    if (b.size() >= 16 && b.size() % 16 == 0)
+    if (bytes.size() >= 16 && bytes.size() % 16 == 0)
     {
-        uint64_t pathid = 0, tok = 0;
-        std::memcpy(&pathid, b.data(), 8);
-        std::memcpy(&tok, b.data() + 8, 8);
-        const std::string s = resolve_u64_id(stage, pathid, tok);
-        if (!s.empty())
-            return s;
+        uint64_t pathIdentifier = 0;
+        uint64_t tokenIdentifier = 0;
+        std::memcpy(&pathIdentifier, bytes.data(), 8);
+        std::memcpy(&tokenIdentifier, bytes.data() + 8, 8);
+        const std::string decoded = resolveU64Id(stage, pathIdentifier, tokenIdentifier);
+        if (!decoded.empty())
+            return decoded;
     }
-    if (b.size() >= 8 && b.size() % 8 == 0)
+    if (bytes.size() >= 8 && bytes.size() % 8 == 0)
     {
-        uint64_t v = 0;
-        std::memcpy(&v, b.data(), 8);
-        return resolve_u64_id(stage, v, 0);
+        uint64_t identifier = 0;
+        std::memcpy(&identifier, bytes.data(), 8);
+        return resolveU64Id(stage, identifier, 0);
     }
     return "";
 }
@@ -1778,29 +1790,32 @@ static std::string try_decode_id_row(ovstage_instance_t* stage, const std::vecto
  * outputs:surface connection, quadric axis, mesh orientation). Official ID
  * columns carry u64 ids (resolved through the dictionary); NONE-tagged
  * backend columns carry UTF-8. */
-std::string read_str_attr(ovstage_instance_t* stage, ovstage_ordinal_t ord, const std::string& prim, const std::string& attr)
+std::string readStringAttribute(ovstage_instance_t* stage,
+                                ovstage_ordinal_t ordinal,
+                                const std::string& primPath,
+                                const std::string& attributeName)
 {
-    std::vector<uint8_t> b;
+    std::vector<uint8_t> bytes;
     ovstage_attribute_semantic_t semantic = OVSTAGE_SEMANTIC_NONE;
-    if (!read_attr_host(stage, ord, prim, attr, b, &semantic) || b.empty())
+    if (!readAttributeHost(stage, ordinal, primPath, attributeName, bytes, &semantic) || bytes.empty())
         return "";
     /* Semantic-driven decode: the store's column tag picks the handle space,
      * so a token/path id collision can never select the wrong dictionary. */
     if (semantic == OVSTAGE_SEMANTIC_TOKEN_ID)
     {
-        if (b.size() < 8)
+        if (bytes.size() < 8)
             return "";
-        uint64_t v = 0;
-        std::memcpy(&v, b.data(), 8);
+        uint64_t identifier = 0;
+        std::memcpy(&identifier, bytes.data(), 8);
         /* Token ids are interned eagerly at population; an unresolvable id is
          * a dead handle — treat as unauthored. NEVER fall back to the path
          * space: that is exactly the axis/orientation collision hazard. */
-        return resolve_token_id(stage, v);
+        return resolveTokenId(stage, identifier);
     }
     if (semantic == OVSTAGE_SEMANTIC_RELATIONSHIP_PATH_ID || semantic == OVSTAGE_SEMANTIC_CONNECTION_PATH_ID)
     {
         /* Path-first (bit-identical to the pre-semantic decode for these). */
-        return try_decode_id_row(stage, b);
+        return tryDecodeIdRow(stage, bytes);
     }
     {
         /* Untagged (NONE) columns from foreign producers: fall back to the
@@ -1809,38 +1824,38 @@ std::string read_str_attr(ovstage_instance_t* stage, ovstage_ordinal_t ord, cons
          * must decide which space an 8-byte row belongs to. Known TOKEN-kind
          * attributes resolve as tokens; everything else (relationship/
          * connection targets) resolves path-first with a token fallback. */
-        static const std::unordered_set<std::string> kTokenKindAttrs = {
+        static const std::unordered_set<std::string> s_kTokenKindAttrs = {
             "purpose", "visibility", "info:id", "inputs:sourceColorSpace", "info:mdl:sourceAsset:subIdentifier",
             "axis",    "orientation"
         };
-        if (kTokenKindAttrs.count(attr) && b.size() == 8)
+        if (s_kTokenKindAttrs.count(attributeName) && bytes.size() == 8)
         {
-            uint64_t v = 0;
-            std::memcpy(&v, b.data(), 8);
-            const std::string tok = resolve_token_id(stage, v);
-            if (!tok.empty())
-                return tok;
+            uint64_t identifier = 0;
+            std::memcpy(&identifier, bytes.data(), 8);
+            const std::string token = resolveTokenId(stage, identifier);
+            if (!token.empty())
+                return token;
         }
-        const std::string id = try_decode_id_row(stage, b);
-        if (!id.empty())
-            return id;
+        const std::string identifier = tryDecodeIdRow(stage, bytes);
+        if (!identifier.empty())
+            return identifier;
     }
     if (std::getenv("OVGL_DEBUG_MAT"))
-        std::fprintf(stderr, "[ovgl-mat] %s.%s -> %zu bytes, first='%c'(0x%02x)\n", prim.c_str(), attr.c_str(),
-                     b.size(), (b[0] >= 32 ? (char)b[0] : '?'), b[0]);
-    std::string s((const char*)b.data(), b.size());
-    size_t nul = s.find('\0');
-    if (nul != std::string::npos)
-        s.resize(nul);
-    return s;
+        std::fprintf(stderr, "[ovgl-mat] %s.%s -> %zu bytes, first='%c'(0x%02x)\n", primPath.c_str(),
+                     attributeName.c_str(), bytes.size(), (bytes[0] >= 32 ? (char)bytes[0] : '?'), bytes[0]);
+    std::string value((const char*)bytes.data(), bytes.size());
+    const size_t nullPosition = value.find('\0');
+    if (nullPosition != std::string::npos)
+        value.resize(nullPosition);
+    return value;
 }
 
-bool included_purpose(ovstage_instance_t* stage, ovstage_ordinal_t ord, const std::string& prim)
+bool includedPurpose(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& primPath)
 {
-    std::string path = prim;
+    std::string path = primPath;
     for (;;)
     {
-        const std::string purpose = read_str_attr(stage, ord, path, "purpose");
+        const std::string purpose = readStringAttribute(stage, ordinal, path, "purpose");
         if (purpose == "default" || purpose == "render")
             return true;
         if (purpose == "guide" || purpose == "proxy")
@@ -1859,14 +1874,14 @@ bool included_purpose(ovstage_instance_t* stage, ovstage_ordinal_t ord, const st
     return true;
 }
 
-bool included_visibility(ovstage_instance_t* stage, ovstage_ordinal_t ord, const std::string& prim)
+bool includedVisibility(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& primPath)
 {
-    std::string path = prim;
+    std::string path = primPath;
     for (;;)
     {
         /* USD visibility is inherited and has no descendant override for an
          * invisible ancestor. Missing/"inherited" therefore keeps walking. */
-        if (read_str_attr(stage, ord, path, "visibility") == "invisible")
+        if (readStringAttribute(stage, ordinal, path, "visibility") == "invisible")
             return false;
         const size_t slash = path.rfind('/');
         if (slash == std::string::npos || slash == 0)
@@ -1876,7 +1891,7 @@ bool included_visibility(ovstage_instance_t* stage, ovstage_ordinal_t ord, const
     return true;
 }
 
-void default_material(GpuMaterialParams* m)
+void defaultMaterial(GpuMaterialParams* m)
 {
     std::memset(m, 0, sizeof(*m));
     m->base_color[0] = m->base_color[1] = m->base_color[2] = 0.62f;
@@ -1904,11 +1919,11 @@ void default_material(GpuMaterialParams* m)
 }
 
 /* float4-valued shader input (UsdUVTexture inputs:scale / inputs:bias). */
-bool read_color4(
-    ovstage_instance_t* stage, ovstage_ordinal_t ord, const std::string& prim, const std::string& attr, float out[4])
+bool readColor4(
+    ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& prim, const std::string& attr, float out[4])
 {
     std::vector<uint8_t> b;
-    if (read_attr_host(stage, ord, prim, attr, b) && b.size() >= 4 * sizeof(float))
+    if (readAttributeHost(stage, ordinal, prim, attr, b) && b.size() >= 4 * sizeof(float))
     {
         const float* c = (const float*)b.data();
         out[0] = c[0];
@@ -1920,11 +1935,11 @@ bool read_color4(
     return false;
 }
 
-bool read_color3(
-    ovstage_instance_t* stage, ovstage_ordinal_t ord, const std::string& prim, const std::string& attr, float out[3])
+bool readColor3(
+    ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& prim, const std::string& attr, float out[3])
 {
     std::vector<uint8_t> b;
-    if (read_attr_host(stage, ord, prim, attr, b) && b.size() >= 3 * sizeof(float))
+    if (readAttributeHost(stage, ordinal, prim, attr, b) && b.size() >= 3 * sizeof(float))
     {
         const float* c = (const float*)b.data();
         out[0] = c[0];
@@ -1938,7 +1953,7 @@ bool read_color3(
 /* Return the selected scalar output from a UsdUVTexture connection target such as
  * "/Looks/Roughness.outputs:r". Unknown/custom output names retain the caller's
  * material-family default (e.g. G/B for a packed ORM map). */
-int texture_output_channel(const std::string& target, int fallback)
+int textureOutputChannel(const std::string& target, int fallback)
 {
     const size_t dot = target.rfind('.');
     if (dot == std::string::npos)
@@ -1957,7 +1972,7 @@ int texture_output_channel(const std::string& target, int fallback)
     return fallback;
 }
 
-std::string connection_prim_path(std::string target)
+std::string connectionPrimPath(std::string target)
 {
     if (target.empty() || target[0] != '/')
         return "";
@@ -1972,80 +1987,80 @@ std::string connection_prim_path(std::string target)
  * silently change authored materials. Apple's active normal graph is specifically
  * subtract(in2=1) <- multiply(in2=2) <- image, which is equivalent to the built-in GLSL
  * normal decode (2 * texel - 1). Connected or different operands fail closed. */
-bool exact_texture_arithmetic_input(ovstage_instance_t* stage,
-                                    ovstage_ordinal_t ord,
-                                    const std::string& node,
-                                    const char* expected_id,
-                                    float expected_in2,
-                                    std::string& input_node)
+bool exactTextureArithmeticInput(ovstage_instance_t* stage,
+                                 ovstage_ordinal_t ordinal,
+                                 const std::string& node,
+                                 const char* expectedIdentifier,
+                                 float expectedSecondInput,
+                                 std::string& inputNode)
 {
-    input_node.clear();
-    if (read_str_attr(stage, ord, node, "info:id") != expected_id)
+    inputNode.clear();
+    if (readStringAttribute(stage, ordinal, node, "info:id") != expectedIdentifier)
         return false;
-    if (!read_str_attr(stage, ord, node, "inputs:in2.connect").empty())
+    if (!readStringAttribute(stage, ordinal, node, "inputs:in2.connect").empty())
         return false;
-    const float in2 = read_scalar(stage, ord, node, "inputs:in2", std::numeric_limits<float>::quiet_NaN());
-    if (!std::isfinite(in2) || std::fabs(in2 - expected_in2) > 1e-6f)
+    const float secondInput = readScalar(stage, ordinal, node, "inputs:in2", std::numeric_limits<float>::quiet_NaN());
+    if (!std::isfinite(secondInput) || std::fabs(secondInput - expectedSecondInput) > 1e-6f)
         return false;
-    input_node = connection_prim_path(read_str_attr(stage, ord, node, "inputs:in1.connect"));
-    return !input_node.empty();
+    inputNode = connectionPrimPath(readStringAttribute(stage, ordinal, node, "inputs:in1.connect"));
+    return !inputNode.empty();
 }
 
-std::string texture_image_source_path(ovstage_instance_t* stage, ovstage_ordinal_t ord, std::string target, int texture_slot)
+std::string textureImageSourcePath(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, std::string target, int textureSlot)
 {
-    std::string node = connection_prim_path(std::move(target));
+    std::string node = connectionPrimPath(std::move(target));
     if (node.empty())
         return "";
-    if (!read_asset_resolved(stage, ord, node, "inputs:file").empty())
+    if (!readAssetResolved(stage, ordinal, node, "inputs:file").empty())
         return node;
-    if (texture_slot != TEX_NORMAL)
+    if (textureSlot != TEX_NORMAL)
         return "";
 
     std::string multiply;
-    if (!exact_texture_arithmetic_input(stage, ord, node, "ND_subtract_vector3FA", 1.0f, multiply))
+    if (!exactTextureArithmeticInput(stage, ordinal, node, "ND_subtract_vector3FA", 1.0f, multiply))
         return "";
     std::string image;
-    if (!exact_texture_arithmetic_input(stage, ord, multiply, "ND_multiply_vector3FA", 2.0f, image))
+    if (!exactTextureArithmeticInput(stage, ordinal, multiply, "ND_multiply_vector3FA", 2.0f, image))
         return "";
-    if (read_str_attr(stage, ord, image, "info:id") != "ND_image_vector3")
+    if (readStringAttribute(stage, ordinal, image, "info:id") != "ND_image_vector3")
         return "";
-    return read_asset_resolved(stage, ord, image, "inputs:file").empty() ? "" : image;
+    return readAssetResolved(stage, ordinal, image, "inputs:file").empty() ? "" : image;
 }
 
 /* Resolve the inherited Material path separately from its terminal. Scene-build discovery first
  * batches material:binding over meshes and all ancestors, then batches output targets over the
  * distinct returned materials. Keeping these steps separate avoids one point query per graph
  * edge while preserving the exact same binding and fallback rules. */
-std::string bound_material_path(ovstage_instance_t* stage, ovstage_ordinal_t ord, const std::string& prim)
+std::string boundMaterialPath(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& primPath)
 {
     /* Material bindings INHERIT: a mesh with no binding of its own uses the nearest ancestor's.
      * Reading only the mesh's own material:binding would leave every asset that binds on a
      * parent Xform (Apple's biplane binds on the rig group, so its whole body) falling back to
-     * the grey displayColor default -- textured in the file, flat grey on screen. nanousd's
+     * the gray displayColor default -- textured in the file, flat gray on screen. nanousd's
      * materials_find_binding walks up the hierarchy for exactly this reason; do the same.
-     * (The walk below IS that fix, not a description of current behaviour.) */
-    std::string mat;
-    for (std::string cur = prim; !cur.empty();)
+     * (The walk below IS that fix, not a description of current behavior.) */
+    std::string materialPath;
+    for (std::string currentPath = primPath; !currentPath.empty();)
     {
-        mat = read_str_attr(stage, ord, cur, "material:binding");
-        if (!mat.empty() && mat[0] == '/')
+        materialPath = readStringAttribute(stage, ordinal, currentPath, "material:binding");
+        if (!materialPath.empty() && materialPath[0] == '/')
             break;
-        mat.clear();
-        const size_t slash = cur.rfind('/');
+        materialPath.clear();
+        const size_t slash = currentPath.rfind('/');
         if (slash == std::string::npos || slash == 0)
             break; /* stop above the root */
-        cur.resize(slash);
+        currentPath.resize(slash);
     }
-    if (mat.empty() || mat[0] != '/')
+    if (materialPath.empty() || materialPath[0] != '/')
     {
-        auto sub = g_subset_binding.find(prim);
-        if (sub != g_subset_binding.end())
-            mat = sub->second;
+        auto subsetBinding = g_subset_binding.find(primPath);
+        if (subsetBinding != g_subset_binding.end())
+            materialPath = subsetBinding->second;
     }
-    return (!mat.empty() && mat[0] == '/') ? mat : "";
+    return (!materialPath.empty() && materialPath[0] == '/') ? materialPath : "";
 }
 
-static const char* kMaterialOutputAttrs[] = {
+static const char* g_kMaterialOutputAttrs[] = {
     "outputs:surface.connect", "outputs:mdl:surface.connect", "outputs:mtlx:surface.connect",
     "outputs:surface",         "outputs:mdl:surface",         "outputs:mtlx:surface",
 };
@@ -2055,13 +2070,15 @@ static const char* kMaterialOutputAttrs[] = {
  * assets do exactly this). Population intentionally excludes the inactive prim itself, but the
  * connection authored on the active Material remains visible, so terminal selection must later
  * verify that the target prim is present in the populated scene. */
-std::vector<std::string> material_shader_candidates(ovstage_instance_t* stage, ovstage_ordinal_t ord, const std::string& mat)
+std::vector<std::string> materialShaderCandidates(ovstage_instance_t* stage,
+                                                  ovstage_ordinal_t ordinal,
+                                                  const std::string& materialPath)
 {
     std::vector<std::string> candidates;
     std::unordered_set<std::string> seen;
-    for (const char* output : kMaterialOutputAttrs)
+    for (const char* output : g_kMaterialOutputAttrs)
     {
-        std::string target = read_str_attr(stage, ord, mat, output);
+        std::string target = readStringAttribute(stage, ordinal, materialPath, output);
         if (target.empty() || target[0] != '/')
             continue;
         /* The target is normally a property path (".../Shader.outputs:surface"). */
@@ -2077,9 +2094,9 @@ std::vector<std::string> material_shader_candidates(ovstage_instance_t* stage, o
 /* Derive one material's populated surface-shader prim path. Output columns and candidate
  * usd-prim-type metadata are prefetched for every distinct material at the build ordinal; the
  * naming-convention fallback remains unchanged. */
-std::string material_shader_path(ovstage_instance_t* stage, ovstage_ordinal_t ord, const std::string& mat)
+std::string materialShaderPath(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& materialPath)
 {
-    if (mat.empty() || mat[0] != '/')
+    if (materialPath.empty() || materialPath[0] != '/')
         return "";
     /* The Material's surface output is a CONNECTION to the shader, and ovpopulation stores a
      * connection in its own "<name>.connect" column (the plain column stays empty, because a
@@ -2088,31 +2105,31 @@ std::string material_shader_path(ovstage_instance_t* stage, ovstage_ordinal_t or
      * convention below -- which is fine for Kit-authored materials and wrong for everything
      * else: Apple's usdz names its shader after the material ("teapotmaterial"), so the lookup
      * landed on a prim that does not exist and the asset rendered untextured and unshaded. */
-    for (const std::string& candidate : material_shader_candidates(stage, ord, mat))
+    for (const std::string& candidate : materialShaderCandidates(stage, ordinal, materialPath))
     {
         std::vector<uint8_t> prim_type;
-        if (read_attr_host(stage, ord, candidate, "usd-prim-type", prim_type) && !prim_type.empty())
+        if (readAttributeHost(stage, ordinal, candidate, "usd-prim-type", prim_type) && !prim_type.empty())
         {
             return candidate;
         }
     }
-    return mat + "/Shader";
+    return materialPath + "/Shader";
 }
 
 /* Fill GpuMaterialParams (+ base color) from an already-resolved shader graph.
  * Returns true when the caller supplied a shader path. */
-bool read_material(ovstage_instance_t* stage,
-                   ovstage_ordinal_t ord,
-                   const std::string& shader,
-                   GpuMaterialParams* out,
-                   float base_out[3],
-                   isaacsim::ovgl_viewport::debug::details::ovgl::UsdzArchiveCache& archive_cache)
+bool readMaterial(ovstage_instance_t* stage,
+                  ovstage_ordinal_t ordinal,
+                  const std::string& shader,
+                  GpuMaterialParams* out,
+                  float base_out[3],
+                  isaacsim::ovgl_viewport::debug::details::ovgl::UsdzArchiveCache& archive_cache)
 {
-    default_material(out);
+    defaultMaterial(out);
     if (shader.empty())
         return false;
     float c[3];
-    if (read_color3(stage, ord, shader, "inputs:diffuseColor", c))
+    if (readColor3(stage, ordinal, shader, "inputs:diffuseColor", c))
     {
         out->base_color[0] = c[0];
         out->base_color[1] = c[1];
@@ -2121,45 +2138,46 @@ bool read_material(ovstage_instance_t* stage,
         base_out[1] = c[1];
         base_out[2] = c[2];
     }
-    out->metallic = read_scalar(stage, ord, shader, "inputs:metallic", 0.0f);
-    out->roughness = read_scalar(stage, ord, shader, "inputs:roughness", 0.5f);
-    out->ior = read_scalar(stage, ord, shader, "inputs:ior", 1.5f);
-    out->opacity = read_scalar(stage, ord, shader, "inputs:opacity", 1.0f);
-    out->opacity_threshold = read_scalar(stage, ord, shader, "inputs:opacityThreshold", 0.0f);
-    out->clearcoat = read_scalar(stage, ord, shader, "inputs:clearcoat", 0.0f);
-    out->clearcoat_roughness = read_scalar(stage, ord, shader, "inputs:clearcoatRoughness", 0.01f);
-    out->use_specular_workflow = read_bool_attr(stage, ord, shader, "inputs:useSpecularWorkflow", false) ? 1 : 0;
-    if (read_color3(stage, ord, shader, "inputs:specularColor", c))
+    out->metallic = readScalar(stage, ordinal, shader, "inputs:metallic", 0.0f);
+    out->roughness = readScalar(stage, ordinal, shader, "inputs:roughness", 0.5f);
+    out->ior = readScalar(stage, ordinal, shader, "inputs:ior", 1.5f);
+    out->opacity = readScalar(stage, ordinal, shader, "inputs:opacity", 1.0f);
+    out->opacity_threshold = readScalar(stage, ordinal, shader, "inputs:opacityThreshold", 0.0f);
+    out->clearcoat = readScalar(stage, ordinal, shader, "inputs:clearcoat", 0.0f);
+    out->clearcoat_roughness = readScalar(stage, ordinal, shader, "inputs:clearcoatRoughness", 0.01f);
+    out->use_specular_workflow =
+        readBooleanAttribute(stage, ordinal, shader, "inputs:useSpecularWorkflow", false) ? 1 : 0;
+    if (readColor3(stage, ordinal, shader, "inputs:specularColor", c))
     {
         out->specular_color[0] = c[0];
         out->specular_color[1] = c[1];
         out->specular_color[2] = c[2];
         out->specular_color[3] = 1.0f;
     }
-    if (read_color3(stage, ord, shader, "inputs:emissiveColor", c))
+    if (readColor3(stage, ordinal, shader, "inputs:emissiveColor", c))
     {
         out->emissive_color[0] = c[0];
         out->emissive_color[1] = c[1];
         out->emissive_color[2] = c[2];
-        /* UsdPreviewSurface's emissiveColor is already the emitted radiance colour; it has
+        /* UsdPreviewSurface's emissiveColor is already the emitted radiance color; it has
          * no separate intensity input. The built-in shader stores an internal multiplier in
          * .a, so an authored constant must explicitly enable it. */
         out->emissive_color[3] = 1.0f;
     }
 
-    /* ── USD-embedded MaterialX terminal nodes ───────────────────────────────────────────
+    /* USD-embedded MaterialX terminal nodes.
      * MaterialX authored into USD has a normal UsdShade material binding, but chooses the
      * terminal through outputs:mtlx:surface and names its PBR inputs differently from
      * UsdPreviewSurface.  Map the two ubiquitous terminal nodes to the renderer's built-in PBR
      * model.  This is intentionally a direct-constant subset: it does not pretend to evaluate
      * arbitrary MaterialX node graphs or raw .mtlx documents (which require MaterialX codegen). */
-    const std::string shader_id = read_str_attr(stage, ord, shader, "info:id");
+    const std::string shader_id = readStringAttribute(stage, ordinal, shader, "info:id");
     const bool is_mtlx_terminal =
         shader_id == "ND_standard_surface_surfaceshader" || shader_id == "ND_open_pbr_surface_surfaceshader";
     if (is_mtlx_terminal)
     {
         const bool is_standard_surface = shader_id == "ND_standard_surface_surfaceshader";
-        /* Both nodedefs default their transmission tint and emission colour to white.  The
+        /* Both nodedefs default their transmission tint and emission color to white.  The
          * generic PBR defaults are black for those fields, so establish the MaterialX defaults
          * before applying any authored direct constants. */
         out->transmission_color[0] = 1.0f;
@@ -2169,7 +2187,7 @@ bool read_material(ovstage_instance_t* stage,
         out->emissive_color[1] = 1.0f;
         out->emissive_color[2] = 1.0f;
         /* The MaterialX nodedefs for both supported direct terminals default to a neutral
-         * .8 base colour.  Those defaults are not materialized as USD shader attributes. */
+         * .8 base color.  Those defaults are not materialized as USD shader attributes. */
         out->base_color[0] = 0.8f;
         out->base_color[1] = 0.8f;
         out->base_color[2] = 0.8f;
@@ -2177,9 +2195,9 @@ bool read_material(ovstage_instance_t* stage,
         base_out[1] = 0.8f;
         base_out[2] = 0.8f;
         out->emissive_color[3] = is_standard_surface ?
-                                     read_scalar(stage, ord, shader, "inputs:emission", 0.0f) :
-                                     read_scalar(stage, ord, shader, "inputs:emission_luminance", 0.0f);
-        if (read_color3(stage, ord, shader, "inputs:base_color", c))
+                                     readScalar(stage, ordinal, shader, "inputs:emission", 0.0f) :
+                                     readScalar(stage, ordinal, shader, "inputs:emission_luminance", 0.0f);
+        if (readColor3(stage, ordinal, shader, "inputs:base_color", c))
         {
             out->base_color[0] = c[0];
             out->base_color[1] = c[1];
@@ -2189,25 +2207,26 @@ bool read_material(ovstage_instance_t* stage,
             base_out[2] = c[2];
         }
         /* Standard Surface calls the diffuse lobe multiplier `base`; OpenPBR calls the
-         * equivalent input `base_weight`.  Folding it into the renderer's base colour is the
+         * equivalent input `base_weight`.  Folding it into the renderer's base color is the
          * direct-constant approximation of that lobe without MaterialX code generation. */
-        const float base_weight = is_standard_surface ? read_scalar(stage, ord, shader, "inputs:base", 1.0f) :
-                                                        read_scalar(stage, ord, shader, "inputs:base_weight", 1.0f);
+        const float base_weight = is_standard_surface ? readScalar(stage, ordinal, shader, "inputs:base", 1.0f) :
+                                                        readScalar(stage, ordinal, shader, "inputs:base_weight", 1.0f);
         out->base_color[0] *= base_weight;
         out->base_color[1] *= base_weight;
         out->base_color[2] *= base_weight;
         base_out[0] = out->base_color[0];
         base_out[1] = out->base_color[1];
         base_out[2] = out->base_color[2];
-        out->metallic = read_scalar(stage, ord, shader, "inputs:metalness",
-                                    read_scalar(stage, ord, shader, "inputs:base_metalness", out->metallic));
+        out->metallic = readScalar(stage, ordinal, shader, "inputs:metalness",
+                                   readScalar(stage, ordinal, shader, "inputs:base_metalness", out->metallic));
         /* These direct terminals do not materialize nodedef defaults into the USD shader.
          * Preserve their authored MaterialX defaults instead of inheriting the generic
          * UsdPreviewSurface fallback (.5): Standard Surface=.2, OpenPBR=.3. */
-        out->roughness = read_scalar(stage, ord, shader, "inputs:specular_roughness", is_standard_surface ? 0.2f : 0.3f);
-        out->ior = read_scalar(stage, ord, shader, "inputs:specular_IOR",
-                               read_scalar(stage, ord, shader, "inputs:specular_ior", out->ior));
-        if (is_standard_surface && read_color3(stage, ord, shader, "inputs:opacity", c))
+        out->roughness =
+            readScalar(stage, ordinal, shader, "inputs:specular_roughness", is_standard_surface ? 0.2f : 0.3f);
+        out->ior = readScalar(stage, ordinal, shader, "inputs:specular_IOR",
+                              readScalar(stage, ordinal, shader, "inputs:specular_ior", out->ior));
+        if (is_standard_surface && readColor3(stage, ordinal, shader, "inputs:opacity", c))
         {
             /* Standard Surface opacity is color3 while the portable PBR shader has a scalar
              * alpha.  Use perceptual luminance as the stable scalar approximation. */
@@ -2215,38 +2234,38 @@ bool read_material(ovstage_instance_t* stage,
         }
         else
         {
-            out->opacity = read_scalar(stage, ord, shader, "inputs:opacity",
-                                       read_scalar(stage, ord, shader, "inputs:geometry_opacity", out->opacity));
+            out->opacity = readScalar(stage, ordinal, shader, "inputs:opacity",
+                                      readScalar(stage, ordinal, shader, "inputs:geometry_opacity", out->opacity));
         }
-        out->clearcoat = read_scalar(
-            stage, ord, shader, "inputs:coat", read_scalar(stage, ord, shader, "inputs:coat_weight", out->clearcoat));
+        out->clearcoat = readScalar(stage, ordinal, shader, "inputs:coat",
+                                    readScalar(stage, ordinal, shader, "inputs:coat_weight", out->clearcoat));
         /* Standard Surface inherits coat_roughness=.1 from its nodedef; OpenPBR defaults to
          * zero. Direct USD terminals omit inherited values, so do not fall back to generic PBR. */
         out->clearcoat_roughness =
-            read_scalar(stage, ord, shader, "inputs:coat_roughness", is_standard_surface ? 0.1f : 0.0f);
-        if (read_color3(stage, ord, shader, "inputs:emission_color", c))
+            readScalar(stage, ordinal, shader, "inputs:coat_roughness", is_standard_surface ? 0.1f : 0.0f);
+        if (readColor3(stage, ordinal, shader, "inputs:emission_color", c))
         {
             out->emissive_color[0] = c[0];
             out->emissive_color[1] = c[1];
             out->emissive_color[2] = c[2];
         }
-        if (read_color3(stage, ord, shader, "inputs:transmission_color", c))
+        if (readColor3(stage, ordinal, shader, "inputs:transmission_color", c))
         {
             out->transmission_color[0] = c[0];
             out->transmission_color[1] = c[1];
             out->transmission_color[2] = c[2];
         }
         out->transmission_weight =
-            read_scalar(stage, ord, shader, "inputs:transmission_weight",
-                        read_scalar(stage, ord, shader, "inputs:transmission", out->transmission_weight));
+            readScalar(stage, ordinal, shader, "inputs:transmission_weight",
+                       readScalar(stage, ordinal, shader, "inputs:transmission", out->transmission_weight));
     }
 
-    /* ── MDL materials (port of material.c's MDL paths) ───────────────────────────────────
+    /* MDL materials (port of material.c's MDL paths).
      * NVIDIA's SimReady/Isaac assets author no UsdPreviewSurface at all: the Shader carries
      * info:mdl:sourceAsset (OmniPBR.mdl) and names its textures directly as asset-valued
      * inputs. Nothing below the UsdPreviewSurface branch would ever fire for them, so the whole
-     * warehouse rendered as untextured grey. */
-    const std::string mdl_source = read_asset_resolved(stage, ord, shader, "info:mdl:sourceAsset");
+     * warehouse rendered as untextured gray. */
+    const std::string mdl_source = readAssetResolved(stage, ordinal, shader, "info:mdl:sourceAsset");
     const bool is_mdl = !mdl_source.empty();
     if (is_mdl)
     {
@@ -2267,7 +2286,7 @@ bool read_material(ovstage_instance_t* stage,
          * coordinator authors for these very materials -- so keep one convention. */
         out->v_flip = 0;
 
-        /* Base colour: diffuse_color_constant, multiplied by diffuse_tint.
+        /* Base color: diffuse_color_constant, multiplied by diffuse_tint.
          *
          * The MDL default for the constant is NOT white. OmniPBR.mdl declares
          * `diffuse_color_constant = color(0.2)`, and this comment used to claim
@@ -2298,10 +2317,10 @@ bool read_material(ovstage_instance_t* stage,
         float base[3] = { 1.0f, 1.0f, 1.0f };
         if (mdl_omnipbr)
             base[0] = base[1] = base[2] = 0.2f;
-        const bool base_set = read_color3(stage, ord, shader, "inputs:diffuseColor", base) ||
-                              read_color3(stage, ord, shader, "inputs:diffuse_color_constant", base);
+        const bool base_set = readColor3(stage, ordinal, shader, "inputs:diffuseColor", base) ||
+                              readColor3(stage, ordinal, shader, "inputs:diffuse_color_constant", base);
         float tint[3] = { 1.0f, 1.0f, 1.0f };
-        const bool tint_set = read_color3(stage, ord, shader, "inputs:diffuse_tint", tint);
+        const bool tint_set = readColor3(stage, ordinal, shader, "inputs:diffuse_tint", tint);
         if (base_set || tint_set || mdl_omnipbr)
         {
             out->base_color[0] = base[0] * tint[0];
@@ -2311,9 +2330,9 @@ bool read_material(ovstage_instance_t* stage,
             base_out[1] = out->base_color[1];
             base_out[2] = out->base_color[2];
         }
-        out->metallic = read_scalar(stage, ord, shader, "inputs:metallic_constant", out->metallic);
-        out->roughness = read_scalar(stage, ord, shader, "inputs:reflection_roughness_constant",
-                                     read_scalar(stage, ord, shader, "inputs:roughness_constant", out->roughness));
+        out->metallic = readScalar(stage, ordinal, shader, "inputs:metallic_constant", out->metallic);
+        out->roughness = readScalar(stage, ordinal, shader, "inputs:reflection_roughness_constant",
+                                    readScalar(stage, ordinal, shader, "inputs:roughness_constant", out->roughness));
 
         /* Isaac/Unreal MDL roughness REMAP (port of material.c:3312-3350,
          * mdl_apply_isaac_roughness_remap). Those exporters author no roughness
@@ -2322,7 +2341,7 @@ bool read_material(ovstage_instance_t* stage,
          * gl's fragment shader has consumed exactly that shape since
          * shaders_gles.h:716-717 (roughSample * roughness_tex_scale +
          * roughness_tex_bias), but NOTHING in this file ever wrote the two
-         * fields, so default_material's 1.0 / 0.0 stood and every Isaac
+         * fields, so defaultMaterial's 1.0 / 0.0 stood and every Isaac
          * roughness map ran through unremapped.
          *
          * One deliberate divergence from the fork: a degenerate min == max is
@@ -2330,23 +2349,23 @@ bool read_material(ovstage_instance_t* stage,
          * "unset" and substitutes 1.0 -- which would turn a constant-roughness
          * remap into (sample + min). Collapse that case to the constant. */
         {
-            static const char* const kRoughnessMin[] = {
+            static const char* const s_kRoughnessMin[] = {
                 "inputs:RoughnessMin",
                 "inputs:Roughness_Min",
                 "inputs:roughnessMin",
                 "inputs:roughness_min",
             };
-            static const char* const kRoughnessMax[] = {
+            static const char* const s_kRoughnessMax[] = {
                 "inputs:RoughnessMax",
                 "inputs:Roughness_Max",
                 "inputs:roughnessMax",
                 "inputs:roughness_max",
             };
             float rmin = 0.0f, rmax = 0.0f;
-            const bool has_min = read_scalar_any(
-                stage, ord, shader, kRoughnessMin, sizeof(kRoughnessMin) / sizeof(kRoughnessMin[0]), &rmin);
-            const bool has_max = read_scalar_any(
-                stage, ord, shader, kRoughnessMax, sizeof(kRoughnessMax) / sizeof(kRoughnessMax[0]), &rmax);
+            const bool has_min = readScalarAny(
+                stage, ordinal, shader, s_kRoughnessMin, sizeof(s_kRoughnessMin) / sizeof(s_kRoughnessMin[0]), &rmin);
+            const bool has_max = readScalarAny(
+                stage, ordinal, shader, s_kRoughnessMax, sizeof(s_kRoughnessMax) / sizeof(s_kRoughnessMax[0]), &rmax);
             if (has_min && has_max && rmax != rmin)
             {
                 out->roughness = 0.5f * (rmin + rmax);
@@ -2362,33 +2381,33 @@ bool read_material(ovstage_instance_t* stage,
                 out->roughness = rmin;
             }
             /* The family's own scalar spelling wins over the remap midpoint. */
-            out->roughness = read_scalar(stage, ord, shader, "inputs:Roughness", out->roughness);
+            out->roughness = readScalar(stage, ordinal, shader, "inputs:Roughness", out->roughness);
         }
 
         /* MDL bump / normal-map strength (port of material.c:3231-3250's
          * normal_keys = {normal_scale, bump_factor, bump_scale}). normal_scale
          * is in the UBO and the shader multiplies the decoded tangent-space
          * mapN.xy by it (shaders_gles.h:676); the MDL branch never wrote it, so
-         * an authored bump_factor was silently pinned at default_material's 1.0.
+         * an authored bump_factor was silently pinned at defaultMaterial's 1.0.
          * Kept to the fork's three names exactly -- a wider alias list would be
          * invention, and a false positive here rewrites shading. */
         {
-            static const char* const kNormalScale[] = {
+            static const char* const s_kNormalScale[] = {
                 "inputs:normal_scale",
                 "inputs:bump_factor",
                 "inputs:bump_scale",
             };
-            float normal_scale = 1.0f;
-            if (read_scalar_any(
-                    stage, ord, shader, kNormalScale, sizeof(kNormalScale) / sizeof(kNormalScale[0]), &normal_scale))
-                out->normal_scale = normal_scale;
+            float normalScale = 1.0f;
+            if (readScalarAny(stage, ordinal, shader, s_kNormalScale,
+                              sizeof(s_kNormalScale) / sizeof(s_kNormalScale[0]), &normalScale))
+                out->normal_scale = normalScale;
         }
 
         /* AdvancedPBR/OmniPBR gate emission with enable_emission and use direct scalar
-         * colour/intensity inputs in addition to their optional mask texture.  The shipped
+         * color/intensity inputs in addition to their optional mask texture.  The shipped
          * MDL families spell those scalar inputs both emissive_* and emission_*.  Reset an
          * explicitly-disabled lobe so a generic PreviewSurface field cannot leak through. */
-        if (!read_bool_attr(stage, ord, shader, "inputs:enable_emission", true))
+        if (!readBooleanAttribute(stage, ordinal, shader, "inputs:enable_emission", true))
         {
             out->emissive_color[0] = 0.0f;
             out->emissive_color[1] = 0.0f;
@@ -2397,15 +2416,15 @@ bool read_material(ovstage_instance_t* stage,
         }
         else
         {
-            if (read_color3(stage, ord, shader, "inputs:emissive_color", c) ||
-                read_color3(stage, ord, shader, "inputs:emission_color", c))
+            if (readColor3(stage, ordinal, shader, "inputs:emissive_color", c) ||
+                readColor3(stage, ordinal, shader, "inputs:emission_color", c))
             {
                 out->emissive_color[0] = c[0];
                 out->emissive_color[1] = c[1];
                 out->emissive_color[2] = c[2];
             }
-            out->emissive_color[3] = read_scalar(stage, ord, shader, "inputs:emissive_intensity",
-                                                 read_scalar(stage, ord, shader, "inputs:emission_intensity", 1.0f));
+            out->emissive_color[3] = readScalar(stage, ordinal, shader, "inputs:emissive_intensity",
+                                                readScalar(stage, ordinal, shader, "inputs:emission_intensity", 1.0f));
         }
 
         /* DrivesimPBR and OmniUe4Base use the alpha/opacity aliases below rather than
@@ -2413,8 +2432,9 @@ bool read_material(ovstage_instance_t* stage,
          * its cutoff into the same depth-writing alpha-cutout path used by Preview Surface.
          * DrivesimPBR_Opacity calls the switch enable_alpha; the other shipped family calls
          * it enable_opacity. */
-        const bool mdl_opacity_enabled = read_bool_attr(
-            stage, ord, shader, "inputs:enable_alpha", read_bool_attr(stage, ord, shader, "inputs:enable_opacity", true));
+        const bool mdl_opacity_enabled =
+            readBooleanAttribute(stage, ordinal, shader, "inputs:enable_alpha",
+                                 readBooleanAttribute(stage, ordinal, shader, "inputs:enable_opacity", true));
         if (!mdl_opacity_enabled)
         {
             out->opacity = 1.0f;
@@ -2423,14 +2443,14 @@ bool read_material(ovstage_instance_t* stage,
         else
         {
             out->opacity =
-                read_scalar(stage, ord, shader, "inputs:alpha",
-                            read_scalar(stage, ord, shader, "inputs:alpha_constant",
-                                        read_scalar(stage, ord, shader, "inputs:opacity_constant", out->opacity)));
-            const bool mdl_alpha_cutout =
-                read_bool_attr(stage, ord, shader, "inputs:enable_alpha_cutout",
-                               read_bool_attr(stage, ord, shader, "inputs:enable_opacity_cutout", false));
+                readScalar(stage, ordinal, shader, "inputs:alpha",
+                           readScalar(stage, ordinal, shader, "inputs:alpha_constant",
+                                      readScalar(stage, ordinal, shader, "inputs:opacity_constant", out->opacity)));
+            const bool mdl_alpha_cutout = readBooleanAttribute(
+                stage, ordinal, shader, "inputs:enable_alpha_cutout",
+                readBooleanAttribute(stage, ordinal, shader, "inputs:enable_opacity_cutout", false));
             out->opacity_threshold =
-                mdl_alpha_cutout ? read_scalar(stage, ord, shader, "inputs:alpha_cutout_cutoff", 1.0f) : 0.0f;
+                mdl_alpha_cutout ? readScalar(stage, ordinal, shader, "inputs:alpha_cutout_cutoff", 1.0f) : 0.0f;
         }
 
         /* Texture inputs authored straight on the Shader. Two naming families coexist, exactly
@@ -2472,12 +2492,12 @@ bool read_material(ovstage_instance_t* stage,
             /* OmniPBR-family MDLs retain texture asset paths while an explicit feature switch
              * disables that lobe.  A missing switch belongs to another MDL family, so retain
              * the direct-texture behavior; an authored false switch must win. */
-            if (mi.enable_input[0] != '\0' && !read_bool_attr(stage, ord, shader, mi.enable_input, true))
+            if (mi.enable_input[0] != '\0' && !readBooleanAttribute(stage, ordinal, shader, mi.enable_input, true))
                 continue;
-            const std::string file = read_asset_resolved(stage, ord, shader, mi.input);
+            const std::string file = readAssetResolved(stage, ordinal, shader, mi.input);
             if (file.empty())
                 continue;
-            const int index = find_or_add_texture(file, mi.srgb, archive_cache);
+            const int index = findOrAddTexture(file, mi.srgb, archive_cache);
             if (index < 0)
                 continue;
             out->tex_indices[mi.slot] = index;
@@ -2540,7 +2560,7 @@ bool read_material(ovstage_instance_t* stage,
          * authored, because tex::texture_isvalid is false for a texture that
          * failed to load: franka_factory's ground_plane authors an UNRESOLVABLE
          * inputs:diffuse_texture and official renders it at the constant (px 146).
-         * read_asset_resolved / find_or_add_texture failing leaves the slot at -1,
+         * readAssetResolved / findOrAddTexture failing leaves the slot at -1,
          * which is exactly that predicate, so the block never fires there: that
          * scene still measures 7.038 and 7.013 MAE / 2.68% px>32 over two official
          * runs (its post-port number is 7.007, and official's own run-to-run MAE on
@@ -2561,11 +2581,11 @@ bool read_material(ovstage_instance_t* stage,
          * deliberately does not touch: on a NON-OmniPBR MDL family with a bound
          * diffuse texture and no authored constant, base_color is never written at
          * all -- `base_set || tint_set || mdl_omnipbr` above is false -- so
-         * default_material's 0.62 fallback grey tints the sampled albedo (158.8
+         * defaultMaterial's 0.62 fallback gray tints the sampled albedo (158.8
          * where white gives 188.7). It predates the MDL port (480a93f already read
          * `if (base_set || tint_set)`), and the fork handles it with a different
          * post-pass at material.c:4766 keyed on "is base_color still the default
-         * grey". Closing it means changing those families, which is out of scope
+         * gray". Closing it means changing those families, which is out of scope
          * for this fix and wants its own cross-stack measurement. */
         if (mdl_omnipbr && out->tex_indices[TEX_DIFFUSE_COLOR] >= 0)
         {
@@ -2580,7 +2600,7 @@ bool read_material(ovstage_instance_t* stage,
         /* ── OmniGlass, NVIDIA's MDL dielectric (port of material.c:4189-4212) ──
          * Everything above reads diffuse/metallic/roughness and knows nothing
          * about glass, so an OmniGlass shader left transmission_weight at 0 and
-         * came out as the opaque grey default -- while ovgl's refraction +
+         * came out as the opaque gray default -- while ovgl's refraction +
          * transmission block (shaders_gles.h:912-935) sits fully implemented and
          * fed by the MaterialX branch alone. Map the OmniGlass inputs onto the
          * transmission params so that already-paid-for path activates.
@@ -2596,10 +2616,10 @@ bool read_material(ovstage_instance_t* stage,
          * _pad_a/_pad_b/_pad_c -- the two structs LOOK interchangeable and are
          * not. ovgl's shader gates on transmission_weight > 0 alone, so nothing
          * else is needed. */
-        const std::string mdl_sub = read_str_attr(stage, ord, shader, "info:mdl:sourceAsset:subIdentifier");
+        const std::string mdl_sub = readStringAttribute(stage, ordinal, shader, "info:mdl:sourceAsset:subIdentifier");
         if (mdl_basename.rfind("OmniGlass", 0) == 0 || mdl_sub.find("OmniGlass") != std::string::npos)
         {
-            if (read_color3(stage, ord, shader, "inputs:glass_color", c))
+            if (readColor3(stage, ordinal, shader, "inputs:glass_color", c))
             {
                 out->transmission_color[0] = c[0];
                 out->transmission_color[1] = c[1];
@@ -2615,7 +2635,7 @@ bool read_material(ovstage_instance_t* stage,
                 out->transmission_color[2] = 1.0f;
             }
             const float glass_ior =
-                read_scalar(stage, ord, shader, "inputs:glass_ior", std::numeric_limits<float>::quiet_NaN());
+                readScalar(stage, ordinal, shader, "inputs:glass_ior", std::numeric_limits<float>::quiet_NaN());
             if (std::isfinite(glass_ior) && glass_ior > 0.0f)
             {
                 out->ior = glass_ior;
@@ -2627,9 +2647,9 @@ bool read_material(ovstage_instance_t* stage,
                  * set it explicitly so the two can never disagree. */
                 out->transmission_ior = out->ior;
             }
-            static const char* const kFrosting[] = { "inputs:frosting_roughness" };
+            static const char* const s_kFrosting[] = { "inputs:frosting_roughness" };
             float frosting = 0.0f;
-            if (read_scalar_any(stage, ord, shader, kFrosting, 1, &frosting))
+            if (readScalarAny(stage, ordinal, shader, s_kFrosting, 1, &frosting))
                 out->roughness = frosting;
             out->transmission_weight = 1.0f; /* OmniGlass is transmissive */
         }
@@ -2644,35 +2664,35 @@ bool read_material(ovstage_instance_t* stage,
      * ovpopulation stores a connection in a separate "<name>.connect" column (a connected
      * input has no value, so only that column lands) and its target is a PROPERTY path
      * (".../BaseColor.rgb"), so trim at the dot to get the prim. */
-    for (const TextureSlotDesc& desc : kTextureSlots)
+    for (const TextureSlotDescription& desc : g_kTextureSlots)
     {
-        std::string target = read_str_attr(stage, ord, shader, std::string(desc.input) + ".connect");
+        std::string target = readStringAttribute(stage, ordinal, shader, std::string(desc.input) + ".connect");
         if (target.empty() || target[0] != '/')
             continue;
-        int selected_channel = texture_output_channel(target, -1);
-        target = texture_image_source_path(stage, ord, std::move(target), desc.slot);
+        int selected_channel = textureOutputChannel(target, -1);
+        target = textureImageSourcePath(stage, ordinal, std::move(target), desc.slot);
         if (target.empty())
             continue;
 
-        const std::string file = read_asset_resolved(stage, ord, target, "inputs:file");
+        const std::string file = readAssetResolved(stage, ordinal, target, "inputs:file");
         if (file.empty())
             continue;
         /* A MaterialX float image publishes outputs:out rather than outputs:r, but its generated
          * implementation samples the red component. Keep the legacy G/B defaults only for
          * packed maps whose output did not identify a scalar MaterialX image. */
-        if (selected_channel < 0 && read_str_attr(stage, ord, target, "info:id") == "ND_image_float")
+        if (selected_channel < 0 && readStringAttribute(stage, ordinal, target, "info:id") == "ND_image_float")
             selected_channel = 0;
 
         /* sourceColorSpace overrides the slot default when the asset says so ("raw" on a
-         * colour map, "sRGB" on a data map). */
+         * color map, "sRGB" on a data map). */
         bool srgb = desc.srgb;
-        const std::string cs = read_str_attr(stage, ord, target, "inputs:sourceColorSpace");
+        const std::string cs = readStringAttribute(stage, ordinal, target, "inputs:sourceColorSpace");
         if (cs == "raw")
             srgb = false;
         else if (cs == "sRGB")
             srgb = true;
 
-        const int index = find_or_add_texture(file, srgb, archive_cache);
+        const int index = findOrAddTexture(file, srgb, archive_cache);
         if (index >= 0)
         {
             out->tex_indices[desc.slot] = index;
@@ -2694,14 +2714,14 @@ bool read_material(ovstage_instance_t* stage,
             }
 
             /* The shader TINTS the sampled texel: baseColor = texture(tex_diffuse, tc) *
-             * base_color. base_color still holds the fallback grey here, because a connected
-             * input authors no value for read_color3 to find -- so a fully textured asset came
-             * out uniformly grey-tinted. The tint is the UsdUVTexture's inputs:scale (white
+             * base_color. base_color still holds the fallback gray here, because a connected
+             * input authors no value for readColor3 to find -- so a fully textured asset came
+             * out uniformly gray-tinted. The tint is the UsdUVTexture's inputs:scale (white
              * when unauthored), exactly as the nanousd loader does it. */
             if (desc.slot == TEX_DIFFUSE_COLOR)
             {
                 float scale[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-                if (!read_color4(stage, ord, target, "inputs:scale", scale))
+                if (!readColor4(stage, ordinal, target, "inputs:scale", scale))
                 {
                     scale[0] = scale[1] = scale[2] = 1.0f;
                 }
@@ -2718,9 +2738,9 @@ bool read_material(ovstage_instance_t* stage,
 }
 
 /* Append a triangle's 3 positions to P and 3 normals to N (parallel soups).
- * push_flat: the face normal (crisp box/mesh edges). push_smooth: per-vertex
- * normalize(pos) for a centred sphere (round shading). */
-inline void face_normal(const float a[3], const float b[3], const float c[3], float o[3])
+ * pushFlat: the face normal (crisp box/mesh edges). pushSmooth: per-vertex
+ * normalize(pos) for a centered sphere (round shading). */
+inline void faceNormal(const float a[3], const float b[3], const float c[3], float o[3])
 {
     float u[3] = { b[0] - a[0], b[1] - a[1], b[2] - a[2] };
     float v[3] = { c[0] - a[0], c[1] - a[1], c[2] - a[2] };
@@ -2734,55 +2754,59 @@ inline void face_normal(const float a[3], const float b[3], const float c[3], fl
     o[1] /= n;
     o[2] /= n;
 }
-inline void push_flat(std::vector<float>& P, std::vector<float>& N, const float a[3], const float b[3], const float c[3])
+inline void pushFlat(std::vector<float>& P, std::vector<float>& N, const float a[3], const float b[3], const float c[3])
 {
     P.insert(P.end(), a, a + 3);
     P.insert(P.end(), b, b + 3);
     P.insert(P.end(), c, c + 3);
     float fn[3];
-    face_normal(a, b, c, fn);
+    faceNormal(a, b, c, fn);
     for (int k = 0; k < 3; k++)
         N.insert(N.end(), fn, fn + 3);
 }
-inline void push_smooth(std::vector<float>& P, std::vector<float>& N, const float a[3], const float b[3], const float c[3])
+inline void pushSmooth(std::vector<float>& positions,
+                       std::vector<float>& normals,
+                       const float firstPoint[3],
+                       const float secondPoint[3],
+                       const float thirdPoint[3])
 {
-    P.insert(P.end(), a, a + 3);
-    P.insert(P.end(), b, b + 3);
-    P.insert(P.end(), c, c + 3);
-    for (const float* p : { a, b, c })
+    positions.insert(positions.end(), firstPoint, firstPoint + 3);
+    positions.insert(positions.end(), secondPoint, secondPoint + 3);
+    positions.insert(positions.end(), thirdPoint, thirdPoint + 3);
+    for (const float* point : { firstPoint, secondPoint, thirdPoint })
     {
-        float n = std::sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
-        if (n < 1e-12f)
-            n = 1.0f;
-        N.push_back(p[0] / n);
-        N.push_back(p[1] / n);
-        N.push_back(p[2] / n);
+        float length = std::sqrt(point[0] * point[0] + point[1] * point[1] + point[2] * point[2]);
+        if (length < 1e-12f)
+            length = 1.0f;
+        normals.push_back(point[0] / length);
+        normals.push_back(point[1] / length);
+        normals.push_back(point[2] / length);
     }
 }
 
-void synth_cube(float h, std::vector<float>& P, std::vector<float>& N)
+void synthCube(float h, std::vector<float>& P, std::vector<float>& N)
 {
     const float v[8][3] = { { -h, -h, -h }, { h, -h, -h }, { h, h, -h }, { -h, h, -h },
                             { -h, -h, h },  { h, -h, h },  { h, h, h },  { -h, h, h } };
-    static const int F[12][3] = { { 0, 2, 1 }, { 0, 3, 2 }, { 4, 5, 6 }, { 4, 6, 7 }, { 0, 1, 5 }, { 0, 5, 4 },
-                                  { 3, 7, 6 }, { 3, 6, 2 }, { 0, 4, 7 }, { 0, 7, 3 }, { 1, 2, 6 }, { 1, 6, 5 } };
-    for (auto& f : F)
-        push_flat(P, N, v[f[0]], v[f[1]], v[f[2]]);
+    static const int s_kFaces[12][3] = { { 0, 2, 1 }, { 0, 3, 2 }, { 4, 5, 6 }, { 4, 6, 7 }, { 0, 1, 5 }, { 0, 5, 4 },
+                                         { 3, 7, 6 }, { 3, 6, 2 }, { 0, 4, 7 }, { 0, 7, 3 }, { 1, 2, 6 }, { 1, 6, 5 } };
+    for (auto& f : s_kFaces)
+        pushFlat(P, N, v[f[0]], v[f[1]], v[f[2]]);
 }
 
 /* Recursively subdivide a sphere triangle `depth` levels, projecting midpoints onto
- * the radius-r sphere; push_smooth emits normalize(pos) normals (round shading). */
-void sphere_subdiv(std::vector<float>& P,
-                   std::vector<float>& N,
-                   const float a[3],
-                   const float b[3],
-                   const float c[3],
-                   float radius,
-                   int depth)
+ * the radius-r sphere; pushSmooth emits normalize(pos) normals (round shading). */
+void sphereSubdiv(std::vector<float>& P,
+                  std::vector<float>& N,
+                  const float a[3],
+                  const float b[3],
+                  const float c[3],
+                  float radius,
+                  int depth)
 {
     if (depth <= 0)
     {
-        push_smooth(P, N, a, b, c);
+        pushSmooth(P, N, a, b, c);
         return;
     }
     auto mid = [&](const float* p, const float* q, float* o)
@@ -2801,13 +2825,13 @@ void sphere_subdiv(std::vector<float>& P,
     mid(a, b, ab);
     mid(b, c, bc);
     mid(c, a, ca);
-    sphere_subdiv(P, N, a, ab, ca, radius, depth - 1);
-    sphere_subdiv(P, N, ab, b, bc, radius, depth - 1);
-    sphere_subdiv(P, N, ca, bc, c, radius, depth - 1);
-    sphere_subdiv(P, N, ab, bc, ca, radius, depth - 1);
+    sphereSubdiv(P, N, a, ab, ca, radius, depth - 1);
+    sphereSubdiv(P, N, ab, b, bc, radius, depth - 1);
+    sphereSubdiv(P, N, ca, bc, c, radius, depth - 1);
+    sphereSubdiv(P, N, ab, bc, ca, radius, depth - 1);
 }
 
-void synth_sphere(float radius, std::vector<float>& P, std::vector<float>& N)
+void synthSphere(float radius, std::vector<float>& P, std::vector<float>& N)
 {
     const float t = (1.0f + std::sqrt(5.0f)) * 0.5f;
     float v[12][3] = { { -1, t, 0 },  { 1, t, 0 },  { -1, -t, 0 }, { 1, -t, 0 }, { 0, -1, t },  { 0, 1, t },
@@ -2823,18 +2847,18 @@ void synth_sphere(float radius, std::vector<float>& P, std::vector<float>& N)
     };
     for (auto& a : v)
         norm(a);
-    static const int B[20][3] = { { 0, 11, 5 }, { 0, 5, 1 },  { 0, 1, 7 },   { 0, 7, 10 }, { 0, 10, 11 },
-                                  { 1, 5, 9 },  { 5, 11, 4 }, { 11, 10, 2 }, { 10, 7, 6 }, { 7, 1, 8 },
-                                  { 3, 9, 4 },  { 3, 4, 2 },  { 3, 2, 6 },   { 3, 6, 8 },  { 3, 8, 9 },
-                                  { 4, 9, 5 },  { 2, 4, 11 }, { 6, 2, 10 },  { 8, 6, 7 },  { 9, 8, 1 } };
+    static const int s_kFaces[20][3] = { { 0, 11, 5 }, { 0, 5, 1 },  { 0, 1, 7 },   { 0, 7, 10 }, { 0, 10, 11 },
+                                         { 1, 5, 9 },  { 5, 11, 4 }, { 11, 10, 2 }, { 10, 7, 6 }, { 7, 1, 8 },
+                                         { 3, 9, 4 },  { 3, 4, 2 },  { 3, 2, 6 },   { 3, 6, 8 },  { 3, 8, 9 },
+                                         { 4, 9, 5 },  { 2, 4, 11 }, { 6, 2, 10 },  { 8, 6, 7 },  { 9, 8, 1 } };
     /* 2 subdivision levels -> 20*4^2 = 320 tris: a noticeably rounder icosphere. */
-    for (auto& f : B)
-        sphere_subdiv(P, N, v[f[0]], v[f[1]], v[f[2]], radius, 2);
+    for (auto& f : s_kFaces)
+        sphereSubdiv(P, N, v[f[0]], v[f[1]], v[f[2]], radius, 2);
 }
 
 /* USD's quadric gprims (Cylinder/Cone/Capsule) carry an `axis` token: the local axis the
  * shape is swept around. Map it to the component index the synth builders extrude along. */
-static int axis_index(const std::string& axis)
+static int axisIndex(const std::string& axis)
 {
     if (axis == "X")
         return 0;
@@ -2852,17 +2876,17 @@ static void axial(int ax, float u, float v, float along, float o[3])
     o[c] = v;
 }
 
-constexpr int kQuadricSegments = 32;
+constexpr int g_kQuadricSegments = 32;
 
 /* Cylinder: side wall + two caps, swept around `axis`. Smooth-ish shading comes for free
- * from push_flat's per-triangle normals, which is what Cube already uses. */
-void synth_cylinder(float radius, float height, int ax, std::vector<float>& P, std::vector<float>& N)
+ * from pushFlat's per-triangle normals, which is what Cube already uses. */
+void synthCylinder(float radius, float height, int ax, std::vector<float>& P, std::vector<float>& N)
 {
     const float h = height * 0.5f;
-    for (int i = 0; i < kQuadricSegments; i++)
+    for (int i = 0; i < g_kQuadricSegments; i++)
     {
-        const float t0 = (float)(2.0 * M_PI * i / kQuadricSegments);
-        const float t1 = (float)(2.0 * M_PI * (i + 1) / kQuadricSegments);
+        const float t0 = (float)(2.0 * M_PI * i / g_kQuadricSegments);
+        const float t1 = (float)(2.0 * M_PI * (i + 1) / g_kQuadricSegments);
         const float c0 = std::cos(t0) * radius, s0 = std::sin(t0) * radius;
         const float c1 = std::cos(t1) * radius, s1 = std::sin(t1) * radius;
         float b0[3], b1[3], u0[3], u1[3], cb[3], ct[3];
@@ -2872,37 +2896,37 @@ void synth_cylinder(float radius, float height, int ax, std::vector<float>& P, s
         axial(ax, c1, s1, h, u1);
         axial(ax, 0.0f, 0.0f, -h, cb);
         axial(ax, 0.0f, 0.0f, h, ct);
-        push_flat(P, N, b0, b1, u1); /* wall */
-        push_flat(P, N, b0, u1, u0);
-        push_flat(P, N, cb, b1, b0); /* bottom cap */
-        push_flat(P, N, ct, u0, u1); /* top cap */
+        pushFlat(P, N, b0, b1, u1); /* wall */
+        pushFlat(P, N, b0, u1, u0);
+        pushFlat(P, N, cb, b1, b0); /* bottom cap */
+        pushFlat(P, N, ct, u0, u1); /* top cap */
     }
 }
 
 /* Cone: side wall to the apex + base cap. */
-void synth_cone(float radius, float height, int ax, std::vector<float>& P, std::vector<float>& N)
+void synthCone(float radius, float height, int ax, std::vector<float>& P, std::vector<float>& N)
 {
     const float h = height * 0.5f;
     float apex[3], cb[3];
     axial(ax, 0.0f, 0.0f, h, apex);
     axial(ax, 0.0f, 0.0f, -h, cb);
-    for (int i = 0; i < kQuadricSegments; i++)
+    for (int i = 0; i < g_kQuadricSegments; i++)
     {
-        const float t0 = (float)(2.0 * M_PI * i / kQuadricSegments);
-        const float t1 = (float)(2.0 * M_PI * (i + 1) / kQuadricSegments);
+        const float t0 = (float)(2.0 * M_PI * i / g_kQuadricSegments);
+        const float t1 = (float)(2.0 * M_PI * (i + 1) / g_kQuadricSegments);
         float b0[3], b1[3];
         axial(ax, std::cos(t0) * radius, std::sin(t0) * radius, -h, b0);
         axial(ax, std::cos(t1) * radius, std::sin(t1) * radius, -h, b1);
-        push_flat(P, N, b0, b1, apex);
-        push_flat(P, N, cb, b1, b0);
+        pushFlat(P, N, b0, b1, apex);
+        pushFlat(P, N, cb, b1, b0);
     }
 }
 
 /* Capsule: a cylinder of `height` with a hemisphere of `radius` on each end (USD's
  * definition: height is the CYLINDER length, the caps add radius beyond it). */
-void synth_capsule(float radius, float height, int ax, std::vector<float>& P, std::vector<float>& N)
+void synthCapsule(float radius, float height, int ax, std::vector<float>& P, std::vector<float>& N)
 {
-    synth_cylinder(radius, height, ax, P, N);
+    synthCylinder(radius, height, ax, P, N);
     const float h = height * 0.5f;
     const int rings = 8;
     for (int cap = 0; cap < 2; cap++)
@@ -2915,10 +2939,10 @@ void synth_capsule(float radius, float height, int ax, std::vector<float>& P, st
             const float p1 = (float)(M_PI * 0.5 * (r + 1) / rings);
             const float r0 = std::cos(p0) * radius, a0 = std::sin(p0) * radius * dir;
             const float r1 = std::cos(p1) * radius, a1 = std::sin(p1) * radius * dir;
-            for (int i = 0; i < kQuadricSegments; i++)
+            for (int i = 0; i < g_kQuadricSegments; i++)
             {
-                const float t0 = (float)(2.0 * M_PI * i / kQuadricSegments);
-                const float t1 = (float)(2.0 * M_PI * (i + 1) / kQuadricSegments);
+                const float t0 = (float)(2.0 * M_PI * i / g_kQuadricSegments);
+                const float t1 = (float)(2.0 * M_PI * (i + 1) / g_kQuadricSegments);
                 float v00[3], v01[3], v10[3], v11[3];
                 axial(ax, std::cos(t0) * r0, std::sin(t0) * r0, base + a0, v00);
                 axial(ax, std::cos(t1) * r0, std::sin(t1) * r0, base + a0, v01);
@@ -2926,13 +2950,13 @@ void synth_capsule(float radius, float height, int ax, std::vector<float>& P, st
                 axial(ax, std::cos(t1) * r1, std::sin(t1) * r1, base + a1, v11);
                 if (cap == 0)
                 {
-                    push_flat(P, N, v00, v01, v11);
-                    push_flat(P, N, v00, v11, v10);
+                    pushFlat(P, N, v00, v01, v11);
+                    pushFlat(P, N, v00, v11, v10);
                 }
                 else
                 { /* keep the winding consistent on the mirrored cap */
-                    push_flat(P, N, v00, v11, v01);
-                    push_flat(P, N, v00, v10, v11);
+                    pushFlat(P, N, v00, v11, v01);
+                    pushFlat(P, N, v00, v10, v11);
                 }
             }
         }
@@ -2949,7 +2973,7 @@ void synth_capsule(float radius, float height, int ax, std::vector<float>& P, st
  * (then Z). The quadrics' cyclic `axial` order transposed width/length for the non-Z axes.
  * Emitted double-sided — two windings — because a single-sided ground plane
  * disappears the moment the camera orbits under it, which reads as a renderer bug. */
-void synth_plane(float width, float length, int ax, std::vector<float>& P, std::vector<float>& N)
+void synthPlane(float width, float length, int ax, std::vector<float>& P, std::vector<float>& N)
 {
     const float w = width * 0.5f, l = length * 0.5f;
     const int wc = ax == 0 ? 2 : 0; /* component width spans */
@@ -2964,22 +2988,22 @@ void synth_plane(float width, float length, int ax, std::vector<float>& P, std::
     v11[lc] = l;
     v01[wc] = -w;
     v01[lc] = l;
-    push_flat(P, N, v00, v10, v11);
-    push_flat(P, N, v00, v11, v01);
-    push_flat(P, N, v00, v11, v10);
-    push_flat(P, N, v00, v01, v11);
+    pushFlat(P, N, v00, v10, v11);
+    pushFlat(P, N, v00, v11, v01);
+    pushFlat(P, N, v00, v11, v10);
+    pushFlat(P, N, v00, v01, v11);
 }
 
 /* Turn a flat triangle soup + per-prim color + xform into a heap-owned SceneMesh. */
-SceneMesh make_mesh(const std::vector<float>& P,
-                    const std::vector<float>& Nrm,
-                    const std::vector<float>& UV,
-                    const float color[3],
-                    int has_color,
-                    const double world16[16],
-                    const std::string& path,
-                    int double_sided,
-                    int front_face_cw)
+SceneMesh makeMesh(const std::vector<float>& P,
+                   const std::vector<float>& Nrm,
+                   const std::vector<float>& UV,
+                   const float color[3],
+                   int has_color,
+                   const double world16[16],
+                   const std::string& path,
+                   int double_sided,
+                   int front_face_cw)
 {
     SceneMesh m;
     std::memset(&m, 0, sizeof(m));
@@ -3065,13 +3089,13 @@ SceneMesh make_mesh(const std::vector<float>& P,
     return m;
 }
 
-bool collect_schema(ovstage_instance_t* stage,
-                    ovstage_ordinal_t ord,
-                    const char* schema,
-                    std::vector<std::pair<std::string, std::string>>& out,
-                    std::unordered_set<std::string>& seen)
+bool collectSchema(ovstage_instance_t* stage,
+                   ovstage_ordinal_t ordinal,
+                   const char* schema,
+                   std::vector<std::pair<std::string, std::string>>& out,
+                   std::unordered_set<std::string>& seen)
 {
-    // Do not route this through to_ovx(const std::string&): converting the
+    // Do not route this through toOvx(const std::string&): converting the
     // const char* would create a temporary std::string and leave schema_val.ptr
     // dangling before ovstage_query consumes the predicate.
     ovx_string_t schema_val{};
@@ -3099,13 +3123,13 @@ bool collect_schema(ovstage_instance_t* stage,
     auto fr = ovstage_fetch_query_result(stage, qh, OVSTAGE_TIMEOUT_INFINITE, &qr);
     if (fr != OVSTAGE_OK)
     {
-        (void)finish_enqueue(stage, qe);
+        (void)finishEnqueue(stage, qe);
         g_err = "fetch_query_result";
         return false;
     }
     auto paths = isaacsim::ovgl_viewport::debug::details::resolveQueryPrimPaths(
-        stage, qh, qr.attributes, qr.attribute_count, ord);
-    if (profile_load() && std::strcmp(schema, "Mesh") == 0)
+        stage, qh, qr.attributes, qr.attribute_count, ordinal);
+    if (profileLoad() && std::strcmp(schema, "Mesh") == 0)
         std::fprintf(stderr, "[load] Mesh query matched %zu prims\n", paths ? paths->size() : 0);
     if (paths)
     {
@@ -3114,7 +3138,7 @@ bool collect_schema(ovstage_instance_t* stage,
                 out.emplace_back(p, schema);
     }
     const bool result_released = ovstage_release_query_result(stage, &qr) == OVSTAGE_OK;
-    const bool query_finished = finish_enqueue(stage, qe);
+    const bool query_finished = finishEnqueue(stage, qe);
     if (!paths || !result_released || !query_finished)
     {
         g_err = std::string("query lifecycle(") + schema + ")";
@@ -3127,14 +3151,15 @@ bool collect_schema(ovstage_instance_t* stage,
  *
  * Population authors each USD prototype subtree under an opaque
  * `/__Prototype_<hash>` root (PrototypeRootAPI in usd-schemas) so the
- * official ovstage_instancing_* services can evaluate real scenes; the
- * drawable expansion of every instance is ALREADY populated as flattened
- * instance-proxy prims at the instance paths (ovpopulation services port
- * §1c). Drawing the prototype rows as well duplicates each prototype once
- * at its prototype-local placement — a ghost that never follows ancestor
- * transform edits (the 2026-07-18 "two robots" finding). Official ovrtx
- * and stock Kit never draw prototype subtrees directly; neither may ovgl. */
-std::vector<std::string> prototype_root_paths(ovstage_instance_t* stage)
+ * official ovstage_instancing_* services can evaluate real scenes. For
+ * attached-stage rendering, OvglBackend materializes the one-level flattened
+ * instance-proxy view consumed here, filling any proxy rows the population
+ * implementation did not provide. Other callers must provide that same view.
+ * Drawing the prototype rows as well duplicates each prototype once at its
+ * prototype-local placement — a ghost that never follows ancestor transform
+ * edits (the 2026-07-18 "two robots" finding). Official ovrtx and stock Kit
+ * never draw prototype subtrees directly; neither may ovgl. */
+std::vector<std::string> prototypeRootPaths(ovstage_instance_t* stage)
 {
     std::vector<std::string> roots;
     ovx_primpath_list_t list = OVX_INVALID_PRIMPATH_LIST;
@@ -3149,7 +3174,7 @@ std::vector<std::string> prototype_root_paths(ovstage_instance_t* stage)
     return roots;
 }
 
-bool under_prototype_root(const std::string& path, const std::vector<std::string>& roots)
+bool underPrototypeRoot(const std::string& path, const std::vector<std::string>& roots)
 {
     for (const std::string& root : roots)
     {
@@ -3162,14 +3187,14 @@ bool under_prototype_root(const std::string& path, const std::vector<std::string
     return false;
 }
 
-void drop_prototype_prims(std::vector<std::pair<std::string, std::string>>& prims,
-                          const std::vector<std::string>& proto_roots)
+void dropPrototypePrims(std::vector<std::pair<std::string, std::string>>& prims,
+                        const std::vector<std::string>& prototypeRoots)
 {
-    if (proto_roots.empty())
+    if (prototypeRoots.empty())
         return;
     prims.erase(std::remove_if(prims.begin(), prims.end(),
                                [&](const std::pair<std::string, std::string>& ps)
-                               { return under_prototype_root(ps.first, proto_roots); }),
+                               { return underPrototypeRoot(ps.first, prototypeRoots); }),
                 prims.end());
 }
 
@@ -3178,7 +3203,7 @@ void drop_prototype_prims(std::vector<std::pair<std::string, std::string>>& prim
  * A DomeLight is an infinitely distant environment, not a positioned emitter,
  * so it does NOT belong in g_lights with the punctual/area lights: the
  * renderer turns it into the IBL environment instead (Ovgl.cpp::
- * apply_environment). Hydra takes the first one and ignores the rest; so do
+ * applyEnvironment). Hydra takes the first one and ignores the rest; so do
  * we, in the order ovstage hands them back.
  *
  * `intensity` and `exposure` collapse into one number here for the same
@@ -3190,16 +3215,16 @@ void drop_prototype_prims(std::vector<std::pair<std::string, std::string>>& prim
  * the caller treats exactly like a failed light query: "no authored dome".
  * A scene with no DomeLight leaves has_dome 0, and that is a MEANINGFUL state,
  * not just an absence -- Ovgl.cpp keeps its synthetic MuJoCo headlight for it. */
-bool read_scene_dome(ovstage_instance_t* stage,
-                     ovstage_ordinal_t ord,
-                     const std::vector<std::string>& proto_roots,
-                     Scene* out)
+bool readSceneDome(ovstage_instance_t* stage,
+                   ovstage_ordinal_t ordinal,
+                   const std::vector<std::string>& prototypeRoots,
+                   Scene* out)
 {
     std::vector<std::pair<std::string, std::string>> dp;
     std::unordered_set<std::string> seen;
-    if (!collect_schema(stage, ord, "DomeLight", dp, seen))
+    if (!collectSchema(stage, ordinal, "DomeLight", dp, seen))
         return false;
-    drop_prototype_prims(dp, proto_roots);
+    dropPrototypePrims(dp, prototypeRoots);
     for (auto& ps : dp)
     {
         const std::string& path = ps.first;
@@ -3207,13 +3232,13 @@ bool read_scene_dome(ovstage_instance_t* stage,
          * first-dome-wins slot: `continue`, not `break`, so a later visible
          * dome can still install the IBL. (Same rule as the fork's
          * scene.c DomeLight pass.) */
-        if (!included_purpose(stage, ord, path) || !included_visibility(stage, ord, path))
+        if (!includedPurpose(stage, ordinal, path) || !includedVisibility(stage, ordinal, path))
             continue;
         out->has_dome = 1;
-        out->dome_intensity = read_scalar(stage, ord, path, "inputs:intensity", 1.0f) *
-                              std::exp2(read_scalar(stage, ord, path, "inputs:exposure", 0.0f));
+        out->dome_intensity = readScalar(stage, ordinal, path, "inputs:intensity", 1.0f) *
+                              std::exp2(readScalar(stage, ordinal, path, "inputs:exposure", 0.0f));
         float col[3] = { 1.0f, 1.0f, 1.0f };
-        read_color3(stage, ord, path, "inputs:color", col);
+        readColor3(stage, ordinal, path, "inputs:color", col);
         out->dome_color[0] = col[0];
         out->dome_color[1] = col[1];
         out->dome_color[2] = col[2];
@@ -3223,10 +3248,10 @@ bool read_scene_dome(ovstage_instance_t* stage,
          * and it means a uniform-radiance environment of color*intensity --
          * which is what makes official's sky read (222,223,225) rather than
          * black. */
-        const std::string tex = read_asset_resolved(stage, ord, path, "inputs:texture:file");
+        const std::string tex = readAssetResolved(stage, ordinal, path, "inputs:texture:file");
         std::snprintf(out->dome_hdr_path, sizeof(out->dome_hdr_path), "%s", tex.c_str());
         /* Layer-relative asset resolution is ovstage's job, not ours, and
-         * read_asset_resolved already prefers the RESOLVED column ovpopulation
+         * readAssetResolved already prefers the RESOLVED column ovpopulation
          * writes beside the authored string. The fork resolves relative paths
          * itself against `filepath` only because scene_load owns the layer; a
          * renderer driven by a sealed ovstage snapshot has no layer path to
@@ -3236,7 +3261,7 @@ bool read_scene_dome(ovstage_instance_t* stage,
         /* inputs:rotation is the dome's Y (up-axis) spin in degrees. Read here
          * so the field stops being a lie; see Ovgl.cpp for where it reaches
          * the equirect lookup. */
-        out->dome_rotation_y = read_scalar(stage, ord, path, "inputs:rotation", 0.0f);
+        out->dome_rotation_y = readScalar(stage, ordinal, path, "inputs:rotation", 0.0f);
         return true;
     }
     return true;
@@ -3244,7 +3269,7 @@ bool read_scene_dome(ovstage_instance_t* stage,
 
 /* Collect authored USD lights (Distant/Rect/Sphere) into g_lights as gl
  * GpuLight (kind 0=Rect, 1=Distant, 2=Sphere). DomeLight is read separately by
- * read_scene_dome, which drives the IBL environment.
+ * readSceneDome, which drives the IBL environment.
  * worldMatrix is row-major: translation = row 3; local +X/+Y/+Z = rotation rows
  * 0/1/2. A light shines along its local -Z, so normal = -(local +Z in world).
  * Returns false when light discovery failed (g_err set); g_lights is then
@@ -3259,60 +3284,62 @@ bool read_scene_dome(ovstage_instance_t* stage,
  * cone: official's frame luminance is 177.5 with it and 112.3 with it removed,
  * while ovgl renders 123.4 EITHER WAY. Drop this count and a 226-nit dome
  * evicts the only thing standing in for that key. */
-int count_unsupported_lights(ovstage_instance_t* stage, ovstage_ordinal_t ord, const std::vector<std::string>& proto_roots)
+int countUnsupportedLights(ovstage_instance_t* stage,
+                           ovstage_ordinal_t ordinal,
+                           const std::vector<std::string>& prototypeRoots)
 {
-    std::vector<std::pair<std::string, std::string>> up;
+    std::vector<std::pair<std::string, std::string>> unsupportedLights;
     std::unordered_set<std::string> seen;
     /* The two concrete UsdLux kinds with no GpuLight::kind here (gl/gpu.h
      * documents 0=Rect 1=Distant 2=Sphere). Porting kinds 3/4 is a live item;
-     * when it lands, delete the corresponding collect_schema call. */
-    if (!collect_schema(stage, ord, "DiskLight", up, seen))
+     * when it lands, delete the corresponding collectSchema call. */
+    if (!collectSchema(stage, ordinal, "DiskLight", unsupportedLights, seen))
         return 0;
-    if (!collect_schema(stage, ord, "CylinderLight", up, seen))
+    if (!collectSchema(stage, ordinal, "CylinderLight", unsupportedLights, seen))
         return 0;
-    drop_prototype_prims(up, proto_roots);
-    int n = 0;
-    for (auto& ps : up)
+    dropPrototypePrims(unsupportedLights, prototypeRoots);
+    int count = 0;
+    for (auto& pathAndType : unsupportedLights)
     {
-        if (!included_purpose(stage, ord, ps.first) || !included_visibility(stage, ord, ps.first))
+        if (!includedPurpose(stage, ordinal, pathAndType.first) || !includedVisibility(stage, ordinal, pathAndType.first))
             continue;
-        n++;
+        ++count;
     }
-    return n;
+    return count;
 }
 
-bool read_scene_lights(ovstage_instance_t* stage, ovstage_ordinal_t ord, const std::vector<std::string>& proto_roots)
+bool readSceneLights(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::vector<std::string>& prototypeRoots)
 {
     g_lights.clear();
     std::vector<std::pair<std::string, std::string>> lp;
     std::unordered_set<std::string> seen;
     bool collected = true;
-    collected &= collect_schema(stage, ord, "DistantLight", lp, seen);
-    collected &= collect_schema(stage, ord, "RectLight", lp, seen);
-    collected &= collect_schema(stage, ord, "SphereLight", lp, seen);
+    collected &= collectSchema(stage, ordinal, "DistantLight", lp, seen);
+    collected &= collectSchema(stage, ordinal, "RectLight", lp, seen);
+    collected &= collectSchema(stage, ordinal, "SphereLight", lp, seen);
     if (!collected)
     {
         g_lights.clear();
         return false;
     }
-    drop_prototype_prims(lp, proto_roots);
+    dropPrototypePrims(lp, prototypeRoots);
     for (auto& ps : lp)
     {
         const std::string& path = ps.first;
         const std::string& schema = ps.second;
-        if (!included_purpose(stage, ord, path) || !included_visibility(stage, ord, path))
+        if (!includedPurpose(stage, ordinal, path) || !includedVisibility(stage, ordinal, path))
             continue;
         double w[16];
-        read_world_matrix(stage, ord, path, w);
+        readWorldMatrix(stage, ordinal, path, w);
         GpuLight L;
         std::memset(&L, 0, sizeof(L));
         /* UsdLux photometric units: emitted radiance is
          * color * intensity * 2^exposure. Exposure was previously ignored,
          * which silently dropped every stop of authored exposure. */
-        L.intensity = read_scalar(stage, ord, path, "inputs:intensity", 1.0f) *
-                      std::exp2(read_scalar(stage, ord, path, "inputs:exposure", 0.0f));
+        L.intensity = readScalar(stage, ordinal, path, "inputs:intensity", 1.0f) *
+                      std::exp2(readScalar(stage, ordinal, path, "inputs:exposure", 0.0f));
         float col[3] = { 1.0f, 1.0f, 1.0f };
-        read_color3(stage, ord, path, "inputs:color", col);
+        readColor3(stage, ordinal, path, "inputs:color", col);
         L.color[0] = col[0];
         L.color[1] = col[1];
         L.color[2] = col[2];
@@ -3323,7 +3350,7 @@ bool read_scene_lights(ovstage_instance_t* stage, ovstage_ordinal_t ord, const s
          * 200 x 28 with normalize unauthored, giving area = 4*100*14 = 5600 and
          * turning intensity 400000 into ~71 — a 5600x underexposure that
          * rendered the whole scene near-black. */
-        L.normalize = read_bool_attr(stage, ord, path, "inputs:normalize", false) ? 1 : 0;
+        L.normalize = readBooleanAttribute(stage, ordinal, path, "inputs:normalize", false) ? 1 : 0;
         L.position[0] = (float)w[12];
         L.position[1] = (float)w[13];
         L.position[2] = (float)w[14];
@@ -3337,13 +3364,13 @@ bool read_scene_lights(ovstage_instance_t* stage, ovstage_ordinal_t ord, const s
         if (schema == "DistantLight")
         {
             L.kind = 1;
-            L.angle_deg = read_scalar(stage, ord, path, "inputs:angle", 0.53f);
+            L.angle_deg = readScalar(stage, ordinal, path, "inputs:angle", 0.53f);
         }
         else if (schema == "RectLight")
         {
             L.kind = 0;
-            float wd = read_scalar(stage, ord, path, "inputs:width", 1.0f) * 0.5f;
-            float ht = read_scalar(stage, ord, path, "inputs:height", 1.0f) * 0.5f;
+            float wd = readScalar(stage, ordinal, path, "inputs:width", 1.0f) * 0.5f;
+            float ht = readScalar(stage, ordinal, path, "inputs:height", 1.0f) * 0.5f;
             L.u_axis[0] = (float)w[0] * wd;
             L.u_axis[1] = (float)w[1] * wd;
             L.u_axis[2] = (float)w[2] * wd;
@@ -3362,7 +3389,7 @@ bool read_scene_lights(ovstage_instance_t* stage, ovstage_ordinal_t ord, const s
              * fragment it lit, so even a FULL rebuild rendered its position
              * changes as 0 changed pixels (fast-path adversary F1
              * sub-finding, probe p3c, 2026-07-19). */
-            const float radius = read_scalar(stage, ord, path, "inputs:radius", 0.5f);
+            const float radius = readScalar(stage, ordinal, path, "inputs:radius", 0.5f);
             L.u_axis[0] = radius;
             L.angle_deg = radius;
         }
@@ -3382,7 +3409,7 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
         g_err = "null arg";
         return 0;
     }
-    const double t_start = profile_load() ? load_now_ms() : 0.0;
+    const double t_start = profileLoad() ? loadNowMs() : 0.0;
     ovgl_scene_free(out);
 
     /* Textures live for the lifetime of the built scene: drop the previous set (and its
@@ -3410,7 +3437,7 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
 
     /* Every prefetched value below belongs only to this sealed ordinal. Clear before discovery
      * as well as after the build so an earlier failed/aborted consumer cannot influence it. */
-    batch_clear();
+    batchClear();
     g_reads = 0;
 
     /* Collect graph roots without reading their attributes yet. GeomSubset material bindings
@@ -3418,21 +3445,21 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
     g_subset_binding.clear();
     std::vector<std::pair<std::string, std::string>> subsets;
     std::unordered_set<std::string> subset_seen;
-    if (!collect_schema(stage, ordinal, "GeomSubset", subsets, subset_seen))
+    if (!collectSchema(stage, ordinal, "GeomSubset", subsets, subset_seen))
         return 0;
 
     std::vector<std::pair<std::string, std::string>> prims;
     std::unordered_set<std::string> seen;
     for (const char* s : { "Mesh", "Cube", "Sphere", "Cylinder", "Cone", "Capsule", "Plane" })
-        if (!collect_schema(stage, ordinal, s, prims, seen))
+        if (!collectSchema(stage, ordinal, s, prims, seen))
             return 0;
 
     /* Prototype subtrees are instancing METADATA, not drawable scene rows —
      * their per-instance expansions were collected above at the instance
-     * paths. See prototype_root_paths for the ghost defect this prevents. */
-    const std::vector<std::string> proto_roots = prototype_root_paths(stage);
-    drop_prototype_prims(prims, proto_roots);
-    drop_prototype_prims(subsets, proto_roots);
+     * paths. See prototypeRootPaths for the ghost defect this prevents. */
+    const std::vector<std::string> prototypeRoots = prototypeRootPaths(stage);
+    dropPrototypePrims(prims, prototypeRoots);
+    dropPrototypePrims(subsets, prototypeRoots);
 
     /* Phase 1: mesh data plus inherited visibility/purpose/material bindings. Correct now that
      * ovstage owns each read row; before that fix this dropped ~10% of shared geometry. */
@@ -3460,7 +3487,7 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
     }
     for (const auto& subset : subsets)
         geometry_paths.push_back(subset.first);
-    static const char* kGeometryAttrs[] = {
+    static const char* s_kGeometryAttrs[] = {
         "points",
         "faceVertexCounts",
         "faceVertexIndices",
@@ -3494,13 +3521,13 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
         "length",
         "usd-stage-up-axis",
     };
-    batch_prefetch_attributes(
-        stage, ordinal, geometry_paths, kGeometryAttrs, sizeof(kGeometryAttrs) / sizeof(kGeometryAttrs[0]));
+    batchPrefetchAttributes(
+        stage, ordinal, geometry_paths, s_kGeometryAttrs, sizeof(s_kGeometryAttrs) / sizeof(s_kGeometryAttrs[0]));
 
     for (const auto& subset : subsets)
     {
         const std::string& sub_path = subset.first;
-        const std::string bound = read_str_attr(stage, ordinal, sub_path, "material:binding");
+        const std::string bound = readStringAttribute(stage, ordinal, sub_path, "material:binding");
         if (bound.empty() || bound[0] != '/')
             continue;
         const size_t slash = sub_path.rfind('/');
@@ -3518,13 +3545,13 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
     material_by_prim.reserve(prims.size());
     for (const auto& prim : prims)
     {
-        const std::string material = bound_material_path(stage, ordinal, prim.first);
+        const std::string material = boundMaterialPath(stage, ordinal, prim.first);
         material_by_prim.emplace(prim.first, material);
         if (!material.empty() && distinct_materials.insert(material).second)
             material_paths.push_back(material);
     }
-    batch_prefetch_attributes(stage, ordinal, material_paths, kMaterialOutputAttrs,
-                              sizeof(kMaterialOutputAttrs) / sizeof(kMaterialOutputAttrs[0]));
+    batchPrefetchAttributes(stage, ordinal, material_paths, g_kMaterialOutputAttrs,
+                            sizeof(g_kMaterialOutputAttrs) / sizeof(g_kMaterialOutputAttrs[0]));
 
     /* A connection on an active Material can still point at an inactive shader. Gather every
      * authored context target, then batch its reserved existence metadata before selecting a
@@ -3533,32 +3560,32 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
     std::unordered_set<std::string> distinct_surface_candidates;
     for (const std::string& material : material_paths)
     {
-        for (std::string candidate : material_shader_candidates(stage, ordinal, material))
+        for (std::string candidate : materialShaderCandidates(stage, ordinal, material))
         {
             if (distinct_surface_candidates.insert(candidate).second)
                 surface_candidates.push_back(std::move(candidate));
         }
     }
-    static const char* kSurfaceCandidateAttrs[] = { "usd-prim-type" };
-    batch_prefetch_attributes(stage, ordinal, surface_candidates, kSurfaceCandidateAttrs,
-                              sizeof(kSurfaceCandidateAttrs) / sizeof(kSurfaceCandidateAttrs[0]));
+    static const char* s_kSurfaceCandidateAttrs[] = { "usd-prim-type" };
+    batchPrefetchAttributes(stage, ordinal, surface_candidates, s_kSurfaceCandidateAttrs,
+                            sizeof(s_kSurfaceCandidateAttrs) / sizeof(s_kSurfaceCandidateAttrs[0]));
 
     std::unordered_map<std::string, std::string> shader_by_material;
-    std::vector<std::string> shader_paths;
+    std::vector<std::string> shaderPaths;
     std::unordered_set<std::string> distinct_shaders;
     shader_by_material.reserve(material_paths.size());
     for (const std::string& material : material_paths)
     {
-        const std::string shader = material_shader_path(stage, ordinal, material);
+        const std::string shader = materialShaderPath(stage, ordinal, material);
         shader_by_material.emplace(material, shader);
         if (!shader.empty() && distinct_shaders.insert(shader).second)
-            shader_paths.push_back(shader);
+            shaderPaths.push_back(shader);
     }
 
     /* Phase 3: prefetch every scalar, switch, asset, and direct connection consumed by the
      * supported PreviewSurface/MaterialX/MDL bridge. New fields remain correctness-safe: an
      * attribute omitted here simply takes the coverage-aware point-read fallback. */
-    static const char* kShaderAttrs[] = {
+    static const char* s_kShaderAttrs[] = {
         "inputs:diffuseColor",
         "inputs:metallic",
         "inputs:roughness",
@@ -3652,99 +3679,100 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
         "inputs:occlusion.connect",
         "inputs:opacity.connect",
     };
-    batch_prefetch_attributes(stage, ordinal, shader_paths, kShaderAttrs, sizeof(kShaderAttrs) / sizeof(kShaderAttrs[0]));
+    batchPrefetchAttributes(
+        stage, ordinal, shaderPaths, s_kShaderAttrs, sizeof(s_kShaderAttrs) / sizeof(s_kShaderAttrs[0]));
 
     /* Phase 4: prefetch direct texture nodes plus the exact active Apple normal remap consumed
      * above. This remains three fixed batched frontiers, not arbitrary MaterialX evaluation. */
-    std::vector<std::string> texture_paths;
-    std::vector<std::string> unknown_output_paths;
-    std::vector<std::string> normal_roots;
-    std::unordered_set<std::string> distinct_texture_paths;
-    std::unordered_set<std::string> distinct_unknown_output_paths;
-    std::unordered_set<std::string> distinct_normal_roots;
-    for (const std::string& shader : shader_paths)
+    std::vector<std::string> texturePaths;
+    std::vector<std::string> unknownOutputPaths;
+    std::vector<std::string> normalRoots;
+    std::unordered_set<std::string> distinctTexturePaths;
+    std::unordered_set<std::string> distinctUnknownOutputPaths;
+    std::unordered_set<std::string> distinctNormalRoots;
+    for (const std::string& shader : shaderPaths)
     {
-        for (const TextureSlotDesc& desc : kTextureSlots)
+        for (const TextureSlotDescription& desc : g_kTextureSlots)
         {
-            const std::string target = read_str_attr(stage, ordinal, shader, std::string(desc.input) + ".connect");
-            const std::string node = connection_prim_path(target);
+            const std::string target = readStringAttribute(stage, ordinal, shader, std::string(desc.input) + ".connect");
+            const std::string node = connectionPrimPath(target);
             if (node.empty())
                 continue;
-            if (distinct_texture_paths.insert(node).second)
-                texture_paths.push_back(node);
-            if (texture_output_channel(target, -1) < 0 && distinct_unknown_output_paths.insert(node).second)
-                unknown_output_paths.push_back(node);
-            if (desc.slot == TEX_NORMAL && distinct_normal_roots.insert(node).second)
-                normal_roots.push_back(node);
+            if (distinctTexturePaths.insert(node).second)
+                texturePaths.push_back(node);
+            if (textureOutputChannel(target, -1) < 0 && distinctUnknownOutputPaths.insert(node).second)
+                unknownOutputPaths.push_back(node);
+            if (desc.slot == TEX_NORMAL && distinctNormalRoots.insert(node).second)
+                normalRoots.push_back(node);
         }
     }
-    static const char* kTextureImageAttrs[] = {
+    static const char* s_kTextureImageAttrs[] = {
         "inputs:file",
         "inputs:sourceColorSpace",
         "inputs:scale",
     };
-    static const char* kTextureNodeIdAttrs[] = { "info:id" };
-    static const char* kTextureArithmeticAttrs[] = {
+    static const char* s_kTextureNodeIdAttrs[] = { "info:id" };
+    static const char* s_kTextureArithmeticAttrs[] = {
         "info:id",
         "inputs:in1.connect",
         "inputs:in2",
         "inputs:in2.connect",
     };
-    batch_prefetch_attributes(
-        stage, ordinal, texture_paths, kTextureImageAttrs, sizeof(kTextureImageAttrs) / sizeof(kTextureImageAttrs[0]));
+    batchPrefetchAttributes(stage, ordinal, texturePaths, s_kTextureImageAttrs,
+                            sizeof(s_kTextureImageAttrs) / sizeof(s_kTextureImageAttrs[0]));
     /* Only outputs:out-style edges need their leaf ID to derive scalar-channel semantics. */
-    batch_prefetch_attributes(stage, ordinal, unknown_output_paths, kTextureNodeIdAttrs,
-                              sizeof(kTextureNodeIdAttrs) / sizeof(kTextureNodeIdAttrs[0]));
+    batchPrefetchAttributes(stage, ordinal, unknownOutputPaths, s_kTextureNodeIdAttrs,
+                            sizeof(s_kTextureNodeIdAttrs) / sizeof(s_kTextureNodeIdAttrs[0]));
 
-    std::vector<std::string> unresolved_normal_roots;
-    for (const std::string& root : normal_roots)
+    std::vector<std::string> unresolvedNormalRoots;
+    for (const std::string& root : normalRoots)
     {
-        if (read_asset_resolved(stage, ordinal, root, "inputs:file").empty())
-            unresolved_normal_roots.push_back(root);
+        if (readAssetResolved(stage, ordinal, root, "inputs:file").empty())
+            unresolvedNormalRoots.push_back(root);
     }
-    batch_prefetch_attributes(stage, ordinal, unresolved_normal_roots, kTextureArithmeticAttrs,
-                              sizeof(kTextureArithmeticAttrs) / sizeof(kTextureArithmeticAttrs[0]));
+    batchPrefetchAttributes(stage, ordinal, unresolvedNormalRoots, s_kTextureArithmeticAttrs,
+                            sizeof(s_kTextureArithmeticAttrs) / sizeof(s_kTextureArithmeticAttrs[0]));
 
-    std::vector<std::string> multiply_paths;
-    std::unordered_set<std::string> distinct_multiply_paths;
-    for (const std::string& root : unresolved_normal_roots)
+    std::vector<std::string> multiplyPaths;
+    std::unordered_set<std::string> distinctMultiplyPaths;
+    for (const std::string& root : unresolvedNormalRoots)
     {
         std::string multiply;
-        if (exact_texture_arithmetic_input(stage, ordinal, root, "ND_subtract_vector3FA", 1.0f, multiply) &&
-            distinct_multiply_paths.insert(multiply).second)
-            multiply_paths.push_back(std::move(multiply));
+        if (exactTextureArithmeticInput(stage, ordinal, root, "ND_subtract_vector3FA", 1.0f, multiply) &&
+            distinctMultiplyPaths.insert(multiply).second)
+            multiplyPaths.push_back(std::move(multiply));
     }
-    batch_prefetch_attributes(stage, ordinal, multiply_paths, kTextureArithmeticAttrs,
-                              sizeof(kTextureArithmeticAttrs) / sizeof(kTextureArithmeticAttrs[0]));
+    batchPrefetchAttributes(stage, ordinal, multiplyPaths, s_kTextureArithmeticAttrs,
+                            sizeof(s_kTextureArithmeticAttrs) / sizeof(s_kTextureArithmeticAttrs[0]));
 
-    std::vector<std::string> image_paths;
-    std::unordered_set<std::string> distinct_image_paths;
-    for (const std::string& multiply : multiply_paths)
+    std::vector<std::string> imagePaths;
+    std::unordered_set<std::string> distinctImagePaths;
+    for (const std::string& multiply : multiplyPaths)
     {
         std::string image;
-        if (exact_texture_arithmetic_input(stage, ordinal, multiply, "ND_multiply_vector3FA", 2.0f, image) &&
-            distinct_image_paths.insert(image).second)
-            image_paths.push_back(std::move(image));
+        if (exactTextureArithmeticInput(stage, ordinal, multiply, "ND_multiply_vector3FA", 2.0f, image) &&
+            distinctImagePaths.insert(image).second)
+            imagePaths.push_back(std::move(image));
     }
-    batch_prefetch_attributes(
-        stage, ordinal, image_paths, kTextureImageAttrs, sizeof(kTextureImageAttrs) / sizeof(kTextureImageAttrs[0]));
-    batch_prefetch_attributes(
-        stage, ordinal, image_paths, kTextureNodeIdAttrs, sizeof(kTextureNodeIdAttrs) / sizeof(kTextureNodeIdAttrs[0]));
+    batchPrefetchAttributes(stage, ordinal, imagePaths, s_kTextureImageAttrs,
+                            sizeof(s_kTextureImageAttrs) / sizeof(s_kTextureImageAttrs[0]));
+    batchPrefetchAttributes(stage, ordinal, imagePaths, s_kTextureNodeIdAttrs,
+                            sizeof(s_kTextureNodeIdAttrs) / sizeof(s_kTextureNodeIdAttrs[0]));
 
-    const double t_prefetched = profile_load() ? load_now_ms() : 0.0;
+    const double prefetchedTime = profileLoad() ? loadNowMs() : 0.0;
 
-    int authored_up_axis = 2;
+    int authoredUpAxis = 2;
     for (const auto& prim : prims)
     {
-        const std::string axis = read_str_attr(stage, ordinal, prim.first, "usd-stage-up-axis");
+        const std::string axis = readStringAttribute(stage, ordinal, prim.first, "usd-stage-up-axis");
         if (axis == "Y" || axis == "y")
         {
-            authored_up_axis = 1;
+            authoredUpAxis = 1;
             break;
         }
         if (axis == "Z" || axis == "z")
         {
-            authored_up_axis = 2;
+            authoredUpAxis = 2;
             break;
         }
     }
@@ -3756,18 +3784,18 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
          * ({kDLUInt,64,1}, ovpopulation populate_stage_info). Decode it
          * token-ONLY — the column is untagged, and the path-first decode
          * space is exactly the axis/orientation collision hazard documented
-         * at resolve_token_id. This keeps the grid overlay (and stats
+         * at resolveTokenId. This keeps the grid overlay (and stats
          * up-axis) honest for an empty Y-up stage; unreadable/absent rows
          * keep the Z default. Non-empty scenes are untouched. */
         const ovx_string_t info = ovstage_population_stage_info_path();
         std::vector<uint8_t> row;
-        if (read_attr_host(stage, ordinal, std::string(info.ptr, info.length), "upAxis", row) && row.size() >= 8)
+        if (readAttributeHost(stage, ordinal, std::string(info.ptr, info.length), "upAxis", row) && row.size() >= 8)
         {
             uint64_t token = 0;
             std::memcpy(&token, row.data(), sizeof(token));
-            const std::string axis = resolve_token_id(stage, token);
+            const std::string axis = resolveTokenId(stage, token);
             if (axis == "Y" || axis == "y")
-                authored_up_axis = 1;
+                authoredUpAxis = 1;
         }
     }
 
@@ -3783,7 +3811,7 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
     isaacsim::ovgl_viewport::debug::details::ovgl::UsdSkelDeformer skel_deformer(
         [&](const std::string& prim_path, const std::string& attribute, std::vector<uint8_t>& bytes)
         {
-            if (!read_attr_host(stage, ordinal, prim_path, attribute, bytes))
+            if (!readAttributeHost(stage, ordinal, prim_path, attribute, bytes))
                 return false;
             /* Official ID columns (P1.3): the skel string attributes now carry
              * u64 token/path ids; the deformer's own decoders expect the
@@ -3801,10 +3829,10 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
              * collapsing the joint hierarchy (every joint parentless), which
              * drew every mesh bound to a depth>=2 joint without its ancestor
              * joints' transforms. */
-            static const std::unordered_set<std::string> kSkelTokenAttrs = { "joints", "skel:joints" };
-            static const std::unordered_set<std::string> kSkelPathAttrs = { "skel:skeleton", "skel:animationSource" };
-            const bool is_token_attr = kSkelTokenAttrs.count(attribute) != 0;
-            if ((is_token_attr || kSkelPathAttrs.count(attribute)) && !bytes.empty() && bytes.size() % 8 == 0)
+            static const std::unordered_set<std::string> s_kSkelTokenAttrs = { "joints", "skel:joints" };
+            static const std::unordered_set<std::string> s_kSkelPathAttrs = { "skel:skeleton", "skel:animationSource" };
+            const bool is_token_attr = s_kSkelTokenAttrs.count(attribute) != 0;
+            if ((is_token_attr || s_kSkelPathAttrs.count(attribute)) && !bytes.empty() && bytes.size() % 8 == 0)
             {
                 std::vector<uint8_t> decoded;
                 bool all = true;
@@ -3812,7 +3840,7 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
                 {
                     uint64_t v = 0;
                     std::memcpy(&v, bytes.data() + off, 8);
-                    const std::string sv = is_token_attr ? resolve_token_id(stage, v) : resolve_u64_id(stage, v, 0);
+                    const std::string sv = is_token_attr ? resolveTokenId(stage, v) : resolveU64Id(stage, v, 0);
                     if (sv.empty())
                     {
                         all = false;
@@ -3830,64 +3858,63 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
     {
         const std::string& path = ps.first;
         const std::string& schema = ps.second;
-        if (!included_purpose(stage, ordinal, path) || !included_visibility(stage, ordinal, path))
+        if (!includedPurpose(stage, ordinal, path) || !includedVisibility(stage, ordinal, path))
             continue;
         std::vector<float> P, N, UV;
         if (schema == "Cube")
         {
-            synth_cube(0.5f * read_scalar(stage, ordinal, path, "size", 2.0f), P, N);
+            synthCube(0.5f * readScalar(stage, ordinal, path, "size", 2.0f), P, N);
         }
         else if (schema == "Sphere")
         {
-            synth_sphere(read_scalar(stage, ordinal, path, "radius", 1.0f), P, N);
+            synthSphere(readScalar(stage, ordinal, path, "radius", 1.0f), P, N);
         }
         else if (schema == "Plane")
         {
-            synth_plane(read_scalar(stage, ordinal, path, "width", 2.0f),
-                        read_scalar(stage, ordinal, path, "length", 2.0f),
-                        axis_index(read_str_attr(stage, ordinal, path, "axis")), P, N);
+            synthPlane(readScalar(stage, ordinal, path, "width", 2.0f), readScalar(stage, ordinal, path, "length", 2.0f),
+                       axisIndex(readStringAttribute(stage, ordinal, path, "axis")), P, N);
         }
         else if (schema == "Cylinder" || schema == "Cone" || schema == "Capsule")
         {
             /* USD quadrics: radius + height, swept around `axis` (default Z). */
-            const float radius = read_scalar(stage, ordinal, path, "radius", 1.0f);
-            const float height = read_scalar(stage, ordinal, path, "height", 2.0f);
-            const int ax = axis_index(read_str_attr(stage, ordinal, path, "axis"));
+            const float radius = readScalar(stage, ordinal, path, "radius", 1.0f);
+            const float height = readScalar(stage, ordinal, path, "height", 2.0f);
+            const int ax = axisIndex(readStringAttribute(stage, ordinal, path, "axis"));
             if (schema == "Cylinder")
             {
-                synth_cylinder(radius, height, ax, P, N);
+                synthCylinder(radius, height, ax, P, N);
             }
             else if (schema == "Cone")
             {
-                synth_cone(radius, height, ax, P, N);
+                synthCone(radius, height, ax, P, N);
             }
             else
             {
-                synth_capsule(radius, height, ax, P, N);
+                synthCapsule(radius, height, ax, P, N);
             }
         }
         else
         {
             std::vector<uint8_t> pb, cb, ib, nb_, ub;
-            if (!read_attr_host(stage, ordinal, path, "points", pb) || pb.empty())
+            if (!readAttributeHost(stage, ordinal, path, "points", pb) || pb.empty())
                 continue;
-            read_attr_host(stage, ordinal, path, "faceVertexCounts", cb);
-            read_attr_host(stage, ordinal, path, "faceVertexIndices", ib);
-            if (!read_attr_host(stage, ordinal, path, "normals", nb_) || nb_.empty())
-                read_attr_host(stage, ordinal, path, "primvars:normals", nb_);
+            readAttributeHost(stage, ordinal, path, "faceVertexCounts", cb);
+            readAttributeHost(stage, ordinal, path, "faceVertexIndices", ib);
+            if (!readAttributeHost(stage, ordinal, path, "normals", nb_) || nb_.empty())
+                readAttributeHost(stage, ordinal, path, "primvars:normals", nb_);
             /* UVs: primvars:st is the UsdPreviewSurface convention (what UsdUVTexture reads
              * through a UsdPrimvarReader_float2); primvars:uv is the older spelling. */
             /* Same primvar names, in the same order, as the nanousd renderer's scene.c
              * (uv_names[] / uv_idx_names[]). */
             std::vector<uint8_t> uib;
-            static const char* kUvNames[] = { "primvars:st", "primvars:st0", "primvars:UVMap", "primvars:uv" };
-            static const char* kUvIdxNames[] = { "primvars:st:indices", "primvars:st0:indices",
-                                                 "primvars:UVMap:indices", "primvars:uv:indices" };
-            for (size_t u = 0; u < sizeof(kUvNames) / sizeof(kUvNames[0]); u++)
+            static const char* s_kUvNames[] = { "primvars:st", "primvars:st0", "primvars:UVMap", "primvars:uv" };
+            static const char* s_kUvIndexNames[] = { "primvars:st:indices", "primvars:st0:indices",
+                                                     "primvars:UVMap:indices", "primvars:uv:indices" };
+            for (size_t u = 0; u < sizeof(s_kUvNames) / sizeof(s_kUvNames[0]); u++)
             {
-                if (read_attr_host(stage, ordinal, path, kUvNames[u], ub) && !ub.empty())
+                if (readAttributeHost(stage, ordinal, path, s_kUvNames[u], ub) && !ub.empty())
                 {
-                    read_attr_host(stage, ordinal, path, kUvIdxNames[u], uib);
+                    readAttributeHost(stage, ordinal, path, s_kUvIndexNames[u], uib);
                     break;
                 }
             }
@@ -3910,7 +3937,7 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
         float color[3] = { 0.7f, 0.7f, 0.7f };
         int has_color = 0;
         std::vector<uint8_t> col;
-        if (read_attr_host(stage, ordinal, path, "primvars:displayColor", col) && col.size() >= 3 * sizeof(float))
+        if (readAttributeHost(stage, ordinal, path, "primvars:displayColor", col) && col.size() >= 3 * sizeof(float))
         {
             const float* c = (const float*)col.data();
             color[0] = c[0];
@@ -3940,7 +3967,7 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
             mat = mc->second;
             has_color = 1;
         }
-        else if (read_material(stage, ordinal, shader_key, &mat, color, usdz_archives))
+        else if (readMaterial(stage, ordinal, shader_key, &mat, color, usdz_archives))
         {
             has_color = 1;
             if (!shader_key.empty())
@@ -3948,7 +3975,7 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
         }
         else
         {
-            default_material(&mat);
+            defaultMaterial(&mat);
             mat.base_color[0] = color[0];
             mat.base_color[1] = color[1];
             mat.base_color[2] = color[2];
@@ -3957,8 +3984,8 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
         g_materials.push_back(mat);
         /* Debug aid (OVGL_DEBUG_MATERIALS=1): one line per mesh showing how its
          * material graph resolved. Diagnoses binding/terminal/texture gaps. */
-        static const bool debug_materials = std::getenv("OVGL_DEBUG_MATERIALS") != nullptr;
-        if (debug_materials)
+        static const bool s_kDebugMaterials = std::getenv("OVGL_DEBUG_MATERIALS") != nullptr;
+        if (s_kDebugMaterials)
         {
             const auto dbg_material = material_by_prim.find(path);
             std::fprintf(stderr, "[mat] %s material=%s shader=%s base=(%.3f,%.3f,%.3f) diffuse_tex=%d uv=%zu\n",
@@ -3968,31 +3995,31 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
         }
 
         double world16[16];
-        read_world_matrix(stage, ordinal, path, world16);
+        readWorldMatrix(stage, ordinal, path, world16);
 
-        const int double_sided = read_bool_attr(stage, ordinal, path, "doubleSided", false) ? 1 : 0;
-        const std::string orientation = read_str_attr(stage, ordinal, path, "orientation");
+        const int double_sided = readBooleanAttribute(stage, ordinal, path, "doubleSided", false) ? 1 : 0;
+        const std::string orientation = readStringAttribute(stage, ordinal, path, "orientation");
         const int front_face_cw = (orientation == "leftHanded") ? 1 : 0;
 
-        SceneMesh m = make_mesh(P, N, UV, color, has_color, world16, path, double_sided, front_face_cw);
+        SceneMesh m = makeMesh(P, N, UV, color, has_color, world16, path, double_sided, front_face_cw);
         m.material_index = mat_idx;
         m.prototype_idx = (int)meshes.size();
         meshes.push_back(m);
     }
 
-    const double t_meshloop = profile_load() ? load_now_ms() : 0.0;
-    if (profile_load())
+    const double t_meshloop = profileLoad() ? loadNowMs() : 0.0;
+    if (profileLoad())
     {
         std::fprintf(stderr,
                      "[load] uncached single-prim reads=%ld prims=%zu "
                      "prefetch=%.3fms meshloop=%.3fms\n",
-                     g_reads, prims.size(), t_prefetched - t_start, t_meshloop - t_prefetched);
-        log_texture_profile();
+                     g_reads, prims.size(), prefetchedTime - t_start, t_meshloop - prefetchedTime);
+        logTextureProfile();
     }
-    batch_clear();
+    batchClear();
     std::memset(out, 0, sizeof(*out));
-    out->up_axis = authored_up_axis;
-    /* UsdLux defaults, overwritten by read_scene_dome below when the stage
+    out->up_axis = authoredUpAxis;
+    /* UsdLux defaults, overwritten by readSceneDome below when the stage
      * actually has a DomeLight. has_dome (memset to 0) is what decides
      * whether they are consulted at all. */
     out->dome_intensity = 1.0f;
@@ -4029,23 +4056,23 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
     /* Build keeps its historical leniency: a failed light discovery renders
      * as "no authored lights" rather than failing the whole build. The dome
      * query gets the same treatment for the same reason. */
-    (void)read_scene_lights(stage, ordinal, proto_roots);
-    (void)read_scene_dome(stage, ordinal, proto_roots, out);
-    out->nlights_unsupported = count_unsupported_lights(stage, ordinal, proto_roots);
+    (void)readSceneLights(stage, ordinal, prototypeRoots);
+    (void)readSceneDome(stage, ordinal, prototypeRoots, out);
+    out->nlights_unsupported = countUnsupportedLights(stage, ordinal, prototypeRoots);
     return 1;
 }
 
 /* Read worldMatrix for EVERY cached mesh in ONE query.
  *
- * The obvious loop — read_world_matrix() per mesh — builds and tears down a query handle and a
+ * The obvious loop — readWorldMatrix() per mesh — builds and tears down a query handle and a
  * read iterator per prim: on Kitchen_set (1788 meshes) that is ~197ms, which alone makes an
  * interactive drag impossible even after the geometry rebuild is skipped. One batched read of
  * the same column costs a few ms. Matrices land in `out` indexed by mesh order; meshes ovstage
  * has no worldMatrix for keep whatever they had (identity from the build). */
-static bool read_world_matrices_batched(ovstage_instance_t* stage,
-                                        ovstage_ordinal_t ordinal,
-                                        Scene* s,
-                                        std::vector<std::array<double, 16>>& out)
+static bool readWorldMatricesBatched(ovstage_instance_t* stage,
+                                     ovstage_ordinal_t ordinal,
+                                     Scene* s,
+                                     std::vector<std::array<double, 16>>& out)
 {
     out.assign((size_t)s->nmeshes, std::array<double, 16>{ 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 });
     if (s->nmeshes <= 0)
@@ -4059,7 +4086,7 @@ static bool read_world_matrices_batched(ovstage_instance_t* stage,
         paths.emplace_back(p);
     }
     std::vector<std::vector<uint8_t>> rows;
-    if (!read_attr_batched(stage, ordinal, paths, "omni:fabric:worldMatrix", rows))
+    if (!readBatchedAttributes(stage, ordinal, paths, "omni:fabric:worldMatrix", rows))
         return false;
     constexpr size_t matrix_bytes = 16 * sizeof(double);
     for (size_t index = 0; index < rows.size(); ++index)
@@ -4123,9 +4150,9 @@ extern "C" int ovgl_scene_refresh_materials(
         auto sit = shader_by_mesh_memo.find(path);
         if (sit == shader_by_mesh_memo.end())
         {
-            const std::string material = bound_material_path(stage, ordinal, path);
+            const std::string material = boundMaterialPath(stage, ordinal, path);
             sit = shader_by_mesh_memo
-                      .emplace(path, material.empty() ? std::string() : material_shader_path(stage, ordinal, material))
+                      .emplace(path, material.empty() ? std::string() : materialShaderPath(stage, ordinal, material))
                       .first;
         }
         const std::string& shader = sit->second;
@@ -4136,7 +4163,7 @@ extern "C" int ovgl_scene_refresh_materials(
         {
             GpuMaterialParams mat;
             float base[3] = { 0.7f, 0.7f, 0.7f };
-            if (!read_material(stage, ordinal, shader, &mat, base, usdz_archives))
+            if (!readMaterial(stage, ordinal, shader, &mat, base, usdz_archives))
             {
                 g_err = "material refresh: re-read failed for " + shader;
                 return 0;
@@ -4163,17 +4190,64 @@ extern "C" int ovgl_scene_refresh_xforms(ovstage_instance_t* stage, ovstage_ordi
         return 0;
     }
     std::vector<std::array<double, 16>> world;
-    if (!read_world_matrices_batched(stage, ordinal, s, world))
+    if (!readWorldMatricesBatched(stage, ordinal, s, world))
         return 0;
+
+    std::vector<double> dense;
+    try
+    {
+        dense.reserve(world.size() * 16);
+        for (const auto& matrix : world)
+            dense.insert(dense.end(), matrix.begin(), matrix.end());
+    }
+    catch (const std::bad_alloc&)
+    {
+        g_err = "allocating transform batch failed";
+        return 0;
+    }
+    return ovgl_scene_apply_xforms(s, dense.empty() ? nullptr : dense.data(), world.size());
+}
+
+extern "C" int ovgl_scene_apply_xforms(Scene* s, const double* world_matrices, size_t mesh_count)
+{
+    if (!s || mesh_count != static_cast<size_t>(std::max(s->nmeshes, 0)) || (mesh_count > 0 && !world_matrices))
+    {
+        g_err = "transform batch does not match the resident mesh set";
+        return 0;
+    }
+
+    struct PendingMesh
+    {
+        std::array<double, 16> world{};
+        std::array<float, 3> boundsMin{};
+        std::array<float, 3> boundsMax{};
+    };
+    std::vector<PendingMesh> pending;
+    try
+    {
+        pending.resize(mesh_count);
+    }
+    catch (const std::bad_alloc&)
+    {
+        g_err = "allocating transform batch state failed";
+        return 0;
+    }
 
     float lo[3] = { 1e30f, 1e30f, 1e30f };
     float hi[3] = { -1e30f, -1e30f, -1e30f };
     for (int i = 0; i < s->nmeshes; i++)
     {
-        SceneMesh& m = s->meshes[i];
+        const SceneMesh& m = s->meshes[i];
+        PendingMesh& update = pending[static_cast<size_t>(i)];
+        const double* world = world_matrices + static_cast<size_t>(i) * 16;
+        if (!std::all_of(world, world + 16, [](double value) { return std::isfinite(value); }))
+        {
+            g_err = "transform batch contains a non-finite matrix";
+            return 0;
+        }
+        std::memcpy(update.world.data(), world, sizeof(update.world));
         if (!m.path)
             continue;
-        std::memcpy(m.world_xform, world[(size_t)i].data(), sizeof(m.world_xform));
 
         /* World bounds must follow the transform.  ovgl_scene_build derives them from the
          * object-space bounds and the world matrix; a refresh that moved the prim but left
@@ -4193,16 +4267,15 @@ extern "C" int ovgl_scene_refresh_xforms(ovstage_instance_t* stage, ovstage_ordi
             /* USD row-vector convention: p_world = p_obj * W. */
             for (int c = 0; c < 3; c++)
             {
-                const double w = p[0] * m.world_xform[c] + p[1] * m.world_xform[4 + c] + p[2] * m.world_xform[8 + c] +
-                                 m.world_xform[12 + c];
+                const double w = p[0] * world[c] + p[1] * world[4 + c] + p[2] * world[8 + c] + world[12 + c];
                 if ((float)w < mlo[c])
                     mlo[c] = (float)w;
                 if ((float)w > mhi[c])
                     mhi[c] = (float)w;
             }
         }
-        std::memcpy(m.bounds_min, mlo, sizeof(mlo));
-        std::memcpy(m.bounds_max, mhi, sizeof(mhi));
+        std::memcpy(update.boundsMin.data(), mlo, sizeof(mlo));
+        std::memcpy(update.boundsMax.data(), mhi, sizeof(mhi));
         if (m.is_proto_only || m.nvertices <= 0)
             continue;
         for (int c = 0; c < 3; c++)
@@ -4212,6 +4285,16 @@ extern "C" int ovgl_scene_refresh_xforms(ovstage_instance_t* stage, ovstage_ordi
             if (mhi[c] > hi[c])
                 hi[c] = mhi[c];
         }
+    }
+    for (int i = 0; i < s->nmeshes; ++i)
+    {
+        SceneMesh& mesh = s->meshes[i];
+        if (!mesh.path)
+            continue;
+        const PendingMesh& update = pending[static_cast<size_t>(i)];
+        std::memcpy(mesh.world_xform, update.world.data(), sizeof(mesh.world_xform));
+        std::memcpy(mesh.bounds_min, update.boundsMin.data(), sizeof(mesh.bounds_min));
+        std::memcpy(mesh.bounds_max, update.boundsMax.data(), sizeof(mesh.bounds_max));
     }
     if (lo[0] <= hi[0])
     {
@@ -4229,12 +4312,12 @@ extern "C" int ovgl_scene_refresh_lights(ovstage_instance_t* stage, ovstage_ordi
         return 0;
     }
     /* Same reader as the build (point reads against the live store — the
-     * build's batch prefetch is already torn down before read_scene_lights
+     * build's batch prefetch is already torn down before readSceneLights
      * runs there too), so a refreshed light is byte-identical to what a full
      * rebuild at this ordinal would derive. Re-reading worldMatrix here is
      * what makes lights follow ANCESTOR transform edits as well: the public
      * hierarchy computation recomposed every world matrix before sealing. */
-    if (!read_scene_lights(stage, ordinal, prototype_root_paths(stage)))
+    if (!readSceneLights(stage, ordinal, prototypeRootPaths(stage)))
     {
         if (g_err.empty())
             g_err = "light discovery failed";
@@ -4250,7 +4333,7 @@ extern "C" int ovgl_scene_refresh_dome(ovstage_instance_t* stage, ovstage_ordina
         g_err = "null arg";
         return 0;
     }
-    const std::vector<std::string> proto_roots = prototype_root_paths(stage);
+    const std::vector<std::string> prototypeRoots = prototypeRootPaths(stage);
     /* Same reset the build does before it reads (ovgl_scene_build memsets the
      * whole Scene and then re-establishes these UsdLux defaults), so a dome
      * that is no longer authored/visible at this ordinal resolves to the
@@ -4262,20 +4345,20 @@ extern "C" int ovgl_scene_refresh_dome(ovstage_instance_t* stage, ovstage_ordina
     s->dome_color[0] = s->dome_color[1] = s->dome_color[2] = 1.0f;
     s->dome_rotation_y = 0.0f;
     /* The build is deliberately lenient here (a failed dome query renders as
-     * "no authored dome"); the fast path is not. read_scene_dome returning
+     * "no authored dome"); the fast path is not. readSceneDome returning
      * false means the QUERY failed, and a fast path that shrugged that off
      * would publish an ordinal whose environment silently reverted to the
      * defaults just written above. Fail closed and let the caller rebuild. */
-    if (!read_scene_dome(stage, ordinal, proto_roots, s))
+    if (!readSceneDome(stage, ordinal, prototypeRoots, s))
     {
         if (g_err.empty())
             g_err = "dome discovery failed";
         return 0;
     }
-    /* apply_environment's resolved request also carries the count of active
+    /* applyEnvironment's resolved request also carries the count of active
      * lights ovgl cannot evaluate (it is what decides whether a dome may
      * replace the synthetic fill rig), and that count was build-only too. */
-    s->nlights_unsupported = count_unsupported_lights(stage, ordinal, proto_roots);
+    s->nlights_unsupported = countUnsupportedLights(stage, ordinal, prototypeRoots);
     return 1;
 }
 

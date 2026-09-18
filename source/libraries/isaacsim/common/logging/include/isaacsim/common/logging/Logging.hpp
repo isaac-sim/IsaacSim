@@ -17,7 +17,7 @@
 
 #include "isaacsim/common/logging/Logging.h"
 
-#ifndef FMT_HEADER_ONLY
+#if !defined(FMT_HEADER_ONLY)
 #    define FMT_HEADER_ONLY 1
 #    define ISAACSIM_COMMON_LOGGING_UNDEFINE_FMT_HEADER_ONLY 1
 #endif
@@ -106,7 +106,7 @@ enum class ChannelSettingBehavior
 };
 
 /** @brief Patch-style Carbonite settings for one logging channel. */
-struct ChannelLoggingConfig
+struct ChannelLoggingConfiguration
 {
     /** Non-empty Carbonite channel name. */
     std::string channel;
@@ -126,7 +126,7 @@ struct ChannelLoggingConfig
  * An empty optional leaves the corresponding backend setting unchanged. An empty `filePath` string
  * disables file logging. Parent directories are not created.
  */
-struct GlobalLoggingConfig
+struct GlobalLoggingConfiguration
 {
     /** Enable or disable process-wide logging. */
     std::optional<bool> enabled;
@@ -183,7 +183,7 @@ struct GlobalLoggingConfig
     /** Set a nonzero identifier to serialize output across cooperating processes. */
     std::optional<std::int32_t> multiprocessGroupId;
     /** Apply Carbonite enablement and threshold patches to the named channels. */
-    std::vector<ChannelLoggingConfig> channels;
+    std::vector<ChannelLoggingConfiguration> channels;
 };
 
 /** @brief Borrowed source metadata forwarded to the logging backend. */
@@ -200,10 +200,10 @@ struct SourceLocation
 /**
  * @brief Apply selected process-wide logging settings.
  *
- * @param[in] config Configuration patch to apply.
+ * @param[in] configuration Configuration patch to apply.
  * @return Configuration result.
  */
-ISAACSIM_COMMON_LOGGING_API ConfigureResult configureGlobalLogging(const GlobalLoggingConfig& config) noexcept;
+ISAACSIM_COMMON_LOGGING_API ConfigureResult configureGlobalLogging(const GlobalLoggingConfiguration& configuration) noexcept;
 
 /**
  * @brief Lightweight logger with one immutable Carbonite channel.

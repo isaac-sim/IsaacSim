@@ -71,13 +71,13 @@ std::mutex g_owned_context_lifecycle_mutex;
  * state while the bridge is being populated. */
 std::mutex g_scene_build_mutex;
 
-EglHeadless* create_owned_context(int width, int height)
+EglHeadless* createOwnedContext(int width, int height)
 {
     std::lock_guard<std::mutex> lock(g_owned_context_lifecycle_mutex);
     return egl_headless_create(width, height);
 }
 
-void destroy_owned_context(EglHeadless* context)
+void destroyOwnedContext(EglHeadless* context)
 {
     std::lock_guard<std::mutex> lock(g_owned_context_lifecycle_mutex);
     egl_headless_destroy(context);
@@ -101,8 +101,8 @@ struct ForeignGlGuard
 };
 
 /* --- optional per-stage profiling (OVGL_PROFILE=1) ---------------------- */
-static const bool g_prof = (std::getenv("OVGL_PROFILE") != nullptr);
-static inline double now_ms()
+static const bool g_kProfilingEnabled = (std::getenv("OVGL_PROFILE") != nullptr);
+static inline double nowMs()
 {
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
@@ -143,8 +143,8 @@ M4 perspective(float fovy, float aspect, float znear, float zfar)
 /* The renderer's fixed view frustum, in stage units. Shared by the scene
  * pass's projection and the Depth-AOV linearization, which inverts exactly
  * that projection (documented in ovgl.h::ovgl_set_depth_capture). */
-constexpr float kOvglNearPlane = 0.02f;
-constexpr float kOvglFarPlane = 10000.0f;
+constexpr float g_kOvglNearPlane = 0.02f;
+constexpr float g_kOvglFarPlane = 10000.0f;
 
 /* Per-frame clip planes fitted to the camera eye + scene AABB. A fixed
  * 0.02–10000 span (near/far ratio ~5e5) starves the 24-bit depth buffer and
@@ -154,8 +154,7 @@ constexpr float kOvglFarPlane = 10000.0f;
  * to the back of the scene, holding the ratio near ~1e1–1e4. The depth AOV
  * inverts the SAME planes, so linearized distances stay correct (and gain
  * precision). Degenerate/empty bounds fall back to the fixed span. */
-static void compute_clip_planes(
-    const double eye[3], const float bmin[3], const float bmax[3], float* out_znear, float* out_zfar)
+static void computeClipPlanes(const double eye[3], const float bmin[3], const float bmax[3], float* out_znear, float* out_zfar)
 {
     const double cx = 0.5 * ((double)bmin[0] + bmax[0]);
     const double cy = 0.5 * ((double)bmin[1] + bmax[1]);
@@ -169,17 +168,17 @@ static void compute_clip_planes(
      * overlay over an empty stage. Inverted bounds are degenerate: fall back. */
     if (!(dx >= 0.0 && dy >= 0.0 && dz >= 0.0))
     {
-        *out_znear = kOvglNearPlane;
-        *out_zfar = kOvglFarPlane;
+        *out_znear = g_kOvglNearPlane;
+        *out_zfar = g_kOvglFarPlane;
         return;
     }
     const double R = 0.5 * std::sqrt(dx * dx + dy * dy + dz * dz); /* bounding-sphere radius */
     const double ex = eye[0] - cx, ey = eye[1] - cy, ez = eye[2] - cz;
-    const double dc = std::sqrt(ex * ex + ey * ey + ez * ez); /* eye -> scene centre */
+    const double dc = std::sqrt(ex * ex + ey * ey + ez * ez); /* eye -> scene center */
     if (!(R > 0.0) || !std::isfinite(R) || !std::isfinite(dc))
     {
-        *out_znear = kOvglNearPlane;
-        *out_zfar = kOvglFarPlane;
+        *out_znear = g_kOvglNearPlane;
+        *out_zfar = g_kOvglFarPlane;
         return;
     }
     double zf = dc + R * 1.05 + 1e-4; /* just past the far side of the scene */
@@ -206,7 +205,7 @@ M4 ortho(float l, float r, float b, float t, float n, float f)
     return m;
 }
 
-M4 look_at(const double e[3], const double t[3], const double up[3])
+M4 lookAt(const double e[3], const double t[3], const double up[3])
 { /* row-major view */
     double fx = t[0] - e[0], fy = t[1] - e[1], fz = t[2] - e[2];
     double fn = std::sqrt(fx * fx + fy * fy + fz * fz);
@@ -242,7 +241,7 @@ M4 look_at(const double e[3], const double t[3], const double up[3])
 
 /* USD row-major worldMatrix W (p_world = p_obj * W) -> column-vector model M
  * (world_col = M * obj_col) = W^T, stored row-major: M[r][c] = W[c][r]. */
-M4 model_from_world(const double w[16])
+M4 modelFromWorld(const double w[16])
 {
     M4 m{};
     for (int r = 0; r < 4; r++)
@@ -255,7 +254,7 @@ M4 model_from_world(const double w[16])
  * OVGL_BACKFACE_CULL opt-in (default 0 = draw both sides); see the field of
  * that name in ovgl_renderer for why the USD-permitted optimization is not the
  * default here. */
-void apply_mesh_sidedness(const SceneMesh& m, int backface_cull)
+void applyMeshSidedness(const SceneMesh& m, int backface_cull)
 {
     const double* w = m.world_xform;
     const double determinant =
@@ -339,10 +338,10 @@ M4 inverse(const M4& A)
  * to be re-uploaded with light-space matrices before the pass and re-uploaded
  * again with camera-space ones after it. With the atlas that would be one
  * extra full UBO rewrite PER SHADOW-CASTING LIGHT per frame. Reading `model`
- * instead lets every tile share the colour pass's single upload and change
+ * instead lets every tile share the color pass's single upload and change
  * exactly one uniform -- see gpu_shadow_begin's pass-VP push. */
-#ifdef NUSD_DESKTOP_GL
-const char* SHADOW_VERT =
+#if defined(NUSD_DESKTOP_GL)
+constexpr const char* g_kShadowVertexShader =
     "#version 410\n"
     "layout(std140, row_major) uniform MeshBlock {\n"
     "    mat4 mvp; mat4 model; vec4 color; uvec4 ptex;\n"
@@ -350,11 +349,11 @@ const char* SHADOW_VERT =
     "uniform mat4 u_shadowPassVP;\n"
     "layout(location = 0) in vec3 inPosition;\n"
     "void main(){ gl_Position = u_shadowPassVP * mesh.model * vec4(inPosition, 1.0); }\n";
-const char* SHADOW_FRAG =
+constexpr const char* g_kShadowFragmentShader =
     "#version 410\n"
     "void main(){}\n";
 #else
-const char* SHADOW_VERT =
+constexpr const char* g_kShadowVertexShader =
     "#version 310 es\n"
     "precision highp float;\n"
     "layout(std140, binding = 1, row_major) uniform MeshBlock {\n"
@@ -363,7 +362,7 @@ const char* SHADOW_VERT =
     "uniform mat4 u_shadowPassVP;\n"
     "layout(location = 0) in vec3 inPosition;\n"
     "void main(){ gl_Position = u_shadowPassVP * mesh.model * vec4(inPosition, 1.0); }\n";
-const char* SHADOW_FRAG =
+constexpr const char* g_kShadowFragmentShader =
     "#version 310 es\n"
     "precision highp float;\n"
     "void main(){}\n";
@@ -371,23 +370,23 @@ const char* SHADOW_FRAG =
 
 /* Ambient-occlusion prepass: window depth + world-space normal, camera view.
  *
- * SSAO has to read the depth of the frame it is shading, and during the colour
+ * SSAO has to read the depth of the frame it is shading, and during the color
  * pass that depth texture is the BOUND depth attachment -- sampling it there is
  * a feedback loop, which GL leaves undefined. So the geometry is rasterized
- * once more, first, into a target the colour pass does not touch. That is the
+ * once more, first, into a target the color pass does not touch. That is the
  * whole reason this pass exists; it is not a Z-prepass optimization and it
- * deliberately does NOT share render_fbo's depth (see ensure_ao_targets).
+ * deliberately does NOT share render_fbo's depth (see ensureAoTargets).
  *
  * It reads the MeshBlock's own `mvp` -- unlike the shadow pass above, which
- * needs a light-space VP -- so it rasterizes with exactly the matrix the colour
+ * needs a light-space VP -- so it rasterizes with exactly the matrix the color
  * pass will use and their depths agree bit for bit.
  *
  * The normal math is copied verbatim from k_pbr_vert_gles rather than
  * simplified: an SSAO hemisphere oriented off a normal that disagrees with the
  * shading normal self-occludes, and the disagreement would show up precisely on
  * the non-uniformly-scaled instanced meshes where it is hardest to attribute. */
-#ifdef NUSD_DESKTOP_GL
-const char* AO_PREPASS_VERT =
+#if defined(NUSD_DESKTOP_GL)
+constexpr const char* g_kAmbientOcclusionPrepassVertexShader =
     "#version 410\n"
     "layout(std140, row_major) uniform MeshBlock {\n"
     "    mat4 mvp; mat4 model; vec4 color; uvec4 ptex;\n"
@@ -404,13 +403,13 @@ const char* AO_PREPASS_VERT =
     "    if (dot(n, n) < 1e-20) n = inNormal;\n"
     "    vNormal = normalize(n);\n"
     "}\n";
-const char* AO_PREPASS_FRAG =
+constexpr const char* g_kAmbientOcclusionPrepassFragmentShader =
     "#version 410\n"
     "in vec3 vNormal;\n"
     "out vec4 outNormal;\n"
     "void main(){ outNormal = vec4(normalize(vNormal) * 0.5 + 0.5, 1.0); }\n";
 #else
-const char* AO_PREPASS_VERT =
+constexpr const char* g_kAmbientOcclusionPrepassVertexShader =
     "#version 310 es\n"
     "precision highp float;\n"
     "layout(std140, binding = 1, row_major) uniform MeshBlock {\n"
@@ -428,7 +427,7 @@ const char* AO_PREPASS_VERT =
     "    if (dot(n, n) < 1e-20) n = inNormal;\n"
     "    vNormal = normalize(n);\n"
     "}\n";
-const char* AO_PREPASS_FRAG =
+constexpr const char* g_kAmbientOcclusionPrepassFragmentShader =
     "#version 310 es\n"
     "precision highp float;\n"
     "in vec3 vNormal;\n"
@@ -454,12 +453,12 @@ const char* AO_PREPASS_FRAG =
  * everything fades quadratically with eye distance like the stock viewport's
  * horizon falloff. Fragments that end up fully transparent are discarded so
  * the overlay writes nothing outside its lines. */
-#ifdef NUSD_DESKTOP_GL
+#if defined(NUSD_DESKTOP_GL)
 #    define OVGL_GRID_GLSL_HEADER "#version 410\n"
 #else
 #    define OVGL_GRID_GLSL_HEADER "#version 310 es\nprecision highp float;\n"
 #endif
-const char* GRID_VERT = OVGL_GRID_GLSL_HEADER
+constexpr const char* g_kGridVertexShader = OVGL_GRID_GLSL_HEADER
     "uniform mat4 u_view;\n"
     "uniform mat4 u_proj;\n"
     "layout(location = 0) in vec3 inPosition;\n"
@@ -477,7 +476,7 @@ const char* GRID_VERT = OVGL_GRID_GLSL_HEADER
     "    vAxisColorV = inAxisColorV;\n"
     "    gl_Position = u_proj * (u_view * vec4(inPosition, 1.0));\n"
     "}\n";
-const char* GRID_FRAG = OVGL_GRID_GLSL_HEADER
+constexpr const char* g_kGridFragmentShader = OVGL_GRID_GLSL_HEADER
     "uniform vec3 u_eyePos;\n"
     "in vec2 vPlane;\n"
     "in vec3 vWorld;\n"
@@ -508,17 +507,17 @@ const char* GRID_FRAG = OVGL_GRID_GLSL_HEADER
     "    outColor = vec4(color, alpha);\n"
     "}\n";
 
-/* Grid quad geometry: ±kGridExtent stage units in the up-axis' ground plane,
+/* Grid quad geometry: ±g_kGridExtent stage units in the up-axis' ground plane,
  * through the origin. 6 vertices × (pos3 | plane2 | axisColorU3 | axisColorV3)
  * = 11 floats, stride 44 bytes. */
-constexpr float kGridExtent = 100.0f;
-constexpr int kGridVertexFloats = 11;
-constexpr int kGridVertexStride = kGridVertexFloats * (int)sizeof(float);
-constexpr int kGridVertexCount = 6;
+constexpr float g_kGridExtent = 100.0f;
+constexpr int g_kGridVertexFloats = 11;
+constexpr int g_kGridVertexStride = g_kGridVertexFloats * (int)sizeof(float);
+constexpr int g_kGridVertexCount = 6;
 
-void build_grid_quad(int up_axis, float out[kGridVertexCount * kGridVertexFloats])
+void buildGridQuad(int up_axis, float out[g_kGridVertexCount * g_kGridVertexFloats])
 {
-    static const float kAxisColor[3][3] = {
+    static const float s_kAxisColor[3][3] = {
         { 0.85f, 0.30f, 0.30f }, /* X — red   */
         { 0.30f, 0.78f, 0.32f }, /* Y — green */
         { 0.32f, 0.48f, 0.92f }, /* Z — blue  */
@@ -539,14 +538,14 @@ void build_grid_quad(int up_axis, float out[kGridVertexCount * kGridVertexFloats
         axis_v = 2;
         axis_up = 0;
     } /* X-up: YZ */
-    static const float kCorners[kGridVertexCount][2] = {
+    static const float s_kCorners[g_kGridVertexCount][2] = {
         { -1.0f, -1.0f }, { 1.0f, -1.0f }, { 1.0f, 1.0f }, { -1.0f, -1.0f }, { 1.0f, 1.0f }, { -1.0f, 1.0f },
     };
-    for (int i = 0; i < kGridVertexCount; i++)
+    for (int i = 0; i < g_kGridVertexCount; i++)
     {
-        float* v = out + i * kGridVertexFloats;
-        const float u = kCorners[i][0] * kGridExtent;
-        const float w = kCorners[i][1] * kGridExtent;
+        float* v = out + i * g_kGridVertexFloats;
+        const float u = s_kCorners[i][0] * g_kGridExtent;
+        const float w = s_kCorners[i][1] * g_kGridExtent;
         v[axis_u] = u;
         v[axis_v] = w;
         v[axis_up] = 0.0f;
@@ -554,8 +553,8 @@ void build_grid_quad(int up_axis, float out[kGridVertexCount * kGridVertexFloats
         v[4] = w;
         for (int c = 0; c < 3; c++)
         {
-            v[5 + c] = kAxisColor[axis_u][c];
-            v[8 + c] = kAxisColor[axis_v][c];
+            v[5 + c] = s_kAxisColor[axis_u][c];
+            v[8 + c] = s_kAxisColor[axis_v][c];
         }
     }
 }
@@ -580,9 +579,9 @@ struct ovgl_renderer
     /* The environment actually loaded on the GPU right now, so a rebuilt scene
      * whose DomeLight changed reloads and one whose dome did not keeps its
      * textures. Source: 0 = none, 1 = host ovgl_set_environment, 2 = an
-     * authored UsdLuxDomeLight. See apply_environment(). */
+     * authored UsdLuxDomeLight. See applyEnvironment(). */
     int env_source = 0;
-    /* Initialized to the request apply_environment() computes for "no
+    /* Initialized to the request applyEnvironment() computes for "no
      * environment", so a dome-free scene never even enters that branch: the
      * no-environment GPU state (fallback rig on, neutral tone, no IBL) is
      * already what renderer creation establishes, and re-applying it would be
@@ -599,7 +598,7 @@ struct ovgl_renderer
      * request itself stays byte-identical. */
     int env_applied_nlights = 0;
     /* The environment is the scene's whole lighting rig, so the synthetic
-     * MuJoCo headlight and hemisphere fill stand down (apply_environment).
+     * MuJoCo headlight and hemisphere fill stand down (applyEnvironment).
      * Distinct from env_loaded: a dome that shares the stage with authored
      * lights is loaded and contributes its real radiance on top of a fill rig
      * that stays. */
@@ -622,7 +621,7 @@ struct ovgl_renderer
      * 12/12 by md5 on that same orbit. */
     int floor_checker = 0;
     /* Back-face culling of gprims with doubleSided=false (env
-     * OVGL_BACKFACE_CULL; apply_mesh_sidedness). Default OFF -- i.e. ovgl
+     * OVGL_BACKFACE_CULL; applyMeshSidedness). Default OFF -- i.e. ovgl
      * draws BOTH sides of every mesh, and doubleSided only ever mattered here
      * as a culling hint.
      *
@@ -650,7 +649,7 @@ struct ovgl_renderer
      * Lighting is already two-sided and needed no shader change: the PBR
      * fragment shader flips N when dot(N, V) < 0 (shaders_gles.h, "Two-sided
      * rendering"), which is exactly the forward-facing-normal-per-side
-     * behaviour gprim.h ascribes to the reference GL renderer.
+     * behavior gprim.h ascribes to the reference GL renderer.
      *
      * Set OVGL_BACKFACE_CULL=1 to take the optimization back on closed-mesh
      * content where the hidden back halves are pure fill-rate waste; =0 pins
@@ -674,8 +673,8 @@ struct ovgl_renderer
     unsigned resolve_fbo = 0, resolve_color = 0; /* resolve_color is a GL_TEXTURE_2D (samplable) */
     int fbo_iw = 0, fbo_ih = 0, fbo_w = 0, fbo_h = 0;
     /* Ambient-occlusion prepass target (iw x ih): world-space normal in RGBA8 +
-     * its OWN depth texture. Both are sampled by the SSAO pass while the colour
-     * pass is not bound, which is the point -- see AO_PREPASS_VERT. */
+     * its OWN depth texture. Both are sampled by the SSAO pass while the color
+     * pass is not bound, which is the point -- see g_kAmbientOcclusionPrepassVertexShader. */
     GpuPipeline ao_pipe = nullptr;
     unsigned ao_fbo = 0, ao_normal = 0, ao_depth = 0;
     int ao_iw = 0, ao_ih = 0;
@@ -725,6 +724,7 @@ struct ovgl_renderer
      * current GL context -- e.g. a Qt QOpenGLWidget -- and returns the resolve texture). */
     int gl_adopt = -1;
     uintptr_t adopted_context_id = 0; /* pinned on first successful adopt */
+    bool overlay_initialized = false;
 
     Scene scene{};
     /* ovgl_scene's auxiliary accessors expose build-scratch storage.  Snapshot
@@ -737,11 +737,11 @@ struct ovgl_renderer
     std::vector<GpuLight> scene_lights;
     bool topo_built = false; /* geometry + GL buffers cached */
     /* Clip planes actually used by the LAST render's projection, fitted per
-     * frame to the camera + scene bounds (compute_clip_planes). The depth-AOV
+     * frame to the camera + scene bounds (computeClipPlanes). The depth-AOV
      * linearization must invert the SAME projection, so it reads these rather
      * than the kOvgl*Plane fallbacks. */
-    float cur_znear = kOvglNearPlane;
-    float cur_zfar = kOvglFarPlane;
+    float cur_znear = g_kOvglNearPlane;
+    float cur_zfar = g_kOvglFarPlane;
     /* Set by ovgl_refresh_materials after a CPU-side re-resolution: the next
      * render_frame replaces the GPU material state (gpu_replace_materials)
      * on the render thread before drawing. Full rebuilds clear it — they
@@ -780,7 +780,7 @@ struct ovgl_renderer
     uint64_t structure_gen = 0;
 };
 
-static bool finite_ordered_bounds(const float lower[3], const float upper[3])
+static bool finiteOrderedBounds(const float lower[3], const float upper[3])
 {
     for (int component = 0; component < 3; ++component)
     {
@@ -823,18 +823,18 @@ static bool finite_ordered_bounds(const float lower[3], const float upper[3])
  * receivers, not the thing the map should resolve. Rather than a name test
  * (ovgl already has one of those, and divergence #3 is what it cost), rank by
  * AABB diagonal and drop the outliers: a ground plane is 283 m of diagonal
- * against a robot link's 0.2 m, a factor of 1400. kShadowCoreRatio is
+ * against a robot link's 0.2 m, a factor of 1400. g_kShadowCoreRatio is
  * deliberately loose so a room's WALLS -- a few times the props, not a
  * thousand -- stay in the fit and keep casting. */
-static constexpr float kShadowCoreRatio = 12.0f;
+static constexpr float g_kShadowCoreRatio = 12.0f;
 /* Then re-admit context around the casters, bounded: the fitted box is grown
  * to this multiple of its own half-extent before being clipped back to the
  * real scene bounds, so a modest ground still receives beyond the robot's
  * silhouette without a 200 m plane dragging the extent with it. */
-static constexpr float kShadowContextGrowth = 3.0f;
+static constexpr float g_kShadowContextGrowth = 3.0f;
 /* Depth bias, in TEXELS of the tile's own world footprint. Scale-free by
  * construction: 2 texels is 2 texels whether a texel is 5 mm or 5 m. */
-static constexpr float kShadowBiasTexels = 2.0f;
+static constexpr float g_kShadowBiasTexels = 2.0f;
 
 /* Fit one shadow-casting light's view-projection.
  *   core_lo/hi  the caster box the map should resolve (world AABB)
@@ -842,14 +842,14 @@ static constexpr float kShadowBiasTexels = 2.0f;
  *   tile_px     the atlas tile edge, for the texel-derived bias
  * Returns false for light kinds with no supported map (Sphere: needs a cube
  * or dual-paraboloid map, not one frustum). */
-static bool build_shadow_light_vp(const GpuLight& light,
-                                  const float core_lo[3],
-                                  const float core_hi[3],
-                                  const float scene_lo[3],
-                                  const float scene_hi[3],
-                                  int tile_px,
-                                  M4* out_vp,
-                                  float* out_bias)
+static bool buildShadowLightVp(const GpuLight& light,
+                               const float core_lo[3],
+                               const float core_hi[3],
+                               const float scene_lo[3],
+                               const float scene_hi[3],
+                               int tile_px,
+                               M4* out_vp,
+                               float* out_bias)
 {
     if (!out_vp || !out_bias)
         return false;
@@ -879,13 +879,13 @@ static bool build_shadow_light_vp(const GpuLight& light,
         up[2] = 0.0;
     }
 
-    /* Grow the caster box by kShadowContextGrowth about its own centre, then
+    /* Grow the caster box by g_kShadowContextGrowth about its own center, then
      * clip to the scene: context without the scene's own extent. */
     float lo[3], hi[3];
     for (int a = 0; a < 3; ++a)
     {
         const float c = 0.5f * (core_lo[a] + core_hi[a]);
-        const float h = 0.5f * (core_hi[a] - core_lo[a]) * kShadowContextGrowth;
+        const float h = 0.5f * (core_hi[a] - core_lo[a]) * g_kShadowContextGrowth;
         lo[a] = std::max(c - h, scene_lo[a]);
         hi[a] = std::min(c + h, scene_hi[a]);
         if (!(hi[a] > lo[a]))
@@ -920,7 +920,7 @@ static bool build_shadow_light_vp(const GpuLight& light,
         eye[1] = light.position[1];
         eye[2] = light.position[2];
     }
-    const M4 view = look_at(eye, tgt, up);
+    const M4 view = lookAt(eye, tgt, up);
 
     /* Light-space extents. x/y come from the fitted box only; the depth range
      * spans the FULL scene so a receiver behind the casters still resolves. */
@@ -931,7 +931,11 @@ static bool build_shadow_light_vp(const GpuLight& light,
     {
         for (int i = 0; i < 8; ++i)
         {
-            const float p[3] = { (i & 1) ? b_hi[0] : b_lo[0], (i & 2) ? b_hi[1] : b_lo[1], (i & 4) ? b_hi[2] : b_lo[2] };
+            const float p[3] = {
+                (i & 1) ? b_hi[0] : b_lo[0],
+                (i & 2) ? b_hi[1] : b_lo[1],
+                (i & 4) ? b_hi[2] : b_lo[2],
+            };
             const float qx = view.m[0] * p[0] + view.m[1] * p[1] + view.m[2] * p[2] + view.m[3];
             const float qy = view.m[4] * p[0] + view.m[5] * p[1] + view.m[6] * p[2] + view.m[7];
             const float qz = view.m[8] * p[0] + view.m[9] * p[1] + view.m[10] * p[2] + view.m[11];
@@ -982,7 +986,7 @@ static bool build_shadow_light_vp(const GpuLight& light,
         /* World bias -> window depth. An ortho map's window depth is linear in
          * distance, so the conversion is exactly 1/(zf - zn). */
         const float texel_world = (2.0f * half) / (float)std::max(tile_px, 1);
-        *out_bias = (kShadowBiasTexels * texel_world) / (zf - zn);
+        *out_bias = (g_kShadowBiasTexels * texel_world) / (zf - zn);
     }
     else
     {
@@ -1006,9 +1010,9 @@ static bool build_shadow_light_vp(const GpuLight& light,
 /* Scene.nmeshes includes PointInstancer prototype storage that is deliberately
  * retained but never drawn.  Such a scene has sentinel aggregate bounds and
  * must not seed either public bounds or the light-space shadow matrix. */
-static bool scene_has_drawable_bounds(const Scene& scene)
+static bool sceneHasDrawableBounds(const Scene& scene)
 {
-    if (scene.nmeshes <= 0 || !scene.meshes || !finite_ordered_bounds(scene.bounds_min, scene.bounds_max))
+    if (scene.nmeshes <= 0 || !scene.meshes || !finiteOrderedBounds(scene.bounds_min, scene.bounds_max))
     {
         return false;
     }
@@ -1028,11 +1032,10 @@ static bool scene_has_drawable_bounds(const Scene& scene)
  * backend-wide portable ceiling plus aggregate limit prevents a legal-but-
  * hostile skinny or square request from committing unbounded color/depth
  * storage. */
-constexpr int kMaxSupersampledDimension = 16384;
-constexpr uint64_t kMaxSupersampledPixels = 64ull * 1024ull * 1024ull;
+constexpr int g_kMaxSupersampledDimension = 16384;
+constexpr uint64_t g_kMaxSupersampledPixels = 64ull * 1024ull * 1024ull;
 
-static bool compute_render_dimensions(
-    const ovgl_renderer* r, int width, int height, int* out_width, int* out_height, int* out_ss)
+static bool computeRenderDimensions(const ovgl_renderer* r, int width, int height, int* out_width, int* out_height, int* out_ss)
 {
     if (!r || width <= 0 || height <= 0)
     {
@@ -1047,13 +1050,13 @@ static bool compute_render_dimensions(
     }
     const int supersampled_width = width * ss;
     const int supersampled_height = height * ss;
-    if (supersampled_width > kMaxSupersampledDimension || supersampled_height > kMaxSupersampledDimension)
+    if (supersampled_width > g_kMaxSupersampledDimension || supersampled_height > g_kMaxSupersampledDimension)
     {
         g_err = "supersampled render dimensions exceed the portable limit";
         return false;
     }
     const uint64_t pixels = static_cast<uint64_t>(supersampled_width) * static_cast<uint64_t>(supersampled_height);
-    if (pixels > kMaxSupersampledPixels)
+    if (pixels > g_kMaxSupersampledPixels)
     {
         g_err = "supersampled render target exceeds the portable pixel limit";
         return false;
@@ -1067,7 +1070,7 @@ static bool compute_render_dimensions(
     return true;
 }
 
-static bool validate_camera(const ovgl_camera_t& camera)
+static bool validateCamera(const ovgl_camera_t& camera)
 {
     for (int component = 0; component < 3; ++component)
     {
@@ -1101,8 +1104,8 @@ static bool validate_camera(const ovgl_camera_t& camera)
         g_err = "camera up vector must not be parallel to the view direction";
         return false;
     }
-    constexpr double kPi = 3.14159265358979323846;
-    if (!std::isfinite(camera.fov_y_rad) || camera.fov_y_rad <= 0.0 || camera.fov_y_rad >= kPi)
+    constexpr double pi = 3.14159265358979323846;
+    if (!std::isfinite(camera.fov_y_rad) || camera.fov_y_rad <= 0.0 || camera.fov_y_rad >= pi)
     {
         g_err = "camera field of view must be finite and in (0, pi)";
         return false;
@@ -1110,7 +1113,7 @@ static bool validate_camera(const ovgl_camera_t& camera)
     return true;
 }
 
-static bool snapshot_scene_auxiliaries(ovgl_renderer* r)
+static bool snapshotSceneAuxiliaries(ovgl_renderer* r)
 {
     const GpuMaterialParams* materials = nullptr;
     const GpuTextureData* textures = nullptr;
@@ -1174,7 +1177,7 @@ static bool snapshot_scene_auxiliaries(ovgl_renderer* r)
     }
 }
 
-static const char* gl_error_name(GLenum err)
+static const char* glErrorName(GLenum err)
 {
     switch (err)
     {
@@ -1196,7 +1199,7 @@ static const char* gl_error_name(GLenum err)
 /* OpenGL commands do not return status.  Turn every error raised inside an OVGL
  * render boundary into the C API's explicit failure result instead of letting a
  * failed draw/blit look like a successful (but blank) frame. */
-static bool gl_errors_ok(const char* where)
+static bool glErrorsOk(const char* where)
 {
     GLenum first = glGetError();
     if (first == GL_NO_ERROR)
@@ -1205,20 +1208,32 @@ static bool gl_errors_ok(const char* where)
     while (glGetError() != GL_NO_ERROR)
         ++count;
     char msg[256];
-    std::snprintf(msg, sizeof(msg), "%s: %s (0x%04x)%s", where, gl_error_name(first), (unsigned)first,
+    std::snprintf(msg, sizeof(msg), "%s: %s (0x%04x)%s", where, glErrorName(first), (unsigned)first,
                   count > 1 ? " (additional GL errors drained)" : "");
     g_err = msg;
     return false;
 }
 
-static void gl_discard_errors()
+static void glDiscardErrors()
 {
     while (glGetError() != GL_NO_ERROR)
     {
     }
 }
 
-static bool gl_framebuffer_complete(GLenum target, const char* label)
+static bool ensureGlFunctionsLoaded()
+{
+#if defined(_WIN32)
+    if (!ovgl_gl_load())
+    {
+        g_err = "failed to load OpenGL functions for the current context";
+        return false;
+    }
+#endif
+    return true;
+}
+
+static bool glFramebufferComplete(GLenum target, const char* label)
 {
     GLenum status = glCheckFramebufferStatus(target);
     if (status == GL_FRAMEBUFFER_COMPLETE)
@@ -1229,7 +1244,7 @@ static bool gl_framebuffer_complete(GLenum target, const char* label)
     return false;
 }
 
-static bool validate_adopted_context(const ovgl_renderer_t* r, const char* operation)
+static bool validateAdoptedContext(const ovgl_renderer_t* r, const char* operation)
 {
     uintptr_t current = egl_headless_current_context_id();
     if (!current)
@@ -1246,13 +1261,13 @@ static bool validate_adopted_context(const ovgl_renderer_t* r, const char* opera
 }
 
 template <typename T>
-static bool exact_payload_equals(const std::vector<T>& stored, const T* source, size_t count)
+static bool exactPayloadEquals(const std::vector<T>& stored, const T* source, size_t count)
 {
     return stored.size() == count &&
            (count == 0 || (source && std::memcmp(stored.data(), source, count * sizeof(T)) == 0));
 }
 
-static bool cache_entry_matches(const ovgl_renderer::GlMeshEntry& entry, const SceneMesh& mesh)
+static bool cacheEntryMatches(const ovgl_renderer::GlMeshEntry& entry, const SceneMesh& mesh)
 {
     const char* path = mesh.path ? mesh.path : "";
     if (entry.path != path || entry.has_normals != (mesh.normals != nullptr) ||
@@ -1262,14 +1277,14 @@ static bool cache_entry_matches(const ovgl_renderer::GlMeshEntry& entry, const S
     }
     const size_t vertex_count = static_cast<size_t>(mesh.nvertices);
     const size_t index_count = static_cast<size_t>(mesh.nindices);
-    return exact_payload_equals(entry.positions, mesh.positions, vertex_count * 3) &&
-           exact_payload_equals(entry.normals, mesh.normals, entry.has_normals ? vertex_count * 3 : 0) &&
-           exact_payload_equals(entry.colors, mesh.colors, entry.has_colors ? vertex_count * 3 : 0) &&
-           exact_payload_equals(entry.texcoords, mesh.texcoords, entry.has_texcoords ? vertex_count * 2 : 0) &&
-           exact_payload_equals(entry.indices, mesh.indices, index_count);
+    return exactPayloadEquals(entry.positions, mesh.positions, vertex_count * 3) &&
+           exactPayloadEquals(entry.normals, mesh.normals, entry.has_normals ? vertex_count * 3 : 0) &&
+           exactPayloadEquals(entry.colors, mesh.colors, entry.has_colors ? vertex_count * 3 : 0) &&
+           exactPayloadEquals(entry.texcoords, mesh.texcoords, entry.has_texcoords ? vertex_count * 2 : 0) &&
+           exactPayloadEquals(entry.indices, mesh.indices, index_count);
 }
 
-static void destroy_gl_mesh_entry(Gpu* gpu, ovgl_renderer::GlMeshEntry& entry)
+static void destroyGlMeshEntry(Gpu* gpu, ovgl_renderer::GlMeshEntry& entry)
 {
     if (entry.vao)
         glDeleteVertexArrays(1, &entry.vao);
@@ -1282,7 +1297,7 @@ static void destroy_gl_mesh_entry(Gpu* gpu, ovgl_renderer::GlMeshEntry& entry)
     entry.ib = nullptr;
 }
 
-static void snapshot_mesh_payload(const SceneMesh& mesh, ovgl_renderer::GlMeshEntry& entry)
+static void snapshotMeshPayload(const SceneMesh& mesh, ovgl_renderer::GlMeshEntry& entry)
 {
     const size_t vertex_count = static_cast<size_t>(mesh.nvertices);
     const size_t index_count = static_cast<size_t>(mesh.nindices);
@@ -1303,7 +1318,7 @@ static void snapshot_mesh_payload(const SceneMesh& mesh, ovgl_renderer::GlMeshEn
 /* Build exactly the vertex bytes consumed by MAT_VERTEX_STRIDE. This work is
  * needed only for a new/changed cache entry; exact source comparisons let the
  * common transform-only edit skip both interleaving and GL upload. */
-static bool rebuild_gl_buffers(ovgl_renderer_t* r)
+static bool rebuildGlBuffers(ovgl_renderer_t* r)
 {
     const int mesh_count = r->scene.nmeshes;
     if (mesh_count < 0 || (mesh_count > 0 && !r->scene.meshes))
@@ -1357,7 +1372,7 @@ static bool rebuild_gl_buffers(ovgl_renderer_t* r)
         ovgl_renderer::GlMeshEntry* match = nullptr;
         for (auto& entry : r->gl_cache)
         {
-            if (cache_entry_matches(entry, mesh) && entry.vb && entry.ib && entry.vao)
+            if (cacheEntryMatches(entry, mesh) && entry.vb && entry.ib && entry.vao)
             {
                 match = &entry;
                 break;
@@ -1375,7 +1390,7 @@ static bool rebuild_gl_buffers(ovgl_renderer_t* r)
         ovgl_renderer::GlMeshEntry entry;
         try
         {
-            snapshot_mesh_payload(mesh, entry);
+            snapshotMeshPayload(mesh, entry);
             isaacsim::ovgl_viewport::debug::details::ovgl::interleaveMeshVertices(mesh, interleaved);
         }
         catch (const std::bad_alloc&)
@@ -1403,7 +1418,7 @@ static bool rebuild_gl_buffers(ovgl_renderer_t* r)
         if (!entry.vao || !entry.vb || !entry.ib || !gpu_buffer_gl_handle(entry.vb) || !gpu_buffer_gl_handle(entry.ib))
         {
             glBindVertexArray(0);
-            destroy_gl_mesh_entry(r->gpu, entry);
+            destroyGlMeshEntry(r->gpu, entry);
             g_err = "failed to create mesh VAO/buffers";
             return false;
         }
@@ -1421,9 +1436,9 @@ static bool rebuild_gl_buffers(ovgl_renderer_t* r)
         }
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gpu_buffer_gl_handle(entry.ib));
         glBindVertexArray(0);
-        if (!gl_errors_ok("rebuild_gl_buffers"))
+        if (!glErrorsOk("rebuildGlBuffers"))
         {
-            destroy_gl_mesh_entry(r->gpu, entry);
+            destroyGlMeshEntry(r->gpu, entry);
             return false;
         }
 
@@ -1446,7 +1461,7 @@ static bool rebuild_gl_buffers(ovgl_renderer_t* r)
             ++entry;
             continue;
         }
-        destroy_gl_mesh_entry(r->gpu, *entry);
+        destroyGlMeshEntry(r->gpu, *entry);
         entry = r->gl_cache.erase(entry);
     }
     return true;
@@ -1559,7 +1574,7 @@ extern "C" ovgl_result_t ovgl_destroy_renderer(ovgl_renderer_t* r)
          * so skip GL deletion and still free the CPU-side state below. */
         bool gl_current;
         if (r->gl_adopt == 1)
-            gl_current = validate_adopted_context(r, "ovgl_destroy_renderer");
+            gl_current = validateAdoptedContext(r, "ovgl_destroy_renderer");
         else
             gl_current = r->egl && egl_headless_make_current(r->egl);
         if (gl_current)
@@ -1587,7 +1602,7 @@ extern "C" ovgl_result_t ovgl_destroy_renderer(ovgl_renderer_t* r)
              * must never participate in lifetime decisions, even after the live
              * scene has been freed by a stage reattachment. */
             for (auto& entry : r->gl_cache)
-                destroy_gl_mesh_entry(r->gpu, entry);
+                destroyGlMeshEntry(r->gpu, entry);
             r->gl_cache.clear();
             r->mesh_vb.clear();
             r->mesh_ib.clear();
@@ -1614,12 +1629,12 @@ extern "C" ovgl_result_t ovgl_destroy_renderer(ovgl_renderer_t* r)
         }
         /* else: owned context already gone; GL objects invalid. gpu_shutdown is skipped
          * (it would glDelete without a context); the CPU-side Gpu allocation is left to
-         * process teardown. destroy_owned_context below is safe on a terminated display. */
+         * process teardown. destroyOwnedContext below is safe on a terminated display. */
         r->gpu = nullptr;
     }
     ovgl_scene_free(&r->scene);
     if (r->egl)
-        destroy_owned_context(r->egl);
+        destroyOwnedContext(r->egl);
     delete r;
     return ok();
 }
@@ -1658,9 +1673,9 @@ extern "C" ovgl_result_t ovgl_set_camera(ovgl_renderer_t* r, const ovgl_camera_t
 {
     if (!r || !c)
         return fail("null arg");
-    if (!validate_camera(*c))
+    if (!validateCamera(*c))
         return fail(g_err);
-    if (!compute_render_dimensions(r, c->image_width, c->image_height, nullptr, nullptr, nullptr))
+    if (!computeRenderDimensions(r, c->image_width, c->image_height, nullptr, nullptr, nullptr))
         return fail(g_err);
     r->cam = *c;
     r->cam_valid = true;
@@ -1747,7 +1762,7 @@ extern "C" ovgl_result_t ovgl_refresh_transforms(ovgl_renderer_t* r, ovstage_ord
      * so the transform-only refresh must re-derive them as well — otherwise a
      * moved DistantLight keeps lighting/shadowing from its stale pose on every
      * cheap-path frame (2026-07-19 fast-path adversary F1). Same lock as the
-     * builds: read_scene_lights fills the shared scene-light scratch. The
+     * builds: readSceneLights fills the shared scene-light scratch. The
      * per-frame render re-uploads r->scene_lights unconditionally, so a
      * refreshed snapshot is all a cheap-path frame needs. Any failure returns
      * BEFORE last_ordinal is published, so the next render falls back to the
@@ -1769,7 +1784,7 @@ extern "C" ovgl_result_t ovgl_refresh_transforms(ovgl_renderer_t* r, ovstage_ord
             return fail("allocating ovgl renderer light snapshot failed");
         }
         /* The DomeLight is NOT in that snapshot — it becomes the IBL
-         * environment instead (apply_environment) — and read_scene_dome ran
+         * environment instead (applyEnvironment) — and readSceneDome ran
          * only inside the full ovgl_scene_build. So publishing last_ordinal
          * below with r->scene.dome_* untouched froze the environment at
          * cold-attach values for the life of the attach, and a live dome
@@ -1778,7 +1793,7 @@ extern "C" ovgl_result_t ovgl_refresh_transforms(ovgl_renderer_t* r, ovstage_ord
          * 210.4 / 85.0 / 252.4 / 73.8). Same aspect-forgotten shape as the
          * 2026-07-19 F1 light-pose finding one block up, and the same
          * remedy: re-derive it here, inside the same lock, before the
-         * publish. Refreshes nlights_unsupported too — apply_environment's
+         * publish. Refreshes nlights_unsupported too — applyEnvironment's
          * request depends on it and it was build-only as well. */
         if (!ovgl_scene_refresh_dome(r->stage, ordinal, &r->scene))
             return fail(std::string("ovgl_scene_refresh_dome: ") + ovgl_scene_last_error());
@@ -1787,6 +1802,39 @@ extern "C" ovgl_result_t ovgl_refresh_transforms(ovgl_renderer_t* r, ovstage_ord
      * it is handed differs from the last one it consumed, so publishing it here is what makes
      * the next frame take the cheap path. */
     r->last_ordinal = ordinal;
+    return ok();
+}
+
+extern "C" ovgl_result_t ovgl_refresh_transform_batch(ovgl_renderer_t* r,
+                                                      ovstage_ordinal_t ordinal,
+                                                      const double* world_matrices,
+                                                      size_t mesh_count)
+{
+    if (!r)
+        return fail("ovgl_refresh_transform_batch: null renderer");
+    if (!r->topo_built)
+        return fail("ovgl_refresh_transform_batch: topology is not built yet (render once first)");
+    if (r->pull_paused)
+        return fail("ovgl_refresh_transform_batch: pulls are paused");
+    if (r->scene.ncurves != 0)
+        return fail("ovgl_refresh_transform_batch: curves require a sealed-snapshot refresh");
+    if (r->scene.npi_batches != 0)
+        return fail("ovgl_refresh_transform_batch: compact instances require a sealed-snapshot refresh");
+    if (!ovgl_scene_apply_xforms(&r->scene, world_matrices, mesh_count))
+        return fail(std::string("ovgl_scene_apply_xforms: ") + ovgl_scene_last_error());
+
+    /* The backend has already proven that no changed transform affects a light,
+     * dome, or bound camera. Publishing only after the atomic scene update keeps
+     * render_frame from observing a partly applied batch. */
+    r->last_ordinal = ordinal;
+    return ok();
+}
+
+extern "C" ovgl_result_t ovgl_invalidate_scene(ovgl_renderer_t* r)
+{
+    if (!r)
+        return fail("ovgl_invalidate_scene: null renderer");
+    r->topo_built = false;
     return ok();
 }
 
@@ -1845,7 +1893,7 @@ extern "C" ovgl_result_t ovgl_refresh_materials(ovgl_renderer_t* r, ovstage_ordi
 
 /* General 4x4 inverse in double, row-major in/out (same glu algorithm as the
  * float `inverse` above). Returns false if singular. */
-static bool inverse4x4_d(const double* a, double* o)
+static bool inverse4x4D(const double* a, double* o)
 {
     double inv[16];
     inv[0] = a[5] * a[10] * a[15] - a[5] * a[11] * a[14] - a[9] * a[6] * a[15] + a[9] * a[7] * a[14] +
@@ -1890,13 +1938,13 @@ static bool inverse4x4_d(const double* a, double* o)
 }
 
 /* Row-vector transforms against a USD row-major matrix (p' = p * M). */
-static void xform_point_rv(const double m[16], const double p[3], double o[3])
+static void xformPointRv(const double m[16], const double p[3], double o[3])
 {
     o[0] = p[0] * m[0] + p[1] * m[4] + p[2] * m[8] + m[12];
     o[1] = p[0] * m[1] + p[1] * m[5] + p[2] * m[9] + m[13];
     o[2] = p[0] * m[2] + p[1] * m[6] + p[2] * m[10] + m[14];
 }
-static void xform_vector_rv(const double m[16], const double v[3], double o[3])
+static void xformVectorRv(const double m[16], const double v[3], double o[3])
 {
     o[0] = v[0] * m[0] + v[1] * m[4] + v[2] * m[8];
     o[1] = v[0] * m[1] + v[1] * m[5] + v[2] * m[9];
@@ -1904,7 +1952,7 @@ static void xform_vector_rv(const double m[16], const double v[3], double o[3])
 }
 
 /* Ray/AABB slab test; true when [tmin_out, tmax_out] intersects t >= 0. */
-static bool ray_aabb(const double o[3], const double d[3], const float lo[3], const float hi[3], double* t_enter)
+static bool rayAabb(const double o[3], const double d[3], const float lo[3], const float hi[3], double* t_enter)
 {
     double tmin = 0.0, tmax = std::numeric_limits<double>::max();
     for (int i = 0; i < 3; i++)
@@ -1932,8 +1980,7 @@ static bool ray_aabb(const double o[3], const double d[3], const float lo[3], co
 }
 
 /* Möller–Trumbore, both sides. Returns t > eps on hit. */
-static bool ray_triangle(
-    const double o[3], const double d[3], const float* v0, const float* v1, const float* v2, double* t_out)
+static bool rayTriangle(const double o[3], const double d[3], const float* v0, const float* v1, const float* v2, double* t_out)
 {
     const double eps = 1e-9;
     double e1[3] = { v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2] };
@@ -2005,29 +2052,29 @@ extern "C" ovgl_result_t ovgl_pick(ovgl_renderer_t* r, double ndc_x, double ndc_
         if (m.nvertices <= 0 || m.nindices < 3 || !m.positions || !m.indices)
             continue;
         double t_enter;
-        if (!ray_aabb(e, dir, m.bounds_min, m.bounds_max, &t_enter))
+        if (!rayAabb(e, dir, m.bounds_min, m.bounds_max, &t_enter))
             continue;
         if (t_enter > best_t)
             continue; /* box is entirely behind the best hit */
         double winv[16];
-        if (!inverse4x4_d(m.world_xform, winv))
+        if (!inverse4x4D(m.world_xform, winv))
             continue;
         double lo[3], ld[3];
-        xform_point_rv(winv, e, lo);
-        xform_vector_rv(winv, dir, ld);
+        xformPointRv(winv, e, lo);
+        xformVectorRv(winv, dir, ld);
         for (int k = 0; k + 2 < m.nindices; k += 3)
         {
             const float* v0 = m.positions + 3 * m.indices[k];
             const float* v1 = m.positions + 3 * m.indices[k + 1];
             const float* v2 = m.positions + 3 * m.indices[k + 2];
             double t_obj;
-            if (!ray_triangle(lo, ld, v0, v1, v2, &t_obj))
+            if (!rayTriangle(lo, ld, v0, v1, v2, &t_obj))
                 continue;
             /* Object-space t is not world t under scale: take the world-space
              * distance of the transformed hit point along the world ray. */
             double hp_obj[3] = { lo[0] + t_obj * ld[0], lo[1] + t_obj * ld[1], lo[2] + t_obj * ld[2] };
             double hp_w[3];
-            xform_point_rv(m.world_xform, hp_obj, hp_w);
+            xformPointRv(m.world_xform, hp_obj, hp_w);
             double t_w = (hp_w[0] - e[0]) * dir[0] + (hp_w[1] - e[1]) * dir[1] + (hp_w[2] - e[2]) * dir[2];
             if (t_w <= 0.0 || t_w >= best_t)
                 continue;
@@ -2051,7 +2098,7 @@ extern "C" ovgl_result_t ovgl_pick(ovgl_renderer_t* r, double ndc_x, double ndc_
     return ok();
 }
 
-static bool ensure_gl(ovgl_renderer_t* r, int w, int h, bool adopt)
+static bool ensureGl(ovgl_renderer_t* r, int w, int h, bool adopt)
 {
     const int requested_mode = adopt ? 1 : 0;
     const uintptr_t current_adopted_context = adopt ? egl_headless_current_context_id() : 0;
@@ -2093,7 +2140,7 @@ static bool ensure_gl(ovgl_renderer_t* r, int w, int h, bool adopt)
             }
         }
         gpu_resize(r->gpu, w, h);
-        if (!gl_errors_ok("gpu_resize"))
+        if (!glErrorsOk("gpu_resize"))
             return false;
         r->w = w;
         r->h = h;
@@ -2120,13 +2167,13 @@ static bool ensure_gl(ovgl_renderer_t* r, int w, int h, bool adopt)
         if (new_gpu)
             gpu_shutdown(new_gpu);
         if (new_egl)
-            destroy_owned_context(new_egl);
+            destroyOwnedContext(new_egl);
     };
 
     {
         if (!adopt)
         {
-            new_egl = create_owned_context(w, h);
+            new_egl = createOwnedContext(w, h);
             if (!new_egl)
             {
                 g_err = "egl_headless_create failed";
@@ -2146,7 +2193,7 @@ static bool ensure_gl(ovgl_renderer_t* r, int w, int h, bool adopt)
             discard_partial();
             return false;
         }
-        if (!gl_errors_ok("gpu_init"))
+        if (!glErrorsOk("gpu_init"))
         {
             discard_partial();
             return false;
@@ -2177,8 +2224,8 @@ static bool ensure_gl(ovgl_renderer_t* r, int w, int h, bool adopt)
         /* Depth-only shadow pipeline: position attribute only, same 60-byte stride. */
         GpuVertexAttrib spos = { 0, 0, GPU_FORMAT_FLOAT3 };
         GpuPipelineDesc spd{};
-        spd.vert_glsl = SHADOW_VERT;
-        spd.frag_glsl = SHADOW_FRAG;
+        spd.vert_glsl = g_kShadowVertexShader;
+        spd.frag_glsl = g_kShadowFragmentShader;
         spd.push_constant_size = sizeof(GpuMeshPushConstants);
         spd.vertex_stride = 60;
         spd.attribs = &spos;
@@ -2196,8 +2243,8 @@ static bool ensure_gl(ovgl_renderer_t* r, int w, int h, bool adopt)
             { 1, 12, GPU_FORMAT_FLOAT3 }, /* normal */
         };
         GpuPipelineDesc apd{};
-        apd.vert_glsl = AO_PREPASS_VERT;
-        apd.frag_glsl = AO_PREPASS_FRAG;
+        apd.vert_glsl = g_kAmbientOcclusionPrepassVertexShader;
+        apd.frag_glsl = g_kAmbientOcclusionPrepassFragmentShader;
         apd.push_constant_size = sizeof(GpuMeshPushConstants);
         apd.vertex_stride = 60;
         apd.attribs = aoattrs;
@@ -2219,7 +2266,7 @@ static bool ensure_gl(ovgl_renderer_t* r, int w, int h, bool adopt)
         gpu_set_authored_light_count(new_gpu, 0);
         gpu_set_fallback_lighting(new_gpu, 1);
         gpu_set_tone_mapping(new_gpu, 1.0f, 1.0f, 1.0f, 0u);
-        if (!gl_errors_ok("GL pipeline initialization"))
+        if (!glErrorsOk("GL pipeline initialization"))
         {
             discard_partial();
             return false;
@@ -2250,10 +2297,10 @@ extern "C" ovgl_result_t ovgl_set_environment(ovgl_renderer_t* r, const char* hd
     return ok();
 }
 
-/* (Re)create the offscreen render target (iw×ih: RGBA8 colour + DEPTH24) the meshes
+/* (Re)create the offscreen render target (iw×ih: RGBA8 color + DEPTH24) the meshes
  * draw into, plus a 1x resolve target (w×h: RGBA8) it is blit-downscaled into. Only
  * recreated when the dimensions change. GL must be current. */
-static bool ensure_fbos(ovgl_renderer_t* r, int iw, int ih, int w, int h)
+static bool ensureFbos(ovgl_renderer_t* r, int iw, int ih, int w, int h)
 {
     if (r->render_fbo && r->fbo_iw == iw && r->fbo_ih == ih && r->fbo_w == w && r->fbo_h == h)
         return true;
@@ -2289,7 +2336,7 @@ static bool ensure_fbos(ovgl_renderer_t* r, int iw, int ih, int w, int h)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture(GL_TEXTURE_2D, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, r->render_depth, 0);
-    if (!gl_framebuffer_complete(GL_FRAMEBUFFER, "render FBO"))
+    if (!glFramebufferComplete(GL_FRAMEBUFFER, "render FBO"))
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         return false;
@@ -2308,7 +2355,7 @@ static bool ensure_fbos(ovgl_renderer_t* r, int iw, int ih, int w, int h)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, r->resolve_color, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
-    if (!gl_framebuffer_complete(GL_FRAMEBUFFER, "resolve FBO"))
+    if (!glFramebufferComplete(GL_FRAMEBUFFER, "resolve FBO"))
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         return false;
@@ -2331,7 +2378,7 @@ static bool ensure_fbos(ovgl_renderer_t* r, int iw, int ih, int w, int h)
         r->pack_primed = false; /* size changed -> prior pixels are invalid */
     }
 
-    if (!gl_errors_ok("ensure_fbos"))
+    if (!glErrorsOk("ensureFbos"))
         return false;
 
     r->fbo_iw = iw;
@@ -2342,19 +2389,19 @@ static bool ensure_fbos(ovgl_renderer_t* r, int iw, int ih, int w, int h)
     return true;
 }
 
-/* (Re)create the AO prepass target: an RGBA8 world-normal colour attachment and
+/* (Re)create the AO prepass target: an RGBA8 world-normal color attachment and
  * its OWN DEPTH_COMPONENT24 texture, both iw x ih -- the same internal
- * (supersampled) grid the colour pass rasterizes on, so a fragment's AO is
+ * (supersampled) grid the color pass rasterizes on, so a fragment's AO is
  * looked up at its own gl_FragCoord with no rescale.
  *
  * It does NOT reuse render_fbo's depth, even though the two passes compute
- * identical values. Sharing would mean the colour pass either re-clears it (and
+ * identical values. Sharing would mean the color pass either re-clears it (and
  * throws the prepass away) or skips its depth clear (and depends on the prepass
  * having run) -- and either way the depth texture would be attached to the
- * colour pass while the SSAO result derived from it is being sampled. One
- * extra depth texture, ~7.7 MB at 800x600 ss=2, buys a prepass the colour pass
+ * color pass while the SSAO result derived from it is being sampled. One
+ * extra depth texture, ~7.7 MB at 800x600 ss=2, buys a prepass the color pass
  * cannot interact with at all. GL must be current. */
-static bool ensure_ao_targets(ovgl_renderer_t* r, int iw, int ih)
+static bool ensureAoTargets(ovgl_renderer_t* r, int iw, int ih)
 {
     if (r->ao_fbo && r->ao_iw == iw && r->ao_ih == ih)
         return true;
@@ -2396,13 +2443,13 @@ static bool ensure_ao_targets(ovgl_renderer_t* r, int iw, int ih)
     glBindTexture(GL_TEXTURE_2D, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, r->ao_depth, 0);
 
-    if (!gl_framebuffer_complete(GL_FRAMEBUFFER, "AO prepass FBO"))
+    if (!glFramebufferComplete(GL_FRAMEBUFFER, "AO prepass FBO"))
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         return false;
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    if (!gl_errors_ok("ensure_ao_targets"))
+    if (!glErrorsOk("ensureAoTargets"))
         return false;
     r->ao_iw = iw;
     r->ao_ih = ih;
@@ -2422,9 +2469,9 @@ struct IndexedBufferSave
 
 struct GlStateSave
 {
-    static constexpr int kTextureUnits = 12; /* material 0..9 + shadow 10..11 */
+    static constexpr int s_kTextureUnits = 12; /* material 0..9 + shadow 10..11 */
     GLint fbo, read_fbo, vp[4], prog, vao;
-    GLint active_tex, tex2d[kTextureUnits], sampler[kTextureUnits];
+    GLint active_tex, tex2d[s_kTextureUnits], sampler[s_kTextureUnits];
     GLint ubuf, abuf, ebuf, pack_buf, unpack_buf, renderbuffer;
     GLint pack_alignment, pack_row_length, pack_skip_pixels, pack_skip_rows;
     GLint unpack_alignment, unpack_row_length, unpack_skip_pixels, unpack_skip_rows;
@@ -2435,7 +2482,7 @@ struct GlStateSave
     GLboolean color_mask[4], depth_mask;
     GLboolean depth, cull, blend, scissor, stencil, rasterizer_discard;
     GLboolean polygon_offset, sample_alpha_to_coverage, sample_coverage, dither;
-#ifdef NUSD_DESKTOP_GL
+#if defined(NUSD_DESKTOP_GL)
     GLboolean framebuffer_srgb, color_logic_op;
     GLboolean primitive_restart, depth_clamp;
     GLint primitive_restart_index, polygon_mode[2];
@@ -2445,17 +2492,17 @@ struct GlStateSave
     GLfloat polygon_offset_factor, polygon_offset_units;
 };
 
-static void gl_indexed_buffer_save(IndexedBufferSave* s, GLenum target, GLenum start_target, GLenum size_target, GLuint index)
+static void glIndexedBufferSave(IndexedBufferSave* state, GLenum target, GLenum startTarget, GLenum sizeTarget, GLuint index)
 {
-    glGetIntegeri_v(target, index, &s->name);
-    if (s->name)
+    glGetIntegeri_v(target, index, &state->name);
+    if (state->name)
     {
-        glGetInteger64i_v(start_target, index, &s->start);
-        glGetInteger64i_v(size_target, index, &s->size);
+        glGetInteger64i_v(startTarget, index, &state->start);
+        glGetInteger64i_v(sizeTarget, index, &state->size);
     }
 }
 
-static void gl_indexed_buffer_restore(const IndexedBufferSave* s, GLenum target, GLuint index)
+static void glIndexedBufferRestore(const IndexedBufferSave* s, GLenum target, GLuint index)
 {
     if (s->name && s->size > 0)
     {
@@ -2467,7 +2514,7 @@ static void gl_indexed_buffer_restore(const IndexedBufferSave* s, GLenum target,
     }
 }
 
-static void gl_state_save(GlStateSave* s)
+static void glStateSave(GlStateSave* s)
 {
     glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &s->fbo);
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &s->read_fbo);
@@ -2475,7 +2522,7 @@ static void gl_state_save(GlStateSave* s)
     glGetIntegerv(GL_CURRENT_PROGRAM, &s->prog);
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &s->vao);
     glGetIntegerv(GL_ACTIVE_TEXTURE, &s->active_tex);
-    for (int i = 0; i < GlStateSave::kTextureUnits; ++i)
+    for (int i = 0; i < GlStateSave::s_kTextureUnits; ++i)
     {
         glActiveTexture(GL_TEXTURE0 + i);
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &s->tex2d[i]);
@@ -2496,9 +2543,9 @@ static void gl_state_save(GlStateSave* s)
     glGetIntegerv(GL_UNPACK_ROW_LENGTH, &s->unpack_row_length);
     glGetIntegerv(GL_UNPACK_SKIP_PIXELS, &s->unpack_skip_pixels);
     glGetIntegerv(GL_UNPACK_SKIP_ROWS, &s->unpack_skip_rows);
-    gl_indexed_buffer_save(
+    glIndexedBufferSave(
         &s->ubo_indexed[0], GL_UNIFORM_BUFFER_BINDING, GL_UNIFORM_BUFFER_START, GL_UNIFORM_BUFFER_SIZE, 0);
-    gl_indexed_buffer_save(
+    glIndexedBufferSave(
         &s->ubo_indexed[1], GL_UNIFORM_BUFFER_BINDING, GL_UNIFORM_BUFFER_START, GL_UNIFORM_BUFFER_SIZE, 1);
     glGetIntegerv(GL_FRONT_FACE, &s->front_face);
     glGetIntegerv(GL_CULL_FACE_MODE, &s->cull_face_mode);
@@ -2521,7 +2568,7 @@ static void gl_state_save(GlStateSave* s)
     s->sample_alpha_to_coverage = glIsEnabled(GL_SAMPLE_ALPHA_TO_COVERAGE);
     s->sample_coverage = glIsEnabled(GL_SAMPLE_COVERAGE);
     s->dither = glIsEnabled(GL_DITHER);
-#ifdef NUSD_DESKTOP_GL
+#if defined(NUSD_DESKTOP_GL)
     s->framebuffer_srgb = glIsEnabled(GL_FRAMEBUFFER_SRGB);
     s->color_logic_op = glIsEnabled(GL_COLOR_LOGIC_OP);
     s->primitive_restart = glIsEnabled(GL_PRIMITIVE_RESTART);
@@ -2542,7 +2589,7 @@ static void gl_state_save(GlStateSave* s)
     glGetFloatv(GL_POLYGON_OFFSET_UNITS, &s->polygon_offset_units);
 }
 
-static void gl_set_enabled(GLenum cap, GLboolean enabled)
+static void glSetEnabled(GLenum cap, GLboolean enabled)
 {
     if (enabled)
         glEnable(cap);
@@ -2553,9 +2600,9 @@ static void gl_set_enabled(GLenum cap, GLboolean enabled)
 /* Establish the state the renderer actually assumes.  gpu_init used to set
  * some of this once, but the adopted path restores Qt's state after every
  * frame, so relying on initialization made all later frames caller-dependent. */
-static void gl_state_prepare_for_ovgl(const GlStateSave* caller_state = nullptr)
+static void glStatePrepareForOvgl(const GlStateSave* caller_state = nullptr)
 {
-#ifndef NUSD_DESKTOP_GL
+#if !defined(NUSD_DESKTOP_GL)
     (void)caller_state;
 #endif
     glDisable(GL_SCISSOR_TEST);
@@ -2565,7 +2612,7 @@ static void gl_state_prepare_for_ovgl(const GlStateSave* caller_state = nullptr)
     glDisable(GL_POLYGON_OFFSET_FILL);
     glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
     glDisable(GL_SAMPLE_COVERAGE);
-#ifdef NUSD_DESKTOP_GL
+#if defined(NUSD_DESKTOP_GL)
     /* OVGL's shaders already gamma-encode their output. */
     glDisable(GL_FRAMEBUFFER_SRGB);
     glDisable(GL_COLOR_LOGIC_OP);
@@ -2579,7 +2626,7 @@ static void gl_state_prepare_for_ovgl(const GlStateSave* caller_state = nullptr)
         glDisable(GL_CLIP_DISTANCE0 + i);
 #endif
     glEnable(GL_DITHER); /* match a fresh headless GL context */
-    glDisable(GL_CULL_FACE); /* apply_mesh_sidedness sets it per mesh */
+    glDisable(GL_CULL_FACE); /* applyMeshSidedness sets it per mesh */
     glCullFace(GL_BACK);
     glFrontFace(GL_CW);
     glEnable(GL_DEPTH_TEST);
@@ -2588,10 +2635,10 @@ static void gl_state_prepare_for_ovgl(const GlStateSave* caller_state = nullptr)
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     /* Empty background is BLACK, matching the measured official ovrtx 0.4
      * product output (rig frames 2026-07-18: official corner pixels (0,0,0);
-     * the previous 0.66 grey read as (168,168,168) and alone dominated the
+     * the previous 0.66 gray read as (168,168,168) and alone dominated the
      * whole-frame MAE against the official engine). */
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-#ifdef NUSD_DESKTOP_GL
+#if defined(NUSD_DESKTOP_GL)
     glClearDepth(1.0);
     glDepthRange(0.0, 1.0);
 #else
@@ -2612,24 +2659,24 @@ static void gl_state_prepare_for_ovgl(const GlStateSave* caller_state = nullptr)
     glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
     /* A sampler object overrides the filtering/wrap parameters on the texture
      * itself.  Inherited Qt/caller samplers must not affect OVGL units. */
-    for (int i = 0; i < GlStateSave::kTextureUnits; ++i)
+    for (int i = 0; i < GlStateSave::s_kTextureUnits; ++i)
         glBindSampler((GLuint)i, 0);
     glActiveTexture(GL_TEXTURE0);
 }
 
-static void gl_state_restore(const GlStateSave* s)
+static void glStateRestore(const GlStateSave* s)
 {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)s->fbo);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)s->read_fbo);
     glViewport(s->vp[0], s->vp[1], s->vp[2], s->vp[3]);
     glUseProgram((GLuint)s->prog);
     glBindVertexArray((GLuint)s->vao);
-#ifdef NUSD_DESKTOP_GL
+#if defined(NUSD_DESKTOP_GL)
     if (s->vao)
 #endif
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, (GLuint)s->ebuf);
-    gl_indexed_buffer_restore(&s->ubo_indexed[0], GL_UNIFORM_BUFFER, 0);
-    gl_indexed_buffer_restore(&s->ubo_indexed[1], GL_UNIFORM_BUFFER, 1);
+    glIndexedBufferRestore(&s->ubo_indexed[0], GL_UNIFORM_BUFFER, 0);
+    glIndexedBufferRestore(&s->ubo_indexed[1], GL_UNIFORM_BUFFER, 1);
     glBindBuffer(GL_UNIFORM_BUFFER, (GLuint)s->ubuf);
     glBindBuffer(GL_ARRAY_BUFFER, (GLuint)s->abuf);
     glBindBuffer(GL_PIXEL_PACK_BUFFER, (GLuint)s->pack_buf);
@@ -2653,7 +2700,7 @@ static void gl_state_restore(const GlStateSave* s)
     glBlendEquationSeparate((GLenum)s->blend_eq_rgb, (GLenum)s->blend_eq_alpha);
     glBlendColor(s->blend_color[0], s->blend_color[1], s->blend_color[2], s->blend_color[3]);
     glPolygonOffset(s->polygon_offset_factor, s->polygon_offset_units);
-    for (int i = 0; i < GlStateSave::kTextureUnits; ++i)
+    for (int i = 0; i < GlStateSave::s_kTextureUnits; ++i)
     {
         glActiveTexture(GL_TEXTURE0 + i);
         glBindTexture(GL_TEXTURE_2D, (GLuint)s->tex2d[i]);
@@ -2661,43 +2708,43 @@ static void gl_state_restore(const GlStateSave* s)
     }
     glActiveTexture((GLenum)s->active_tex);
     glClearColor(s->clear[0], s->clear[1], s->clear[2], s->clear[3]);
-#ifdef NUSD_DESKTOP_GL
+#if defined(NUSD_DESKTOP_GL)
     glClearDepth((GLdouble)s->clear_depth);
     glDepthRange((GLdouble)s->depth_range[0], (GLdouble)s->depth_range[1]);
 #else
     glClearDepthf(s->clear_depth);
     glDepthRangef(s->depth_range[0], s->depth_range[1]);
 #endif
-    gl_set_enabled(GL_DEPTH_TEST, s->depth);
-    gl_set_enabled(GL_CULL_FACE, s->cull);
-    gl_set_enabled(GL_BLEND, s->blend);
-    gl_set_enabled(GL_SCISSOR_TEST, s->scissor);
-    gl_set_enabled(GL_STENCIL_TEST, s->stencil);
-    gl_set_enabled(GL_RASTERIZER_DISCARD, s->rasterizer_discard);
-    gl_set_enabled(GL_POLYGON_OFFSET_FILL, s->polygon_offset);
-    gl_set_enabled(GL_SAMPLE_ALPHA_TO_COVERAGE, s->sample_alpha_to_coverage);
-    gl_set_enabled(GL_SAMPLE_COVERAGE, s->sample_coverage);
-    gl_set_enabled(GL_DITHER, s->dither);
-#ifdef NUSD_DESKTOP_GL
-    gl_set_enabled(GL_FRAMEBUFFER_SRGB, s->framebuffer_srgb);
-    gl_set_enabled(GL_COLOR_LOGIC_OP, s->color_logic_op);
+    glSetEnabled(GL_DEPTH_TEST, s->depth);
+    glSetEnabled(GL_CULL_FACE, s->cull);
+    glSetEnabled(GL_BLEND, s->blend);
+    glSetEnabled(GL_SCISSOR_TEST, s->scissor);
+    glSetEnabled(GL_STENCIL_TEST, s->stencil);
+    glSetEnabled(GL_RASTERIZER_DISCARD, s->rasterizer_discard);
+    glSetEnabled(GL_POLYGON_OFFSET_FILL, s->polygon_offset);
+    glSetEnabled(GL_SAMPLE_ALPHA_TO_COVERAGE, s->sample_alpha_to_coverage);
+    glSetEnabled(GL_SAMPLE_COVERAGE, s->sample_coverage);
+    glSetEnabled(GL_DITHER, s->dither);
+#if defined(NUSD_DESKTOP_GL)
+    glSetEnabled(GL_FRAMEBUFFER_SRGB, s->framebuffer_srgb);
+    glSetEnabled(GL_COLOR_LOGIC_OP, s->color_logic_op);
     glPrimitiveRestartIndex((GLuint)s->primitive_restart_index);
-    gl_set_enabled(GL_PRIMITIVE_RESTART, s->primitive_restart);
-    gl_set_enabled(GL_DEPTH_CLAMP, s->depth_clamp);
+    glSetEnabled(GL_PRIMITIVE_RESTART, s->primitive_restart);
+    glSetEnabled(GL_DEPTH_CLAMP, s->depth_clamp);
     /* Core profile exposes one front-and-back mode; the query returns the
      * same value in both slots and GL_FRONT/GL_BACK are invalid enums. */
     glPolygonMode(GL_FRONT_AND_BACK, (GLenum)s->polygon_mode[0]);
     for (size_t i = 0; i < s->clip_distance.size(); ++i)
-        gl_set_enabled(GL_CLIP_DISTANCE0 + (GLenum)i, s->clip_distance[i]);
+        glSetEnabled(GL_CLIP_DISTANCE0 + (GLenum)i, s->clip_distance[i]);
 #endif
 }
 
-static ovgl_result_t gl_state_finish_adopted(const GlStateSave* s, ovgl_result_t rc, const char* where)
+static ovgl_result_t glStateFinishAdopted(const GlStateSave* s, ovgl_result_t rc, const char* where)
 {
     /* Preserve the render/setup diagnostic if restoration also fails. */
     std::string primary_error = g_err;
-    gl_state_restore(s);
-    bool restored = gl_errors_ok(where);
+    glStateRestore(s);
+    bool restored = glErrorsOk(where);
     if (rc.status != 0)
     {
         g_err = primary_error;
@@ -2709,7 +2756,7 @@ static ovgl_result_t gl_state_finish_adopted(const GlStateSave* s, ovgl_result_t
 /* Lazily create (or up-axis-rebuild) the grid overlay's pipeline + quad
  * vertex buffer. Called only from an ENABLED frame with GL current, so a
  * disabled renderer never allocates GL objects for the overlay. */
-static bool ensure_grid_resources(ovgl_renderer_t* r)
+static bool ensureGridResources(ovgl_renderer_t* r)
 {
     if (!r->grid_pipe)
     {
@@ -2720,9 +2767,9 @@ static bool ensure_grid_resources(ovgl_renderer_t* r)
             { 3, 32, GPU_FORMAT_FLOAT3 }, /* v-axis line color    */
         };
         GpuPipelineDesc gd{};
-        gd.vert_glsl = GRID_VERT;
-        gd.frag_glsl = GRID_FRAG;
-        gd.vertex_stride = kGridVertexStride;
+        gd.vert_glsl = g_kGridVertexShader;
+        gd.frag_glsl = g_kGridFragmentShader;
+        gd.vertex_stride = g_kGridVertexStride;
         gd.attribs = attrs;
         gd.nattribs = 4;
         r->grid_pipe = gpu_create_pipeline(r->gpu, &gd);
@@ -2740,8 +2787,8 @@ static bool ensure_grid_resources(ovgl_renderer_t* r)
             gpu_destroy_buffer(r->gpu, r->grid_vb);
             r->grid_vb = nullptr;
         }
-        float verts[kGridVertexCount * kGridVertexFloats];
-        build_grid_quad(up_axis, verts);
+        float verts[g_kGridVertexCount * g_kGridVertexFloats];
+        buildGridQuad(up_axis, verts);
         GpuBufferDesc vd{ GPU_BUFFER_VERTEX, sizeof(verts), verts };
         r->grid_vb = gpu_create_buffer(r->gpu, &vd);
         if (!r->grid_vb)
@@ -2760,9 +2807,9 @@ static bool ensure_grid_resources(ovgl_renderer_t* r)
  * never occlude scene content or leak into the Depth AOV), alpha-blended
  * over the frame so transparent geometry later blends on top of it. The
  * caller re-binds the material pipeline afterwards. */
-static bool draw_grid_overlay(ovgl_renderer_t* r, const M4& view, const M4& proj, const float eye3[3])
+static bool drawGridOverlay(ovgl_renderer_t* r, const M4& view, const M4& proj, const float eye3[3])
 {
-    if (!ensure_grid_resources(r))
+    if (!ensureGridResources(r))
         return false;
     gpu_cmd_bind_pipeline(r->gpu, r->grid_pipe);
     gpu_cmd_set_view_proj(r->gpu, view.m, proj.m);
@@ -2777,12 +2824,12 @@ static bool draw_grid_overlay(ovgl_renderer_t* r, const M4& view, const M4& proj
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(-1.0f, -1.0f);
     glDepthMask(GL_FALSE);
-    gpu_cmd_draw(r->gpu, kGridVertexCount, 0);
+    gpu_cmd_draw(r->gpu, g_kGridVertexCount, 0);
     glDepthMask(GL_TRUE);
     glDisable(GL_POLYGON_OFFSET_FILL);
     glDisable(GL_BLEND);
     glBindVertexArray(0);
-    return gl_errors_ok("grid overlay draw");
+    return glErrorsOk("grid overlay draw");
 }
 
 /* Make the GPU's environment match what this scene + host asked for. Called
@@ -2808,11 +2855,11 @@ static bool draw_grid_overlay(ovgl_renderer_t* r, const M4& view, const M4& proj
  *
  * Reloading is keyed on the resolved request, not on a dirty bit alone, so a
  * per-frame rebuild of an unchanged dome does not re-project SH and re-upload
- * textures every frame, while a live intensity/colour edit does. Clearing
+ * textures every frame, while a live intensity/color edit does. Clearing
  * first means NULL really disables IBL, replacing an HDR cannot leak the
  * previous textures/program, and a failed replacement falls back cleanly
  * instead of retaining half of either environment. */
-static void apply_environment(ovgl_renderer_t* r)
+static void applyEnvironment(ovgl_renderer_t* r)
 {
     int want_source = 0;
     std::string want_path;
@@ -2982,10 +3029,9 @@ static void apply_environment(ovgl_renderer_t* r)
  * w×h, supersampled to iw×ih. GL must already be current and the FBOs ensured. Does NOT read
  * back or unbind to a default framebuffer. ovgl_render_frame (headless host readback) and
  * ovgl_render_to_texture (GUI, returns the texture) both call this. */
-static ovgl_result_t render_scene_to_resolve(
-    ovgl_renderer_t* r, ovstage_ordinal_t ordinal, int w, int h, int iw, int ih, int ss)
+static ovgl_result_t renderSceneToResolve(ovgl_renderer_t* r, ovstage_ordinal_t ordinal, int w, int h, int iw, int ih, int ss)
 {
-    double t_xform0 = g_prof ? now_ms() : 0.0;
+    double t_xform0 = g_kProfilingEnabled ? nowMs() : 0.0;
     /* Rebuild from the sealed ovstage snapshot whenever its ordinal changes.
      * This correctness baseline covers topology, geometry, primitive params,
      * materials, visibility/purpose, lights, bounds, and transforms. A future
@@ -2993,35 +3039,35 @@ static ovgl_result_t render_scene_to_resolve(
      * worldMatrix-only refresh silently leaves most Property edits stale. */
     if (!r->topo_built || (!r->pull_paused && ordinal != r->last_ordinal))
     {
-        double t_build0 = g_prof ? now_ms() : 0.0;
+        double t_build0 = g_kProfilingEnabled ? nowMs() : 0.0;
         {
             std::lock_guard<std::mutex> lock(g_scene_build_mutex);
             if (!ovgl_scene_build(r->stage, ordinal, &r->scene))
                 return fail(std::string("ovgl_scene_build: ") + ovgl_scene_last_error());
-            if (!snapshot_scene_auxiliaries(r))
+            if (!snapshotSceneAuxiliaries(r))
                 return fail(g_err);
         }
-        double t_glbuf0 = g_prof ? now_ms() : 0.0;
+        double t_glbuf0 = g_kProfilingEnabled ? nowMs() : 0.0;
         /* A topology rebuild replaces all material/mesh UBO state as well as
          * vertex/index buffers.  Reset it before upload so a failed attempt is
          * retryable and a later scene does not leak the prior resources. */
         gpu_destroy_materials(r->gpu);
         r->mesh_ubo_cap = 0;
-        if (!rebuild_gl_buffers(r))
+        if (!rebuildGlBuffers(r))
             return fail(g_err);
-        double t_matup0 = g_prof ? now_ms() : 0.0;
+        double t_matup0 = g_kProfilingEnabled ? nowMs() : 0.0;
         const int nmat = static_cast<int>(r->scene_materials.size());
         const int ntex = static_cast<int>(r->scene_textures.size());
         if (nmat > 0 && !gpu_upload_materials(r->gpu, r->scene_materials.data(), nmat,
                                               ntex > 0 ? r->scene_textures.data() : nullptr, ntex))
             return fail("gpu_upload_materials failed");
-        if (!gl_errors_ok("scene resource upload"))
+        if (!glErrorsOk("scene resource upload"))
             return fail(g_err);
         r->materials_dirty = false; /* the rebuild re-uploaded everything */
-        if (g_prof)
+        if (g_kProfilingEnabled)
         {
             std::fprintf(stderr, "OVGLPROF rebuild build=%.3f glbuf=%.3f matup=%.3f\n", t_glbuf0 - t_build0,
-                         t_matup0 - t_glbuf0, now_ms() - t_matup0);
+                         t_matup0 - t_glbuf0, nowMs() - t_matup0);
         }
 
         r->topo_built = true;
@@ -3043,7 +3089,7 @@ static ovgl_result_t render_scene_to_resolve(
             r->last_ordinal = (ovstage_ordinal_t)-1;
             return fail("gpu_replace_materials failed");
         }
-        if (!gl_errors_ok("material refresh upload"))
+        if (!glErrorsOk("material refresh upload"))
         {
             r->last_ordinal = (ovstage_ordinal_t)-1;
             return fail(g_err);
@@ -3053,7 +3099,7 @@ static ovgl_result_t render_scene_to_resolve(
     /* The no-IBL haze fades geometry toward the backdrop over a distance measured in
      * scene radii, so it needs the scene's size.  Without this it uses absolute world
      * units tuned for a sim-sized scene, and an asset authored in centimetres (hundreds
-     * of units across) renders as a flat wash into the grey backdrop.
+     * of units across) renders as a flat wash into the gray backdrop.
      *
      * EVERY frame, not just a rebuild. It lived inside the rebuild block above
      * until 2026-07-25, which made the cheap path haze with whatever radius the
@@ -3078,16 +3124,16 @@ static ovgl_result_t render_scene_to_resolve(
     /* After the rebuild, never before it: the scene owns the DomeLight, and
      * the light-upload block below has to know whether an environment took
      * over (it drops the synthetic headlight when one did). */
-    apply_environment(r);
+    applyEnvironment(r);
     r->last_ordinal = ordinal;
     const int n = r->scene.nmeshes;
     r->mesh_count = (size_t)n;
-    double t_ubo0 = g_prof ? now_ms() : 0.0;
+    double t_ubo0 = g_kProfilingEnabled ? nowMs() : 0.0;
 
-    M4 view = look_at(r->cam.eye, r->cam.target, r->cam.up);
-    compute_clip_planes(r->cam.eye, r->scene.bounds_min, r->scene.bounds_max, &r->cur_znear, &r->cur_zfar);
+    M4 view = lookAt(r->cam.eye, r->cam.target, r->cam.up);
+    computeClipPlanes(r->cam.eye, r->scene.bounds_min, r->scene.bounds_max, &r->cur_znear, &r->cur_zfar);
     M4 proj = perspective((float)r->cam.fov_y_rad, (float)w / (float)h, r->cur_znear, r->cur_zfar);
-    if (g_prof)
+    if (g_kProfilingEnabled)
     {
         std::fprintf(stderr,
                      "[ovgl] camera eye=(%.3f, %.3f, %.3f) target=(%.3f, %.3f, %.3f) "
@@ -3135,7 +3181,7 @@ static ovgl_result_t render_scene_to_resolve(
      *
      * "Owns the lighting" is r->env_owns_lighting, not merely env_loaded: a
      * host-named HDR always owns it, and an authored DomeLight owns it exactly
-     * when it is the scene's ONLY light prim (apply_environment). Gating on
+     * when it is the scene's ONLY light prim (applyEnvironment). Gating on
      * has_dome/env_loaded instead was a measured regression -- it dropped the
      * fill for robot-usdview/welcome.usda, which authors a dome AND a
      * DistantLight, costing it 13% of its frame luminance.
@@ -3144,7 +3190,7 @@ static ovgl_result_t render_scene_to_resolve(
      * follows the camera, so it cannot be part of a view-independent model.
      * Official ovrtx 0.4 has no counterpart ON THE ATTACH LANE -- measured on
      * this bench, robot_ground_scene with BOTH lights removed renders pure
-     * black there (mean luminance 0.00, 1 unique colour) while ovgl renders
+     * black there (mean luminance 0.00, 1 unique color) while ovgl renders
      * 28.07, which is the 79%-of-lit-brightness term the ledger records. It
      * does have one on the FILE lane (open_usd_from_string): the same
      * light-free scene renders at 35.72 through official's own default
@@ -3205,7 +3251,7 @@ static ovgl_result_t render_scene_to_resolve(
     const int n_slights = static_cast<int>(r->scene_lights.size());
     int shadow_light_idx[GPU_MAX_SHADOW_LIGHTS];
     int n_shadow_lights = 0;
-    if (scene_has_drawable_bounds(r->scene))
+    if (sceneHasDrawableBounds(r->scene))
     {
         for (int i = 0; i < n_slights && n_shadow_lights < GPU_MAX_SHADOW_LIGHTS; i++)
         {
@@ -3226,8 +3272,8 @@ static ovgl_result_t render_scene_to_resolve(
          * geometry, so the whole atlas stays camera-independent: it is
          * re-rendered on a scene edit (ordinal), and an orbit of N frames over
          * a static scene still pays for it exactly once. */
-        double t_shadow0 = g_prof ? now_ms() : 0.0;
-        if (g_prof)
+        double t_shadow0 = g_kProfilingEnabled ? nowMs() : 0.0;
+        if (g_kProfilingEnabled)
         {
             const float* blo = r->scene.bounds_min;
             const float* bhi = r->scene.bounds_max;
@@ -3239,8 +3285,8 @@ static ovgl_result_t render_scene_to_resolve(
         }
 
         /* Caster box: the drawable meshes minus the environment-scale
-         * outliers (see kShadowCoreRatio). Rank by AABB diagonal and take
-         * everything within kShadowCoreRatio of the MEDIAN, which is robust to
+         * outliers (see g_kShadowCoreRatio). Rank by AABB diagonal and take
+         * everything within g_kShadowCoreRatio of the MEDIAN, which is robust to
          * a scene having several ground planes -- excluding "the largest mesh"
          * would keep the second one and fit to it. */
         float core_lo[3] = { FLT_MAX, FLT_MAX, FLT_MAX };
@@ -3261,7 +3307,7 @@ static ovgl_result_t render_scene_to_resolve(
             {
                 const SceneMesh& mm = r->scene.meshes[i];
                 if (!mm.visible || mm.is_proto_only || mm.nvertices <= 0 || has_zero_scalar_opacity(mm) ||
-                    !finite_ordered_bounds(mm.bounds_min, mm.bounds_max))
+                    !finiteOrderedBounds(mm.bounds_min, mm.bounds_max))
                 {
                     continue;
                 }
@@ -3278,7 +3324,7 @@ static ovgl_result_t render_scene_to_resolve(
                 std::nth_element(sorted.begin(), sorted.begin() + sorted.size() / 2, sorted.end());
                 const float median = sorted[sorted.size() / 2];
                 if (median > 0.0f)
-                    limit = median * kShadowCoreRatio;
+                    limit = median * g_kShadowCoreRatio;
             }
             for (size_t k = 0; k < drawn.size(); k++)
             {
@@ -3293,8 +3339,8 @@ static ovgl_result_t render_scene_to_resolve(
             }
         }
         /* Every mesh an outlier (a scene of nothing but ground): fall back to
-         * the full bounds, i.e. exactly the pre-atlas behaviour. */
-        if (!finite_ordered_bounds(core_lo, core_hi))
+         * the full bounds, i.e. exactly the pre-atlas behavior. */
+        if (!finiteOrderedBounds(core_lo, core_hi))
         {
             for (int a = 0; a < 3; a++)
             {
@@ -3304,11 +3350,11 @@ static ovgl_result_t render_scene_to_resolve(
         }
 
         /* The MeshBlock still holds the PREVIOUS frame's matrices at this
-         * point in the frame; the colour pass rewrites it below. The shadow
+         * point in the frame; the color pass rewrites it below. The shadow
          * vertex shader reads mesh.model, so it needs this frame's models --
-         * upload them here and let the colour pass overwrite mvp/color/ptex
+         * upload them here and let the color pass overwrite mvp/color/ptex
          * afterwards. Only `model` is read, so the rest is left at the
-         * colour pass's defaults rather than written twice. */
+         * color pass's defaults rather than written twice. */
         if (r->mesh_ubo_cap < n)
         {
             if (!gpu_alloc_mesh_buffer(r->gpu, n))
@@ -3323,12 +3369,12 @@ static ovgl_result_t render_scene_to_resolve(
             const int sstride = gpu_mesh_stride(r->gpu);
             for (int i = 0; i < n; i++)
             {
-                const M4 model = model_from_world(r->scene.meshes[i].world_xform);
+                const M4 model = modelFromWorld(r->scene.meshes[i].world_xform);
                 GpuMeshData* dd = (GpuMeshData*)(sb + (size_t)i * sstride);
                 std::memcpy(dd->model, model.m, sizeof(dd->model));
             }
             gpu_end_mesh_writes(r->gpu);
-            if (!gl_errors_ok("shadow mesh-data upload"))
+            if (!glErrorsOk("shadow mesh-data upload"))
                 return fail(g_err);
         }
 
@@ -3338,12 +3384,12 @@ static ovgl_result_t render_scene_to_resolve(
             const int li = shadow_light_idx[s];
             M4 lvp{};
             float bias = 0.0f;
-            if (!build_shadow_light_vp(slights[li], core_lo, core_hi, r->scene.bounds_min, r->scene.bounds_max,
-                                       GPU_SHADOW_TILE_SIZE, &lvp, &bias))
+            if (!buildShadowLightVp(slights[li], core_lo, core_hi, r->scene.bounds_min, r->scene.bounds_max,
+                                    GPU_SHADOW_TILE_SIZE, &lvp, &bias))
             {
                 continue;
             }
-            if (g_prof)
+            if (g_kProfilingEnabled)
             {
                 /* The two numbers that decide whether a shadow is visible at
                  * all: the world size of one tile texel, and the bias
@@ -3370,23 +3416,23 @@ static ovgl_result_t render_scene_to_resolve(
                 }
                 if ((size_t)i >= r->mesh_vb.size() || !r->mesh_vb[i] || !r->mesh_ib[i])
                     continue;
-                /* Same sidedness rule as the colour pass on purpose: a face that
+                /* Same sidedness rule as the color pass on purpose: a face that
                  * gets drawn must also be able to occlude the light, or the
                  * shadow map disagrees with the image it is shading. */
-                apply_mesh_sidedness(mm, r->backface_cull);
+                applyMeshSidedness(mm, r->backface_cull);
                 gpu_cmd_bind_mesh_data(r->gpu, i);
                 glBindVertexArray(r->mesh_vao[i]);
                 gpu_cmd_draw_indexed(r->gpu, (uint32_t)mm.nindices, 0, 0);
             }
             gpu_shadow_end(r->gpu);
-            if (!gl_errors_ok("shadow pass"))
+            if (!glErrorsOk("shadow pass"))
                 return fail(g_err);
             filled++;
         }
         if (filled == 0)
             gpu_shadow_clear(r->gpu);
-        if (g_prof)
-            std::fprintf(stderr, "[ovgl] shadow atlas: %d tile(s) %.2f ms\n", filled, now_ms() - t_shadow0);
+        if (g_kProfilingEnabled)
+            std::fprintf(stderr, "[ovgl] shadow atlas: %d tile(s) %.2f ms\n", filled, nowMs() - t_shadow0);
         r->last_shadow_ordinal = ordinal;
     }
 
@@ -3406,7 +3452,7 @@ static ovgl_result_t render_scene_to_resolve(
         for (int i = 0; i < n; i++)
         {
             const SceneMesh& m = r->scene.meshes[i];
-            M4 model = model_from_world(m.world_xform);
+            M4 model = modelFromWorld(m.world_xform);
             M4 mvp = mul(vp, model);
             GpuMeshData* d = (GpuMeshData*)(base + (size_t)i * stride);
             std::memcpy(d->mvp, mvp.m, sizeof(d->mvp));
@@ -3419,7 +3465,7 @@ static ovgl_result_t render_scene_to_resolve(
             /* MuJoCo-style ground checker: an OPT-IN fallback convenience for
              * floor-named meshes with no appearance of their own. Off unless
              * OVGL_FLOOR_CHECKER=1, because official ovrtx 0.4 has no such
-             * behaviour and this silently repainted the ground of the spot,
+             * behavior and this silently repainted the ground of the spot,
              * anymal, go2 and g1 locomotion scenes, which all author the same
              * `def Plane "GroundCollider"`.
              *
@@ -3438,7 +3484,7 @@ static ovgl_result_t render_scene_to_resolve(
                     0xFFFFFFFFu;
         }
         gpu_end_mesh_writes(r->gpu);
-        if (!gl_errors_ok("mesh-data upload"))
+        if (!glErrorsOk("mesh-data upload"))
             return fail(g_err);
     }
 
@@ -3491,15 +3537,14 @@ static ovgl_result_t render_scene_to_resolve(
      * that upload: it reads each mesh's camera `mvp` and needs no matrices of
      * its own. Opaque geometry only -- a transparent surface does not occlude
      * in this model, and letting it write depth here would carve an AO shadow
-     * out of something the colour pass then blends straight through. */
-    double t_ao0 = g_prof ? now_ms() : 0.0;
+     * out of something the color pass then blends straight through. */
+    double t_ao0 = g_kProfilingEnabled ? nowMs() : 0.0;
     if (r->ao_enabled && r->ao_pipe && n > 0)
     {
-        if (!ensure_ao_targets(r, iw, ih))
+        if (!ensureAoTargets(r, iw, ih))
             return fail(g_err);
         glBindFramebuffer(GL_FRAMEBUFFER, r->ao_fbo);
-        if (!gl_errors_ok("bind AO prepass FBO") ||
-            !gl_framebuffer_complete(GL_FRAMEBUFFER, "AO prepass FBO before draw"))
+        if (!glErrorsOk("bind AO prepass FBO") || !glFramebufferComplete(GL_FRAMEBUFFER, "AO prepass FBO before draw"))
             return fail(g_err);
         glViewport(0, 0, iw, ih);
         glDisable(GL_SCISSOR_TEST);
@@ -3513,9 +3558,9 @@ static ovgl_result_t render_scene_to_resolve(
          * the pixel, so the cleared normal is never consumed; it is a defined
          * value rather than a meaningful one.
          *
-         * Put the clear COLOUR back immediately. gpu_begin_frame() issues the
-         * colour pass's glClear without setting one -- it inherits whatever
-         * gl_state_prepare_for_ovgl established, and that black is load-bearing:
+         * Put the clear COLOR back immediately. gpu_begin_frame() issues the
+         * color pass's glClear without setting one -- it inherits whatever
+         * glStatePrepareForOvgl established, and that black is load-bearing:
          * it is the measured official ovrtx 0.4 empty background, and leaving
          * this pass's (0.5,0.5,1.0) behind would repaint every backgroundless
          * frame light blue. Clear depth is untouched, so the 1.0 the baseline
@@ -3535,15 +3580,15 @@ static ovgl_result_t render_scene_to_resolve(
             {
                 continue;
             }
-            /* Same sidedness rule as the colour and shadow passes: a face that
+            /* Same sidedness rule as the color and shadow passes: a face that
              * gets drawn must also be able to occlude. */
-            apply_mesh_sidedness(mesh, r->backface_cull);
+            applyMeshSidedness(mesh, r->backface_cull);
             gpu_cmd_bind_mesh_data(r->gpu, index);
             glBindVertexArray(r->mesh_vao[index]);
             gpu_cmd_draw_indexed(r->gpu, (uint32_t)mesh.nindices, 0, 0);
         }
         glBindVertexArray(0);
-        if (!gl_errors_ok("AO prepass"))
+        if (!glErrorsOk("AO prepass"))
             return fail(g_err);
 
         /* SSAO at HALF the internal resolution -- for the default ss=2 that is
@@ -3564,10 +3609,10 @@ static ovgl_result_t render_scene_to_resolve(
              * strength to 0 and renders exactly as it did before SSAO. */
             gpu_set_ssao(r->gpu, 0, 0.0f);
         }
-        if (!gl_errors_ok("SSAO pass"))
+        if (!glErrorsOk("SSAO pass"))
             return fail(g_err);
-        if (g_prof)
-            std::fprintf(stderr, "[ovgl] AO prepass %dx%d + SSAO %dx%d %.2f ms\n", iw, ih, aw, ah, now_ms() - t_ao0);
+        if (g_kProfilingEnabled)
+            std::fprintf(stderr, "[ovgl] AO prepass %dx%d + SSAO %dx%d %.2f ms\n", iw, ih, aw, ah, nowMs() - t_ao0);
     }
     else
     {
@@ -3576,14 +3621,14 @@ static ovgl_result_t render_scene_to_resolve(
         gpu_set_ssao(r->gpu, 0, 0.0f);
     }
 
-    double t_draw0 = g_prof ? now_ms() : 0.0;
+    double t_draw0 = g_kProfilingEnabled ? nowMs() : 0.0;
     glBindFramebuffer(GL_FRAMEBUFFER, r->render_fbo); /* draw into the SS render target */
-    if (!gl_errors_ok("bind render FBO") || !gl_framebuffer_complete(GL_FRAMEBUFFER, "render FBO before draw"))
+    if (!glErrorsOk("bind render FBO") || !glFramebufferComplete(GL_FRAMEBUFFER, "render FBO before draw"))
         return fail(g_err);
     if (!gpu_begin_frame(r->gpu))
         return fail("gpu_begin_frame failed");
     /* Environment background FIRST: gpu_draw_env_background disables the depth test
-     * and writes only colour (a full-screen pass), so it must run before the meshes
+     * and writes only color (a full-screen pass), so it must run before the meshes
      * -- they then draw on top with depth testing on. */
     if (r->env_loaded)
     {
@@ -3603,7 +3648,7 @@ static ovgl_result_t render_scene_to_resolve(
         {
             return;
         }
-        apply_mesh_sidedness(mesh, r->backface_cull);
+        applyMeshSidedness(mesh, r->backface_cull);
         gpu_cmd_bind_mesh_data(r->gpu, index);
         gpu_cmd_bind_material(r->gpu, mesh.material_index >= 0 ? mesh.material_index : 0);
         glBindVertexArray(r->mesh_vao[index]);
@@ -3629,7 +3674,7 @@ static ovgl_result_t render_scene_to_resolve(
      * overlay — the hard no-effect contract in ovgl.h. */
     if (r->grid_overlay)
     {
-        if (!draw_grid_overlay(r, view, proj, eye3))
+        if (!drawGridOverlay(r, view, proj, eye3))
             return fail(g_err);
         /* Restore the material pipeline for the transparent pass. Program
          * uniforms are per-program state (still intact), but the bind also
@@ -3649,29 +3694,28 @@ static ovgl_result_t render_scene_to_resolve(
     /* In profile mode, force a GPU sync here so t_draw measures GPU render time
      * and t_readback measures only the glReadPixels transfer (normally
      * glReadPixels implicitly absorbs both). */
-    if (g_prof)
+    if (g_kProfilingEnabled)
         glFinish();
-    double t_read0 = g_prof ? now_ms() : 0.0;
+    double t_read0 = g_kProfilingEnabled ? nowMs() : 0.0;
 
     /* GPU downscale-resolve: blit (scale ss->1 + vertical flip) the iw×ih render target into
      * the w×h resolve TEXTURE. GL_LINEAR at an exact ss:1 ratio is the ss×ss box average; the
      * inverted dst-Y rect (0,h -> w,0) flips GL's bottom-up origin for free. Leaves the result
      * in resolve_color; the caller reads it back (host) or samples it (GUI). */
-    if (!gl_errors_ok("scene draw before resolve blit"))
+    if (!glErrorsOk("scene draw before resolve blit"))
         return fail(g_err);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, r->render_fbo);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, r->resolve_fbo);
-    if (!gl_errors_ok("bind resolve-blit FBOs") ||
-        !gl_framebuffer_complete(GL_READ_FRAMEBUFFER, "resolve-blit source FBO") ||
-        !gl_framebuffer_complete(GL_DRAW_FRAMEBUFFER, "resolve-blit destination FBO"))
+    if (!glErrorsOk("bind resolve-blit FBOs") || !glFramebufferComplete(GL_READ_FRAMEBUFFER, "resolve-blit source FBO") ||
+        !glFramebufferComplete(GL_DRAW_FRAMEBUFFER, "resolve-blit destination FBO"))
         return fail(g_err);
     glBlitFramebuffer(0, 0, iw, ih, 0, h, w, 0, GL_COLOR_BUFFER_BIT, GL_LINEAR);
-    if (!gl_errors_ok("resolve glBlitFramebuffer"))
+    if (!glErrorsOk("resolve glBlitFramebuffer"))
         return fail(g_err);
-    if (g_prof)
+    if (g_kProfilingEnabled)
     {
         glFinish();
-        double t_end = now_ms();
+        double t_end = nowMs();
         std::fprintf(stderr, "OVGLPROF res=%dx%d ss=%d xform=%.3f ubo=%.3f gpu=%.3f blit=%.3f total=%.3f\n", w, h, ss,
                      t_ubo0 - t_xform0, t_draw0 - t_ubo0, t_read0 - t_draw0, t_end - t_read0, t_end - t_xform0);
     }
@@ -3694,20 +3738,20 @@ extern "C" ovgl_result_t ovgl_render_frame(ovgl_renderer_t* r, ovstage_ordinal_t
     if (!out_rgba8_host)
         return fail("bad output buffer");
     int iw = 0, ih = 0, ss = 1;
-    if (!compute_render_dimensions(r, w, h, &iw, &ih, &ss))
+    if (!computeRenderDimensions(r, w, h, &iw, &ih, &ss))
         return fail(g_err);
-    if (!ensure_gl(r, iw, ih, false))
+    if (!ensureGl(r, iw, ih, false))
         return fail(g_err);
     if (!egl_headless_make_current(r->egl))
         return fail("egl_headless_make_current failed");
-    if (!gl_errors_ok("headless render entry"))
+    if (!glErrorsOk("headless render entry"))
         return fail(g_err);
-    gl_state_prepare_for_ovgl();
-    if (!gl_errors_ok("headless render state baseline"))
+    glStatePrepareForOvgl();
+    if (!glErrorsOk("headless render state baseline"))
         return fail(g_err);
-    if (!ensure_fbos(r, iw, ih, w, h))
+    if (!ensureFbos(r, iw, ih, w, h))
         return fail(g_err);
-    ovgl_result_t rc = render_scene_to_resolve(r, ordinal, w, h, iw, ih, ss);
+    ovgl_result_t rc = renderSceneToResolve(r, ordinal, w, h, iw, ih, ss);
     if (rc.status != 0)
         return rc;
     /* Read the resolve texture back into the caller's host RGBA8 buffer. */
@@ -3753,7 +3797,7 @@ extern "C" ovgl_result_t ovgl_render_frame(ovgl_renderer_t* r, ovstage_ordinal_t
         /* Headless contract: this ordinal's pixels are in out_rgba8_host when we return. */
         glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, out_rgba8_host);
     }
-    if (!gl_errors_ok("headless glReadPixels"))
+    if (!glErrorsOk("headless glReadPixels"))
         return fail(g_err);
     if (r->depth_capture)
     {
@@ -3809,28 +3853,30 @@ extern "C" ovgl_result_t ovgl_render_to_texture(
     if (!out_gl_texture)
         return fail("bad output");
     int iw = 0, ih = 0, ss = 1;
-    if (!compute_render_dimensions(r, w, h, &iw, &ih, &ss))
+    if (!computeRenderDimensions(r, w, h, &iw, &ih, &ss))
         return fail(g_err);
-    if (!validate_adopted_context(r, "ovgl_render_to_texture"))
+    if (!validateAdoptedContext(r, "ovgl_render_to_texture"))
+        return fail(g_err);
+    if (!ensureGlFunctionsLoaded())
         return fail(g_err);
     /* Error flags are not restorable GL state.  Drain caller-owned errors at
      * the boundary so capture validation only diagnoses commands OVGL issued. */
-    gl_discard_errors();
+    glDiscardErrors();
     GlStateSave gs{};
-    gl_state_save(&gs);
+    glStateSave(&gs);
     ovgl_result_t rc;
-    if (!gl_errors_ok("ovgl_render_to_texture state capture"))
+    if (!glErrorsOk("ovgl_render_to_texture state capture"))
     {
         rc = fail(g_err);
     }
     else
     {
-        gl_state_prepare_for_ovgl(&gs);
-        bool setup = gl_errors_ok("ovgl_render_to_texture state baseline") && ensure_gl(r, iw, ih, true) &&
-                     ensure_fbos(r, iw, ih, w, h);
-        rc = setup ? render_scene_to_resolve(r, ordinal, w, h, iw, ih, ss) : fail(g_err);
+        glStatePrepareForOvgl(&gs);
+        bool setup = glErrorsOk("ovgl_render_to_texture state baseline") && ensureGl(r, iw, ih, true) &&
+                     ensureFbos(r, iw, ih, w, h);
+        rc = setup ? renderSceneToResolve(r, ordinal, w, h, iw, ih, ss) : fail(g_err);
     }
-    rc = gl_state_finish_adopted(&gs, rc, "ovgl_render_to_texture state restore");
+    rc = glStateFinishAdopted(&gs, rc, "ovgl_render_to_texture state restore");
     if (rc.status != 0)
         return rc;
     *out_gl_texture = r->resolve_color;
@@ -3841,11 +3887,21 @@ extern "C" ovgl_result_t ovgl_render_to_texture(
     return ok();
 }
 
-/* GUI present: render against `ordinal` in the caller's current GL context and blit the
- * result straight into `dst_fbo` (e.g. a Qt QOpenGLWidget's defaultFramebufferObject()) at
- * w×h. All GL stays in C -- the caller's paintGL is a one-liner. dst_fbo must be single-
- * sample (set the widget's QSurfaceFormat samples to 0). NO host readback, NO context switch. */
-extern "C" ovgl_result_t ovgl_render_to_fbo(ovgl_renderer_t* r, ovstage_ordinal_t ordinal, unsigned dst_fbo, int w, int h)
+/* GUI present: render against `ordinal` in the caller's current GL context, aspect-fit the
+ * result into `dst_fbo`, and optionally compose an overlay. dst_fbo must be single-sample.
+ * NO host readback, NO context switch. */
+extern "C" ovgl_result_t ovgl_render_to_fbo(ovgl_renderer_t* r,
+                                            ovstage_ordinal_t ordinal,
+                                            unsigned dst_fbo,
+                                            int w,
+                                            int h,
+                                            int source_x0,
+                                            int source_y0,
+                                            int source_x1,
+                                            int source_y1,
+                                            int destination_w,
+                                            int destination_h,
+                                            const char* overlay_text)
 {
     if (!r)
         return fail("null renderer");
@@ -3855,33 +3911,37 @@ extern "C" ovgl_result_t ovgl_render_to_fbo(ovgl_renderer_t* r, ovstage_ordinal_
         return fail("no stage attached");
     if (!r->cam_valid)
         return fail("no camera set");
+    if (source_x0 < 0 || source_y0 < 0 || source_x1 <= source_x0 || source_y1 <= source_y0 || source_x1 > w ||
+        source_y1 > h || destination_w <= 0 || destination_h <= 0)
+        return fail("invalid source or destination dimensions");
     int iw = 0, ih = 0, ss = 1;
-    if (!compute_render_dimensions(r, w, h, &iw, &ih, &ss))
+    if (!computeRenderDimensions(r, w, h, &iw, &ih, &ss))
         return fail(g_err);
-    if (!validate_adopted_context(r, "ovgl_render_to_fbo"))
+    if (!validateAdoptedContext(r, "ovgl_render_to_fbo"))
+        return fail(g_err);
+    if (!ensureGlFunctionsLoaded())
         return fail(g_err);
     /* Error flags are not restorable GL state.  Drain caller-owned errors at
      * the boundary so capture validation only diagnoses commands OVGL issued. */
-    gl_discard_errors();
+    glDiscardErrors();
     GlStateSave gs{};
-    gl_state_save(&gs);
+    glStateSave(&gs);
     ovgl_result_t rc;
-    if (!gl_errors_ok("ovgl_render_to_fbo state capture"))
+    if (!glErrorsOk("ovgl_render_to_fbo state capture"))
     {
         rc = fail(g_err);
     }
     else
     {
-        gl_state_prepare_for_ovgl(&gs);
-        bool setup = gl_errors_ok("ovgl_render_to_fbo state baseline") && ensure_gl(r, iw, ih, true) &&
-                     ensure_fbos(r, iw, ih, w, h);
-        rc = setup ? render_scene_to_resolve(r, ordinal, w, h, iw, ih, ss) : fail(g_err);
+        glStatePrepareForOvgl(&gs);
+        bool setup =
+            glErrorsOk("ovgl_render_to_fbo state baseline") && ensureGl(r, iw, ih, true) && ensureFbos(r, iw, ih, w, h);
+        rc = setup ? renderSceneToResolve(r, ordinal, w, h, iw, ih, ss) : fail(g_err);
     }
     if (rc.status == 0)
     {
         /* Present: blit the resolve (top-down, as the host path wants it) into the caller's
-         * FBO with the dst Y inverted, so it lands GL bottom-up and QOpenGLWidget composites
-         * it upright. GL_NEAREST: 1:1 copy, no filtering. */
+         * FBO with the destination Y inverted so it lands GL bottom-up and displays upright. */
         if (dst_fbo != 0 && !glIsFramebuffer(dst_fbo))
         {
             rc = fail("present destination is not a framebuffer object");
@@ -3890,9 +3950,8 @@ extern "C" ovgl_result_t ovgl_render_to_fbo(ovgl_renderer_t* r, ovstage_ordinal_
         {
             glBindFramebuffer(GL_READ_FRAMEBUFFER, r->resolve_fbo);
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dst_fbo);
-            if (!gl_errors_ok("bind present FBOs") ||
-                !gl_framebuffer_complete(GL_READ_FRAMEBUFFER, "present source FBO") ||
-                !gl_framebuffer_complete(GL_DRAW_FRAMEBUFFER, "present destination FBO"))
+            if (!glErrorsOk("bind present FBOs") || !glFramebufferComplete(GL_READ_FRAMEBUFFER, "present source FBO") ||
+                !glFramebufferComplete(GL_DRAW_FRAMEBUFFER, "present destination FBO"))
             {
                 rc = fail(g_err);
             }
@@ -3900,7 +3959,7 @@ extern "C" ovgl_result_t ovgl_render_to_fbo(ovgl_renderer_t* r, ovstage_ordinal_
             {
                 GLint dst_samples = 0;
                 glGetIntegerv(GL_SAMPLES, &dst_samples);
-                if (!gl_errors_ok("query present destination samples"))
+                if (!glErrorsOk("query present destination samples"))
                 {
                     rc = fail(g_err);
                 }
@@ -3913,14 +3972,47 @@ extern "C" ovgl_result_t ovgl_render_to_fbo(ovgl_renderer_t* r, ovstage_ordinal_
                 }
                 else
                 {
-                    glBlitFramebuffer(0, 0, w, h, 0, h, w, 0, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-                    if (!gl_errors_ok("present glBlitFramebuffer"))
+                    const int source_w = source_x1 - source_x0;
+                    const int source_h = source_y1 - source_y0;
+                    const double scale = std::min(
+                        static_cast<double>(destination_w) / source_w, static_cast<double>(destination_h) / source_h);
+                    const int presented_w =
+                        std::max(1, std::min(destination_w, static_cast<int>(std::lround(source_w * scale))));
+                    const int presented_h =
+                        std::max(1, std::min(destination_h, static_cast<int>(std::lround(source_h * scale))));
+                    const int destination_x = (destination_w - presented_w) / 2;
+                    const int destination_y = (destination_h - presented_h) / 2;
+                    glViewport(0, 0, destination_w, destination_h);
+                    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+                    glClear(GL_COLOR_BUFFER_BIT);
+                    glBlitFramebuffer(source_x0, source_y0, source_x1, source_y1, destination_x,
+                                      destination_y + presented_h, destination_x + presented_w, destination_y,
+                                      GL_COLOR_BUFFER_BIT, GL_LINEAR);
+                    if (!glErrorsOk("present glBlitFramebuffer"))
                         rc = fail(g_err);
+                    else if (overlay_text && overlay_text[0] != '\0')
+                    {
+                        if (!r->overlay_initialized)
+                            r->overlay_initialized = gpu_overlay_init(r->gpu) != 0;
+                        if (!r->overlay_initialized)
+                        {
+                            rc = fail("initializing present overlay failed");
+                        }
+                        else
+                        {
+                            const float text_width = static_cast<float>(std::strlen(overlay_text) * 8);
+                            gpu_overlay_rect(r->gpu, 10.0f, 10.0f, text_width + 12.0f, 28.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+                            gpu_overlay_text(r->gpu, 16.0f, 16.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, overlay_text);
+                            gpu_overlay_flush(r->gpu, destination_w, destination_h);
+                            if (!glErrorsOk("present overlay"))
+                                rc = fail(g_err);
+                        }
+                    }
                 }
             }
         }
     }
-    return gl_state_finish_adopted(&gs, rc, "ovgl_render_to_fbo state restore");
+    return glStateFinishAdopted(&gs, rc, "ovgl_render_to_fbo state restore");
 }
 
 /* --- read-only scene views for sibling consumers -------------------------- */
@@ -3999,7 +4091,7 @@ extern "C" ovgl_result_t ovgl_get_stats(ovgl_renderer_t* r, ovgl_stats_t* s)
     s->triangle_count = r->tri_count;
     s->last_render_ordinal = r->last_ordinal;
     s->last_structure_gen = r->structure_gen;
-    s->bounds_valid = r->topo_built && scene_has_drawable_bounds(r->scene);
+    s->bounds_valid = r->topo_built && sceneHasDrawableBounds(r->scene);
     s->up_axis = r->scene.up_axis;
     for (int i = 0; i < 3; ++i)
     {

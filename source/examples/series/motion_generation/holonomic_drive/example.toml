@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+id = "motion_generation.holonomic_drive"
+title = "Holonomic Drive Controller"
+summary = "Drive a three-wheeled holonomic-drive robot using forward speed, lateral speed, and yaw rate."
+owners = [
+    "isaacsim.foundation.objects",
+    "isaacsim.physics.entities",
+    "isaacsim.physics.manager",
+    "isaacsim.physics_engines.ovphysx",
+    "isaacsim.robot_motion.controllers",
+    "isaacsim.ovgl_viewport.debug",
+]
+topics = [
+    "controllers",
+    "holonomic_drive",
+    "motion_generation",
+    "physics",
+    "rendering",
+    "robotics",
+    "viewport",
+]
+
+[build]
+adapter = "none"
+
+[run]
+adapter = "python"
+path = "main.py"
+
+[requirements]
+system = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_foundation"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_physics"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_physics_engines"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_robot_motion"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_ovgl_viewport"
+surfaces = ["python"]
+
+[[test]]
+name = "headless"
+path = "test.py"
+timeout_seconds = 120
+stdout_contains = [
+    "Body command:",
+    "Wheel angular velocities:",
+    "Robot planar displacement:",
+    "Holonomic drive example passed.",
+    "Headless holonomic-drive rendering test passed.",
+]

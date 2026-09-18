@@ -3,7 +3,7 @@ name: usd-pipeline
 description: "USD asset discovery, measurement, placement, and shader compatibility. Use for scene assembly and headless render prep."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # USD Asset Pipeline

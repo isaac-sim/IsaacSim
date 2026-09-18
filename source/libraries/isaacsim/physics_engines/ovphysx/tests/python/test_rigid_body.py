@@ -34,7 +34,6 @@ from _legacy_runner import (  # noqa: E402
 )
 from _scenario import DeviceParams  # noqa: E402
 from common.rigid_body import (  # noqa: E402
-    ObjectTypeCommon,
     ReproInertiaSetGetConsistencyCommon,
     RigidBodiesGetSetAppliedForcesCommon,
     RigidBodiesGetSetTransformsCommon,
@@ -268,16 +267,3 @@ class TestRigidBodiesGetSetAppliedForces:
     def test_rigid_bodies_get_set_applied_forces_ovphysx_gg(self) -> None:
         """Check multi-body upward motion with GPU simulation and GPU tensors."""
         run_scenario(self, RigidBodiesGetSetAppliedForcesCommon, "ovphysx", gpu_device())
-
-
-class TestObjectType:
-    """Require non-null object-type results for a body and articulation root."""
-
-    def test_object_type_ovphysx_cc(self) -> None:
-        """Check object-type lookup with CPU simulation and CPU tensors."""
-        run_scenario(self, ObjectTypeCommon, "ovphysx", cpu_device())
-
-    @gpu_only
-    def test_object_type_ovphysx_gg(self) -> None:
-        """Check object-type lookup with GPU simulation and GPU tensors."""
-        run_scenario(self, ObjectTypeCommon, "ovphysx", gpu_device())

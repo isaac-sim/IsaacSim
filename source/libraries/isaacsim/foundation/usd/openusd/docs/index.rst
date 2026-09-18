@@ -17,6 +17,7 @@
 .. _isaacsim-foundation-usd-openusd:
 .. _isaacsim-foundation-usd-openusd-overview:
 
+===============================
 isaacsim.foundation.usd.openusd
 ===============================
 

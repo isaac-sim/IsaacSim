@@ -8,7 +8,7 @@ This extension is deprecated in favor of `isaacsim.sensors.experimental.physics`
 
 <div align="center">
 
-```mermaid
+```{mermaid}
 graph TD
     %% Inheritance relationships
     BaseSensor --> ContactSensor

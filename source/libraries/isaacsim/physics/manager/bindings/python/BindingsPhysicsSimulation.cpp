@@ -32,13 +32,13 @@ namespace
 //
 // FailedDirty cannot say WHICH stage remains attached -- the new one (a dirty
 // rollback) or a previous one (a re-initialize whose detach of the old stage
-// failed) -- so the keepalive holds a set of owners, not a single slot, and drops
+// failed) -- so the keepAlive holds a set of owners, not a single slot, and drops
 // owners only on positive detach confirmation: Ok (previous stages detached, keep
 // only the new owner) or a fully successful close (everything detached, drop all).
 // A dirty failure at worst over-holds a not-yet-freed owner until the next such
 // event. Leaked on purpose; a static-storage nb object would be destroyed during
 // interpreter teardown, after Python has finalized.
-nb::list& attachedStageOwners()
+nb::list& getAttachedStageOwners()
 {
     static nb::list* s_owners = new nb::list();
     return *s_owners;
@@ -57,15 +57,15 @@ void isaacsim::physics::manager::details::bindPhysicsSimulation(nb::module_& mod
             const InitializeResult result = initialize(reinterpret_cast<void*>(ovstage), usdIdentifier);
             if (result == InitializeResult::eOk)
             {
-                attachedStageOwners() = nb::list();
+                getAttachedStageOwners() = nb::list();
                 if (!owner.is_none())
                 {
-                    attachedStageOwners().append(owner);
+                    getAttachedStageOwners().append(owner);
                 }
             }
             else if (result == InitializeResult::eFailedDirty && !owner.is_none())
             {
-                attachedStageOwners().append(owner);
+                getAttachedStageOwners().append(owner);
             }
             return result == InitializeResult::eOk;
         },
@@ -78,7 +78,7 @@ void isaacsim::physics::manager::details::bindPhysicsSimulation(nb::module_& mod
             const bool closed = isaacsim::physics::manager::close();
             if (closed)
             {
-                attachedStageOwners() = nb::list();
+                getAttachedStageOwners() = nb::list();
             }
             return closed;
         },
@@ -90,6 +90,8 @@ void isaacsim::physics::manager::details::bindPhysicsSimulation(nb::module_& mod
                "Advance all active simulations synchronously.");
     module.def("fetch_results", &fetchResults, "Fetch results for the pending asynchronous simulation step.");
     module.def("check_results", &checkResults, "Return whether pending asynchronous simulation results are ready.");
+    module.def("publish_transforms_to_stage", &publishTransformsToStage,
+               "Publish the latest simulated transforms to attached stages.");
     module.def("flush_changes", &flushChanges, "Flush tracked USD changes to all active simulations.");
     module.def("pause_change_tracking", &pauseChangeTracking, nb::arg("pause"),
                "Pause or resume USD change tracking for all active simulations.");

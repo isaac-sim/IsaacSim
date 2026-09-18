@@ -15,6 +15,7 @@
 
 isaacsim_add_python_module(
     NAME isaacsim.robot_motion.cumotion
+    REQUIRES_BINDINGS
 )
 
 if(ISAACSIM_ENABLE_PYTHON)
@@ -68,9 +69,7 @@ if(ISAACSIM_ENABLE_PYTHON)
     )
 endif()
 
-if(BUILD_TESTING AND ISAACSIM_ENABLE_PYTHON)
-    isaacsim_add_python_tests(
-        MODULE isaacsim.robot_motion.cumotion
-        REQUIRES_BINDINGS
-    )
-endif()
+isaacsim_add_python_tests(
+    MODULE isaacsim.robot_motion.cumotion
+    REQUIRES_BINDINGS
+)

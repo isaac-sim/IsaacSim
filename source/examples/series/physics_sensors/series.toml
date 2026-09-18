@@ -3,7 +3,8 @@
 
 id = "physics_sensors"
 title = "Physics Sensors"
-summary = "Derive sensor readings from the state a physics engine already simulates."
+summary = "Derive sensor readings from simulated physics state."
+kind = "collection"
 
 [[step]]
 example = "physics_sensors.imu_sensor"

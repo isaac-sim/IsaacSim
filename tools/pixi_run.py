@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Bootstrap the repository-pinned Pixi executable and run standalone library builds."""
+"""Bootstrap the repository-pinned Pixi executable and run standalone library workflows."""
 
 from __future__ import annotations
 
@@ -417,19 +417,12 @@ def _has_option(arguments: Sequence[str], *names: str) -> bool:
     return any(argument in names or any(argument.startswith(f"{name}=") for name in names) for argument in arguments)
 
 
-def _select_library_driver_environment(arguments: Sequence[str]) -> str:
-    """Select build tools or the compiler-free CTest driver for one library command."""
-    if _has_option(arguments, "--test-only") and _has_option(arguments, "--test-without-compiler"):
-        return "test-driver"
-    return "build-driver"
-
-
 def _select_library_environments(arguments: Sequence[str]) -> tuple[str, ...]:
     """Select the isolated dependency environments for a library command."""
     if _has_option(arguments, "--pull-only"):
         return (
+            "examples-runner",
             "build-driver",
-            "test-driver",
             "native-runtime",
             "runtime",
             "schema-build",
@@ -450,7 +443,7 @@ def _select_library_environments(arguments: Sequence[str]) -> tuple[str, ...]:
     runtime_environment = "minimum-runtime" if minimum else "runtime"
     test_environment = "minimum-test" if minimum else "test"
     wheel_environment = "minimum-wheel-build" if minimum else "wheel-build"
-    selected = [_select_library_driver_environment(arguments), "native-runtime"]
+    selected = ["build-driver", "native-runtime"]
     if python_enabled:
         selected.extend((runtime_environment, "schema-build", test_environment))
     if _has_option(arguments, "--wheel", "--carrier"):
@@ -540,7 +533,7 @@ def _run_libraries(arguments: Sequence[str]) -> int:
         ).returncode
     executable = ensure_pixi(repository_root=repository_root)
     selected_environments = _select_library_environments(arguments)
-    driver_environment = _select_library_driver_environment(arguments)
+    driver_environment = "build-driver"
     offline = _has_option(arguments, "--no-pull")
     for environment_name in selected_environments:
         _install_locked_environment(executable, repository_root, environment_name, offline=offline)
@@ -591,11 +584,35 @@ def _run_libraries(arguments: Sequence[str]) -> int:
     )
 
 
+def _run_examples(arguments: Sequence[str]) -> int:
+    """Run source examples with the locked runner environment."""
+    repository_root = _repository_root()
+    executable = ensure_pixi(repository_root=repository_root)
+    return _run_pixi(
+        executable,
+        [
+            "run",
+            "--locked",
+            "--environment",
+            "examples-runner",
+            "--",
+            "python",
+            str(repository_root / "source" / "examples" / "examples.py"),
+            "--dev",
+            *arguments,
+        ],
+        repository_root=repository_root,
+        environment=_create_pixi_environment(),
+    )
+
+
 def _create_argument_parser() -> argparse.ArgumentParser:
     """Create the command-line parser."""
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("bootstrap", help="Download or verify the pinned Pixi executable.")
+    examples_parser = subparsers.add_parser("examples", help="Run the published source examples.")
+    examples_parser.add_argument("arguments", nargs=argparse.REMAINDER)
     libraries_parser = subparsers.add_parser("libraries", help="Run the standalone library build.")
     libraries_parser.add_argument("arguments", nargs=argparse.REMAINDER)
     return parser
@@ -610,6 +627,8 @@ def _main() -> int:
     command = list(arguments.arguments)
     if command[:1] == ["--"]:
         command = command[1:]
+    if arguments.command == "examples":
+        return _run_examples(command)
     return _run_libraries(command)
 
 

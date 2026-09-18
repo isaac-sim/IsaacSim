@@ -65,6 +65,7 @@ class TestOvPhysxTensorsRegistration:
 
         Args:
             entity: Entity type whose registered read operations are unavailable.
+
         """
         view = t.create_entity("ovphysx", entity, ["/World/X"])
         impls = view.list_impls(t.ImplKind.Get)
@@ -74,11 +75,9 @@ class TestOvPhysxTensorsRegistration:
 
     def test_contact_entity_view_creatable(self) -> None:
         """Require a standalone contact view with named read operations."""
-        # Via the standalone create_entity path (no live simulation) ovphysx
-        # returns a placeholder rigid-contact view. The real contact tensors
-        # (net-contact-forces, contact-data, friction-data, ...) are wired up
-        # only when the view is built through a live SimulationView; here we
-        # just confirm the entity type resolves and registers its impl.
+        # With no live simulation ovphysx returns a placeholder rigid-contact view. The real contact
+        # tensors (net-contact-forces, contact-data, friction-data, ...) need a resolved handle; here
+        # we just confirm the entity type resolves and registers its impl.
         view = t.create_entity("ovphysx", "rigid-contact", ["/World/X"])
         assert view is not None
         assert len(view.list_impls(t.ImplKind.Get)) > 0

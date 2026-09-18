@@ -28,12 +28,8 @@ RectLight::RectLight(const std::variant<std::string, std::vector<std::string>>& 
                      const std::optional<array::Array>& widths,
                      const std::optional<array::Array>& heights,
                      const std::optional<std::variant<std::string, std::vector<std::string>>>& textureFiles,
-                     const std::optional<array::Array>& positions,
-                     const std::optional<array::Array>& translations,
-                     const std::optional<array::Array>& orientations,
-                     const std::optional<array::Array>& scales,
                      bool resetXformOpProperties)
-    : Light(paths, /*lightType=*/"RectLight", positions, translations, orientations, scales, resetXformOpProperties)
+    : Light(paths, /*lightType=*/"RectLight", resetXformOpProperties)
 {
     // Initialize instance from arguments.
     if (widths.has_value())
@@ -81,6 +77,11 @@ void RectLight::setTextureFiles(const std::variant<std::string, std::vector<std:
 std::vector<std::string> RectLight::getTextureFiles(const std::optional<array::Array>& indices)
 {
     return std::get<std::vector<std::string>>(this->getAttributeValues("inputs:texture:file", indices));
+}
+
+array::Array RectLight::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("RectLight");
 }
 
 } // namespace lights

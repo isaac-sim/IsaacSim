@@ -18,9 +18,9 @@ isaacsim_add_module(
     EXPORT_HEADER isaacsim/common/string/Export.h
     EXPORT_MACRO ISAACSIM_COMMON_STRING_API
     PUBLIC_CPP_HEADERS
-        isaacsim/common/string/details/ColorParser.hpp
         isaacsim/common/string/String.hpp
     SOURCES
+        src/details/ColorParser.hpp
         src/details/ColorParser.cpp
         src/String.cpp
 )

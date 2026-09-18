@@ -42,14 +42,14 @@ def _get_paths(stage: Any, populate: Any) -> Any:
 
 
 def _normalize_quaternions(quats: np.ndarray) -> np.ndarray:
-    """Normalise (N, 4) quaternion array, mirroring ``GfQuat::GetNormalized()``.
+    """Normalize (N, 4) ``xyzw`` quaternion array, mirroring ``GfQuat::GetNormalized()``.
 
     The norm is computed in float64 because squaring small float32 values underflows into the
     subnormal range and destroys precision. Rows shorter than ``GF_MIN_VECTOR_LENGTH`` become
     identity, which is what USD does.
 
     Args:
-        quats: Quats values.
+        quats: Quats values in ``xyzw`` order.
 
     Returns:
         The resulting value.
@@ -59,8 +59,23 @@ def _normalize_quaternions(quats: np.ndarray) -> np.ndarray:
     degenerate = norms < 1e-10  # GF_MIN_VECTOR_LENGTH
     normalized = quats / np.where(degenerate, 1.0, norms)
     identity = np.zeros_like(normalized)
-    identity[:, 0] = 1.0
+    identity[:, 3] = 1.0  # the real part is the last component in xyzw order
     return np.where(degenerate, identity, normalized).astype(np.float32)
+
+
+def _to_wxyz(quats: np.ndarray) -> np.ndarray:
+    """Reorder an (N, 4) quaternion array from ``xyzw`` to ``wxyz``.
+
+    The result is made contiguous because the reordered array is otherwise rejected when passed
+    to a binding expecting an ``Array``.
+
+    Args:
+        quats: Quats values in ``xyzw`` order.
+
+    Returns:
+        The resulting value.
+    """
+    return np.ascontiguousarray(quats[:, [3, 0, 1, 2]])
 
 
 """
@@ -137,6 +152,43 @@ def test_local_poses(capsys: Any, stage: Any, populate: Any, translations: Any, 
 
 
 @hypothesis.given(
+    orientations=hypothesis.extra.numpy.arrays(
+        dtype=np.float32, shape=(5, 4), elements=isaacsim_test.finite_float_elements(min_value=0.0, max_value=1.0)
+    ),
+)
+@pytest.mark.parametrize("method", ["world", "local"])
+def test_poses_rotation_format(capsys: Any, stage: Any, method: Any, orientations: Any) -> None:
+    """Test that the ``rotation_format`` argument selects the quaternion component order.
+
+    Args:
+        capsys: Pytest output-capture fixture.
+        stage: Stage used by the test.
+        method: Whether to exercise the world-frame or the local-frame pose methods.
+        orientations: Orientations values, in ``xyzw`` order.
+    """
+    orientations = _normalize_quaternions(orientations)
+    prims = Xform(_get_paths(stage, populate=False))
+    setter = prims.set_world_poses if method == "world" else prims.set_local_poses
+    getter = prims.get_world_poses if method == "world" else prims.get_local_poses
+    # the default is xyzw, so an omitted argument matches an explicit one
+    setter(None, orientations)
+    isaacsim_test.check_allclose(orientations, getter()[1])
+    isaacsim_test.check_allclose(orientations, getter(rotation_format="xyzw")[1])
+    # reading the same pose as wxyz reorders the components
+    isaacsim_test.check_allclose(_to_wxyz(orientations), getter(rotation_format="wxyz")[1])
+    # writing as wxyz round-trips, and agrees with an xyzw read of the same pose
+    setter(None, _to_wxyz(orientations), rotation_format="wxyz")
+    isaacsim_test.check_allclose(_to_wxyz(orientations), getter(rotation_format="wxyz")[1])
+    isaacsim_test.check_allclose(orientations, getter()[1])
+    # unsupported formats are rejected on both the read and the write path
+    for rotation_format in ["XYZW", "wxzy", ""]:
+        with pytest.raises(ValueError):
+            getter(rotation_format=rotation_format)
+        with pytest.raises(ValueError):
+            setter(None, orientations, rotation_format=rotation_format)
+
+
+@hypothesis.given(
     scales=hypothesis.extra.numpy.arrays(
         dtype=np.float32, shape=(5, 3), elements=isaacsim_test.finite_float_elements(min_value=0.001)
     ),
@@ -178,9 +230,31 @@ def test_visibilities(capsys: Any, stage: Any, populate: Any, values: Any) -> No
     prims = Xform(_get_paths(stage, populate))
     # initial get
     output = prims.get_visibilities()
-    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.uint8)
+    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.bool)
     # round-trip
     prims.set_visibilities(values)
     output = prims.get_visibilities()
-    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.uint8)
+    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.bool)
     isaacsim_test.check_equal(values, output)
+
+
+def test_are_of_type(capsys: Any, stage: Any) -> None:
+    """Test are of type.
+
+    Args:
+        capsys: Pytest output-capture fixture.
+        stage: Stage used by the test.
+    """
+    type_names = ["Xform", "Cube", "Scope"]
+    for index, type_name in enumerate(type_names):
+        stage.define_prim(f"/World/Prim{index}", type_name)
+    paths = [f"/World/Prim{index}" for index in range(len(type_names))]
+    # boolean flags are reported per prim, in the order the paths were given
+    output = Xform.are_of_type(paths)
+    isaacsim_test.check_array(output, shape=(len(type_names), 1), dtype=wp.bool)
+    isaacsim_test.check_equal(np.array([1, 1, 0], dtype=np.bool_).reshape(-1, 1), output)
+    # regular expressions are expanded against the active stage
+    isaacsim_test.check_array(Xform.are_of_type("/World/Prim.*"), shape=(len(type_names), 1), dtype=wp.bool)
+    # non-existing prims
+    with pytest.raises(RuntimeError):
+        Xform.are_of_type("/World/NonExistent")

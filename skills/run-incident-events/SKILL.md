@@ -3,7 +3,7 @@ name: run-incident-events
 description: "Tag prims and drive IRI topple, fire, and spill incidents on a live stage, then record a report. Use when running incidents; to author the config YAML use generate-incident-config."
 license: Apache-2.0
 metadata:
-  author: NVIDIA Isaac Sim
+  author: NVIDIA Isaac Sim <isaac-sim@nvidia.com>
   owner: Isaac Sim
   service: isaacsim.replicator.incident
   version: "1.0.0"

@@ -13,8 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef NUSD_SHADERS_GLES_H
-#define NUSD_SHADERS_GLES_H
+#pragma once
 
 /*
  * shaders_gles.h — Shader source strings embedded as C constants.
@@ -123,8 +122,8 @@
  * "#version 320 es" the extension macro is undefined but gl_PrimitiveID is
  * core, so that branch is selected explicitly.
  *
- * vec3(-1.0) is the caller's "no ptex colour here" sentinel, already the
- * desktop behaviour — losing ptex face colours is a visible but bounded
+ * vec3(-1.0) is the caller's "no ptex color here" sentinel, already the
+ * desktop behavior — losing ptex face colors is a visible but bounded
  * degradation; losing every material is not. */
 #    define NUSD_PTEX_COLOR_FUNC                                                                                       \
         "#if defined(GL_EXT_geometry_shader) || __VERSION__ >= 320\n"                                                  \
@@ -248,7 +247,7 @@ static const char* NUSD_SHADER_UNUSED k_shadow_vert_gles =
                                             "\n"
                                             /* The pass VP, not a per-light array: one uniform carries whichever
                                              * light's view-projection the current atlas tile belongs to, so the
-                                             * MeshBlock can stay loaded with the COLOUR pass's model matrices and
+                                             * MeshBlock can stay loaded with the COLOR pass's model matrices and
                                              * every tile is a re-draw with one uniform changed. (Was
                                              * u_shadowLightVP, which also named the fragment-stage mat4[2] the atlas
                                              * replaced -- one name for two unrelated uniforms in two programs.) */
@@ -865,7 +864,8 @@ static const char* NUSD_SHADER_UNUSED k_pbr_frag_gles = NUSD_SHADER_VERSION NUSD
     "    /* IOR-driven F0 for dielectrics vs metals; MDL may author F0 directly. */\n"
     "    float f0_dielectric = pow((mat.ior - 1.0) / (mat.ior + 1.0), 2.0);\n"
     "    float surfaceMetallic = (mat.use_specular_workflow != 0) ? 0.0 : metallic;\n"
-    "    vec3 F0 = (mat.use_specular_workflow != 0) ? mat.specular_color.rgb : mix(vec3(f0_dielectric), baseColor, metallic);\n"
+    "    vec3 F0 = (mat.use_specular_workflow != 0) ? mat.specular_color.rgb : "
+    "mix(vec3(f0_dielectric), baseColor, metallic);\n"
     "    float NdotV = max(dot(N, V), 0.001);\n"
     "    float localOcc = 1.0;\n"
     "\n"
@@ -1012,7 +1012,8 @@ static const char* NUSD_SHADER_UNUSED k_pbr_frag_gles = NUSD_SHADER_VERSION NUSD
     "        if (u_debugMode == 10) { outColor = vec4(F_ibl, 1.0); return; }\n"
     "        if (u_debugMode == 11) { outColor = vec4(vec3(NdotV), 1.0); return; }\n"
     "        if (u_debugMode == 12) { outColor = vec4(brdf.x, brdf.y, 0.0, 1.0); return; }\n"
-    "        if (u_debugMode == 13) { float mult = F_ibl.r * brdf.x + brdf.y; outColor = vec4(vec3(mult), 1.0); return; }\n"
+    "        if (u_debugMode == 13) { float mult = F_ibl.r * brdf.x + brdf.y; "
+    "outColor = vec4(vec3(mult), 1.0); return; }\n"
     "        if (u_debugMode == 14) { outColor = vec4(aces(prefilteredColor), 1.0); return; }\n"
     "        if (u_debugMode == 15) { outColor = vec4(vec3(roughness), 1.0); return; }\n"
     "        ambient = (diffuseIBL + specularIBL) * ao * localOcc;\n"
@@ -1025,7 +1026,8 @@ static const char* NUSD_SHADER_UNUSED k_pbr_frag_gles = NUSD_SHADER_VERSION NUSD
     "             * render white on official, near-black on ovgl' symptom. */\n"
     "            float coolBounce = upFacing * (1.0 - surfaceMetallic) * smoothstep(0.06, 0.45, albedoLum);\n"
     "            ambient += vec3(0.020, 0.032, 0.052) * coolBounce * ao;\n"
-    "            float lowHorizontal = upFacing * (1.0 - surfaceMetallic) * (1.0 - smoothstep(0.006, 0.035, fragWorldPos.z)) * smoothstep(0.06, 0.42, albedoLum);\n"
+    "            float lowHorizontal = upFacing * (1.0 - surfaceMetallic) * "
+    "(1.0 - smoothstep(0.006, 0.035, fragWorldPos.z)) * smoothstep(0.06, 0.42, albedoLum);\n"
     "            ambient += vec3(0.035, 0.060, 0.105) * lowHorizontal * ao;\n"
     "        }\n"
     "    }\n"
@@ -1280,7 +1282,8 @@ static const char* NUSD_SHADER_UNUSED k_pbr_frag_gles = NUSD_SHADER_VERSION NUSD
     "    color = pow(color, vec3(1.0 / 2.2));\n"
     "    if (authoredLightNoIbl) {\n"
     "        float outLuma = dot(color, vec3(0.2126, 0.7152, 0.0722));\n"
-    "        float albedoChroma = max(baseColor.r, max(baseColor.g, baseColor.b)) - min(baseColor.r, min(baseColor.g, baseColor.b));\n"
+    "        float albedoChroma = max(baseColor.r, max(baseColor.g, baseColor.b)) - "
+    "min(baseColor.r, min(baseColor.g, baseColor.b));\n"
     "        float albedoWarm = smoothstep(0.02, 0.20, baseColor.r - baseColor.b);\n"
     "        float neutralAlbedo = clamp((0.26 - albedoChroma) / 0.22, 0.0, 1.0) * (1.0 - albedoWarm);\n"
     "        float farFill = smoothstep(4.0, 14.0, length(fragWorldPos - u_eyePos));\n"
@@ -1295,7 +1298,7 @@ static const char* NUSD_SHADER_UNUSED k_pbr_frag_gles = NUSD_SHADER_VERSION NUSD
     "         * Measured against the scene's own size, not in absolute world units.  The\n"
     "         * constants below were tuned for a sim-sized scene, and an asset authored in\n"
     "         * centimetres is hundreds of units across: every visible pixel then sat past\n"
-    "         * saturation and the whole render was a flat 55% mix into the grey backdrop.\n"
+    "         * saturation and the whole render was a flat 55% mix into the gray backdrop.\n"
     "         * u_sceneRadius defaults to the reference radius, so a sim-sized scene keeps\n"
     "         * exactly the old curve (haze from 9 units, saturating at 49). */\n"
     "        float sceneRadius = max(u_sceneRadius, 1e-3);\n"
@@ -1303,7 +1306,7 @@ static const char* NUSD_SHADER_UNUSED k_pbr_frag_gles = NUSD_SHADER_VERSION NUSD
     "        float haze = clamp((hazeDist - 1.125) / 5.0, 0.0, 1.0) * 0.55;\n"
     "        /* Fade toward the ACTUAL backdrop (black, official ovrtx 0.4's\n"
     "         * empty-background color) so the horizon still recedes into the\n"
-    "         * clear color rather than leaving a grey halo on a black sky. */\n"
+    "         * clear color rather than leaving a gray halo on a black sky. */\n"
     "        color = mix(color, vec3(0.0), haze);\n"
     "    }\n"
     "\n"
@@ -1376,7 +1379,7 @@ static const char* NUSD_SHADER_UNUSED k_env_bg_frag_gles = NUSD_SHADER_VERSION N
     "    vec3 color;\n"
     "    if (u_envIntensity >= 0.0) {\n"
     /* Radiometric authored dome: the texels ALREADY carry final linear
-     * radiance in nits (colour and intensity were baked in by
+     * radiance in nits (color and intensity were baked in by
      * env_build_from_rgb), so the visible background is just the camera
      * transform of the texel. No sky multiplier, no kPhotoExposure, and it
      * uses u_tone.x -- the SAME exposure knob the surfaces take -- so the
@@ -1570,7 +1573,7 @@ static const char* NUSD_SHADER_UNUSED k_ssao_frag_gles = NUSD_SHADER_VERSION NUS
  * refusing taps across a depth discontinuity. A plain box blur here pulls the
  * background's AO=1 onto every silhouette and lights a bright fringe around
  * each object -- most visible on exactly the thin articulated links this whole
- * exercise is about. The threshold is RELATIVE to the centre depth, so it is
+ * exercise is about. The threshold is RELATIVE to the center depth, so it is
  * scale-free across a 0.4 m sphere and a 40 m warehouse alike. */
 static const char* NUSD_SHADER_UNUSED k_ssao_blur_frag_gles = NUSD_SHADER_VERSION NUSD_PRECISION_HIGH
     "in vec2 v_uv;\n"
@@ -2043,5 +2046,3 @@ static const char* NUSD_SHADER_UNUSED k_curve_frag_gles = NUSD_SHADER_VERSION_TE
     "    vec3 lit = ambient + diffuse * 0.55 + vec3(spec * 0.10);\n"
     "    outColor = vec4(pow(clamp(lit, 0.0, 1.0), vec3(1.0/2.2)), 1.0);\n"
     "}\n";
-
-#endif /* NUSD_SHADERS_GLES_H */

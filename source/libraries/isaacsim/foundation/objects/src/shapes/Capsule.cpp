@@ -29,12 +29,8 @@ Capsule::Capsule(const std::variant<std::string, std::vector<std::string>>& path
                  const std::optional<array::Array>& heights,
                  const std::optional<std::variant<std::string, std::vector<std::string>>>& axes,
                  const std::optional<ColorType>& colors,
-                 const std::optional<array::Array>& positions,
-                 const std::optional<array::Array>& translations,
-                 const std::optional<array::Array>& orientations,
-                 const std::optional<array::Array>& scales,
                  bool resetXformOpProperties)
-    : Shape(paths, /*shapeType=*/"Capsule", colors, positions, translations, orientations, scales, resetXformOpProperties)
+    : Shape(paths, /*shapeType=*/"Capsule", colors, resetXformOpProperties)
 {
     // Initialize instance from arguments.
     if (radii.has_value())
@@ -87,6 +83,11 @@ std::vector<std::string> Capsule::getAxes(const std::optional<array::Array>& ind
 void Capsule::updateExtents()
 {
     // TODO: Implement and call it when setting values.
+}
+
+array::Array Capsule::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("Capsule");
 }
 
 } // namespace shapes

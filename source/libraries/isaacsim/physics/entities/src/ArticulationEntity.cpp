@@ -13,8 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "details/EntityUtils.hpp"
+
+#include <isaacsim/common/array/Array.hpp>
 #include <isaacsim/physics/entities/ArticulationEntity.hpp>
-#include <isaacsim/physics/entities/details/EntityUtils.hpp>
 #include <isaacsim/physics/registration/tensors/TensorTypes.hpp>
 
 #include <algorithm>
@@ -90,21 +92,23 @@ array::Array extractComponent(const array::Array& data, size_t componentIndex)
         throw std::logic_error("extractComponent: not implemented for non-CPU devices");
     }
     const auto shape = data.shape().shape();
-    const int64_t N = shape[0];
-    const int64_t D = shape[1];
-    const int64_t K = shape[2];
+    const int64_t entityCount = shape[0];
+    const int64_t itemCount = shape[1];
+    const int64_t componentCount = shape[2];
     const size_t elemSize = data.dtype().size();
 
-    auto buffer = std::shared_ptr<std::byte[]>(new std::byte[static_cast<size_t>(N * D) * elemSize]);
+    auto buffer = std::shared_ptr<std::byte[]>(new std::byte[static_cast<size_t>(entityCount * itemCount) * elemSize]);
     const auto* src = static_cast<const std::byte*>(data.data());
 
-    for (int64_t i = 0; i < N * D; ++i)
+    for (int64_t i = 0; i < entityCount * itemCount; ++i)
     {
         std::memcpy(buffer.get() + static_cast<size_t>(i) * elemSize,
-                    src + static_cast<size_t>(i * K + static_cast<int64_t>(componentIndex)) * elemSize, elemSize);
+                    src + static_cast<size_t>(i * componentCount + static_cast<int64_t>(componentIndex)) * elemSize,
+                    elemSize);
     }
 
-    return array::Array::fromBuffer(std::move(buffer), array::Shape({ N, D }), data.dtype(), data.device());
+    return array::Array::fromBuffer(
+        std::move(buffer), array::Shape({ entityCount, itemCount }), data.dtype(), data.device());
 }
 
 // Writes values (N, D) into slice [:, :, componentIndex] of a mutable 3D array (N, D, K).
@@ -115,43 +119,32 @@ void replaceComponent(array::Array& data, size_t componentIndex, const array::Ar
         throw std::logic_error("replaceComponent: not implemented for non-CPU devices");
     }
     const auto shape = data.shape().shape();
-    const int64_t N = shape[0];
-    const int64_t D = shape[1];
-    const int64_t K = shape[2];
+    const int64_t entityCount = shape[0];
+    const int64_t itemCount = shape[1];
+    const int64_t componentCount = shape[2];
     const size_t elemSize = data.dtype().size();
 
     auto* dst = static_cast<std::byte*>(data.data());
     const auto* src = static_cast<const std::byte*>(values.data());
 
-    for (int64_t i = 0; i < N * D; ++i)
+    for (int64_t i = 0; i < entityCount * itemCount; ++i)
     {
-        std::memcpy(dst + static_cast<size_t>(i * K + static_cast<int64_t>(componentIndex)) * elemSize,
+        std::memcpy(dst + static_cast<size_t>(i * componentCount + static_cast<int64_t>(componentIndex)) * elemSize,
                     src + static_cast<size_t>(i) * elemSize, elemSize);
     }
-}
-
-array::Array logicalNot(const array::Array& data)
-{
-    const array::Shape shape = data.shape();
-    std::vector<bool> mask = data.reshape(array::Shape({ -1 })).get<std::vector<bool>>();
-    for (size_t i = 0; i < mask.size(); ++i)
-    {
-        mask[i] = !mask[i];
-    }
-    return array::Array(mask, data.dtype()).reshape(shape);
 }
 
 array::Array resolveNameIndices(const std::variant<std::string, std::vector<std::string>>& names,
                                 const std::vector<std::string>& nameList,
                                 const std::string& entityKind)
 {
-    const std::vector<std::string>& nameVec = std::holds_alternative<std::string>(names) ?
-                                                  std::vector<std::string>{ std::get<std::string>(names) } :
-                                                  std::get<std::vector<std::string>>(names);
+    const std::vector<std::string>& nameVector = std::holds_alternative<std::string>(names) ?
+                                                     std::vector<std::string>{ std::get<std::string>(names) } :
+                                                     std::get<std::vector<std::string>>(names);
 
     std::vector<int32_t> indices;
-    indices.reserve(nameVec.size());
-    for (const auto& name : nameVec)
+    indices.reserve(nameVector.size());
+    for (const auto& name : nameVector)
     {
         auto it = std::find(nameList.begin(), nameList.end(), name);
         if (it == nameList.end())
@@ -160,7 +153,7 @@ array::Array resolveNameIndices(const std::variant<std::string, std::vector<std:
         }
         indices.push_back(static_cast<int32_t>(std::distance(nameList.begin(), it)));
     }
-    return array::Array(indices, array::DType::Int32());
+    return array::Array(indices, array::Dtype::Int32());
 }
 
 // Selects the rows of a (N, ...) array at the given indices, returning an (M, ...) array.
@@ -178,7 +171,7 @@ array::Array gatherRows(const array::Array& data, const std::optional<array::Arr
     const int64_t count = dimensions[0];
     const size_t rowSize = count > 0 ? data.nbytes() / static_cast<size_t>(count) : 0;
 
-    const std::vector<int64_t> rows = indices->toDtype(array::DType::Int64()).get<std::vector<int64_t>>();
+    const std::vector<int64_t> rows = indices->toDtype(array::Dtype::Int64()).get<std::vector<int64_t>>();
     dimensions[0] = static_cast<int64_t>(rows.size());
 
     auto buffer = std::shared_ptr<std::byte[]>(new std::byte[rows.size() * rowSize]);
@@ -200,7 +193,7 @@ array::Array makeZeros(const array::Array& shapeLike)
 {
     const size_t count = shapeLike.size();
     std::vector<float> zeros(count, 0.0f);
-    return array::Array(zeros, array::DType::Float32()).reshape(shapeLike.shape());
+    return array::Array(zeros, array::Dtype::Float32()).reshape(shapeLike.shape());
 }
 
 } // namespace
@@ -278,19 +271,21 @@ size_t ArticulationEntity::numFixedTendons() const
 
 std::tuple<size_t, size_t, size_t> ArticulationEntity::jacobianMatrixShape() const
 {
-    const auto spec = m_entityView->getImplSpec("jacobians", tensors::ImplKind::eGet);
-    // Shape hint: (A, R, C) where R = (L-1)*6 for fixed base, L*6 for floating base
-    const size_t R = static_cast<size_t>(spec.shapeHint[1]);
-    const size_t C = static_cast<size_t>(spec.shapeHint[2]);
-    return { R / 6, 6, C };
+    const auto specification =
+        m_entityView->getImplementationSpecification("jacobians", tensors::ImplementationKind::eGet);
+    // Shape hint: (A, R, C) where R = (L-1)*6 for fixed base, L*6 for floating base.
+    const size_t rowCount = static_cast<size_t>(specification.shapeHint[1]);
+    const size_t columnCount = static_cast<size_t>(specification.shapeHint[2]);
+    return { rowCount / 6, 6, columnCount };
 }
 
 std::tuple<size_t, size_t> ArticulationEntity::massMatrixShape() const
 {
-    const auto spec = m_entityView->getImplSpec("generalized-mass-matrices", tensors::ImplKind::eGet);
-    // Shape hint: (A, M, M)
-    const size_t M = static_cast<size_t>(spec.shapeHint[1]);
-    return { M, M };
+    const auto specification =
+        m_entityView->getImplementationSpecification("generalized-mass-matrices", tensors::ImplementationKind::eGet);
+    // Shape hint: (A, M, M).
+    const size_t matrixSize = static_cast<size_t>(specification.shapeHint[1]);
+    return { matrixSize, matrixSize };
 }
 
 array::Array ArticulationEntity::getLinkIndices(const std::variant<std::string, std::vector<std::string>>& names)
@@ -615,19 +610,19 @@ std::vector<std::vector<std::string>> ArticulationEntity::getDofDriveTypes(const
                                                                            const std::optional<array::Array>& dofIndices)
 {
     (void)dofIndices;
-    array::Array data = getData("drive-types", indices); // (N, D) uint8
+    array::Array data = getData("drive-types", indices); // (N, D) uint8.
     const auto shape = data.shape().shape();
-    const int64_t N = shape[0];
-    const int64_t D = shape[1];
+    const int64_t entityCount = shape[0];
+    const int64_t dofCount = shape[1];
     const auto rawData = data.get<std::vector<uint8_t>>();
 
     std::vector<std::vector<std::string>> result(
-        static_cast<size_t>(N), std::vector<std::string>(static_cast<size_t>(D)));
-    for (int64_t i = 0; i < N; ++i)
+        static_cast<size_t>(entityCount), std::vector<std::string>(static_cast<size_t>(dofCount)));
+    for (int64_t i = 0; i < entityCount; ++i)
     {
-        for (int64_t j = 0; j < D; ++j)
+        for (int64_t j = 0; j < dofCount; ++j)
         {
-            const uint8_t value = rawData[static_cast<size_t>(i * D + j)];
+            const uint8_t value = rawData[static_cast<size_t>(i * dofCount + j)];
             if (value == 1)
             {
                 result[i][j] = "force";
@@ -764,7 +759,8 @@ array::Array ArticulationEntity::getLinkEnabledGravities(const std::optional<arr
                                                          const std::optional<array::Array>& linkIndices)
 {
     (void)linkIndices;
-    return logicalNot(getData("disable-gravities", indices));
+    const array::Array disabled = getData("disable-gravities", indices);
+    return array::logicalNot(disabled).toDtype(disabled.dtype());
 }
 
 void ArticulationEntity::setLinkEnabledGravities(const array::Array& enabled,
@@ -772,7 +768,7 @@ void ArticulationEntity::setLinkEnabledGravities(const array::Array& enabled,
                                                  const std::optional<array::Array>& linkIndices)
 {
     (void)linkIndices;
-    setData("disable-gravities", logicalNot(enabled), indices);
+    setData("disable-gravities", array::logicalNot(enabled).toDtype(enabled.dtype()), indices);
 }
 
 array::Array ArticulationEntity::getFixedTendonStiffnesses(const std::optional<array::Array>& indices,

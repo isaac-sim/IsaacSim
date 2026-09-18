@@ -5,5 +5,5 @@
 setlocal enableextensions
 
 set "PYTHONDONTWRITEBYTECODE=1"
-call "%~dp0..\..\tools\packman\python.bat" "%~dp0examples.py" --dev %*
+call "%~dp0..\..\tools\packman\python.bat" "%~dp0..\..\tools\pixi_run.py" examples -- %*
 exit /b %ERRORLEVEL%

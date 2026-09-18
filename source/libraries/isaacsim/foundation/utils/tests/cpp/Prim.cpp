@@ -153,6 +153,10 @@ TEST_SUITE("Prim")
         {
             stage.definePrim("/World/A/B" + std::to_string(i), i % 2 ? "Cube" : "Sphere");
         }
+        // Sphere is only reachable two levels below /World/D0.
+        stage.definePrim("/World/D0", "Cube");
+        stage.definePrim("/World/D0/E0", "Cube");
+        stage.definePrim("/World/D0/E0/F0", "Sphere");
 
         auto isSphere = [](const std::string& path) { return objects::Prim(path).getTypeName()[0] == "Sphere"; };
         auto isXform = [](const std::string& path) { return objects::Prim(path).getTypeName()[0] == "Xform"; };
@@ -166,6 +170,20 @@ TEST_SUITE("Prim")
         CHECK_EQ(getFirstMatchingChildPrim("/World", isXform, true), std::optional<std::string>{ "/World" });
         // exclude_self: first Xform child of /World is /World/A
         CHECK_EQ(getFirstMatchingChildPrim("/World", isXform, false), std::optional<std::string>{ "/World/A" });
+
+        // max_depth: nullopt (unlimited) - reaches the sphere two levels down
+        CHECK_EQ(
+            getFirstMatchingChildPrim("/World/D0", isSphere, false), std::optional<std::string>{ "/World/D0/E0/F0" });
+        // max_depth: 0 - no descendants visited
+        CHECK_EQ(getFirstMatchingChildPrim("/World/D0", isSphere, false, 0), std::nullopt);
+        // max_depth: 1 - sphere is at depth 2, not reached
+        CHECK_EQ(getFirstMatchingChildPrim("/World/D0", isSphere, false, 1), std::nullopt);
+        // max_depth: 2 - sphere is reached
+        CHECK_EQ(getFirstMatchingChildPrim("/World/D0", isSphere, false, 2),
+                 std::optional<std::string>{ "/World/D0/E0/F0" });
+        // include_self, max_depth: 0 - self is tested at depth 0 and matches
+        CHECK_EQ(getFirstMatchingChildPrim("/World/D0/E0/F0", isSphere, true, 0),
+                 std::optional<std::string>{ "/World/D0/E0/F0" });
 
         REQUIRE_UNARY(stage.closeStage());
     }

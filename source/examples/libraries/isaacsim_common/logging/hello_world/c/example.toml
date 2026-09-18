@@ -5,7 +5,7 @@ id = "hello_world.c"
 title = "C Hello World"
 summary = "Report a message through the public C logging API."
 owners = ["isaacsim.common.logging"]
-topics = ["logging", "c"]
+topics = ["logging"]
 
 [build]
 adapter = "cmake"

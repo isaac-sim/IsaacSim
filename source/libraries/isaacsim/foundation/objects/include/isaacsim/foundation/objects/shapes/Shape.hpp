@@ -42,6 +42,22 @@ public:
     ~Shape() = default;
 
     /**
+     * @brief Check whether the prims at the given paths are of the type handled by this class.
+     * @details As the base class of all shapes, this method tests for the @c UsdGeomGprim schema.
+     *          Since @c Gprim is also the base of other geometry types (e.g. @c Mesh, @c Points),
+     *          a @c true flag does not imply the prim can be wrapped by a concrete Shape subclass;
+     *          use the subclass-specific @c areOfType for that.
+     *
+     *          The paths are resolved against the active stage before being checked.
+     *          Since this method is static, the returned array is always allocated on the CPU.
+     * @param[in] paths Single path string or list of path strings. May include regular
+     *                  expressions that are expanded against the active stage.
+     * @return Boolean flags (dtype bool, shape @c (N,1)), one per resolved prim.
+     * @throws std::runtime_error if the given paths do not correspond to existing prims.
+     */
+    static array::Array areOfType(const std::variant<std::string, std::vector<std::string>>& paths);
+
+    /**
      * @brief Set the display colors of the selected prims.
      * @param[in] colors  Color values as RGB triples (shape @c (N,3)), a single color token string,
      *                    or a list of color token strings. Broadcast rules apply for smaller inputs.
@@ -69,12 +85,7 @@ protected:
      * @param[in] paths                  Single path or list of paths to USD shape prims.
      * @param[in] shapeType              USD geometry type name used when creating new prims.
      * @param[in] colors                 Initial display colors. Optional.
-     * @param[in] positions              Initial world-frame positions (shape @c (N,3)). Optional.
-     * @param[in] translations           Initial local-frame translations (shape @c (N,3)). Optional.
-     * @param[in] orientations           Initial orientations as quaternions @c wxyz (shape @c (N,4)). Optional.
-     * @param[in] scales                 Initial local scales (shape @c (N,3)). Optional.
-     * @param[in] resetXformOpProperties Whether to normalize the xformOp stack before applying the
-     *                                   initial transform.
+     * @param[in] resetXformOpProperties Whether to normalize the xformOp stack to translate/orient/scale.
      */
     Shape(const std::variant<std::string, std::vector<std::string>>& paths,
           // Shape (internal)
@@ -82,10 +93,6 @@ protected:
           // Shape
           const std::optional<ColorType>& colors = std::nullopt,
           // Xform
-          const std::optional<array::Array>& positions = std::nullopt,
-          const std::optional<array::Array>& translations = std::nullopt,
-          const std::optional<array::Array>& orientations = std::nullopt,
-          const std::optional<array::Array>& scales = std::nullopt,
           bool resetXformOpProperties = true);
 
     /** @brief Expands and validates one or more requested shape axes. */

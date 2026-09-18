@@ -42,7 +42,7 @@
 /* OpenGL ES requires glUniformMatrix*'s transpose argument to be GL_FALSE.
  * The renderer's public/internal math convention is row-major, so convert to
  * the column-major byte layout GL expects instead of relying on desktop GL's
- * permitted transpose=GL_TRUE behaviour. */
+ * permitted transpose=GL_TRUE behavior. */
 static void mat4_row_major_to_gl(float dst[16], const float src[16])
 {
     for (int row = 0; row < 4; ++row)
@@ -449,7 +449,28 @@ GpuBuffer gpu_create_buffer(Gpu* gpu, const GpuBufferDesc* desc)
 
     glGenBuffers(1, &buf->gl_buf);
     glBindBuffer(buf->target, buf->gl_buf);
-    glBufferData(buf->target, (GLsizeiptr)desc->size, desc->data, GL_STATIC_DRAW);
+    /* Avoid SIGBUS in NVIDIA 595.58.03's aarch64 buffer upload path. */
+    glBufferData(buf->target, (GLsizeiptr)desc->size, NULL, GL_STATIC_DRAW);
+    if (desc->data && desc->size > 0)
+    {
+        void* mapped =
+            glMapBufferRange(buf->target, 0, (GLsizeiptr)desc->size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
+        if (!mapped)
+        {
+            glBindBuffer(buf->target, 0);
+            glDeleteBuffers(1, &buf->gl_buf);
+            free(buf);
+            return NULL;
+        }
+        memcpy(mapped, desc->data, (size_t)desc->size);
+        if (!glUnmapBuffer(buf->target))
+        {
+            glBindBuffer(buf->target, 0);
+            glDeleteBuffers(1, &buf->gl_buf);
+            free(buf);
+            return NULL;
+        }
+    }
     glBindBuffer(buf->target, 0);
 
     gpu->allocated_bytes += desc->size;
@@ -684,7 +705,7 @@ void gpu_end_frame(Gpu* gpu)
 {
     if (!gpu)
         return;
-    gpu_overlay_flush(gpu);
+    gpu_overlay_flush(gpu, gpu->width, gpu->height);
     /* Swap is done by GLFW in the viewer */
 }
 
@@ -750,7 +771,7 @@ static void gpu_apply_light_uniforms(Gpu* gpu, GpuPipeline pipe)
 /* A sampler2DShadow needs a texture with a DEPTH format AND a compare mode.
  * The 1x1 RGBA8 mat_dummy_tex the pre-atlas path bound when count == 0 was
  * legal only while the shadow sampler was a plain sampler2D; binding it to a
- * shadow sampler is undefined behaviour, so keep a dedicated one. */
+ * shadow sampler is undefined behavior, so keep a dedicated one. */
 static GLuint gpu_shadow_dummy_tex(Gpu* gpu)
 {
     if (gpu->shadow_dummy_tex)
@@ -1118,7 +1139,7 @@ void gpu_set_fallback_lighting(Gpu* gpu, int enabled)
     gpu->fallback_lighting = enabled ? 1 : 0;
     /* current_pipeline is a logical cache.  In the adopted-context path the
      * actual GL program is restored to the embedder after every frame, so only
-     * preserve the immediate-update behaviour when that program is truly
+     * preserve the immediate-update behavior when that program is truly
      * bound.  gpu_cmd_bind_pipeline() always uploads the cached value later. */
     if (gpu->current_pipeline && gpu->current_pipeline->loc_u_fallbackLighting >= 0)
     {
@@ -1240,7 +1261,7 @@ static int gpu_shadow_ensure_atlas(Gpu* gpu, int slots)
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gpu->shadow_atlas_tex, 0);
 #ifdef NUSD_DESKTOP_GL
     /* Depth-only FBO: desktop GL needs NONE draw/read buffers to call it
-     * complete with no colour attachment; GLES is complete as-is. */
+     * complete with no color attachment; GLES is complete as-is. */
     glDrawBuffer(GL_NONE);
     glReadBuffer(GL_NONE);
 #endif
@@ -2296,12 +2317,12 @@ int gpu_load_environment_uniform(Gpu* gpu, const float rgb[3], float intensity)
         return 0;
     /* 32x16 rather than 1x1: the equirect map is also the specular source, and
      * the shader samples it at textureLod(roughness * (mips-1)), so it needs a
-     * real mip chain to sample. Every texel is the same colour, so the only
+     * real mip chain to sample. Every texel is the same color, so the only
      * cost is the SH projection's 512 iterations -- and 16 rows keep its
      * midpoint quadrature of sin(theta) within ~0.1% of the analytic 4*pi, so
      * the DC band lands on the true pi*radiance irradiance.
      *
-     * The colour rides in as the `tint` rather than being baked into the texels
+     * The color rides in as the `tint` rather than being baked into the texels
      * here, so a textureless dome and a textured one take byte-identical code
      * paths through env_build_from_rgb -- including the clamp and the SH
      * projection order. */
@@ -3016,9 +3037,9 @@ void gpu_overlay_rect(Gpu* gpu, float x, float y, float w, float h, float r, flo
     gpu->overlay_nchars++;
 }
 
-void gpu_overlay_flush(Gpu* gpu)
+void gpu_overlay_flush(Gpu* gpu, int screen_width, int screen_height)
 {
-    if (!gpu || gpu->overlay_nchars == 0)
+    if (!gpu || gpu->overlay_nchars == 0 || screen_width <= 0 || screen_height <= 0)
         return;
 
     /* Save state */
@@ -3054,7 +3075,7 @@ void gpu_overlay_flush(Gpu* gpu)
 
     /* Set screen size uniform */
     if (gpu->overlay_pipeline.loc_screen_size >= 0)
-        glUniform2f(gpu->overlay_pipeline.loc_screen_size, (float)gpu->width, (float)gpu->height);
+        glUniform2f(gpu->overlay_pipeline.loc_screen_size, (float)screen_width, (float)screen_height);
 
     /* Bind font texture */
     glActiveTexture(GL_TEXTURE0);

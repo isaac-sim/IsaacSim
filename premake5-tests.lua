@@ -1800,8 +1800,7 @@ function create_tests()
     if os.target() == "linux" then
         python_sample_test(
             "tests-nativepython-testing-isaacsim.simulation_app.test_ovd",
-            "standalone_examples/testing/isaacsim.simulation_app/test_ovd.py",
-            '--ovd="/tmp/"'
+            "standalone_examples/testing/isaacsim.simulation_app/test_ovd.py"
         )
     end
 

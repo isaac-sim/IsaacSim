@@ -37,21 +37,22 @@ call "%~dp0kit\kit.exe"  "%%~dp0apps/isaacsim.exp.base.kit" ^
     --/omni/kit/plugin/syncUsdLoads=1 ^
     --/rtx/hydra/materialSyncLoads=1 ^
     --/app/asyncRendering=0 ^
-    --/app/quitAfter=1000 ^
     --/app/fastShutdown=1 ^
     --/app/file/ignoreUnsavedStage=1 ^
     --/app/warmupMode=0 ^
     --/exts/omni.kit.registry.nucleus/registries/0/name=0 ^
     --/log/flushStandardStreamOutput=1 ^
     --/plugins/carb.tasking.plugin/threadCount=%TASKING_THREAD_CNT% ^
-    %*
+    %* ^
+    --exec "%~dp0warmup_shutdown.py"
 if %ERRORLEVEL% neq 0 (echo "Error warming up shader cache.") else (echo "Shader cache is warmed up.")
 
 call "%~dp0python.bat" "%~dp0standalone_examples\testing\isaacsim.simulation_app\test_viewport_ready.py" ^
     --portable-root "%PORTABLE_ROOT%" ^
     --/log/flushStandardStreamOutput=1 ^
     --no-window ^
-    --silent 
+    --silent ^
+    --no-ros-env
 if %ERRORLEVEL% neq 0 (echo "Error warming up python app shader cache.") else (echo "Python app shader cache is warmed up.")
 
 :: Always succeed in case kit crashed or hanged

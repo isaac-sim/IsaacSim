@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.test
@@ -141,3 +143,21 @@ class TestVisualCuesManager(omni.kit.test.AsyncTestCase):
             stale_layer.identifier,
             [layer.identifier for layer in current_stage.GetLayerStack(includeSessionLayers=True)],
         )
+
+    async def test_update_invalidates_state_when_stage_becomes_unavailable(self) -> None:
+        """An update during stage replacement must tolerate a temporarily unavailable stage."""
+        Cube("/World/visual_cue_anchor", sizes=0.1, positions=[0.0, 0.0, 1.0])
+        await app_utils.update_app_async()
+        self._manager.set_override_prim_path("right", "/World/visual_cue_anchor")
+        ok, _message = self._manager.show_side("right")
+        self.assertTrue(ok)
+        self.assertIsNotNone(self._manager._layer)  # noqa: SLF001
+        self.assertIsNotNone(self._manager._update_subscription)  # noqa: SLF001
+        self.assertTrue(self._manager.is_side_active("right"))
+
+        with patch.object(stage_utils, "get_current_stage", side_effect=ValueError("No stage found")):
+            self._manager._on_update(None)  # noqa: SLF001
+
+        self.assertIsNone(self._manager._layer)  # noqa: SLF001
+        self.assertFalse(self._manager.is_side_active("right"))
+        self.assertIsNone(self._manager._update_subscription)  # noqa: SLF001

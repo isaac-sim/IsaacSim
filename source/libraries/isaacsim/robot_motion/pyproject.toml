@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [build-system]
-requires = ["scikit-build-core==1.0.3"]
+requires = ["scikit-build-core>=1.0.3"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -13,11 +13,11 @@ requires-python = "==3.12.*"
 license = "Apache-2.0"
 authors = [{ name = "NVIDIA Corporation" }]
 dependencies = [
-    "warp-lang>=1.15.0",
+    "warp-lang>=1.16.0",
     "numpy>=2.1.0",
 ]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]

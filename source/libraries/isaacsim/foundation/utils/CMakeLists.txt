@@ -55,6 +55,8 @@ isaacsim_add_cpp_tests(
 isaacsim_add_nanobind(
     MODULE isaacsim.foundation.utils
     SOURCE bindings/python/Bindings.cpp
+    STUB_PRELOADS
+        isaacsim.foundation.objects
 )
 
 isaacsim_add_python_tests(

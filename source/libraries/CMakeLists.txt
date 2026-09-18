@@ -63,7 +63,10 @@ cmake_path(ABSOLUTE_PATH CMAKE_CURRENT_SOURCE_DIR NORMALIZE OUTPUT_VARIABLE ISAA
 cmake_path(GET ISAACSIM_LIBRARIES_DIR PARENT_PATH ISAACSIM_SOURCE_DIR)
 cmake_path(GET ISAACSIM_SOURCE_DIR PARENT_PATH ISAACSIM_REPO_ROOT)
 
-set(ISAACSIM_TARGET_DEPS_DIR "${ISAACSIM_REPO_ROOT}/_cmake_build/isaacsim-libraries-target-deps" CACHE PATH "Library dependency root")
+set(
+    ISAACSIM_TARGET_DEPS_DIR "${ISAACSIM_REPO_ROOT}/_cmake_build/isaacsim-libraries-target-deps"
+    CACHE PATH "Library dependency root"
+)
 set(ISAACSIM_PUBLIC_DEPS_ROOT "" CACHE PATH "Pixi prefix containing pinned public build dependencies")
 if(WIN32)
     set(ISAACSIM_PUBLIC_DEPS_INCLUDE_DIR "${ISAACSIM_PUBLIC_DEPS_ROOT}/Library/include")
@@ -214,6 +217,7 @@ add_subdirectory(isaacsim_usd_schemas/virtual_gantry)
 add_subdirectory(isaacsim_deprecated)
 add_subdirectory(isaacsim/robot_motion)
 add_subdirectory(isaacsim/ovsim)
+add_subdirectory(isaacsim/performance)
 isaacsim_finalize_modules()
 
 if(BUILD_TESTING)
@@ -250,6 +254,11 @@ if(BUILD_TESTING)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/tests/PythonImports.cmake"
     )
     set_tests_properties(tests-python-import-registration PROPERTIES LABELS "unit;cmake;python;packaging")
+    add_test(NAME tests-nanobind-stub-preloads
+        COMMAND ${CMAKE_COMMAND}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/tests/Nanobind.cmake"
+    )
+    set_tests_properties(tests-nanobind-stub-preloads PROPERTIES LABELS "unit;cmake;python;bindings")
     add_test(NAME tests-native-testing-helpers
         COMMAND ${CMAKE_COMMAND}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/tests/Testing.cmake"
@@ -292,6 +301,29 @@ if(BUILD_TESTING)
             RUN_SERIAL TRUE
         )
         unset(example_package_group_arguments)
+    endif()
+
+    if(WIN32 AND ISAACSIM_ENABLE_PYTHON_BINDINGS AND complete_package_groups)
+        set(public_entry_point_build_root "${CMAKE_BINARY_DIR}/examples-public-entry-point-test")
+        add_test(NAME tests-examples-public-entry-point-clean
+            COMMAND ${CMAKE_COMMAND} -E rm -rf "${public_entry_point_build_root}"
+        )
+        set_tests_properties(tests-examples-public-entry-point-clean PROPERTIES
+            FIXTURES_SETUP examples-public-entry-point
+            LABELS "consumer;examples;entry-point;setup"
+        )
+        add_test(NAME tests-examples-public-entry-point
+            COMMAND "${ISAACSIM_SOURCE_DIR}/examples/example.bat"
+                "--build-root=${public_entry_point_build_root}"
+                "--config=$<CONFIG>"
+                build
+                hello_world.cpp
+        )
+        set_tests_properties(tests-examples-public-entry-point PROPERTIES
+            FIXTURES_REQUIRED examples-public-entry-point
+            LABELS "install;consumer;examples;entry-point"
+        )
+        unset(public_entry_point_build_root)
     endif()
 
     foreach(package_group IN LISTS complete_package_groups)

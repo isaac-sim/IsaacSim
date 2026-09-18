@@ -60,8 +60,12 @@ ISAACSIM_FOUNDATION_UTILS_API std::vector<std::string> findMatchingPrimPaths(con
  * @param[in] predicate Callable invoked with the string path of each visited prim; return
  *            @c true to include the prim in the result.
  * @param[in] includeSelf Whether to test and potentially include @p path itself.
- * @param[in] maxDepth Maximum traversal depth relative to @p path. @c std::nullopt means
- *            unlimited depth.
+ * @param[in] maxDepth Maximum traversal depth relative to @p path, where @p path itself is at
+ *            depth 0 and its direct children at depth 1. @c std::nullopt means unlimited depth.
+ *            Note that depth is always counted from @p path regardless of @p includeSelf, so
+ *            @c maxDepth=0 combined with @c includeSelf=false visits no prim at all: the direct
+ *            children the traversal starts from are already at depth 1. Use @c maxDepth=1 to
+ *            visit the direct children.
  *
  * @return All prim paths in BFS order for which @p predicate returned @c true.
  *
@@ -82,17 +86,30 @@ ISAACSIM_FOUNDATION_UTILS_API std::vector<std::string> getAllMatchingChildPrims(
  * When @p includeSelf is @c false the root prim is skipped and traversal begins with its direct
  * children. When @p includeSelf is @c true the root is the first candidate tested.
  *
+ * When @p maxDepth is set, traversal stops as soon as the current prim's depth exceeds
+ * @p maxDepth. Because the deque is ordered by depth in BFS order, all remaining items at that
+ * point are at the same or greater depth, so the entire search halts immediately.
+ *
  * @param[in] path USD path of the subtree root on the default stage.
  * @param[in] predicate Callable invoked with the string path of each visited prim; return
  *            @c true to select that prim.
  * @param[in] includeSelf Whether to test @p path itself before its descendants.
+ * @param[in] maxDepth Maximum traversal depth relative to @p path, where @p path itself is at
+ *            depth 0 and its direct children at depth 1. @c std::nullopt means unlimited depth.
+ *            Note that depth is always counted from @p path regardless of @p includeSelf, so
+ *            @c maxDepth=0 combined with @c includeSelf=false visits no prim at all: the direct
+ *            children the traversal starts from are already at depth 1. Use @c maxDepth=1 to
+ *            visit the direct children.
  *
  * @return The path of the first matching prim, or @c std::nullopt if no match is found.
  *
  * @see getAllMatchingChildPrims()
  */
 ISAACSIM_FOUNDATION_UTILS_API std::optional<std::string> getFirstMatchingChildPrim(
-    const std::string& path, std::function<bool(const std::string&)> predicate, bool includeSelf = false);
+    const std::string& path,
+    std::function<bool(const std::string&)> predicate,
+    bool includeSelf = false,
+    std::optional<std::size_t> maxDepth = std::nullopt);
 
 /**
  * @brief Returns the first ancestor of @p path for which @p predicate returns @c true.

@@ -24,11 +24,11 @@ isaacsim_add_module(
     PRIVATE_DEPENDENCIES
         isaacsim::common-logging
     PUBLIC_CPP_HEADERS
-        isaacsim/physics/entities/details/EntityUtils.hpp
         isaacsim/physics/entities/ArticulationEntity.hpp
         isaacsim/physics/entities/PhysicsEntity.hpp
         isaacsim/physics/entities/RigidBodyEntity.hpp
     SOURCES
+        src/details/EntityUtils.hpp
         src/details/EntityUtils.cpp
         src/ArticulationEntity.cpp
         src/PhysicsEntity.cpp

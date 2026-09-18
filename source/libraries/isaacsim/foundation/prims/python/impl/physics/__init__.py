@@ -13,8 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__all__ = ["Articulation", "ColliderBody", "RigidBody"]
+__all__ = ["Articulation", "ColliderBody", "GroundPlane", "RigidBody"]
 
 from .articulation import Articulation
 from .collider_body import ColliderBody
+from .ground_plane import GroundPlane
 from .rigid_body import RigidBody

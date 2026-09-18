@@ -101,12 +101,12 @@ extern "C"
     static inline IsaacSimCommonLoggingChannelConfig isaacsimCommonLoggingMakeChannelConfig(void)
     {
 #ifdef __cplusplus
-        IsaacSimCommonLoggingChannelConfig config{};
+        IsaacSimCommonLoggingChannelConfig configuration{};
 #else
-    IsaacSimCommonLoggingChannelConfig config = { 0 };
+    IsaacSimCommonLoggingChannelConfig configuration = { 0 };
 #endif
-        config.structSize = sizeof(config);
-        return config;
+        configuration.structSize = sizeof(configuration);
+        return configuration;
     }
 
 #define ISAACSIM_COMMON_LOGGING_CHANNEL_CONFIG_INIT isaacsimCommonLoggingMakeChannelConfig()
@@ -200,12 +200,12 @@ extern "C"
     static inline IsaacSimCommonLoggingGlobalConfig isaacsimCommonLoggingMakeGlobalConfig(void)
     {
 #ifdef __cplusplus
-        IsaacSimCommonLoggingGlobalConfig config{};
+        IsaacSimCommonLoggingGlobalConfig configuration{};
 #else
-    IsaacSimCommonLoggingGlobalConfig config = { 0 };
+    IsaacSimCommonLoggingGlobalConfig configuration = { 0 };
 #endif
-        config.structSize = sizeof(config);
-        return config;
+        configuration.structSize = sizeof(configuration);
+        return configuration;
     }
 
 #define ISAACSIM_COMMON_LOGGING_GLOBAL_CONFIG_INIT isaacsimCommonLoggingMakeGlobalConfig()
@@ -220,11 +220,11 @@ extern "C"
      * A synchronous reentrant call from a backend log callback returns
      * `ISAACSIM_COMMON_LOGGING_CONFIGURE_BACKEND_UNAVAILABLE` without changing configuration.
      *
-     * @param[in] config Configuration patch to apply. The pointed-to data is not retained.
+     * @param[in] configuration Configuration patch to apply. The pointed-to data is not retained.
      * @return Configuration result.
      */
     ISAACSIM_COMMON_LOGGING_API IsaacSimCommonLoggingConfigureResult
-    isaacsimCommonLoggingConfigureGlobal(const IsaacSimCommonLoggingGlobalConfig* config);
+    isaacsimCommonLoggingConfigureGlobal(const IsaacSimCommonLoggingGlobalConfig* configuration);
 
     /**
      * @brief Submit an already formatted message to Carbonite.

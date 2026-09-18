@@ -104,7 +104,7 @@ class TestNewtonArticulationShapeContracts:
         Link-level inverse-mass reads remain available because their shape does
         not depend on a uniform DOF width.
         """
-        from isaacsim.physics_engines.ovnewton.impl.tensors.simulation_view import _NewtonArticulationViewAdapter
+        from isaacsim.physics_engines.ovnewton.impl.tensors.entity_factories import _NewtonArticulationViewAdapter
 
         device = wp.get_device("cpu")
         legacy = SimpleNamespace(
@@ -167,7 +167,7 @@ class TestNewtonArticulationShapeContracts:
         velocity, stiffness, damping, armature, or force-limit operations whose
         maps remain dense.
         """
-        from isaacsim.physics_engines.ovnewton.impl.tensors.simulation_view import _NewtonArticulationViewAdapter
+        from isaacsim.physics_engines.ovnewton.impl.tensors.entity_factories import _NewtonArticulationViewAdapter
 
         device = wp.get_device("cpu")
         legacy = SimpleNamespace(
@@ -232,7 +232,7 @@ class TestNewtonArticulationShapeContracts:
 
     def test_nondense_velocity_map_gates_only_velocity_operation(self) -> None:
         """Verify a non-dense velocity map disables only velocity access."""
-        from isaacsim.physics_engines.ovnewton.impl.tensors.simulation_view import _NewtonArticulationViewAdapter
+        from isaacsim.physics_engines.ovnewton.impl.tensors.entity_factories import _NewtonArticulationViewAdapter
 
         device = wp.get_device("cpu")
         legacy = SimpleNamespace(

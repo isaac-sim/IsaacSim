@@ -305,7 +305,10 @@ class ExecutionReport:
     """Finish timestamp in ISO format."""
     results: list[RuleExecutionResult] = field(default_factory=list)
     output_stage_path: str | None = None
-    """File path of the final working stage after all rules have executed. Callers can use this to load the transformed asset."""
+    """File path of the final working stage after all rules have executed.
+
+    Callers can use this path to load the transformed asset.
+    """
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the report to a dictionary suitable for JSON.

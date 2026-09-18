@@ -13,7 +13,7 @@ entry_point = "omni.repo.package:setup_repo_tool"
 enabled = true
 
 ########################################################################################################################
-# Isaac Sim 7.0 Pre-Alpha documentation preparation
+# Isaac Sim 7.0 library documentation preparation
 ########################################################################################################################
 
 

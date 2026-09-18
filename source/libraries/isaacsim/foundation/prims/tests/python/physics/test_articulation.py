@@ -452,11 +452,11 @@ def test_link_enabled_gravities(stage: Any, values: Any) -> None:
     prims = Articulation(_get_paths(stage))
     # get values
     output = prims.get_link_enabled_gravities()
-    isaacsim_test.check_array(output, shape=(NUM_PRIMS, NUM_LINKS), dtype=wp.uint8)
+    isaacsim_test.check_array(output, shape=(NUM_PRIMS, NUM_LINKS), dtype=wp.bool)
     # round-trip values
     prims.set_link_enabled_gravities(values)
     output = prims.get_link_enabled_gravities()
-    isaacsim_test.check_array(output, shape=(NUM_PRIMS, NUM_LINKS), dtype=wp.uint8)
+    isaacsim_test.check_array(output, shape=(NUM_PRIMS, NUM_LINKS), dtype=wp.bool)
     isaacsim_test.check_equal(values, output)
 
 
@@ -521,11 +521,11 @@ def test_enabled_self_collisions(stage: Any, values: Any) -> None:
     prims = Articulation(_get_paths(stage))
     # get values
     output = prims.get_enabled_self_collisions()
-    isaacsim_test.check_array(output, shape=(NUM_PRIMS, 1), dtype=wp.uint8)
+    isaacsim_test.check_array(output, shape=(NUM_PRIMS, 1), dtype=wp.bool)
     # round-trip values
     prims.set_enabled_self_collisions(values)
     output = prims.get_enabled_self_collisions()
-    isaacsim_test.check_array(output, shape=(NUM_PRIMS, 1), dtype=wp.uint8)
+    isaacsim_test.check_array(output, shape=(NUM_PRIMS, 1), dtype=wp.bool)
     isaacsim_test.check_equal(values, output)
 
 
@@ -594,3 +594,29 @@ def test_value_broadcasting(stage: Any, masses: Any) -> None:
     # broadcast a single value per prim to all the links
     prims.set_link_masses(masses)
     isaacsim_test.check_allclose(np.broadcast_to(masses, (NUM_PRIMS, NUM_LINKS)), prims.get_link_masses())
+
+
+def test_are_of_type(stage: Any) -> None:
+    """Test are of type.
+
+    Args:
+        stage: Stage used by the test.
+    """
+    stage.define_prim("/World/Robots", "Xform")
+    stage.add_reference(USD_PATH, "/World/Robots/Prim0")
+    stage.define_prim("/World/Other", "Cube")
+    stage.define_prim("/World/Scope", "Scope")
+    # the articulation root (/World/Robots/Prim0/torso) is only searched for on the prim itself and on its
+    # direct children, so /World/Robots (two levels above the root) does not match; prims that are not
+    # transformable never match
+    paths = ["/World/Robots/Prim0/torso", "/World/Robots/Prim0", "/World/Robots", "/World/Other", "/World/Scope"]
+    output = Articulation.are_of_type(paths)
+    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.bool)
+    isaacsim_test.check_equal(np.array([[1], [1], [0], [0], [0]], dtype=np.bool_), output)
+    # every flagged path is accepted by the constructor and resolves to the same articulation root
+    assert Articulation("/World/Robots/Prim0/torso").root_paths == Articulation("/World/Robots/Prim0").root_paths
+    # the constructor's search is unbounded, so it still accepts ancestors that are_of_type does not flag
+    assert Articulation("/World/Robots").root_paths == Articulation("/World/Robots/Prim0").root_paths
+    # non-existing prims
+    with pytest.raises(RuntimeError):
+        Articulation.are_of_type("/World/NonExistent")

@@ -37,7 +37,7 @@ namespace details
 
 namespace nb = nanobind;
 
-inline nb::dict debugDataItemToPythonDictionary(const DebugDataItem& item)
+inline nb::dict convertDebugDataItemToPythonDictionary(const DebugDataItem& item)
 {
     nb::dict dictionary;
     dictionary["type"] = static_cast<int>(item.type);
@@ -76,7 +76,7 @@ inline nb::dict debugDataItemToPythonDictionary(const DebugDataItem& item)
     return dictionary;
 }
 
-inline DebugDataItem pythonDictionaryToDebugDataItem(nb::handle source)
+inline DebugDataItem convertPythonDictionaryToDebugDataItem(nb::handle source)
 {
     DebugDataItem item;
     if (!nb::isinstance<nb::dict>(source))
@@ -137,17 +137,17 @@ inline DebugDataItem pythonDictionaryToDebugDataItem(nb::handle source)
     return item;
 }
 
-inline nb::dict debugDataToPythonDictionary(const DebugDataDictionary& debugData)
+inline nb::dict convertDebugDataToPythonDictionary(const DebugDataDictionary& debugData)
 {
     nb::dict result;
     for (const auto& entry : debugData)
     {
-        result[nb::cast(entry.first)] = debugDataItemToPythonDictionary(entry.second);
+        result[nb::cast(entry.first)] = convertDebugDataItemToPythonDictionary(entry.second);
     }
     return result;
 }
 
-inline DebugDataDictionary pythonDictionaryToDebugData(nb::handle source)
+inline DebugDataDictionary convertPythonDictionaryToDebugData(nb::handle source)
 {
     DebugDataDictionary result;
     if (!nb::isinstance<nb::dict>(source))
@@ -158,7 +158,7 @@ inline DebugDataDictionary pythonDictionaryToDebugData(nb::handle source)
     for (const auto item : dictionary)
     {
         std::string key = nb::cast<std::string>(item.first);
-        result.emplace(std::move(key), pythonDictionaryToDebugDataItem(item.second));
+        result.emplace(std::move(key), convertPythonDictionaryToDebugDataItem(item.second));
     }
     return result;
 }
@@ -259,7 +259,7 @@ struct type_caster<isaacsim::physics::registration::GetPrimDebugDataFunction>
                 {
                     return {};
                 }
-                return isaacsim::physics::registration::details::pythonDictionaryToDebugData(result);
+                return isaacsim::physics::registration::details::convertPythonDictionaryToDebugData(result);
             }
             catch (nanobind::python_error& error)
             {
@@ -281,7 +281,7 @@ struct type_caster<isaacsim::physics::registration::GetPrimDebugDataFunction>
         }
         nanobind::object wrapped = nanobind::cpp_function(
             [source](const std::string& primPath) -> nanobind::dict
-            { return isaacsim::physics::registration::details::debugDataToPythonDictionary(source(primPath)); });
+            { return isaacsim::physics::registration::details::convertDebugDataToPythonDictionary(source(primPath)); });
         return wrapped.release();
     }
 };

@@ -20,7 +20,7 @@
 namespace
 {
 
-bool expect_floor(const char* path, bool expected)
+bool expectFloor(const char* path, bool expected)
 {
     const bool actual = isaacsim::ovgl_viewport::debug::details::ovgl::isFloorMesh(path);
     if (actual == expected)
@@ -35,13 +35,13 @@ bool expect_floor(const char* path, bool expected)
 int main()
 {
     bool ok = true;
-    ok &= expect_floor("/World/Floor", true);
-    ok &= expect_floor("/World/ground_plane", true);
-    ok &= expect_floor("/World/GroundPlane", true);
-    ok &= expect_floor("/World/Plane001", true);
-    ok &= expect_floor("/toy_biplane_idle/rig/biplane_mesh", false);
-    ok &= expect_floor("/World/Airplane", false);
-    ok &= expect_floor("/World/playground", false);
-    ok &= expect_floor(nullptr, false);
+    ok &= expectFloor("/World/Floor", true);
+    ok &= expectFloor("/World/ground_plane", true);
+    ok &= expectFloor("/World/GroundPlane", true);
+    ok &= expectFloor("/World/Plane001", true);
+    ok &= expectFloor("/toy_biplane_idle/rig/biplane_mesh", false);
+    ok &= expectFloor("/World/Airplane", false);
+    ok &= expectFloor("/World/playground", false);
+    ok &= expectFloor(nullptr, false);
     return ok ? 0 : 1;
 }

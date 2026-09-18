@@ -2,17 +2,27 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [build-system]
-requires = ["scikit-build-core==1.0.3"]
+requires = ["scikit-build-core>=1.0.3"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "isaacsim_ovgl_viewport"
-dynamic = ["version"]
-description = "Concrete OVGL viewport for Isaac Sim tests and debugging"
+name = "isaacsim-ovgl-viewport"
+dynamic = ["version", "dependencies"]
+description = "Lightweight OpenGL viewport for Isaac Sim testing and debugging"
 requires-python = "==3.12.*"
 license = "Apache-2.0"
 authors = [{ name = "NVIDIA Corporation" }]
 dependencies = []
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+
+[[tool.dynamic-metadata]]
+provider = { path = "../../packaging", module = "isaacsim_libraries_metadata" }
+field = "dependencies"
+names = ["isaacsim-common", "isaacsim-foundation"]
 
 [[tool.dynamic-metadata]]
 provider = "scikit_build_core.metadata.regex"

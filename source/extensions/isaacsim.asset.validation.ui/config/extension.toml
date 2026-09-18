@@ -1,5 +1,5 @@
 [package]
-version = "1.0.0"
+version = "1.0.1"
 category = "Simulation"
 title = "SimReady Profile Validation UI"
 description = "Profile-driven asset validation with actionable results for Isaac Sim."

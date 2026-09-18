@@ -74,6 +74,10 @@ Attributes
 Parameters
 ----------
 
+The current authoring implementation accepts and ignores values passed to
+``setParameter()``. Use ``getParameter()`` with the ``stage`` provider to query
+the retained OpenUSD or OVStage stage identifier or pointer.
+
 .. code-block:: cpp
 
     setParameter("provider", "parameterName", value);
@@ -87,6 +91,12 @@ Simulation
 ``#include <isaacsim/foundation/ovsim/control/simulation/Simulation.hpp>``
 
 Namespace: ``isaacsim::foundation::ovsim::control::simulation``
+
+``play()``, ``pause()``, ``stop()``, and ``step()`` currently accept requests
+without advancing simulation state. ``initialize()`` copies the active OpenUSD
+stage into a retained OVStage snapshot, and ``invalidate()`` releases that
+snapshot. Simulation provider parameters are not implemented and raise
+``std::logic_error``.
 
 .. code-block:: cpp
 
@@ -111,11 +121,11 @@ Data
 
 Namespace: ``isaacsim::foundation::ovsim::data``
 
-Types re-exported from the OV Sim interface:
+Types re-exported from the OV SIM interface:
 
-- ``PathType`` — list of absolute prim path strings.
-- ``InputValueType`` — value(s) to write.
-- ``OutputValueType`` — value(s) read back.
+- ``PathType`` --- list of absolute prim path strings.
+- ``InputValueType`` --- value(s) to write.
+- ``OutputValueType`` --- value(s) read back.
 
 .. code-block:: cpp
 
@@ -124,3 +134,6 @@ Types re-exported from the OV Sim interface:
 
     // Write an attribute to one or more prims.
     write(paths, "mass", inputValues);
+
+The optional timestamp parameter is reserved for time-sampled values. The
+current implementation reads and writes default-time values.

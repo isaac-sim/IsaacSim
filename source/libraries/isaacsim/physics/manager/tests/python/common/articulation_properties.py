@@ -37,10 +37,10 @@ from _scenario import (  # noqa: E402
     GridParams,
     GridTestBase,
     SimParams,
+    SimulationEntities,
     Transform,
     get_asset_root,
 )
-from isaacsim.physics.manager.impl.tensors import SimulationView  # noqa: E402
 
 
 class BodyPropertiesCommon(GridTestBase):
@@ -49,6 +49,7 @@ class BodyPropertiesCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -60,11 +61,12 @@ class BodyPropertiesCommon(GridTestBase):
             asset_path,
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Write and verify body properties for every Humanoid link.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         humanoids = sim.create_articulation_view("/envs/*/humanoid/torso")
         self.check_articulation_view(humanoids, self.num_envs, 16, 21, True)
@@ -94,13 +96,14 @@ class BodyPropertiesCommon(GridTestBase):
         assert humanoids.get_data("inv-inertias").numpy().shape == (self.num_envs, max_links, 9)
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Keep the scenario complete after startup validation.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
 
 
@@ -110,6 +113,7 @@ class ShapePropertiesCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -121,11 +125,12 @@ class ShapePropertiesCommon(GridTestBase):
             asset_path,
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Write and verify shape properties for every Humanoid shape.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         humanoids = sim.create_articulation_view("/envs/*/humanoid/torso")
         self.check_articulation_view(humanoids, self.num_envs, 16, 21, True)
@@ -155,13 +160,14 @@ class ShapePropertiesCommon(GridTestBase):
 
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Keep the scenario complete after startup validation.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
 
         # ---------------------------------------------------------------------------
@@ -184,6 +190,7 @@ class FixedTendonPropertiesCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -195,11 +202,12 @@ class FixedTendonPropertiesCommon(GridTestBase):
             asset_path,
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Write and verify fixed-tendon properties.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         hands = sim.create_articulation_view("/envs/*/shadow_hand")
         self.check_articulation_view(hands, self.num_envs, 26, 24, True)
@@ -246,13 +254,14 @@ class FixedTendonPropertiesCommon(GridTestBase):
             ), f"{impl} round-trip: max diff={abs(actual - np_data).max()}"
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Keep the scenario complete after startup validation.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
 
         # ---------------------------------------------------------------------------
@@ -273,6 +282,7 @@ class SpatialTendonPropertiesCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -284,11 +294,12 @@ class SpatialTendonPropertiesCommon(GridTestBase):
             asset_path,
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Write and verify spatial-tendon properties.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         view = sim.create_articulation_view("/envs/*/spatial_tendon")
         all_indices = wp_utils.arange(view.count, device=self.wp_device)
@@ -320,13 +331,14 @@ class SpatialTendonPropertiesCommon(GridTestBase):
             ), f"{impl} round-trip: max diff={abs(actual - np_data).max()}"
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Keep the scenario complete after startup validation.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
 
         # ---------------------------------------------------------------------------
@@ -353,6 +365,7 @@ class HeterogeneousFixedTendonPropertiesCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -368,11 +381,12 @@ class HeterogeneousFixedTendonPropertiesCommon(GridTestBase):
             os.path.join(get_asset_root(), "ShadowHand.usda"),
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create both views and prepare their property buffers.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self._ftt = sim.create_articulation_view("/envs/*/FixedTendonTest")
         self._hands = sim.create_articulation_view("/envs/*/shadow_hand")
@@ -472,13 +486,14 @@ class HeterogeneousFixedTendonPropertiesCommon(GridTestBase):
                 actual, np_data, rtol=1e-3, atol=1e-3
             ), f"hands {impl}: max diff={abs(actual - np_data).max()}"
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Run deferred GPU tendon writes after simulation becomes ready.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based callback step number used by this scenario.
             dt: Duration of the physics step.
+
         """
         if self.device_params.use_gpu_pipeline and stepno == 0:
             self._do_tendon_write_and_verify()
@@ -502,6 +517,7 @@ class HeterogeneousSpatialTendonPropertiesCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -517,11 +533,12 @@ class HeterogeneousSpatialTendonPropertiesCommon(GridTestBase):
             os.path.join(get_asset_root(), "MultipleSpatialTendonsTest.usda"),
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create both views and prepare their property buffers.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self._single = sim.create_articulation_view("/envs/*/SpatialTendonTest")
         self._multi = sim.create_articulation_view("/envs/*/MultipleSpatialTendonsTest")
@@ -601,13 +618,14 @@ class HeterogeneousSpatialTendonPropertiesCommon(GridTestBase):
                 actual, np_data, rtol=1e-3, atol=1e-3
             ), f"multi {impl}: max diff={abs(actual - np_data).max()}"
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Run deferred GPU tendon writes after simulation becomes ready.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based callback step number used by this scenario.
             dt: Duration of the physics step.
+
         """
         if self.device_params.use_gpu_pipeline and stepno == 0:
             self._do_spatial_tendon_write_and_verify()

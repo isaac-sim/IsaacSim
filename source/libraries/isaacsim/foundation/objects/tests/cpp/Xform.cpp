@@ -35,7 +35,7 @@ TEST_SUITE("Xform")
         CHECK_EQ(prim.size(), 2u);
         CHECK_EQ(prim.paths(), (std::vector<std::string>{ "/World/A", "/World/B" }));
         CHECK_EQ(prim.getTypeName(), (std::vector<std::string>{ "Xform", "Xform" }));
-        CHECK_EQ(prim.isA("Xform").get<std::vector<bool>>(), (std::vector<bool>{ true, true }));
+        CHECK_EQ(prim.isA("Xform").flatten().get<std::vector<bool>>(), (std::vector<bool>{ true, true }));
 
         REQUIRE_UNARY(stage.closeStage());
     }
@@ -53,7 +53,7 @@ TEST_SUITE("Xform")
             Xform prim(std::vector<std::string>{ "/World/X0", "/World/X1" });
             CHECK_EQ(prim.size(), 2u);
             CHECK_EQ(prim.paths(), (std::vector<std::string>{ "/World/X0", "/World/X1" }));
-            CHECK_EQ(prim.isA("Xform").get<std::vector<bool>>(), (std::vector<bool>{ true, true }));
+            CHECK_EQ(prim.isA("Xform").flatten().get<std::vector<bool>>(), (std::vector<bool>{ true, true }));
         }
 
         SUBCASE("regex")
@@ -77,6 +77,73 @@ TEST_SUITE("Xform")
         // A mix that includes a non-Xformable existing prim also throws
         stage.definePrim("/World/Xform", "Xform");
         CHECK_THROWS_AS(Xform(std::vector<std::string>{ "/World/Xform", "/World/Scope" }), std::runtime_error);
+
+        REQUIRE_UNARY(stage.closeStage());
+    }
+
+    TEST_CASE("Xform pose methods - rotation format")
+    {
+        Stage stage = Stage("openusd").createStage();
+        REQUIRE_UNARY(stage.isValid());
+
+        // A unit quaternion whose four components are distinct and non-zero, so that a wrong
+        // component permutation cannot coincide with the expected result.
+        const std::vector<double> expectedXyzw{ 0.2, -0.4, 0.8, 0.4 };
+        const std::vector<double> expectedWxyz{ 0.4, 0.2, -0.4, 0.8 };
+        const array::Array orientationsXyzw(std::vector<std::vector<double>>{ expectedXyzw });
+        const array::Array orientationsWxyz(std::vector<std::vector<double>>{ expectedWxyz });
+
+        auto checkRow = [](const array::Array& orientations, const std::vector<double>& expected)
+        {
+            const auto rows = orientations.get<std::vector<std::vector<double>>>();
+            REQUIRE_EQ(rows.size(), 1u);
+            REQUIRE_EQ(rows[0].size(), 4u);
+            for (size_t i = 0; i < expected.size(); ++i)
+            {
+                CHECK_UNARY(rows[0][i] == doctest::Approx(expected[i]));
+            }
+        };
+
+        SUBCASE("world poses")
+        {
+            Xform prim("/World/A");
+            // The default is xyzw, so an omitted argument matches an explicit one.
+            prim.setWorldPoses(std::nullopt, orientationsXyzw);
+            checkRow(std::get<1>(prim.getWorldPoses()), expectedXyzw);
+            checkRow(std::get<1>(prim.getWorldPoses(std::nullopt, "xyzw")), expectedXyzw);
+            // Reading the same pose as wxyz reorders the components.
+            checkRow(std::get<1>(prim.getWorldPoses(std::nullopt, "wxyz")), expectedWxyz);
+            // Writing as wxyz round-trips, and agrees with an xyzw read of the same pose.
+            prim.setWorldPoses(std::nullopt, orientationsWxyz, std::nullopt, "wxyz");
+            checkRow(std::get<1>(prim.getWorldPoses(std::nullopt, "wxyz")), expectedWxyz);
+            checkRow(std::get<1>(prim.getWorldPoses()), expectedXyzw);
+        }
+
+        SUBCASE("local poses")
+        {
+            Xform prim("/World/B");
+            prim.setLocalPoses(std::nullopt, orientationsXyzw);
+            checkRow(std::get<1>(prim.getLocalPoses()), expectedXyzw);
+            checkRow(std::get<1>(prim.getLocalPoses(std::nullopt, "xyzw")), expectedXyzw);
+            checkRow(std::get<1>(prim.getLocalPoses(std::nullopt, "wxyz")), expectedWxyz);
+            prim.setLocalPoses(std::nullopt, orientationsWxyz, std::nullopt, "wxyz");
+            checkRow(std::get<1>(prim.getLocalPoses(std::nullopt, "wxyz")), expectedWxyz);
+            checkRow(std::get<1>(prim.getLocalPoses()), expectedXyzw);
+        }
+
+        SUBCASE("unsupported formats are rejected")
+        {
+            Xform prim("/World/C");
+            for (const char* rotationFormat : { "XYZW", "wxzy", "" })
+            {
+                CHECK_THROWS_AS(prim.getWorldPoses(std::nullopt, rotationFormat), std::invalid_argument);
+                CHECK_THROWS_AS(prim.getLocalPoses(std::nullopt, rotationFormat), std::invalid_argument);
+                CHECK_THROWS_AS(prim.setWorldPoses(std::nullopt, orientationsXyzw, std::nullopt, rotationFormat),
+                                std::invalid_argument);
+                CHECK_THROWS_AS(prim.setLocalPoses(std::nullopt, orientationsXyzw, std::nullopt, rotationFormat),
+                                std::invalid_argument);
+            }
+        }
 
         REQUIRE_UNARY(stage.closeStage());
     }

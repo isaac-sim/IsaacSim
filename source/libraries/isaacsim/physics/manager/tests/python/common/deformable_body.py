@@ -33,10 +33,11 @@ from _scenario import (  # noqa: E402
     GridParams,
     GridTestBase,
     SimParams,
+    SimulationEntities,
     Transform,
     get_asset_root,
 )
-from isaacsim.physics.manager.impl.tensors import EntityView, SimulationView  # noqa: E402
+from isaacsim.physics.manager.impl.tensors import EntityView  # noqa: E402
 
 
 class _DeformableBodyCommon(GridTestBase):
@@ -45,6 +46,7 @@ class _DeformableBodyCommon(GridTestBase):
     Args:
         test_case: Test case that owns the scenario.
         device_params: Simulation device parameters.
+
     """
 
     ASSET_NAME = ""
@@ -62,13 +64,14 @@ class _DeformableBodyCommon(GridTestBase):
         self.create_actor_from_asset(actor_path, Transform(), asset_path)
         self.view: EntityView
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Validate tensor data on the first physics step.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step.
             dt: Simulation step duration.
+
         """
         if stepno != 0:
             return
@@ -88,6 +91,7 @@ class _DeformableBodyCommon(GridTestBase):
 
         Returns:
             Read-back tensor converted to NumPy.
+
         """
         assert self.view.has_impl(impl, tensors.ImplKind.Get), f"missing GET impl {impl!r}"
         value = self.view.get_data(impl)
@@ -106,6 +110,7 @@ class _DeformableBodyCommon(GridTestBase):
         Args:
             impl: Tensor implementation name.
             target: Values to write.
+
         """
         assert self.view.has_impl(impl, tensors.ImplKind.Set), f"missing SET impl {impl!r}"
         target = target.astype(np.float32)
@@ -125,6 +130,7 @@ class _DeformableBodyCommon(GridTestBase):
         Args:
             impl: Tensor implementation name.
             expected: Optional expected connectivity and shape.
+
         """
         assert self.view.has_impl(impl, tensors.ImplKind.Get), f"missing GET impl {impl!r}"
         value = self.view.get_data(impl)
@@ -143,11 +149,12 @@ class VolumeDeformableBodyCommon(_DeformableBodyCommon):
 
     ASSET_NAME = "VolumeDeformable.usda"
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create and validate the volume-deformable-body view.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.view = sim.create_volume_deformable_body_view(self.BODY_PATH)
         self.check_deformable_body_view(self.view, 1)
@@ -186,11 +193,12 @@ class SurfaceDeformableBodyCommon(_DeformableBodyCommon):
 
     ASSET_NAME = "SurfaceDeformable.usda"
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create and validate the surface-deformable-body view.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.view = sim.create_surface_deformable_body_view(self.BODY_PATH)
         self.check_deformable_body_view(self.view, 1)

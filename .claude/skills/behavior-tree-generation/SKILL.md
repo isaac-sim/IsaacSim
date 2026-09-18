@@ -3,7 +3,7 @@ name: behavior-tree-generation
 description: "LLM-driven Behavior Tree Generation for Isaac Sim: turn a natural-language scenario into behavior-tree files. Use when generating a tree, authoring context/schema, or scripting the planner."
 license: Apache-2.0
 metadata:
-  author: NVIDIA Isaac Sim
+  author: NVIDIA Isaac Sim <isaac-sim@nvidia.com>
 ---
 
 # Behavior Tree Generation

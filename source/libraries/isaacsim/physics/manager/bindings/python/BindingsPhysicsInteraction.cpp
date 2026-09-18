@@ -53,7 +53,9 @@ void isaacsim::physics::manager::details::bindPhysicsInteraction(nb::module_& mo
         "Forward an interactive raycast request to active simulations.");
     module.def(
         "get_prim_debug_data",
-        [](const std::string& primPath) -> nb::dict
-        { return isaacsim::physics::registration::details::debugDataToPythonDictionary(getPrimDebugData(primPath)); },
+        [](const std::string& primPath) -> nb::dict {
+            return isaacsim::physics::registration::details::convertDebugDataToPythonDictionary(
+                getPrimDebugData(primPath));
+        },
         nb::arg("prim_path"), "Aggregate debug data across all active simulations for the given prim.");
 }

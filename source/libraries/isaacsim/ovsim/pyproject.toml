@@ -6,14 +6,14 @@ requires = ["scikit-build-core>=1.0.3"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "isaacsim_ovsim"
-dynamic = ["version"]
-description = "OV SIM API implementation for Isaac Sim"
+name = "isaacsim-ovsim"
+dynamic = ["version", "dependencies"]
+description = "Isaac Sim OV SIM control and data clients with local and remote implementations"
 requires-python = "==3.12.*"
 license = "Apache-2.0"
 authors = [{ name = "NVIDIA Corporation" }]
-dependencies = []
 classifiers = [
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]
@@ -23,6 +23,11 @@ provider = "scikit_build_core.metadata.regex"
 field = "version"
 input = "../../VERSION"
 regex = '''^(?P<value>[^\r\n]+)$'''
+
+[[tool.dynamic-metadata]]
+provider = { path = "../../packaging", module = "isaacsim_libraries_metadata" }
+field = "dependencies"
+names = ["isaacsim-common", "isaacsim-foundation", "isaacsim-physics"]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"

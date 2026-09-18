@@ -101,7 +101,8 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
             instanceable=False,
         )
 
-        await self._wait_n_frames(10)
+        # Advance once to start reference loading, then wait on the loading state instead of a fixed delay.
+        await self._wait_n_frames(1)
         await self._wait_for_stage_loading()
         await self._wait_n_frames(1)
 
@@ -112,23 +113,21 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
         set_camera_view(eye=eye, target=target)
 
         golden_img_path = self._golden_img_dir / golden_img_name
-
-        retries = 3
-        results = None
-        while retries > 0:
+        if not golden_img_path.exists():
             await self._wait_n_frames(10)
-
             rgb_data = await capture_viewport_annotator_data_async(self._viewport_api)
+            save_rgb_image(rgb_data, str(self._golden_img_dir), golden_img_name)
+            self.fail(
+                f"Golden image not found at {golden_img_path}. "
+                f"Captured image saved to {self._golden_img_dir / golden_img_name} for reference. "
+                f"Please review and copy to golden directory if correct."
+            )
 
-            if not golden_img_path.exists():
-                save_rgb_image(rgb_data, str(self._golden_img_dir), golden_img_name)
-                self.fail(
-                    f"Golden image not found at {golden_img_path}. "
-                    f"Captured image saved to {self._golden_img_dir / golden_img_name} for reference. "
-                    f"Please review and copy to golden directory if correct."
-                )
-
-            golden_img_data = read_image_as_array(golden_img_path)
+        golden_img_data = read_image_as_array(golden_img_path)
+        results = None
+        for stabilization_frames in (1, 10, 20):
+            await self._wait_n_frames(stabilization_frames)
+            rgb_data = await capture_viewport_annotator_data_async(self._viewport_api)
             results = compare_arrays_within_tolerances(
                 golden_img_data,
                 rgb_data,
@@ -139,8 +138,6 @@ class TestEnvironmentGolden(omni.kit.test.AsyncTestCase):
             )
             if results["passed"]:
                 break
-            retries -= 1
-            await self._wait_n_frames(10)
 
         if not results["passed"]:
             stem = Path(golden_img_name).stem

@@ -17,7 +17,7 @@
 
 Single-link cases that read projected joint forces are skipped because Newton
 does not provide joint-force reporting. The two-link, torsional, and
-spherical-labelled scenarios run on each available device.
+spherical-labeled scenarios run on each available device.
 """
 
 from __future__ import annotations
@@ -217,10 +217,10 @@ class TestForceProjectionSphericalY:
     """Validate force projection with the Y and Z rotation axes free."""
 
     def test_force_projection_spherical_y_newton_cc(self) -> None:
-        """Check the spherical-labelled configuration on the Newton CPU pipeline."""
+        """Check the spherical-labeled configuration on the Newton CPU pipeline."""
         run_scenario(self, JFP_Spherical_Y_Common, "newton", cpu_device())
 
     @gpu_only
     def test_force_projection_spherical_y_newton_gg(self) -> None:
-        """Check the spherical-labelled configuration on the Newton GPU pipeline."""
+        """Check the spherical-labeled configuration on the Newton GPU pipeline."""
         run_scenario(self, JFP_Spherical_Y_Common, "newton", gpu_device())

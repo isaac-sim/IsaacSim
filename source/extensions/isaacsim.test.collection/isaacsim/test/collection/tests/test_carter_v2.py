@@ -26,16 +26,16 @@ import omni.graph.core as og
 #   omni.kit.test - std python's unittest module with additional wrapping to add suport for async/await tests
 #   For most things refer to unittest docs: https://docs.python.org/3/library/unittest.html
 import omni.kit.test
-import omni.timeline
+from isaacsim.core.experimental.objects import GroundPlane
 from isaacsim.core.experimental.prims import Articulation
-from isaacsim.core.experimental.utils.app import get_extension_path
-from isaacsim.core.experimental.utils.stage import open_stage_async
 from isaacsim.storage.native import get_assets_root_path_async
-from pxr import Gf, PhysicsSchemaTools
 
 from .robot_helpers import (
     init_robot_sim,
     setup_robot_og,
+    simulate_arc,
+    wait_for_forward_displacement,
+    wait_for_stable_odometry,
 )
 
 
@@ -55,7 +55,7 @@ async def ramp_velocity(forward_velocity: float, angular_velocity: float, ramp_f
         og.Controller.attribute(graph_path + "/DifferentialController.inputs:angularVelocity").set(
             angular_velocity * ((i + 1) / ramp_frames)
         )
-        await omni.kit.app.get_app().next_update_async()
+        await app_utils.update_app_async()
 
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
@@ -65,27 +65,20 @@ class TestCarterv2(omni.kit.test.AsyncTestCase):
     # Before running each test
     async def setUp(self) -> None:
         """Set up test environment with Nova Carter robot."""
-        self._timeline = omni.timeline.get_timeline_interface()
-
-        ext_manager = omni.kit.app.get_app().get_extension_manager()
 
         self._assets_root_path = await get_assets_root_path_async()
         if self._assets_root_path is None:
             carb.log_error("Could not find Isaac Sim assets folder")
             return
 
-        self._extension_path = get_extension_path("isaacsim.test.collection")
-
         # add in carter (from nucleus)
         self.usd_path = self._assets_root_path + "/Isaac/Robots/NVIDIA/NovaCarter/nova_carter.usd"
-        result, error = await open_stage_async(self.usd_path)
+        result, _ = await stage_utils.open_stage_async(self.usd_path)
 
         # Make sure the stage loaded
         self.assertTrue(result)
-        await omni.kit.app.get_app().next_update_async()
-        PhysicsSchemaTools.addGroundPlane(
-            omni.usd.get_context().get_stage(), "/groundPlane", "Z", 1500, Gf.Vec3f(0, 0, 0), Gf.Vec3f(0.5)
-        )
+        await app_utils.update_app_async()
+        GroundPlane("/groundPlane", sizes=[3000.0], colors=[[0.5, 0.5, 0.5]], templates=None)
 
         # Set stage units
         stage_utils.set_stage_units(meters_per_unit=1.0)
@@ -94,55 +87,53 @@ class TestCarterv2(omni.kit.test.AsyncTestCase):
         # setup omnigraph
         self.graph_path = "/ActionGraph"
         graph, self.odom_node = setup_robot_og(
-            self.graph_path, "joint_wheel_left", "joint_wheel_right", "/nova_carter/chassis_link", 0.14, 0.4132
+            self.graph_path,
+            "joint_wheel_left",
+            "joint_wheel_right",
+            "/nova_carter/chassis_link",
+            0.14,
+            0.4132,
         )
 
     # After running each test
     async def tearDown(self) -> None:
         """Clean up test environment and stop timeline."""
-        self._timeline.stop()
-        await omni.kit.app.get_app().next_update_async()
+        app_utils.stop(commit=False)
+        await app_utils.update_app_async()
         # In some cases the test will end before the asset is loaded, in this case wait for assets to load
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            await omni.kit.app.get_app().next_update_async()
+        while stage_utils.is_stage_loading():
+            await app_utils.update_app_async()
 
     # Actual test, notice it is "async" function, so "await" can be used if needed
     async def test_loading(self) -> None:
         """Test that the Nova Carter robot loads and can move forward."""
         stage_utils.delete_prim("/ActionGraph")
         # Start Simulation and wait
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
+        app_utils.play(commit=False)
+        await app_utils.update_app_async()
 
         # get the robot articulation
         self.ar = Articulation("/nova_carter")
         # Wait for physics to be ready
-        await omni.kit.app.get_app().next_update_async()
-        starting_pos, _ = self.ar.get_world_poses()
+        await app_utils.update_app_async()
+        starting_pos, starting_orientation = self.ar.get_world_poses()
         self.starting_pos = starting_pos.numpy()[0]
         dof_indices = self.ar.get_dof_indices(["joint_wheel_left", "joint_wheel_right"])
         self.ar.set_dof_velocity_targets(velocities=np.array([[1.0, 1.0]]), dof_indices=dof_indices)
 
-        # move the robot
-        for i in range(60):
-            await omni.kit.app.get_app().next_update_async()
-
-        current_pos, _ = self.ar.get_world_poses()
-        self.current_pos = current_pos.numpy()[0]
-
-        delta = np.linalg.norm(self.current_pos - self.starting_pos)
-        print("Diff is ", delta)
-        self.assertTrue(delta > 0.02)
+        await wait_for_forward_displacement(
+            self.ar,
+            self.starting_pos,
+            starting_orientation.numpy()[0],
+            minimum_distance=0.02,
+        )
 
     # general, slowly building up speed testcase
     async def test_accel(self) -> None:
         """Test acceleration behavior with gradually increasing velocities."""
-        odom_velocity = og.Controller.attribute("outputs:linearVelocity", self.odom_node)
-        odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)
-
         # Start Simulation and wait
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
+        app_utils.play(commit=False)
+        await app_utils.update_app_async()
 
         await init_robot_sim("/nova_carter")
 
@@ -151,32 +142,26 @@ class TestCarterv2(omni.kit.test.AsyncTestCase):
             og.Controller.attribute(self.graph_path + "/DifferentialController.inputs:linearVelocity").set(
                 forward_velocity
             )
-            print(x, forward_velocity)
-            for i in range(15):
-                await omni.kit.app.get_app().next_update_async()
-            if og.DataView.get(odom_ang_vel)[2] > 0.8:
-                print("spinning out of control, linear velocity: " + str(forward_velocity))
-                self._timeline.stop()
-            else:
-                self.assertAlmostEqual(og.DataView.get(odom_velocity)[0], forward_velocity, delta=5e-2)
-            await omni.kit.app.get_app().next_update_async()
+            result = await wait_for_stable_odometry(
+                self.odom_node,
+                expected_linear_velocity=forward_velocity,
+                max_updates=15,
+            )
+            self.assertLess(abs(result.angular_velocity), 0.8)
 
-        self._timeline.stop()
+        app_utils.stop(commit=False)
 
     # braking from different init speeds
     async def test_brake(self) -> None:
         """Test braking behavior from various initial velocities."""
-        odom_velocity = og.Controller.attribute("outputs:linearVelocity", self.odom_node)
-        odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)
-
         # Start Simulation and wait
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
+        app_utils.play(commit=False)
+        await app_utils.update_app_async()
 
         await init_robot_sim("/nova_carter")
         for x in range(1, 5):
-            self._timeline.play()
-            await omni.kit.app.get_app().next_update_async()
+            app_utils.play(commit=False)
+            await app_utils.update_app_async()
             forward_velocity = x * 0.15
             angular_velocity = x * 0.15
             og.Controller.attribute(self.graph_path + "/DifferentialController.inputs:linearVelocity").set(
@@ -185,24 +170,33 @@ class TestCarterv2(omni.kit.test.AsyncTestCase):
             og.Controller.attribute(self.graph_path + "/DifferentialController.inputs:angularVelocity").set(
                 angular_velocity
             )
-            for j in range(30):
-                await omni.kit.app.get_app().next_update_async()
+            moving_result = await wait_for_stable_odometry(
+                self.odom_node,
+                expected_linear_velocity=forward_velocity,
+                expected_angular_velocity=angular_velocity,
+                linear_tolerance=1e-1,
+                angular_tolerance=1e-1,
+                max_updates=30,
+            )
+            self.assertGreater(moving_result.linear_velocity, 0.04)
+            self.assertGreater(moving_result.angular_velocity, 0.04)
             og.Controller.attribute(self.graph_path + "/DifferentialController.inputs:linearVelocity").set(0.0)
             og.Controller.attribute(self.graph_path + "/DifferentialController.inputs:angularVelocity").set(0.0)
-            for j in range(30):
-                await omni.kit.app.get_app().next_update_async()
-            self.assertAlmostEqual(og.DataView.get(odom_velocity)[0], 0.0, delta=5e-1)
-            self.assertAlmostEqual(og.DataView.get(odom_ang_vel)[2], 0.0, delta=5e-1)
+            await wait_for_stable_odometry(
+                self.odom_node,
+                expected_linear_velocity=0.0,
+                expected_angular_velocity=0.0,
+                max_updates=30,
+            )
 
-            self._timeline.stop()
-            await omni.kit.app.get_app().next_update_async()
+            app_utils.stop(commit=False)
+            await app_utils.update_app_async()
 
     async def test_spin(self) -> None:
         """Test spinning behavior at different angular velocities."""
-        odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)
         # Start Simulation and wait
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
+        app_utils.play(commit=False)
+        await app_utils.update_app_async()
         await init_robot_sim("/nova_carter")
 
         velocity_tolerance = 1e-1
@@ -212,41 +206,34 @@ class TestCarterv2(omni.kit.test.AsyncTestCase):
                 angular_velocity
             )
 
-            # wait until target velocity reached or max frames exceeded
-            for i in range(200):
-                await omni.kit.app.get_app().next_update_async()
-                curr_ang_vel = float(og.DataView.get(odom_ang_vel)[2])
-                print(f"current: {curr_ang_vel}  target: {angular_velocity}")
-                if abs(curr_ang_vel - angular_velocity) < velocity_tolerance:
-                    break
-
-            curr_ang_vel = float(og.DataView.get(odom_ang_vel)[2])
-            self.assertAlmostEqual(curr_ang_vel, angular_velocity, delta=velocity_tolerance)
+            await wait_for_stable_odometry(
+                self.odom_node,
+                expected_angular_velocity=angular_velocity,
+                angular_tolerance=velocity_tolerance,
+                max_updates=200,
+            )
 
     # go in circle
     async def test_circle(self) -> None:
-        """Test circular motion and verify return to starting position."""
-        odom_velocity = og.Controller.attribute("outputs:linearVelocity", self.odom_node)
-        odom_ang_vel = og.Controller.attribute("outputs:angularVelocity", self.odom_node)
-        odom_position = og.Controller.attribute("outputs:position", self.odom_node)
-
-        # Start Simulation and wait
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
+        """Test that the robot follows a quarter-circle trajectory."""
+        app_utils.play(commit=False)
+        await app_utils.update_app_async()
 
         await init_robot_sim("/nova_carter")
-        forward_velocity = -0.1
-        angular_velocity = -0.5
-        og.Controller.attribute(self.graph_path + "/DifferentialController.inputs:linearVelocity").set(forward_velocity)
-        og.Controller.attribute(self.graph_path + "/DifferentialController.inputs:angularVelocity").set(
-            angular_velocity
+        forward_velocity = -0.2
+        angular_velocity = -1.0
+        result = await simulate_arc(
+            self.graph_path,
+            self.odom_node,
+            "/nova_carter",
+            forward_velocity=forward_velocity,
+            angular_velocity=angular_velocity,
+            target_angle=0.5 * np.pi,
+            max_updates=250,
         )
-        for j in range(800):
-            await omni.kit.app.get_app().next_update_async()
 
-        self.assertAlmostEqual(og.DataView.get(odom_position)[0], 0, delta=1)
-        self.assertAlmostEqual(og.DataView.get(odom_position)[1], 0, delta=3e-1)
-        self.assertAlmostEqual(og.DataView.get(odom_velocity)[0], forward_velocity, delta=5e-2)
-        self.assertAlmostEqual(og.DataView.get(odom_ang_vel)[2], angular_velocity, delta=1e-1)
-
-        await omni.kit.app.get_app().next_update_async()
+        self.assertLess(result.max_path_error, 0.1)
+        self.assertGreater(result.max_displacement, 0.2)
+        np.testing.assert_allclose(result.position_delta, result.expected_position_delta, atol=0.1)
+        self.assertAlmostEqual(result.linear_velocity, forward_velocity, delta=5e-2)
+        self.assertAlmostEqual(result.angular_velocity, angular_velocity, delta=2e-1)

@@ -33,10 +33,11 @@ from _scenario import (  # noqa: E402
     GridParams,
     GridTestBase,
     SimParams,
+    SimulationEntities,
     Transform,
     get_asset_root,
 )
-from isaacsim.physics.manager.impl.tensors import EntityView, SimulationView  # noqa: E402
+from isaacsim.physics.manager.impl.tensors import EntityView  # noqa: E402
 
 
 class DeformableMaterialPropertiesCommon(GridTestBase):
@@ -45,6 +46,7 @@ class DeformableMaterialPropertiesCommon(GridTestBase):
     Args:
         test_case: Test case that owns the scenario.
         device_params: Simulation device parameters.
+
     """
 
     MATERIAL_PATH = "/envs/*/Asset/DeformableMaterial"
@@ -70,22 +72,24 @@ class DeformableMaterialPropertiesCommon(GridTestBase):
         self.create_actor_from_asset(actor_path, Transform(), asset_path)
         self.view: EntityView
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create and validate the deformable-material view.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.view = sim.create_deformable_material_view(self.MATERIAL_PATH)
         self.check_deformable_material_view(self.view, 1)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Round-trip material properties on the first physics step.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step.
             dt: Simulation step duration.
+
         """
         if stepno != 0:
             return
@@ -104,6 +108,7 @@ class DeformableMaterialPropertiesCommon(GridTestBase):
         Args:
             property_name: Tensor implementation name.
             expected: Authored scalar value.
+
         """
         assert self.view.has_impl(property_name, tensors.ImplKind.Get), f"missing GET impl {property_name!r}"
         assert self.view.has_impl(property_name, tensors.ImplKind.Set), f"missing SET impl {property_name!r}"

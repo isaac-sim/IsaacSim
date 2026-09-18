@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 if(NOT DEFINED ISAACSIM_CMAKE_MINIMUM_VERSION OR NOT DEFINED ISAACSIM_CMAKE_POLICY_MAXIMUM_VERSION)
-    message(FATAL_ERROR "Configure this example through source/examples/examples.py")
+    message(FATAL_ERROR "Configure this example through the examples runner")
 endif()
 cmake_minimum_required(VERSION ${ISAACSIM_CMAKE_MINIMUM_VERSION}...${ISAACSIM_CMAKE_POLICY_MAXIMUM_VERSION})
 project(IsaacSimOvglViewport LANGUAGES CXX)
 
 if(NOT DEFINED ISAACSIM_CXX_STANDARD)
-    message(FATAL_ERROR "ISAACSIM_CXX_STANDARD was not provided by source/examples/examples.py")
+    message(FATAL_ERROR "ISAACSIM_CXX_STANDARD was not provided by the examples runner")
 endif()
 
 find_package(isaacsim_foundation CONFIG REQUIRED)

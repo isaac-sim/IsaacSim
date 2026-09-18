@@ -204,11 +204,20 @@ class RootBuildIntegrationTests(unittest.TestCase):
         legacy_entry_points = (
             prepare_tool.REPOSITORY_ROOT / "build.sh",
             prepare_tool.REPOSITORY_ROOT / "build.bat",
-            prepare_tool.REPOSITORY_ROOT / "tools" / "ci" / "build_isaac.py",
-            prepare_tool.REPOSITORY_ROOT / "tools" / "ci" / "build_isaac_coverage.py",
         )
         for entry_point in legacy_entry_points:
             with self.subTest(entry_point=entry_point.name):
+                self.assertNotIn("prepare_root_build.py", entry_point.read_text(encoding="utf-8"))
+
+    @unittest.skipUnless(
+        (prepare_tool.REPOSITORY_ROOT / "repo_internal.toml").is_file(),
+        "Internal repository configuration is not included in GitHub exports",
+    )
+    def test_internal_ci_entries_do_not_prepare_carriers(self) -> None:
+        """Keep carrier preparation in Repo Build for internal CI entry points."""
+        for name in ("build_isaac.py", "build_isaac_coverage.py"):
+            with self.subTest(entry_point=name):
+                entry_point = prepare_tool.REPOSITORY_ROOT / "tools" / "ci" / name
                 self.assertNotIn("prepare_root_build.py", entry_point.read_text(encoding="utf-8"))
 
     def test_carrier_premake_helper_is_a_public_build_tool(self) -> None:
@@ -233,12 +242,16 @@ class RootBuildIntegrationTests(unittest.TestCase):
         self.assertTrue(helper.is_file())
         self.assertTrue(repo_build_tool.ASSEMBLE_NOTICE_TOOL.samefile(helper))
 
-    def test_windows_build_jobs_pull_internal_library_toolchain(self) -> None:
-        """Share Repo Build's pinned host toolchain with the standalone Windows build."""
+    @unittest.skipUnless(
+        (prepare_tool.REPOSITORY_ROOT / "repo_internal.toml").is_file(),
+        "Internal repository configuration is not included in GitHub exports",
+    )
+    def test_windows_ci_jobs_pull_internal_library_toolchain(self) -> None:
+        """Share Repo Build's pinned host toolchain with standalone Windows build and test jobs."""
         ci_config = (prepare_tool.REPOSITORY_ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         repo_config = (prepare_tool.REPOSITORY_ROOT / "repo.toml").read_text(encoding="utf-8")
 
-        self.assertEqual(ci_config.count("!reference [.windows-module-toolchain, before_script]"), 1)
+        self.assertEqual(ci_config.count("!reference [.windows-module-toolchain, before_script]"), 2)
         self.assertIn("packman.cmd pull ./deps/isaacsim-libraries-msvc-ci.packman.xml", ci_config)
         self.assertEqual(
             tomllib.loads(repo_config)["repo_build"]["fetch"]["packman_host_files_to_pull"],
@@ -247,6 +260,10 @@ class RootBuildIntegrationTests(unittest.TestCase):
         self.assertIn('"token:in_ci==true".link_host_toolchain = false', repo_config)
         self.assertNotIn('"token:in_ci==true".vs_path', repo_config)
 
+    @unittest.skipUnless(
+        (prepare_tool.REPOSITORY_ROOT / "repo_internal.toml").is_file(),
+        "Internal repository configuration is not included in GitHub exports",
+    )
     def test_source_library_change_rules_include_license_collector(self) -> None:
         """Run standalone library CI whenever its license collector changes."""
         ci_config = (prepare_tool.REPOSITORY_ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
@@ -258,6 +275,19 @@ class RootBuildIntegrationTests(unittest.TestCase):
         self.assertEqual(len(conditional_rules), 2)
         for rule in conditional_rules:
             self.assertIn("          - tools/pixi_licenses.py", rule)
+
+    @unittest.skipUnless(
+        (prepare_tool.REPOSITORY_ROOT / "repo_internal.toml").is_file(),
+        "Internal repository configuration is not included in GitHub exports",
+    )
+    def test_library_artifact_omits_rematerializable_developer_environment(self) -> None:
+        """Keep the platform handoff artifact focused on irreproducible build outputs."""
+        ci_config = (prepare_tool.REPOSITORY_ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+        library_build = ci_config.split(".source-libraries-build-common:", 1)[1].split(
+            "build-linux-x86_64-libraries:", 1
+        )[0]
+
+        self.assertIn("isaacsim-libraries-release/developer-environment/**/*", library_build)
 
     def test_repo_build_preparation_runs_once(self) -> None:
         """Run carrier and notice preparation once without overriding dependencies."""

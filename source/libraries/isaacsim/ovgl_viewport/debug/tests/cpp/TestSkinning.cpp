@@ -30,7 +30,7 @@ using Bytes = std::vector<uint8_t>;
 using Attributes = std::unordered_map<std::string, Bytes>;
 
 template <class T>
-Bytes bytes_of(const std::vector<T>& values)
+Bytes bytesOf(const std::vector<T>& values)
 {
     Bytes output(values.size() * sizeof(T));
     if (!output.empty())
@@ -80,22 +80,22 @@ int main()
     Attributes attributes;
     attributes[key("/World/Mesh", "skel:skeleton")] = strings({ "/World/Skel" });
     attributes[key("/World/Mesh", "skel:joints")] = strings({ "root" });
-    attributes[key("/World/Mesh", "primvars:skel:jointIndices")] = bytes_of(std::vector<int>{ 0, 0, 0 });
-    attributes[key("/World/Mesh", "primvars:skel:jointWeights")] = bytes_of(std::vector<float>{ 1, 1, 1 });
-    attributes[key("/World/Mesh", "primvars:skel:geomBindTransform")] = bytes_of(std::vector<Matrix>{ identity });
-    attributes[key("/World/Mesh", "worldMatrix")] = bytes_of(std::vector<Matrix>{ identity });
+    attributes[key("/World/Mesh", "primvars:skel:jointIndices")] = bytesOf(std::vector<int>{ 0, 0, 0 });
+    attributes[key("/World/Mesh", "primvars:skel:jointWeights")] = bytesOf(std::vector<float>{ 1, 1, 1 });
+    attributes[key("/World/Mesh", "primvars:skel:geomBindTransform")] = bytesOf(std::vector<Matrix>{ identity });
+    attributes[key("/World/Mesh", "worldMatrix")] = bytesOf(std::vector<Matrix>{ identity });
 
     attributes[key("/World/Skel", "joints")] = strings({ "root" });
-    attributes[key("/World/Skel", "bindTransforms")] = bytes_of(std::vector<Matrix>{ identity });
-    attributes[key("/World/Skel", "restTransforms")] = bytes_of(std::vector<Matrix>{ identity });
+    attributes[key("/World/Skel", "bindTransforms")] = bytesOf(std::vector<Matrix>{ identity });
+    attributes[key("/World/Skel", "restTransforms")] = bytesOf(std::vector<Matrix>{ identity });
     attributes[key("/World/Skel", "skel:animationSource")] = strings({ "/World/Anim" });
-    attributes[key("/World/Skel", "worldMatrix")] = bytes_of(std::vector<Matrix>{ identity });
+    attributes[key("/World/Skel", "worldMatrix")] = bytesOf(std::vector<Matrix>{ identity });
 
-    constexpr float kHalfSqrt2 = 0.7071067811865476f;
+    constexpr float halfSqrtTwo = 0.7071067811865476f;
     attributes[key("/World/Anim", "joints")] = strings({ "root" });
-    attributes[key("/World/Anim", "translations")] = bytes_of(std::vector<float>{ 1, 2, 3 });
-    attributes[key("/World/Anim", "rotations")] = bytes_of(std::vector<float>{ 0, 0, kHalfSqrt2, kHalfSqrt2 });
-    attributes[key("/World/Anim", "scales")] = bytes_of(std::vector<float>{ 1, 1, 1 });
+    attributes[key("/World/Anim", "translations")] = bytesOf(std::vector<float>{ 1, 2, 3 });
+    attributes[key("/World/Anim", "rotations")] = bytesOf(std::vector<float>{ 0, 0, halfSqrtTwo, halfSqrtTwo });
+    attributes[key("/World/Anim", "scales")] = bytesOf(std::vector<float>{ 1, 1, 1 });
 
     isaacsim::ovgl_viewport::debug::details::ovgl::UsdSkelDeformer deformer(
         [&](const std::string& path, const std::string& attribute, Bytes& output)

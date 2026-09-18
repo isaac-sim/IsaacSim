@@ -17,12 +17,14 @@
 .. _isaacsim-ovgl-viewport-library:
 
 =======================
-isaacsim_ovgl_viewport
+isaacsim-ovgl-viewport
 =======================
 
-``isaacsim_ovgl_viewport`` provides an interactive OpenGL viewport for testing and debugging standalone Isaac Sim
-applications. The ``isaacsim.ovgl_viewport.debug`` module renders an OVStage scene and provides camera navigation,
-headless frame rendering, and frame capture.
+The ``isaacsim-ovgl-viewport`` distribution (CMake group ``isaacsim_ovgl_viewport``) provides an interactive OpenGL
+viewport for testing and debugging standalone Isaac Sim applications. The ``isaacsim.ovgl_viewport.debug`` module
+renders an OVStage scene and provides camera navigation, headless frame rendering, and frame capture. Its Python
+interface can author the standard render target on a Foundation stage and manages interactive camera updates and
+viewport lifetime.
 
 Use this library when you need to inspect standalone scene or simulation state. It is a concrete debugging tool, not a
 generic rendering abstraction.

@@ -18,15 +18,59 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
+import importlib.util
 import os
 import shutil
+import stat
 import subprocess
 import textwrap
 import tomllib
+import zipfile
+from collections import deque
+from collections.abc import Callable
 from pathlib import Path
 
-EXAMPLES_TEST_PHASE_VARIABLE = "ISAACSIM_EXAMPLES_TEST_PHASE"
+_MANIFEST_CONTRACT_PATH = Path(__file__).resolve().parents[2] / "package_manifest.py"
+_MANIFEST_CONTRACT_SPEC = importlib.util.spec_from_file_location("isaacsim_package_manifest", _MANIFEST_CONTRACT_PATH)
+if _MANIFEST_CONTRACT_SPEC is None or _MANIFEST_CONTRACT_SPEC.loader is None:
+    raise RuntimeError(f"Cannot load package manifest contract: {_MANIFEST_CONTRACT_PATH}")
+_MANIFEST_CONTRACT = importlib.util.module_from_spec(_MANIFEST_CONTRACT_SPEC)
+_MANIFEST_CONTRACT_SPEC.loader.exec_module(_MANIFEST_CONTRACT)
+
 TRANSIENT_SOURCE_DIRECTORIES = ("__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache")
+DEPENDENCY_PROBE_DISTRIBUTION = "example-external-dependency-probe"
+DEPENDENCY_PROBE_IMPORT = "isaacsim_example_dependency_probe"
+DEPENDENCY_PROBE_VERSION = "1.0.0"
+
+
+def _remove_test_tree(path: Path) -> None:
+    """Remove integration output, including legacy read-only dependency trees.
+
+    Args:
+        path: Integration output path to remove.
+    """
+    if path.is_symlink():
+        path.unlink()
+        return
+    is_junction = getattr(path, "is_junction", None)
+    if is_junction is not None and is_junction():
+        os.rmdir(path)
+        return
+    if not path.is_dir():
+        path.unlink()
+        return
+
+    def make_writable(function: Callable[[str], object], failed_path: str, _: object) -> None:
+        target = Path(failed_path)
+        is_target_junction = getattr(target, "is_junction", None)
+        if not target.is_symlink() and not (is_target_junction is not None and is_target_junction()):
+            target.chmod(stat.S_IMODE(target.stat().st_mode) | stat.S_IWUSR)
+        target.parent.chmod(stat.S_IMODE(target.parent.stat().st_mode) | stat.S_IWUSR)
+        function(failed_path)
+
+    shutil.rmtree(path, onerror=make_writable)
 
 
 def _copy_authored_tree(source: Path, destination: Path) -> None:
@@ -67,15 +111,6 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument("--generator-toolset", default="")
     parser.add_argument("--make-program", default="")
     parser.add_argument("--config", default="Release")
-    parser.add_argument(
-        "--phase",
-        choices=("all", "build", "test"),
-        default=os.environ.get(EXAMPLES_TEST_PHASE_VARIABLE, "all"),
-        help=(
-            "Run the complete integration test, prepare and build a portable test tree, or test an existing tree. "
-            f"Defaults to ${EXAMPLES_TEST_PHASE_VARIABLE}, then 'all'."
-        ),
-    )
     return parser.parse_args()
 
 
@@ -226,13 +261,111 @@ def _install_component(arguments: argparse.Namespace, prefix: Path, component: s
     )
 
 
+def _read_install_components(manifest: dict[str, object], manifest_path: Path) -> dict[str, str]:
+    """Read the install components used by examples from a package manifest.
+
+    Args:
+        manifest: Validated package manifest.
+        manifest_path: Source path for diagnostics.
+
+    Returns:
+        Runtime, development, and Python install components indexed by surface.
+    """
+    components = manifest.get("components")
+    required_surfaces = ("runtime", "development", "python")
+    if not isinstance(components, dict) or any(
+        not isinstance(components.get(surface), str) or not components[surface] for surface in required_surfaces
+    ):
+        raise RuntimeError(f"Package manifest contains invalid install components: {manifest_path}")
+    return {surface: components[surface] for surface in required_surfaces}
+
+
+def _resolve_required_packages(
+    arguments: argparse.Namespace,
+    examples_dir: Path,
+) -> tuple[dict[str, set[str]], dict[str, dict[str, str]], tuple[str, ...]]:
+    """Resolve direct example requirements through internal package dependencies.
+
+    Args:
+        arguments: CTest-provided integration settings.
+        examples_dir: Root of the examples collection.
+
+    Returns:
+        Required surfaces, install components, and dependency-first package order.
+    """
+    direct_requirements = _read_required_surfaces(examples_dir)
+    available_groups = set(arguments.package_group)
+    unavailable_groups = direct_requirements.keys() - available_groups
+    if unavailable_groups:
+        raise ValueError(f"Examples require unavailable module groups: {', '.join(sorted(unavailable_groups))}")
+
+    dependencies: dict[str, tuple[str, ...]] = {}
+    install_components: dict[str, dict[str, str]] = {}
+    versions: dict[str, str] = {}
+    visit_states: dict[str, str] = {}
+    visit_stack: list[str] = []
+    package_order: list[str] = []
+
+    def visit(package_name: str, expected_version: str | None = None) -> None:
+        state = visit_states.get(package_name)
+        if state == "visiting":
+            cycle_start = visit_stack.index(package_name)
+            cycle = [*visit_stack[cycle_start:], package_name]
+            raise RuntimeError(f"Package dependency cycle detected: {' -> '.join(cycle)}")
+        if state == "complete":
+            if expected_version is not None and versions[package_name] != expected_version:
+                raise RuntimeError(
+                    f"Package manifest version {versions[package_name]!r} does not match {expected_version!r}: "
+                    f"{arguments.library_build_dir / 'packages' / package_name / 'package.json'}"
+                )
+            return
+
+        manifest_path = arguments.library_build_dir / "packages" / package_name / "package.json"
+        manifest = _MANIFEST_CONTRACT.load_package_manifest(
+            manifest_path,
+            package_name,
+            expected_version=expected_version,
+        )
+        package_dependencies = tuple(sorted(manifest["dependencies"]))
+        dependencies[package_name] = package_dependencies
+        install_components[package_name] = _read_install_components(manifest, manifest_path)
+        versions[package_name] = manifest["version"]
+        visit_states[package_name] = "visiting"
+        visit_stack.append(package_name)
+        for dependency_name in package_dependencies:
+            if dependency_name not in available_groups:
+                raise ValueError(f"Package dependency is unavailable: {package_name} -> {dependency_name}")
+            dependency_specifier = manifest["dependencies"][dependency_name]
+            visit(dependency_name, dependency_specifier.removeprefix("=="))
+        visit_stack.pop()
+        visit_states[package_name] = "complete"
+        package_order.append(package_name)
+
+    for package_name in sorted(direct_requirements):
+        visit(package_name)
+
+    requirements = {package_name: set(surfaces) for package_name, surfaces in direct_requirements.items()}
+    pending_packages = deque(sorted(direct_requirements))
+    while pending_packages:
+        package_name = pending_packages.popleft()
+        package_surfaces = requirements[package_name]
+        for dependency_name in dependencies[package_name]:
+            dependency_surfaces = requirements.setdefault(dependency_name, set())
+            added_surfaces = package_surfaces - dependency_surfaces
+            if added_surfaces:
+                dependency_surfaces.update(added_surfaces)
+                pending_packages.append(dependency_name)
+
+    return requirements, install_components, tuple(package_order)
+
+
 def _install_declared_requirements(
     arguments: argparse.Namespace,
     examples_dir: Path,
     sdk_prefix: Path,
     python_prefix: Path,
 ) -> None:
-    """Install exactly the module surfaces declared by published examples.
+    """Install direct example surfaces and their internal package dependencies.
 
     Args:
         arguments: CTest-provided integration settings.
@@ -240,17 +373,21 @@ def _install_declared_requirements(
         sdk_prefix: Isolated native SDK prefix.
         python_prefix: Isolated Python distribution prefix.
     """
-    requirements = _read_required_surfaces(examples_dir)
-    unavailable_groups = requirements.keys() - set(arguments.package_group)
-    if unavailable_groups:
-        raise ValueError(f"Examples require unavailable module groups: {', '.join(sorted(unavailable_groups))}")
-
-    for module_name, surfaces in sorted(requirements.items()):
-        _install_component(arguments, sdk_prefix, f"{module_name}-runtime")
+    requirements, install_components, package_order = _resolve_required_packages(arguments, examples_dir)
+    installed_components: set[tuple[Path, str]] = set()
+    for module_name in package_order:
+        surfaces = requirements[module_name]
+        components = install_components[module_name]
+        requested_components = [(sdk_prefix, components["runtime"])]
         if "native_sdk" in surfaces:
-            _install_component(arguments, sdk_prefix, f"{module_name}-development")
+            requested_components.append((sdk_prefix, components["development"]))
         if "python" in surfaces:
-            _install_component(arguments, python_prefix, f"{module_name}-python")
+            requested_components.append((python_prefix, components["python"]))
+        for prefix, component in requested_components:
+            request = (prefix, component)
+            if request not in installed_components:
+                _install_component(arguments, prefix, component)
+                installed_components.add(request)
 
 
 def _reject_installed_build_paths(
@@ -336,6 +473,13 @@ def _runtime_environment(
     environment = os.environ.copy()
     environment["CMAKE_PREFIX_PATH"] = str(sdk_prefix)
     environment["PATH"] = os.pathsep.join((str(sdk_prefix / "bin"), environment.get("PATH", "")))
+    if os.name != "nt":
+        python_library_dir = arguments.python.parent.parent / "lib"
+        library_paths = [str(python_library_dir), str(sdk_prefix / "lib")]
+        inherited_library_path = environment.get("LD_LIBRARY_PATH")
+        if inherited_library_path:
+            library_paths.append(inherited_library_path)
+        environment["LD_LIBRARY_PATH"] = os.pathsep.join(library_paths)
     environment["PYTHONPATH"] = os.pathsep.join(
         (
             str(python_prefix / arguments.python_install_dir),
@@ -344,6 +488,21 @@ def _runtime_environment(
     )
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     return environment
+
+
+def _check_windows_server_runtime(sdk_prefix: Path) -> None:
+    """Launch the installed gRPC server without build-environment DLLs."""
+    if os.name != "nt":
+        return
+
+    binary_directory = sdk_prefix / "bin"
+    environment = os.environ.copy()
+    environment["PATH"] = os.pathsep.join((str(binary_directory), str(binary_directory / "plugins")))
+    _run_checked(
+        "Launch the installed OV SIM gRPC server with isolated runtime paths",
+        [str(binary_directory / "isaacsim-ovsim-grpc-server.exe"), "--help"],
+        environment,
+    )
 
 
 def _validate_materialized_roots(examples_dir: Path) -> None:
@@ -395,6 +554,44 @@ def _materialize_selected_workspace(
             _copy_authored_tree(source_examples / relative_path, destination)
 
 
+def _create_dependency_probe_index(root: Path) -> Path:
+    """Create a local wheel index for shared external dependency tests.
+
+    Args:
+        root: Directory that owns integration scratch data.
+
+    Returns:
+        Directory containing the generated wheel.
+    """
+    index = root / "python-package-index"
+    index.mkdir()
+    wheel_distribution = DEPENDENCY_PROBE_DISTRIBUTION.replace("-", "_")
+    wheel = index / f"{wheel_distribution}-{DEPENDENCY_PROBE_VERSION}-py3-none-any.whl"
+    dist_info = f"{wheel_distribution}-{DEPENDENCY_PROBE_VERSION}.dist-info"
+    files = {
+        f"{DEPENDENCY_PROBE_IMPORT}/__init__.py": b'VALUE = "shared"\n',
+        f"{dist_info}/METADATA": (
+            "Metadata-Version: 2.1\n"
+            f"Name: {DEPENDENCY_PROBE_DISTRIBUTION}\n"
+            f"Version: {DEPENDENCY_PROBE_VERSION}\n"
+        ).encode(),
+        f"{dist_info}/WHEEL": (
+            "Wheel-Version: 1.0\nGenerator: isaacsim-examples-test\nRoot-Is-Purelib: true\nTag: py3-none-any\n"
+        ).encode(),
+    }
+    record_path = f"{dist_info}/RECORD"
+    record = []
+    for path, content in files.items():
+        digest = base64.urlsafe_b64encode(hashlib.sha256(content).digest()).rstrip(b"=").decode()
+        record.append(f"{path},sha256={digest},{len(content)}")
+    record.append(f"{record_path},,")
+    with zipfile.ZipFile(wheel, "w") as archive:
+        for path, content in files.items():
+            archive.writestr(path, content)
+        archive.writestr(record_path, "\n".join(record) + "\n")
+    return index
+
+
 def _add_series_fixture(examples_dir: Path) -> None:
     """Add a materialized-only series that exercises ordering and level validation.
 
@@ -412,6 +609,7 @@ def _add_series_fixture(examples_dir: Path) -> None:
             id = "runner_smoke"
             title = "Runner Smoke"
             summary = "Exercise the series manifest contract."
+            kind = "sequence"
 
             [[step]]
             example = "runner_smoke.introduction"
@@ -429,6 +627,8 @@ def _add_series_fixture(examples_dir: Path) -> None:
             import os
             import sys
 
+            from isaacsim_example_dependency_probe import VALUE
+
             valid_arguments = (
                 ["--include", "normal", "--include", "normal", ""],
                 ["--include", "first", "--include", "second", ""],
@@ -437,6 +637,8 @@ def _add_series_fixture(examples_dir: Path) -> None:
                 raise SystemExit(f"Unexpected arguments: {sys.argv[1:]}")
             if os.environ.get("ISAACSIM_RUNNER_SMOKE") != "enabled":
                 raise SystemExit("Missing test environment overlay")
+            if VALUE != "shared":
+                raise SystemExit("External dependency returned an unexpected value")
             print("Runner smoke series passed.")
             """),
         encoding="utf-8",
@@ -459,6 +661,7 @@ def _add_series_fixture(examples_dir: Path) -> None:
 
             [requirements]
             system = ["python"]
+            python_packages = ["example-external-dependency-probe==1.0.0"]
 
             [[requirements.modules]]
             name = "isaacsim_common"
@@ -484,7 +687,14 @@ def _add_series_fixture(examples_dir: Path) -> None:
     (no_test_root / "README.md").write_text("# Runner smoke independent practice\n", encoding="utf-8")
     (no_test_root / "main.py").write_text(
         textwrap.dedent("""\
+            import os
             import sys
+
+            if os.environ.get("ISAACSIM_SERIES_SMOKE") == "enabled":
+                from isaacsim_example_dependency_probe import VALUE
+
+                if VALUE != "shared":
+                    raise SystemExit("Series dependency returned an unexpected value")
 
             print(f"Arguments: {sys.argv[1:]!r}")
             """),
@@ -511,6 +721,74 @@ def _add_series_fixture(examples_dir: Path) -> None:
             [[requirements.modules]]
             name = "isaacsim_common"
             surfaces = ["python"]
+            """),
+        encoding="utf-8",
+    )
+
+
+def _add_external_dependency_fixtures(examples_dir: Path) -> None:
+    """Add examples that prove shared external dependency installation.
+
+    Args:
+        examples_dir: Root of the materialized examples collection.
+    """
+    for name in ("declared", "consumer"):
+        example_root = examples_dir / "libraries" / "runner_external" / name
+        example_root.mkdir(parents=True)
+        (example_root / "README.md").write_text(f"# External dependency {name}\n", encoding="utf-8")
+        package_declaration = (
+            f'python_packages = ["{DEPENDENCY_PROBE_DISTRIBUTION}=={DEPENDENCY_PROBE_VERSION}"]\n'
+            if name == "declared"
+            else ""
+        )
+        (example_root / "example.toml").write_text(
+            textwrap.dedent(f"""\
+                id = "runner_external.{name}"
+                title = "External Dependency {name.title()}"
+                summary = "Exercise shared external Python dependencies."
+                owners = ["isaacsim.common.logging"]
+                topics = ["testing"]
+
+                [build]
+                adapter = "none"
+
+                [run]
+                adapter = "python"
+                path = "main.py"
+
+                [requirements]
+                system = ["python"]
+                {package_declaration}
+                [[requirements.modules]]
+                name = "isaacsim_common"
+                surfaces = ["python"]
+
+                [[test]]
+                name = "default"
+                stdout_contains = ["External dependency {name} passed."]
+                """),
+            encoding="utf-8",
+        )
+
+    declared_root = examples_dir / "libraries" / "runner_external" / "declared"
+    (declared_root / "main.py").write_text(
+        textwrap.dedent(f"""\
+            from {DEPENDENCY_PROBE_IMPORT} import VALUE
+
+            if VALUE != "shared":
+                raise SystemExit("External dependency returned an unexpected value")
+            print("External dependency declared passed.")
+            """),
+        encoding="utf-8",
+    )
+    consumer_root = examples_dir / "libraries" / "runner_external" / "consumer"
+    (consumer_root / "main.py").write_text(
+        textwrap.dedent(f"""\
+            from {DEPENDENCY_PROBE_IMPORT} import VALUE
+
+            if VALUE != "shared":
+                raise SystemExit("Shared external dependency returned an unexpected value")
+            print("External dependency consumer passed.")
             """),
         encoding="utf-8",
     )
@@ -694,101 +972,6 @@ def _exercise_invalid_source_rejections(
         )
 
 
-def _prepare_prebuilt_examples(arguments: argparse.Namespace) -> None:
-    """Install, materialize, and build the published examples for a later test job.
-
-    Args:
-        arguments: CTest-provided integration settings.
-    """
-    if arguments.test_root.exists():
-        shutil.rmtree(arguments.test_root)
-
-    materialized_repository = arguments.test_root / "materialized"
-    materialized_examples = materialized_repository / "source" / "examples"
-    materialized_libraries = materialized_repository / "source" / "libraries"
-    sdk_prefix = arguments.test_root / "sdk"
-    python_prefix = arguments.test_root / "python-package"
-    build_root = materialized_repository / "_build" / "examples"
-
-    _install_declared_requirements(
-        arguments,
-        arguments.examples_dir,
-        sdk_prefix,
-        python_prefix,
-    )
-    _reject_installed_build_paths(arguments, sdk_prefix, python_prefix)
-    _copy_authored_tree(arguments.examples_dir, materialized_examples)
-    materialized_libraries.mkdir()
-    shutil.copy2(
-        arguments.system_requirements_file,
-        materialized_libraries / arguments.system_requirements_file.name,
-    )
-    _validate_materialized_roots(materialized_examples)
-
-    environment = _runtime_environment(arguments, sdk_prefix, python_prefix)
-    _run_checked(
-        "Build all materialized examples",
-        [
-            str(arguments.python),
-            str(materialized_examples / "examples.py"),
-            *_runner_arguments(arguments, build_root),
-            "build",
-        ],
-        environment,
-        materialized_repository,
-    )
-
-
-def _test_prebuilt_examples(arguments: argparse.Namespace) -> None:
-    """Test the published examples prepared by a compiler-equipped build job.
-
-    Args:
-        arguments: CTest-provided integration settings.
-    """
-    materialized_repository = arguments.test_root / "materialized"
-    materialized_examples = materialized_repository / "source" / "examples"
-    runner = materialized_examples / "examples.py"
-    sdk_prefix = arguments.test_root / "sdk"
-    python_prefix = arguments.test_root / "python-package"
-    build_root = materialized_repository / "_build" / "examples"
-    if not build_root.is_dir():
-        raise RuntimeError(
-            f"The prebuilt examples test tree is incomplete; run the build phase first. Missing: {build_root}"
-        )
-
-    for path in (materialized_repository / "source", sdk_prefix, python_prefix):
-        if path.exists():
-            shutil.rmtree(path)
-    _copy_authored_tree(arguments.examples_dir, materialized_examples)
-    materialized_libraries = materialized_repository / "source" / "libraries"
-    materialized_libraries.mkdir()
-    shutil.copy2(
-        arguments.system_requirements_file,
-        materialized_libraries / arguments.system_requirements_file.name,
-    )
-    _install_declared_requirements(
-        arguments,
-        materialized_examples,
-        sdk_prefix,
-        python_prefix,
-    )
-    _reject_installed_build_paths(arguments, sdk_prefix, python_prefix)
-
-    environment = _runtime_environment(arguments, sdk_prefix, python_prefix)
-    _run_checked(
-        "Test all prebuilt materialized examples",
-        [
-            str(arguments.python),
-            str(runner),
-            *_runner_arguments(arguments, build_root),
-            "test",
-            "--no-build",
-        ],
-        environment,
-        materialized_repository,
-    )
-
-
 def _run_full_integration(arguments: argparse.Namespace) -> None:
     """Validate and execute every materialized example in one job.
 
@@ -796,7 +979,7 @@ def _run_full_integration(arguments: argparse.Namespace) -> None:
         arguments: CTest-provided integration settings.
     """
     if arguments.test_root.exists():
-        shutil.rmtree(arguments.test_root)
+        _remove_test_tree(arguments.test_root)
     test_root_libraries = arguments.test_root / "source" / "libraries"
     test_root_libraries.mkdir(parents=True)
     shutil.copy2(
@@ -814,6 +997,7 @@ def _run_full_integration(arguments: argparse.Namespace) -> None:
         sdk_prefix,
         python_prefix,
     )
+    _check_windows_server_runtime(sdk_prefix)
     _reject_installed_build_paths(arguments, sdk_prefix, python_prefix)
 
     environment = _runtime_environment(arguments, sdk_prefix, python_prefix)
@@ -867,7 +1051,75 @@ def _run_full_integration(arguments: argparse.Namespace) -> None:
         materialized_repository,
     )
     _validate_materialized_roots(materialized_examples)
+    dependency_index = _create_dependency_probe_index(arguments.test_root)
+    environment["PIP_FIND_LINKS"] = str(dependency_index)
     _add_series_fixture(materialized_examples)
+    _add_external_dependency_fixtures(materialized_examples)
+
+    selected_external_repository = arguments.test_root / "selected-external"
+    selected_external_examples = selected_external_repository / "source" / "examples"
+    _materialize_selected_workspace(
+        materialized_examples,
+        arguments.system_requirements_file,
+        selected_external_examples,
+        ("libraries/runner_external/declared",),
+    )
+    selected_external_sdk_prefix = arguments.test_root / "selected-external-sdk"
+    selected_external_python_prefix = arguments.test_root / "selected-external-python-package"
+    _install_declared_requirements(
+        arguments,
+        selected_external_examples,
+        selected_external_sdk_prefix,
+        selected_external_python_prefix,
+    )
+    selected_external_environment = _runtime_environment(
+        arguments,
+        selected_external_sdk_prefix,
+        selected_external_python_prefix,
+    )
+    selected_external_environment["PIP_NO_INDEX"] = "1"
+    selected_external_environment["PIP_FIND_LINKS"] = str(dependency_index)
+    selected_external_build_root = selected_external_repository / "_build" / "examples"
+    _run_expect_failure(
+        "Require external dependencies to be built before runtime",
+        [
+            str(arguments.python),
+            str(selected_external_examples / "examples.py"),
+            *_runner_arguments(arguments, selected_external_build_root),
+            "run",
+            "runner_external.declared",
+        ],
+        "run the examples build command first",
+        selected_external_environment,
+        selected_external_repository,
+    )
+    _run_expect_failure(
+        "Require external dependencies to be built before no-build tests",
+        [
+            str(arguments.python),
+            str(selected_external_examples / "examples.py"),
+            *_runner_arguments(arguments, selected_external_build_root),
+            "test",
+            "--no-build",
+        ],
+        "run the examples build command first",
+        selected_external_environment,
+        selected_external_repository,
+    )
+    if (selected_external_build_root / "python-dependencies").exists():
+        raise RuntimeError("Runtime dependency validation created a Python dependency target")
+    _run_checked(
+        "Test a minimal installer-selected external dependency workspace",
+        [
+            str(arguments.python),
+            str(selected_external_examples / "examples.py"),
+            *_runner_arguments(arguments, selected_external_build_root),
+            "test",
+        ],
+        selected_external_environment,
+        selected_external_repository,
+    )
+
     selected_series_repository = arguments.test_root / "selected-series"
     selected_series_examples = selected_series_repository / "source" / "examples"
     _materialize_selected_workspace(
@@ -893,6 +1145,8 @@ def _run_full_integration(arguments: argparse.Namespace) -> None:
         selected_series_sdk_prefix,
         selected_series_python_prefix,
     )
+    selected_series_environment["PIP_NO_INDEX"] = "1"
+    selected_series_environment["PIP_FIND_LINKS"] = str(dependency_index)
     _run_checked(
         "Test a minimal installer-selected series workspace",
         [
@@ -900,6 +1154,19 @@ def _run_full_integration(arguments: argparse.Namespace) -> None:
             str(selected_series_examples / "examples.py"),
             *_runner_arguments(arguments, selected_series_repository / "_build" / "examples"),
             "test",
+        ],
+        selected_series_environment,
+        selected_series_repository,
+    )
+    selected_series_environment["ISAACSIM_SERIES_SMOKE"] = "enabled"
+    _run_checked(
+        "Run a series step through the shared external dependency environment",
+        [
+            str(arguments.python),
+            str(selected_series_examples / "examples.py"),
+            *_runner_arguments(arguments, selected_series_repository / "_build" / "examples"),
+            "run",
+            "runner_smoke.independent_practice",
         ],
         selected_series_environment,
         selected_series_repository,
@@ -1004,20 +1271,15 @@ def _run_full_integration(arguments: argparse.Namespace) -> None:
 
 
 def main() -> int:
-    """Run the selected examples integration phase.
+    """Run the examples integration test.
 
     Returns:
         Process exit code.
     """
     arguments = _parse_arguments()
-    if arguments.phase == "build":
-        _prepare_prebuilt_examples(arguments)
-    elif arguments.phase == "test":
-        _test_prebuilt_examples(arguments)
-    else:
-        _run_full_integration(arguments)
-    if arguments.phase != "build" and arguments.test_root.exists():
-        shutil.rmtree(arguments.test_root)
+    _run_full_integration(arguments)
+    if arguments.test_root.exists():
+        _remove_test_tree(arguments.test_root)
     return 0
 
 

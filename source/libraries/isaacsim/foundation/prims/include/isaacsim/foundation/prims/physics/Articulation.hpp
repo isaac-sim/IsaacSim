@@ -58,27 +58,29 @@ public:
      *
      * @param[in] paths               Single path string or list of path strings. May include regular
      *                                expressions that are expanded against the active stage.
-     * @param[in] positions           World-frame positions to set on construction, shape @c (N, 3).
-     *                                If omitted, existing positions are preserved.
-     * @param[in] translations        Local-frame translations to set on construction, shape @c (N, 3).
-     *                                If omitted, existing translations are preserved.
-     * @param[in] orientations        World-frame orientations (quaternion @c wxyz) to set on construction,
-     *                                shape @c (N, 4). If omitted, existing orientations are preserved.
-     * @param[in] scales              Scales to apply to the prims on construction, shape @c (N, 3).
-     *                                If omitted, existing scales are preserved.
-     * @param[in] resetXformOpProperties Whether to reset the xform op attributes of the prims to a
-     *                                   standard set before applying the given transform values.
+     * @param[in] resetXformOpProperties Whether to normalize the xformOp stack to translate/orient/scale.
      *
      * @throws std::runtime_error if no active or default stage has been set.
      */
     Articulation(const std::variant<std::string, std::vector<std::string>>& paths,
                  // Xform
-                 const std::optional<array::Array>& positions = std::nullopt,
-                 const std::optional<array::Array>& translations = std::nullopt,
-                 const std::optional<array::Array>& orientations = std::nullopt,
-                 const std::optional<array::Array>& scales = std::nullopt,
                  bool resetXformOpProperties = true);
     ~Articulation() = default;
+
+    /**
+     * @brief Check whether the prims at the given paths are of the type handled by this class.
+     * @details A prim matches when it is @c Xformable and it or any of its descendants has the
+     *          @c PhysicsArticulationRootAPI schema applied, mirroring how the constructor locates the
+     *          articulation root. Testing the prim itself is not enough, since paths pointing at a
+     *          wrapper above the root are accepted as well.
+     *          The paths are resolved against the active stage before being checked.
+     *          Since this method is static, the returned array is always allocated on the CPU.
+     * @param[in] paths Single path string or list of path strings. May include regular
+     *                  expressions that are expanded against the active stage.
+     * @return Boolean flags (dtype bool, shape @c (N,1)), one per resolved prim.
+     * @throws std::runtime_error if the given paths do not correspond to existing prims.
+     */
+    static array::Array areOfType(const std::variant<std::string, std::vector<std::string>>& paths);
 
     // -- Articulation metadata --
 
@@ -108,7 +110,7 @@ public:
 
     /**
      * @brief Return the type identifiers of all degrees of freedom (DOFs) in the articulations.
-     * @return List of DOF type strings (e.g., @c "Rotation", @c "Translation").
+     * @return List of DOF type strings (e.g., @c "rotation", @c "translation").
      */
     std::vector<std::string> dofTypes() const;
 
@@ -132,7 +134,7 @@ public:
 
     /**
      * @brief Return the type identifiers of all joints in the articulations.
-     * @return List of joint type strings (e.g., @c "RevoluteJoint", @c "PrismaticJoint").
+     * @return List of joint type strings (e.g., @c "revolute", @c "prismatic").
      */
     std::vector<std::string> jointTypes() const;
 
@@ -487,8 +489,8 @@ public:
     /**
      * @brief Get the PhysX solver iteration counts for the selected prims.
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Two-element tuple: 1) position iteration counts, shape @c (N,);
-     *         2) velocity iteration counts, shape @c (N,).
+     * @return Two-element tuple: 1) position iteration counts, shape @c (N, 1);
+     *         2) velocity iteration counts, shape @c (N, 1).
      */
     std::tuple<array::Array, array::Array> getSolverIterationCounts(
         const std::optional<array::Array>& indices = std::nullopt);
@@ -499,8 +501,8 @@ public:
      * Higher iteration counts improve simulation accuracy at the cost of performance.
      * At least one of @p positionCounts or @p velocityCounts must be specified.
      *
-     * @param[in] positionCounts  Position solver iteration counts, shape @c (N,). If omitted, unchanged.
-     * @param[in] velocityCounts  Velocity solver iteration counts, shape @c (N,). If omitted, unchanged.
+     * @param[in] positionCounts  Position solver iteration counts, shape @c (N, 1). If omitted, unchanged.
+     * @param[in] velocityCounts  Velocity solver iteration counts, shape @c (N, 1). If omitted, unchanged.
      * @param[in] indices         Indices of prims to process. If omitted, all wrapped prims are processed.
      */
     void setSolverIterationCounts(const std::optional<array::Array>& positionCounts = std::nullopt,
@@ -514,7 +516,7 @@ public:
      * position-based stabilization to help reduce jitter on resting articulations.
      *
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Stabilization thresholds, shape @c (N,).
+     * @return Stabilization thresholds, shape @c (N, 1).
      */
     array::Array getStabilizationThresholds(const std::optional<array::Array>& indices = std::nullopt);
 
@@ -524,7 +526,7 @@ public:
      * The stabilization threshold controls the energy level below which PhysX applies
      * position-based stabilization to help reduce jitter on resting articulations.
      *
-     * @param[in] thresholds Stabilization thresholds, shape @c (N,).
+     * @param[in] thresholds Stabilization thresholds, shape @c (N, 1).
      * @param[in] indices    Indices of prims to process. If omitted, all wrapped prims are processed.
      */
     void setStabilizationThresholds(const array::Array& thresholds,
@@ -533,13 +535,13 @@ public:
     /**
      * @brief Get the self-collision enabled flags of the selected prims.
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Boolean flags indicating whether self-collision is enabled, shape @c (N,).
+     * @return Boolean flags indicating whether self-collision is enabled, shape @c (N, 1).
      */
     array::Array getEnabledSelfCollisions(const std::optional<array::Array>& indices = std::nullopt);
 
     /**
      * @brief Enable or disable self-collision for the selected prims.
-     * @param[in] enabled Boolean flags, shape @c (N,). @c true to enable, @c false to disable.
+     * @param[in] enabled Boolean flags, shape @c (N, 1). @c true to enable, @c false to disable.
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
      */
     void setEnabledSelfCollisions(const array::Array& enabled, const std::optional<array::Array>& indices = std::nullopt);
@@ -551,7 +553,7 @@ public:
      * falls below this threshold.
      *
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Sleep thresholds, shape @c (N,).
+     * @return Sleep thresholds, shape @c (N, 1).
      */
     array::Array getSleepThresholds(const std::optional<array::Array>& indices = std::nullopt);
 
@@ -561,7 +563,7 @@ public:
      * An articulation is put to sleep by the solver when its kinetic energy per unit mass
      * falls below this threshold.
      *
-     * @param[in] thresholds Sleep thresholds, shape @c (N,).
+     * @param[in] thresholds Sleep thresholds, shape @c (N, 1).
      * @param[in] indices    Indices of prims to process. If omitted, all wrapped prims are processed.
      */
     void setSleepThresholds(const array::Array& thresholds, const std::optional<array::Array>& indices = std::nullopt);

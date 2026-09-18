@@ -15,8 +15,6 @@
 
 """Provides classes for representing and converting joint-space paths to minimal-time trajectories."""
 
-from typing import Optional
-
 import numpy as np
 import warp as wp
 from isaacsim.core.experimental.utils.ops import place
@@ -213,7 +211,8 @@ class MinimalTimeJointTrajectory(Trajectory):
 
         if (waypoint_absolute_difference_tolerance <= 0.0) or (waypoint_relative_difference_tolerance <= 0.0):
             raise ValueError(
-                f"Neither waypoint_relative_difference_tolerance nor waypoint_absolute_difference_tolerance can be less than or equal to 0"
+                "Neither waypoint_relative_difference_tolerance nor waypoint_absolute_difference_tolerance "
+                "can be less than or equal to 0"
             )
 
         # verify that there are no duplicate waypoints:
@@ -230,7 +229,8 @@ class MinimalTimeJointTrajectory(Trajectory):
                     f"Waypoint {i} and waypoint {i+1} are equal within allowed tolerances. Waypoints are:\n"
                     + f"Waypoint {i}: {waypoints_np[i,:]}\n"
                     + f"Waypoint {i+1}: {waypoints_np[i+1,:]}\n"
-                    + f"If these waypoints are intentional, please reduce the tolerances. Tolerances must be greater than 0",
+                    + "If these waypoints are intentional, please reduce the tolerances. "
+                    "Tolerances must be greater than 0",
                 )
 
         # some useful parameters to have:
@@ -371,7 +371,7 @@ class MinimalTimeJointTrajectory(Trajectory):
         """
         return self._active_joints
 
-    def get_target_state(self, trajectory_time: float) -> Optional[RobotState]:
+    def get_target_state(self, trajectory_time: float) -> RobotState | None:
         """Get the target robot state at the given time.
 
         Args:

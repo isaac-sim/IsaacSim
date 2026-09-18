@@ -27,12 +27,8 @@ namespace shapes
 Cube::Cube(const std::variant<std::string, std::vector<std::string>>& paths,
            const std::optional<array::Array>& sizes,
            const std::optional<ColorType>& colors,
-           const std::optional<array::Array>& positions,
-           const std::optional<array::Array>& translations,
-           const std::optional<array::Array>& orientations,
-           const std::optional<array::Array>& scales,
            bool resetXformOpProperties)
-    : Shape(paths, /*shapeType=*/"Cube", colors, positions, translations, orientations, scales, resetXformOpProperties)
+    : Shape(paths, /*shapeType=*/"Cube", colors, resetXformOpProperties)
 {
     // Initialize instance from arguments.
     if (sizes.has_value())
@@ -55,6 +51,11 @@ array::Array Cube::getSizes(const std::optional<array::Array>& indices)
 void Cube::updateExtents()
 {
     // TODO: Implement and call it when setting values.
+}
+
+array::Array Cube::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("Cube");
 }
 
 } // namespace shapes

@@ -54,7 +54,9 @@ stdoutFailPatterns.exclude = [
 ]
 
 [[test]]
-timeout = 900
+# The Windows suite can approach 900 seconds on shared runners before the final
+# stage-open regression tests run, so keep enough process-level timeout headroom.
+timeout = 1200
 dependencies = [
     "isaacsim.ros2.bridge",
     "isaacsim.test.utils",

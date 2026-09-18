@@ -17,13 +17,13 @@
 .. _isaacsim-foundation-library:
 
 ===================
-isaacsim_foundation
+isaacsim-foundation
 ===================
 
-``isaacsim_foundation`` provides the shared Universal Scene Description (USD) layer
-for standalone Isaac Sim libraries. It includes OpenUSD and OVStage adapters, typed
-scene-object wrappers, physics prim wrappers, and common stage, prim, and semantics
-utilities.
+The ``isaacsim-foundation`` distribution (CMake group ``isaacsim_foundation``) provides
+the shared Universal Scene Description (USD) layer for standalone Isaac Sim libraries.
+It includes OpenUSD and OVStage adapters, typed scene-object wrappers, physics prim
+wrappers, and common stage, prim, and semantics utilities.
 
 Use the adapter that matches the USD runtime owned by your application. Higher-level
 libraries build on these modules instead of depending directly on runtime-specific

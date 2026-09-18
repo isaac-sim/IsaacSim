@@ -68,3 +68,25 @@ def test_sizes(capsys: Any, stage: Any, populate: Any, values: Any) -> None:
     output = prims.get_sizes()
     isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.float64)
     isaacsim_test.check_allclose(values, output)
+
+
+def test_are_of_type(capsys: Any, stage: Any) -> None:
+    """Test are of type.
+
+    Args:
+        capsys: Pytest output-capture fixture.
+        stage: Stage used by the test.
+    """
+    type_names = ["Cube", "Sphere", "Scope"]
+    for index, type_name in enumerate(type_names):
+        stage.define_prim(f"/World/Prim{index}", type_name)
+    paths = [f"/World/Prim{index}" for index in range(len(type_names))]
+    # boolean flags are reported per prim, in the order the paths were given
+    output = Shape.are_of_type(paths)
+    isaacsim_test.check_array(output, shape=(len(type_names), 1), dtype=wp.bool)
+    isaacsim_test.check_equal(np.array([1, 0, 0], dtype=np.bool_).reshape(-1, 1), output)
+    # regular expressions are expanded against the active stage
+    isaacsim_test.check_array(Shape.are_of_type("/World/Prim.*"), shape=(len(type_names), 1), dtype=wp.bool)
+    # non-existing prims
+    with pytest.raises(RuntimeError):
+        Shape.are_of_type("/World/NonExistent")

@@ -3,7 +3,7 @@ name: navigation-primitives
 description: "Shared mobile-robot substrate: footprints, A*, kinematics, cameras. Use before navigation/MobilityGen; not for map.yaml export (use occupancy-map)."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Navigation Primitives — Shared Substrate

@@ -115,7 +115,8 @@ function(_isaacsim_validate_group_source_path group_name requested_module_prefix
             set(module_prefix "${namespace_segment}.${distribution_segment}")
             if(requested_module_prefix AND NOT requested_module_prefix STREQUAL module_prefix)
                 message(FATAL_ERROR
-                    "Distribution ${group_name} MODULE_PREFIX ${requested_module_prefix} does not match its source path; "
+                    "Distribution ${group_name} MODULE_PREFIX ${requested_module_prefix} does not match its source "
+                    "path; "
                     "expected ${module_prefix}"
                 )
             endif()
@@ -399,7 +400,9 @@ function(_isaacsim_get_module_names module_name output_target output_alias outpu
     set(${output_dir} "${ISAACSIM_MODULE_OUTPUT_ROOT}/${module_name}${configuration_suffix}" PARENT_SCOPE)
 endfunction()
 
-function(_isaacsim_prepare_module module_name output_target output_alias output_path output_dir output_group output_version)
+function(_isaacsim_prepare_module
+    module_name output_target output_alias output_path output_dir output_group output_version
+)
     _isaacsim_get_module_names("${module_name}" module_target module_alias module_path module_output_dir)
     _isaacsim_get_current_group(group_name group_version)
     _isaacsim_validate_module_source_path("${module_name}" "${group_name}")
@@ -492,6 +495,40 @@ function(_isaacsim_collect_runtime_targets target output)
     set(${output} "${result}" PARENT_SCOPE)
 endfunction()
 
+function(_isaacsim_collect_imported_runtime_targets output)
+    set(pending ${ARGN})
+    set(visited)
+    set(result)
+    while(pending)
+        list(POP_FRONT pending current)
+        _isaacsim_resolve_target("${current}" current_target)
+        if(NOT TARGET "${current_target}" OR current_target IN_LIST visited)
+            continue()
+        endif()
+        list(APPEND visited "${current_target}")
+
+        get_target_property(link_dependencies "${current_target}" INTERFACE_LINK_LIBRARIES)
+        foreach(link_dependency IN LISTS link_dependencies)
+            if(link_dependency MATCHES "^\\$<LINK_ONLY:([^>]+)>$")
+                set(link_dependency "${CMAKE_MATCH_1}")
+            elseif(link_dependency MATCHES "^\\$<TARGET_NAME_IF_EXISTS:([^>]+)>$")
+                set(link_dependency "${CMAKE_MATCH_1}")
+            endif()
+            _isaacsim_resolve_target("${link_dependency}" dependency_target)
+            if(TARGET "${dependency_target}")
+                list(APPEND pending "${dependency_target}")
+            endif()
+        endforeach()
+
+        get_target_property(is_imported "${current_target}" IMPORTED)
+        get_target_property(target_type "${current_target}" TYPE)
+        if(is_imported AND target_type MATCHES "^(MODULE|SHARED)_LIBRARY$")
+            list(APPEND result "${current_target}")
+        endif()
+    endwhile()
+    set(${output} "${result}" PARENT_SCOPE)
+endfunction()
+
 function(isaacsim_add_module)
     set(one_value_args NAME EXPORT_HEADER EXPORT_MACRO PUBLIC_C_SYMBOLS_FILE)
     set(multi_value_args
@@ -516,7 +553,9 @@ function(isaacsim_add_module)
         message(FATAL_ERROR "${ARG_NAME} generated export header must use the .h extension: ${ARG_EXPORT_HEADER}")
     endif()
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/include/${ARG_EXPORT_HEADER}")
-        message(FATAL_ERROR "${ARG_NAME} generated export header already exists in the source tree: ${ARG_EXPORT_HEADER}")
+        message(FATAL_ERROR
+            "${ARG_NAME} generated export header already exists in the source tree: ${ARG_EXPORT_HEADER}"
+        )
     endif()
 
     _isaacsim_prepare_module("${ARG_NAME}"
@@ -709,7 +748,7 @@ function(isaacsim_add_header_module)
 endfunction()
 
 function(isaacsim_add_runtime_directory)
-    set(options WINDOWS_PYTHON_SHARED)
+    set(options NATIVE_ONLY WINDOWS_PYTHON_SHARED)
     set(one_value_args MODULE SOURCE DESTINATION WINDOWS_INSTALL_DESTINATION)
     cmake_parse_arguments(ARG "${options}" "${one_value_args}" "" ${ARGN})
     if(ARG_UNPARSED_ARGUMENTS)
@@ -782,21 +821,29 @@ function(isaacsim_add_runtime_directory)
         COMPONENT "${runtime_component}"
         ${ISAACSIM_PACKAGING_EXCLUDE_ARGS}
     )
-    set_property(TARGET ${module_target} APPEND PROPERTY ISAACSIM_RUNTIME_DIRECTORIES
-        "${ARG_SOURCE}" "${ARG_DESTINATION}"
-    )
-    set_property(TARGET ${module_target} APPEND PROPERTY ISAACSIM_RUNTIME_DIRECTORY_FILES ${runtime_files})
     if(ARG_WINDOWS_PYTHON_SHARED)
+        if(ARG_NATIVE_ONLY)
+            message(FATAL_ERROR
+                "${ARG_MODULE} runtime directory cannot be both NATIVE_ONLY and WINDOWS_PYTHON_SHARED"
+            )
+        endif()
         set_property(TARGET ${module_target} APPEND PROPERTY
             ISAACSIM_WINDOWS_PYTHON_SHARED_RUNTIME_DESTINATIONS "${ARG_DESTINATION}"
         )
     endif()
+    if(NOT ARG_NATIVE_ONLY)
+        set_property(TARGET ${module_target} APPEND PROPERTY ISAACSIM_RUNTIME_DIRECTORIES
+            "${ARG_SOURCE}" "${ARG_DESTINATION}"
+        )
+        set_property(TARGET ${module_target} APPEND PROPERTY ISAACSIM_RUNTIME_DIRECTORY_FILES ${runtime_files})
+    endif()
 endfunction()
 
 function(isaacsim_install_runtime_dependencies)
+    set(options NATIVE_ONLY)
     set(one_value_args MODULE DESTINATION)
     set(multi_value_args TARGETS)
-    cmake_parse_arguments(ARG "" "${one_value_args}" "${multi_value_args}" ${ARGN})
+    cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
     if(ARG_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR
             "isaacsim_install_runtime_dependencies received unknown arguments: ${ARG_UNPARSED_ARGUMENTS}"
@@ -846,6 +893,18 @@ function(isaacsim_install_runtime_dependencies)
             COMPONENT "${runtime_component}"
         )
         if(NOT WIN32)
+            # file(INSTALL) preserves a symlink without copying its target. Add
+            # the resolved payload as well so imported linker-name symlinks do
+            # not become dangling links after relocation.
+            set(runtime_install_code
+                "file(REAL_PATH \"$<TARGET_FILE:${resolved_runtime_target}>\" runtime_real_path)\n"
+                "if(NOT runtime_real_path STREQUAL \"$<TARGET_FILE:${resolved_runtime_target}>\")\n"
+                "  file(INSTALL DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${runtime_install_dir}\" "
+                "TYPE FILE FILES \"\${runtime_real_path}\")\n"
+                "endif()"
+            )
+            string(JOIN "" runtime_install_code ${runtime_install_code})
+            install(CODE "${runtime_install_code}" COMPONENT "${runtime_component}")
             # Imported shared-library targets commonly name a fully versioned
             # file while dependents load its SONAME. Install both spellings so
             # relocated packages do not rely on the dependency build prefix.
@@ -855,12 +914,14 @@ function(isaacsim_install_runtime_dependencies)
                 COMPONENT "${runtime_component}"
             )
         endif()
-        set_property(TARGET ${module_target} APPEND PROPERTY ISAACSIM_EXTERNAL_RUNTIME_TARGETS
-            "${resolved_runtime_target}"
-        )
-        set_property(TARGET ${module_target} APPEND PROPERTY ISAACSIM_EXTERNAL_RUNTIME_DESTINATIONS
-            "${runtime_destination}"
-        )
+        if(NOT ARG_NATIVE_ONLY)
+            set_property(TARGET ${module_target} APPEND PROPERTY ISAACSIM_EXTERNAL_RUNTIME_TARGETS
+                "${resolved_runtime_target}"
+            )
+            set_property(TARGET ${module_target} APPEND PROPERTY ISAACSIM_EXTERNAL_RUNTIME_DESTINATIONS
+                "${runtime_destination}"
+            )
+        endif()
         if(BUILD_TESTING)
             string(MAKE_C_IDENTIFIER "${resolved_runtime_target}" runtime_test_suffix)
             set(runtime_test_name "tests-binary-boundary-runtime-${module_target}-${runtime_test_suffix}")

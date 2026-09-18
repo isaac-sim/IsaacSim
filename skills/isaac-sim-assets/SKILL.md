@@ -3,7 +3,7 @@ name: isaac-sim-assets
 description: "Configure and troubleshoot Isaac Sim asset access through Asset Region Profiles, custom or local asset roots, downloadable asset packs, availability manifests, and the public storage APIs. Use for missing or unreachable Isaac Sim assets, regional routing, offline assets, or asset-root precedence; do not use for installing Isaac Sim."
 license: Apache-2.0
 metadata:
-  author: NVIDIA Isaac Sim Team
+  author: NVIDIA Isaac Sim Team <info@nvidia.com>
 ---
 
 # Isaac Sim Assets

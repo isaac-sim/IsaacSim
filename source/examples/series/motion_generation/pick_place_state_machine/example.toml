@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+id = "motion_generation.pick_place_state_machine"
+title = "Pick-and-Place State Machine"
+summary = "Use cuMotion RMPflow and measured state to stack and unstack two cubes with a Franka Panda robot."
+owners = [
+    "isaacsim.foundation.objects",
+    "isaacsim.physics.entities",
+    "isaacsim.physics.manager",
+    "isaacsim.physics_engines.ovphysx",
+    "isaacsim.robot_motion.cumotion",
+    "isaacsim.robot_motion.experimental.motion_generation",
+    "isaacsim.ovgl_viewport.debug",
+]
+topics = ["controllers", "manipulation", "motion_generation", "physics", "rendering", "state_machine", "viewport"]
+
+[build]
+adapter = "none"
+
+[run]
+adapter = "python"
+path = "main.py"
+
+[requirements]
+system = ["python"]
+python_packages = ["transitions==0.9.3"]
+
+[[requirements.modules]]
+name = "isaacsim_foundation"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_deprecated"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_physics"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_physics_engines"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_robot_motion"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_ovgl_viewport"
+surfaces = ["python"]
+
+[[test]]
+name = "headless"
+path = "test.py"
+timeout_seconds = 420
+stdout_contains = [
+    "Transfer 1 completed:",
+    "Transfer 2 completed:",
+    "Pick-and-place state-machine example passed.",
+    "Headless rendering smoke test passed.",
+]

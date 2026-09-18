@@ -30,13 +30,22 @@ from typing import Any
 
 from isaacsim.foundation.prims import ColliderBody
 
+from ._scalar_first_poses import preserve_scalar_first_poses
+from ._transform_arguments import preserve_transform_arguments
+
 __all__ = ["GeomPrim"]
 
 
+@preserve_transform_arguments
+@preserve_scalar_first_poses
 class GeomPrim(ColliderBody):
     """Deprecated collider wrapper with non-destructive construction semantics.
 
-    All other behavior, including :meth:`isaacsim.foundation.prims.ColliderBody.get_enabled_collisions`, is inherited from
+    Quaternions are ordered ``wxyz`` on every pose method, as the deprecated experimental wrapper documented,
+    rather than the ``xyzw`` of :class:`isaacsim.foundation.objects.Xform`.
+
+    All other behavior, including
+    :meth:`isaacsim.foundation.prims.ColliderBody.get_enabled_collisions`, is inherited from
     :class:`isaacsim.foundation.prims.ColliderBody`.
 
     Args:

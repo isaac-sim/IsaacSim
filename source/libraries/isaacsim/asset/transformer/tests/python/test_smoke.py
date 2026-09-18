@@ -13,7 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Verifies standalone importability and basic data-model behavior for isaacsim.asset.transformer. Covers public API availability, absence of Omni module dependencies, rule spec and profile round trips, and registry instantiation."""
+"""Verify standalone importability and basic transformer data-model behavior.
+
+The tests cover the public API, independence from Omni modules, rule specification and profile round trips, and
+registry instantiation.
+"""
 
 from __future__ import annotations
 

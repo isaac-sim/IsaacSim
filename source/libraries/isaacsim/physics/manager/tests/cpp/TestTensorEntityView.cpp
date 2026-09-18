@@ -15,8 +15,8 @@
 
 #include <doctest/doctest.h>
 #include <isaacsim/physics/manager/tensors/EntityView.hpp>
-#include <isaacsim/physics/registration/tensors/TensorDesc.hpp>
-#include <isaacsim/physics/registration/tensors/TensorSpec.hpp>
+#include <isaacsim/physics/registration/tensors/TensorDescription.hpp>
+#include <isaacsim/physics/registration/tensors/TensorSpecification.hpp>
 
 #include <cstring>
 #include <stdexcept>
@@ -27,7 +27,7 @@ using namespace isaacsim::physics::tensors;
 namespace
 {
 
-// Concrete subclass for testing — exposes the protected `registerImpl` /
+// Concrete subclass for testing — exposes the protected `registerImplementation` /
 // `registerMetadata` calls and lets tests stage callbacks.
 class TestableEntityView : public EntityView
 {
@@ -36,16 +36,16 @@ public:
     {
     }
 
-    using EntityView::registerImpl;
+    using EntityView::registerImplementation;
     using EntityView::registerMetadata;
 };
 
-// Build a TensorDesc that points at a heap-owned float buffer.
+// Build a TensorDescription that points at a heap-owned float buffer.
 class OwnedFloatTensor
 {
 public:
     std::vector<float> storage;
-    TensorDesc descriptor;
+    TensorDescription descriptor;
 
     OwnedFloatTensor(std::vector<float> data, std::vector<int64_t> shape) : storage(std::move(data))
     {
@@ -57,9 +57,9 @@ public:
     }
 };
 
-TensorSpec makeFloat32Spec(bool indexedRead = false, bool indexedWrite = false, bool maskedWrite = false)
+TensorSpecification makeFloat32Specification(bool indexedRead = false, bool indexedWrite = false, bool maskedWrite = false)
 {
-    TensorSpec specification;
+    TensorSpecification specification;
     specification.dtype = DType::eFloat32;
     specification.deviceKind = DeviceKind::eCpu;
     specification.supports = true;
@@ -79,174 +79,190 @@ TEST_CASE("EntityView: construction stores the path list and count")
     SUBCASE("Default construction — empty paths, zero count")
     {
         TestableEntityView view({});
-        REQUIRE(view.getPaths().empty());
-        REQUIRE(view.getCount() == 0);
+        REQUIRE(view.getPrimPathPatterns().empty());
+        REQUIRE(view.getEntityCount() == 0);
     }
 
     SUBCASE("Path list construction stores the paths")
     {
         std::vector<std::string> paths{ "/World/robot_0", "/World/robot_1", "/World/robot_2" };
         TestableEntityView view(paths);
-        REQUIRE(view.getPaths().size() == 3);
-        REQUIRE(view.getPaths()[0] == "/World/robot_0");
-        REQUIRE(view.getPaths()[2] == "/World/robot_2");
+        REQUIRE(view.getPrimPathPatterns().size() == 3);
+        REQUIRE(view.getPrimPathPatterns()[0] == "/World/robot_0");
+        REQUIRE(view.getPrimPathPatterns()[2] == "/World/robot_2");
     }
 
-    SUBCASE("setCount updates the resolved-entity count")
+    SUBCASE("setEntityCount updates the resolved-entity count")
     {
         TestableEntityView view({});
-        REQUIRE(view.getCount() == 0);
-        view.setCount(42);
-        REQUIRE(view.getCount() == 42);
+        REQUIRE(view.getEntityCount() == 0);
+        view.setEntityCount(42);
+        REQUIRE(view.getEntityCount() == 42);
     }
 }
 
 //=============================================================================
-// TEST: registerImpl + listImpls + hasImpl + getImplSpec
+// TEST: registerImplementation + listImplementations + hasImplementation + getImplementationSpecification
 //=============================================================================
-TEST_CASE("EntityView: impl registration discoverability")
+TEST_CASE("EntityView: implementation registration discoverability")
 {
     TestableEntityView view({});
 
-    SUBCASE("Initial state — no impls")
+    SUBCASE("Initial state — no implementations")
     {
-        REQUIRE(view.listImpls(ImplKind::eGet).empty());
-        REQUIRE(view.listImpls(ImplKind::eSet).empty());
-        REQUIRE_FALSE(view.hasImpl("dof-position", ImplKind::eGet));
+        REQUIRE(view.listImplementations(ImplementationKind::eGet).empty());
+        REQUIRE(view.listImplementations(ImplementationKind::eSet).empty());
+        REQUIRE_FALSE(view.hasImplementation("dof-position", ImplementationKind::eGet));
     }
 
-    SUBCASE("registerImpl publishes the impl name + specification")
+    SUBCASE("registerImplementation publishes the implementation name + specification")
     {
-        TensorSpec specification = makeFloat32Spec(/*indexedRead=*/true);
+        TensorSpecification specification = makeFloat32Specification(/*indexedRead=*/true);
         specification.shapeHint = { -1, 7 };
-        bool first = view.registerImpl(
-            "dof-position", ImplKind::eGet,
-            GetImplFunction([](const TensorDesc& /*indices*/, const TensorDesc& /*output*/) -> TensorDesc
-                            { return TensorDesc{}; }),
+        bool first = view.registerImplementation(
+            "dof-position", ImplementationKind::eGet,
+            GetImplementationFunction(
+                [](const TensorDescription& /*indices*/, const TensorDescription& /*output*/) -> TensorDescription
+                { return TensorDescription{}; }),
             specification);
         REQUIRE(first == true);
-        REQUIRE(view.hasImpl("dof-position", ImplKind::eGet));
-        REQUIRE_FALSE(view.hasImpl("dof-position", ImplKind::eSet));
+        REQUIRE(view.hasImplementation("dof-position", ImplementationKind::eGet));
+        REQUIRE_FALSE(view.hasImplementation("dof-position", ImplementationKind::eSet));
 
-        TensorSpec retrieved = view.getImplSpec("dof-position", ImplKind::eGet);
+        TensorSpecification retrieved = view.getImplementationSpecification("dof-position", ImplementationKind::eGet);
         REQUIRE(retrieved.dtype == DType::eFloat32);
         REQUIRE(retrieved.supportsIndexedRead == true);
         REQUIRE(retrieved.shapeHint.size() == 2);
         REQUIRE(retrieved.shapeHint[0] == -1);
         REQUIRE(retrieved.shapeHint[1] == 7);
 
-        auto getImpls = view.listImpls(ImplKind::eGet);
-        REQUIRE(getImpls.size() == 1);
-        REQUIRE(getImpls[0] == "dof-position");
+        auto getImplementations = view.listImplementations(ImplementationKind::eGet);
+        REQUIRE(getImplementations.size() == 1);
+        REQUIRE(getImplementations[0] == "dof-position");
     }
 
     SUBCASE("Get and Set kinds are tracked independently")
     {
-        view.registerImpl("dof-position", ImplKind::eGet,
-                          GetImplFunction([](const TensorDesc&, const TensorDesc&) { return TensorDesc{}; }),
-                          makeFloat32Spec());
-        view.registerImpl("dof-position", ImplKind::eSet, SetImplFunction([](const TensorDesc&, const TensorDesc&) {}),
-                          makeFloat32Spec(/*indexedRead=*/false, /*indexedWrite=*/true));
+        view.registerImplementation("dof-position", ImplementationKind::eGet,
+                                    GetImplementationFunction([](const TensorDescription&, const TensorDescription&)
+                                                              { return TensorDescription{}; }),
+                                    makeFloat32Specification());
+        view.registerImplementation("dof-position", ImplementationKind::eSet,
+                                    SetImplementationFunction([](const TensorDescription&, const TensorDescription&) {}),
+                                    makeFloat32Specification(/*indexedRead=*/false, /*indexedWrite=*/true));
 
-        REQUIRE(view.hasImpl("dof-position", ImplKind::eGet));
-        REQUIRE(view.hasImpl("dof-position", ImplKind::eSet));
+        REQUIRE(view.hasImplementation("dof-position", ImplementationKind::eGet));
+        REQUIRE(view.hasImplementation("dof-position", ImplementationKind::eSet));
 
-        REQUIRE(view.listImpls(ImplKind::eGet).size() == 1);
-        REQUIRE(view.listImpls(ImplKind::eSet).size() == 1);
+        REQUIRE(view.listImplementations(ImplementationKind::eGet).size() == 1);
+        REQUIRE(view.listImplementations(ImplementationKind::eSet).size() == 1);
 
         // Get and Set specifications are stored separately.
-        auto getSpecification = view.getImplSpec("dof-position", ImplKind::eGet);
-        auto setSpecification = view.getImplSpec("dof-position", ImplKind::eSet);
+        auto getSpecification = view.getImplementationSpecification("dof-position", ImplementationKind::eGet);
+        auto setSpecification = view.getImplementationSpecification("dof-position", ImplementationKind::eSet);
         REQUIRE(getSpecification.supportsIndexedWrite == false);
         REQUIRE(setSpecification.supportsIndexedWrite == true);
     }
 
-    SUBCASE("hasImpl returns false for missing names regardless of kind")
+    SUBCASE("hasImplementation returns false for missing names regardless of kind")
     {
-        view.registerImpl("dof-position", ImplKind::eGet,
-                          GetImplFunction([](const TensorDesc&, const TensorDesc&) { return TensorDesc{}; }),
-                          makeFloat32Spec());
-        REQUIRE_FALSE(view.hasImpl("dof-velocity", ImplKind::eGet));
-        REQUIRE_FALSE(view.hasImpl("dof-velocity", ImplKind::eSet));
+        view.registerImplementation("dof-position", ImplementationKind::eGet,
+                                    GetImplementationFunction([](const TensorDescription&, const TensorDescription&)
+                                                              { return TensorDescription{}; }),
+                                    makeFloat32Specification());
+        REQUIRE_FALSE(view.hasImplementation("dof-velocity", ImplementationKind::eGet));
+        REQUIRE_FALSE(view.hasImplementation("dof-velocity", ImplementationKind::eSet));
     }
 
-    SUBCASE("getImplSpec for an unknown impl throws std::out_of_range")
+    SUBCASE("getImplementationSpecification for an unknown implementation throws std::out_of_range")
     {
-        // Callers must `hasImpl(...)` first — `getImplSpec` doesn't
-        // silently return a default; an unknown impl is a bug worth
+        // Callers must `hasImplementation(...)` first — `getImplementationSpecification` doesn't
+        // silently return a default; an unknown implementation is a bug worth
         // surfacing as an exception.
-        REQUIRE_THROWS_AS(view.getImplSpec("nonexistent", ImplKind::eGet), std::out_of_range);
+        REQUIRE_THROWS_AS(
+            view.getImplementationSpecification("nonexistent", ImplementationKind::eGet), std::out_of_range);
     }
 
     SUBCASE("single and multi GET callbacks cannot share one registration identity")
     {
-        view.registerImpl("shared-name", ImplKind::eGet,
-                          GetImplFunction([](const TensorDesc&, const TensorDesc&) { return TensorDesc{}; }),
-                          makeFloat32Spec());
-        REQUIRE_THROWS_AS(view.registerImpl("shared-name", ImplKind::eGet,
-                                            GetMultiImplFunction([](const TensorDesc&, const std::vector<TensorDesc>&)
-                                                                 { return std::vector<TensorDesc>{}; }),
-                                            makeFloat32Spec()),
-                          std::invalid_argument);
+        view.registerImplementation("shared-name", ImplementationKind::eGet,
+                                    GetImplementationFunction([](const TensorDescription&, const TensorDescription&)
+                                                              { return TensorDescription{}; }),
+                                    makeFloat32Specification());
+        REQUIRE_THROWS_AS(
+            view.registerImplementation(
+                "shared-name", ImplementationKind::eGet,
+                GetMultiImplementationFunction([](const TensorDescription&, const std::vector<TensorDescription>&)
+                                               { return std::vector<TensorDescription>{}; }),
+                makeFloat32Specification()),
+            std::invalid_argument);
 
         TestableEntityView reverseView({});
-        reverseView.registerImpl("shared-name", ImplKind::eGet,
-                                 GetMultiImplFunction([](const TensorDesc&, const std::vector<TensorDesc>&)
-                                                      { return std::vector<TensorDesc>{}; }),
-                                 makeFloat32Spec());
-        REQUIRE_THROWS_AS(
-            reverseView.registerImpl("shared-name", ImplKind::eGet,
-                                     GetImplFunction([](const TensorDesc&, const TensorDesc&) { return TensorDesc{}; }),
-                                     makeFloat32Spec()),
-            std::invalid_argument);
+        reverseView.registerImplementation(
+            "shared-name", ImplementationKind::eGet,
+            GetMultiImplementationFunction([](const TensorDescription&, const std::vector<TensorDescription>&)
+                                           { return std::vector<TensorDescription>{}; }),
+            makeFloat32Specification());
+        REQUIRE_THROWS_AS(reverseView.registerImplementation(
+                              "shared-name", ImplementationKind::eGet,
+                              GetImplementationFunction([](const TensorDescription&, const TensorDescription&)
+                                                        { return TensorDescription{}; }),
+                              makeFloat32Specification()),
+                          std::invalid_argument);
     }
 
     SUBCASE("single and multi SET callbacks cannot share one registration identity")
     {
-        view.registerImpl("shared-name", ImplKind::eSet,
-                          SetMultiImplFunction([](const std::vector<TensorDesc>&, const TensorDesc&) {}),
-                          makeFloat32Spec());
-        REQUIRE_THROWS_AS(
-            view.registerImpl("shared-name", ImplKind::eSet,
-                              SetImplFunction([](const TensorDesc&, const TensorDesc&) {}), makeFloat32Spec()),
-            std::invalid_argument);
+        view.registerImplementation(
+            "shared-name", ImplementationKind::eSet,
+            SetMultiImplementationFunction([](const std::vector<TensorDescription>&, const TensorDescription&) {}),
+            makeFloat32Specification());
+        REQUIRE_THROWS_AS(view.registerImplementation(
+                              "shared-name", ImplementationKind::eSet,
+                              SetImplementationFunction([](const TensorDescription&, const TensorDescription&) {}),
+                              makeFloat32Specification()),
+                          std::invalid_argument);
 
         TestableEntityView reverseView({});
-        reverseView.registerImpl("shared-name", ImplKind::eSet,
-                                 SetImplFunction([](const TensorDesc&, const TensorDesc&) {}), makeFloat32Spec());
+        reverseView.registerImplementation(
+            "shared-name", ImplementationKind::eSet,
+            SetImplementationFunction([](const TensorDescription&, const TensorDescription&) {}),
+            makeFloat32Specification());
         REQUIRE_THROWS_AS(
-            reverseView.registerImpl("shared-name", ImplKind::eSet,
-                                     SetMultiImplFunction([](const std::vector<TensorDesc>&, const TensorDesc&) {}),
-                                     makeFloat32Spec()),
+            reverseView.registerImplementation(
+                "shared-name", ImplementationKind::eSet,
+                SetMultiImplementationFunction([](const std::vector<TensorDescription>&, const TensorDescription&) {}),
+                makeFloat32Specification()),
             std::invalid_argument);
     }
 }
 
 //=============================================================================
-// TEST: getData / setData round-trip — the GetImplFunction / SetImplFunction callbacks
-// fire and receive the right TensorDesc arguments.
+// TEST: getData / setData round-trip — the GetImplementationFunction / SetImplementationFunction callbacks
+// fire and receive the right TensorDescription arguments.
 //=============================================================================
 TEST_CASE("EntityView: getData / setData dispatch to registered callback")
 {
     TestableEntityView view({});
 
-    SUBCASE("getData invokes the registered callback and returns its TensorDesc")
+    SUBCASE("getData invokes the registered callback and returns its TensorDescription")
     {
         OwnedFloatTensor result({ 1.0f, 2.0f, 3.0f }, { 3 });
 
         bool called = false;
-        view.registerImpl("dof-position", ImplKind::eGet,
-                          GetImplFunction(
-                              [&](const TensorDesc& /*indices*/, const TensorDesc& /*output*/) -> TensorDesc
-                              {
-                                  called = true;
-                                  return result.descriptor;
-                              }),
-                          makeFloat32Spec());
+        view.registerImplementation(
+            "dof-position", ImplementationKind::eGet,
+            GetImplementationFunction(
+                [&](const TensorDescription& /*indices*/, const TensorDescription& /*output*/) -> TensorDescription
+                {
+                    called = true;
+                    return result.descriptor;
+                }),
+            makeFloat32Specification());
 
-        TensorDesc indices{}; // empty → "no indices"
-        TensorDesc output{};
-        TensorDesc returned = view.getData("dof-position", indices, output);
+        TensorDescription indices{}; // empty → "no indices"
+        TensorDescription output{};
+        TensorDescription returned = view.getData("dof-position", indices, output);
         REQUIRE(called == true);
         REQUIRE(returned.dtype == DType::eFloat32);
         REQUIRE(returned.shape.size() == 1);
@@ -259,23 +275,24 @@ TEST_CASE("EntityView: getData / setData dispatch to registered callback")
         std::vector<float> incoming{ 4.0f, 5.0f, 6.0f };
         std::vector<int32_t> incomingIndices{ 7, 11 };
 
-        TensorDesc capturedData{};
-        TensorDesc capturedIndices{};
-        view.registerImpl("dof-position", ImplKind::eSet,
-                          SetImplFunction(
-                              [&](const TensorDesc& dataDescriptor, const TensorDesc& indicesDescriptor)
-                              {
-                                  capturedData = dataDescriptor;
-                                  capturedIndices = indicesDescriptor;
-                              }),
-                          makeFloat32Spec(/*indexedRead=*/false, /*indexedWrite=*/true));
+        TensorDescription capturedData{};
+        TensorDescription capturedIndices{};
+        view.registerImplementation(
+            "dof-position", ImplementationKind::eSet,
+            SetImplementationFunction(
+                [&](const TensorDescription& dataDescriptor, const TensorDescription& indicesDescriptor)
+                {
+                    capturedData = dataDescriptor;
+                    capturedIndices = indicesDescriptor;
+                }),
+            makeFloat32Specification(/*indexedRead=*/false, /*indexedWrite=*/true));
 
-        TensorDesc data;
+        TensorDescription data;
         data.data = incoming.data();
         data.dtype = DType::eFloat32;
         data.shape = { 3 };
 
-        TensorDesc indices;
+        TensorDescription indices;
         indices.data = incomingIndices.data();
         indices.dtype = DType::eInt32;
         indices.shape = { 2 };
@@ -288,17 +305,17 @@ TEST_CASE("EntityView: getData / setData dispatch to registered callback")
         REQUIRE(capturedIndices.shape[0] == 2);
     }
 
-    SUBCASE("getData on an unknown impl throws std::out_of_range")
+    SUBCASE("getData on an unknown implementation throws std::out_of_range")
     {
-        TensorDesc indices{};
-        TensorDesc output{};
+        TensorDescription indices{};
+        TensorDescription output{};
         REQUIRE_THROWS_AS(view.getData("nonexistent", indices, output), std::out_of_range);
     }
 
-    SUBCASE("setData on an unknown impl throws std::out_of_range")
+    SUBCASE("setData on an unknown implementation throws std::out_of_range")
     {
-        TensorDesc data{};
-        TensorDesc indices{};
+        TensorDescription data{};
+        TensorDescription indices{};
         REQUIRE_THROWS_AS(view.setData("nonexistent", data, indices), std::out_of_range);
     }
 }
@@ -310,7 +327,7 @@ TEST_CASE("EntityView: metadata registration")
 {
     TestableEntityView view({});
 
-    SUBCASE("getMetadata for an unregistered impl returns a default Metadata")
+    SUBCASE("getMetadata for an unregistered implementation returns a default Metadata")
     {
         Metadata metadata = view.getMetadata("dof-position");
         // Default Metadata is a "value-not-set" sentinel; no guarantee on
@@ -326,7 +343,7 @@ TEST_CASE("EntityView: metadata registration")
         payload = Metadata(int64_t{ 42 });
 
         bool called = false;
-        view.registerMetadata("dof-position", MetadataImplFunction(
+        view.registerMetadata("dof-position", MetadataImplementationFunction(
                                                   [&]() -> Metadata
                                                   {
                                                       called = true;
@@ -345,22 +362,67 @@ TEST_CASE("EntityView: metadata registration")
 
 //=============================================================================
 // TEST: shape-specification advertising — `supports=false` is functionally equivalent
-// to "not registered" for callers. `hasImpl` returns false for them, so the
+// to "not registered" for callers. `hasImplementation` returns false for them, so the
 // API surface stays uniform across engines without false omissions.
 //=============================================================================
-TEST_CASE("EntityView: TensorSpec supports flag hides the impl from hasImpl")
+TEST_CASE("EntityView: TensorSpecification supports flag hides the implementation from hasImplementation")
 {
     TestableEntityView view({});
 
-    TensorSpec unsupported = makeFloat32Spec();
+    TensorSpecification unsupported = makeFloat32Specification();
     unsupported.supports = false;
-    view.registerImpl("spatial-tendon-stiffness", ImplKind::eGet,
-                      GetImplFunction([](const TensorDesc&, const TensorDesc&) { return TensorDesc{}; }), unsupported);
+    view.registerImplementation("spatial-tendon-stiffness", ImplementationKind::eGet,
+                                GetImplementationFunction([](const TensorDescription&, const TensorDescription&)
+                                                          { return TensorDescription{}; }),
+                                unsupported);
 
-    // Callers see this impl as unavailable — the contract is "registered
+    // Callers see this implementation as unavailable — the contract is "registered
     // with supports=false" == "not registered" from the consumer side.
-    REQUIRE_FALSE(view.hasImpl("spatial-tendon-stiffness", ImplKind::eGet));
-    // Calling get/set on a supports=false impl raises so callers don't
+    REQUIRE_FALSE(view.hasImplementation("spatial-tendon-stiffness", ImplementationKind::eGet));
+    // Calling get/set on a supports=false implementation raises so callers don't
     // silently get bad data.
-    REQUIRE_THROWS_AS(view.getData("spatial-tendon-stiffness", TensorDesc{}, TensorDesc{}), std::runtime_error);
+    REQUIRE_THROWS_AS(
+        view.getData("spatial-tendon-stiffness", TensorDescription{}, TensorDescription{}), std::runtime_error);
+}
+
+//=============================================================================
+// TEST: device ordinal
+//=============================================================================
+TEST_CASE("EntityView: device ordinal defaults to host and round-trips")
+{
+    EntityView view;
+
+    SUBCASE("an unset ordinal reports host memory")
+    {
+        REQUIRE(view.getDeviceOrdinal() == -1);
+    }
+
+    SUBCASE("a stored ordinal is reported back")
+    {
+        view.setDeviceOrdinal(3);
+        REQUIRE(view.getDeviceOrdinal() == 3);
+        view.setDeviceOrdinal(-1);
+        REQUIRE(view.getDeviceOrdinal() == -1);
+    }
+
+    SUBCASE("an engine view may report an ordinal it resolves on each access")
+    {
+        // The accessor is virtual so an engine that only learns its device once stepping has begun is
+        // still observed correctly through a base reference.
+        class LateDeviceView : public EntityView
+        {
+        public:
+            int getDeviceOrdinal() const noexcept override
+            {
+                return resolved;
+            }
+            int resolved{ -1 };
+        };
+
+        LateDeviceView engineView;
+        const EntityView& asBase = engineView;
+        REQUIRE(asBase.getDeviceOrdinal() == -1);
+        engineView.resolved = 7;
+        REQUIRE(asBase.getDeviceOrdinal() == 7);
+    }
 }

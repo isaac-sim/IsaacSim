@@ -64,6 +64,10 @@ class HostPlatformTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "Unsupported library build host"):
                     build_tool._detect_host_platform()
 
+    @unittest.skipUnless(
+        (build_tool.REPOSITORY_ROOT / "repo_internal.toml").is_file(),
+        "Internal repository configuration is not included in GitHub exports",
+    )
     def test_msvc_package_matches_windows_binary_dependencies(self) -> None:
         """Pin the internal CI compiler outside the public dependency graph."""
         public_root = element_tree.parse(build_tool.DEPENDENCY_MANIFEST).getroot()
@@ -104,6 +108,7 @@ class WindowsCompilerEnvironmentTests(unittest.TestCase):
         with (
             mock.patch.object(build_tool.sys, "platform", "win32"),
             mock.patch.object(build_tool, "WINDOWS_TOOLCHAIN_DIRECTORY", Path(r"Z:\missing-host-dependencies")),
+            mock.patch.dict(build_tool.os.environ, {"INCLUDE": "include", "LIB": "lib"}, clear=False),
             mock.patch.object(build_tool.shutil, "which", return_value=str(compiler)),
             mock.patch.object(build_tool.subprocess, "run") as run,
         ):
@@ -175,7 +180,7 @@ class WindowsCompilerEnvironmentTests(unittest.TestCase):
             mock.patch.object(build_tool, "WINDOWS_TOOLCHAIN_DIRECTORY", installation.parent),
             mock.patch.dict(
                 build_tool.os.environ,
-                {"PATH": "ambient-path", "INCLUDE": "ambient-include"},
+                {"PATH": "ambient-path", "INCLUDE": "ambient-include", "LIB": "ambient-lib"},
                 clear=False,
             ),
             mock.patch.object(build_tool.Path, "is_file", return_value=True),
@@ -204,9 +209,14 @@ class WindowsCompilerEnvironmentTests(unittest.TestCase):
         with (
             mock.patch.object(build_tool.sys, "platform", "win32"),
             mock.patch.object(build_tool, "WINDOWS_TOOLCHAIN_DIRECTORY", installation.parent),
+            mock.patch.dict(build_tool.os.environ, {"INCLUDE": "", "LIB": ""}, clear=False),
             mock.patch.object(build_tool.Path, "is_file", return_value=True),
             mock.patch.object(build_tool, "_has_packaged_windows_sdk", return_value=True),
-            mock.patch.object(build_tool.shutil, "which", return_value=None),
+            mock.patch.object(
+                build_tool.shutil,
+                "which",
+                side_effect=(str(installation / "ambient" / "cl.exe"), None),
+            ),
             mock.patch.object(build_tool.subprocess, "run", return_value=completed),
         ):
             with self.assertRaisesRegex(RuntimeError, "initialization exit code: 255"):
@@ -438,6 +448,65 @@ class ConfigureTests(unittest.TestCase):
             run.call_args.args[0],
         )
 
+    def test_configure_can_discard_stale_cache(self) -> None:
+        """Request CMake's targeted cache reset without deleting build outputs."""
+        with mock.patch.object(build_tool, "_run") as run:
+            build_tool._configure(
+                Path("/cmake"),
+                Path("/ninja"),
+                None,
+                Path("/build"),
+                "Release",
+                build_tool._BUILD_PROFILES["cpp-library"],
+                Path("/native-runtime"),
+                None,
+                None,
+                None,
+                Path("/pixi-build"),
+                Path("/licenses/PIP-LICENSES.txt"),
+                fresh=True,
+            )
+
+        self.assertEqual(run.call_args.args[0][:2], [Path("/cmake"), "--fresh"])
+
+
+class ConfigureContextTests(unittest.TestCase):
+    """Test safe reuse of CMake caches across build environments."""
+
+    def test_context_distinguishes_linbuild_from_host(self) -> None:
+        """Do not share system-library results between the host and linbuild."""
+        host = build_tool._configure_context({})
+        linbuild = build_tool._configure_context({"LINBUILD_EMBEDDED": "1"})
+
+        self.assertEqual(host["execution_environment"], "host")
+        self.assertEqual(linbuild["execution_environment"], "linbuild")
+
+    def test_existing_unrecorded_cache_is_refreshed(self) -> None:
+        """Safely migrate build trees created before context tracking."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            build_directory = Path(temporary_directory)
+            (build_directory / "CMakeCache.txt").touch()
+
+            reason = build_tool._configuration_refresh_reason(build_directory, build_tool._configure_context({}))
+
+        self.assertIn("not recorded", reason or "")
+
+    def test_missing_cached_file_is_refreshed(self) -> None:
+        """Recover when a cached host dependency is absent in the active environment."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            build_directory = Path(temporary_directory)
+            context = build_tool._configure_context({})
+            build_tool._write_json_atomically(build_directory / build_tool.CONFIGURE_CONTEXT_FILE, context)
+            missing = build_directory / "missing.so"
+            (build_directory / "CMakeCache.txt").write_text(
+                f"GL_DISPATCH:FILEPATH={missing}\nIGNORED:FILEPATH=IGNORED-NOTFOUND\n",
+                encoding="utf-8",
+            )
+
+            reason = build_tool._configuration_refresh_reason(build_directory, context)
+
+        self.assertIn(str(missing), reason or "")
+
 
 class PixiManifestTests(unittest.TestCase):
     """Test the standalone library dependency ownership contract."""
@@ -456,6 +525,10 @@ class PixiManifestTests(unittest.TestCase):
                 license_file.write_text("dependency notice\n", encoding="utf-8")
                 self.assertEqual(build_tool._read_pixi_license_file(), license_file.resolve())
 
+    @unittest.skipUnless(
+        (build_tool.REPOSITORY_ROOT / "repo_internal.toml").is_file(),
+        "Internal repository configuration is not included in GitHub exports",
+    )
     def test_pixi_work_directory_is_excluded_from_api_docs(self) -> None:
         """Prevent generated environments and recipe sources from entering the Sphinx source tree."""
         with (build_tool.REPOSITORY_ROOT / "repo_internal.toml").open("rb") as stream:
@@ -476,6 +549,7 @@ class PixiManifestTests(unittest.TestCase):
                 "cmake": "==4.3.2",
                 "dlpack": "==1.3",
                 "fmt": "==7.0.3",
+                "libgrpc": "==1.83.0",
                 "nanobind": "==2.12.0",
                 "ninja": "==1.13.2",
                 "ovphysx-sdk": {"path": "deps/recipes/ovphysx-sdk/recipe.yaml"},
@@ -483,13 +557,28 @@ class PixiManifestTests(unittest.TestCase):
                 "sdl3": {"path": "deps/recipes/sdl3/recipe.yaml"},
                 "stb": {"path": "deps/recipes/stb/recipe.yaml"},
                 "tsl_robin_map": "==1.4.0",
+                "zlib": "==1.3.2",
             },
         )
         self.assertEqual(
             pixi["feature"]["build-tools"]["target"],
             {
-                "linux-64-glibc-2-35": {"dependencies": {"doctest": "==2.5.3"}},
-                "linux-aarch64-glibc-2-35": {"dependencies": {"doctest": {"path": "deps/recipes/doctest/recipe.yaml"}}},
+                "linux-64-glibc-2-35": {
+                    "dependencies": {
+                        "doctest": "==2.5.3",
+                        "libegl-devel": "==1.7.0",
+                        "libgles-devel": "==1.7.0",
+                        "libopengl-devel": "==1.7.0",
+                    }
+                },
+                "linux-aarch64-glibc-2-35": {
+                    "dependencies": {
+                        "doctest": {"path": "deps/recipes/doctest/recipe.yaml"},
+                        "libegl-devel": "==1.7.0",
+                        "libgles-devel": "==1.7.0",
+                        "libopengl-devel": "==1.7.0",
+                    }
+                },
                 "win-64": {"dependencies": {"doctest": "==2.5.3"}},
             },
         )
@@ -501,6 +590,9 @@ class PixiManifestTests(unittest.TestCase):
             "dlpack",
             "doctest",
             "fmt",
+            "libegl-devel",
+            "libgles-devel",
+            "libopengl-devel",
             "nanobind",
             "ninja",
             "ovphysx-sdk",
@@ -673,6 +765,30 @@ class DeveloperEnvironmentBuildTests(unittest.TestCase):
 
             self.assertTrue(sentinel.is_file())
             self.assertEqual(list(build_directory.glob(".developer-environment-*")), [])
+
+    def test_ensure_developer_environment_reuses_complete_directory(self) -> None:
+        """Keep the build-owned environment during ordinary local test-only runs."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            build_directory = Path(temporary_directory)
+            environment_path = build_directory / build_tool.DEVELOPER_ENVIRONMENT_DIRECTORY
+            (environment_path / "lib" / "cmake").mkdir(parents=True)
+            (environment_path / "python").mkdir()
+
+            with mock.patch.object(build_tool, "_materialize_developer_environment") as materialize:
+                build_tool._ensure_developer_environment(Path("/cmake"), build_directory, "Release")
+
+            materialize.assert_not_called()
+
+    def test_ensure_developer_environment_restores_omitted_artifact_directory(self) -> None:
+        """Reinstall the large generated environment omitted from CI artifacts."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            build_directory = Path(temporary_directory)
+            cmake = Path("/cmake")
+
+            with mock.patch.object(build_tool, "_materialize_developer_environment") as materialize:
+                build_tool._ensure_developer_environment(cmake, build_directory, "Release")
+
+            materialize.assert_called_once_with(cmake, build_directory, "Release")
 
     def test_read_developer_environment_components_rejects_incomplete_package(self) -> None:
         """Refuse to publish an environment missing one declared package surface."""
@@ -885,8 +1001,8 @@ class ArtifactStateTests(unittest.TestCase):
                     libraries_directory=libraries_directory,
                 )
 
-    def test_relocate_cmake_metadata_updates_test_and_install_files(self) -> None:
-        """Retarget transferred test and install files without mutating unrelated metadata."""
+    def test_relocate_cmake_metadata_updates_cache_test_and_install_files(self) -> None:
+        """Retarget transferred build metadata to the consuming checkout."""
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             build_directory = root / "build"
@@ -894,14 +1010,15 @@ class ArtifactStateTests(unittest.TestCase):
             nested.mkdir(parents=True)
             old_root = "C:/g/producer"
             new_root = Path("C:/g/consumer")
-            new_build_prefix = new_root / ".pixi" / "envs" / "test-driver"
+            old_native_root = old_root.replace("/", "\\")
+            new_native_root = new_root.as_posix().replace("/", "\\")
             old_escaped_root = old_root.replace("/", "\\\\")
             new_escaped_root = new_root.as_posix().replace("/", "\\\\")
             top_level = build_directory / "CTestTestfile.cmake"
             child = nested / "CTestTestfile.cmake"
             install = nested / "cmake_install.cmake"
             install_index = build_directory / "CMakeFiles" / "InstallScripts.json"
-            unrelated = build_directory / "CMakeCache.txt"
+            cache = build_directory / "CMakeCache.txt"
             top_level.write_text(
                 f'add_test(test "{old_root}/.pixi/envs/build-driver/python.exe" '
                 f'"--python={old_escaped_root}\\\\.pixi\\\\envs\\\\build-driver\\\\python.exe" '
@@ -918,53 +1035,30 @@ class ArtifactStateTests(unittest.TestCase):
                 f'{{"InstallScripts":["{old_root}/build/cmake_install.cmake"]}}\n',
                 encoding="utf-8",
             )
-            unrelated.write_text(f"CMAKE_HOME_DIRECTORY={old_root}/source/libraries\n", encoding="utf-8")
+            cache.write_text(
+                f"Python_EXECUTABLE:FILEPATH={old_native_root}\\.pixi\\envs\\build-driver\\python.exe\n",
+                encoding="utf-8",
+            )
 
-            build_tool._relocate_cmake_metadata(build_directory, old_root, new_root, new_build_prefix)
+            build_tool._relocate_cmake_metadata(build_directory, old_root, new_root)
 
             self.assertNotIn(old_root, top_level.read_text(encoding="utf-8"))
             self.assertNotIn(old_escaped_root, top_level.read_text(encoding="utf-8"))
             self.assertNotIn(old_root, child.read_text(encoding="utf-8"))
             self.assertNotIn(old_root, install.read_text(encoding="utf-8"))
             self.assertNotIn(old_root, install_index.read_text(encoding="utf-8"))
+            self.assertNotIn(old_native_root, cache.read_text(encoding="utf-8"))
             self.assertIn(new_root.as_posix(), top_level.read_text(encoding="utf-8"))
             self.assertIn(new_escaped_root, top_level.read_text(encoding="utf-8"))
-            self.assertIn(new_build_prefix.as_posix(), top_level.read_text(encoding="utf-8"))
-            self.assertIn(new_build_prefix.as_posix().replace("/", "\\\\"), top_level.read_text(encoding="utf-8"))
             self.assertIn(
                 f"{new_root.as_posix()}/.pixi/envs/build-driver/Library/bin/ninja.exe",
                 top_level.read_text(encoding="utf-8"),
             )
             self.assertIn(new_root.as_posix(), install.read_text(encoding="utf-8"))
             self.assertIn(new_root.as_posix(), install_index.read_text(encoding="utf-8"))
-            self.assertIn(old_root, unrelated.read_text(encoding="utf-8"))
+            self.assertIn(new_native_root, cache.read_text(encoding="utf-8"))
 
-            build_tool._relocate_cmake_metadata(build_directory, old_root, new_root, new_build_prefix)
-
-    def test_relocate_cmake_metadata_updates_driver_tools_without_checkout_move(self) -> None:
-        """Retarget restored tools when build and test jobs share one checkout root."""
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            build_directory = Path(temporary_directory)
-            root = Path("C:/g/job")
-            build_prefix = root / ".pixi" / "envs" / "build-driver"
-            test_prefix = root / ".pixi" / "envs" / "test-driver"
-            metadata = build_directory / "CTestTestfile.cmake"
-            metadata.write_text(
-                f'add_test(test "{build_prefix.as_posix()}/python.exe" '
-                f'"--cmake={build_prefix.as_posix()}/Library/bin/cmake.exe" '
-                f'"--make-program={build_prefix.as_posix()}/Library/bin/ninja.exe")\n',
-                encoding="utf-8",
-            )
-
-            build_tool._relocate_cmake_metadata(build_directory, root.as_posix(), root, test_prefix)
-
-            updated = metadata.read_text(encoding="utf-8")
-            self.assertIn(f"{test_prefix.as_posix()}/python.exe", updated)
-            self.assertIn(f"{test_prefix.as_posix()}/Library/bin/cmake.exe", updated)
-            self.assertIn(f"{build_prefix.as_posix()}/Library/bin/ninja.exe", updated)
-
-            build_tool._relocate_cmake_metadata(build_directory, root.as_posix(), root, test_prefix)
-            self.assertEqual(metadata.read_text(encoding="utf-8"), updated)
+            build_tool._relocate_cmake_metadata(build_directory, old_root, new_root)
 
     def test_relocate_cmake_metadata_rejects_mismatched_artifact_state(self) -> None:
         """Fail clearly when metadata does not match its recorded producer checkout."""
@@ -980,7 +1074,6 @@ class ArtifactStateTests(unittest.TestCase):
                     build_directory,
                     "C:/g/recorded",
                     Path("C:/g/consumer"),
-                    Path("C:/g/consumer/.pixi/envs/test-driver"),
                 )
 
 
@@ -1147,7 +1240,6 @@ class TestRunnerTests(unittest.TestCase):
             build_tool.LIBRARY_BUILD_ROOT / "isaacsim-libraries-werror",
             build_tool.REPOSITORY_ROOT.as_posix(),
             build_tool.REPOSITORY_ROOT,
-            Path("/dependencies"),
         )
         run_tests.assert_called_once_with(
             cmake,
@@ -1157,58 +1249,6 @@ class TestRunnerTests(unittest.TestCase):
             900,
             None,
             None,
-        )
-
-    def test_main_test_only_can_skip_windows_compiler_setup(self) -> None:
-        """Allow non-compiling Windows test suites to run on GPU workers without Visual Studio."""
-        host = build_tool._HostPlatform("windows-x86_64", "windows-x86_64", ".exe")
-        arguments = [
-            str(BUILD_TOOL_PATH),
-            "--no-pull",
-            "--test-only",
-            "--test-without-compiler",
-            "--exclude-test-regex",
-            "^tests-examples$",
-            "--exclude-test-regex",
-            "^tests-install-contract-.*$",
-        ]
-        with (
-            mock.patch.object(build_tool.sys, "argv", arguments),
-            mock.patch.object(build_tool, "_detect_host_platform", return_value=host),
-            mock.patch.object(
-                build_tool,
-                "_find_build_tool",
-                return_value=Path("/cmake"),
-            ) as find_build_tool,
-            mock.patch.object(build_tool, "_read_pixi_dependency_path", return_value=Path("/dependencies")),
-            mock.patch.object(build_tool, "ensure_windows_msvc_environment") as ensure_msvc,
-            mock.patch.object(
-                build_tool,
-                "_validate_artifact_state",
-                return_value=build_tool.REPOSITORY_ROOT.as_posix(),
-            ),
-            mock.patch.object(build_tool, "_relocate_cmake_metadata") as relocate_metadata,
-            mock.patch.object(build_tool, "_run_tests") as run_tests,
-        ):
-            status = build_tool._main()
-
-        self.assertEqual(status, 0)
-        ensure_msvc.assert_not_called()
-        find_build_tool.assert_called_once_with(Path("/dependencies"), host, "cmake")
-        relocate_metadata.assert_called_once_with(
-            build_tool.LIBRARY_BUILD_ROOT / "isaacsim-libraries-release",
-            build_tool.REPOSITORY_ROOT.as_posix(),
-            build_tool.REPOSITORY_ROOT,
-            Path("/dependencies"),
-        )
-        run_tests.assert_called_once_with(
-            Path("/cmake"),
-            build_tool.LIBRARY_BUILD_ROOT / "isaacsim-libraries-release",
-            "Release",
-            None,
-            None,
-            None,
-            "(^tests-examples$)|(^tests-install-contract-.*$)",
         )
 
 

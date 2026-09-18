@@ -35,7 +35,9 @@ def triangulate_mesh(mesh_input: Mesh) -> list[np.ndarray]:
 
     .. code-block:: python
 
-        >>> from isaacsim.robot_motion.experimental.motion_generation.utils.collision_approximation import triangulate_mesh
+        >>> from isaacsim.robot_motion.experimental.motion_generation.utils.collision_approximation import (
+        ...     triangulate_mesh,
+        ... )
         >>> from isaacsim.core.experimental.objects import Mesh
         >>> mesh = Mesh("/World/SomeMesh")
         >>> _ = triangulate_mesh(mesh)  # doctest: +SKIP

@@ -3,7 +3,7 @@ name: usd-composition-architecture
 description: "Layered USD composition with physics and appearance payloads. Use when structuring sim-ready robot or environment assets."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # USD Composition Architecture for Isaac Sim

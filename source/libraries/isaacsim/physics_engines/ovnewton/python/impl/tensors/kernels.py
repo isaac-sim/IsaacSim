@@ -36,6 +36,7 @@ def fill_contiguous_indices(indices: wp.array(dtype=wp.int32)) -> None:
 
     Args:
         indices: Output array to populate.
+
     """
     row = wp.tid()
     indices[row] = row
@@ -61,6 +62,7 @@ def sanitize_indices(
         count: Number of addressable entities.
         safe_indices: Output selection with every value inside ``[0, count)``.
         active_mask: Output flag, zero where the caller's value was out of range.
+
     """
     row = wp.tid()
     value = indices[row]
@@ -92,6 +94,7 @@ def gather_float_rows(
         indices: Source row index for each destination row.
         dropped: Value marking a row no valid index produced.
         destination: Dense destination matrix.
+
     """
     row, column = wp.tid()
     index = indices[row]
@@ -120,6 +123,7 @@ def scatter_float_rows(
         indices: Destination row index for each source row, already in bounds.
         active_mask: Zero for rows whose caller index was out of range.
         destination: Destination matrix to update.
+
     """
     row, column = wp.tid()
     if active_mask[row] == 0:
@@ -148,6 +152,7 @@ def scatter_float_matrix(
         indices: Destination batch index for each source matrix, already in bounds.
         active_mask: Zero for rows whose caller index was out of range.
         destination: Destination matrix batch to update.
+
     """
     row, r, c = wp.tid()
     if active_mask[row] == 0:
@@ -1778,6 +1783,7 @@ def gather_float_matrix(
         indices: Source batch index for each destination matrix.
         dropped: Value marking an entry no valid index produced.
         destination: Dense destination matrix batch.
+
     """
     row, j, k = wp.tid()
     index = indices[row]

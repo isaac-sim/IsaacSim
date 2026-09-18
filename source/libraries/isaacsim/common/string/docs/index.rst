@@ -17,6 +17,7 @@
 .. _isaacsim-common-string:
 .. _isaacsim-common-string-overview:
 
+======================
 isaacsim.common.string
 ======================
 

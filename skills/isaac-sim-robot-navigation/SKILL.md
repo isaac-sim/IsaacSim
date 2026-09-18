@@ -3,7 +3,7 @@ name: isaac-sim-robot-navigation
 description: "Runtime mobile-robot navigation in custom scripts (RL, baked, per-frame). Use when driving robots live in simulation."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Isaac Sim Robot Navigation — Runtime

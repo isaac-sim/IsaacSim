@@ -29,7 +29,6 @@ import os
 import sys
 
 import warp as wp
-from isaacsim.physics.manager.impl.tensors import SimulationView
 
 _PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PARENT_DIR not in sys.path:
@@ -41,6 +40,7 @@ from _scenario import (  # noqa: E402
     GridParams,
     GridTestBase,
     SimParams,
+    SimulationEntities,
     Transform,
 )
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics  # noqa: E402
@@ -222,11 +222,11 @@ class ForceTorqueSensorCommon(GridTestBase):
     def _apply_engine_specifics(self) -> None:
         """Apply optional backend-specific articulation configuration."""
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the articulation view and apply the equilibrium motor torque.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.pendulums = sim.create_articulation_view("/envs/*/pendulum")
@@ -245,11 +245,11 @@ class ForceTorqueSensorCommon(GridTestBase):
         self.applied_dof_forces = wp.from_numpy(forces, dtype=wp.float32, device=self.wp_device)
         self.pendulums.set_data("dof-actuation-forces", self.applied_dof_forces, self.all_indices)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Compare measured joint and projected forces with references.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -394,11 +394,11 @@ class LinkIncomingJointForceCommon(GridTestBase):
     def _apply_engine_specifics(self) -> None:
         """Apply optional backend-specific articulation configuration."""
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create views for observing joints and applying the selected force.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.pendulums = sim.create_articulation_view("/envs/*/pendulum")
@@ -426,11 +426,11 @@ class LinkIncomingJointForceCommon(GridTestBase):
         )
         self._ext_force_target.set_data("apply-forces", forces, self._force_indices)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Apply the force for one step and validate both incoming wrenches.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -533,11 +533,11 @@ class JointFrictionCommon(GridTestBase):
     def _apply_engine_specifics(self) -> None:
         """Apply optional backend-specific articulation configuration."""
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the articulation view and assign high joint friction.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.pendulums = sim.create_articulation_view("/envs/*/pendulum")
@@ -558,11 +558,11 @@ class JointFrictionCommon(GridTestBase):
         self.skip_if_unsupported(self.pendulums, "dof-friction-properties", "set")
         self.pendulums.set_data("dof-friction-properties", wp_fc, self.cpu_all_indices)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Displace each joint and verify friction holds its position.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 

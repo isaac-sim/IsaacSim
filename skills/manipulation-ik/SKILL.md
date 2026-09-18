@@ -3,7 +3,7 @@ name: manipulation-ik
 description: "Differential IK, grasp frames, and joint-space manipulation in Isaac Sim 6. Use for arm control, grasps, and contact validation."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Manipulation IK

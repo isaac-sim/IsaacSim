@@ -3,7 +3,7 @@ name: isaac-sim-workflow
 description: "Scope demos, POCs, and presentation captures before implementation. Use to define deliverables, acceptance criteria, evidence, and specialist handoffs; technique execution belongs to routed skills."
 license: Apache-2.0
 metadata:
-  author: Aaron Young
+  author: Aaron Young <info@nvidia.com>
 ---
 
 # Isaac Sim Workflow

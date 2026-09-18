@@ -17,6 +17,7 @@
 .. _isaacsim-common-logging:
 .. _isaacsim-common-logging-overview:
 
+=======================
 isaacsim.common.logging
 =======================
 

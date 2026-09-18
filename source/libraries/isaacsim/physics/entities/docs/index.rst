@@ -17,6 +17,7 @@
 .. _isaacsim-physics-entities:
 .. _isaacsim-physics-entities-overview:
 
+=========================
 isaacsim.physics.entities
 =========================
 
@@ -28,12 +29,16 @@ Each wrapper binds a set of USD prim paths to a physics engine entity view.
 Methods operate on the whole batch at once; an optional ``indices`` argument
 restricts them to a subset of the wrapped prims.
 
+.. _isaacsim-physics-entities-physics-entity:
+
 Physics entity
 --------------
 
 :py:class:`~isaacsim.physics.entities.PhysicsEntity` is the base class. It resolves the prim paths against a
 named physics engine and exposes named data buffers through generic
 ``get_data`` / ``set_data`` accessors.
+
+.. _isaacsim-physics-entities-rigid-body:
 
 Rigid body
 ----------
@@ -42,6 +47,8 @@ Rigid body
 poses, linear and angular velocities, external force and torque application,
 masses, inertia tensors, centers of mass, and per-body simulation and gravity
 toggles.
+
+.. _isaacsim-physics-entities-articulation:
 
 Articulation
 ------------

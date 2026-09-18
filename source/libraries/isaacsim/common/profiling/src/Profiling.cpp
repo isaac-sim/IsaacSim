@@ -65,8 +65,8 @@ class CarboniteHost
 public:
     static CarboniteHost& get() noexcept
     {
-        static CarboniteHost host;
-        return host;
+        static CarboniteHost s_host;
+        return s_host;
     }
 
     std::optional<ProfilerLease> acquire() noexcept

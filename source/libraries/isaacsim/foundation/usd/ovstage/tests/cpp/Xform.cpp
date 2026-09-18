@@ -92,10 +92,10 @@ TEST_SUITE("Xform")
             CHECK_UNARY(translationsVector[i][0] == doctest::Approx(0.0));
             CHECK_UNARY(translationsVector[i][1] == doctest::Approx(0.0));
             CHECK_UNARY(translationsVector[i][2] == doctest::Approx(0.0));
-            CHECK_UNARY(orientationsVector[i][0] == doctest::Approx(1.0));
+            CHECK_UNARY(orientationsVector[i][0] == doctest::Approx(0.0));
             CHECK_UNARY(orientationsVector[i][1] == doctest::Approx(0.0));
             CHECK_UNARY(orientationsVector[i][2] == doctest::Approx(0.0));
-            CHECK_UNARY(orientationsVector[i][3] == doctest::Approx(0.0));
+            CHECK_UNARY(orientationsVector[i][3] == doctest::Approx(1.0));
         }
 
         // Set translations for both prims
@@ -166,10 +166,12 @@ TEST_SUITE("Xform")
         // setXformWorldPoses orientation: 90-degree rotation around Z
         const double s = std::sqrt(2.0) / 2.0;
         setXformWorldPoses(stageId, { "/World/C" }, std::nullopt,
-                           array::Array(std::vector<std::vector<double>>{ { s, 0.0, 0.0, s } }));
+                           array::Array(std::vector<std::vector<double>>{ { 0.0, 0.0, s, s } }));
         std::tie(positions, orientations) = getXformWorldPoses(stageId, { "/World/C" });
         auto orientationsVector = orientations.get<std::vector<std::vector<double>>>();
-        CHECK_UNARY(std::abs(orientationsVector[0][0]) == doctest::Approx(s));
+        CHECK_UNARY(std::abs(orientationsVector[0][0]) == doctest::Approx(0.0));
+        CHECK_UNARY(std::abs(orientationsVector[0][1]) == doctest::Approx(0.0));
+        CHECK_UNARY(std::abs(orientationsVector[0][2]) == doctest::Approx(s));
         CHECK_UNARY(std::abs(orientationsVector[0][3]) == doctest::Approx(s));
 
         // Multi-prim set: move both prims at once

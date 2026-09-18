@@ -37,11 +37,12 @@ from _scenario import (  # noqa: E402
     GridParams,
     GridTestBase,
     SimParams,
+    SimulationEntities,
     Transform,
     get_asset_root,
     pack_wrench,
 )
-from isaacsim.physics.manager.impl.tensors import EntityView, SimulationView  # noqa: E402
+from isaacsim.physics.manager.impl.tensors import EntityView  # noqa: E402
 from pxr import Gf  # noqa: E402
 
 
@@ -58,71 +59,29 @@ class _ArticulationGetSetBase(GridTestBase):
         self.create_actor_from_asset(actor_path, Transform((0.0, 0.0, 1.0)), asset_path)
         self.atol = 1e-5
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the shared Ant view and full index buffer.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.ants = sim.create_articulation_view("/envs/*/ant/torso")
         self.all_indices = wp_utils.arange(self.ants.count, device=self.wp_device)
         self.check_articulation_view(self.ants, self.num_envs, 9, 8, True)
 
 
-class KinematicUpdateCommon(_ArticulationGetSetBase):
-    """Validate forward-kinematic updates after joint-position writes.
-
-    The reference pose is captured right after an explicit set + kinematic
-    update, making it independent of solver constraint slack in the stepped
-    state.
-    """
-
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
-        """Perturb and restore joint positions through kinematic updates.
-
-        Args:
-            sim: Active backend simulation view.
-            stepno: Zero-based physics step number.
-            dt: Duration of the physics step.
-        """
-        if stepno != 1:
-            return
-        n = self.ants.get_metadata("num-dofs")
-        nl = self.ants.get_metadata("num-links")
-        base_dof = self.ants.get_data("dof-positions").numpy().reshape(self.ants.count, n).copy()
-
-        # On-manifold reference: FK the base dof so link transforms are exactly
-        # fk(base_dof), independent of the solver's constraint slack.
-        self.ants.set_data("dof-positions", self.to_warp(base_dof.astype("float32")), self.all_indices)
-        sim.update_articulations_kinematic()
-        baseline = self.ants.get_data("link-transforms").numpy().reshape(self.num_envs, nl, 7).copy()
-
-        # A dof change must propagate to link transforms.
-        self.ants.set_data("dof-positions", self.to_warp((base_dof + 1.0).astype("float32")), self.all_indices)
-        sim.update_articulations_kinematic()
-        perturbed = self.ants.get_data("link-transforms").numpy().reshape(self.num_envs, nl, 7)
-        assert not wp_utils.wp_allclose(
-            perturbed, baseline, rtol=1e-3, atol=1e-3
-        ), "transforms must change after set + update_articulations_kinematic"
-
-        # Restoring the dof returns to the on-manifold reference (deterministic FK).
-        self.ants.set_data("dof-positions", self.to_warp(base_dof.astype("float32")), self.all_indices)
-        sim.update_articulations_kinematic()
-        restored = self.ants.get_data("link-transforms").numpy().reshape(self.num_envs, nl, 7)
-        assert wp_utils.wp_allclose(restored, baseline, rtol=1e-3, atol=1e-3), "transforms must restore"
-        self.finish()
-
-
 class GetSetRootTransformsCommon(_ArticulationGetSetBase):
     """Round-trip floating-base translations and orientations."""
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Write root transforms and verify them before finishing.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 1:
             roots = self.ants.get_data("root-transforms").numpy().reshape(self.ants.count, 7).copy()
@@ -146,13 +105,14 @@ class GetSetRootTransformsCommon(_ArticulationGetSetBase):
 class GetSetRootVelocitiesCommon(_ArticulationGetSetBase):
     """Round-trip floating-base spatial velocities."""
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Write root velocities and verify them before finishing.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 1:
             vels = self.ants.get_data("root-velocities").numpy().reshape(self.ants.count, 6).copy()
@@ -176,6 +136,7 @@ class GetSetRootTransformsMixedBaseCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -197,11 +158,12 @@ class GetSetRootTransformsMixedBaseCommon(GridTestBase):
         )
         self.atol = 1e-4
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create fixed-base and floating-base articulation views.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.cartpoles = sim.create_articulation_view("/envs/*/cartpole")
         self.ants = sim.create_articulation_view("/envs/*/ant/torso")
@@ -209,13 +171,14 @@ class GetSetRootTransformsMixedBaseCommon(GridTestBase):
         self.ant_indices = wp_utils.arange(self.ants.count, device=self.wp_device)
         self._targets = {}
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Round-trip both root poses and check post-step persistence.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 1:
             self._roundtrip(self.cartpoles, self.cartpole_indices, "cartpole (fixed base)")
@@ -258,13 +221,14 @@ class GetSetRootTransformsMixedBaseCommon(GridTestBase):
 class GetSetDofPositionsCommon(_ArticulationGetSetBase):
     """Round-trip articulation joint positions."""
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Write joint positions and verify them before finishing.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 1:
             n = self.ants.get_metadata("num-dofs")
@@ -282,13 +246,14 @@ class GetSetDofPositionsCommon(_ArticulationGetSetBase):
 class GetSetDofVelocitiesCommon(_ArticulationGetSetBase):
     """Round-trip articulation joint velocities."""
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Write joint velocities and verify them before finishing.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 1:
             n = self.ants.get_metadata("num-dofs")
@@ -306,13 +271,14 @@ class GetSetDofVelocitiesCommon(_ArticulationGetSetBase):
 class GetSetDofPositionTargetCommon(_ArticulationGetSetBase):
     """Round-trip articulation joint position targets."""
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Write position targets and verify them before finishing.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 1:
             n = self.ants.get_metadata("num-dofs")
@@ -330,13 +296,14 @@ class GetSetDofPositionTargetCommon(_ArticulationGetSetBase):
 class GetSetDofVelocityTargetCommon(_ArticulationGetSetBase):
     """Round-trip articulation joint velocity targets."""
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Write velocity targets and verify them before finishing.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 1:
             n = self.ants.get_metadata("num-dofs")
@@ -354,13 +321,14 @@ class GetSetDofVelocityTargetCommon(_ArticulationGetSetBase):
 class GetSetDofActuationForcesCommon(_ArticulationGetSetBase):
     """Round-trip articulation joint actuation forces."""
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Write actuation forces and verify them before finishing.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 1:
             n = self.ants.get_metadata("num-dofs")
@@ -378,11 +346,12 @@ class GetSetDofActuationForcesCommon(_ArticulationGetSetBase):
 class GetSetAppliedForcesCommon(_ArticulationGetSetBase):
     """Apply per-link world-frame forces at offset positions and verify upward motion."""
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Prepare link-space force and application-position buffers.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         super().on_start(sim)
         force_offset = 1
@@ -397,13 +366,14 @@ class GetSetAppliedForcesCommon(_ArticulationGetSetBase):
         self.forces_wp = wp_utils.fill_vec3(n_total, value=gForce, device=self.wp_device)
         self.positions_wp = wp.from_numpy(positions.flatten(), dtype=wp.float32, device=self.wp_device)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Apply the wrench and verify the articulation rises.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 1:
             self.init_height = (
@@ -446,6 +416,7 @@ class GetSetLinkGravityCommon(GridTestBase):
     Args:
         test_case: Test instance associated with the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -458,11 +429,12 @@ class GetSetLinkGravityCommon(GridTestBase):
         actor_path = self.env_template_path.AppendChild("ant")
         self.create_actor_from_asset(actor_path, Transform((0.0, 0.0, 1.0)), asset_path)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Round-trip gravity flags and configure alternating runtime state.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.ants = sim.create_articulation_view("/envs/*/ant/torso")
         self.all_indices = wp_utils.arange(self.ants.count, device=self.wp_device)
@@ -493,13 +465,14 @@ class GetSetLinkGravityCommon(GridTestBase):
         )
         self.dt = 1.0 / self.sim_params.time_steps_per_second
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Verify gravity-disabled articulations remain stationary.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno != 1:
             return
@@ -520,6 +493,7 @@ class GetSetLinkGravityCommon(GridTestBase):
         Args:
             flags: Full per-articulation, per-link flag matrix.
             message: Assertion context for the tested flag pattern.
+
         """
         self.ants.set_data(
             "disable-gravities",
@@ -546,13 +520,14 @@ class LinkStateCommon(_ArticulationGetSetBase):
     link is present, alongside finiteness and unit-norm orientation quaternions.
     """
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Validate full and indexed per-link state reads.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 1:
             n_links = self.ants.get_metadata("num-links")

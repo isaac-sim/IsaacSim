@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -27,14 +28,21 @@ namespace interfaces
 namespace details
 {
 
-inline std::string _formatAttributeErrorMessage(const std::string& attributeName,
-                                                const std::optional<std::vector<std::string>>& validAttributeNames)
+/**
+ * @brief Format an invalid-attribute error message.
+ *
+ * @param[in] attributeName Invalid attribute name.
+ * @param[in] validAttributeNames Optional list of accepted attribute names.
+ * @return Formatted diagnostic message.
+ */
+inline std::string formatAttributeErrorMessage(const std::string& attributeName,
+                                               const std::optional<std::vector<std::string>>& validAttributeNames)
 {
     std::string message = "Invalid attribute name: '" + attributeName + "'";
     if (validAttributeNames && !validAttributeNames->empty())
     {
         message += ". Valid attribute names: ";
-        for (size_t i = 0; i < validAttributeNames->size(); ++i)
+        for (std::size_t i = 0; i < validAttributeNames->size(); ++i)
         {
             message += (i == 0 ? "'" : ", '") + (*validAttributeNames)[i] + "'";
         }
@@ -42,19 +50,27 @@ inline std::string _formatAttributeErrorMessage(const std::string& attributeName
     return message;
 }
 
+/** @brief Error raised when an OV SIM component is used before initialization. */
 class InitializationError : public std::runtime_error
 {
 public:
+    /** @brief Construct an initialization error without a component name. */
     InitializationError() : std::runtime_error("Not initialized")
     {
     }
 
+    /**
+     * @brief Construct an initialization error for a component.
+     *
+     * @param[in] component Name of the component that is not initialized.
+     */
     explicit InitializationError(const std::string& component)
         : std::runtime_error("Not initialized: " + component), m_component(component)
     {
     }
 
-    [[nodiscard]] const std::string& component() const noexcept
+    /** @return Name of the uninitialized component, or an empty string when unspecified. */
+    [[nodiscard]] const std::string& getComponent() const noexcept
     {
         return m_component;
     }
@@ -63,23 +79,32 @@ private:
     std::string m_component;
 };
 
+/** @brief Error raised when an OV SIM provider receives an unsupported attribute name. */
 class AttributeError : public std::runtime_error
 {
 public:
+    /**
+     * @brief Construct an invalid-attribute error.
+     *
+     * @param[in] attributeName Unsupported attribute name.
+     * @param[in] validAttributeNames Optional list of accepted attribute names.
+     */
     explicit AttributeError(const std::string& attributeName,
                             const std::optional<std::vector<std::string>>& validAttributeNames = std::nullopt)
-        : std::runtime_error(_formatAttributeErrorMessage(attributeName, validAttributeNames)),
+        : std::runtime_error(formatAttributeErrorMessage(attributeName, validAttributeNames)),
           m_attributeName(attributeName),
           m_validAttributeNames(validAttributeNames ? *validAttributeNames : std::vector<std::string>())
     {
     }
 
-    [[nodiscard]] const std::string& attributeName() const noexcept
+    /** @return Unsupported attribute name supplied to the provider. */
+    [[nodiscard]] const std::string& getAttributeName() const noexcept
     {
         return m_attributeName;
     }
 
-    [[nodiscard]] const std::vector<std::string>& validAttributeNames() const noexcept
+    /** @return Accepted attribute names, or an empty collection when none were supplied. */
+    [[nodiscard]] const std::vector<std::string>& getValidAttributeNames() const noexcept
     {
         return m_validAttributeNames;
     }

@@ -413,7 +413,8 @@ def add_joint_schemas(stage: Usd.Stage) -> None:
 def add_rigid_body_schemas(stage: Usd.Stage) -> None:
     """Apply ``UsdPhysics.MassAPI`` to every rigid body that lacks it.
 
-    This function is deprecated, and will be removed in a future version. Use `asset_utils.apply_link_density()` instead.
+    This function is deprecated and will be removed in a future version. Use
+    ``asset_utils.apply_link_density()`` instead.
 
     Args:
         stage: USD stage to update with rigid body schemas.

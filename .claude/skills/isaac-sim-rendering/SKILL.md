@@ -3,7 +3,7 @@ name: isaac-sim-rendering
 description: "Headless RT2/PathTracing production rendering with ACES tuning. Use when capturing frames or validating render quality."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Isaac Sim Headless Rendering (Kit 110 / Isaac Sim 6.0+)

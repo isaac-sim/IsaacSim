@@ -148,6 +148,10 @@ def test_get_first_matching_child_prim(capsys: Any, stage: Any) -> None:
     stage.define_prim("/World/A")
     for i in range(5):
         stage.define_prim(f"/World/A/B{i}", "Cube" if i % 2 else "Sphere")
+    # Sphere is only reachable two levels below /World/D0
+    stage.define_prim("/World/D0", "Cube")
+    stage.define_prim("/World/D0/E0", "Cube")
+    stage.define_prim("/World/D0/E0/F0", "Sphere")
     # test cases
     # - valid case
     predicate = lambda path: get_prim_type_name(path) == "Sphere"
@@ -155,6 +159,22 @@ def test_get_first_matching_child_prim(capsys: Any, stage: Any) -> None:
     assert child == "/World/A/B0"
     # - no match
     assert prim_utils.get_first_matching_child_prim("/World/A", predicate=lambda *_: False) is None
+    # - max_depth
+    # -- max_depth: None
+    child = prim_utils.get_first_matching_child_prim("/World/D0", predicate=predicate)
+    assert child == "/World/D0/E0/F0"
+    # -- max_depth: 0
+    assert prim_utils.get_first_matching_child_prim("/World/D0", predicate=predicate, max_depth=0) is None
+    # -- max_depth: 1
+    assert prim_utils.get_first_matching_child_prim("/World/D0", predicate=predicate, max_depth=1) is None
+    # -- max_depth: 2
+    child = prim_utils.get_first_matching_child_prim("/World/D0", predicate=predicate, max_depth=2)
+    assert child == "/World/D0/E0/F0"
+    # -- include_self, max_depth: 0
+    child = prim_utils.get_first_matching_child_prim(
+        "/World/D0/E0/F0", predicate=predicate, include_self=True, max_depth=0
+    )
+    assert child == "/World/D0/E0/F0"
     # - self-include
     predicate = lambda path: get_prim_type_name(path) == "Xform"
     # -- include self
@@ -163,6 +183,9 @@ def test_get_first_matching_child_prim(capsys: Any, stage: Any) -> None:
     # -- exclude self
     child = prim_utils.get_first_matching_child_prim("/World", predicate=predicate, include_self=False)
     assert child == "/World/A"
+    # exceptions
+    with pytest.raises(TypeError):  # max_depth is defined as size_t in C++
+        prim_utils.get_first_matching_child_prim("/World/A", predicate=predicate, max_depth=-1)
 
 
 def test_get_first_matching_parent_prim(capsys: Any, stage: Any) -> None:

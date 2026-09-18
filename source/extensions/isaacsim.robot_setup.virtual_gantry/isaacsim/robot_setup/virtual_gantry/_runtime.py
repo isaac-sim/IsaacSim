@@ -107,7 +107,7 @@ class VirtualGantryManager:
                 gantry.disable(clear_drawing=clear_overlay)
             except Exception:  # noqa: BLE001 — teardown is best-effort.
                 pass
-        if clear_overlay:
+        if clear_overlay and self._gantries:
             self._clear_overlay()
         self._gantries = {}
         self._last_rope = {}

@@ -5,7 +5,7 @@ id = "hello_world.cpp_python"
 title = "C++ with Python Hello World"
 summary = "Call the public C++ logging API through an example-local Python extension."
 owners = ["isaacsim.common.logging"]
-topics = ["logging", "cpp", "python"]
+topics = ["logging"]
 
 [build]
 adapter = "cmake"

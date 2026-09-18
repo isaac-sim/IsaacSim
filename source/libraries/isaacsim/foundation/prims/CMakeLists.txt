@@ -26,10 +26,12 @@ isaacsim_add_module(
     PUBLIC_CPP_HEADERS
         isaacsim/foundation/prims/physics/Articulation.hpp
         isaacsim/foundation/prims/physics/ColliderBody.hpp
+        isaacsim/foundation/prims/physics/GroundPlane.hpp
         isaacsim/foundation/prims/physics/RigidBody.hpp
     SOURCES
         src/physics/Articulation.cpp
         src/physics/ColliderBody.cpp
+        src/physics/GroundPlane.cpp
         src/physics/RigidBody.cpp
 )
 

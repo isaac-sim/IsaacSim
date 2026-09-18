@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.10.9] - 2026-09-14
+### Fixed
+- Adding stage async after test setup of the xform_prim test to prevent random crashes (1.10.7 fix did not catch all the cases).
+- Fixed ensure_api with multi-apply APIs
+
 ## [1.10.8] - 2026-09-01
 ### Fixed
 - get_local_scales() returns unit scaling if scaling attribute does not exists

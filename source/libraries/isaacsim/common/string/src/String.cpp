@@ -15,7 +15,7 @@
 
 #include "isaacsim/common/string/String.hpp"
 
-#include "isaacsim/common/string/details/ColorParser.hpp"
+#include "details/ColorParser.hpp"
 
 #include <algorithm>
 #include <functional>
@@ -114,7 +114,7 @@ std::vector<float> resolveColor(const std::string& color)
     if (color.size() >= 2 && color.front() == 'C' &&
         std::all_of(color.begin() + 1, color.end(), [](unsigned char c) { return std::isdigit(c); }))
     {
-        const auto& cycle = details::kDefaultColorCycle;
+        const auto& cycle = details::g_kDefaultColorCycle;
         std::size_t index = 0;
         for (std::size_t i = 1; i < color.size(); ++i)
         {
@@ -131,8 +131,8 @@ std::vector<float> resolveColor(const std::string& color)
 
     // Named color lookup: try the exact key first, then a lower-cased key (unless single-character, to
     // match matplotlib, which does not case-fold single letters such as the base colors).
-    const auto& base = details::kBaseColors;
-    const auto& named = details::kNamedColors;
+    const auto& base = details::g_kBaseColors;
+    const auto& named = details::g_kNamedColors;
     const auto lookupNamed = [&base, &named](const std::string& key) -> std::optional<std::vector<float>>
     {
         if (const auto it = base.find(key); it != base.end())

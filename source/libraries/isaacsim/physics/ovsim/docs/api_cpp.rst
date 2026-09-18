@@ -16,9 +16,9 @@
 
 .. _isaacsim-physics-ovsim-api-cpp:
 
-=================
-C++ API reference
-=================
+=========
+C++ guide
+=========
 
 .. isaacsim-libraries-api-guide-start
 
@@ -109,11 +109,11 @@ Data
 
 Namespace: ``isaacsim::physics::ovsim::data``
 
-Types re-exported from the OV Sim interface:
+Types re-exported from the OV SIM interface:
 
-- ``PathType`` — list of absolute prim path strings.
-- ``InputValueType`` — value(s) to write.
-- ``OutputValueType`` — value(s) read back.
+- ``PathType`` --- list of absolute prim path strings.
+- ``InputValueType`` --- value(s) to write.
+- ``OutputValueType`` --- value(s) read back.
 
 .. code-block:: cpp
 

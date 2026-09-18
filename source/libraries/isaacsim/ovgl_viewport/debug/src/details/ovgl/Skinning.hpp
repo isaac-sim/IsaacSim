@@ -60,10 +60,10 @@ public:
 private:
     struct SkeletonPose;
 
-    bool readAttribute(const std::string& path, const std::string& name, std::vector<uint8_t>& output) const;
-    bool readInheritedAttribute(const std::string& path, const std::string& name, std::vector<uint8_t>& output) const;
-    std::string readInheritedTarget(const std::string& path, const std::string& relationship) const;
-    const SkeletonPose* getPose(const std::string& skeletonPath);
+    bool _readAttribute(const std::string& path, const std::string& name, std::vector<uint8_t>& output) const;
+    bool _readInheritedAttribute(const std::string& path, const std::string& name, std::vector<uint8_t>& output) const;
+    std::string _readInheritedTarget(const std::string& path, const std::string& relationship) const;
+    const SkeletonPose* _getPose(const std::string& skeletonPath);
 
     AttributeReader m_reader;
     std::unordered_map<std::string, std::shared_ptr<SkeletonPose>> m_poseCache;

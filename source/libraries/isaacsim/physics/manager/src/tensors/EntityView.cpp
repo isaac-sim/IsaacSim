@@ -26,143 +26,156 @@ namespace physics
 namespace tensors
 {
 
-struct EntityView::Impl
+struct EntityView::Implementation
 {
     struct GetEntry
     {
-        GetImplFunction callback;
-        TensorSpec specification;
+        GetImplementationFunction callback;
+        TensorSpecification specification;
     };
     struct SetEntry
     {
-        SetImplFunction callback;
-        TensorSpec specification;
+        SetImplementationFunction callback;
+        TensorSpecification specification;
     };
     struct GetMultiEntry
     {
-        GetMultiImplFunction callback;
-        TensorSpec specification;
-        std::vector<TensorSpec> outputSpecifications;
+        GetMultiImplementationFunction callback;
+        TensorSpecification specification;
+        std::vector<TensorSpecification> outputSpecifications;
     };
     struct SetMultiEntry
     {
-        SetMultiImplFunction callback;
-        TensorSpec specification;
+        SetMultiImplementationFunction callback;
+        TensorSpecification specification;
     };
 
     std::unordered_map<std::string, GetEntry> getImplementations;
     std::unordered_map<std::string, SetEntry> setImplementations;
     std::unordered_map<std::string, GetMultiEntry> getMultiImplementations;
     std::unordered_map<std::string, SetMultiEntry> setMultiImplementations;
-    std::unordered_map<std::string, MetadataImplFunction> metadataImplementations;
+    std::unordered_map<std::string, MetadataImplementationFunction> metadataImplementations;
 };
 
-EntityView::EntityView() : m_impl(std::make_unique<Impl>())
+EntityView::EntityView() : m_implementation(std::make_unique<Implementation>())
 {
 }
 
-EntityView::EntityView(std::vector<std::string> paths) : m_paths(std::move(paths)), m_impl(std::make_unique<Impl>())
+EntityView::EntityView(std::vector<std::string> primPathPatterns)
+    : m_primPathPatterns(std::move(primPathPatterns)), m_implementation(std::make_unique<Implementation>())
 {
 }
 
 EntityView::~EntityView() = default;
 
-bool EntityView::registerImpl(const std::string& operationName,
-                              ImplKind kind,
-                              GetImplFunction callback,
-                              TensorSpec specification)
+bool EntityView::registerImplementation(const std::string& operationName,
+                                        ImplementationKind kind,
+                                        GetImplementationFunction callback,
+                                        TensorSpecification specification)
 {
-    if (!m_impl)
+    if (!m_implementation)
     {
-        m_impl = std::make_unique<Impl>();
+        m_implementation = std::make_unique<Implementation>();
     }
-    if (kind != ImplKind::eGet)
-    {
-        throw std::invalid_argument("registerImpl(GetImplFunction): kind must be ImplKind::eGet for impl '" +
-                                    operationName + "'");
-    }
-    if (m_impl->getMultiImplementations.find(operationName) != m_impl->getMultiImplementations.end())
-    {
-        throw std::invalid_argument("EntityView::registerImpl: GET impl '" + operationName +
-                                    "' is already registered as multi-buffer");
-    }
-    const bool isNew = m_impl->getImplementations.find(operationName) == m_impl->getImplementations.end();
-    m_impl->getImplementations[operationName] = Impl::GetEntry{ std::move(callback), std::move(specification) };
-    return isNew;
-}
-
-bool EntityView::registerImpl(const std::string& operationName,
-                              ImplKind kind,
-                              SetImplFunction callback,
-                              TensorSpec specification)
-{
-    if (!m_impl)
-    {
-        m_impl = std::make_unique<Impl>();
-    }
-    if (kind != ImplKind::eSet)
-    {
-        throw std::invalid_argument("registerImpl(SetImplFunction): kind must be ImplKind::eSet for impl '" +
-                                    operationName + "'");
-    }
-    if (m_impl->setMultiImplementations.find(operationName) != m_impl->setMultiImplementations.end())
-    {
-        throw std::invalid_argument("EntityView::registerImpl: SET impl '" + operationName +
-                                    "' is already registered as multi-buffer");
-    }
-    const bool isNew = m_impl->setImplementations.find(operationName) == m_impl->setImplementations.end();
-    m_impl->setImplementations[operationName] = Impl::SetEntry{ std::move(callback), std::move(specification) };
-    return isNew;
-}
-
-bool EntityView::registerImpl(const std::string& operationName,
-                              ImplKind kind,
-                              GetMultiImplFunction callback,
-                              TensorSpec specification)
-{
-    if (!m_impl)
-    {
-        m_impl = std::make_unique<Impl>();
-    }
-    if (kind != ImplKind::eGet)
-    {
-        throw std::invalid_argument("registerImpl(GetMultiImplFunction): kind must be ImplKind::eGet for impl '" +
-                                    operationName + "'");
-    }
-    if (m_impl->getImplementations.find(operationName) != m_impl->getImplementations.end())
-    {
-        throw std::invalid_argument("EntityView::registerImpl: GET impl '" + operationName +
-                                    "' is already registered as single-buffer");
-    }
-    const bool isNew = m_impl->getMultiImplementations.find(operationName) == m_impl->getMultiImplementations.end();
-    m_impl->getMultiImplementations[operationName] =
-        Impl::GetMultiEntry{ std::move(callback), std::move(specification), {} };
-    return isNew;
-}
-
-bool EntityView::registerImpl(const std::string& operationName,
-                              ImplKind kind,
-                              GetMultiImplFunction callback,
-                              std::vector<TensorSpec> outputSpecifications)
-{
-    if (!m_impl)
-    {
-        m_impl = std::make_unique<Impl>();
-    }
-    if (kind != ImplKind::eGet)
+    if (kind != ImplementationKind::eGet)
     {
         throw std::invalid_argument(
-            "registerImpl(GetMultiImplFunction, outputSpecifications): kind must be ImplKind::eGet for impl '" +
+            "registerImplementation(GetImplementationFunction): kind must be ImplementationKind::eGet for "
+            "implementation '" +
             operationName + "'");
     }
-    if (m_impl->getImplementations.find(operationName) != m_impl->getImplementations.end())
+    if (m_implementation->getMultiImplementations.find(operationName) != m_implementation->getMultiImplementations.end())
     {
-        throw std::invalid_argument("EntityView::registerImpl: GET impl '" + operationName +
+        throw std::invalid_argument("EntityView::registerImplementation: GET implementation '" + operationName +
+                                    "' is already registered as multi-buffer");
+    }
+    const bool isNew =
+        m_implementation->getImplementations.find(operationName) == m_implementation->getImplementations.end();
+    m_implementation->getImplementations[operationName] =
+        Implementation::GetEntry{ std::move(callback), std::move(specification) };
+    return isNew;
+}
+
+bool EntityView::registerImplementation(const std::string& operationName,
+                                        ImplementationKind kind,
+                                        SetImplementationFunction callback,
+                                        TensorSpecification specification)
+{
+    if (!m_implementation)
+    {
+        m_implementation = std::make_unique<Implementation>();
+    }
+    if (kind != ImplementationKind::eSet)
+    {
+        throw std::invalid_argument(
+            "registerImplementation(SetImplementationFunction): kind must be ImplementationKind::eSet for "
+            "implementation '" +
+            operationName + "'");
+    }
+    if (m_implementation->setMultiImplementations.find(operationName) != m_implementation->setMultiImplementations.end())
+    {
+        throw std::invalid_argument("EntityView::registerImplementation: SET implementation '" + operationName +
+                                    "' is already registered as multi-buffer");
+    }
+    const bool isNew =
+        m_implementation->setImplementations.find(operationName) == m_implementation->setImplementations.end();
+    m_implementation->setImplementations[operationName] =
+        Implementation::SetEntry{ std::move(callback), std::move(specification) };
+    return isNew;
+}
+
+bool EntityView::registerImplementation(const std::string& operationName,
+                                        ImplementationKind kind,
+                                        GetMultiImplementationFunction callback,
+                                        TensorSpecification specification)
+{
+    if (!m_implementation)
+    {
+        m_implementation = std::make_unique<Implementation>();
+    }
+    if (kind != ImplementationKind::eGet)
+    {
+        throw std::invalid_argument(
+            "registerImplementation(GetMultiImplementationFunction): kind must be ImplementationKind::eGet for "
+            "implementation '" +
+            operationName + "'");
+    }
+    if (m_implementation->getImplementations.find(operationName) != m_implementation->getImplementations.end())
+    {
+        throw std::invalid_argument("EntityView::registerImplementation: GET implementation '" + operationName +
+                                    "' is already registered as single-buffer");
+    }
+    const bool isNew = m_implementation->getMultiImplementations.find(operationName) ==
+                       m_implementation->getMultiImplementations.end();
+    m_implementation->getMultiImplementations[operationName] =
+        Implementation::GetMultiEntry{ std::move(callback), std::move(specification), {} };
+    return isNew;
+}
+
+bool EntityView::registerImplementation(const std::string& operationName,
+                                        ImplementationKind kind,
+                                        GetMultiImplementationFunction callback,
+                                        std::vector<TensorSpecification> outputSpecifications)
+{
+    if (!m_implementation)
+    {
+        m_implementation = std::make_unique<Implementation>();
+    }
+    if (kind != ImplementationKind::eGet)
+    {
+        throw std::invalid_argument(
+            "registerImplementation(GetMultiImplementationFunction, outputSpecifications): kind must be "
+            "ImplementationKind::eGet for implementation '" +
+            operationName + "'");
+    }
+    if (m_implementation->getImplementations.find(operationName) != m_implementation->getImplementations.end())
+    {
+        throw std::invalid_argument("EntityView::registerImplementation: GET implementation '" + operationName +
                                     "' is already registered as single-buffer");
     }
     // The aggregate specification drives the supports and indexed-read gates in getDataMulti. The per-output
     // specifications drive framework-side device allocation.
-    TensorSpec aggregateSpecification;
+    TensorSpecification aggregateSpecification;
     aggregateSpecification.supports = !outputSpecifications.empty() && outputSpecifications.front().supports;
     if (!outputSpecifications.empty())
     {
@@ -171,74 +184,82 @@ bool EntityView::registerImpl(const std::string& operationName,
         aggregateSpecification.supportsIndexedRead = outputSpecifications.front().supportsIndexedRead;
         aggregateSpecification.requiresHostData = outputSpecifications.front().requiresHostData;
     }
-    const bool isNew = m_impl->getMultiImplementations.find(operationName) == m_impl->getMultiImplementations.end();
-    m_impl->getMultiImplementations[operationName] =
-        Impl::GetMultiEntry{ std::move(callback), aggregateSpecification, std::move(outputSpecifications) };
+    const bool isNew = m_implementation->getMultiImplementations.find(operationName) ==
+                       m_implementation->getMultiImplementations.end();
+    m_implementation->getMultiImplementations[operationName] =
+        Implementation::GetMultiEntry{ std::move(callback), aggregateSpecification, std::move(outputSpecifications) };
     return isNew;
 }
 
-bool EntityView::registerImpl(const std::string& operationName,
-                              ImplKind kind,
-                              SetMultiImplFunction callback,
-                              TensorSpec specification)
+bool EntityView::registerImplementation(const std::string& operationName,
+                                        ImplementationKind kind,
+                                        SetMultiImplementationFunction callback,
+                                        TensorSpecification specification)
 {
-    if (!m_impl)
+    if (!m_implementation)
     {
-        m_impl = std::make_unique<Impl>();
+        m_implementation = std::make_unique<Implementation>();
     }
-    if (kind != ImplKind::eSet)
+    if (kind != ImplementationKind::eSet)
     {
-        throw std::invalid_argument("registerImpl(SetMultiImplFunction): kind must be ImplKind::eSet for impl '" +
-                                    operationName + "'");
+        throw std::invalid_argument(
+            "registerImplementation(SetMultiImplementationFunction): kind must be ImplementationKind::eSet for "
+            "implementation '" +
+            operationName + "'");
     }
-    if (m_impl->setImplementations.find(operationName) != m_impl->setImplementations.end())
+    if (m_implementation->setImplementations.find(operationName) != m_implementation->setImplementations.end())
     {
-        throw std::invalid_argument("EntityView::registerImpl: SET impl '" + operationName +
+        throw std::invalid_argument("EntityView::registerImplementation: SET implementation '" + operationName +
                                     "' is already registered as single-buffer");
     }
-    const bool isNew = m_impl->setMultiImplementations.find(operationName) == m_impl->setMultiImplementations.end();
-    m_impl->setMultiImplementations[operationName] = Impl::SetMultiEntry{ std::move(callback), std::move(specification) };
+    const bool isNew = m_implementation->setMultiImplementations.find(operationName) ==
+                       m_implementation->setMultiImplementations.end();
+    m_implementation->setMultiImplementations[operationName] =
+        Implementation::SetMultiEntry{ std::move(callback), std::move(specification) };
     return isNew;
 }
 
-bool EntityView::registerMetadata(const std::string& operationName, MetadataImplFunction callback)
+bool EntityView::registerMetadata(const std::string& operationName, MetadataImplementationFunction callback)
 {
-    if (!m_impl)
+    if (!m_implementation)
     {
-        m_impl = std::make_unique<Impl>();
+        m_implementation = std::make_unique<Implementation>();
     }
-    const bool isNew = m_impl->metadataImplementations.find(operationName) == m_impl->metadataImplementations.end();
-    m_impl->metadataImplementations[operationName] = std::move(callback);
+    const bool isNew = m_implementation->metadataImplementations.find(operationName) ==
+                       m_implementation->metadataImplementations.end();
+    m_implementation->metadataImplementations[operationName] = std::move(callback);
     return isNew;
 }
 
-std::vector<std::string> EntityView::listImpls(ImplKind kind) const
+std::vector<std::string> EntityView::listImplementations(ImplementationKind kind) const
 {
     std::vector<std::string> implementationNames;
-    if (!m_impl)
+    if (!m_implementation)
     {
         return implementationNames;
     }
-    if (kind == ImplKind::eGet)
+    if (kind == ImplementationKind::eGet)
     {
-        implementationNames.reserve(m_impl->getImplementations.size() + m_impl->getMultiImplementations.size());
-        for (const auto& entry : m_impl->getImplementations)
+        implementationNames.reserve(m_implementation->getImplementations.size() +
+                                    m_implementation->getMultiImplementations.size());
+        for (const auto& entry : m_implementation->getImplementations)
         {
             implementationNames.push_back(entry.first);
         }
-        for (const auto& entry : m_impl->getMultiImplementations)
+        for (const auto& entry : m_implementation->getMultiImplementations)
         {
             implementationNames.push_back(entry.first);
         }
     }
     else
     {
-        implementationNames.reserve(m_impl->setImplementations.size() + m_impl->setMultiImplementations.size());
-        for (const auto& entry : m_impl->setImplementations)
+        implementationNames.reserve(m_implementation->setImplementations.size() +
+                                    m_implementation->setMultiImplementations.size());
+        for (const auto& entry : m_implementation->setImplementations)
         {
             implementationNames.push_back(entry.first);
         }
-        for (const auto& entry : m_impl->setMultiImplementations)
+        for (const auto& entry : m_implementation->setMultiImplementations)
         {
             implementationNames.push_back(entry.first);
         }
@@ -246,24 +267,24 @@ std::vector<std::string> EntityView::listImpls(ImplKind kind) const
     return implementationNames;
 }
 
-bool EntityView::hasImpl(const std::string& operationName, ImplKind kind) const
+bool EntityView::hasImplementation(const std::string& operationName, ImplementationKind kind) const
 {
-    if (!m_impl)
+    if (!m_implementation)
     {
         return false;
     }
 
-    const auto isSupported = [](const TensorSpec& specification) { return specification.supports; };
+    const auto isSupported = [](const TensorSpecification& specification) { return specification.supports; };
 
-    if (kind == ImplKind::eGet)
+    if (kind == ImplementationKind::eGet)
     {
-        const auto implementationIterator = m_impl->getImplementations.find(operationName);
-        if (implementationIterator != m_impl->getImplementations.end())
+        const auto implementationIterator = m_implementation->getImplementations.find(operationName);
+        if (implementationIterator != m_implementation->getImplementations.end())
         {
             return isSupported(implementationIterator->second.specification);
         }
-        const auto multiImplementationIterator = m_impl->getMultiImplementations.find(operationName);
-        if (multiImplementationIterator != m_impl->getMultiImplementations.end())
+        const auto multiImplementationIterator = m_implementation->getMultiImplementations.find(operationName);
+        if (multiImplementationIterator != m_implementation->getMultiImplementations.end())
         {
             return isSupported(multiImplementationIterator->second.specification);
         }
@@ -271,13 +292,13 @@ bool EntityView::hasImpl(const std::string& operationName, ImplKind kind) const
     }
     else
     {
-        const auto implementationIterator = m_impl->setImplementations.find(operationName);
-        if (implementationIterator != m_impl->setImplementations.end())
+        const auto implementationIterator = m_implementation->setImplementations.find(operationName);
+        if (implementationIterator != m_implementation->setImplementations.end())
         {
             return isSupported(implementationIterator->second.specification);
         }
-        const auto multiImplementationIterator = m_impl->setMultiImplementations.find(operationName);
-        if (multiImplementationIterator != m_impl->setMultiImplementations.end())
+        const auto multiImplementationIterator = m_implementation->setMultiImplementations.find(operationName);
+        if (multiImplementationIterator != m_implementation->setMultiImplementations.end())
         {
             return isSupported(multiImplementationIterator->second.specification);
         }
@@ -285,74 +306,80 @@ bool EntityView::hasImpl(const std::string& operationName, ImplKind kind) const
     }
 }
 
-TensorSpec EntityView::getImplSpec(const std::string& operationName, ImplKind kind) const
+TensorSpecification EntityView::getImplementationSpecification(const std::string& operationName,
+                                                               ImplementationKind kind) const
 {
-    if (!m_impl)
+    if (!m_implementation)
     {
-        throw std::out_of_range("EntityView::getImplSpec: no impls registered for '" + operationName + "'");
+        throw std::out_of_range("EntityView::getImplementationSpecification: no implementations registered for '" +
+                                operationName + "'");
     }
 
-    if (kind == ImplKind::eGet)
+    if (kind == ImplementationKind::eGet)
     {
-        const auto implementationIterator = m_impl->getImplementations.find(operationName);
-        if (implementationIterator != m_impl->getImplementations.end())
+        const auto implementationIterator = m_implementation->getImplementations.find(operationName);
+        if (implementationIterator != m_implementation->getImplementations.end())
         {
             return implementationIterator->second.specification;
         }
-        const auto multiImplementationIterator = m_impl->getMultiImplementations.find(operationName);
-        if (multiImplementationIterator != m_impl->getMultiImplementations.end())
+        const auto multiImplementationIterator = m_implementation->getMultiImplementations.find(operationName);
+        if (multiImplementationIterator != m_implementation->getMultiImplementations.end())
         {
             return multiImplementationIterator->second.specification;
         }
     }
     else
     {
-        const auto implementationIterator = m_impl->setImplementations.find(operationName);
-        if (implementationIterator != m_impl->setImplementations.end())
+        const auto implementationIterator = m_implementation->setImplementations.find(operationName);
+        if (implementationIterator != m_implementation->setImplementations.end())
         {
             return implementationIterator->second.specification;
         }
-        const auto multiImplementationIterator = m_impl->setMultiImplementations.find(operationName);
-        if (multiImplementationIterator != m_impl->setMultiImplementations.end())
+        const auto multiImplementationIterator = m_implementation->setMultiImplementations.find(operationName);
+        if (multiImplementationIterator != m_implementation->setMultiImplementations.end())
         {
             return multiImplementationIterator->second.specification;
         }
     }
-    throw std::out_of_range("EntityView::getImplSpec: impl '" + operationName + "' not registered for the requested kind");
+    throw std::out_of_range("EntityView::getImplementationSpecification: implementation '" + operationName +
+                            "' not registered for the requested kind");
 }
 
-std::vector<TensorSpec> EntityView::getImplSpecMulti(const std::string& operationName, ImplKind kind) const
+std::vector<TensorSpecification> EntityView::getMultiImplementationSpecifications(const std::string& operationName,
+                                                                                  ImplementationKind kind) const
 {
-    if (!m_impl || kind != ImplKind::eGet)
+    if (!m_implementation || kind != ImplementationKind::eGet)
     {
         return {};
     }
-    const auto multiImplementationIterator = m_impl->getMultiImplementations.find(operationName);
-    if (multiImplementationIterator != m_impl->getMultiImplementations.end())
+    const auto multiImplementationIterator = m_implementation->getMultiImplementations.find(operationName);
+    if (multiImplementationIterator != m_implementation->getMultiImplementations.end())
     {
         return multiImplementationIterator->second.outputSpecifications;
     }
     return {};
 }
 
-bool EntityView::_setImplShapeHint(const std::string& operationName, ImplKind kind, const std::vector<int64_t>& shapeHint)
+bool EntityView::_setImplementationShapeHint(const std::string& operationName,
+                                             ImplementationKind kind,
+                                             const std::vector<int64_t>& shapeHint)
 {
-    if (!m_impl)
+    if (!m_implementation)
     {
         return false;
     }
-    if (kind == ImplKind::eGet)
+    if (kind == ImplementationKind::eGet)
     {
-        const auto implementationIterator = m_impl->getImplementations.find(operationName);
-        if (implementationIterator == m_impl->getImplementations.end())
+        const auto implementationIterator = m_implementation->getImplementations.find(operationName);
+        if (implementationIterator == m_implementation->getImplementations.end())
         {
             return false;
         }
         implementationIterator->second.specification.shapeHint = shapeHint;
         return true;
     }
-    const auto implementationIterator = m_impl->setImplementations.find(operationName);
-    if (implementationIterator == m_impl->setImplementations.end())
+    const auto implementationIterator = m_implementation->setImplementations.find(operationName);
+    if (implementationIterator == m_implementation->setImplementations.end())
     {
         return false;
     }
@@ -360,24 +387,24 @@ bool EntityView::_setImplShapeHint(const std::string& operationName, ImplKind ki
     return true;
 }
 
-bool EntityView::_setImplOutputShapeHints(const std::string& operationName,
-                                          ImplKind kind,
-                                          const std::vector<std::vector<int64_t>>& shapeHints)
+bool EntityView::_setImplementationOutputShapeHints(const std::string& operationName,
+                                                    ImplementationKind kind,
+                                                    const std::vector<std::vector<int64_t>>& shapeHints)
 {
-    if (!m_impl || kind != ImplKind::eGet)
+    if (!m_implementation || kind != ImplementationKind::eGet)
     {
         return false;
     }
-    const auto multiImplementationIterator = m_impl->getMultiImplementations.find(operationName);
-    if (multiImplementationIterator == m_impl->getMultiImplementations.end())
+    const auto multiImplementationIterator = m_implementation->getMultiImplementations.find(operationName);
+    if (multiImplementationIterator == m_implementation->getMultiImplementations.end())
     {
         return false;
     }
-    std::vector<TensorSpec>& outputSpecifications = multiImplementationIterator->second.outputSpecifications;
+    std::vector<TensorSpecification>& outputSpecifications = multiImplementationIterator->second.outputSpecifications;
     if (shapeHints.size() != outputSpecifications.size())
     {
-        throw std::invalid_argument("EntityView::_setImplOutputShapeHints: impl '" + operationName + "' has " +
-                                    std::to_string(outputSpecifications.size()) + " outputs, received " +
+        throw std::invalid_argument("EntityView::_setImplementationOutputShapeHints: implementation '" + operationName +
+                                    "' has " + std::to_string(outputSpecifications.size()) + " outputs, received " +
                                     std::to_string(shapeHints.size()));
     }
     for (size_t outputIndex = 0; outputIndex < outputSpecifications.size(); ++outputIndex)
@@ -389,111 +416,119 @@ bool EntityView::_setImplOutputShapeHints(const std::string& operationName,
 
 Metadata EntityView::getMetadata(const std::string& operationName) const
 {
-    if (!m_impl)
+    if (!m_implementation)
     {
         return Metadata{};
     }
-    const auto implementationIterator = m_impl->metadataImplementations.find(operationName);
-    if (implementationIterator == m_impl->metadataImplementations.end())
+    const auto implementationIterator = m_implementation->metadataImplementations.find(operationName);
+    if (implementationIterator == m_implementation->metadataImplementations.end())
     {
         return Metadata{};
     }
     return implementationIterator->second();
 }
 
-TensorDesc EntityView::getData(const std::string& operationName, const TensorDesc& indices, const TensorDesc& output) const
+TensorDescription EntityView::getData(const std::string& operationName,
+                                      const TensorDescription& indices,
+                                      const TensorDescription& output) const
 {
-    if (!m_impl)
+    if (!m_implementation)
     {
-        throw std::out_of_range("EntityView::getData: no impls registered for '" + operationName + "'");
+        throw std::out_of_range("EntityView::getData: no implementations registered for '" + operationName + "'");
     }
-    const auto implementationIterator = m_impl->getImplementations.find(operationName);
-    if (implementationIterator == m_impl->getImplementations.end())
+    const auto implementationIterator = m_implementation->getImplementations.find(operationName);
+    if (implementationIterator == m_implementation->getImplementations.end())
     {
-        throw std::out_of_range("EntityView::getData: get-impl '" + operationName + "' not registered");
+        throw std::out_of_range("EntityView::getData: get-implementation '" + operationName + "' not registered");
     }
     if (!implementationIterator->second.specification.supports)
     {
-        throw std::runtime_error("EntityView::getData: impl '" + operationName +
+        throw std::runtime_error("EntityView::getData: implementation '" + operationName +
                                  "' is registered but reports supports=false (operation not implemented for this engine)");
     }
     if (!indices.isEmpty() && !implementationIterator->second.specification.supportsIndexedRead)
     {
-        throw std::invalid_argument("EntityView::getData: impl '" + operationName + "' does not support indexed reads");
-    }
-    return implementationIterator->second.callback(indices, output);
-}
-
-std::vector<TensorDesc> EntityView::getDataMulti(const std::string& operationName,
-                                                 const TensorDesc& indices,
-                                                 const std::vector<TensorDesc>& output) const
-{
-    if (!m_impl)
-    {
-        throw std::out_of_range("EntityView::getDataMulti: no impls registered for '" + operationName + "'");
-    }
-    const auto implementationIterator = m_impl->getMultiImplementations.find(operationName);
-    if (implementationIterator == m_impl->getMultiImplementations.end())
-    {
-        throw std::out_of_range("EntityView::getDataMulti: multi-get-impl '" + operationName + "' not registered");
-    }
-    if (!implementationIterator->second.specification.supports)
-    {
-        throw std::runtime_error("EntityView::getDataMulti: impl '" + operationName +
-                                 "' is registered but reports supports=false (operation not implemented for this engine)");
-    }
-    if (!indices.isEmpty() && !implementationIterator->second.specification.supportsIndexedRead)
-    {
-        throw std::invalid_argument("EntityView::getDataMulti: impl '" + operationName +
+        throw std::invalid_argument("EntityView::getData: implementation '" + operationName +
                                     "' does not support indexed reads");
     }
     return implementationIterator->second.callback(indices, output);
 }
 
-void EntityView::setData(const std::string& operationName, const TensorDesc& data, const TensorDesc& indices) const
+std::vector<TensorDescription> EntityView::getDataMulti(const std::string& operationName,
+                                                        const TensorDescription& indices,
+                                                        const std::vector<TensorDescription>& output) const
 {
-    if (!m_impl)
+    if (!m_implementation)
     {
-        throw std::out_of_range("EntityView::setData: no impls registered for '" + operationName + "'");
+        throw std::out_of_range("EntityView::getDataMulti: no implementations registered for '" + operationName + "'");
     }
-    const auto implementationIterator = m_impl->setImplementations.find(operationName);
-    if (implementationIterator == m_impl->setImplementations.end())
+    const auto implementationIterator = m_implementation->getMultiImplementations.find(operationName);
+    if (implementationIterator == m_implementation->getMultiImplementations.end())
     {
-        throw std::out_of_range("EntityView::setData: set-impl '" + operationName + "' not registered");
+        throw std::out_of_range("EntityView::getDataMulti: multi-get implementation '" + operationName +
+                                "' not registered");
     }
     if (!implementationIterator->second.specification.supports)
     {
-        throw std::runtime_error("EntityView::setData: impl '" + operationName +
+        throw std::runtime_error("EntityView::getDataMulti: implementation '" + operationName +
+                                 "' is registered but reports supports=false (operation not implemented for this engine)");
+    }
+    if (!indices.isEmpty() && !implementationIterator->second.specification.supportsIndexedRead)
+    {
+        throw std::invalid_argument("EntityView::getDataMulti: implementation '" + operationName +
+                                    "' does not support indexed reads");
+    }
+    return implementationIterator->second.callback(indices, output);
+}
+
+void EntityView::setData(const std::string& operationName,
+                         const TensorDescription& data,
+                         const TensorDescription& indices) const
+{
+    if (!m_implementation)
+    {
+        throw std::out_of_range("EntityView::setData: no implementations registered for '" + operationName + "'");
+    }
+    const auto implementationIterator = m_implementation->setImplementations.find(operationName);
+    if (implementationIterator == m_implementation->setImplementations.end())
+    {
+        throw std::out_of_range("EntityView::setData: set-implementation '" + operationName + "' not registered");
+    }
+    if (!implementationIterator->second.specification.supports)
+    {
+        throw std::runtime_error("EntityView::setData: implementation '" + operationName +
                                  "' is registered but reports supports=false (operation not implemented for this engine)");
     }
     if (!indices.isEmpty() && !implementationIterator->second.specification.supportsIndexedWrite)
     {
-        throw std::invalid_argument("EntityView::setData: impl '" + operationName + "' does not support indexed writes");
+        throw std::invalid_argument("EntityView::setData: implementation '" + operationName +
+                                    "' does not support indexed writes");
     }
     implementationIterator->second.callback(data, indices);
 }
 
 void EntityView::setDataMulti(const std::string& operationName,
-                              const std::vector<TensorDesc>& data,
-                              const TensorDesc& indices) const
+                              const std::vector<TensorDescription>& data,
+                              const TensorDescription& indices) const
 {
-    if (!m_impl)
+    if (!m_implementation)
     {
-        throw std::out_of_range("EntityView::setDataMulti: no impls registered for '" + operationName + "'");
+        throw std::out_of_range("EntityView::setDataMulti: no implementations registered for '" + operationName + "'");
     }
-    const auto implementationIterator = m_impl->setMultiImplementations.find(operationName);
-    if (implementationIterator == m_impl->setMultiImplementations.end())
+    const auto implementationIterator = m_implementation->setMultiImplementations.find(operationName);
+    if (implementationIterator == m_implementation->setMultiImplementations.end())
     {
-        throw std::out_of_range("EntityView::setDataMulti: multi-set-impl '" + operationName + "' not registered");
+        throw std::out_of_range("EntityView::setDataMulti: multi-set implementation '" + operationName +
+                                "' not registered");
     }
     if (!implementationIterator->second.specification.supports)
     {
-        throw std::runtime_error("EntityView::setDataMulti: impl '" + operationName +
+        throw std::runtime_error("EntityView::setDataMulti: implementation '" + operationName +
                                  "' is registered but reports supports=false (operation not implemented for this engine)");
     }
     if (!indices.isEmpty() && !implementationIterator->second.specification.supportsIndexedWrite)
     {
-        throw std::invalid_argument("EntityView::setDataMulti: impl '" + operationName +
+        throw std::invalid_argument("EntityView::setDataMulti: implementation '" + operationName +
                                     "' does not support indexed writes");
     }
     implementationIterator->second.callback(data, indices);

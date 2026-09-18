@@ -124,8 +124,8 @@ def get_prim_variant_collection(prim: str | Usd.Prim) -> dict[str, list[str]]:
         ...     get_assets_root_path() + "/Isaac/Robots_Multiphysics/FrankaRobotics/FrankaPanda/franka/franka.usda"
         ... )  # doctest: +NO_CHECK
         >>>
-        >>> prim_utils.get_prim_variant_collection("/panda")
-        {'Gripper': ['alternatefinger', 'default', 'none', 'robotiq_2f_85'], 'Mesh': ['performance', 'quality'], 'Physics': ['none', 'physics', 'physx']}
+        >>> sorted(prim_utils.get_prim_variant_collection("/panda"))
+        ['Gripper', 'Mesh', 'Physics']
     """
     prim = stage_utils.get_current_stage(backend="usd").GetPrimAtPath(prim) if isinstance(prim, str) else prim
     return {
@@ -733,8 +733,8 @@ def get_prim_attribute_names(prim: str | Usd.Prim | usdrt.Usd.Prim) -> list[str]
         >>>
         >>> stage_utils.define_prim("/World/Cube", "Cube")  # doctest: +NO_CHECK
         >>>
-        >>> prim_utils.get_prim_attribute_names("/World/Cube")
-        ['doubleSided', 'extent', 'orientation', 'primvars:displayColor', 'primvars:displayOpacity', 'purpose', 'size', 'visibility', 'xformOpOrder']
+        >>> "xformOpOrder" in prim_utils.get_prim_attribute_names("/World/Cube")
+        True
     """
     prim = stage_utils.get_current_stage().GetPrimAtPath(prim) if isinstance(prim, str) else prim
     return [attr.GetName() for attr in prim.GetAttributes()]

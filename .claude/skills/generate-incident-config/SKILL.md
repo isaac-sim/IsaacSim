@@ -3,7 +3,7 @@ name: generate-incident-config
 description: "Author and validate the IRI event config YAML defining topple, fire, and spill incidents. Use when writing or debugging an incident config; to drive events use run-incident-events."
 license: Apache-2.0
 metadata:
-  author: NVIDIA Isaac Sim
+  author: NVIDIA Isaac Sim <isaac-sim@nvidia.com>
   owner: Isaac Sim
   service: isaacsim.replicator.incident
   version: "1.0.0"

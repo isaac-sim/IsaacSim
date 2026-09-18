@@ -87,21 +87,22 @@ checking with the pinned fmt 7 dependency can wrap a literal with ``FMT_STRING``
 Application-level configuration
 ================================
 
-``GlobalLoggingConfig`` is an application-level patch over Carbonite's process-wide default logger and named channels.
+``GlobalLoggingConfiguration`` is an application-level patch over Carbonite's process-wide default logger and named
+channels.
 Empty optionals leave current scalar settings unchanged, so applications can update one destination without resetting
 the others:
 
 .. code-block:: cpp
 
     using isaacsim::common::logging::ConfigureResult;
-    using isaacsim::common::logging::GlobalLoggingConfig;
+    using isaacsim::common::logging::GlobalLoggingConfiguration;
     using isaacsim::common::logging::configureGlobalLogging;
 
-    GlobalLoggingConfig config;
-    config.filePath = "logs/isaac-sim-${pid}.log";
-    config.fileAppend = true;
-    config.fileLevel = LogLevel::eInfo;
-    if (configureGlobalLogging(config) != ConfigureResult::eSuccess)
+    GlobalLoggingConfiguration configuration;
+    configuration.filePath = "logs/isaac-sim-${pid}.log";
+    configuration.fileAppend = true;
+    configuration.fileLevel = LogLevel::eInfo;
+    if (configureGlobalLogging(configuration) != ConfigureResult::eSuccess)
     {
         // Invalid configuration or unavailable backend.
     }
@@ -116,17 +117,17 @@ value, ``eInherit`` clears the corresponding channel override, and ``eUnchanged`
 
 .. code-block:: cpp
 
-    using isaacsim::common::logging::ChannelLoggingConfig;
+    using isaacsim::common::logging::ChannelLoggingConfiguration;
     using isaacsim::common::logging::ChannelSettingBehavior;
 
-    ChannelLoggingConfig channel;
+    ChannelLoggingConfiguration channel;
     channel.channel = "isaacsim.sensors.camera";
     channel.enabledBehavior = ChannelSettingBehavior::eOverride;
     channel.enabled = false;
 
-    GlobalLoggingConfig config;
-    config.channels.push_back(channel);
-    configureGlobalLogging(config);
+    GlobalLoggingConfiguration configuration;
+    configuration.channels.push_back(channel);
+    configureGlobalLogging(configuration);
 
 Enablement and minimum-level behaviors are independent. Carbonite performs the filtering; ``Logger`` does not keep a
 local policy copy.

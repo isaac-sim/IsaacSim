@@ -29,7 +29,7 @@ def test_every_exception_is_an_exception_subclass() -> None:
 
 
 def test_every_exception_derives_from_the_common_base() -> None:
-    """Verify PrimPathError, PrimPathStringError, AttributeNameError, and ValueTypeError derive from IsaacSimException."""
+    """Verify that public exception types derive from ``IsaacSimException``."""
     assert issubclass(exceptions.PrimPathError, exceptions.IsaacSimException)
     assert issubclass(exceptions.PrimPathStringError, exceptions.IsaacSimException)
     assert issubclass(exceptions.AttributeNameError, exceptions.IsaacSimException)

@@ -35,7 +35,6 @@ from _legacy_runner import (  # noqa: E402
 )
 from _scenario import DeviceParams  # noqa: E402
 from common.rigid_body import (  # noqa: E402
-    ObjectTypeCommon,
     ReproInertiaSetGetConsistencyCommon,
     RigidBodiesGetSetAppliedForcesCommon,
     RigidBodiesGetSetTransformsCommon,
@@ -255,16 +254,3 @@ class TestRigidBodiesGetSetAppliedForces:
     def test_rigid_bodies_get_set_applied_forces_newton_gg(self) -> None:
         """Verify multi-body force-at-position application on the Newton GPU pipeline."""
         run_scenario(self, RigidBodiesGetSetAppliedForcesCommon, "newton", gpu_device())
-
-
-class TestObjectType:
-    """Require non-null object-type results for a body and articulation root."""
-
-    def test_object_type_newton_cc(self) -> None:
-        """Check object-type lookup on the Newton CPU pipeline."""
-        run_scenario(self, ObjectTypeCommon, "newton", cpu_device())
-
-    @gpu_only
-    def test_object_type_newton_gg(self) -> None:
-        """Check object-type lookup on the Newton GPU pipeline."""
-        run_scenario(self, ObjectTypeCommon, "newton", gpu_device())

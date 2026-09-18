@@ -13,8 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef NUSD_GPU_H
-#define NUSD_GPU_H
+#pragma once
 
 /*
  * gpu.h — Render Hardware Interface (RHI)
@@ -368,7 +367,7 @@ _Static_assert(sizeof(GpuShadowLight) == 96, "GpuShadowLight must be 96 bytes fo
     void gpu_overlay_shutdown(Gpu* gpu);
     void gpu_overlay_text(Gpu* gpu, float x, float y, float scale, float r, float g, float b, float a, const char* text);
     void gpu_overlay_rect(Gpu* gpu, float x, float y, float w, float h, float r, float g, float b, float a);
-    void gpu_overlay_flush(Gpu* gpu);
+    void gpu_overlay_flush(Gpu* gpu, int screen_width, int screen_height);
 
     /* ---- Environment (IBL) ---- */
 
@@ -391,7 +390,7 @@ _Static_assert(sizeof(GpuShadowLight) == 96, "GpuShadowLight must be 96 bytes fo
     int gpu_load_environment_intensity(Gpu* gpu, const char* hdr_path, float intensity);
     /* As above, plus UsdLuxDomeLight `inputs:color`. The tint multiplies the HDR
      * texels BEFORE the SH projection, so the irradiance map carries it too --
-     * ovgl previously computed the dome colour and then dropped it on the textured
+     * ovgl previously computed the dome color and then dropped it on the textured
      * branch, which both rendered a tinted dome untinted and made every
      * inputs:color edit re-project SH for a byte-identical result. NULL = white. */
     int gpu_load_environment_tinted_intensity(Gpu* gpu, const char* hdr_path, float intensity, const float tint[3]);
@@ -519,5 +518,3 @@ _Static_assert(sizeof(GpuShadowLight) == 96, "GpuShadowLight must be 96 bytes fo
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* NUSD_GPU_H */

@@ -17,12 +17,23 @@
 .. _isaacsim-robot-schema-library:
 
 =====================
-isaacsim_robot_schema
+isaacsim-robot-schema
 =====================
 
-``isaacsim_robot_schema`` provides Universal Scene Description (USD) schemas for
-describing robots, links, joints, named poses, sensors, and surface grippers. It also
-provides C++ and Python helpers for inspecting and authoring the schema data.
+The ``isaacsim-robot-schema`` Python distribution provides Universal Scene
+Description (USD) schemas for describing robots, links, joints, named poses,
+sensors, and surface grippers. It also provides C++ and Python helpers for
+inspecting and authoring the schema data.
+
+Python consumers import the primary API from ``usd.schema.isaac``; the package
+also preserves the legacy ``omni.isaac.IsaacSensorSchema`` and
+``omni.isaac.RangeSensorSchema`` imports. C++ consumers include
+``isaacsim/robot/schema/robot_schema.hpp``,
+``isaacsim/robot/schema/sensor_tokens.hpp``, or
+``isaacsim/robot/schema/utils.hpp``.
 
 Apply these schemas when a USD asset needs Isaac Sim robot or sensor metadata. Use
-the schema variant packaged for the OpenUSD version in your target environment.
+the schema variant packaged for the OpenUSD version in your Python 3.12 target
+environment.
+
+The corresponding CMake package group is named ``isaacsim_robot_schema``.

@@ -108,67 +108,67 @@ void Array::_setItem(std::byte* data, const T& value)
 {
     switch (m_dtype.kind())
     {
-    case DType::Kind::eBool:
+    case Dtype::Kind::eBool:
     {
         bool x = static_cast<bool>(value);
         std::memcpy(data, &x, m_dtype.size());
         break;
     }
-    case DType::Kind::eInt8:
+    case Dtype::Kind::eInt8:
     {
         int8_t x = static_cast<int8_t>(value);
         std::memcpy(data, &x, m_dtype.size());
         break;
     }
-    case DType::Kind::eInt16:
+    case Dtype::Kind::eInt16:
     {
         int16_t x = static_cast<int16_t>(value);
         std::memcpy(data, &x, m_dtype.size());
         break;
     }
-    case DType::Kind::eInt32:
+    case Dtype::Kind::eInt32:
     {
         int32_t x = static_cast<int32_t>(value);
         std::memcpy(data, &x, m_dtype.size());
         break;
     }
-    case DType::Kind::eInt64:
+    case Dtype::Kind::eInt64:
     {
         int64_t x = static_cast<int64_t>(value);
         std::memcpy(data, &x, m_dtype.size());
         break;
     }
-    case DType::Kind::eUInt8:
+    case Dtype::Kind::eUInt8:
     {
         uint8_t x = static_cast<uint8_t>(value);
         std::memcpy(data, &x, m_dtype.size());
         break;
     }
-    case DType::Kind::eUInt16:
+    case Dtype::Kind::eUInt16:
     {
         uint16_t x = static_cast<uint16_t>(value);
         std::memcpy(data, &x, m_dtype.size());
         break;
     }
-    case DType::Kind::eUInt32:
+    case Dtype::Kind::eUInt32:
     {
         uint32_t x = static_cast<uint32_t>(value);
         std::memcpy(data, &x, m_dtype.size());
         break;
     }
-    case DType::Kind::eUInt64:
+    case Dtype::Kind::eUInt64:
     {
         uint64_t x = static_cast<uint64_t>(value);
         std::memcpy(data, &x, m_dtype.size());
         break;
     }
-    case DType::Kind::eFloat32:
+    case Dtype::Kind::eFloat32:
     {
         float x = static_cast<float>(value);
         std::memcpy(data, &x, m_dtype.size());
         break;
     }
-    case DType::Kind::eFloat64:
+    case Dtype::Kind::eFloat64:
     {
         double x = static_cast<double>(value);
         std::memcpy(data, &x, m_dtype.size());
@@ -184,67 +184,67 @@ T Array::_getItem(const std::byte* data) const
 {
     switch (m_dtype.kind())
     {
-    case DType::Kind::eBool:
+    case Dtype::Kind::eBool:
     {
         bool value;
         std::memcpy(&value, data, sizeof(value));
         return static_cast<T>(value);
     }
-    case DType::Kind::eInt8:
+    case Dtype::Kind::eInt8:
     {
         int8_t value;
         std::memcpy(&value, data, sizeof(value));
         return static_cast<T>(value);
     }
-    case DType::Kind::eInt16:
+    case Dtype::Kind::eInt16:
     {
         int16_t value;
         std::memcpy(&value, data, sizeof(value));
         return static_cast<T>(value);
     }
-    case DType::Kind::eInt32:
+    case Dtype::Kind::eInt32:
     {
         int32_t value;
         std::memcpy(&value, data, sizeof(value));
         return static_cast<T>(value);
     }
-    case DType::Kind::eInt64:
+    case Dtype::Kind::eInt64:
     {
         int64_t value;
         std::memcpy(&value, data, sizeof(value));
         return static_cast<T>(value);
     }
-    case DType::Kind::eUInt8:
+    case Dtype::Kind::eUInt8:
     {
         uint8_t value;
         std::memcpy(&value, data, sizeof(value));
         return static_cast<T>(value);
     }
-    case DType::Kind::eUInt16:
+    case Dtype::Kind::eUInt16:
     {
         uint16_t value;
         std::memcpy(&value, data, sizeof(value));
         return static_cast<T>(value);
     }
-    case DType::Kind::eUInt32:
+    case Dtype::Kind::eUInt32:
     {
         uint32_t value;
         std::memcpy(&value, data, sizeof(value));
         return static_cast<T>(value);
     }
-    case DType::Kind::eUInt64:
+    case Dtype::Kind::eUInt64:
     {
         uint64_t value;
         std::memcpy(&value, data, sizeof(value));
         return static_cast<T>(value);
     }
-    case DType::Kind::eFloat32:
+    case Dtype::Kind::eFloat32:
     {
         float value;
         std::memcpy(&value, data, sizeof(value));
         return static_cast<T>(value);
     }
-    case DType::Kind::eFloat64:
+    case Dtype::Kind::eFloat64:
     {
         double value;
         std::memcpy(&value, data, sizeof(value));

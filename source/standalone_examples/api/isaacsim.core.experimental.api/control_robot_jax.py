@@ -33,6 +33,7 @@ from __future__ import annotations
 
 # Parse any command-line arguments specific to the standalone application (only known arguments).
 import argparse
+import os
 
 # 1. --------------------------------------------------------------------
 
@@ -47,6 +48,10 @@ parser.add_argument(
     help="Differential inverse kinematics method",
 )
 args, _ = parser.parse_known_args()
+
+# Configure this before SimulationApp because Newton may import JAX during startup. JAX otherwise inherits Kit's
+# DEBUG root logging level and writes routine diagnostics to stderr.
+os.environ.setdefault("JAX_LOGGING_LEVEL", "WARNING")
 
 # Launch the `SimulationApp` (see DEFAULT_LAUNCHER_CONFIG for available configuration):
 # https://docs.isaacsim.omniverse.nvidia.com/latest/py/source/extensions/isaacsim.simulation_app/docs/index.html

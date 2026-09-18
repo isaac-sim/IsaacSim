@@ -17,9 +17,7 @@
 #include "TensorNbHelpers.hpp"
 
 #include <isaacsim/physics/manager/tensors/EntityView.hpp>
-#include <isaacsim/physics/manager/tensors/SimulationView.hpp>
 #include <isaacsim/physics/registration/tensors/IEntityView.hpp>
-#include <isaacsim/physics/registration/tensors/ISimulationView.hpp>
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/function.h>
@@ -28,7 +26,6 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/variant.h>
 #include <nanobind/stl/vector.h>
-#include <nanobind/trampoline.h>
 
 namespace nb = nanobind;
 namespace manager_details = isaacsim::physics::manager::details;
@@ -36,15 +33,16 @@ using namespace isaacsim::physics::tensors;
 
 namespace
 {
-// Wrap a Python callable as a C++ GetImplFunction. The wrapper converts the
-// incoming TensorDescs into ndarray views, calls into Python, and converts
-// the returned ndarray back into a TensorDesc the manager can hand out to
-// callers. The returned TensorDesc aliases the Python result's storage, so it
-// carries a keepalive pinning that Python object -- `data` stays valid until
+// Wrap a Python callable as a C++ GetImplementationFunction. The wrapper converts the
+// incoming tensor descriptions into ndarray views, calls into Python, and converts
+// the returned ndarray back into a TensorDescription the manager can hand out to
+// callers. The returned TensorDescription aliases the Python result's storage, so it
+// carries a keepAlive pinning that Python object -- `data` stays valid until
 // the last owner of the returned descriptor drops.
-GetImplFunction wrapPythonGetCallback(nb::callable callback)
+GetImplementationFunction wrapPythonGetCallback(nb::callable callback)
 {
-    return [callback = std::move(callback)](const TensorDesc& indices, const TensorDesc& output) -> TensorDesc
+    return [callback = std::move(callback)](
+               const TensorDescription& indices, const TensorDescription& output) -> TensorDescription
     {
         nb::gil_scoped_acquire globalInterpreterLockGuard;
         nb::object indicesObject = indices.isEmpty() ?
@@ -56,7 +54,7 @@ GetImplFunction wrapPythonGetCallback(nb::callable callback)
         nb::object result = callback(indicesObject, outputObject);
         if (result.is_none())
         {
-            return TensorDesc{};
+            return TensorDescription{};
         }
         // The descriptor aliases the Python result's storage; pin the real owner so
         // `data` can't dangle once this lambda drops its reference.
@@ -64,9 +62,9 @@ GetImplFunction wrapPythonGetCallback(nb::callable callback)
     };
 }
 
-SetImplFunction wrapPythonSetCallback(nb::callable callback)
+SetImplementationFunction wrapPythonSetCallback(nb::callable callback)
 {
-    return [callback = std::move(callback)](const TensorDesc& data, const TensorDesc& indices)
+    return [callback = std::move(callback)](const TensorDescription& data, const TensorDescription& indices)
     {
         nb::gil_scoped_acquire globalInterpreterLockGuard;
         nb::object dataObject = data.isEmpty() ?
@@ -79,29 +77,30 @@ SetImplFunction wrapPythonSetCallback(nb::callable callback)
     };
 }
 
-GetMultiImplFunction wrapPythonMultiGetCallback(nb::callable callback)
+GetMultiImplementationFunction wrapPythonMultiGetCallback(nb::callable callback)
 {
-    return [callback = std::move(callback)](
-               const TensorDesc& indices, const std::vector<TensorDesc>& output) -> std::vector<TensorDesc>
+    return
+        [callback = std::move(callback)](const TensorDescription& indices,
+                                         const std::vector<TensorDescription>& output) -> std::vector<TensorDescription>
     {
         nb::gil_scoped_acquire globalInterpreterLockGuard;
         nb::object indicesObject = indices.isEmpty() ?
                                        nb::object{ nb::none() } :
                                        nb::cast(manager_details::convertTensorDescriptorToNumpy(indices, nb::none()));
         nb::list outputList;
-        for (const TensorDesc& descriptor : output)
+        for (const TensorDescription& descriptor : output)
         {
             outputList.append(descriptor.isEmpty() ?
                                   nb::object{ nb::none() } :
                                   nb::cast(manager_details::convertTensorDescriptorToNumpy(descriptor, nb::none())));
         }
         nb::object result = callback(indicesObject, outputList);
-        std::vector<TensorDesc> results;
+        std::vector<TensorDescription> results;
         size_t outputIndex = 0;
         for (auto resultItem : nb::cast<nb::sequence>(result))
         {
             // Pin each output's real storage owner; each result aligns with the corresponding caller output slot.
-            const TensorDesc* outputAlias = outputIndex < output.size() ? &output[outputIndex] : nullptr;
+            const TensorDescription* outputAlias = outputIndex < output.size() ? &output[outputIndex] : nullptr;
             results.push_back(manager_details::convertResultToTensorDescriptor(nb::borrow(resultItem), outputAlias));
             ++outputIndex;
         }
@@ -109,13 +108,13 @@ GetMultiImplFunction wrapPythonMultiGetCallback(nb::callable callback)
     };
 }
 
-SetMultiImplFunction wrapPythonMultiSetCallback(nb::callable callback)
+SetMultiImplementationFunction wrapPythonMultiSetCallback(nb::callable callback)
 {
-    return [callback = std::move(callback)](const std::vector<TensorDesc>& data, const TensorDesc& indices)
+    return [callback = std::move(callback)](const std::vector<TensorDescription>& data, const TensorDescription& indices)
     {
         nb::gil_scoped_acquire globalInterpreterLockGuard;
         nb::list dataList;
-        for (const TensorDesc& descriptor : data)
+        for (const TensorDescription& descriptor : data)
         {
             dataList.append(descriptor.isEmpty() ?
                                 nb::object{ nb::none() } :
@@ -127,157 +126,52 @@ SetMultiImplFunction wrapPythonMultiSetCallback(nb::callable callback)
         callback(dataList, indicesObject);
     };
 }
-
-// Trampoline so Python subclasses of SimulationView can override the seven
-// view factories and the scene-control hooks.
-class PythonSimulationView : public SimulationView
-{
-public:
-    NB_TRAMPOLINE(SimulationView, 22);
-
-    PythonSimulationView() = default;
-    PythonSimulationView(std::string engine, std::string frontendName, int64_t stageId)
-        : SimulationView(std::move(engine), std::move(frontendName), stageId)
-    {
-    }
-
-    int getDeviceOrdinal() const override
-    {
-        NB_OVERRIDE_NAME("get_device_ordinal", getDeviceOrdinal, );
-    }
-    int getParameterDeviceOrdinal() const override
-    {
-        NB_OVERRIDE_NAME("get_param_device_ordinal", getParameterDeviceOrdinal, );
-    }
-    bool isValid() const override
-    {
-        NB_OVERRIDE_NAME("is_valid", isValid, );
-    }
-    void setGravity(Float3 gravity) override
-    {
-        NB_OVERRIDE_NAME("set_gravity", setGravity, gravity);
-    }
-    Float3 getGravity() const override
-    {
-        NB_OVERRIDE_NAME("get_gravity", getGravity, );
-    }
-    void clearForces() override
-    {
-        NB_OVERRIDE_NAME("clear_forces", clearForces, );
-    }
-    void step(float timeStep) override
-    {
-        NB_OVERRIDE_NAME("step", step, timeStep);
-    }
-    void updateArticulationsKinematic() override
-    {
-        NB_OVERRIDE_NAME("update_articulations_kinematic", updateArticulationsKinematic, );
-    }
-    void initializeKinematicBodies() override
-    {
-        NB_OVERRIDE_NAME("initialize_kinematic_bodies", initializeKinematicBodies, );
-    }
-    ObjectType getObjectType(const std::string& primPath) const override
-    {
-        NB_OVERRIDE_NAME("get_object_type", getObjectType, primPath);
-    }
-
-    std::shared_ptr<EntityView> createArticulationView(const std::string& pattern) override
-    {
-        NB_OVERRIDE_NAME("create_articulation_view", createArticulationView, pattern);
-    }
-    std::shared_ptr<EntityView> createArticulationView(const std::vector<std::string>& patterns) override
-    {
-        NB_OVERRIDE_NAME("create_articulation_view", createArticulationView, patterns);
-    }
-    std::shared_ptr<EntityView> createRigidBodyView(const std::string& pattern) override
-    {
-        NB_OVERRIDE_NAME("create_rigid_body_view", createRigidBodyView, pattern);
-    }
-    std::shared_ptr<EntityView> createRigidBodyView(const std::vector<std::string>& patterns) override
-    {
-        NB_OVERRIDE_NAME("create_rigid_body_view", createRigidBodyView, patterns);
-    }
-    std::shared_ptr<EntityView> createVolumeDeformableBodyView(const std::string& pattern) override
-    {
-        NB_OVERRIDE_NAME("create_volume_deformable_body_view", createVolumeDeformableBodyView, pattern);
-    }
-    std::shared_ptr<EntityView> createVolumeDeformableBodyView(const std::vector<std::string>& patterns) override
-    {
-        NB_OVERRIDE_NAME("create_volume_deformable_body_view", createVolumeDeformableBodyView, patterns);
-    }
-    std::shared_ptr<EntityView> createSurfaceDeformableBodyView(const std::string& pattern) override
-    {
-        NB_OVERRIDE_NAME("create_surface_deformable_body_view", createSurfaceDeformableBodyView, pattern);
-    }
-    std::shared_ptr<EntityView> createSurfaceDeformableBodyView(const std::vector<std::string>& patterns) override
-    {
-        NB_OVERRIDE_NAME("create_surface_deformable_body_view", createSurfaceDeformableBodyView, patterns);
-    }
-    std::shared_ptr<EntityView> createDeformableMaterialView(const std::string& pattern) override
-    {
-        NB_OVERRIDE_NAME("create_deformable_material_view", createDeformableMaterialView, pattern);
-    }
-    std::shared_ptr<EntityView> createDeformableMaterialView(const std::vector<std::string>& patterns) override
-    {
-        NB_OVERRIDE_NAME("create_deformable_material_view", createDeformableMaterialView, patterns);
-    }
-    std::shared_ptr<EntityView> createRigidContactView(const std::string& pattern,
-                                                       const std::vector<std::string>& filterPatterns,
-                                                       int maximumContactDataCount) override
-    {
-        NB_OVERRIDE_NAME(
-            "create_rigid_contact_view", createRigidContactView, pattern, filterPatterns, maximumContactDataCount);
-    }
-    std::shared_ptr<EntityView> createSdfShapeView(const std::string& pattern, int numberOfPoints) override
-    {
-        NB_OVERRIDE_NAME("create_sdf_shape_view", createSdfShapeView, pattern, numberOfPoints);
-    }
-};
 } // namespace
 
 void isaacsim::physics::manager::details::bindTensorViews(nb::module_& module)
 {
     nb::class_<EntityView, IEntityView>(module, "EntityView", nb::dynamic_attr(),
                                         "Expose tensor operations for a resolved collection of physics entities.")
-        .def(nb::init<>())
-        .def(nb::init<std::vector<std::string>>(), nb::arg("paths"))
-        .def_prop_ro("paths", &EntityView::getPaths, "Patterns used to create the view.")
+        .def(nb::init<>(), "Create an empty entity view.")
+        .def(nb::init<std::vector<std::string>>(), nb::arg("paths"), "Create an entity view from prim path patterns.")
+        .def_prop_ro("paths", &EntityView::getPrimPathPatterns, "Patterns used to create the view.")
         .def_prop_ro("resolved_prim_paths", &EntityView::getResolvedPrimPaths, "USD prim paths resolved by the engine.")
         .def_prop_ro("usd_stage_id", &EntityView::getUsdStageId, "Identifier of the view's USD stage.")
-        .def_prop_rw("count", &EntityView::getCount, &EntityView::setCount, "Number of entities in the view.")
+        .def_prop_rw("count", &EntityView::getEntityCount, &EntityView::setEntityCount, "Number of entities in the view.")
+        .def_prop_rw("device_ordinal", &EntityView::getDeviceOrdinal, &EntityView::setDeviceOrdinal,
+                     "Ordinal of the device holding this view's tensors, or -1 for host memory.")
         .def(
             "_register_impl",
-            [](EntityView& self, const std::string& operationName, ImplKind kind, nb::callable callback,
-               TensorSpec specification)
+            [](EntityView& self, const std::string& operationName, ImplementationKind kind, nb::callable callback,
+               TensorSpecification specification)
             {
-                // Forward to whichever overload of registerImpl matches. The
+                // Forward to whichever overload of registerImplementation matches. The
                 // single-tensor variants are the common case; multi-tensor
                 // variants are exposed via separate methods below.
-                if (kind == ImplKind::eGet)
+                if (kind == ImplementationKind::eGet)
                 {
-                    return self.registerImpl(
+                    return self.registerImplementation(
                         operationName, kind, wrapPythonGetCallback(std::move(callback)), std::move(specification));
                 }
-                return self.registerImpl(
+                return self.registerImplementation(
                     operationName, kind, wrapPythonSetCallback(std::move(callback)), std::move(specification));
             },
-            nb::arg("impl"), nb::arg("kind"), nb::arg("fn"), nb::arg("spec") = TensorSpec{},
+            nb::arg("impl"), nb::arg("kind"), nb::arg("fn"), nb::arg("spec") = TensorSpecification{},
             "Register a single-buffer tensor operation.")
         .def(
             "_register_multi_impl",
-            [](EntityView& self, const std::string& operationName, ImplKind kind, nb::callable callback,
-               TensorSpec specification)
+            [](EntityView& self, const std::string& operationName, ImplementationKind kind, nb::callable callback,
+               TensorSpecification specification)
             {
-                if (kind == ImplKind::eGet)
+                if (kind == ImplementationKind::eGet)
                 {
-                    return self.registerImpl(
+                    return self.registerImplementation(
                         operationName, kind, wrapPythonMultiGetCallback(std::move(callback)), std::move(specification));
                 }
-                return self.registerImpl(
+                return self.registerImplementation(
                     operationName, kind, wrapPythonMultiSetCallback(std::move(callback)), std::move(specification));
             },
-            nb::arg("impl"), nb::arg("kind"), nb::arg("fn"), nb::arg("spec") = TensorSpec{},
+            nb::arg("impl"), nb::arg("kind"), nb::arg("fn"), nb::arg("spec") = TensorSpecification{},
             "Register a multi-buffer tensor operation.")
         .def(
             "_register_metadata",
@@ -337,14 +231,14 @@ void isaacsim::physics::manager::details::bindTensorViews(nb::module_& module)
                                                  return Metadata{};
                                              });
             },
-            "Register a metadata provider.")
-        .def("list_impls", &EntityView::listImpls, nb::arg("kind"),
+            nb::arg("impl"), nb::arg("fn"), "Register a metadata provider.")
+        .def("list_impls", &EntityView::listImplementations, nb::arg("kind"),
              "Return the registered operation names for an operation kind.")
-        .def("has_impl", &EntityView::hasImpl, nb::arg("impl"), nb::arg("kind"),
+        .def("has_impl", &EntityView::hasImplementation, nb::arg("impl"), nb::arg("kind"),
              "Return whether an operation is registered.")
-        .def("get_impl_spec", &EntityView::getImplSpec, nb::arg("impl"), nb::arg("kind"),
+        .def("get_impl_spec", &EntityView::getImplementationSpecification, nb::arg("impl"), nb::arg("kind"),
              "Return the tensor specification for a single-buffer operation.")
-        .def("get_impl_spec_multi", &EntityView::getImplSpecMulti, nb::arg("impl"), nb::arg("kind"),
+        .def("get_impl_spec_multi", &EntityView::getMultiImplementationSpecifications, nb::arg("impl"), nb::arg("kind"),
              "Return the tensor specifications for a multi-buffer operation.")
         .def("get_metadata", &EntityView::getMetadata, nb::arg("impl"), "Return metadata supplied by the named provider.")
         .def(
@@ -353,14 +247,14 @@ void isaacsim::physics::manager::details::bindTensorViews(nb::module_& module)
                nb::object outputObject) -> nb::object
             {
                 EntityView& view = nb::cast<EntityView&>(self);
-                TensorDesc indicesDescriptor =
-                    indices ? manager_details::convertArrayToTensorDescriptor(*indices) : TensorDesc{};
+                TensorDescription indicesDescriptor =
+                    indices ? manager_details::convertArrayToTensorDescriptor(*indices) : TensorDescription{};
                 manager_details::validateInt32IndexDataType(indicesDescriptor, "get_data");
                 const bool hasOutput = !outputObject.is_none();
-                TensorDesc outputDescriptor =
+                TensorDescription outputDescriptor =
                     hasOutput ? manager_details::convertArrayToTensorDescriptor(nb::cast<nb::ndarray<>>(outputObject)) :
-                                TensorDesc{};
-                TensorDesc resultDescriptor = view.getData(operationName, indicesDescriptor, outputDescriptor);
+                                TensorDescription{};
+                TensorDescription resultDescriptor = view.getData(operationName, indicesDescriptor, outputDescriptor);
                 if (resultDescriptor.isEmpty())
                 {
                     return nb::none();
@@ -372,14 +266,14 @@ void isaacsim::physics::manager::details::bindTensorViews(nb::module_& module)
                 // Retain the owning Python object so the returned view can't dangle:
                 // the caller's `out` when the result aliases it (explicit-output
                 // path), otherwise the EntityView itself -- an internal result
-                // aliases a buffer owned by the view's stored impl closure, freed
+                // aliases a buffer owned by the view's stored implementation closure, freed
                 // with the view.
                 nb::object owner;
-                if (resultDescriptor.keepalive)
+                if (resultDescriptor.keepAlive)
                 {
                     // The result owns its buffer (per-call storage); pin it via a capsule
                     // so the array frees the buffer when dropped, independent of the view.
-                    std::shared_ptr<void>* keepaliveHolder = new std::shared_ptr<void>(resultDescriptor.keepalive);
+                    std::shared_ptr<void>* keepaliveHolder = new std::shared_ptr<void>(resultDescriptor.keepAlive);
                     owner = nb::capsule(keepaliveHolder, [](void* pointer) noexcept
                                         { delete static_cast<std::shared_ptr<void>*>(pointer); });
                 }
@@ -395,9 +289,9 @@ void isaacsim::physics::manager::details::bindTensorViews(nb::module_& module)
             "set_data",
             [](EntityView& self, const std::string& operationName, nb::ndarray<> data, std::optional<nb::ndarray<>> indices)
             {
-                TensorDesc dataDescriptor = manager_details::convertArrayToTensorDescriptor(data);
-                TensorDesc indicesDescriptor =
-                    indices ? manager_details::convertArrayToTensorDescriptor(*indices) : TensorDesc{};
+                TensorDescription dataDescriptor = manager_details::convertArrayToTensorDescriptor(data);
+                TensorDescription indicesDescriptor =
+                    indices ? manager_details::convertArrayToTensorDescriptor(*indices) : TensorDescription{};
                 manager_details::validateInt32IndexDataType(indicesDescriptor, "set_data");
                 self.setData(operationName, dataDescriptor, indicesDescriptor);
             },
@@ -409,21 +303,21 @@ void isaacsim::physics::manager::details::bindTensorViews(nb::module_& module)
                std::vector<nb::object> outputObjects)
             {
                 EntityView& view = nb::cast<EntityView&>(self);
-                TensorDesc indicesDescriptor =
-                    indices ? manager_details::convertArrayToTensorDescriptor(*indices) : TensorDesc{};
+                TensorDescription indicesDescriptor =
+                    indices ? manager_details::convertArrayToTensorDescriptor(*indices) : TensorDescription{};
                 manager_details::validateInt32IndexDataType(indicesDescriptor, "get_data_multi");
-                std::vector<TensorDesc> outputDescriptors;
+                std::vector<TensorDescription> outputDescriptors;
                 outputDescriptors.reserve(outputObjects.size());
                 for (const nb::object& output : outputObjects)
                 {
-                    outputDescriptors.push_back(output.is_none() ? TensorDesc{} :
+                    outputDescriptors.push_back(output.is_none() ? TensorDescription{} :
                                                                    manager_details::convertArrayToTensorDescriptor(
                                                                        nb::cast<nb::ndarray<>>(output)));
                 }
-                std::vector<TensorDesc> resultDescriptors =
+                std::vector<TensorDescription> resultDescriptors =
                     view.getDataMulti(operationName, indicesDescriptor, outputDescriptors);
                 nb::list results;
-                for (const TensorDesc& descriptor : resultDescriptors)
+                for (const TensorDescription& descriptor : resultDescriptors)
                 {
                     if (descriptor.isEmpty())
                     {
@@ -434,11 +328,11 @@ void isaacsim::physics::manager::details::bindTensorViews(nb::module_& module)
                     // storage: a per-call owner (from wrapPythonMultiGetCallback) pinned via a
                     // capsule, else the matching supplied `out` when the result
                     // aliases it, else the EntityView (an internal result aliases a
-                    // buffer owned by the view's impl closure).
+                    // buffer owned by the view's implementation closure).
                     nb::object owner;
-                    if (descriptor.keepalive)
+                    if (descriptor.keepAlive)
                     {
-                        std::shared_ptr<void>* keepaliveHolder = new std::shared_ptr<void>(descriptor.keepalive);
+                        std::shared_ptr<void>* keepaliveHolder = new std::shared_ptr<void>(descriptor.keepAlive);
                         owner = nb::capsule(keepaliveHolder, [](void* pointer) noexcept
                                             { delete static_cast<std::shared_ptr<void>*>(pointer); });
                     }
@@ -466,123 +360,16 @@ void isaacsim::physics::manager::details::bindTensorViews(nb::module_& module)
             [](EntityView& self, const std::string& operationName, std::vector<nb::ndarray<>> data,
                std::optional<nb::ndarray<>> indices)
             {
-                std::vector<TensorDesc> dataDescriptors;
+                std::vector<TensorDescription> dataDescriptors;
                 dataDescriptors.reserve(data.size());
                 for (const nb::ndarray<>& array : data)
                 {
                     dataDescriptors.push_back(manager_details::convertArrayToTensorDescriptor(array));
                 }
-                TensorDesc indicesDescriptor =
-                    indices ? manager_details::convertArrayToTensorDescriptor(*indices) : TensorDesc{};
+                TensorDescription indicesDescriptor =
+                    indices ? manager_details::convertArrayToTensorDescriptor(*indices) : TensorDescription{};
                 manager_details::validateInt32IndexDataType(indicesDescriptor, "set_data_multi");
                 self.setDataMulti(operationName, dataDescriptors, indicesDescriptor);
             },
             nb::arg("impl"), nb::arg("data"), nb::arg("indices") = nb::none(), "Write a multi-buffer tensor operation.");
-
-    // ----- SimulationView ----------------------------------------------
-
-    nb::class_<SimulationView, ISimulationView, PythonSimulationView>(
-        module, "SimulationView", nb::dynamic_attr(), "Scene-level handle to an engine's tensor data plane.")
-        .def(nb::init<>())
-        .def(nb::init<std::string, std::string, int64_t>(), nb::arg("engine"), nb::arg("frontend_name"),
-             nb::arg("stage_id"))
-        .def_prop_ro("engine", &SimulationView::getEngine, "Name of the physics engine.")
-        .def_prop_ro("frontend_name", &SimulationView::getFrontendName, "Name of the tensor frontend.")
-        .def_prop_ro("stage_id", &SimulationView::getStageId, "Identifier of the USD stage.")
-        .def("get_device_ordinal", &SimulationView::getDeviceOrdinal, "Return the ordinal of the simulation device.")
-        .def("get_param_device_ordinal", &SimulationView::getParameterDeviceOrdinal,
-             "Return the ordinal of the parameter device.")
-        .def(
-            "is_valid", [](const SimulationView& self) { return self.SimulationView::isValid(); },
-            "Whether the simulation view is valid.")
-        .def(
-            "invalidate", [](SimulationView& self) { self.SimulationView::invalidate(); },
-            "Invalidate the simulation view.")
-        .def("set_device_ordinal", &SimulationView::setDeviceOrdinal, nb::arg("ord"), "Set the simulation device ordinal.")
-        .def("set_param_device_ordinal", &SimulationView::setParameterDeviceOrdinal, nb::arg("ord"),
-             "Set the parameter device ordinal.")
-        .def("set_valid", &SimulationView::setValid, nb::arg("valid"), "Set whether the simulation view is valid.")
-        // Accept either a Float3 or any 3-element sequence (list / tuple /
-        // numpy array) so legacy tests calling `sim.set_gravity([x, y, z])`
-        // work unchanged alongside callers that pass `Float3(x, y, z)`.
-        // The base-class implementation is invoked directly to bypass the
-        // PythonSimulationView trampoline (which would try to look up a Python
-        // override that this very lambda is the only candidate for, looping).
-        .def(
-            "set_gravity",
-            [](SimulationView& self, nb::object gravity)
-            {
-                Float3 gravityVector;
-                try
-                {
-                    gravityVector = nb::cast<Float3>(gravity);
-                }
-                catch (const nb::cast_error&)
-                {
-                    auto sequence = nb::cast<nb::sequence>(gravity);
-                    if (nb::len(sequence) != 3)
-                    {
-                        throw std::invalid_argument("set_gravity: expected Float3 or 3-element sequence");
-                    }
-                    gravityVector = Float3{
-                        nb::cast<float>(sequence[0]),
-                        nb::cast<float>(sequence[1]),
-                        nb::cast<float>(sequence[2]),
-                    };
-                }
-                self.SimulationView::setGravity(gravityVector);
-            },
-            nb::arg("gravity"), "Set the world-space gravity vector.")
-        .def(
-            "get_gravity", [](const SimulationView& self) { return self.SimulationView::getGravity(); },
-            "Return the world-space gravity vector.")
-        .def("clear_forces", &SimulationView::clearForces, "Clear externally applied forces.")
-        .def("step", &SimulationView::step, nb::arg("dt"), "Advance this simulation view by one time step.")
-        .def("update_articulations_kinematic", &SimulationView::updateArticulationsKinematic,
-             "Update articulation kinematic state.")
-        .def("initialize_kinematic_bodies", &SimulationView::initializeKinematicBodies,
-             "Initialize kinematic rigid bodies.")
-        .def("get_object_type", &SimulationView::getObjectType, nb::arg("prim_path"),
-             R"doc(Classify a physics object.
-
-Args:
-    prim_path: Absolute path of the prim to classify.
-
-Returns:
-    The object type, or ``ObjectType.Invalid`` when the engine cannot classify
-    the path.
-)doc")
-        .def("create_articulation_view", nb::overload_cast<const std::string&>(&SimulationView::createArticulationView),
-             nb::arg("pattern"), "Create an articulation view from one path pattern.")
-        .def("create_articulation_view",
-             nb::overload_cast<const std::vector<std::string>&>(&SimulationView::createArticulationView),
-             nb::arg("patterns"), "Create an articulation view from path patterns.")
-        .def("create_rigid_body_view", nb::overload_cast<const std::string&>(&SimulationView::createRigidBodyView),
-             nb::arg("pattern"), "Create a rigid-body view from one path pattern.")
-        .def("create_rigid_body_view",
-             nb::overload_cast<const std::vector<std::string>&>(&SimulationView::createRigidBodyView),
-             nb::arg("patterns"), "Create a rigid-body view from path patterns.")
-        .def("create_volume_deformable_body_view",
-             nb::overload_cast<const std::string&>(&SimulationView::createVolumeDeformableBodyView), nb::arg("pattern"),
-             "Create a volume-deformable-body view from one path pattern.")
-        .def("create_volume_deformable_body_view",
-             nb::overload_cast<const std::vector<std::string>&>(&SimulationView::createVolumeDeformableBodyView),
-             nb::arg("patterns"), "Create a volume-deformable-body view from path patterns.")
-        .def("create_surface_deformable_body_view",
-             nb::overload_cast<const std::string&>(&SimulationView::createSurfaceDeformableBodyView),
-             nb::arg("pattern"), "Create a surface-deformable-body view from one path pattern.")
-        .def("create_surface_deformable_body_view",
-             nb::overload_cast<const std::vector<std::string>&>(&SimulationView::createSurfaceDeformableBodyView),
-             nb::arg("patterns"), "Create a surface-deformable-body view from path patterns.")
-        .def("create_deformable_material_view",
-             nb::overload_cast<const std::string&>(&SimulationView::createDeformableMaterialView), nb::arg("pattern"),
-             "Create a deformable-material view from one path pattern.")
-        .def("create_deformable_material_view",
-             nb::overload_cast<const std::vector<std::string>&>(&SimulationView::createDeformableMaterialView),
-             nb::arg("patterns"), "Create a deformable-material view from path patterns.")
-        .def("create_rigid_contact_view", &SimulationView::createRigidContactView, nb::arg("pattern"),
-             nb::arg("filter_patterns") = std::vector<std::string>{}, nb::arg("max_contact_data_count") = 0,
-             "Create a rigid-contact view.")
-        .def("create_sdf_shape_view", &SimulationView::createSdfShapeView, nb::arg("pattern"), nb::arg("num_points"),
-             "Create a signed-distance-field shape view.");
 }

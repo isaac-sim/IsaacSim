@@ -34,28 +34,30 @@ class ISAACSIM_FOUNDATION_OBJECTS_API CylinderLight : public Light
 {
 public:
     /**
-     * @brief Construct a CylinderLight wrapper and optionally configure initial geometry and transform.
+     * @brief Construct a CylinderLight wrapper and optionally configure the initial geometry.
      * @param[in] paths                  Single path or list of paths to USD cylinder light prims.
      * @param[in] radii                  Initial cylinder radii in scene units (shape @c (N,)). Optional.
      * @param[in] lengths                Initial cylinder lengths (heights) in scene units (shape @c (N,)). Optional.
-     * @param[in] positions              Initial world-frame positions (shape @c (N,3)). Optional.
-     * @param[in] translations           Initial local-frame translations (shape @c (N,3)). Optional.
-     * @param[in] orientations           Initial orientations as quaternions @c wxyz (shape @c (N,4)). Optional.
-     * @param[in] scales                 Initial local scales (shape @c (N,3)). Optional.
-     * @param[in] resetXformOpProperties Whether to normalize the xformOp stack before applying the
-     *                                   initial transform.
+     * @param[in] resetXformOpProperties Whether to normalize the xformOp stack to translate/orient/scale.
      */
     CylinderLight(const std::variant<std::string, std::vector<std::string>>& paths,
                   // CylinderLight
                   const std::optional<array::Array>& radii = std::nullopt,
                   const std::optional<array::Array>& lengths = std::nullopt,
                   // Xform
-                  const std::optional<array::Array>& positions = std::nullopt,
-                  const std::optional<array::Array>& translations = std::nullopt,
-                  const std::optional<array::Array>& orientations = std::nullopt,
-                  const std::optional<array::Array>& scales = std::nullopt,
                   bool resetXformOpProperties = true);
     ~CylinderLight() = default;
+
+    /**
+     * @brief Check whether the prims at the given paths are of the type handled by this class.
+     * @details The paths are resolved against the active stage before being checked.
+     *          Since this method is static, the returned array is always allocated on the CPU.
+     * @param[in] paths Single path string or list of path strings. May include regular
+     *                  expressions that are expanded against the active stage.
+     * @return Boolean flags (dtype bool, shape @c (N,1)), one per resolved prim.
+     * @throws std::runtime_error if the given paths do not correspond to existing prims.
+     */
+    static array::Array areOfType(const std::variant<std::string, std::vector<std::string>>& paths);
 
     /**
      * @brief Set the radii (in scene units) of the selected cylinder light prims.

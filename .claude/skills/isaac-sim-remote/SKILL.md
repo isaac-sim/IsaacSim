@@ -3,7 +3,7 @@ name: isaac-sim-remote
 description: "Localhost IPC client for a trusted Isaac Sim python_server (127.0.0.1:8226). Use for live stage iteration; intentional full Kit/Python surface on loopback only."
 license: Apache-2.0
 metadata:
-  author: Hammad Mazhar
+  author: Hammad Mazhar <info@nvidia.com>
 ---
 
 # Isaac Sim Remote

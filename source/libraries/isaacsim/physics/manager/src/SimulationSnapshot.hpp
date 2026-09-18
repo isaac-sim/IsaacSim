@@ -48,7 +48,7 @@ using SimulationSnapshots =
 /// next manager operation.
 inline SimulationSnapshots getSimulationSnapshots()
 {
-    std::vector<registration::SimulationId> ids(registration::getNumberOfSimulations());
+    std::vector<registration::SimulationId> ids(registration::getSimulationCount());
     ids.resize(registration::getSimulationIds(ids.data(), ids.size()));
 
     SimulationSnapshots snapshots;

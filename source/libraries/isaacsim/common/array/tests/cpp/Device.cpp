@@ -13,9 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "details/CudaRuntime.hpp"
+
 #include <doctest/doctest.h>
 #include <isaacsim/common/array/Device.hpp>
-#include <isaacsim/common/array/details/CudaRuntime.hpp>
 #include <isaacsim/common/exceptions/Exceptions.hpp>
 
 #include <stdexcept>

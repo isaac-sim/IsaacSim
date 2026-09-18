@@ -33,6 +33,7 @@ Summary
 
     Articulation
     ColliderBody
+    GroundPlane
     RigidBody
 
 .. _isaacsim-foundation-prims-python-backend:
@@ -47,6 +48,12 @@ Implementations
     :show-inheritance:
 
 .. autoclass:: isaacsim.foundation.prims.ColliderBody
+    :members:
+    :undoc-members:
+    :inherited-members:
+    :show-inheritance:
+
+.. autoclass:: isaacsim.foundation.prims.GroundPlane
     :members:
     :undoc-members:
     :inherited-members:

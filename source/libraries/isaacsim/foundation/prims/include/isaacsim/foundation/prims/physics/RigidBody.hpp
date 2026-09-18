@@ -51,21 +51,12 @@ public:
      *
      * @param[in] paths               Single path string or list of path strings. May include regular
      *                                expressions that are expanded against the active stage.
-     * @param[in] masses              Initial masses in kg, shape @c (N,). If omitted, existing values
+     * @param[in] masses              Initial masses in kg, shape @c (N, 1). If omitted, existing values
      *                                are preserved.
-     * @param[in] densities           Initial densities in kg/m³, shape @c (N,). If omitted, existing
+     * @param[in] densities           Initial densities in kg/m³, shape @c (N, 1). If omitted, existing
      *                                values are preserved.
      * @param[in] applyPhysicsApis    Whether to apply the Rigid Body and Mass physics APIs during initialization.
-     * @param[in] positions           World-frame positions to set on construction, shape @c (N, 3).
-     *                                If omitted, existing positions are preserved.
-     * @param[in] translations        Local-frame translations to set on construction, shape @c (N, 3).
-     *                                If omitted, existing translations are preserved.
-     * @param[in] orientations        World-frame orientations (quaternion @c wxyz) to set on construction,
-     *                                shape @c (N, 4). If omitted, existing orientations are preserved.
-     * @param[in] scales              Scales to apply to the prims on construction, shape @c (N, 3).
-     *                                If omitted, existing scales are preserved.
-     * @param[in] resetXformOpProperties Whether to reset the xform op attributes of the prims to a
-     *                                   standard set before applying the given transform values.
+     * @param[in] resetXformOpProperties Whether to normalize the xformOp stack to translate/orient/scale.
      *
      * @throws std::runtime_error if no active or default stage has been set.
      */
@@ -75,12 +66,22 @@ public:
               const std::optional<array::Array>& densities = std::nullopt,
               bool applyPhysicsApis = true,
               // Xform
-              const std::optional<array::Array>& positions = std::nullopt,
-              const std::optional<array::Array>& translations = std::nullopt,
-              const std::optional<array::Array>& orientations = std::nullopt,
-              const std::optional<array::Array>& scales = std::nullopt,
               bool resetXformOpProperties = true);
     ~RigidBody() = default;
+
+    /**
+     * @brief Check whether the prims at the given paths are of the type handled by this class.
+     * @details A prim matches when it is @c Xformable and has the @c PhysicsRigidBodyAPI schema applied.
+     *          The constructor applies that schema by default, so a @c false flag means the prim is not
+     *          a rigid body yet, not that it cannot be wrapped.
+     *          The paths are resolved against the active stage before being checked.
+     *          Since this method is static, the returned array is always allocated on the CPU.
+     * @param[in] paths Single path string or list of path strings. May include regular
+     *                  expressions that are expanded against the active stage.
+     * @return Boolean flags (dtype bool, shape @c (N,1)), one per resolved prim.
+     * @throws std::runtime_error if the given paths do not correspond to existing prims.
+     */
+    static array::Array areOfType(const std::variant<std::string, std::vector<std::string>>& paths);
 
     /**
      * @brief Apply the Rigid Body and Mass physics APIs to the selected prims.
@@ -119,13 +120,13 @@ public:
      * @brief Get the masses of the selected prims.
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
      * @param[in] inverse If @c true, returns inverse masses (1/mass) instead of masses.
-     * @return Masses (or inverse masses) in kg, shape @c (N,).
+     * @return Masses (or inverse masses) in kg, shape @c (N, 1).
      */
     array::Array getMasses(const std::optional<array::Array>& indices = std::nullopt, bool inverse = false);
 
     /**
      * @brief Set the masses of the selected prims.
-     * @param[in] masses  Masses in kg, shape @c (N,).
+     * @param[in] masses  Masses in kg, shape @c (N, 1).
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
      */
     void setMasses(const array::Array& masses, const std::optional<array::Array>& indices = std::nullopt);
@@ -133,13 +134,13 @@ public:
     /**
      * @brief Get the densities of the selected prims.
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Densities in kg/m³, shape @c (N,).
+     * @return Densities in kg/m³, shape @c (N, 1).
      */
     array::Array getDensities(const std::optional<array::Array>& indices = std::nullopt);
 
     /**
      * @brief Set the densities of the selected prims.
-     * @param[in] densities Densities in kg/m³, shape @c (N,).
+     * @param[in] densities Densities in kg/m³, shape @c (N, 1).
      * @param[in] indices   Indices of prims to process. If omitted, all wrapped prims are processed.
      */
     void setDensities(const array::Array& densities, const std::optional<array::Array>& indices = std::nullopt);
@@ -151,7 +152,7 @@ public:
      * falls below this threshold.
      *
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Sleep thresholds, shape @c (N,).
+     * @return Sleep thresholds, shape @c (N, 1).
      */
     array::Array getSleepThresholds(const std::optional<array::Array>& indices = std::nullopt);
 
@@ -161,7 +162,7 @@ public:
      * A rigid body is put to sleep by the solver when its kinetic energy per unit mass
      * falls below this threshold.
      *
-     * @param[in] thresholds Sleep thresholds, shape @c (N,).
+     * @param[in] thresholds Sleep thresholds, shape @c (N, 1).
      * @param[in] indices    Indices of prims to process. If omitted, all wrapped prims are processed.
      */
     void setSleepThresholds(const array::Array& thresholds, const std::optional<array::Array>& indices = std::nullopt);
@@ -172,7 +173,7 @@ public:
      * Disabling a rigid body freezes it in place; it still participates in collision detection
      * but is not moved by the physics solver.
      *
-     * @param[in] enabled Boolean flags, shape @c (N,). @c true to enable, @c false to disable.
+     * @param[in] enabled Boolean flags, shape @c (N, 1). @c true to enable, @c false to disable.
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
      */
     void setEnabledRigidBodies(const array::Array& enabled, const std::optional<array::Array>& indices = std::nullopt);
@@ -180,13 +181,13 @@ public:
     /**
      * @brief Get the rigid body dynamics enabled flags of the selected prims.
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Boolean flags indicating whether rigid body dynamics are enabled, shape @c (N,).
+     * @return Boolean flags indicating whether rigid body dynamics are enabled, shape @c (N, 1).
      */
     array::Array getEnabledRigidBodies(const std::optional<array::Array>& indices = std::nullopt);
 
     /**
      * @brief Enable or disable gravity for the selected prims.
-     * @param[in] enabled Boolean flags, shape @c (N,). @c true to enable gravity, @c false to disable.
+     * @param[in] enabled Boolean flags, shape @c (N, 1). @c true to enable gravity, @c false to disable.
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
      */
     void setEnabledGravities(const array::Array& enabled, const std::optional<array::Array>& indices = std::nullopt);
@@ -194,7 +195,7 @@ public:
     /**
      * @brief Get the gravity-enabled flags of the selected prims.
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Boolean flags indicating whether gravity is enabled, shape @c (N,).
+     * @return Boolean flags indicating whether gravity is enabled, shape @c (N, 1).
      */
     array::Array getEnabledGravities(const std::optional<array::Array>& indices = std::nullopt);
 };

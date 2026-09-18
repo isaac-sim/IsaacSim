@@ -146,8 +146,8 @@ void stop()
 void initialize()
 {
     foundation::simulation::initialize();
-    auto ovstageStagePtr = foundation::authoring::getParameter("stage", "ovstage-stage-ptr");
-    physics::simulation::setParameter("physics", "ovstage-stage-ptr", ovstageStagePtr);
+    auto ovstageStagePointer = foundation::authoring::getParameter("stage", "ovstage-stage-ptr");
+    physics::simulation::setParameter("physics", "ovstage-stage-ptr", ovstageStagePointer);
     physics::simulation::initialize();
 }
 

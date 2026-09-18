@@ -16,14 +16,17 @@
 #include "BindingsPhysics.hpp"
 
 #include <isaacsim/physics/manager/tensors/EntityView.hpp>
-#include <isaacsim/physics/manager/tensors/SimulationView.hpp>
 #include <isaacsim/physics/registration/tensors/TensorRegistry.hpp>
 #include <nanobind/nanobind.h>
+#include <nanobind/stl/optional.h>
 #include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/unordered_map.h>
+#include <nanobind/stl/variant.h>
 #include <nanobind/stl/vector.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -34,19 +37,12 @@ void isaacsim::physics::manager::details::bindTensorCreate(nb::module_& module)
 {
     module.def(
         "create_entity",
-        [](const std::string& engine, const std::string& entityName, const std::vector<std::string>& paths) {
-            return std::static_pointer_cast<EntityView>(
-                TensorRegistry::getInstance().createEntity(engine, entityName, paths));
-        },
-        nb::arg("engine"), nb::arg("entity_name"), nb::arg("paths"),
-        "Create an entity view using a registered engine factory.");
-    module.def(
-        "create_simulation_view",
-        [](const std::string& engine, const std::string& frontendName, int64_t stageId)
+        [](const std::string& engine, const std::string& entityName, const std::vector<std::string>& paths,
+           const std::optional<EntityOptions>& options)
         {
-            return std::static_pointer_cast<SimulationView>(
-                TensorRegistry::getInstance().createSimulationView(engine, frontendName, stageId));
+            return std::static_pointer_cast<EntityView>(
+                TensorRegistry::getInstance().createEntity(engine, entityName, paths, options));
         },
-        nb::arg("engine"), nb::arg("frontend_name"), nb::arg("stage_id"),
-        "Create a simulation view using a registered engine factory.");
+        nb::arg("engine"), nb::arg("entity_name"), nb::arg("paths"), nb::arg("options") = nb::none(),
+        "Create an entity view using a registered engine factory.");
 }

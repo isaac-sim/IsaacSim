@@ -16,7 +16,6 @@
 """Base controller interface for robot motion generation in Isaac Sim."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from .types import RobotState
 
@@ -30,8 +29,8 @@ class BaseController(ABC):
 
     @abstractmethod
     def forward(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
-    ) -> Optional[RobotState]:
+        self, estimated_state: RobotState, setpoint_state: RobotState | None, t: float, **kwargs: object
+    ) -> RobotState | None:
         """Define the desired state of the robot at the next time-step.
 
         Args:
@@ -55,9 +54,7 @@ class BaseController(ABC):
         """
 
     @abstractmethod
-    def reset(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
-    ) -> bool:
+    def reset(self, estimated_state: RobotState, setpoint_state: RobotState | None, t: float, **kwargs: object) -> bool:
         """Reset the internal state of the controller to safe values.
 
         This should be called immediately before running the controller for the first time.

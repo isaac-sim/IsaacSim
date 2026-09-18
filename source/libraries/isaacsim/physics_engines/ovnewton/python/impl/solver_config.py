@@ -45,6 +45,7 @@ class SolverConfig:
         substeps: Requested number of solver substeps per physics step.
         friction_coefficient: Requested contact-friction coefficient.
         restitution_coefficient: Requested contact-restitution coefficient.
+
     """
 
     solver_type: SolverType = SolverType.XPBD

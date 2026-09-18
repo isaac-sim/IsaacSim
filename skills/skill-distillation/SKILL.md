@@ -3,7 +3,7 @@ name: skill-distillation
 description: "Propose skill-library updates from session learnings (loop step 5); writes only after explicit user confirmation. Use after novel fixes, workflows, or user corrections."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Skill Distillation

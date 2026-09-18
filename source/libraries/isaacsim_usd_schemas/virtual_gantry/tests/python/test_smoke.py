@@ -32,7 +32,7 @@ class TestVirtualGantrySchemaStandalone(unittest.TestCase):
     def test_gantry_prim_is_a_concrete_xformable(self) -> None:
         """The anchor is only usable if the type is concrete and Xform-derived.
 
-        A schema plugin registered after USD has built its prim-type catalogue
+        A schema plugin registered after USD has built its prim-type catalog
         gets a TfType but no prim definition, and ``xformOp:translate`` is then
         silently ignored -- the failure this schema extension exists to avoid.
         """

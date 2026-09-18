@@ -59,7 +59,7 @@ struct PrimPathErrorAttributeSetter
 {
     static void apply(nb::object& instance, const PrimPathError& error)
     {
-        instance.attr("prim_path") = error.primPath();
+        instance.attr("prim_path") = error.getPrimPath();
     }
 };
 
@@ -67,7 +67,7 @@ struct PrimPathStringErrorAttributeSetter
 {
     static void apply(nb::object& instance, const PrimPathStringError& error)
     {
-        instance.attr("prim_path") = error.primPath();
+        instance.attr("prim_path") = error.getPrimPath();
     }
 };
 
@@ -75,8 +75,8 @@ struct AttributeNameErrorAttributeSetter
 {
     static void apply(nb::object& instance, const AttributeNameError& error)
     {
-        instance.attr("attribute_name") = error.attributeName();
-        instance.attr("valid_attribute_names") = error.validAttributeNames();
+        instance.attr("attribute_name") = error.getAttributeName();
+        instance.attr("valid_attribute_names") = error.getValidAttributeNames();
     }
 };
 
@@ -84,9 +84,9 @@ struct ValueTypeErrorAttributeSetter
 {
     static void apply(nb::object& instance, const ValueTypeError& error)
     {
-        instance.attr("attribute_name") = error.attributeName();
-        instance.attr("expected_type") = error.expectedType();
-        instance.attr("actual_type") = error.actualType();
+        instance.attr("attribute_name") = error.getAttributeName();
+        instance.attr("expected_type") = error.getExpectedType();
+        instance.attr("actual_type") = error.getActualType();
     }
 };
 

@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+id = "falling_cube_ovsim.simulate_cube_grpc"
+title = "Simulate a Cube over gRPC"
+summary = "Author a cube locally and simulate it with a standalone OV SIM gRPC server."
+owners = [
+    "isaacsim.ovsim.api",
+    "isaacsim.ovsim.servers.grpc",
+]
+topics = ["grpc", "physics", "usd"]
+
+[build]
+adapter = "none"
+
+[run]
+adapter = "python"
+path = "main.py"
+
+[requirements]
+system = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_ovsim"
+surfaces = ["native_sdk", "python"]
+
+[[test]]
+name = "loopback"
+path = "test.py"
+timeout_seconds = 120
+stdout_contains = ["Remote cube height:", "Loopback gRPC falling cube test passed."]

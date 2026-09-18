@@ -55,7 +55,7 @@ public:
      *
      * @return The identifier value.
      */
-    size_t hash() const
+    size_t computeHash() const
     {
         return id;
     }
@@ -100,7 +100,7 @@ public:
      */
     size_t operator()(const SimulationId& simulationId) const
     {
-        return simulationId.hash();
+        return simulationId.computeHash();
     }
 };
 
@@ -136,7 +136,7 @@ public:
      *
      * @return The identifier value.
      */
-    size_t hash() const
+    size_t computeHash() const
     {
         return id;
     }
@@ -181,7 +181,7 @@ public:
      */
     size_t operator()(const SubscriptionId& subscriptionId) const
     {
-        return subscriptionId.hash();
+        return subscriptionId.computeHash();
     }
 };
 
@@ -319,6 +319,16 @@ using FetchResultsFunction = std::function<void()>;
  *       pending-work state.
  */
 using CheckResultsFunction = std::function<bool()>;
+
+/**
+ * @brief Publishes the latest simulated transforms to the attached stage.
+ *
+ * @return @c true if the backend published its current transforms; otherwise, @c false.
+ *
+ * @note This operation does not advance simulation. Backends that do not support stage publication leave the
+ *       corresponding function-table entry empty.
+ */
+using PublishTransformsToStageFunction = std::function<bool()>;
 
 /**
  * @brief Processes all buffered physics changes.
@@ -460,6 +470,9 @@ struct SimulationFunctions
 
     /** @brief Queries backend-reported simulation readiness. */
     CheckResultsFunction checkResults{};
+
+    /** @brief Publishes the latest simulated transforms to the attached stage. */
+    PublishTransformsToStageFunction publishTransformsToStage{};
 
     /** @brief Processes buffered physics changes. */
     FlushChangesFunction flushChanges{};

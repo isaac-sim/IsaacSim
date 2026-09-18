@@ -1,11 +1,21 @@
 # OV SIM C++ interfaces
 
-This directory contains the canonical C++ function-pointer type aliases for the OV SIM API. It is shared interface
-source, not a separately registered module.
+This directory contains the canonical C++ callable-signature aliases for the OV SIM API. It is shared interface source,
+not a separately registered module or distribution.
 
-`isaacsim.foundation.ovsim` is the current implementation. Its development component installs these canonical headers
-with the implementation headers because the public foundation API includes them. Any additional OV SIM implementation
-must provide concrete free functions whose signatures match the aliases it implements.
+Header ownership is package-level: every distribution whose public SDK exposes or includes these interfaces installs an
+identical copy at `include/ovsim/interfaces`. This keeps each SDK self-contained without making one distribution the
+owner of another distribution's public includes. The canonical source remains this directory; package CMake files must
+install it unchanged rather than maintain private copies.
+
+The current consumers are:
+
+- `isaacsim-foundation`, whose OV SIM authoring, simulation, and data provider headers include the canonical aliases;
+- `isaacsim-physics`, whose OV SIM authoring, simulation, and data provider headers include the same aliases; and
+- `isaacsim-ovsim`, whose local and gRPC clients, public API, protocol support, and server use the aliases and whose
+  package installs one shared copy for its public SDK.
+
+Concrete providers must expose free functions whose signatures match every alias they implement.
 
 ## Layout
 
@@ -24,9 +34,9 @@ ovsim/interfaces/
 
 ## Verification
 
-`source/libraries/isaacsim/foundation/ovsim/src/VerifyInterfaces.cpp` enforces the current contract at compile time. It
-includes each canonical interface header alongside the concrete foundation header, then assigns the concrete function
-addresses to variables of the alias types:
+Provider-side `VerifyInterfaces.cpp` translation units enforce the current contract at compile time for Foundation,
+Physics, and the local OV SIM client. They include each applicable canonical interface header alongside the concrete
+header, then assign concrete function addresses to variables of the alias types. For example:
 
 ```cpp
 #include <isaacsim/foundation/ovsim/control/authoring/Authoring.hpp>
@@ -36,23 +46,23 @@ addresses to variables of the alias types:
 #include <ovsim/interfaces/control/simulation/Simulation.hpp>
 #include <ovsim/interfaces/data/Data.hpp>
 
-namespace iface_authoring = ovsim::interfaces::control::authoring;
-namespace iface_simulation = ovsim::interfaces::control::simulation;
-namespace iface_data = ovsim::interfaces::data;
-namespace ns_control = isaacsim::foundation::ovsim::control;
-namespace ns_data = isaacsim::foundation::ovsim::data;
+namespace authoringInterface = ovsim::interfaces::control::authoring;
+namespace simulationInterface = ovsim::interfaces::control::simulation;
+namespace dataInterface = ovsim::interfaces::data;
+namespace foundationControl = isaacsim::foundation::ovsim::control;
+namespace foundationData = isaacsim::foundation::ovsim::data;
 
-[[maybe_unused]] iface_data::ReadFn _read = &ns_data::read;
-[[maybe_unused]] iface_authoring::CreateStageFn _createStage = &ns_control::authoring::createStage;
-[[maybe_unused]] iface_simulation::PlayFn _play = &ns_control::simulation::play;
+[[maybe_unused]] const dataInterface::ReadFunction g_kRead = &foundationData::read;
+[[maybe_unused]] const authoringInterface::CreateStageFunction g_kCreateStage =
+    &foundationControl::authoring::createStage;
+[[maybe_unused]] const simulationInterface::PlayFunction g_kPlay = &foundationControl::simulation::play;
 ```
 
 A mismatching return type, parameter type, or parameter count causes a compile error on that assignment.
 
 ## Notes
 
-- Default argument values are not part of a function pointer type. Packages may
-  differ in which parameters carry defaults without triggering a compile error
-  here; document canonical defaults in the package header.
-- Callers invoking through an alias must pass every parameter explicitly, even
-  those that have defaults in the concrete declaration.
+- Default argument values are not part of a callable signature. Packages may differ in which parameters carry defaults
+  without triggering a compile error here; document canonical defaults in the package header.
+- Callers invoking through an alias must pass every parameter explicitly, even those that have defaults in the
+  concrete declaration.

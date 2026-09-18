@@ -31,7 +31,7 @@ namespace ovgl
 namespace
 {
 
-void push_flat_triangle(
+void pushFlatTriangle(
     std::vector<float>& points, std::vector<float>& normals, const float a[3], const float b[3], const float c[3])
 {
     points.insert(points.end(), a, a + 3);
@@ -151,7 +151,7 @@ void buildMeshSoup(const float* points,
      * every OTHER unnormaled asset that was faceted.
      *
      * Area-weighted vertex normals, the standard construction: accumulate each
-     * face's UNNORMALISED Newell normal into its corners and normalise once at
+     * face's UNNORMALISED Newell normal into its corners and normalize once at
      * the end. Newell rather than a single edge cross product because it is
      * correct for non-planar n-gons, and its magnitude is twice the polygon
      * area -- so the area weighting falls out for free, with no per-face sqrt.
@@ -172,24 +172,24 @@ void buildMeshSoup(const float* points,
             }
             if (scan + static_cast<size_t>(count) > face_index_count)
                 break;
-            float face_normal[3] = { 0.0f, 0.0f, 0.0f };
+            float faceNormal[3] = { 0.0f, 0.0f, 0.0f };
             for (int k = 0; k < count; ++k)
             {
                 float current[3], next[3];
                 point(face_indices[scan + static_cast<size_t>(k)], current);
                 point(face_indices[scan + static_cast<size_t>((k + 1) % count)], next);
-                face_normal[0] += (current[1] - next[1]) * (current[2] + next[2]);
-                face_normal[1] += (current[2] - next[2]) * (current[0] + next[0]);
-                face_normal[2] += (current[0] - next[0]) * (current[1] + next[1]);
+                faceNormal[0] += (current[1] - next[1]) * (current[2] + next[2]);
+                faceNormal[1] += (current[2] - next[2]) * (current[0] + next[0]);
+                faceNormal[2] += (current[0] - next[0]) * (current[1] + next[1]);
             }
             for (int k = 0; k < count; ++k)
             {
                 const int index = face_indices[scan + static_cast<size_t>(k)];
                 if (index < 0 || static_cast<size_t>(index) >= point_count)
                     continue;
-                computed_normals[3 * static_cast<size_t>(index) + 0] += face_normal[0];
-                computed_normals[3 * static_cast<size_t>(index) + 1] += face_normal[1];
-                computed_normals[3 * static_cast<size_t>(index) + 2] += face_normal[2];
+                computed_normals[3 * static_cast<size_t>(index) + 0] += faceNormal[0];
+                computed_normals[3 * static_cast<size_t>(index) + 1] += faceNormal[1];
+                computed_normals[3 * static_cast<size_t>(index) + 2] += faceNormal[2];
             }
             scan += static_cast<size_t>(count);
         }
@@ -275,7 +275,7 @@ void buildMeshSoup(const float* points,
             }
             else
             {
-                push_flat_triangle(output_points, output_normals, first, second, third);
+                pushFlatTriangle(output_points, output_normals, first, second, third);
             }
             push_uv(first_index, corner);
             push_uv(second_index, corner + static_cast<size_t>(offset));

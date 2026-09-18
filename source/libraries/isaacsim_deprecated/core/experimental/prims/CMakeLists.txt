@@ -16,6 +16,7 @@
 isaacsim_add_compat_python_module(
     NAME isaacsim.deprecated.core.experimental.prims
     IMPORT_NAME isaacsim.core.experimental.prims
+    REQUIRES_BINDINGS
 )
 
 isaacsim_add_python_tests(

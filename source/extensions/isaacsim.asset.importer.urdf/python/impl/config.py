@@ -42,11 +42,13 @@ class URDFImporterConfig:
         allow_self_collision: If True, allows the model to collide with itself.
         ros_package_paths: List of ROS package name/path mappings for resolving package:// URLs.
         fix_base: Tri-state base-type toggle.
+
             - ``True``: adds a fixed joint from the world to the root rigid-body link and
               relocates ArticulationRootAPI to the correct ancestor prim.
             - ``False``: removes any existing world-to-root fixed joint so the robot
               becomes floating-base.
             - ``None`` (default): leaves the source asset's base authoring untouched.
+
         link_density: Default density (kg/m^3) applied to rigid body links that have no
             explicit mass.  ``None`` means no density override.
         joint_drive_type: Joint drive type (``"force"`` or ``"acceleration"``), or a dict

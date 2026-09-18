@@ -33,6 +33,7 @@ def _no_profile(fn: Callable[..., Any]) -> Callable[..., Any]:
 
     Returns:
         The original callable.
+
     """
     return fn
 
@@ -73,6 +74,7 @@ class NewtonArticulationView:
     Args:
         backend: Backend selection containing articulation and model indices.
         frontend: Tensor frontend used to allocate and wrap returned values.
+
     """
 
     def __init__(self, backend: Any, frontend: Any) -> None:
@@ -1786,6 +1788,7 @@ class NewtonArticulationView:
 
         Raises:
             RuntimeError: If Newton returns no result for a model without articulations.
+
         """
         if arr is None:
             raise RuntimeError("Newton eval returned None; the model has no articulations")

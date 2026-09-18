@@ -58,6 +58,7 @@ def _runtime_roots() -> list[Path]:
 
     Returns:
         Runtime roots from every entry in the ``isaacsim`` namespace package.
+
     """
     import isaacsim
 
@@ -72,6 +73,7 @@ def _find_runtime_root() -> Path:
 
     Raises:
         RuntimeError: If the packaged OVStage runtime is missing.
+
     """
     for root in _runtime_roots():
         if (root / "ovstage_py" / "ovstage" / "__init__.py").is_file():
@@ -84,6 +86,7 @@ def _loaded_ovstage_root() -> Path | None:
 
     Returns:
         Library directory, or None when OVStage has not been loaded.
+
     """
     if sys.platform != "linux":
         return None
@@ -110,6 +113,7 @@ def _configure_windows_runtime() -> Path:
 
     Raises:
         RuntimeError: If the packaged OvPhysX bindings are missing.
+
     """
     import isaacsim
 
@@ -146,6 +150,7 @@ def setup() -> None:
         >>> from isaacsim.physics_engines.ovstage import setup
 
         >>> setup()
+
     """
     global _done, _windows_native_root
     runtime_root = _find_runtime_root()
@@ -191,6 +196,7 @@ def get_native_handle(stage: object) -> int:
     Raises:
         TypeError: If `stage` is not an OVStage-compatible object.
         RuntimeError: If the OVStage object has been destroyed.
+
     """
     instance = getattr(stage, "_inst", None)
     if instance is None:
@@ -216,6 +222,7 @@ def _capsule_accessors() -> tuple[object, object]:
 
     Returns:
         The configured ``PyCapsule_GetPointer`` and ``PyCapsule_GetName`` callables.
+
     """
     get_pointer = ctypes.pythonapi.PyCapsule_GetPointer
     get_pointer.restype = ctypes.c_void_p
@@ -241,6 +248,7 @@ def as_native_handle(value: object | None) -> int:
 
     Raises:
         TypeError: If ``value`` is neither an integer nor a recognized capsule.
+
     """
     if value is None:
         return 0
@@ -267,6 +275,7 @@ def lookup_stage(handle: object | None) -> object | None:
 
     Returns:
         Owning Python Stage when still alive, otherwise None.
+
     """
     native = as_native_handle(handle)
     if not native:

@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <isaacsim/common/array/Functions.hpp>
 #include <isaacsim/common/logging/Logging.hpp>
 #include <isaacsim/foundation/objects/Xform.hpp>
 #include <isaacsim/foundation/usd/openusd/Usd.hpp>
@@ -30,11 +31,31 @@ namespace objects
 namespace openusd = isaacsim::foundation::usd::openusd;
 namespace ovstage = isaacsim::foundation::usd::ovstage;
 
+namespace
+{
+
+void validateRotationFormat(const std::string& rotationFormat)
+{
+    if (rotationFormat != "xyzw" && rotationFormat != "wxyz")
+    {
+        throw std::invalid_argument("Invalid rotation format: '" + rotationFormat +
+                                    "'. Supported formats are 'xyzw' and 'wxyz'");
+    }
+}
+
+array::Array toBackendOrientations(const array::Array& orientations, const std::string& rotationFormat)
+{
+    return rotationFormat == "wxyz" ? array::take(orientations, { 1, 2, 3, 0 }, 1) : orientations;
+}
+
+array::Array fromBackendOrientations(const array::Array& orientations, const std::string& rotationFormat)
+{
+    return rotationFormat == "wxyz" ? array::take(orientations, { 3, 0, 1, 2 }, 1) : orientations;
+}
+
+} // namespace
+
 Xform::Xform(const std::variant<std::string, std::vector<std::string>>& paths,
-             const std::optional<array::Array>& positions,
-             const std::optional<array::Array>& translations,
-             const std::optional<array::Array>& orientations,
-             const std::optional<array::Array>& scales,
              bool resetXformOpProperties,
              bool resolvePaths)
     : Prim(paths, /*resolvePaths=*/false)
@@ -48,7 +69,7 @@ Xform::Xform(const std::variant<std::string, std::vector<std::string>>& paths,
         if (!existentPaths.empty())
         {
             m_paths = std::move(existentPaths);
-            const std::vector<bool> isXformable = this->isA("Xformable").get<std::vector<bool>>();
+            const std::vector<bool> isXformable = this->isA("Xformable").flatten().get<std::vector<bool>>();
             for (std::size_t i = 0; i < m_paths.size(); ++i)
             {
                 if (!isXformable[i])
@@ -68,7 +89,7 @@ Xform::Xform(const std::variant<std::string, std::vector<std::string>>& paths,
         }
     }
     // Initialize instance from arguments.
-    _initialize(positions, translations, orientations, scales, resetXformOpProperties);
+    _initialize(resetXformOpProperties);
 }
 
 Xform::Xform() : Prim()
@@ -97,42 +118,12 @@ Xform::XformOps Xform::_populateXformOps(const std::string& backend)
     throw std::runtime_error("Unknown backend '" + backend + "'. Expected 'openusd' or 'ovstage'.");
 }
 
-void Xform::_initialize(const std::optional<array::Array>& positions,
-                        const std::optional<array::Array>& translations,
-                        const std::optional<array::Array>& orientations,
-                        const std::optional<array::Array>& scales,
-                        bool resetXformOpProperties)
+void Xform::_initialize(bool resetXformOpProperties)
 {
     // Reset xformOp properties.
     if (!m_nonRootArticulationLink && resetXformOpProperties)
     {
         this->resetXformOpProperties();
-    }
-    // Set specified values.
-    if (positions.has_value() || translations.has_value() || orientations.has_value() || scales.has_value())
-    {
-        if (positions.has_value() && translations.has_value())
-        {
-            throw std::invalid_argument("Both 'positions' and 'translations' are specified. Specify only one of them");
-        }
-        if (m_nonRootArticulationLink)
-        {
-            throw std::invalid_argument(
-                "The prim is a non-root link in an articulation. "
-                "Specified values (positions, translations, orientations and/or scales) cannot be set");
-        }
-        if (positions.has_value() || orientations.has_value())
-        {
-            this->setWorldPoses(positions, orientations);
-        }
-        if (translations.has_value() || orientations.has_value())
-        {
-            this->setLocalPoses(translations, orientations);
-        }
-        if (scales.has_value())
-        {
-            this->setLocalScales(*scales);
-        }
     }
 }
 
@@ -141,9 +132,7 @@ void Xform::setVisibilities(const array::Array& visibilities, const std::optiona
     // Note: this sets the authored visibility token, not the computed visibility.
     // MakeVisible/MakeInvisible is not exposed through the base-class Prim interface. Use USD APIs directly if needed.
     const int64_t batchSize = _resolveIndexedSize(indices);
-    auto bools = visibilities.broadcastTo(array::Shape({ batchSize, int64_t{ 1 } }))
-                     .reshape(array::Shape({ int64_t{ -1 } }))
-                     .get<std::vector<bool>>();
+    auto bools = visibilities.broadcastTo(array::Shape({ batchSize, int64_t{ 1 } })).flatten().get<std::vector<bool>>();
     std::vector<std::string> tokens(bools.size());
     for (std::size_t i = 0; i < bools.size(); ++i)
     {
@@ -169,16 +158,21 @@ array::Array Xform::getVisibilities(const std::optional<array::Array>& indices)
 // TODO: applyVisualMaterials
 // TODO: getAppliedVisualMaterials
 
-std::tuple<array::Array, array::Array> Xform::getWorldPoses(const std::optional<array::Array>& indices)
+std::tuple<array::Array, array::Array> Xform::getWorldPoses(const std::optional<array::Array>& indices,
+                                                            const std::string& rotationFormat)
 {
+    validateRotationFormat(rotationFormat);
     const int64_t stageId = this->getStage().getStageId();
-    return m_xformOps.getXformWorldPoses(stageId, _resolveIndexedPaths(indices));
+    auto [positions, orientations] = m_xformOps.getXformWorldPoses(stageId, _resolveIndexedPaths(indices));
+    return { std::move(positions), fromBackendOrientations(orientations, rotationFormat) };
 }
 
 void Xform::setWorldPoses(const std::optional<array::Array>& positions,
                           const std::optional<array::Array>& orientations,
-                          const std::optional<array::Array>& indices)
+                          const std::optional<array::Array>& indices,
+                          const std::string& rotationFormat)
 {
+    validateRotationFormat(rotationFormat);
     if (!positions.has_value() && !orientations.has_value())
     {
         throw std::invalid_argument("Both `positions` and `orientations` are not defined. Define at least one of them");
@@ -194,22 +188,29 @@ void Xform::setWorldPoses(const std::optional<array::Array>& positions,
     }
     if (orientations.has_value())
     {
-        broadcastedOrientations = orientations->reshape(array::Shape({ int64_t{ -1 }, int64_t{ 4 } }))
-                                      .broadcastTo(array::Shape({ batchSize, int64_t{ 4 } }));
+        broadcastedOrientations =
+            toBackendOrientations(orientations->reshape(array::Shape({ int64_t{ -1 }, int64_t{ 4 } }))
+                                      .broadcastTo(array::Shape({ batchSize, int64_t{ 4 } })),
+                                  rotationFormat);
     }
     m_xformOps.setXformWorldPoses(stageId, _resolveIndexedPaths(indices), broadcastedPositions, broadcastedOrientations);
 }
 
-std::tuple<array::Array, array::Array> Xform::getLocalPoses(const std::optional<array::Array>& indices)
+std::tuple<array::Array, array::Array> Xform::getLocalPoses(const std::optional<array::Array>& indices,
+                                                            const std::string& rotationFormat)
 {
+    validateRotationFormat(rotationFormat);
     const int64_t stageId = this->getStage().getStageId();
-    return m_xformOps.getXformLocalPoses(stageId, _resolveIndexedPaths(indices));
+    auto [translations, orientations] = m_xformOps.getXformLocalPoses(stageId, _resolveIndexedPaths(indices));
+    return { std::move(translations), fromBackendOrientations(orientations, rotationFormat) };
 }
 
 void Xform::setLocalPoses(const std::optional<array::Array>& translations,
                           const std::optional<array::Array>& orientations,
-                          const std::optional<array::Array>& indices)
+                          const std::optional<array::Array>& indices,
+                          const std::string& rotationFormat)
 {
+    validateRotationFormat(rotationFormat);
     if (!translations.has_value() && !orientations.has_value())
     {
         throw std::invalid_argument("Both `translations` and `orientations` are not defined. Define at least one of them");
@@ -225,8 +226,10 @@ void Xform::setLocalPoses(const std::optional<array::Array>& translations,
     }
     if (orientations.has_value())
     {
-        broadcastedOrientations = orientations->reshape(array::Shape({ int64_t{ -1 }, int64_t{ 4 } }))
-                                      .broadcastTo(array::Shape({ batchSize, int64_t{ 4 } }));
+        broadcastedOrientations =
+            toBackendOrientations(orientations->reshape(array::Shape({ int64_t{ -1 }, int64_t{ 4 } }))
+                                      .broadcastTo(array::Shape({ batchSize, int64_t{ 4 } })),
+                                  rotationFormat);
     }
     m_xformOps.setXformLocalPoses(
         stageId, _resolveIndexedPaths(indices), broadcastedTranslations, broadcastedOrientations);
@@ -254,6 +257,11 @@ void Xform::resetXformOpProperties()
     {
         m_xformOps.resetXformOpProperties(stageId, path);
     }
+}
+
+array::Array Xform::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("Xformable");
 }
 
 } // namespace objects

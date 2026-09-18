@@ -32,18 +32,22 @@ namespace data
 
 namespace array = isaacsim::common::array;
 
-// TODO: extend to support dlpack, arithmetic types, arithmetic vectors, etc.
+/** @brief One prim path or a collection of prim paths. */
 using PathType = std::variant<std::string, std::vector<std::string>>;
+/** @brief Attribute values accepted by data providers. */
 using InputValueType =
     std::variant<std::string, std::vector<std::string>, std::vector<std::vector<std::string>>, array::Array>;
+/** @brief Attribute values returned by data providers. */
 using OutputValueType = std::variant<std::vector<std::string>, std::vector<std::vector<std::string>>, array::Array>;
 
-using ReadFn = std::function<OutputValueType(
-    const PathType& /*paths*/, const std::string& /*attributeName*/, std::optional<double> /*timeStamp*/)>;
-using WriteFn = std::function<void(const PathType& /*paths*/,
-                                   const std::string& /*attributeName*/,
-                                   const InputValueType& /*values*/,
-                                   std::optional<double> /*timeStamp*/)>;
+/** @brief Callable signature for reading a prim attribute. */
+using ReadFunction = std::function<OutputValueType(
+    const PathType& /*paths*/, const std::string& /*attributeName*/, std::optional<double> /*timestamp*/)>;
+/** @brief Callable signature for writing a prim attribute. */
+using WriteFunction = std::function<void(const PathType& /*paths*/,
+                                         const std::string& /*attributeName*/,
+                                         const InputValueType& /*values*/,
+                                         std::optional<double> /*timestamp*/)>;
 
 } // namespace data
 } // namespace interfaces

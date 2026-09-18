@@ -124,6 +124,7 @@ private:
     void _doSimulate(float elapsed, float current);
     void _doFetchResults();
     bool _doCheckResults();
+    bool _doPublishTransformsToStage();
     void _doFlushChanges();
     void _doPauseChangeTracking(bool pause);
     bool _doIsChangeTrackingPaused();
@@ -166,6 +167,9 @@ private:
     long m_attachedStageId{ 0 };
     bool m_initialized{ false };
     bool m_changeTrackingPaused{ false };
+    uint64_t m_transformJournalGeneration{ 0 };
+    ovstage_ordinal_t m_transformJournalBaseOrdinal{ 0 };
+    ovstage_ordinal_t m_lastTransformJournalOrdinal{ 0 };
     size_t m_simulationId{ isaacsim::physics::registration::g_kInvalidSimulationId.id };
 
     std::atomic<uint64_t> m_timestamp{ 0 };

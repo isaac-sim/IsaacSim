@@ -38,7 +38,7 @@ Stage
 =====
 
 ``Stage`` wraps a USD-compatible stage identified by a numeric ID. The constructor
-requires a ``backend`` string — either ``"openusd"`` or ``"ovstage"`` — and
+requires a ``backend`` string --- either ``"openusd"`` or ``"ovstage"`` --- and
 an optional numeric stage ID to attach to an existing stage. Call
 ``openStage`` or ``createStage`` to associate it with a file, then
 ``saveStage`` / ``closeStage`` to complete the lifecycle:
@@ -180,3 +180,49 @@ color, exposure, and shadow controls. Concrete subclasses (``CylinderLight``,
 wrap the corresponding ``UsdLux`` prim type.
 
 Include: ``<isaacsim/foundation/objects/lights/<ClassName>.hpp>``
+
+.. _isaacsim-foundation-objects-api-cpp-physics-scenes:
+
+Physics scenes
+==============
+
+``PhysicsScene`` extends ``Prim``. It wraps one or more ``UsdPhysicsScene`` prims,
+applies the ``NewtonSceneAPI`` schema to each of them, and exposes gravity plus the
+solver-agnostic settings.
+
+.. code-block:: cpp
+
+    physics_scenes::PhysicsScene scene("/World/physicsScene");
+    // gravity is given as a vector in stage units per second squared
+    scene.setGravities(array::Array(std::vector<float>{ 0.0f, 0.0f, -9.81f }));
+    scene.setDeltaTimes(array::Array( 1.0f / 120.0f ));
+
+``getGravities`` resolves the two sentinels USD defines for these attributes: a zero
+``physics:gravityDirection`` means the stage's down axis, and a negative
+``physics:gravityMagnitude`` (including its ``-inf`` default) means the standard gravity
+of 9.81 m/s² expressed in stage units. Authored magnitudes are taken as-is, since the
+schema documents them in ``distance/second/second``.
+
+The solver-specific subclasses apply their own API schema on top and declare their own
+``setDeltaTimes`` / ``getDeltaTimes``. ``setDeltaTimes`` writes the solver's own attribute *and* calls the base
+implementation, so the solver-agnostic delta time stays in sync; ``getDeltaTimes`` reports the
+solver's own attribute, falling back to the base one when the solver schema is not applied.
+These methods are not virtual, so the one that runs is chosen by the static type of the
+handle:
+
+.. code-block:: cpp
+
+    physics_scenes::PhysxScene physx("/World/physicsScene");
+    physx.setSolverTypes("TGS");
+
+    physics_scenes::PhysxGpuConfiguration configuration;             // unset fields are left untouched
+    configuration.gpuMaximumPartitionCount = array::Array(std::vector<int32_t>{ 16 });
+    physx.setGpuConfiguration(configuration);
+
+    physics_scenes::NewtonMjcScene mjc("/World/mjcScene");
+    mjc.setIntegrators("implicitfast");
+
+``NewtonMjcScene`` requires the MuJoCo USD schemas to be registered in the running
+process; its constructor throws otherwise.
+
+Include: ``<isaacsim/foundation/objects/physics_scenes/<ClassName>.hpp>``

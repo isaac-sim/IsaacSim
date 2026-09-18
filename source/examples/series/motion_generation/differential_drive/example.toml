@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+id = "motion_generation.differential_drive"
+title = "Differential Drive Controller"
+summary = "Drive a two-wheeled differential-drive robot using forward speed and yaw rate."
+owners = [
+    "isaacsim.foundation.objects",
+    "isaacsim.physics.entities",
+    "isaacsim.physics.manager",
+    "isaacsim.physics_engines.ovphysx",
+    "isaacsim.robot_motion.controllers",
+    "isaacsim.ovgl_viewport.debug",
+]
+topics = ["controllers", "differential_drive", "motion_generation", "physics", "rendering", "robotics", "viewport"]
+
+[build]
+adapter = "none"
+
+[run]
+adapter = "python"
+path = "main.py"
+
+[requirements]
+system = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_foundation"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_physics"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_physics_engines"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_robot_motion"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_ovgl_viewport"
+surfaces = ["python"]
+
+[[test]]
+name = "headless"
+path = "test.py"
+timeout_seconds = 60
+stdout_contains = [
+    "Wheel angular velocities:",
+    "Robot planar displacement:",
+    "Differential drive example passed.",
+    "Headless differential-drive rendering test passed.",
+]

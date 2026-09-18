@@ -151,7 +151,7 @@ def _assert_out_of_range_read_is_dropped(
     scenario: _IndexedScenario,
     operation: Callable[[wp.array], object],
 ) -> None:
-    """An out-of-range index yields the dropped-row marker, not an error and not zero.
+    """Verify that an out-of-range index yields the dropped-row marker.
 
     Index values live in device memory, so rejecting them would need a readback and
     the data path never synchronizes. The row carries the all-bits-set marker --
@@ -160,6 +160,7 @@ def _assert_out_of_range_read_is_dropped(
     Args:
         scenario: Scenario supplying the view and device.
         operation: Indexed read to exercise.
+
     """
     for value in (-1, scenario.view.count):
         indices = wp.array([value], dtype=wp.int32, device=scenario.wp_device)
@@ -172,7 +173,7 @@ def _assert_out_of_range_write_is_dropped(
     operation: Callable[[wp.array], object],
     readback: Callable[[], object] | None = None,
 ) -> None:
-    """An out-of-range index writes nothing and raises nothing.
+    """Verify that an out-of-range index writes nothing and raises nothing.
 
     ``readback`` covers the half that matters. An out-of-range index is clamped so
     every dereference stays in bounds, and slot zero is the clamp target, so without
@@ -189,6 +190,7 @@ def _assert_out_of_range_write_is_dropped(
         scenario: Scenario supplying the view and device.
         operation: Indexed write to exercise.
         readback: Reads the state the write would have modified.
+
     """
     for value in (-1, scenario.view.count):
         before = None if readback is None else readback().numpy().copy()
@@ -242,7 +244,7 @@ class _NewtonDofPositionsSubsetSet(DofPositionsSubsetSetCommon):
 
 class _NewtonDofPositionsIndexSizeSet(DofPositionsIndexSizeSetCommon):
     def check_cell(self) -> None:
-        """A dropped index must not disturb a real write sharing the clamp slot.
+        """Verify that a dropped index does not disturb a write sharing its clamp slot.
 
         An out-of-range index is clamped so every dereference stays in bounds, and
         slot zero is the clamp target. A compact write selecting both entity 0 and an

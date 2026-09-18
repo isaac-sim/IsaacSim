@@ -18,6 +18,9 @@
 #include <isaacsim/physics/ovsim/Export.h>
 #include <ovsim/interfaces/data/Data.hpp>
 
+#include <optional>
+#include <string>
+
 namespace isaacsim
 {
 namespace physics
@@ -34,23 +37,25 @@ using ::ovsim::interfaces::data::PathType;
 /** @brief Read an attribute from one or more prims.
  * @param[in] paths Stage path or paths of the prims to read.
  * @param[in] attributeName Name of the attribute to read.
- * @param[in] timeStamp Optional USD time code for the read operation.
+ * @param[in] timestamp Optional USD time code for the read operation. The current implementation reads the default
+ *                      time when omitted and otherwise accepts but does not yet apply the supplied value.
  * @return Attribute values for the requested prim paths.
  */
 ISAACSIM_PHYSICS_OVSIM_API OutputValueType read(const PathType& paths,
                                                 const std::string& attributeName,
-                                                std::optional<double> timeStamp = std::nullopt);
+                                                std::optional<double> timestamp = std::nullopt);
 
 /** @brief Write an attribute on one or more prims.
  * @param[in] paths Stage path or paths of the prims to update.
  * @param[in] attributeName Name of the attribute to write.
  * @param[in] values Attribute values to write.
- * @param[in] timeStamp Optional USD time code for the write operation.
+ * @param[in] timestamp Optional USD time code for the write operation. The current implementation writes at the
+ *                      default time when omitted and otherwise accepts but does not yet apply the supplied value.
  */
 ISAACSIM_PHYSICS_OVSIM_API void write(const PathType& paths,
                                       const std::string& attributeName,
                                       const InputValueType& values,
-                                      std::optional<double> timeStamp = std::nullopt);
+                                      std::optional<double> timestamp = std::nullopt);
 
 } // namespace data
 } // namespace ovsim

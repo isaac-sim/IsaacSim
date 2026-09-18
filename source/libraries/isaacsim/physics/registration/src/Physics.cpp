@@ -30,34 +30,34 @@ namespace registration
 
 SimulationId registerSimulation(const Simulation& simulation, const std::string& simulationName)
 {
-    return simulationRegistry().registerSimulation(simulation, simulationName);
+    return getSimulationRegistry().registerSimulation(simulation, simulationName);
 }
 
 void unregisterSimulation(const SimulationId& simulationId)
 {
-    simulationRegistry().unregisterSimulation(simulationId);
+    getSimulationRegistry().unregisterSimulation(simulationId);
 }
 
 const Simulation* getSimulation(const SimulationId& simulationId)
 {
-    return simulationRegistry().getSimulation(simulationId);
+    return getSimulationRegistry().getSimulation(simulationId);
 }
 
 std::string getSimulationName(const SimulationId& simulationId)
 {
-    return simulationRegistry().getSimulationName(simulationId);
+    return getSimulationRegistry().getSimulationName(simulationId);
 }
 
-size_t getNumberOfSimulations()
+size_t getSimulationCount()
 {
-    return simulationRegistry().getNumberOfSimulations();
+    return getSimulationRegistry().getSimulationCount();
 }
 
 size_t getSimulationIds(SimulationId* simulationIds, size_t bufferSize)
 {
-    const SimulationMap& simulations = simulationRegistry().getSimulations();
-    const size_t numberOfSimulations = std::min(simulations.size(), bufferSize);
-    if (numberOfSimulations == 0 || simulationIds == nullptr)
+    const SimulationMap& simulations = getSimulationRegistry().getSimulations();
+    const size_t simulationCount = std::min(simulations.size(), bufferSize);
+    if (simulationCount == 0 || simulationIds == nullptr)
     {
         return 0;
     }
@@ -66,32 +66,32 @@ size_t getSimulationIds(SimulationId* simulationIds, size_t bufferSize)
     for (const SimulationMap::value_type& simulation : simulations)
     {
         simulationIds[simulationIndex++] = simulation.first;
-        if (simulationIndex == numberOfSimulations)
+        if (simulationIndex == simulationCount)
         {
             break;
         }
     }
-    return numberOfSimulations;
+    return simulationCount;
 }
 
 void activateSimulation(const SimulationId& simulationId)
 {
-    simulationRegistry().activateSimulation(simulationId);
+    getSimulationRegistry().activateSimulation(simulationId);
 }
 
 void deactivateSimulation(const SimulationId& simulationId)
 {
-    simulationRegistry().deactivateSimulation(simulationId);
+    getSimulationRegistry().deactivateSimulation(simulationId);
 }
 
 bool isSimulationActive(const SimulationId& simulationId)
 {
-    return simulationRegistry().isSimulationActive(simulationId);
+    return getSimulationRegistry().isSimulationActive(simulationId);
 }
 
 SimulationId getActiveSimulationId(const std::string& simulationName)
 {
-    const SimulationMap& simulations = simulationRegistry().getSimulations();
+    const SimulationMap& simulations = getSimulationRegistry().getSimulations();
     SimulationId matchedSimulationId = g_kInvalidSimulationId;
     size_t matchCount = 0;
     // Every match is counted rather than returning the first: activation is not exclusive, so several
@@ -115,12 +115,12 @@ SimulationId getActiveSimulationId(const std::string& simulationName)
 
 SubscriptionId subscribeSimulationRegistryEvents(OnSimulationRegistryEventFunction onEvent, void* userData)
 {
-    return simulationRegistry().subscribeSimulationRegistryEvents(onEvent, userData);
+    return getSimulationRegistry().subscribeSimulationRegistryEvents(onEvent, userData);
 }
 
 void unsubscribeSimulationRegistryEvents(SubscriptionId subscriptionId)
 {
-    simulationRegistry().unsubscribeSimulationRegistryEvents(subscriptionId);
+    getSimulationRegistry().unsubscribeSimulationRegistryEvents(subscriptionId);
 }
 
 } // namespace registration

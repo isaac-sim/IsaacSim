@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdio>
 #include <deque>
 #include <string>
@@ -54,12 +55,19 @@ namespace schema
  */
 enum class Classes
 {
+    /** @brief The robot applied API schema. */
     ROBOT_API,
+    /** @brief The robot-link applied API schema. */
     LINK_API,
+    /** @brief The deprecated reference-point applied API schema. */
     REFERENCE_POINT_API,
+    /** @brief The site applied API schema. */
     SITE_API,
+    /** @brief The robot-joint applied API schema. */
     JOINT_API,
+    /** @brief The surface-gripper typed schema. */
     SURFACE_GRIPPER,
+    /** @brief The attachment-point applied API schema. */
     ATTACHMENT_POINT_API
 };
 
@@ -72,24 +80,43 @@ enum class Classes
  */
 enum class Attributes
 {
+    /** @brief The robot description. */
     DESCRIPTION,
+    /** @brief The robot namespace. */
     NAMESPACE,
+    /** @brief The robot type. */
     ROBOT_TYPE,
+    /** @brief The robot asset license. */
     LICENSE,
+    /** @brief The robot asset version. */
     VERSION,
+    /** @brief The robot asset source. */
     SOURCE,
+    /** @brief The robot asset changelog. */
     CHANGELOG,
+    /** @brief The link name override. */
     NAME_OVERRIDE,
+    /** @brief The reference-point description. */
     REFERENCE_DESCRIPTION,
+    /** @brief The site or attachment-point forward axis. */
     FORWARD_AXIS,
+    /** @brief The joint name override. */
     JOINT_NAME_OVERRIDE,
+    /** @brief The joint degree-of-freedom offset operation order. */
     DOF_OFFSET_OP_ORDER,
+    /** @brief The per-axis joint actuator flags. */
     ACTUATOR,
+    /** @brief The surface-gripper status. */
     STATUS,
+    /** @brief The surface-gripper retry interval. */
     RETRY_INTERVAL,
+    /** @brief The surface-gripper shear force limit. */
     SHEAR_FORCE_LIMIT,
+    /** @brief The surface-gripper coaxial force limit. */
     COAXIAL_FORCE_LIMIT,
+    /** @brief The surface-gripper maximum grip distance. */
     MAX_GRIP_DISTANCE,
+    /** @brief The attachment-point clearance offset. */
     CLEARANCE_OFFSET,
 };
 
@@ -102,9 +129,13 @@ enum class Attributes
  */
 enum class Relations
 {
+    /** @brief The links that belong to a robot. */
     ROBOT_LINKS,
+    /** @brief The joints that belong to a robot. */
     ROBOT_JOINTS,
+    /** @brief The attachment points associated with a surface gripper. */
     ATTACHMENT_POINTS,
+    /** @brief The objects held by a surface gripper. */
     GRIPPED_OBJECTS
 };
 
@@ -117,11 +148,17 @@ enum class Relations
  */
 enum class DofOffsetOpOrder
 {
+    /** @brief Translation along the x-axis. */
     TransX,
+    /** @brief Translation along the y-axis. */
     TransY,
+    /** @brief Translation along the z-axis. */
     TransZ,
+    /** @brief Rotation about the x-axis. */
     RotX,
+    /** @brief Rotation about the y-axis. */
     RotY,
+    /** @brief Rotation about the z-axis. */
     RotZ
 };
 
@@ -140,7 +177,7 @@ const std::string classNames[] = { "IsaacRobotAPI", "IsaacLinkAPI",        "Isaa
  */
 inline const pxr::TfToken className(Classes name)
 {
-    return pxr::TfToken(classNames[static_cast<int>(name)]);
+    return pxr::TfToken(classNames[static_cast<std::size_t>(name)]);
 }
 
 namespace custom
@@ -149,10 +186,10 @@ namespace custom
  * @struct hash
  * @brief Hash function object for enum types.
  * @details
- * Provides a hash function for enum types by casting them to size_t.
+ * Provides a hash function for enum types by casting them to @c std::size_t.
  * This allows enums to be used as keys in unordered containers.
  *
- * @tparam E The enum type to provide hashing for
+ * @tparam E The enum type to hash.
  */
 template <typename E>
 struct hash
@@ -161,17 +198,17 @@ struct hash
      * @brief Hash function operator for enum values.
      * @details
      * Converts an enum value to its underlying integer representation
-     * and casts it to size_t for use as a hash value.
+     * and casts it to @c std::size_t for use as a hash value.
      *
-     * @param[in] e The enum value to hash
-     * @return size_t Hash value for the enum
+     * @param[in] e The enum value to hash.
+     * @return Hash value for the enum.
      */
-    size_t operator()(const E& e) const
+    std::size_t operator()(const E& e) const
     {
-        return static_cast<size_t>(e);
+        return static_cast<std::size_t>(e);
     }
 };
-}
+} // namespace custom
 
 /**
  * @brief Map of attribute enum values to their token names and value types.
@@ -265,6 +302,7 @@ struct DeprecatedDofAttributeDescriptor
     pxr::TfToken axisToken;
 };
 
+/** @brief Descriptors for the deprecated per-axis DOF offset attributes. */
 inline const std::array<DeprecatedDofAttributeDescriptor, 6> kDeprecatedDofAttributes = {
     DeprecatedDofAttributeDescriptor{ pxr::TfToken("isaac:physics:Tr_X:DoFOffset"), "TransX",
                                       pxr::UsdPhysicsTokens->transX },
@@ -278,10 +316,10 @@ inline const std::array<DeprecatedDofAttributeDescriptor, 6> kDeprecatedDofAttri
 };
 
 /// @cond DOXYGEN_SHOULD_SKIP_THIS
-inline const std::unordered_map<std::string, size_t> kTokenFallbackOrder = []()
+inline const std::unordered_map<std::string, std::size_t> kTokenFallbackOrder = []()
 {
-    std::unordered_map<std::string, size_t> order;
-    for (size_t index = 0; index < kDeprecatedDofAttributes.size(); ++index)
+    std::unordered_map<std::string, std::size_t> order;
+    for (std::size_t index = 0; index < kDeprecatedDofAttributes.size(); ++index)
     {
         order.emplace(kDeprecatedDofAttributes[index].tokenName, index);
     }
@@ -332,16 +370,16 @@ inline bool axisHasValidLimits(const pxr::UsdPrim& jointPrim, const pxr::TfToken
  *
  * @param[in] tokenName The DOF token name string.
  * @param[in] orderIndex The order index to use as fallback.
- * @return size_t The computed fallback order.
+ * @return The computed fallback order.
  */
-inline size_t computeFallbackOrder(const std::string& tokenName, int orderIndex)
+inline std::size_t computeFallbackOrder(const std::string& tokenName, int orderIndex)
 {
     const auto iterator = kTokenFallbackOrder.find(tokenName);
     if (iterator != kTokenFallbackOrder.end())
     {
         return iterator->second;
     }
-    return static_cast<size_t>(std::max(orderIndex, 0));
+    return static_cast<std::size_t>(std::max(orderIndex, 0));
 }
 
 /**
@@ -392,8 +430,8 @@ inline std::vector<std::string> collectDeprecatedDofEntries(const pxr::UsdPrim& 
                   {
                       return lhs.first < rhs.first;
                   }
-                  const size_t lhsFallback = computeFallbackOrder(lhs.second, lhs.first);
-                  const size_t rhsFallback = computeFallbackOrder(rhs.second, rhs.first);
+                  const std::size_t lhsFallback = computeFallbackOrder(lhs.second, lhs.first);
+                  const std::size_t rhsFallback = computeFallbackOrder(rhs.second, rhs.first);
                   return lhsFallback < rhsFallback;
               });
 
@@ -445,7 +483,7 @@ inline bool UpdateDeprecatedJointDofOrder(pxr::UsdPrim& jointPrim)
         if (hasCurrentValue && currentValue.size() == orderedTokens.size())
         {
             bool identical = true;
-            for (size_t index = 0; index < orderedTokens.size(); ++index)
+            for (std::size_t index = 0; index < orderedTokens.size(); ++index)
             {
                 if (currentValue[index] != pxr::TfToken(orderedTokens[index]))
                 {
@@ -466,7 +504,7 @@ inline bool UpdateDeprecatedJointDofOrder(pxr::UsdPrim& jointPrim)
     }
 
     pxr::VtTokenArray newValue(orderedTokens.size());
-    for (size_t index = 0; index < orderedTokens.size(); ++index)
+    for (std::size_t index = 0; index < orderedTokens.size(); ++index)
     {
         newValue[index] = pxr::TfToken(orderedTokens[index]);
     }
@@ -474,7 +512,7 @@ inline bool UpdateDeprecatedJointDofOrder(pxr::UsdPrim& jointPrim)
     dofAttribute.Set(newValue);
     return true;
 }
-}
+} // namespace details
 
 inline pxr::TfToken getAttributeName(Attributes attr)
 {
@@ -495,17 +533,7 @@ inline std::pair<pxr::UsdPrim, pxr::UsdPrim> PopulateRobotSchemaFromArticulation
  */
 inline void ApplyRobotAPI(pxr::UsdPrim& prim)
 {
-    prim.AddAppliedSchema(pxr::TfToken(classNames[static_cast<int>(Classes::ROBOT_API)]));
-    // for (const auto& attr : { Attributes::DESCRIPTION, Attributes::NAMESPACE, Attributes::ROBOT_TYPE,
-    //                           Attributes::LICENSE, Attributes::VERSION, Attributes::SOURCE, Attributes::CHANGELOG })
-    // {
-    //     prim.CreateAttribute(getAttributeName(attr), attributeNames.at(attr).second, false);
-    // }
-    // for (const auto& rel : { Relations::ROBOT_LINKS, Relations::ROBOT_JOINTS })
-    // {
-    //     prim.CreateRelationship(relationNames.at(rel), false);
-    // }
-
+    prim.AddAppliedSchema(pxr::TfToken(classNames[static_cast<std::size_t>(Classes::ROBOT_API)]));
     pxr::UsdStageWeakPtr stageWeak = prim.GetStage();
     pxr::UsdStagePtr stage = stageWeak;
     if (stage)
@@ -521,11 +549,7 @@ inline void ApplyRobotAPI(pxr::UsdPrim& prim)
  */
 inline void ApplyLinkAPI(pxr::UsdPrim& prim)
 {
-    prim.AddAppliedSchema(pxr::TfToken(classNames[static_cast<int>(Classes::LINK_API)]));
-    // for (const auto& attr : { Attributes::NAME_OVERRIDE })
-    // {
-    //     prim.CreateAttribute(getAttributeName(attr), attributeNames.at(attr).second, false);
-    // }
+    prim.AddAppliedSchema(pxr::TfToken(classNames[static_cast<std::size_t>(Classes::LINK_API)]));
 }
 
 /**
@@ -535,11 +559,7 @@ inline void ApplyLinkAPI(pxr::UsdPrim& prim)
  */
 inline void ApplySiteAPI(pxr::UsdPrim& prim)
 {
-    prim.AddAppliedSchema(pxr::TfToken(classNames[static_cast<int>(Classes::SITE_API)]));
-    // for (const auto& attr : { Attributes::REFERENCE_DESCRIPTION, Attributes::FORWARD_AXIS })
-    // {
-    //     prim.CreateAttribute(getAttributeName(attr), attributeNames.at(attr).second, false);
-    // }
+    prim.AddAppliedSchema(pxr::TfToken(classNames[static_cast<std::size_t>(Classes::SITE_API)]));
 }
 
 /**
@@ -550,7 +570,7 @@ inline void ApplySiteAPI(pxr::UsdPrim& prim)
  */
 inline void ApplyReferencePointAPI(pxr::UsdPrim& prim)
 {
-    fprintf(stderr, "Warning: ApplyReferencePointAPI is deprecated. Use ApplySiteAPI instead.\n");
+    std::fprintf(stderr, "Warning: ApplyReferencePointAPI is deprecated. Use ApplySiteAPI instead.\n");
     ApplySiteAPI(prim);
 }
 
@@ -561,12 +581,7 @@ inline void ApplyReferencePointAPI(pxr::UsdPrim& prim)
  */
 inline void ApplyJointAPI(pxr::UsdPrim& prim)
 {
-    prim.AddAppliedSchema(pxr::TfToken(classNames[static_cast<int>(Classes::JOINT_API)]));
-    // for (const auto& attr :
-    //      { Attributes::DOF_OFFSET_OP_ORDER, Attributes::JOINT_NAME_OVERRIDE, Attributes::ACTUATOR })
-    // {
-    //     prim.CreateAttribute(getAttributeName(attr), attributeNames.at(attr).second, false);
-    // }
+    prim.AddAppliedSchema(pxr::TfToken(classNames[static_cast<std::size_t>(Classes::JOINT_API)]));
 }
 
 /**
@@ -581,22 +596,8 @@ inline void ApplyJointAPI(pxr::UsdPrim& prim)
  */
 inline pxr::UsdPrim CreateSurfaceGripper(pxr::UsdStagePtr stage, const std::string& primPath)
 {
-    // Create the prim
-    pxr::UsdPrim prim =
-        stage->DefinePrim(pxr::SdfPath(primPath), pxr::TfToken(classNames[static_cast<int>(Classes::SURFACE_GRIPPER)]));
-
-    // Create attributes with default values
-    // for (const auto& attr : { Attributes::STATUS, Attributes::SHEAR_FORCE_LIMIT, Attributes::COAXIAL_FORCE_LIMIT,
-    //                           Attributes::MAX_GRIP_DISTANCE, Attributes::RETRY_INTERVAL })
-    // {
-    //     prim.CreateAttribute(getAttributeName(attr), attributeNames.at(attr).second, false);
-    // }
-
-    // Create relationships
-    // for (const auto& rel : { Relations::ATTACHMENT_POINTS, Relations::GRIPPED_OBJECTS })
-    // {
-    //     prim.CreateRelationship(relationNames.at(rel), false);
-    // }
+    pxr::UsdPrim prim = stage->DefinePrim(
+        pxr::SdfPath(primPath), pxr::TfToken(classNames[static_cast<std::size_t>(Classes::SURFACE_GRIPPER)]));
 
     return prim;
 }
@@ -608,11 +609,7 @@ inline pxr::UsdPrim CreateSurfaceGripper(pxr::UsdStagePtr stage, const std::stri
  */
 inline void ApplyAttachmentPointAPI(pxr::UsdPrim& prim)
 {
-    prim.AddAppliedSchema(pxr::TfToken(classNames[static_cast<int>(Classes::ATTACHMENT_POINT_API)]));
-    // for (const auto& attr : { Attributes::FORWARD_AXIS, Attributes::CLEARANCE_OFFSET })
-    // {
-    //     prim.CreateAttribute(getAttributeName(attr), attributeNames.at(attr).second, false);
-    // }
+    prim.AddAppliedSchema(pxr::TfToken(classNames[static_cast<std::size_t>(Classes::ATTACHMENT_POINT_API)]));
 }
 
 /**
@@ -694,8 +691,8 @@ inline void UpdateDeprecatedSchemas(pxr::UsdPrim& robotPrim)
         return;
     }
 
-    const pxr::TfToken referencePointToken(classNames[static_cast<int>(Classes::REFERENCE_POINT_API)]);
-    const pxr::TfToken jointToken(classNames[static_cast<int>(Classes::JOINT_API)]);
+    const pxr::TfToken referencePointToken(classNames[static_cast<std::size_t>(Classes::REFERENCE_POINT_API)]);
+    const pxr::TfToken jointToken(classNames[static_cast<std::size_t>(Classes::JOINT_API)]);
     for (pxr::UsdPrim prim : pxr::UsdPrimRange(robotPrim))
     {
         if (!prim)
@@ -918,6 +915,6 @@ inline std::pair<pxr::UsdPrim, pxr::UsdPrim> PopulateRobotSchemaFromArticulation
     return { rootLink, rootJoint };
 }
 
-}
-}
-}
+} // namespace schema
+} // namespace robot
+} // namespace isaacsim

@@ -3,7 +3,7 @@ name: urdf-mjcf-to-usd-conversion
 description: "Convert URDF/MJCF to USD for Isaac Sim and Isaac Lab. Use when importing a new robot description."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # URDF / MJCF -> USD Conversion

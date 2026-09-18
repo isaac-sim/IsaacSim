@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+id = "json_pipeline.cpp_python"
+title = "C++ with Python JSON Pipeline"
+summary = "Build JSON in C++ and select a value from Python."
+owners = ["isaacsim.common.string"]
+topics = ["json"]
+
+[build]
+adapter = "cmake"
+targets = ["_json_pipeline_cpp"]
+
+[run]
+adapter = "python"
+path = "main.py"
+
+[requirements]
+system = ["cmake", "cpp", "python", "python_development"]
+cpp_packages = ["nlohmann_json==3.12.0"]
+python_packages = ["jsonpointer==3.1.1"]
+
+[[requirements.modules]]
+name = "isaacsim_common"
+surfaces = ["native_sdk"]
+
+[[test]]
+name = "default"
+stdout_contains = ["Robot CARTER has 7 joints."]

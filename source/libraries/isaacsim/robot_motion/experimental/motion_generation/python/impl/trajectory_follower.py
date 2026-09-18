@@ -15,8 +15,6 @@
 
 """Implementation for robot motion trajectory following controllers."""
 
-from typing import Optional
-
 from ._logging import log
 from .base_controller import BaseController
 from .trajectory import Trajectory
@@ -40,9 +38,7 @@ class TrajectoryFollower(BaseController):
         # Time when the trajectory starts to run in the sim/real world.
         self._start_time = None
 
-    def reset(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
-    ) -> bool:
+    def reset(self, estimated_state: RobotState, setpoint_state: RobotState | None, t: float, **kwargs: object) -> bool:
         """Set the trajectory start time for the current trajectory.
 
         Sets the start time for the current trajectory to the provided time `t`. This
@@ -67,8 +63,8 @@ class TrajectoryFollower(BaseController):
         return True
 
     def forward(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
-    ) -> Optional[RobotState]:
+        self, estimated_state: RobotState, setpoint_state: RobotState | None, t: float, **kwargs: object
+    ) -> RobotState | None:
         """Compute the desired robot state from the trajectory at the current time.
 
         Args:
@@ -114,7 +110,7 @@ class TrajectoryFollower(BaseController):
             return None
 
         if trajectory_time > self._trajectory.duration:
-            # Documented behaviour: the trajectory is complete (time is beyond its end point).
+            # Documented behavior: the trajectory is complete (time is beyond its end point).
             # Clear both values and return None without warning.
             self._start_time = None
             self._trajectory = None

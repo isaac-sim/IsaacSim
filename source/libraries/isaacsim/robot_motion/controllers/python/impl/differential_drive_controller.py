@@ -75,7 +75,7 @@ class DifferentialDriveController(BaseController):
     - ``omega = dot(rotation_direction, site.angular_velocity)``
 
     The control point is interpreted as the point midway between the two front
-    wheels, which may differ from the robot's root (e.g. centre of mass).
+    wheels, which may differ from the robot's root (e.g. center of mass).
 
     Both direction vectors are normalized at construction time and must be at
     least 89.9 degrees apart.

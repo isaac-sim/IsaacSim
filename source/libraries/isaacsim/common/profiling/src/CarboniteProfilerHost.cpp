@@ -50,14 +50,14 @@ class CarboniteProfilerSession
 public:
     static CarboniteProfilerSession& get() noexcept
     {
-        static CarboniteProfilerSession session;
-        return session;
+        static CarboniteProfilerSession s_session;
+        return s_session;
     }
 
     ~CarboniteProfilerSession() noexcept
     {
         const std::lock_guard<std::mutex> lock(m_mutex);
-        stopUnlocked(false);
+        _stopUnlocked(false);
     }
 
     Result start(const char* pluginDirectory) noexcept
@@ -65,15 +65,15 @@ public:
         const std::lock_guard<std::mutex> lock(m_mutex);
         if (pluginDirectory == nullptr || pluginDirectory[0] == '\0')
         {
-            return fail(Result::eInvalidArgument, "The Carbonite plugin directory is required");
+            return _fail(Result::eInvalidArgument, "The Carbonite plugin directory is required");
         }
         if (m_framework != nullptr || m_profiler != nullptr || m_hostToken != 0)
         {
-            return fail(Result::eAlreadyStarted, "Standalone profiling is already running");
+            return _fail(Result::eAlreadyStarted, "Standalone profiling is already running");
         }
         if (isaacsimCommonProfilingHasCarboniteHost() != 0)
         {
-            return fail(Result::eProfilingHostUnavailable, "Another profiling host is already attached");
+            return _fail(Result::eProfilingHostUnavailable, "Another profiling host is already attached");
         }
 
         try
@@ -83,7 +83,7 @@ public:
             m_framework = carb::acquireFrameworkAndRegisterBuiltins(&arguments);
             if (m_framework == nullptr)
             {
-                return fail(Result::eFrameworkUnavailable, "Could not initialize the Carbonite framework");
+                return _fail(Result::eFrameworkUnavailable, "Could not initialize the Carbonite framework");
             }
 
             const char* searchPaths[] = { pluginDirectory };
@@ -91,8 +91,8 @@ public:
             m_profiler = m_framework->tryAcquireInterface<carb::profiler::IProfiler>("carb.profiler-nvtx.plugin");
             if (m_profiler == nullptr)
             {
-                releaseFramework();
-                return fail(Result::eProfilerUnavailable, "Could not load the Carbonite NVTX profiler plugin");
+                _releaseFramework();
+                return _fail(Result::eProfilerUnavailable, "Could not load the Carbonite NVTX profiler plugin");
             }
 
             m_profiler->startup();
@@ -100,35 +100,35 @@ public:
                 isaacsimCommonProfilingAttachCarboniteHost(m_profiler, &m_hostToken);
             if (result != ISAACSIM_COMMON_PROFILING_HOST_SUCCESS)
             {
-                shutdownProfiler();
-                releaseFramework();
-                return fail(Result::eProfilingHostUnavailable, "Another profiling host is already attached");
+                _shutdownProfiler();
+                _releaseFramework();
+                return _fail(Result::eProfilingHostUnavailable, "Another profiling host is already attached");
             }
             m_lastError.clear();
             return Result::eSuccess;
         }
         catch (...)
         {
-            shutdownProfiler();
-            releaseFramework();
-            return fail(Result::eFrameworkUnavailable, "Carbonite NVTX profiler startup failed");
+            _shutdownProfiler();
+            _releaseFramework();
+            return _fail(Result::eFrameworkUnavailable, "Carbonite NVTX profiler startup failed");
         }
     }
 
     Result stop() noexcept
     {
         const std::lock_guard<std::mutex> lock(m_mutex);
-        return stopUnlocked(true);
+        return _stopUnlocked(true);
     }
 
     const char* getLastError() const noexcept
     {
-        static thread_local std::string error;
+        static thread_local std::string s_error;
         try
         {
             const std::lock_guard<std::mutex> lock(m_mutex);
-            error = m_lastError;
-            return error.c_str();
+            s_error = m_lastError;
+            return s_error.c_str();
         }
         catch (...)
         {
@@ -137,13 +137,13 @@ public:
     }
 
 private:
-    Result stopUnlocked(bool requireStarted) noexcept
+    Result _stopUnlocked(bool requireStarted) noexcept
     {
         if (m_framework == nullptr || m_profiler == nullptr || m_hostToken == 0)
         {
             if (requireStarted)
             {
-                return fail(Result::eNotStarted, "Standalone profiling is not running");
+                return _fail(Result::eNotStarted, "Standalone profiling is not running");
             }
             return Result::eSuccess;
         }
@@ -153,13 +153,13 @@ private:
         m_hostToken = 0;
         if (detachResult != ISAACSIM_COMMON_PROFILING_HOST_SUCCESS)
         {
-            result = fail(Result::eProfilingHostUnavailable, "Could not detach the standalone profiling host");
+            result = _fail(Result::eProfilingHostUnavailable, "Could not detach the standalone profiling host");
         }
-        if (!shutdownProfiler() && result == Result::eSuccess)
+        if (!_shutdownProfiler() && result == Result::eSuccess)
         {
-            result = fail(Result::eFrameworkUnavailable, "Carbonite NVTX profiler shutdown failed");
+            result = _fail(Result::eFrameworkUnavailable, "Carbonite NVTX profiler shutdown failed");
         }
-        releaseFramework();
+        _releaseFramework();
         if (result == Result::eSuccess)
         {
             m_lastError.clear();
@@ -167,7 +167,7 @@ private:
         return result;
     }
 
-    Result fail(Result result, const char* message) noexcept
+    Result _fail(Result result, const char* message) noexcept
     {
         try
         {
@@ -179,7 +179,7 @@ private:
         return result;
     }
 
-    bool shutdownProfiler() noexcept
+    bool _shutdownProfiler() noexcept
     {
         bool succeeded = true;
         if (m_profiler != nullptr)
@@ -197,7 +197,7 @@ private:
         return succeeded;
     }
 
-    void releaseFramework() noexcept
+    void _releaseFramework() noexcept
     {
         m_hostToken = 0;
         if (m_framework != nullptr)

@@ -15,8 +15,9 @@
 
 """Test suite for O3dyn omnidirectional robot simulation including loading, movement, and reference testing."""
 
+import math
+
 import carb
-import carb.tokens
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 
@@ -26,8 +27,7 @@ import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.test
 import omni.timeline
 from isaacsim.core.experimental.objects import GroundPlane
-from isaacsim.core.experimental.prims import XformPrim
-from isaacsim.core.experimental.utils.app import get_extension_path
+from isaacsim.core.experimental.prims import Articulation, XformPrim
 from isaacsim.core.experimental.utils.stage import open_stage_async
 from isaacsim.core.experimental.utils.transform import quaternion_to_euler_angles
 from isaacsim.storage.native import get_assets_root_path_async
@@ -42,20 +42,11 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
         """Set up test environment with O3dyn robot asset path."""
         self._timeline = omni.timeline.get_timeline_interface()
 
-        ext_manager = omni.kit.app.get_app().get_extension_manager()
         self._assets_root_path = await get_assets_root_path_async()
         if self._assets_root_path is None:
             carb.log_error("Could not find Isaac Sim assets folder")
             return
 
-        self._extension_path = get_extension_path("isaacsim.test.collection")
-        ## setup carter_v1:
-        # open local carter_v1:
-        # (result, error) = await omni.usd.get_context().open_stage_async(
-        #     self._extension_path + "/data/tests/carter_v1.usd"
-        # )
-
-        # add in carter (from nucleus)
         self.usd_path = self._assets_root_path + "/Isaac/Robots_Multiphysics/Fraunhofer/O3dyn/o3dyn.usda"
 
     # After running each test
@@ -67,160 +58,120 @@ class TestO3dyn(omni.kit.test.AsyncTestCase):
         while omni.usd.get_context().get_stage_loading_status()[2] > 0:
             await omni.kit.app.get_app().next_update_async()
 
-    async def test_loading(self) -> None:
-        """Test that the O3dyn robot loads and settles at expected position."""
-        result, error = await open_stage_async(self.usd_path)
+    async def _step(self, frame_count: int) -> None:
+        for _ in range(frame_count):
+            await omni.kit.app.get_app().next_update_async()
 
+    @staticmethod
+    def _set_wheel_velocities(wheel_prims, velocity_by_name: dict[str, float], default: float = 0.0) -> None:
+        for prim in wheel_prims:
+            prim.GetAttribute("drive:angular:physics:targetVelocity").Set(velocity_by_name.get(prim.GetName(), default))
+
+    @staticmethod
+    def _local_xy_displacement(displacement, start_yaw: float) -> tuple[float, float]:
+        yaw = math.radians(start_yaw)
+        return (
+            math.cos(yaw) * displacement[0] + math.sin(yaw) * displacement[1],
+            -math.sin(yaw) * displacement[0] + math.cos(yaw) * displacement[1],
+        )
+
+    def _stop_robot(self, robot: Articulation, wheel_prims) -> None:
+        self._set_wheel_velocities(wheel_prims, {})
+        robot.set_dof_velocities([0.0])
+        robot.set_velocities(linear_velocities=[0.0, 0.0, 0.0], angular_velocities=[0.0, 0.0, 0.0])
+
+    async def test_loading_reference_and_motion(self) -> None:
+        """Test O3dyn loading, referencing, and motion behaviors in sequence."""
+        result, error = await open_stage_async(self.usd_path)
         stage = omni.usd.get_context().get_stage()
 
-        # Make sure the stage loaded
-        self.assertTrue(result)
+        with self.subTest("direct stage loading"):
+            self.assertTrue(result, error)
 
-        # Set stage units
         stage_utils.set_stage_units(meters_per_unit=1.0)
         await app_utils.update_app_async()
 
         self._timeline.play()
-        for i in range(150):
-            await omni.kit.app.get_app().next_update_async()
+        await self._step(150)
         base_link_path = str(stage.GetDefaultPrim().GetPath().AppendPath("base_link"))
         positions, _ = XformPrim(base_link_path).get_world_poses()
         translate = positions.numpy()[0]
-        self.assertAlmostEqual(translate[0], 0.00, delta=0.01)
-        self.assertAlmostEqual(translate[1], 0.00, delta=0.01)
-
-        self.assertAlmostEqual(translate[2], -0.01, delta=0.01)
+        with self.subTest("direct stage settling"):
+            self.assertAlmostEqual(translate[0], 0.00, delta=0.01)
+            self.assertAlmostEqual(translate[1], 0.00, delta=0.01)
+            self.assertAlmostEqual(translate[2], -0.01, delta=0.01)
         self._timeline.stop()
 
-    # general, slowly building up speed testcase
-    async def test_add_as_reference(self) -> None:
-        """Test loading O3dyn as a USD reference with ground plane."""
         await stage_utils.create_new_stage_async()
         stage = omni.usd.get_context().get_stage()
-
         robot_prim = stage.DefinePrim(str(stage.GetDefaultPrim().GetPath()) + "/O3dyn", "Xform")
-
         robot_prim.GetReferences().AddReference(self.usd_path)
 
-        GroundPlane("/World/groundPlane", sizes=1000.0, positions=[[0.0, 0.0, -0.12]], colors=[1.0, 1.0, 1.0])
-        await app_utils.update_app_async()
-
-        self._timeline.play()
-        for i in range(120):
-            await omni.kit.app.get_app().next_update_async()
-
-        base_link_path = str(robot_prim.GetPath().AppendPath("base_link"))
-        positions, _ = XformPrim(base_link_path).get_world_poses()
-        translate = positions.numpy()[0]
-        self.assertAlmostEqual(translate[0], 0.00, delta=0.01)
-        self.assertAlmostEqual(translate[1], 0.00, delta=0.01)
-
-        self.assertAlmostEqual(translate[2], -0.05, delta=0.01)
-        self._timeline.stop()
-
-    async def test_move_forward(self) -> None:
-        """Test O3dyn moves forward when all wheels rotate in same direction."""
-        await stage_utils.create_new_stage_async()
-        stage = omni.usd.get_context().get_stage()
-
-        robot_prim = stage.DefinePrim(str(stage.GetDefaultPrim().GetPath()) + "/O3dyn", "Xform")
-
-        robot_prim.GetReferences().AddReference(self.usd_path)
-
-        # Set stage units
         stage_utils.set_stage_units(meters_per_unit=1.0)
         GroundPlane("/World/groundPlane", sizes=1000.0, positions=[[0.0, 0.0, -0.12]], colors=[1.0, 1.0, 1.0])
+        robot = Articulation(str(robot_prim.GetPath()))
         await app_utils.update_app_async()
 
-        for prim in stage.GetPrimAtPath(robot_prim.GetPath().AppendPath("wheel_drive")).GetChildren():
-            prim.GetAttribute("drive:angular:physics:targetVelocity").Set(100)
         self._timeline.play()
-        for i in range(300):
-            await omni.kit.app.get_app().next_update_async()
+        await self._step(120)
 
         base_link_path = str(robot_prim.GetPath().AppendPath("base_link"))
-        positions, _ = XformPrim(base_link_path).get_world_poses()
+        base_link = XformPrim(base_link_path)
+        positions, orientations = base_link.get_world_poses()
         translate = positions.numpy()[0]
-        self.assertGreater(translate[0], 1.0)
-        self.assertAlmostEqual(translate[1], 0.00, delta=0.02)
-        self._timeline.stop()
+        with self.subTest("reference loading"):
+            self.assertAlmostEqual(translate[0], 0.00, delta=0.01)
+            self.assertAlmostEqual(translate[1], 0.00, delta=0.01)
+            self.assertAlmostEqual(translate[2], -0.05, delta=0.01)
 
-    async def test_move_sideways(self) -> None:
-        """Test O3dyn moves sideways using mecanum wheel strafing."""
-        await stage_utils.create_new_stage_async()
-        stage = omni.usd.get_context().get_stage()
+        wheel_prims = stage.GetPrimAtPath(robot_prim.GetPath().AppendPath("wheel_drive")).GetChildren()
 
-        robot_prim = stage.DefinePrim(str(stage.GetDefaultPrim().GetPath()) + "/O3dyn", "Xform")
+        forward_start = translate.copy()
+        forward_start_yaw = quaternion_to_euler_angles(orientations, degrees=True).numpy()[0][2]
+        self._set_wheel_velocities(wheel_prims, {}, default=100.0)
+        await self._step(300)
+        positions, _ = base_link.get_world_poses()
+        forward_displacement = self._local_xy_displacement(positions.numpy()[0] - forward_start, forward_start_yaw)
+        with self.subTest("forward motion"):
+            self.assertGreater(forward_displacement[0], 1.0)
+            self.assertGreater(forward_displacement[0], 10.0 * abs(forward_displacement[1]))
 
-        robot_prim.GetReferences().AddReference(self.usd_path)
-
-        # Set stage units
-        stage_utils.set_stage_units(meters_per_unit=1.0)
-        GroundPlane("/World/groundPlane", sizes=1000.0, positions=[[0.0, 0.0, -0.12]], colors=[1.0, 1.0, 1.0])
-        await app_utils.update_app_async()
-
-        for prim in stage.GetPrimAtPath(robot_prim.GetPath().AppendPath("wheel_drive")).GetChildren():
-            if prim.GetName() in ["wheel_fr_joint", "wheel_rl_joint"]:
-                prim.GetAttribute("drive:angular:physics:targetVelocity").Set(100)
-            else:
-                prim.GetAttribute("drive:angular:physics:targetVelocity").Set(-100)
-        self._timeline.play()
-        for i in range(300):
-            await omni.kit.app.get_app().next_update_async()
-
-        base_link_path = str(robot_prim.GetPath().AppendPath("base_link"))
-        positions, _ = XformPrim(base_link_path).get_world_poses()
-        translate = positions.numpy()[0]
-        self.assertAlmostEqual(translate[0], 0.00, delta=0.1)
-        self.assertGreater(
-            translate[1],
-            1.00,
+        self._stop_robot(robot, wheel_prims)
+        await self._step(1)
+        positions, orientations = base_link.get_world_poses()
+        sideways_start = positions.numpy()[0]
+        sideways_start_yaw = quaternion_to_euler_angles(orientations, degrees=True).numpy()[0][2]
+        self._set_wheel_velocities(
+            wheel_prims,
+            {"wheel_fr_joint": 100.0, "wheel_rl_joint": 100.0},
+            default=-100.0,
         )
-        self._timeline.stop()
+        await self._step(300)
+        positions, _ = base_link.get_world_poses()
+        sideways_displacement = self._local_xy_displacement(positions.numpy()[0] - sideways_start, sideways_start_yaw)
+        with self.subTest("sideways motion"):
+            self.assertGreater(sideways_displacement[1], 1.00)
+            self.assertGreater(sideways_displacement[1], 10.0 * abs(sideways_displacement[0]))
 
-    async def test_rotate(self) -> None:
-        """Test O3dyn rotates in place using differential wheel speeds."""
-        await stage_utils.create_new_stage_async()
-        stage = omni.usd.get_context().get_stage()
-
-        robot_prim = stage.DefinePrim(str(stage.GetDefaultPrim().GetPath()) + "/O3dyn", "Xform")
-
-        robot_prim.GetReferences().AddReference(self.usd_path)
-
-        # Set stage units
-        stage_utils.set_stage_units(meters_per_unit=1.0)
-        GroundPlane("/World/groundPlane", sizes=1000.0, positions=[[0.0, 0.0, -0.12]], colors=[1.0, 1.0, 1.0])
-        await app_utils.update_app_async()
-
-        for prim in stage.GetPrimAtPath(robot_prim.GetPath().AppendPath("wheel_drive")).GetChildren():
-            if prim.GetName() in ["wheel_fl_joint", "wheel_rl_joint"]:
-                prim.GetAttribute("drive:angular:physics:targetVelocity").Set(150)
-            else:
-                prim.GetAttribute("drive:angular:physics:targetVelocity").Set(-150)
-        self._timeline.play()
-        await omni.kit.app.get_app().next_update_async()
-
-        # TODO: regenerate goldens
-        for i in range(298):
-            await omni.kit.app.get_app().next_update_async()
-
-        base_link_path = str(robot_prim.GetPath().AppendPath("base_link"))
-        positions, orientations = XformPrim(base_link_path).get_world_poses()
-        translate = positions.numpy()[0]
-        # Robot origin is not at center of rotation, give it some slack on X/Y
-        self.assertLess(
-            abs(translate[0]),
-            0.3,
+        self._stop_robot(robot, wheel_prims)
+        await self._step(1)
+        positions, orientations = base_link.get_world_poses()
+        rotation_start = positions.numpy()[0]
+        rotation_start_yaw = quaternion_to_euler_angles(orientations, degrees=True).numpy()[0][2]
+        self._set_wheel_velocities(
+            wheel_prims,
+            {"wheel_fl_joint": 150.0, "wheel_rl_joint": 150.0},
+            default=-150.0,
         )
-        self.assertLess(
-            abs(translate[1]),
-            0.3,
-        )
-        # Get rotation angle from quaternion using euler angles (Z rotation = yaw)
-        euler_angles = quaternion_to_euler_angles(orientations, degrees=True)
-        rotation = abs(euler_angles.numpy()[0][2])  # Z rotation (yaw) in degrees
-        self.assertGreater(
-            rotation,
-            45,
-        )
+        await self._step(299)
+        positions, orientations = base_link.get_world_poses()
+        rotation_displacement = positions.numpy()[0] - rotation_start
+        rotation_end_yaw = quaternion_to_euler_angles(orientations, degrees=True).numpy()[0][2]
+        rotation = abs((rotation_end_yaw - rotation_start_yaw + 180.0) % 360.0 - 180.0)
+        with self.subTest("rotation"):
+            # Robot origin is not at center of rotation, give it some slack on X/Y.
+            self.assertLess(abs(rotation_displacement[0]), 0.3)
+            self.assertLess(abs(rotation_displacement[1]), 0.3)
+            self.assertGreater(rotation, 45.0)
+
         self._timeline.stop()

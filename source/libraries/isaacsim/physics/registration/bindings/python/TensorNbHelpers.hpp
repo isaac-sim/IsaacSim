@@ -17,8 +17,8 @@
 
 #include <isaacsim/physics/registration/tensors/Metadata.hpp>
 #include <isaacsim/physics/registration/tensors/PhysicsEnums.hpp>
-#include <isaacsim/physics/registration/tensors/TensorDesc.hpp>
-#include <isaacsim/physics/registration/tensors/TensorSpec.hpp>
+#include <isaacsim/physics/registration/tensors/TensorDescription.hpp>
+#include <isaacsim/physics/registration/tensors/TensorSpecification.hpp>
 #include <isaacsim/physics/registration/tensors/TensorTypes.hpp>
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
@@ -44,9 +44,9 @@ namespace nb = nanobind;
 
 using tensors::DeviceKind;
 using tensors::DType;
-using tensors::TensorDesc;
+using tensors::TensorDescription;
 
-inline DType dlpackToDType(const nb::dlpack::dtype& dataType)
+inline DType convertDLPackToDataType(const nb::dlpack::dtype& dataType)
 {
     if (dataType.code == static_cast<uint8_t>(nb::dlpack::dtype_code::Float))
     {
@@ -104,7 +104,7 @@ inline DType dlpackToDType(const nb::dlpack::dtype& dataType)
     return DType::eUnknown;
 }
 
-inline nb::dlpack::dtype dtypeToDLPack(DType dataType)
+inline nb::dlpack::dtype convertDataTypeToDLPack(DType dataType)
 {
     using nb::dlpack::dtype_code;
     switch (dataType)
@@ -136,7 +136,7 @@ inline nb::dlpack::dtype dtypeToDLPack(DType dataType)
     }
 }
 
-inline DeviceKind dlpackDeviceToDeviceKind(int deviceType)
+inline DeviceKind convertDLPackDeviceToDeviceKind(int deviceType)
 {
     if (deviceType == nb::device::cpu::value)
     {
@@ -149,7 +149,7 @@ inline DeviceKind dlpackDeviceToDeviceKind(int deviceType)
     return DeviceKind::eCpu;
 }
 
-inline int deviceKindToDLPack(DeviceKind deviceKind)
+inline int convertDeviceKindToDLPack(DeviceKind deviceKind)
 {
     switch (deviceKind)
     {
@@ -162,14 +162,14 @@ inline int deviceKindToDLPack(DeviceKind deviceKind)
     }
 }
 
-// Convert a Python ndarray into a non-owning TensorDesc the C++ side can
+// Convert a Python ndarray into a non-owning TensorDescription the C++ side can
 // read/write. The underlying buffer stays owned by Python; implementations must not
 // retain pointers past their invocation.
-inline TensorDesc arrayToTensorDescriptor(const nb::ndarray<>& array)
+inline TensorDescription convertArrayToTensorDescriptor(const nb::ndarray<>& array)
 {
-    TensorDesc descriptor;
+    TensorDescription descriptor;
     descriptor.data = const_cast<void*>(array.data());
-    descriptor.dtype = dlpackToDType(array.dtype());
+    descriptor.dtype = convertDLPackToDataType(array.dtype());
     descriptor.shape.reserve(array.ndim());
     for (size_t dimensionIndex = 0; dimensionIndex < array.ndim(); ++dimensionIndex)
     {
@@ -180,7 +180,7 @@ inline TensorDesc arrayToTensorDescriptor(const nb::ndarray<>& array)
     {
         descriptor.strides.push_back(array.stride(dimensionIndex));
     }
-    descriptor.device = dlpackDeviceToDeviceKind(array.device_type());
+    descriptor.device = convertDLPackDeviceToDeviceKind(array.device_type());
     descriptor.deviceOrdinal = array.device_id();
     return descriptor;
 }
@@ -193,7 +193,7 @@ inline TensorDesc arrayToTensorDescriptor(const nb::ndarray<>& array)
 // bool, unknown, and an omitted index pass through to the registered
 // implementation. Uses std::invalid_argument, which nanobind maps to a Python
 // ValueError.
-inline void requireInt32IndexDtype(const TensorDesc& indices, const char* operationName)
+inline void requireInt32IndexDtype(const TensorDescription& indices, const char* operationName)
 {
     switch (indices.dtype)
     {
@@ -210,7 +210,7 @@ inline void requireInt32IndexDtype(const TensorDesc& indices, const char* operat
     }
 }
 
-// Wrap a TensorDesc into a framework-agnostic ndarray (DLPack-typed) that
+// Wrap a TensorDescription into a framework-agnostic ndarray (DLPack-typed) that
 // aliases the same buffer. Returning generic `nb::ndarray<>` (rather than
 // the numpy-typed flavor) means nanobind hands Python a DLPack capsule
 // that carries correct device info for either CPU or CUDA buffers — no
@@ -218,7 +218,7 @@ inline void requireInt32IndexDtype(const TensorDesc& indices, const char* operat
 // (`omni.physics.tensors.frontends`) wraps it into the caller's native
 // tensor type (`wp.array`, `torch.Tensor`, `np.ndarray`) at the public
 // `view.get_data(...)` boundary. Used on the *result* path.
-inline nb::ndarray<> tensorDescriptorToArray(const TensorDesc& descriptor, nb::handle owner)
+inline nb::ndarray<> convertTensorDescriptorToArray(const TensorDescription& descriptor, nb::handle owner)
 {
     if (descriptor.data == nullptr)
     {
@@ -234,24 +234,24 @@ inline nb::ndarray<> tensorDescriptorToArray(const TensorDesc& descriptor, nb::h
 
     return nb::ndarray<>(descriptor.data, shape.size(), shape.data(), owner,
                          descriptor.strides.empty() ? nullptr : descriptor.strides.data(),
-                         dtypeToDLPack(descriptor.dtype), deviceKindToDLPack(descriptor.device),
+                         convertDataTypeToDLPack(descriptor.dtype), convertDeviceKindToDLPack(descriptor.device),
                          descriptor.deviceOrdinal);
 }
 
-// Backwards-compat alias for the engine-callback paths (`wrapPythonGetCallback`,
+// Backward-compatibility alias for the engine-callback paths (`wrapPythonGetCallback`,
 // `wrapPythonSetCallback`, etc.). The callback may receive GPU data, so the engine
 // adapter is responsible for wrapping the DLPack capsule into its native
 // tensor type via the frontend (or `wp.from_dlpack` etc.) before
 // forwarding to a method that expects a native tensor.
-inline nb::ndarray<> tensorDescriptorToNumpy(const TensorDesc& descriptor, nb::handle owner)
+inline nb::ndarray<> convertTensorDescriptorToNumpy(const TensorDescription& descriptor, nb::handle owner)
 {
-    return tensorDescriptorToArray(descriptor, owner);
+    return convertTensorDescriptorToArray(descriptor, owner);
 }
 
-// Pin a Python object for the lifetime of a non-owning TensorDesc that aliases
+// Pin a Python object for the lifetime of a non-owning TensorDescription that aliases
 // its storage: the returned shared_ptr holds a reference to the object, and its
 // deleter re-acquires the GIL before releasing it (the last owner may drop on
-// any thread). Attach it to `TensorDesc::keepalive` so `data` outlives the call
+// any thread). Attach it to `TensorDescription::keepAlive` so `data` outlives the call
 // that produced it -- the `get_data` binding then forwards it to the result
 // array's owner.
 inline std::shared_ptr<void> createPythonKeepAlive(nb::object object)
@@ -281,36 +281,37 @@ inline std::shared_ptr<void> createArrayKeepAlive(nb::ndarray<> array)
                                  });
 }
 
-// Convert a Python GET-result object into an OWNING TensorDesc, pinning whatever
-// actually owns the aliased storage: a TensorDesc's own owner, or the imported
+// Convert a Python GET-result object into an OWNING TensorDescription, pinning whatever
+// actually owns the aliased storage: a TensorDescription's own owner, or the imported
 // ndarray for a bare ndarray / DLPack capsule. When the result aliases the
-// caller-supplied output alias, drop the keepalive so the binding pins the caller's
+// caller-supplied output alias, drop the keepAlive so the binding pins the caller's
 // real `out` -- the synthetic alias handed to the callback is non-owning.
-[[maybe_unused]] inline TensorDesc tensorDescriptorFromResultObject(nb::object object, const TensorDesc* outputAlias)
+[[maybe_unused]] inline TensorDescription createTensorDescriptionFromResultObject(nb::object object,
+                                                                                  const TensorDescription* outputAlias)
 {
-    TensorDesc descriptor;
+    TensorDescription descriptor;
     try
     {
-        descriptor = nb::cast<TensorDesc>(object);
-        // A TensorDesc built from an ndarray carries its own owner (see the
-        // TensorDesc ndarray constructor); pin the object itself only as a fallback.
-        if (!descriptor.isEmpty() && !descriptor.keepalive)
+        descriptor = nb::cast<TensorDescription>(object);
+        // A TensorDescription built from an ndarray carries its own owner (see the
+        // TensorDescription ndarray constructor); pin the object itself only as a fallback.
+        if (!descriptor.isEmpty() && !descriptor.keepAlive)
         {
-            descriptor.keepalive = createPythonKeepAlive(object);
+            descriptor.keepAlive = createPythonKeepAlive(object);
         }
     }
     catch (const nb::cast_error&)
     {
         nb::ndarray<> array = nb::cast<nb::ndarray<>>(object);
-        descriptor = arrayToTensorDescriptor(array);
+        descriptor = convertArrayToTensorDescriptor(array);
         if (!descriptor.isEmpty())
         {
-            descriptor.keepalive = createArrayKeepAlive(std::move(array));
+            descriptor.keepAlive = createArrayKeepAlive(std::move(array));
         }
     }
     if (outputAlias && !outputAlias->isEmpty() && descriptor.data == outputAlias->data)
     {
-        descriptor.keepalive.reset();
+        descriptor.keepAlive.reset();
     }
     return descriptor;
 }

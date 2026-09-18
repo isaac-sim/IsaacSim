@@ -36,7 +36,7 @@ thread_local BackendContext g_context;
 namespace
 {
 
-std::string getCurrentBackendImpl(const std::string* data, std::size_t count, std::optional<bool> raiseOnUnsupported)
+std::string resolveCurrentBackend(const std::string* data, std::size_t count, std::optional<bool> raiseOnUnsupported)
 {
     if (count == 0)
     {
@@ -57,17 +57,17 @@ std::string getCurrentBackendImpl(const std::string* data, std::size_t count, st
 
     if (raiseOnUnsupported.value_or(details::g_context.raiseOnUnsupported))
     {
-        std::ostringstream oss;
-        oss << "Unsupported backend '" << activeBackend << "'. Supported backends: ";
+        std::ostringstream messageStream;
+        messageStream << "Unsupported backend '" << activeBackend << "'. Supported backends: ";
         for (std::size_t i = 0; i < count; ++i)
         {
             if (i > 0)
             {
-                oss << ", ";
+                messageStream << ", ";
             }
-            oss << '\'' << data[i] << '\'';
+            messageStream << '\'' << data[i] << '\'';
         }
-        throw std::runtime_error(oss.str());
+        throw std::runtime_error(messageStream.str());
     }
     return defaultBackend;
 }
@@ -91,12 +91,12 @@ BackendGuard::~BackendGuard()
 std::string getCurrentBackend(const std::initializer_list<std::string>& supportedBackends,
                               std::optional<bool> raiseOnUnsupported)
 {
-    return getCurrentBackendImpl(supportedBackends.begin(), supportedBackends.size(), raiseOnUnsupported);
+    return resolveCurrentBackend(supportedBackends.begin(), supportedBackends.size(), raiseOnUnsupported);
 }
 
 std::string getCurrentBackend(const std::vector<std::string>& supportedBackends, std::optional<bool> raiseOnUnsupported)
 {
-    return getCurrentBackendImpl(supportedBackends.data(), supportedBackends.size(), raiseOnUnsupported);
+    return resolveCurrentBackend(supportedBackends.data(), supportedBackends.size(), raiseOnUnsupported);
 }
 
 bool isBackendSet()

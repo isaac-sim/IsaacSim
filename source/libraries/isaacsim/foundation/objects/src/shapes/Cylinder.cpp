@@ -29,12 +29,8 @@ Cylinder::Cylinder(const std::variant<std::string, std::vector<std::string>>& pa
                    const std::optional<array::Array>& heights,
                    const std::optional<std::variant<std::string, std::vector<std::string>>>& axes,
                    const std::optional<ColorType>& colors,
-                   const std::optional<array::Array>& positions,
-                   const std::optional<array::Array>& translations,
-                   const std::optional<array::Array>& orientations,
-                   const std::optional<array::Array>& scales,
                    bool resetXformOpProperties)
-    : Shape(paths, /*shapeType=*/"Cylinder", colors, positions, translations, orientations, scales, resetXformOpProperties)
+    : Shape(paths, /*shapeType=*/"Cylinder", colors, resetXformOpProperties)
 {
     // Initialize instance from arguments.
     if (radii.has_value())
@@ -87,6 +83,11 @@ std::vector<std::string> Cylinder::getAxes(const std::optional<array::Array>& in
 void Cylinder::updateExtents()
 {
     // TODO: Implement and call it when setting values.
+}
+
+array::Array Cylinder::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("Cylinder");
 }
 
 } // namespace shapes

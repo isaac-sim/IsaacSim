@@ -45,6 +45,7 @@ def _is_maximal_solver(solver: Any) -> bool:
 
     Returns:
         True for a supported maximal-coordinate solver, otherwise False.
+
     """
     import newton.solvers as solvers
 
@@ -63,6 +64,7 @@ class NewtonStage:
            via ``ovnewton.attach_ovstage``, and creates solver state.
         3. Subsequent calls to :meth:`simulate` advance time.
         4. :meth:`on_detach` / :meth:`close` clear the attachment and mark the stage uninitialized.
+
     """
 
     def __init__(self, config: NewtonConfig | None = None) -> None:
@@ -120,6 +122,7 @@ class NewtonStage:
 
         Returns:
             True when the nonzero identifier is accepted, otherwise False.
+
         """
         if stage_id == 0:
             _log.warning("on_attach called with stage_id=0; ignoring")
@@ -156,6 +159,7 @@ class NewtonStage:
 
         Returns:
             Attached stage identifier, or zero when no stage is attached.
+
         """
         return self._stage_id
 
@@ -169,6 +173,7 @@ class NewtonStage:
 
         Returns:
             True when a borrowed ovstage reference is held, otherwise False.
+
         """
         return self._ovstage is not None
 
@@ -182,6 +187,7 @@ class NewtonStage:
 
         Returns:
             Newton model after successful model construction, or None before construction or for an empty stage.
+
         """
         return self._model
 
@@ -191,6 +197,7 @@ class NewtonStage:
 
         Returns:
             Current Newton state after successful model construction, or None when no model is available.
+
         """
         return self._state_0
 
@@ -200,6 +207,7 @@ class NewtonStage:
 
         Returns:
             Scratch Newton state after successful model construction, or None when no model is available.
+
         """
         return self._state_1
 
@@ -209,6 +217,7 @@ class NewtonStage:
 
         Returns:
             Control buffer after successful model construction, or None when no model is available.
+
         """
         return self._control
 
@@ -218,6 +227,7 @@ class NewtonStage:
 
         Returns:
             Contact buffer after successful model construction, or None when no model is available.
+
         """
         return self._contacts
 
@@ -227,6 +237,7 @@ class NewtonStage:
 
         Returns:
             Solver after successful model construction, or None when no model is available.
+
         """
         return self._solver
 
@@ -236,6 +247,7 @@ class NewtonStage:
 
         Returns:
             True when the active solver advances maximal-coordinate state.
+
         """
         return self._solver_is_maximal
 
@@ -245,6 +257,7 @@ class NewtonStage:
 
         Returns:
             True after an initialization attempt completes, including an empty-stage initialization.
+
         """
         return self._initialized
 
@@ -254,6 +267,7 @@ class NewtonStage:
 
         Returns:
             Attached ovstage Stage, or None when no stage is attached.
+
         """
         return self._ovstage
 
@@ -263,6 +277,7 @@ class NewtonStage:
 
         Returns:
             Active ``ovnewton.StageBinding``, or None before construction or for an empty stage.
+
         """
         return self._binding
 
@@ -276,6 +291,7 @@ class NewtonStage:
 
         Returns:
             Cached USD stage, or None when no StageCache entry is available.
+
         """
         return self._usd_stage
 
@@ -285,6 +301,7 @@ class NewtonStage:
 
         Returns:
             Model device when available, otherwise the Warp CPU device. If Warp is unavailable, returns ``"cpu"``.
+
         """
         if self._model is not None and hasattr(self._model, "device"):
             return self._model.device
@@ -309,6 +326,7 @@ class NewtonStage:
         Returns:
             True when initialization completes, including an empty stage or unavailable optional dependencies.
             Returns False when model construction raises an exception or a required Stage object is missing.
+
         """
         self._clear_model_state()
         self._ovstage = ovstage_obj
@@ -374,6 +392,7 @@ class NewtonStage:
         Raises:
             ImportError: If any of the optional runtime packages is unavailable.
             RuntimeError: If the bundled ovstage runtime cannot be located.
+
         """
         from isaacsim.physics_engines.ovstage import setup
 
@@ -395,6 +414,7 @@ class NewtonStage:
 
         Raises:
             Exception: Propagates model-construction failures from ovnewton.
+
         """
         device = self.config.device
         device_ctx = wp.ScopedDevice(device) if device else nullcontext()
@@ -482,6 +502,7 @@ class NewtonStage:
         Args:
             ovstage_obj: Caller-owned ovstage Stage.
             ordinal: Population ordinal that ``attach_ovstage`` will read.
+
         """
         advance = getattr(ovstage_obj, "advance_write_floor", None)
         if advance is None:
@@ -527,6 +548,7 @@ class NewtonStage:
 
         Returns:
             World-space position when the body and current state are available, otherwise None.
+
         """
         if self._model is None or self._state_0 is None:
             return None
@@ -541,6 +563,7 @@ class NewtonStage:
 
         Returns:
             Body prim paths in parser-defined order.
+
         """
         return list(self._body_index.keys())
 
@@ -558,6 +581,7 @@ class NewtonStage:
         Args:
             elapsed_time: Duration of the simulation step in seconds.
             current_time: Current simulation time supplied to the backend.
+
         """
         self.simulate_async(elapsed_time, current_time)
         self.fetch_results()
@@ -571,6 +595,7 @@ class NewtonStage:
         Args:
             elapsed_time: Duration of the simulation step in seconds.
             current_time: Current simulation time supplied to the backend.
+
         """
         if not self._initialized:
             return
@@ -703,6 +728,7 @@ class NewtonStage:
 
         Returns:
             Always True because the backend completes work synchronously.
+
         """
         return True
 
@@ -722,6 +748,7 @@ class NewtonStage:
 
         Args:
             pause: True to pause change tracking, or False to resume it.
+
         """
         self._change_tracking_paused = bool(pause)
 
@@ -730,6 +757,7 @@ class NewtonStage:
 
         Returns:
             True when change tracking is paused.
+
         """
         return self._change_tracking_paused
 
@@ -745,6 +773,7 @@ class NewtonStage:
 
         Returns:
             Identifier used to remove the subscription.
+
         """
         sub_id = self._next_subscription_id
         self._next_subscription_id += 1
@@ -756,6 +785,7 @@ class NewtonStage:
 
         Args:
             subscription_id: Identifier returned by :meth:`subscribe_contact_report`.
+
         """
         self._contact_subscribers.pop(subscription_id, None)
 
@@ -769,6 +799,7 @@ class NewtonStage:
 
         Returns:
             Identifier used to remove the subscription.
+
         """
         sub_id = self._next_subscription_id
         self._next_subscription_id += 1
@@ -780,6 +811,7 @@ class NewtonStage:
 
         Args:
             subscription_id: Identifier returned by :meth:`subscribe_step_event`.
+
         """
         self._step_subscribers.pop(subscription_id, None)
 
@@ -798,6 +830,7 @@ class NewtonStage:
 
         Returns:
             A successful-query flag and one support flag per requested schema.
+
         """
         supported = {
             "PhysicsRigidBodyAPI",
@@ -821,6 +854,7 @@ class NewtonStage:
             current_time: Current simulation time.
             elapsed_secs: Duration of the update in seconds.
             enable_update: Whether this update should advance simulation.
+
         """
         if not enable_update or not self._initialized:
             return
@@ -831,6 +865,7 @@ class NewtonStage:
 
         Args:
             current_time: Simulation time at resume.
+
         """
         _log.verbose(f"on_resume(t={current_time:f})")
 
@@ -877,6 +912,7 @@ class NewtonStage:
 
         Returns:
             Cached USD stage, or None when USD is unavailable or the identifier is not cached.
+
         """
         try:
             from pxr import Usd, UsdUtils
@@ -900,6 +936,7 @@ class NewtonStage:
 
         Returns:
             Number of initialized step callbacks that did not encounter a solver error since attachment or reset.
+
         """
         return self._step_count
 
@@ -909,6 +946,7 @@ class NewtonStage:
 
         Returns:
             Backend timestamp incremented once per initialized step callback that does not encounter a solver error.
+
         """
         return self._timestamp
 
@@ -918,5 +956,6 @@ class NewtonStage:
 
         Returns:
             True when the most recent attempted solver step raised an exception.
+
         """
         return self._last_step_failed

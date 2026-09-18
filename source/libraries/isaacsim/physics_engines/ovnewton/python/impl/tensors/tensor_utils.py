@@ -39,6 +39,7 @@ def import_module(name: str) -> Any:
 
     Returns:
         Imported module, or a placeholder whose missing attributes resolve to None when the module is unavailable.
+
     """
     try:
         return _legacy_import_module(name)

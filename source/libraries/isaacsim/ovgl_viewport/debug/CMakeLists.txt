@@ -142,10 +142,42 @@ endif()
 
 find_package(Threads REQUIRED)
 if(NOT WIN32)
-    if(ISAACSIM_OVGL_VIEWPORT_EGL_LIBRARY AND NOT EXISTS "${ISAACSIM_OVGL_VIEWPORT_EGL_LIBRARY}")
-        unset(ISAACSIM_OVGL_VIEWPORT_EGL_LIBRARY CACHE)
+    set(isaacsim_ovgl_viewport_egl_library
+        "${ISAACSIM_PUBLIC_DEPS_ROOT}/lib/libEGL${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    )
+    set(isaacsim_ovgl_viewport_gles_library
+        "${ISAACSIM_PUBLIC_DEPS_ROOT}/lib/libGLESv2${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    )
+    foreach(isaacsim_ovgl_viewport_graphics_library IN ITEMS
+        "${isaacsim_ovgl_viewport_egl_library}"
+        "${isaacsim_ovgl_viewport_gles_library}"
+    )
+        if(NOT EXISTS "${isaacsim_ovgl_viewport_graphics_library}")
+            message(FATAL_ERROR
+                "isaacsim.ovgl_viewport.debug requires the Pixi-locked graphics library at "
+                "${isaacsim_ovgl_viewport_graphics_library}. Run the library build without --no-pull."
+            )
+        endif()
+    endforeach()
+    if(NOT EXISTS "${ISAACSIM_PUBLIC_DEPS_INCLUDE_DIR}/EGL/egl.h" OR
+       NOT EXISTS "${ISAACSIM_PUBLIC_DEPS_INCLUDE_DIR}/GLES3/gl32.h"
+    )
+        message(FATAL_ERROR
+            "isaacsim.ovgl_viewport.debug requires the Pixi-locked EGL and GLES headers at "
+            "${ISAACSIM_PUBLIC_DEPS_INCLUDE_DIR}. Run the library build without --no-pull."
+        )
     endif()
-    find_library(ISAACSIM_OVGL_VIEWPORT_EGL_LIBRARY NAMES EGL REQUIRED)
+
+    add_library(isaacsim_ovgl::egl SHARED IMPORTED)
+    set_target_properties(isaacsim_ovgl::egl PROPERTIES
+        IMPORTED_LOCATION "${isaacsim_ovgl_viewport_egl_library}"
+        INTERFACE_INCLUDE_DIRECTORIES "${ISAACSIM_PUBLIC_DEPS_INCLUDE_DIR}"
+    )
+    add_library(isaacsim_ovgl::gles SHARED IMPORTED)
+    set_target_properties(isaacsim_ovgl::gles PROPERTIES
+        IMPORTED_LOCATION "${isaacsim_ovgl_viewport_gles_library}"
+        INTERFACE_INCLUDE_DIRECTORIES "${ISAACSIM_PUBLIC_DEPS_INCLUDE_DIR}"
+    )
 endif()
 
 set(isaacsim_ovgl_viewport_stb_include_dir "${ISAACSIM_PUBLIC_DEPS_INCLUDE_DIR}")
@@ -161,45 +193,9 @@ set_target_properties(stb::image PROPERTIES
 )
 
 if(NOT WIN32)
-    if(ISAACSIM_OVGL_VIEWPORT_GL_LIBRARY AND NOT EXISTS "${ISAACSIM_OVGL_VIEWPORT_GL_LIBRARY}")
-        unset(ISAACSIM_OVGL_VIEWPORT_GL_LIBRARY CACHE)
-    endif()
-    find_library(ISAACSIM_OVGL_VIEWPORT_GL_LIBRARY NAMES GLESv2 OpenGL GL)
-    if(NOT ISAACSIM_OVGL_VIEWPORT_GL_LIBRARY)
-        find_file(ISAACSIM_OVGL_VIEWPORT_GL_LIBRARY
-            NAMES libGLESv2.so.2 libOpenGL.so.0 libGL.so.1
-            PATHS
-                /lib
-                /lib64
-                /lib/x86_64-linux-gnu
-                /usr/lib
-                /usr/lib64
-                /usr/lib/x86_64-linux-gnu
-            NO_DEFAULT_PATH
-        )
-    endif()
-    if(NOT ISAACSIM_OVGL_VIEWPORT_GL_LIBRARY)
-        message(FATAL_ERROR "isaacsim.ovgl_viewport.debug requires a GLES or GLVND OpenGL dispatcher")
-    endif()
-
-    if(ISAACSIM_OVGL_VIEWPORT_GLES_INCLUDE_DIR AND
-       NOT EXISTS "${ISAACSIM_OVGL_VIEWPORT_GLES_INCLUDE_DIR}/GLES3/gl32.h"
-    )
-        unset(ISAACSIM_OVGL_VIEWPORT_GLES_INCLUDE_DIR CACHE)
-    endif()
-    find_path(ISAACSIM_OVGL_VIEWPORT_GLES_INCLUDE_DIR NAMES GLES3/gl32.h)
-    if(NOT ISAACSIM_OVGL_VIEWPORT_GLES_INCLUDE_DIR)
-        if(ISAACSIM_OVGL_VIEWPORT_GLCOREARB_INCLUDE_DIR AND
-           NOT EXISTS "${ISAACSIM_OVGL_VIEWPORT_GLCOREARB_INCLUDE_DIR}/GL/glcorearb.h"
-        )
-            unset(ISAACSIM_OVGL_VIEWPORT_GLCOREARB_INCLUDE_DIR CACHE)
-        endif()
-        find_path(ISAACSIM_OVGL_VIEWPORT_GLCOREARB_INCLUDE_DIR NAMES GL/glcorearb.h REQUIRED)
-        set(ISAACSIM_OVGL_VIEWPORT_USE_GLCOREARB_HEADERS ON)
-    endif()
     set(isaacsim_ovgl_viewport_gl_dependencies
-        ${ISAACSIM_OVGL_VIEWPORT_EGL_LIBRARY}
-        ${ISAACSIM_OVGL_VIEWPORT_GL_LIBRARY}
+        isaacsim_ovgl::egl
+        isaacsim_ovgl::gles
         ${CMAKE_DL_LIBS}
     )
 endif()
@@ -266,6 +262,7 @@ isaacsim_add_module(
         ${ovgl_sources}
     PRIVATE_DEPENDENCIES
         SDL3::SDL3-shared
+        isaacsim::common-ovstage
         omni_client::client
         ovstage::ovstage
         stb::image
@@ -298,12 +295,8 @@ install(FILES
 target_include_directories(isaacsim-ovgl_viewport-debug PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${ovgl_source_dir}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../.."
 )
-if(ISAACSIM_OVGL_VIEWPORT_USE_GLCOREARB_HEADERS)
-    target_include_directories(isaacsim-ovgl_viewport-debug PRIVATE "${ISAACSIM_OVGL_VIEWPORT_GLCOREARB_INCLUDE_DIR}")
-    target_compile_definitions(isaacsim-ovgl_viewport-debug PRIVATE ISAACSIM_OVGL_USE_GLCOREARB_HEADERS=1)
-endif()
-
 isaacsim_install_runtime_dependencies(
     MODULE isaacsim.ovgl_viewport.debug
     TARGETS
@@ -368,9 +361,12 @@ if(BUILD_TESTING)
     isaacsim_add_cpp_tests(
         MODULE isaacsim.ovgl_viewport.debug
         SOURCES tests/cpp/TestTransforms.cpp
-        DEPENDENCIES ovstage::ovstage
+        DEPENDENCIES
+            isaacsim::common-ovstage
+            ovstage::ovstage
         LABELS ovgl
     )
+    target_include_directories(tests-isaacsim-ovgl_viewport-debug PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../..")
     if(WIN32)
         add_custom_command(TARGET tests-isaacsim-ovgl_viewport-debug POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E copy_directory_if_different

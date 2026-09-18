@@ -13,7 +13,7 @@ licenses/*.txt text eol=lf gitlab-generated
 *.usd filter=lfs diff=lfs merge=lfs -text
 *.usda filter=lfs diff=lfs merge=lfs -text
 # Override the default text filter for schema.usda files
-*Schema.usda -filter -diff -merge text eol=crlf
+*Schema.usda -filter=lfs -diff=lfs -merge=lfs text eol=crlf
 *.dae filter=lfs diff=lfs merge=lfs -text
 *.step filter=lfs diff=lfs merge=lfs -text
 *.stp filter=lfs diff=lfs merge=lfs -text

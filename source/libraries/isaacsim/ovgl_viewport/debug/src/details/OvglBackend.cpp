@@ -32,6 +32,7 @@
 #include "OvstageHelpers.hpp"
 #include "ovgl/Ovgl.h"
 
+#include <isaacsim/common/ovstage/TransformJournal.hpp>
 #include <ovstage/ovstage.h>
 #include <ovstage/ovstage_instancing.h>
 #include <ovstage/ovstage_population.h>
@@ -81,15 +82,15 @@ void setBackendError(const std::string& s)
 /* Per-step profiling, same switch as ovgl's render breakdown (OVGL_PROFILE=1). */
 bool isProfilingEnabled()
 {
-    static const bool on = std::getenv("OVGL_PROFILE") != nullptr;
-    return on;
+    static const bool s_kEnabled = std::getenv("OVGL_PROFILE") != nullptr;
+    return s_kEnabled;
 }
 double getCurrentTimeMilliseconds()
 {
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-ovx_string_t to_ovx(const std::string& s)
+ovx_string_t toOvx(const std::string& s)
 {
     ovx_string_t out{};
     out.ptr = s.c_str();
@@ -118,6 +119,17 @@ struct PulledColumn
 // prim path -> attr name -> column
 using PulledScene = std::map<std::string, std::map<std::string, PulledColumn>>;
 
+constexpr std::array<const char*, 2> g_kResetXformStackColumns = {
+    "omni:resetXformStack",
+    "omni:fabric:resetXformStack",
+};
+
+struct SceneGraphInstanceIndex
+{
+    std::map<std::string, std::vector<std::string>> instanceRootsByPrototype;
+    std::set<std::string> instanceRoots;
+};
+
 } // namespace
 
 struct DerivedProduct
@@ -135,13 +147,36 @@ struct DerivedProduct
     // local lane's per-step full pull measured 292 ms on Kitchen_set); any
     // edit to these authored values is a non-transform change, which the
     // fast-path classifier routes back through a full re-derive.
-    float focal = 50.0f; // kUsdDefaultFocalLength
-    float h_aperture = 20.955f; // kUsdDefaultHorizontalAperture
+    float focal = 50.0f; // g_kUsdDefaultFocalLength
+    float h_aperture = 20.955f; // g_kUsdDefaultHorizontalAperture
     // No verticalAperture: the vertical half-angle is conformed from
     // horizontalAperture and this product's own aspect, so the camera's
     // verticalAperture never reaches the projection. See the aperture-axis
-    // note in render_derived_product for the measurements behind that.
+    // note in renderDerivedProduct for the measurements behind that.
     double meters_per_unit = 0.0;
+};
+
+struct PresentRequest
+{
+    unsigned framebuffer = 0;
+    int destinationWidth = 0;
+    int destinationHeight = 0;
+    const char* overlayText = nullptr;
+};
+
+struct TransformJournal
+{
+    uint64_t generation = 0;
+    ovstage_ordinal_t baseOrdinal = 0;
+    ovstage_ordinal_t ordinal = 0;
+    std::vector<std::string> paths;
+    std::vector<std::array<double, 16>> worlds;
+};
+
+struct JournalMeshRoute
+{
+    size_t driverIndex = std::numeric_limits<size_t>::max();
+    std::array<double, 16> relativeOrStatic{};
 };
 
 struct OvglBackend
@@ -187,7 +222,9 @@ struct OvglBackend
     // instance proxies.
     PulledScene attached_source_pull;
     std::set<std::string> attached_source_attributes;
-    std::vector<std::string> attached_prototype_roots;
+    // Prefix-queryable dependencies used to invalidate only instance expansions
+    // affected by a transform-only ordinal window.
+    SceneGraphInstanceIndex attached_scene_graph_instances;
     ovstage_ordinal_t attached_pull_ordinal = 0;
     bool attached_pull_valid = false;
     // Mirror ordinal the last successful attached step rendered at; renders
@@ -197,6 +234,22 @@ struct OvglBackend
     // camera-only edit advances attached_render_ordinal while this stays put:
     // the camera is applied separately and the resident scene remains valid.
     ovstage_ordinal_t attached_scene_ordinal = 0;
+    // Direct transform batches intentionally leave the private mirror at its
+    // previous ordinal. Consecutive direct/unchanged frames remain valid, but
+    // any edit that needs the mirror must first take a full synchronization.
+    bool mirror_transform_dirty = false;
+    // Authored light and dome paths from the retained expanded snapshot. A
+    // transform of one of these paths (or an ancestor) must use the mirror path
+    // because OVGL lights bake their world pose at refresh/build time.
+    std::set<std::string> attached_light_paths;
+    bool attached_light_paths_valid = false;
+    // A producer journal can advance the resident scene without updating the
+    // retained pulled snapshots. While dirty, only a continuous compatible
+    // journal (or an unchanged ordinal) may remain on the fast path.
+    bool pulled_transform_dirty = false;
+    uint64_t transform_journal_generation = 0;
+    std::vector<std::string> transform_journal_paths;
+    std::vector<JournalMeshRoute> transform_journal_routes;
     // Per-product / per-var outputs of the last attached render. `data` is RGBA8 for
     // BE_VAR_FMT_RGBA8 and row-major float32 meters for BE_VAR_FMT_F32_DEPTH
     // (both w*h*4 bytes; see the iface enumeration contract).
@@ -210,6 +263,8 @@ struct OvglBackend
     struct AttachedProduct
     {
         std::string path;
+        int width = 0;
+        int height = 0;
         std::vector<AttachedVar> vars;
     };
     std::vector<AttachedProduct> attached_products;
@@ -223,10 +278,10 @@ struct OvglBackend
 namespace
 {
 
-bool complete_enqueue(OvglBackend* be,
-                      ovstage_enqueue_result_t enqueue,
-                      const std::string& operation,
-                      bool* out_completed = nullptr)
+bool completeEnqueue(OvglBackend* be,
+                     ovstage_enqueue_result_t enqueue,
+                     const std::string& operation,
+                     bool* out_completed = nullptr)
 {
     if (out_completed)
         *out_completed = false;
@@ -267,7 +322,7 @@ struct owned_path_query
     ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
 };
 
-bool create_owned_path_query(
+bool createOwnedPathQuery(
     OvglBackend* be, const ovx_string_t* paths, size_t path_count, const std::string& operation, owned_path_query* out)
 {
     if (!be || !be->stage || !paths || path_count == 0 || !out)
@@ -304,7 +359,7 @@ bool create_owned_path_query(
     if (out->query != OVSTAGE_INVALID_QUERY_HANDLE)
     {
         query_released =
-            complete_enqueue(be, ovstage_release_query(be->stage, out->query), operation + ": failed-query cleanup");
+            completeEnqueue(be, ovstage_release_query(be->stage, out->query), operation + ": failed-query cleanup");
         if (query_released)
             out->query = OVSTAGE_INVALID_QUERY_HANDLE;
     }
@@ -317,7 +372,7 @@ bool create_owned_path_query(
     return false;
 }
 
-bool release_owned_path_query(OvglBackend* be, owned_path_query* owned, const std::string& operation)
+bool releaseOwnedPathQuery(OvglBackend* be, owned_path_query* owned, const std::string& operation)
 {
     if (!be || !be->stage || !owned || !owned->dictionary)
     {
@@ -326,7 +381,7 @@ bool release_owned_path_query(OvglBackend* be, owned_path_query* owned, const st
     }
     if (owned->query != OVSTAGE_INVALID_QUERY_HANDLE)
     {
-        if (!complete_enqueue(be, ovstage_release_query(be->stage, owned->query), operation))
+        if (!completeEnqueue(be, ovstage_release_query(be->stage, owned->query), operation))
             return false;
         owned->query = OVSTAGE_INVALID_QUERY_HANDLE;
     }
@@ -343,33 +398,33 @@ bool release_owned_path_query(OvglBackend* be, owned_path_query* owned, const st
     return true;
 }
 
-size_t dl_elem_bytes(const DLDataType& dt);
-bool tensor_total_bytes(const DLTensor& tensor, size_t* out);
+size_t dlElemBytes(const DLDataType& dt);
+bool tensorTotalBytes(const DLTensor& tensor, size_t* out);
 
 // Seal an ordinal (advance the global write floor + drain the enqueue).
-bool seal_ordinal(OvglBackend* be, ovstage_ordinal_t ordinal, bool* out_sealed = nullptr)
+bool sealOrdinal(OvglBackend* be, ovstage_ordinal_t ordinal, bool* out_sealed = nullptr)
 {
     ovstage_write_floor_desc_t d{};
     d.ordinal = ordinal;
     d.scope = OVSTAGE_SCOPE_ALL;
     d.attributes = nullptr;
     d.attribute_count = 0;
-    return complete_enqueue(be, ovstage_advance_write_floor(be->stage, &d), "advance_write_floor", out_sealed);
+    return completeEnqueue(be, ovstage_advance_write_floor(be->stage, &d), "advance_write_floor", out_sealed);
 }
 
 // Write raw bytes to (path, attr) at ordinal. `ragged` => one variable-length
 // row per prim (2-D [1,nbytes]); otherwise a flat fixed buffer (1-D [nbytes]).
-// Scene.cpp::read_attr_host (CPU-only; the backend authors CPU tensors).
+// Scene.cpp::readAttributeHost (CPU-only; the backend authors CPU tensors).
 // When out_dtype/out_is_array are non-null they receive the stored column's
 // DLPack dtype and ragged flag (finding 44's store-typed no-hint reads).
-bool read_attr_host(OvglBackend* be,
-                    ovstage_ordinal_t ordinal,
-                    const std::string& prim_path,
-                    const std::string& attr_name,
-                    std::vector<uint8_t>& out,
-                    DLDataType* out_dtype = nullptr,
-                    bool* out_is_array = nullptr,
-                    ovstage_attribute_semantic_t* out_semantic = nullptr)
+bool readAttributeHost(OvglBackend* be,
+                       ovstage_ordinal_t ordinal,
+                       const std::string& prim_path,
+                       const std::string& attr_name,
+                       std::vector<uint8_t>& out,
+                       DLDataType* out_dtype = nullptr,
+                       bool* out_is_array = nullptr,
+                       ovstage_attribute_semantic_t* out_semantic = nullptr)
 {
     out.clear();
     path_dictionary_instance_t* dict = ovstage_get_path_dictionary(be->stage);
@@ -379,7 +434,7 @@ bool read_attr_host(OvglBackend* be,
         return false;
     }
 
-    ovx_string_t an = to_ovx(attr_name);
+    ovx_string_t an = toOvx(attr_name);
     ovx_token_t tok = OVX_INVALID_TOKEN;
     if (path_dictionary_create_tokens_from_strings(dict, &an, 1, &tok).status != OVX_API_SUCCESS ||
         tok == OVX_INVALID_TOKEN)
@@ -387,9 +442,9 @@ bool read_attr_host(OvglBackend* be,
         setBackendError("intern(" + attr_name + ")");
         return false;
     }
-    ovx_string_t ps = to_ovx(prim_path);
+    ovx_string_t ps = toOvx(prim_path);
     owned_path_query query;
-    if (!create_owned_path_query(be, &ps, 1, "query(" + prim_path + ")", &query))
+    if (!createOwnedPathQuery(be, &ps, 1, "query(" + prim_path + ")", &query))
         return false;
 
     ovstage_read_handle_t rh = OVSTAGE_INVALID_READ_HANDLE;
@@ -397,7 +452,7 @@ bool read_attr_host(OvglBackend* be,
     ovstage_enqueue_result_t er = ovstage_read_attributes(be->stage, query.query, &tok, 1, range, &rh);
     if (er.status != OVSTAGE_OK || rh == OVSTAGE_INVALID_READ_HANDLE)
     {
-        (void)release_owned_path_query(be, &query, "release query after failed read");
+        (void)releaseOwnedPathQuery(be, &query, "release query after failed read");
         setBackendError("read_attributes(" + prim_path + "." + attr_name + ")");
         return false;
     }
@@ -419,7 +474,7 @@ bool read_attr_host(OvglBackend* be,
             const DLTensor& t0 = g.data.tensors[0];
             const uint8_t* base = t0.data ? static_cast<const uint8_t*>(t0.data) + t0.byte_offset : nullptr;
             size_t total = 0;
-            bool valid = t0.device.device_type == kDLCPU && tensor_total_bytes(t0, &total);
+            bool valid = t0.device.device_type == kDLCPU && tensorTotalBytes(t0, &total);
             size_t b0 = 0, b1 = total;
             if (valid && g.data.tensor_count >= 2)
             {
@@ -427,7 +482,7 @@ bool read_attr_host(OvglBackend* be,
                 size_t offset_bytes = 0;
                 valid = offsets.data && offsets.device.device_type == kDLCPU && offsets.dtype.code == kDLUInt &&
                         offsets.dtype.bits == 64 && offsets.dtype.lanes == 1 && offsets.ndim == 1 && offsets.shape &&
-                        offsets.shape[0] >= 2 && tensor_total_bytes(offsets, &offset_bytes) &&
+                        offsets.shape[0] >= 2 && tensorTotalBytes(offsets, &offset_bytes) &&
                         offset_bytes >= 2 * sizeof(uint64_t);
                 if (valid)
                 {
@@ -470,28 +525,27 @@ bool read_attr_host(OvglBackend* be,
             break;
         }
     }
-    if (!complete_enqueue(be, er, "read(" + prim_path + "." + attr_name + ")"))
+    if (!completeEnqueue(be, er, "read(" + prim_path + "." + attr_name + ")"))
         err = true;
-    if (!complete_enqueue(be, ovstage_release_read(be->stage, rh), "release read(" + prim_path + "." + attr_name + ")"))
+    if (!completeEnqueue(be, ovstage_release_read(be->stage, rh), "release read(" + prim_path + "." + attr_name + ")"))
         err = true;
-    if (!release_owned_path_query(be, &query, "release query after read(" + prim_path + "." + attr_name + ")"))
+    if (!releaseOwnedPathQuery(be, &query, "release query after read(" + prim_path + "." + attr_name + ")"))
         err = true;
     return !err && got;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * Attach-lane helpers (ovrtx 0.4).
+/* Attach-lane helpers (ovrtx 0.4).
  *
  * Everything touching the EXTERNAL instance goes through the official public
  * vtable (the `ovstage_*` static-inline wrappers dispatch
  * instance->vtable->slot) and the path-dictionary vtable — never through
  * engine internals. The mirror (be->stage) is this backend's own instance and
  * uses the same public surface.
- * ═══════════════════════════════════════════════════════════════════════════ */
+ */
 
 // Wait for + release an enqueued op on an arbitrary instance (external or
 // mirror). Returns false (with g_backendError set) on any failure.
-bool inst_complete(ovstage_instance_t* inst, ovstage_enqueue_result_t enqueue, const std::string& operation)
+bool instComplete(ovstage_instance_t* inst, ovstage_enqueue_result_t enqueue, const std::string& operation)
 {
     if (!inst || enqueue.status != OVSTAGE_OK || enqueue.op_index == OVSTAGE_INVALID_OP_ID)
     {
@@ -517,19 +571,19 @@ bool inst_complete(ovstage_instance_t* inst, ovstage_enqueue_result_t enqueue, c
 // Compute the renderer-owned derived hierarchy through the official OVStage
 // API. The input ordinal is already sealed; the output ordinal is sealed by
 // the caller only after this operation completes.
-bool compute_world_xforms(ovstage_instance_t* stage,
-                          ovstage_ordinal_t input_ordinal,
-                          ovstage_ordinal_t output_ordinal,
-                          const std::string& operation)
+bool computeWorldXforms(ovstage_instance_t* stage,
+                        ovstage_ordinal_t input_ordinal,
+                        ovstage_ordinal_t output_ordinal,
+                        const std::string& operation)
 {
-    return inst_complete(
+    return instComplete(
         stage,
         ovstage_compute_hierarchy(stage, OVSTAGE_HIERARCHY_COMPUTATION_MODEL_DEFAULT_CPU, input_ordinal, output_ordinal),
         operation);
 }
 
 // Token -> string through a dictionary's vtable (dict-owned storage; copied).
-bool dict_token_string(path_dictionary_instance_t* dict, ovx_token_t tok, std::string* out)
+bool getDictionaryTokenString(path_dictionary_instance_t* dict, ovx_token_t tok, std::string* out)
 {
     if (!dict || !dict->vtable || !out || tok == OVX_INVALID_TOKEN)
         return false;
@@ -541,7 +595,7 @@ bool dict_token_string(path_dictionary_instance_t* dict, ovx_token_t tok, std::s
 }
 
 // Prim-path handle -> "/a/b/c" through a dictionary's vtable.
-bool dict_path_string(path_dictionary_instance_t* dict, ovx_primpath_t path, std::string* out)
+bool getDictionaryPathString(path_dictionary_instance_t* dict, ovx_primpath_t path, std::string* out)
 {
     if (!dict || !dict->vtable || !out || path == OVX_INVALID_PRIMPATH)
         return false;
@@ -575,13 +629,13 @@ bool dict_path_string(path_dictionary_instance_t* dict, ovx_primpath_t path, std
     return true;
 }
 
-size_t dl_elem_bytes(const DLDataType& dt)
+size_t dlElemBytes(const DLDataType& dt)
 {
     const size_t bits = static_cast<size_t>(dt.bits) * static_cast<size_t>(dt.lanes);
     return (bits + 7) / 8;
 }
 
-bool tensor_total_bytes(const DLTensor& t, size_t* out)
+bool tensorTotalBytes(const DLTensor& t, size_t* out)
 {
     if (!out || t.ndim < 0 || (t.ndim > 0 && !t.shape))
         return false;
@@ -595,7 +649,7 @@ bool tensor_total_bytes(const DLTensor& t, size_t* out)
             return false;
         elems *= extent;
     }
-    const size_t eb = dl_elem_bytes(t.dtype);
+    const size_t eb = dlElemBytes(t.dtype);
     if (eb == 0 && elems != 0)
         return false;
     if (eb != 0 && elems > std::numeric_limits<size_t>::max() / eb)
@@ -604,7 +658,7 @@ bool tensor_total_bytes(const DLTensor& t, size_t* out)
     return true;
 }
 
-uint64_t load_u64_at(const uint8_t* p)
+uint64_t loadU64At(const uint8_t* p)
 {
     uint64_t v;
     std::memcpy(&v, p, sizeof(v));
@@ -618,11 +672,11 @@ uint64_t load_u64_at(const uint8_t* p)
 // CSR pair, tolerated for FOREIGN producers only and never where per-row can
 // claim the shape first (a 2-row ragged group whose second row tensor is
 // itself {kDLUInt,64,1} decodes per-row). Fails closed on anything else.
-bool decode_read_group(ovstage_instance_t* src,
-                       const ovstage_read_group_t& g,
-                       const std::string& attr_name,
-                       const std::vector<std::string>& group_paths,
-                       PulledScene* scene)
+bool decodeReadGroup(ovstage_instance_t* src,
+                     const ovstage_read_group_t& g,
+                     const std::string& attr_name,
+                     const std::vector<std::string>& group_paths,
+                     PulledScene* scene)
 {
     const uint32_t logical_count = g.prims.count;
     if (logical_count == 0)
@@ -704,7 +758,7 @@ bool decode_read_group(ovstage_instance_t* src,
 
     const DLTensor& tv = g.data.tensors[0];
     size_t value_total = 0;
-    if (!tensor_total_bytes(tv, &value_total))
+    if (!tensorTotalBytes(tv, &value_total))
     {
         setBackendError("pull: malformed value tensor for " + attr_name);
         return false;
@@ -718,7 +772,7 @@ bool decode_read_group(ovstage_instance_t* src,
     {
         const DLTensor& to = g.data.tensors[1];
         size_t offs_total = 0;
-        if (!tensor_total_bytes(to, &offs_total) || !to.data)
+        if (!tensorTotalBytes(to, &offs_total) || !to.data)
         {
             setBackendError("pull: malformed CSR offsets for " + attr_name);
             return false;
@@ -757,8 +811,8 @@ bool decode_read_group(ovstage_instance_t* src,
                 setBackendError("pull: CSR slot out of range for " + attr_name);
                 return false;
             }
-            const uint64_t b0 = load_u64_at(offsets + static_cast<size_t>(data_slot) * 8);
-            const uint64_t b1 = load_u64_at(offsets + (static_cast<size_t>(data_slot) + 1) * 8);
+            const uint64_t b0 = loadU64At(offsets + static_cast<size_t>(data_slot) * 8);
+            const uint64_t b1 = loadU64At(offsets + (static_cast<size_t>(data_slot) + 1) * 8);
             if (b1 < b0 || b1 > value_total)
             {
                 setBackendError("pull: CSR offsets out of range for " + attr_name);
@@ -775,7 +829,7 @@ bool decode_read_group(ovstage_instance_t* src,
                 return false;
             }
             const DLTensor& rt = g.data.tensors[data_slot];
-            if (!tensor_total_bytes(rt, &nbytes))
+            if (!tensorTotalBytes(rt, &nbytes))
             {
                 setBackendError("pull: malformed row tensor for " + attr_name);
                 return false;
@@ -804,36 +858,410 @@ bool decode_read_group(ovstage_instance_t* src,
     return true;
 }
 
-bool is_local_transform_column(const std::string& attribute);
-bool is_transform_column(const std::string& attribute);
+bool isLocalTransformColumn(const std::string& attribute);
+bool isTransformColumn(const std::string& attribute);
+const PulledColumn* pickLocalAuthority(const std::map<std::string, PulledColumn>& columns);
+const PulledColumn* pickWorldAuthority(const std::map<std::string, PulledColumn>& columns);
+const PulledColumn* pickSourceWorld(const std::map<std::string, PulledColumn>& columns);
 
-bool has_path_prefix(const std::string& path, const std::string& prefix)
+bool hasPathPrefix(const std::string& path, const std::string& prefix)
 {
+    if (prefix == "/")
+        return !path.empty() && path.front() == '/';
     return path == prefix ||
            (path.size() > prefix.size() && path.compare(0, prefix.size(), prefix) == 0 && path[prefix.size()] == '/');
 }
 
-std::string replace_path_prefix(const std::string& path, const std::string& prefix, const std::string& replacement)
+std::string replacePathPrefix(const std::string& path, const std::string& prefix, const std::string& replacement)
 {
     if (path == prefix)
         return replacement;
     return replacement + path.substr(prefix.size());
 }
 
-bool intern_path(path_dictionary_instance_t* dict, const std::string& path, ovx_primpath_t* out)
+std::string getParentPath(const std::string& path)
+{
+    const size_t slash = path.rfind('/');
+    return slash == std::string::npos || slash == 0 ? "/" : path.substr(0, slash);
+}
+
+const std::vector<std::string>* findPrototypeInstanceRoots(const SceneGraphInstanceIndex& instances,
+                                                           const std::string& path)
+{
+    std::string ancestor = path;
+    for (;;)
+    {
+        const auto prototype = instances.instanceRootsByPrototype.find(ancestor);
+        if (prototype != instances.instanceRootsByPrototype.end())
+            return &prototype->second;
+        if (ancestor == "/")
+            return nullptr;
+        ancestor = getParentPath(ancestor);
+    }
+}
+
+void collectAffectedInstanceRoots(const SceneGraphInstanceIndex& instances,
+                                  const std::string& changedPath,
+                                  std::set<std::string>* affectedRoots)
+{
+    // A changed ancestor affects all instance roots in its subtree. The ordered
+    // root set makes this proportional to the number of matching instances.
+    for (auto root = instances.instanceRoots.lower_bound(changedPath);
+         root != instances.instanceRoots.end() && hasPathPrefix(*root, changedPath); ++root)
+    {
+        affectedRoots->insert(*root);
+    }
+
+    // A change inside an instance affects that instance and any enclosing
+    // instance. This also handles overlapping roots without an all-roots scan.
+    std::string ancestor = changedPath;
+    for (;;)
+    {
+        if (instances.instanceRoots.count(ancestor) != 0)
+            affectedRoots->insert(ancestor);
+        if (ancestor == "/")
+            break;
+        ancestor = getParentPath(ancestor);
+    }
+}
+
+void setIdentityMatrix(std::array<double, 16>* matrix)
+{
+    *matrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+}
+
+void multiplyMatrices(const std::array<double, 16>& left,
+                      const std::array<double, 16>& right,
+                      std::array<double, 16>* output)
+{
+    std::array<double, 16> result{};
+    for (size_t row = 0; row < 4; ++row)
+    {
+        for (size_t column = 0; column < 4; ++column)
+        {
+            for (size_t inner = 0; inner < 4; ++inner)
+                result[row * 4 + column] += left[row * 4 + inner] * right[inner * 4 + column];
+        }
+    }
+    *output = result;
+}
+
+bool decodeMatrixColumn(const PulledColumn* column, const std::string& path, std::array<double, 16>* matrix)
+{
+    if (!column || column->deleted)
+    {
+        setIdentityMatrix(matrix);
+        return true;
+    }
+    if (column->is_array || column->semantic != OVSTAGE_SEMANTIC_MATRIX || column->dtype.code != kDLFloat ||
+        column->dtype.bits != 64 || column->dtype.lanes != 16 || column->bytes.size() != sizeof(*matrix))
+    {
+        setBackendError("instance expansion: transform for '" + path + "' is not a 4x4 double matrix");
+        return false;
+    }
+    std::memcpy(matrix->data(), column->bytes.data(), sizeof(*matrix));
+    if (!std::all_of(matrix->begin(), matrix->end(), [](double value) { return std::isfinite(value); }))
+    {
+        setBackendError("instance expansion: transform for '" + path + "' contains a non-finite value");
+        return false;
+    }
+    return true;
+}
+
+bool readsResetXformStack(const std::map<std::string, PulledColumn>& columns,
+                          const std::string& path,
+                          bool* reset,
+                          ovstage_ordinal_t* ordinal)
+{
+    *reset = false;
+    *ordinal = 0;
+    for (const char* name : g_kResetXformStackColumns)
+    {
+        const auto column = columns.find(name);
+        if (column == columns.end() || column->second.deleted)
+            continue;
+        if (column->second.bytes.size() != 1 || column->second.bytes[0] > 1)
+        {
+            setBackendError("instance expansion: resetXformStack for '" + path + "' is not a boolean");
+            return false;
+        }
+        if (column->second.ordinal >= *ordinal)
+        {
+            *reset = column->second.bytes[0] != 0;
+            *ordinal = column->second.ordinal;
+        }
+    }
+    return true;
+}
+
+struct ComposedMatrix
+{
+    std::array<double, 16> value{};
+    ovstage_ordinal_t newestTransformOrdinal = 0;
+};
+
+bool composePulledWorld(const PulledScene& scene,
+                        const std::string& path,
+                        std::map<std::string, ComposedMatrix>* memo,
+                        ComposedMatrix* output)
+{
+    const auto cached = memo->find(path);
+    if (cached != memo->end())
+    {
+        *output = cached->second;
+        return true;
+    }
+
+    ComposedMatrix parent;
+    setIdentityMatrix(&parent.value);
+    const std::string parentPath = getParentPath(path);
+    if (parentPath != "/" && !composePulledWorld(scene, parentPath, memo, &parent))
+        return false;
+
+    const auto prim = scene.find(path);
+    if (prim == scene.end())
+    {
+        *output = parent;
+        memo->emplace(path, *output);
+        return true;
+    }
+
+    const PulledColumn* local = pickLocalAuthority(prim->second);
+    const PulledColumn* world = pickSourceWorld(prim->second);
+    bool reset = false;
+    ovstage_ordinal_t resetOrdinal = 0;
+    if (!readsResetXformStack(prim->second, path, &reset, &resetOrdinal))
+        return false;
+    const ovstage_ordinal_t localOrdinal = local ? local->ordinal : 0;
+    const ovstage_ordinal_t inheritedOrdinal = reset ? 0 : parent.newestTransformOrdinal;
+    const ovstage_ordinal_t newestInput = std::max({ inheritedOrdinal, localOrdinal, resetOrdinal });
+
+    output->newestTransformOrdinal = std::max(newestInput, world ? world->ordinal : 0);
+    if (world && world->ordinal >= newestInput)
+    {
+        if (!decodeMatrixColumn(world, path, &output->value))
+            return false;
+    }
+    else
+    {
+        std::array<double, 16> localMatrix;
+        if (!decodeMatrixColumn(local, path, &localMatrix))
+            return false;
+        if (reset)
+            output->value = localMatrix;
+        else
+            multiplyMatrices(localMatrix, parent.value, &output->value);
+    }
+    memo->emplace(path, *output);
+    return true;
+}
+
+bool collectLightPaths(const PulledScene& scene, path_dictionary_instance_t* dictionary, std::set<std::string>* lightPaths)
+{
+    lightPaths->clear();
+    for (const auto& prim : scene)
+    {
+        const auto type = prim.second.find("usd-prim-type");
+        if (type == prim.second.end() || type->second.deleted)
+            continue;
+        if (type->second.is_array || type->second.bytes.size() != sizeof(uint64_t))
+            return false;
+        std::string typeName;
+        if (!getDictionaryTokenString(
+                dictionary, static_cast<ovx_token_t>(loadU64At(type->second.bytes.data())), &typeName))
+            return false;
+        constexpr const char* suffix = "Light";
+        constexpr size_t suffixLength = 5;
+        if (typeName.size() >= suffixLength && typeName.compare(typeName.size() - suffixLength, suffixLength, suffix) == 0)
+        {
+            lightPaths->insert(prim.first);
+        }
+    }
+    return true;
+}
+
+bool changesAffectPaths(const std::map<std::string, std::vector<std::string>>& changes,
+                        const std::set<std::string>& targets)
+{
+    for (const auto& change : changes)
+    {
+        for (const std::string& target : targets)
+        {
+            if (hasPathPrefix(target, change.first))
+                return true;
+        }
+    }
+    return false;
+}
+
+bool pathsAffectTargets(const std::vector<std::string>& paths, const std::set<std::string>& targets)
+{
+    for (const std::string& path : paths)
+    {
+        for (const std::string& target : targets)
+        {
+            if (hasPathPrefix(target, path))
+                return true;
+        }
+    }
+    return false;
+}
+
+bool composeResidentMeshWorlds(ovgl_renderer_t* renderer, const PulledScene& scene, std::vector<double>* worldMatrices)
+{
+    const int32_t meshCount = ovgl_get_mesh_count(renderer);
+    if (meshCount < 0)
+        return false;
+    worldMatrices->clear();
+    worldMatrices->reserve(static_cast<size_t>(meshCount) * 16);
+    std::map<std::string, ComposedMatrix> memo;
+    for (int32_t index = 0; index < meshCount; ++index)
+    {
+        ovgl_mesh_view_t mesh{};
+        if (ovgl_get_mesh_view(renderer, index, &mesh).status != 0 || !mesh.path || !mesh.path[0])
+            return false;
+        ComposedMatrix world;
+        if (!composePulledWorld(scene, mesh.path, &memo, &world))
+            return false;
+        worldMatrices->insert(worldMatrices->end(), world.value.begin(), world.value.end());
+    }
+    return true;
+}
+
+bool invertAffineMatrix(const std::array<double, 16>& matrix, std::array<double, 16>* output)
+{
+    const double a00 = matrix[0], a01 = matrix[1], a02 = matrix[2];
+    const double a10 = matrix[4], a11 = matrix[5], a12 = matrix[6];
+    const double a20 = matrix[8], a21 = matrix[9], a22 = matrix[10];
+    const double c00 = a11 * a22 - a12 * a21;
+    const double c01 = -(a10 * a22 - a12 * a20);
+    const double c02 = a10 * a21 - a11 * a20;
+    const double c10 = -(a01 * a22 - a02 * a21);
+    const double c11 = a00 * a22 - a02 * a20;
+    const double c12 = -(a00 * a21 - a01 * a20);
+    const double c20 = a01 * a12 - a02 * a11;
+    const double c21 = -(a00 * a12 - a02 * a10);
+    const double c22 = a00 * a11 - a01 * a10;
+    const double determinant = a00 * c00 + a01 * c01 + a02 * c02;
+    if (std::fabs(determinant) < 1e-12)
+        return false;
+    const double inverseDeterminant = 1.0 / determinant;
+    *output = {
+        c00 * inverseDeterminant,
+        c10 * inverseDeterminant,
+        c20 * inverseDeterminant,
+        0,
+        c01 * inverseDeterminant,
+        c11 * inverseDeterminant,
+        c21 * inverseDeterminant,
+        0,
+        c02 * inverseDeterminant,
+        c12 * inverseDeterminant,
+        c22 * inverseDeterminant,
+        0,
+        0,
+        0,
+        0,
+        1,
+    };
+    const double tx = matrix[12], ty = matrix[13], tz = matrix[14];
+    (*output)[12] = -(tx * (*output)[0] + ty * (*output)[4] + tz * (*output)[8]);
+    (*output)[13] = -(tx * (*output)[1] + ty * (*output)[5] + tz * (*output)[9]);
+    (*output)[14] = -(tx * (*output)[2] + ty * (*output)[6] + tz * (*output)[10]);
+    return true;
+}
+
+bool composeJournalMeshWorlds(OvglBackend* backend,
+                              const PulledScene& scene,
+                              const TransformJournal& journal,
+                              std::vector<double>* worldMatrices)
+{
+    const int32_t meshCount = ovgl_get_mesh_count(backend->renderer);
+    if (meshCount < 0 || journal.paths.size() != journal.worlds.size())
+        return false;
+    const bool sameRoutes = backend->transform_journal_generation == journal.generation &&
+                            backend->transform_journal_paths == journal.paths &&
+                            backend->transform_journal_routes.size() == static_cast<size_t>(meshCount);
+    if (!sameRoutes)
+    {
+        if (backend->pulled_transform_dirty)
+            return false;
+        std::set<std::string> uniquePaths(journal.paths.begin(), journal.paths.end());
+        if (uniquePaths.size() != journal.paths.size())
+            return false;
+        std::vector<JournalMeshRoute> routes(static_cast<size_t>(meshCount));
+        std::map<std::string, ComposedMatrix> memo;
+        for (int32_t meshIndex = 0; meshIndex < meshCount; ++meshIndex)
+        {
+            ovgl_mesh_view_t mesh{};
+            if (ovgl_get_mesh_view(backend->renderer, meshIndex, &mesh).status != 0 || !mesh.path || !mesh.path[0])
+                return false;
+            size_t driverIndex = std::numeric_limits<size_t>::max();
+            size_t driverLength = 0;
+            for (size_t candidate = 0; candidate < journal.paths.size(); ++candidate)
+            {
+                if (journal.paths[candidate].size() >= driverLength && hasPathPrefix(mesh.path, journal.paths[candidate]))
+                {
+                    driverIndex = candidate;
+                    driverLength = journal.paths[candidate].size();
+                }
+            }
+            JournalMeshRoute& route = routes[static_cast<size_t>(meshIndex)];
+            route.driverIndex = driverIndex;
+            std::copy(std::begin(mesh.world_xform), std::end(mesh.world_xform), route.relativeOrStatic.begin());
+            if (driverIndex != std::numeric_limits<size_t>::max())
+            {
+                ComposedMatrix oldDriver;
+                std::array<double, 16> inverseDriver;
+                if (!composePulledWorld(scene, journal.paths[driverIndex], &memo, &oldDriver) ||
+                    !invertAffineMatrix(oldDriver.value, &inverseDriver))
+                    return false;
+                multiplyMatrices(route.relativeOrStatic, inverseDriver, &route.relativeOrStatic);
+            }
+        }
+        backend->transform_journal_generation = journal.generation;
+        backend->transform_journal_paths = journal.paths;
+        backend->transform_journal_routes = std::move(routes);
+    }
+
+    worldMatrices->clear();
+    worldMatrices->reserve(static_cast<size_t>(meshCount) * 16);
+    for (const JournalMeshRoute& route : backend->transform_journal_routes)
+    {
+        std::array<double, 16> world = route.relativeOrStatic;
+        if (route.driverIndex != std::numeric_limits<size_t>::max())
+            multiplyMatrices(route.relativeOrStatic, journal.worlds[route.driverIndex], &world);
+        worldMatrices->insert(worldMatrices->end(), world.begin(), world.end());
+    }
+    return true;
+}
+
+void storeExpandedWorld(std::map<std::string, PulledColumn>* columns, const ComposedMatrix& world)
+{
+    PulledColumn column;
+    column.bytes.resize(sizeof(world.value));
+    std::memcpy(column.bytes.data(), world.value.data(), sizeof(world.value));
+    column.dtype = DLDataType{ kDLFloat, 64, 16 };
+    column.semantic = OVSTAGE_SEMANTIC_MATRIX;
+    column.ordinal = world.newestTransformOrdinal;
+    column.recorded = true;
+    (*columns)["worldMatrix"] = std::move(column);
+}
+
+bool internPath(path_dictionary_instance_t* dict, const std::string& path, ovx_primpath_t* out)
 {
     if (!dict || !dict->vtable || !out)
         return false;
-    const ovx_string_t value = to_ovx(path);
+    const ovx_string_t value = toOvx(path);
     *out = OVX_INVALID_PRIMPATH;
     return dict->vtable->create_paths_from_strings(dict->context, &value, 1, out).status == OVX_API_SUCCESS &&
            *out != OVX_INVALID_PRIMPATH;
 }
 
-bool resolve_owned_path_list(path_dictionary_instance_t* dict,
-                             ovx_primpath_list_t list,
-                             const std::string& operation,
-                             std::vector<std::string>* out)
+bool resolveOwnedPathList(path_dictionary_instance_t* dict,
+                          ovx_primpath_list_t list,
+                          const std::string& operation,
+                          std::vector<std::string>* out)
 {
     out->clear();
     if (!dict || !dict->vtable || list == OVX_INVALID_PRIMPATH_LIST)
@@ -856,10 +1284,10 @@ bool resolve_owned_path_list(path_dictionary_instance_t* dict,
     return true;
 }
 
-bool remap_prototype_path_ids(path_dictionary_instance_t* dict,
-                              const std::string& prototype_root,
-                              const std::string& instance_root,
-                              PulledColumn* column)
+bool remapPrototypePathIds(path_dictionary_instance_t* dict,
+                           const std::string& prototype_root,
+                           const std::string& instance_root,
+                           PulledColumn* column)
 {
     const bool relationship = column->semantic == OVSTAGE_SEMANTIC_RELATIONSHIP_PATH_ID;
     const bool connection = column->semantic == OVSTAGE_SEMANTIC_CONNECTION_PATH_ID;
@@ -875,21 +1303,21 @@ bool remap_prototype_path_ids(path_dictionary_instance_t* dict,
     const size_t id_count = column->bytes.size() / sizeof(uint64_t);
     for (size_t index = 0; index < id_count; index += connection ? 2 : 1)
     {
-        const uint64_t id = load_u64_at(column->bytes.data() + index * sizeof(uint64_t));
+        const uint64_t id = loadU64At(column->bytes.data() + index * sizeof(uint64_t));
         if (id == 0)
             continue;
         std::string path;
-        if (!dict_path_string(dict, static_cast<ovx_primpath_t>(id), &path))
+        if (!getDictionaryPathString(dict, static_cast<ovx_primpath_t>(id), &path))
         {
             setBackendError("instance expansion: failed to resolve a path id");
             return false;
         }
-        if (!has_path_prefix(path, prototype_root))
+        if (!hasPathPrefix(path, prototype_root))
             continue;
 
-        const std::string remapped = replace_path_prefix(path, prototype_root, instance_root);
+        const std::string remapped = replacePathPrefix(path, prototype_root, instance_root);
         ovx_primpath_t remapped_id = OVX_INVALID_PRIMPATH;
-        if (!intern_path(dict, remapped, &remapped_id))
+        if (!internPath(dict, remapped, &remapped_id))
         {
             setBackendError("instance expansion: failed to intern path '" + remapped + "'");
             return false;
@@ -900,15 +1328,17 @@ bool remap_prototype_path_ids(path_dictionary_instance_t* dict,
     return true;
 }
 
-// Official OVStage stores shared topology below /__Prototype_* and publishes
-// instance roots separately. The PoC population also emitted flattened
-// instance-proxy attributes, which is the representation OVGL consumes. Build
-// that compatibility view through the public instancing API: prototype values
-// fill only missing columns at the visible paths, while visible transforms and
-// authored overrides remain authoritative.
-bool expand_scene_graph_instances(ovstage_instance_t* stage,
-                                  PulledScene* scene,
-                                  std::vector<std::string>* retainedPrototypeRoots = nullptr)
+// OVStage publishes shared topology below /__Prototype_* and instance roots
+// separately. Some population implementations also emit partial flattened
+// instance-proxy rows. Build the complete one-level compatibility view expected
+// by OVGL through the public instancing API: prototype values fill only missing
+// columns at visible paths, while visible transforms and authored overrides
+// remain authoritative. Nested prototype dependencies require a stage-native
+// materialization contract and are outside this adapter's compatibility scope.
+bool expandSceneGraphInstances(ovstage_instance_t* stage,
+                               PulledScene* scene,
+                               SceneGraphInstanceIndex* retainedInstances = nullptr,
+                               const std::set<std::string>* instanceRootFilter = nullptr)
 {
     path_dictionary_instance_t* dict = ovstage_get_path_dictionary(stage);
     if (!dict)
@@ -924,18 +1354,16 @@ bool expand_scene_graph_instances(ovstage_instance_t* stage,
         return false;
     }
     std::vector<std::string> prototype_roots;
-    if (!resolve_owned_path_list(dict, prototype_list, "instance expansion prototypes", &prototype_roots))
+    if (!resolveOwnedPathList(dict, prototype_list, "instance expansion prototypes", &prototype_roots))
         return false;
-    if (retainedPrototypeRoots)
-        *retainedPrototypeRoots = prototype_roots;
-
+    SceneGraphInstanceIndex instances;
     size_t expanded_root_count = 0;
     size_t expanded_column_count = 0;
     size_t normalized_type_count = 0;
     for (const std::string& prototype_root : prototype_roots)
     {
         ovx_primpath_t prototype_path = OVX_INVALID_PRIMPATH;
-        if (!intern_path(dict, prototype_root, &prototype_path))
+        if (!internPath(dict, prototype_root, &prototype_path))
         {
             setBackendError("instance expansion: failed to intern prototype root '" + prototype_root + "'");
             return false;
@@ -948,26 +1376,37 @@ bool expand_scene_graph_instances(ovstage_instance_t* stage,
             return false;
         }
         std::vector<std::string> instance_roots;
-        if (!resolve_owned_path_list(
-                dict, instance_list, "instance expansion roots for " + prototype_root, &instance_roots))
+        if (!resolveOwnedPathList(dict, instance_list, "instance expansion roots for " + prototype_root, &instance_roots))
             return false;
         if (instance_roots.empty())
             continue;
+        instances.instanceRootsByPrototype.emplace(prototype_root, instance_roots);
+        instances.instanceRoots.insert(instance_roots.begin(), instance_roots.end());
         expanded_root_count += instance_roots.size();
+    }
+    if (retainedInstances)
+        *retainedInstances = instances;
 
+    for (const std::string& prototype_root : prototype_roots)
+    {
+        if (instances.instanceRootsByPrototype.count(prototype_root) == 0)
+            continue;
+        const std::vector<std::string>& instance_roots = instances.instanceRootsByPrototype.at(prototype_root);
         std::vector<std::pair<std::string, std::map<std::string, PulledColumn>>> prototype_prims;
         for (auto prim = scene->lower_bound(prototype_root);
-             prim != scene->end() && has_path_prefix(prim->first, prototype_root); ++prim)
+             prim != scene->end() && hasPathPrefix(prim->first, prototype_root); ++prim)
         {
             prototype_prims.push_back(*prim);
         }
 
+        std::map<std::string, ComposedMatrix> worldMemo;
         for (const std::string& instance_root : instance_roots)
         {
+            if (instanceRootFilter && instanceRootFilter->count(instance_root) == 0)
+                continue;
             for (const auto& prototype_prim : prototype_prims)
             {
-                const std::string instance_path =
-                    replace_path_prefix(prototype_prim.first, prototype_root, instance_root);
+                const std::string instance_path = replacePathPrefix(prototype_prim.first, prototype_root, instance_root);
                 auto& instance_columns = (*scene)[instance_path];
                 for (const auto& attribute : prototype_prim.second)
                 {
@@ -975,8 +1414,8 @@ bool expand_scene_graph_instances(ovstage_instance_t* stage,
                     if (attribute.first == "usd-prim-type" && attribute.second.bytes.size() == sizeof(uint64_t))
                     {
                         std::string prototype_type;
-                        if (!dict_token_string(dict, static_cast<ovx_token_t>(load_u64_at(attribute.second.bytes.data())),
-                                               &prototype_type))
+                        if (!getDictionaryTokenString(
+                                dict, static_cast<ovx_token_t>(loadU64At(attribute.second.bytes.data())), &prototype_type))
                         {
                             setBackendError("instance expansion: failed to resolve prototype type");
                             return false;
@@ -987,14 +1426,14 @@ bool expand_scene_graph_instances(ovstage_instance_t* stage,
                             prototype_type.compare(prototype_type.size() - suffix.size(), suffix.size(), suffix) != 0;
                     }
                     const bool is_prototype_root = prototype_prim.first == prototype_root;
-                    const bool copies_prototype_local = !is_prototype_root && is_local_transform_column(attribute.first);
-                    if (attribute.second.deleted || (is_transform_column(attribute.first) && !copies_prototype_local) ||
+                    const bool copies_prototype_local = !is_prototype_root && isLocalTransformColumn(attribute.first);
+                    if (attribute.second.deleted || (isTransformColumn(attribute.first) && !copies_prototype_local) ||
                         attribute.first == "_protoPath" || attribute.first == "_isSceneGraphInstancingRoot" ||
                         (instance_columns.count(attribute.first) != 0 && !replaces_instance_type))
                         continue;
 
                     PulledColumn expanded = attribute.second;
-                    if (!remap_prototype_path_ids(dict, prototype_root, instance_root, &expanded))
+                    if (!remapPrototypePathIds(dict, prototype_root, instance_root, &expanded))
                         return false;
                     if (replaces_instance_type)
                         instance_columns[attribute.first] = std::move(expanded);
@@ -1003,6 +1442,13 @@ bool expand_scene_graph_instances(ovstage_instance_t* stage,
                     ++expanded_column_count;
                     if (replaces_instance_type)
                         ++normalized_type_count;
+                }
+                if (prototype_prim.first != prototype_root)
+                {
+                    ComposedMatrix expandedWorld;
+                    if (!composePulledWorld(*scene, instance_path, &worldMemo, &expandedWorld))
+                        return false;
+                    storeExpandedWorld(&instance_columns, expandedWorld);
                 }
             }
         }
@@ -1017,7 +1463,8 @@ bool expand_scene_graph_instances(ovstage_instance_t* stage,
             if (type == prim.second.end() || type->second.bytes.size() != sizeof(uint64_t))
                 continue;
             std::string type_name;
-            if (!dict_token_string(dict, static_cast<ovx_token_t>(load_u64_at(type->second.bytes.data())), &type_name) ||
+            if (!getDictionaryTokenString(
+                    dict, static_cast<ovx_token_t>(loadU64At(type->second.bytes.data())), &type_name) ||
                 type_name != "Mesh")
                 continue;
             ++mesh_count;
@@ -1033,7 +1480,7 @@ bool expand_scene_graph_instances(ovstage_instance_t* stage,
     return true;
 }
 
-bool add_required_pull_attributes(path_dictionary_instance_t* dictionary, std::vector<ovx_token_t>* attributes)
+bool addRequiredPullAttributes(path_dictionary_instance_t* dictionary, std::vector<ovx_token_t>* attributes)
 {
     // Query discovery intentionally hides reserved metadata and can omit
     // columns created after USD population. Request the public transform
@@ -1054,12 +1501,12 @@ bool add_required_pull_attributes(path_dictionary_instance_t* dictionary, std::v
     return true;
 }
 
-bool read_query_attributes(ovstage_instance_t* stage,
-                           path_dictionary_instance_t* dictionary,
-                           ovstage_query_handle_t query,
-                           const std::vector<ovx_token_t>& attributes,
-                           const ovstage_ordinal_range_t& range,
-                           PulledScene* output)
+bool readQueryAttributes(ovstage_instance_t* stage,
+                         path_dictionary_instance_t* dictionary,
+                         ovstage_query_handle_t query,
+                         const std::vector<ovx_token_t>& attributes,
+                         const ovstage_ordinal_range_t& range,
+                         PulledScene* output)
 {
     if (attributes.empty())
         return true;
@@ -1098,12 +1545,12 @@ bool read_query_attributes(ovstage_instance_t* stage,
                                .first;
             groupPaths = &existing->second;
         }
-        if (!groupPaths || groupPaths->empty() || !dict_token_string(dictionary, group.attribute, &attributeName))
+        if (!groupPaths || groupPaths->empty() || !getDictionaryTokenString(dictionary, group.attribute, &attributeName))
         {
             setBackendError("pull: unresolvable group list or attribute token");
             succeeded = false;
         }
-        else if (!decode_read_group(stage, group, attributeName, *groupPaths, output))
+        else if (!decodeReadGroup(stage, group, attributeName, *groupPaths, output))
         {
             succeeded = false;
         }
@@ -1112,14 +1559,95 @@ bool read_query_attributes(ovstage_instance_t* stage,
         if (!succeeded)
             break;
     }
-    if (!inst_complete(stage, operation, "pull read"))
+    if (!instComplete(stage, operation, "pull read"))
         succeeded = false;
-    if (!inst_complete(stage, ovstage_release_read(stage, read), "pull read release"))
+    if (!instComplete(stage, ovstage_release_read(stage, read), "pull read release"))
         succeeded = false;
     return succeeded;
 }
 
-void apply_pulled_changes(PulledScene* scene, const PulledScene& changes)
+bool readTransformJournal(ovstage_instance_t* stage,
+                          path_dictionary_instance_t* dictionary,
+                          ovstage_ordinal_t ordinal,
+                          TransformJournal* journal)
+{
+    using namespace isaacsim::common::ovstage;
+    const ovx_string_t path{ g_kTransformJournalPrimPath, std::strlen(g_kTransformJournalPrimPath) };
+    ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
+    if (path_dictionary_create_path_list_from_strings(dictionary, &path, 1, &pathList).status != OVX_API_SUCCESS ||
+        pathList == OVX_INVALID_PRIMPATH_LIST)
+        return false;
+    ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
+    if (ovstage_query_from_path_list(stage, pathList, &query) != OVSTAGE_OK || query == OVSTAGE_INVALID_QUERY_HANDLE)
+    {
+        path_dictionary_release_path_list_reference(dictionary, pathList);
+        return false;
+    }
+    const ovx_string_t attribute{ g_kTransformJournalAttribute, std::strlen(g_kTransformJournalAttribute) };
+    ovx_token_t token = OVX_INVALID_TOKEN;
+    const bool tokenCreated =
+        path_dictionary_create_tokens_from_strings(dictionary, &attribute, 1, &token).status == OVX_API_SUCCESS &&
+        token != OVX_INVALID_TOKEN;
+    PulledScene pulled;
+    ovstage_ordinal_range_t range{};
+    range.has_start_ordinal = true;
+    range.start_ordinal = ordinal;
+    range.end_ordinal = ordinal;
+    const bool read = tokenCreated && readQueryAttributes(stage, dictionary, query, { token }, range, &pulled);
+    const bool queryReleased = instComplete(stage, ovstage_release_query(stage, query), "journal query release");
+    const bool pathsReleased =
+        path_dictionary_release_path_list_reference(dictionary, pathList).status == OVX_API_SUCCESS;
+    if (!read || !queryReleased || !pathsReleased)
+        return false;
+    const auto prim = pulled.find(g_kTransformJournalPrimPath);
+    if (prim == pulled.end())
+        return false;
+    const auto column = prim->second.find(g_kTransformJournalAttribute);
+    if (column == prim->second.end() || column->second.deleted || !column->second.is_array ||
+        column->second.semantic != OVSTAGE_SEMANTIC_NONE || column->second.dtype.code != kDLUInt ||
+        column->second.dtype.bits != 8 || column->second.dtype.lanes != 1 ||
+        column->second.bytes.size() < sizeof(TransformJournalHeader))
+        return false;
+
+    TransformJournalHeader header{};
+    std::memcpy(&header, column->second.bytes.data(), sizeof(header));
+    if (header.magic != g_kTransformJournalMagic || header.version != g_kTransformJournalVersion ||
+        header.ordinal != ordinal || header.entryCount == 0 ||
+        header.entryCount > (std::numeric_limits<size_t>::max() - sizeof(header)) / sizeof(TransformJournalEntry))
+        return false;
+    const size_t entryCount = static_cast<size_t>(header.entryCount);
+    if (column->second.bytes.size() != sizeof(header) + entryCount * sizeof(TransformJournalEntry))
+        return false;
+
+    journal->generation = header.generation;
+    if (header.baseOrdinal >= header.ordinal)
+        return false;
+    journal->baseOrdinal = static_cast<ovstage_ordinal_t>(header.baseOrdinal);
+    journal->ordinal = static_cast<ovstage_ordinal_t>(header.ordinal);
+    journal->paths.clear();
+    journal->worlds.clear();
+    journal->paths.reserve(entryCount);
+    journal->worlds.reserve(entryCount);
+    const uint8_t* entries = column->second.bytes.data() + sizeof(header);
+    for (size_t index = 0; index < entryCount; ++index)
+    {
+        TransformJournalEntry entry{};
+        std::memcpy(&entry, entries + index * sizeof(entry), sizeof(entry));
+        std::string entryPath;
+        if (entry.primPath == OVX_INVALID_PRIMPATH ||
+            !getDictionaryPathString(dictionary, static_cast<ovx_primpath_t>(entry.primPath), &entryPath) ||
+            !std::all_of(std::begin(entry.worldMatrix), std::end(entry.worldMatrix),
+                         [](double value) { return std::isfinite(value); }))
+            return false;
+        journal->paths.push_back(std::move(entryPath));
+        std::array<double, 16> world{};
+        std::copy(std::begin(entry.worldMatrix), std::end(entry.worldMatrix), world.begin());
+        journal->worlds.push_back(world);
+    }
+    return true;
+}
+
+void applyPulledChanges(PulledScene* scene, const PulledScene& changes)
 {
     for (const auto& prim : changes)
     {
@@ -1142,10 +1670,10 @@ void apply_pulled_changes(PulledScene* scene, const PulledScene& changes)
     }
 }
 
-void build_snapshot_diff(const PulledScene& current,
-                         const PulledScene& previous,
-                         ovstage_ordinal_t ordinal,
-                         PulledScene* changes)
+void buildSnapshotDiff(const PulledScene& current,
+                       const PulledScene& previous,
+                       ovstage_ordinal_t ordinal,
+                       PulledScene* changes)
 {
     changes->clear();
     for (const auto& currentPrim : current)
@@ -1190,12 +1718,12 @@ void build_snapshot_diff(const PulledScene& current,
 // Pull the full committed state <= `ordinal` through the public vtable. A copy
 // of the unexpanded source snapshot is optional and is retained only by the
 // attached lane for subsequent ordinal-window reads.
-bool pull_scene(ovstage_instance_t* ext,
-                ovstage_ordinal_t ordinal,
-                PulledScene* out,
-                PulledScene* sourceOut = nullptr,
-                std::set<std::string>* sourceAttributes = nullptr,
-                std::vector<std::string>* prototypeRoots = nullptr)
+bool pullScene(ovstage_instance_t* ext,
+               ovstage_ordinal_t ordinal,
+               PulledScene* out,
+               PulledScene* sourceOut = nullptr,
+               std::set<std::string>* sourceAttributes = nullptr,
+               SceneGraphInstanceIndex* sceneGraphInstances = nullptr)
 {
     out->clear();
     path_dictionary_instance_t* ext_dict = ovstage_get_path_dictionary(ext);
@@ -1218,18 +1746,18 @@ bool pull_scene(ovstage_instance_t* ext,
     }
     ovstage_query_result_t qres{};
     const ovstage_api_status_t fq = ovstage_fetch_query_result(ext, qh, OVSTAGE_TIMEOUT_INFINITE, &qres);
-    const bool queryCompleted = inst_complete(ext, qe, "pull query");
+    const bool queryCompleted = instComplete(ext, qe, "pull query");
     if (!queryCompleted)
     {
         if (fq == OVSTAGE_OK)
             (void)ovstage_release_query_result(ext, &qres);
-        (void)inst_complete(ext, ovstage_release_query(ext, qh), "pull query release");
+        (void)instComplete(ext, ovstage_release_query(ext, qh), "pull query release");
         return false;
     }
     if (fq != OVSTAGE_OK)
     {
         setBackendError("pull: fetch_query_result failed on the attached stage");
-        (void)inst_complete(ext, ovstage_release_query(ext, qh), "pull query release");
+        (void)instComplete(ext, ovstage_release_query(ext, qh), "pull query release");
         return false;
     }
     std::vector<ovx_token_t> attrs;
@@ -1239,7 +1767,7 @@ bool pull_scene(ovstage_instance_t* ext,
     if (ovstage_release_query_result(ext, &qres) != OVSTAGE_OK)
     {
         setBackendError("pull: release_query_result failed on the attached stage");
-        (void)inst_complete(ext, ovstage_release_query(ext, qh), "pull query release");
+        (void)instComplete(ext, ovstage_release_query(ext, qh), "pull query release");
         return false;
     }
 
@@ -1248,10 +1776,10 @@ bool pull_scene(ovstage_instance_t* ext,
      * NEEDS them: usd-prim-type drives typed-prim handling (RenderProduct/
      * Camera derivation) and usd-schemas the applied-API decisions. Request
      * them by name on top of the discovered set. */
-    if (!add_required_pull_attributes(ext_dict, &attrs))
+    if (!addRequiredPullAttributes(ext_dict, &attrs))
     {
         setBackendError("pull: unable to create reserved OVStage attribute tokens");
-        (void)inst_complete(ext, ovstage_release_query(ext, qh), "pull query release");
+        (void)instComplete(ext, ovstage_release_query(ext, qh), "pull query release");
         return false;
     }
 
@@ -1261,9 +1789,9 @@ bool pull_scene(ovstage_instance_t* ext,
         ovstage_ordinal_range_t range{};
         range.has_start_ordinal = false;
         range.end_ordinal = ordinal;
-        ok = read_query_attributes(ext, ext_dict, qh, attrs, range, out);
+        ok = readQueryAttributes(ext, ext_dict, qh, attrs, range, out);
     }
-    if (!inst_complete(ext, ovstage_release_query(ext, qh), "pull query release"))
+    if (!instComplete(ext, ovstage_release_query(ext, qh), "pull query release"))
         ok = false;
     if (!ok)
         return false;
@@ -1276,7 +1804,7 @@ bool pull_scene(ovstage_instance_t* ext,
     }
     if (sourceOut)
         *sourceOut = *out;
-    return expand_scene_graph_instances(ext, out, prototypeRoots);
+    return expandSceneGraphInstances(ext, out, sceneGraphInstances);
 }
 
 enum class PublicPullStatus
@@ -1286,13 +1814,13 @@ enum class PublicPullStatus
     eError,
 };
 
-PublicPullStatus pull_public_changes(OvglBackend* backend,
-                                     ovstage_ordinal_t endOrdinal,
-                                     PulledScene* changes,
-                                     PulledScene* sourceDelta,
-                                     PulledScene* nextSource,
-                                     std::set<std::string>* nextSourceAttributes,
-                                     std::vector<std::string>* nextPrototypeRoots)
+PublicPullStatus pullPublicChanges(OvglBackend* backend,
+                                   ovstage_ordinal_t endOrdinal,
+                                   PulledScene* changes,
+                                   PulledScene* sourceDelta,
+                                   PulledScene* nextSource,
+                                   std::set<std::string>* nextSourceAttributes,
+                                   SceneGraphInstanceIndex* nextSceneGraphInstances)
 {
     const double profileStart = isProfilingEnabled() ? getCurrentTimeMilliseconds() : 0.0;
     ovstage_instance_t* stage = backend->ext;
@@ -1317,12 +1845,12 @@ PublicPullStatus pull_public_changes(OvglBackend* backend,
     }
     ovstage_query_result_t queryResult{};
     const ovstage_api_status_t fetched = ovstage_fetch_query_result(stage, query, OVSTAGE_TIMEOUT_INFINITE, &queryResult);
-    const bool queryCompleted = inst_complete(stage, queryOperation, "pull query");
+    const bool queryCompleted = instComplete(stage, queryOperation, "pull query");
     if (!queryCompleted || fetched != OVSTAGE_OK)
     {
         if (fetched == OVSTAGE_OK)
             (void)ovstage_release_query_result(stage, &queryResult);
-        (void)inst_complete(stage, ovstage_release_query(stage, query), "pull query release");
+        (void)instComplete(stage, ovstage_release_query(stage, query), "pull query release");
         setBackendError("pull: fetch_query_result failed on the attached stage");
         if (isProfilingEnabled())
             std::fprintf(stderr, "OVGLBEPROF delta fallback=query-fetch\n");
@@ -1334,7 +1862,7 @@ PublicPullStatus pull_public_changes(OvglBackend* backend,
         attributes.assign(queryResult.attributes, queryResult.attributes + queryResult.attribute_count);
     if (ovstage_release_query_result(stage, &queryResult) != OVSTAGE_OK)
     {
-        (void)inst_complete(stage, ovstage_release_query(stage, query), "pull query release");
+        (void)instComplete(stage, ovstage_release_query(stage, query), "pull query release");
         setBackendError("pull: release_query_result failed on the attached stage");
         if (isProfilingEnabled())
             std::fprintf(stderr, "OVGLBEPROF delta fallback=query-result-release\n");
@@ -1351,14 +1879,14 @@ PublicPullStatus pull_public_changes(OvglBackend* backend,
     // and equal-cardinality replacements in the renderer-consumable scene
     // without copying or enumerating the entire snapshot.
 
-    if (!add_required_pull_attributes(dictionary, &attributes))
+    if (!addRequiredPullAttributes(dictionary, &attributes))
     {
         setBackendError("pull: unable to create reserved OVStage attribute tokens");
-        (void)inst_complete(stage, ovstage_release_query(stage, query), "pull query release");
+        (void)instComplete(stage, ovstage_release_query(stage, query), "pull query release");
         return PublicPullStatus::eError;
     }
     *nextSourceAttributes = backend->attached_source_attributes;
-    *nextPrototypeRoots = backend->attached_prototype_roots;
+    *nextSceneGraphInstances = backend->attached_scene_graph_instances;
     for (const std::string& retainedAttribute : backend->attached_source_attributes)
     {
         const ovx_string_t name{ retainedAttribute.c_str(), retainedAttribute.size() };
@@ -1367,7 +1895,7 @@ PublicPullStatus pull_public_changes(OvglBackend* backend,
             token == OVX_INVALID_TOKEN)
         {
             setBackendError("pull: unable to recreate a retained OVStage attribute token");
-            (void)inst_complete(stage, ovstage_release_query(stage, query), "pull query release");
+            (void)instComplete(stage, ovstage_release_query(stage, query), "pull query release");
             return PublicPullStatus::eError;
         }
         if (std::find(attributes.begin(), attributes.end(), token) == attributes.end())
@@ -1379,9 +1907,9 @@ PublicPullStatus pull_public_changes(OvglBackend* backend,
     range.start_ordinal = backend->attached_pull_ordinal + 1;
     range.end_ordinal = endOrdinal;
     const double profilePrepared = isProfilingEnabled() ? getCurrentTimeMilliseconds() : 0.0;
-    const bool readSucceeded = read_query_attributes(stage, dictionary, query, attributes, range, &sourceChanges);
+    const bool readSucceeded = readQueryAttributes(stage, dictionary, query, attributes, range, &sourceChanges);
     const double profileRead = isProfilingEnabled() ? getCurrentTimeMilliseconds() : 0.0;
-    const bool releaseSucceeded = inst_complete(stage, ovstage_release_query(stage, query), "pull query release");
+    const bool releaseSucceeded = instComplete(stage, ovstage_release_query(stage, query), "pull query release");
     if (!readSucceeded || !releaseSucceeded)
         return PublicPullStatus::eError;
     if (isProfilingEnabled())
@@ -1418,34 +1946,70 @@ PublicPullStatus pull_public_changes(OvglBackend* backend,
         }
     }
 
-    bool expansionAffected = false;
+    bool rebuildAllInstances = false;
+    std::set<std::string> affectedInstanceRoots;
     for (const auto& prim : sourceChanges)
     {
-        const bool prototypePath =
-            std::any_of(backend->attached_prototype_roots.begin(), backend->attached_prototype_roots.end(),
-                        [&](const std::string& root) { return has_path_prefix(prim.first, root); });
-        const bool prototypeValueChanged = prototypePath && !prim.second.empty();
+        const std::vector<std::string>* prototypeInstanceRoots =
+            findPrototypeInstanceRoots(backend->attached_scene_graph_instances, prim.first);
         const bool instanceMetadata =
             prim.second.count("_protoPath") != 0 || prim.second.count("_isSceneGraphInstancingRoot") != 0;
-        if (prototypeValueChanged || instanceMetadata)
+        const bool transformChanged = std::any_of(
+            prim.second.begin(), prim.second.end(), [](const auto& column) { return isTransformColumn(column.first); });
+        const bool nonTransformChanged = std::any_of(
+            prim.second.begin(), prim.second.end(), [](const auto& column) { return !isTransformColumn(column.first); });
+        // Metadata can change the dependency index, while non-transform
+        // prototype edits can add or remove expanded values. Rebuild the
+        // compatibility view in those cases. Transform-only changes retain
+        // the topology and can refresh just this prototype's visible roots.
+        if (instanceMetadata || (prototypeInstanceRoots && nonTransformChanged))
         {
-            expansionAffected = true;
+            rebuildAllInstances = true;
             break;
         }
+        if (!transformChanged)
+            continue;
+        collectAffectedInstanceRoots(backend->attached_scene_graph_instances, prim.first, &affectedInstanceRoots);
+        if (prototypeInstanceRoots)
+            affectedInstanceRoots.insert(prototypeInstanceRoots->begin(), prototypeInstanceRoots->end());
     }
 
-    if (!expansionAffected)
+    if (!rebuildAllInstances && affectedInstanceRoots.empty())
     {
         *changes = std::move(sourceChanges);
         return PublicPullStatus::eSuccess;
     }
 
     *nextSource = backend->attached_source_pull;
-    apply_pulled_changes(nextSource, sourceChanges);
-    PulledScene expanded = *nextSource;
-    if (!expand_scene_graph_instances(stage, &expanded, nextPrototypeRoots))
-        return PublicPullStatus::eError;
-    build_snapshot_diff(expanded, backend->attached_pull, endOrdinal, changes);
+    applyPulledChanges(nextSource, sourceChanges);
+    PulledScene expanded;
+    if (rebuildAllInstances)
+    {
+        expanded = *nextSource;
+        if (!expandSceneGraphInstances(stage, &expanded, nextSceneGraphInstances))
+            return PublicPullStatus::eError;
+    }
+    else
+    {
+        expanded = backend->attached_pull;
+        applyPulledChanges(&expanded, sourceChanges);
+        for (const std::string& instanceRoot : affectedInstanceRoots)
+        {
+            for (auto prim = expanded.lower_bound(instanceRoot);
+                 prim != expanded.end() && hasPathPrefix(prim->first, instanceRoot);)
+            {
+                prim = expanded.erase(prim);
+            }
+            for (auto prim = nextSource->lower_bound(instanceRoot);
+                 prim != nextSource->end() && hasPathPrefix(prim->first, instanceRoot); ++prim)
+            {
+                expanded.emplace(*prim);
+            }
+        }
+        if (!expandSceneGraphInstances(stage, &expanded, nullptr, &affectedInstanceRoots))
+            return PublicPullStatus::eError;
+    }
+    buildSnapshotDiff(expanded, backend->attached_pull, endOrdinal, changes);
     return PublicPullStatus::eSuccess;
 }
 
@@ -1468,14 +2032,14 @@ PublicPullStatus pull_public_changes(OvglBackend* backend,
 // OvstageSource reads them as a transform source (OvstageSource.h:45) —
 // deposits them in the change window all the same. Treating them as anything
 // but transforms costs a full scene rebuild per frame AND drops the pose.
-bool is_local_transform_column(const std::string& attribute)
+bool isLocalTransformColumn(const std::string& attribute)
 {
     return attribute == "localMatrix" || attribute == "omni:xform" || attribute == "omni:fabric:localMatrix";
 }
 
-bool is_transform_column(const std::string& attribute)
+bool isTransformColumn(const std::string& attribute)
 {
-    return is_local_transform_column(attribute) || attribute == "worldMatrix" || attribute == "xformOpOrder" ||
+    return isLocalTransformColumn(attribute) || attribute == "worldMatrix" || attribute == "xformOpOrder" ||
            attribute == "omni:fabric:worldMatrix" || attribute.rfind("xformOp:", 0) == 0;
 }
 
@@ -1483,16 +2047,16 @@ bool is_transform_column(const std::string& attribute)
 // spelling listed, so the order is
 // population-derived, then deprecated-Fabric, then the official attach-era
 // live-edit column: a client that writes both omni:xform and the Fabric
-// name at one ordinal keeps exactly the pre-Fabric behaviour.
-const PulledColumn* pick_local_authority(const std::map<std::string, PulledColumn>& cols)
+// name at one ordinal keeps exactly the pre-Fabric behavior.
+const PulledColumn* pickLocalAuthority(const std::map<std::string, PulledColumn>& cols)
 {
-    static const char* const kLocalSpellings[] = {
+    static const char* const s_kLocalSpellings[] = {
         "localMatrix",
         "omni:fabric:localMatrix",
         "omni:xform",
     };
     const PulledColumn* best = nullptr;
-    for (const char* name : kLocalSpellings)
+    for (const char* name : s_kLocalSpellings)
     {
         auto it = cols.find(name);
         if (it == cols.end() || it->second.deleted)
@@ -1506,17 +2070,17 @@ const PulledColumn* pick_local_authority(const std::map<std::string, PulledColum
 // Use the official hierarchy input spelling in the renderer-owned mirror.
 // Population may expose the deprecated Fabric local column as well, but new
 // generic writes must use omni:xform to participate in hierarchy computation.
-constexpr const char* kMirrorLocalTransform = "omni:xform";
-constexpr const char* kMirrorWorldTransform = "omni:fabric:worldMatrix";
+constexpr const char* g_kMirrorLocalTransform = "omni:xform";
+constexpr const char* g_kMirrorWorldTransform = "omni:fabric:worldMatrix";
 
-const PulledColumn* pick_world_authority(const std::map<std::string, PulledColumn>& cols)
+const PulledColumn* pickWorldAuthority(const std::map<std::string, PulledColumn>& cols)
 {
-    static const char* const kWorldSpellings[] = {
+    static const char* const s_kWorldSpellings[] = {
         "omni:fabric:worldMatrix",
         "worldMatrix",
     };
     const PulledColumn* best = nullptr;
-    for (const char* name : kWorldSpellings)
+    for (const char* name : s_kWorldSpellings)
     {
         auto it = cols.find(name);
         if (it == cols.end() || it->second.deleted)
@@ -1531,38 +2095,38 @@ const PulledColumn* pick_world_authority(const std::map<std::string, PulledColum
 // transform unless a newer local edit still needs composition. This rule is
 // producer-neutral: stage writers publish normal columns without an
 // OVGL-specific provenance marker.
-const PulledColumn* pick_source_world(const std::map<std::string, PulledColumn>& cols)
+const PulledColumn* pickSourceWorld(const std::map<std::string, PulledColumn>& cols)
 {
-    const PulledColumn* world = pick_world_authority(cols);
+    const PulledColumn* world = pickWorldAuthority(cols);
     if (!world)
         return nullptr;
-    const PulledColumn* local = pick_local_authority(cols);
+    const PulledColumn* local = pickLocalAuthority(cols);
     if (local && local->ordinal > world->ordinal)
         return nullptr;
     return world;
 }
 
 // Write one pulled column into the mirror at `ord` (single-prim UPSERT).
-bool mirror_write_column(OvglBackend* be,
-                         ovstage_ordinal_t ord,
-                         const std::string& path,
-                         const std::string& attr,
-                         const void* data,
-                         size_t nbytes,
-                         DLDataType dtype,
-                         ovstage_attribute_semantic_t sem,
-                         bool is_array)
+bool mirrorWriteColumn(OvglBackend* be,
+                       ovstage_ordinal_t ord,
+                       const std::string& path,
+                       const std::string& attr,
+                       const void* data,
+                       size_t nbytes,
+                       DLDataType dtype,
+                       ovstage_attribute_semantic_t sem,
+                       bool is_array)
 {
 
-    ovx_string_t ps = to_ovx(path);
+    ovx_string_t ps = toOvx(path);
     owned_path_query query;
-    if (!create_owned_path_query(be, &ps, 1, "mirror: query(" + path + ")", &query))
+    if (!createOwnedPathQuery(be, &ps, 1, "mirror: query(" + path + ")", &query))
         return false;
 
-    const size_t eb = dl_elem_bytes(dtype);
+    const size_t eb = dlElemBytes(dtype);
     if (eb == 0 || nbytes % eb != 0)
     {
-        (void)release_owned_path_query(be, &query, "mirror release invalid payload query");
+        (void)releaseOwnedPathQuery(be, &query, "mirror release invalid payload query");
         setBackendError("mirror: payload for " + attr + " does not divide by its element size");
         return false;
     }
@@ -1602,30 +2166,30 @@ bool mirror_write_column(OvglBackend* be,
 
     ovx_string_or_token_t sot{};
     sot.token = 0;
-    sot.string = to_ovx(attr);
+    sot.string = toOvx(attr);
 
     ovstage_enqueue_result_t er = ovstage_write_attribute(be->stage, query.query, sot, ord, wd, OVSTAGE_PRIM_MODE_UPSERT);
     if (er.status != OVSTAGE_OK)
     {
-        (void)release_owned_path_query(be, &query, "mirror release after failed write");
+        (void)releaseOwnedPathQuery(be, &query, "mirror release after failed write");
         setBackendError("mirror: write(" + path + "." + attr + ")");
         return false;
     }
-    const bool wrote = complete_enqueue(be, er, "mirror write(" + path + "." + attr + ")");
-    const bool released = release_owned_path_query(be, &query, "mirror release after write(" + path + "." + attr + ")");
+    const bool wrote = completeEnqueue(be, er, "mirror write(" + path + "." + attr + ")");
+    const bool released = releaseOwnedPathQuery(be, &query, "mirror release after write(" + path + "." + attr + ")");
     return wrote && released;
 }
 
 // Delete a whole prim from the mirror at `ord`.
-bool mirror_delete_prim(OvglBackend* be, ovstage_ordinal_t ord, const std::string& path)
+bool mirrorDeletePrim(OvglBackend* be, ovstage_ordinal_t ord, const std::string& path)
 {
-    ovx_string_t ps = to_ovx(path);
+    ovx_string_t ps = toOvx(path);
     owned_path_query query;
-    if (!create_owned_path_query(be, &ps, 1, "mirror: delete query(" + path + ")", &query))
+    if (!createOwnedPathQuery(be, &ps, 1, "mirror: delete query(" + path + ")", &query))
         return false;
-    const bool ok = inst_complete(
+    const bool ok = instComplete(
         be->stage, ovstage_delete_attributes(be->stage, query.query, nullptr, 0, ord), "mirror delete " + path);
-    const bool rel_ok = release_owned_path_query(be, &query, "mirror delete release");
+    const bool rel_ok = releaseOwnedPathQuery(be, &query, "mirror delete release");
     return ok && rel_ok;
 }
 
@@ -1635,38 +2199,38 @@ bool mirror_delete_prim(OvglBackend* be, ovstage_ordinal_t ord, const std::strin
 // tombstoned here too or every warmed renderer keeps rendering it forever
 // (fast-path adversary F2, 2026-07-19). Deleting a column the mirror never
 // carried is an engine-level idempotent no-op; the queried prim must exist.
-bool mirror_delete_columns(OvglBackend* be,
-                           ovstage_ordinal_t ord,
-                           const std::string& path,
-                           const std::vector<std::string>& attrs)
+bool mirrorDeleteColumns(OvglBackend* be,
+                         ovstage_ordinal_t ord,
+                         const std::string& path,
+                         const std::vector<std::string>& attrs)
 {
     if (attrs.empty())
         return true;
-    ovx_string_t ps = to_ovx(path);
+    ovx_string_t ps = toOvx(path);
     owned_path_query query;
-    if (!create_owned_path_query(be, &ps, 1, "mirror: delete-column query(" + path + ")", &query))
+    if (!createOwnedPathQuery(be, &ps, 1, "mirror: delete-column query(" + path + ")", &query))
         return false;
     std::vector<ovx_string_or_token_t> names(attrs.size());
     for (size_t i = 0; i < attrs.size(); ++i)
     {
         names[i].token = 0;
-        names[i].string = to_ovx(attrs[i]);
+        names[i].string = toOvx(attrs[i]);
     }
     const bool ok =
-        inst_complete(be->stage, ovstage_delete_attributes(be->stage, query.query, names.data(), names.size(), ord),
-                      "mirror delete columns on " + path);
-    const bool rel_ok = release_owned_path_query(be, &query, "mirror delete-column release");
+        instComplete(be->stage, ovstage_delete_attributes(be->stage, query.query, names.data(), names.size(), ord),
+                     "mirror delete columns on " + path);
+    const bool rel_ok = releaseOwnedPathQuery(be, &query, "mirror delete-column release");
     return ok && rel_ok;
 }
 
 // Re-intern a u64 id payload (token / path / (path,token) pair columns) from
 // the external dictionary into the mirror dictionary. `kind`: 0 = tokens,
 // 1 = paths, 2 = (path, token) pairs.
-bool reintern_ids(OvglBackend* be,
-                  path_dictionary_instance_t* ext_dict,
-                  const std::vector<uint8_t>& src,
-                  int kind,
-                  std::vector<uint8_t>* out)
+bool reinternIds(OvglBackend* be,
+                 path_dictionary_instance_t* ext_dict,
+                 const std::vector<uint8_t>& src,
+                 int kind,
+                 std::vector<uint8_t>* out)
 {
     out->clear();
     if (src.size() % sizeof(uint64_t) != 0)
@@ -1689,7 +2253,7 @@ bool reintern_ids(OvglBackend* be,
     out->resize(src.size());
     for (size_t i = 0; i < n; ++i)
     {
-        const uint64_t id = load_u64_at(src.data() + i * 8);
+        const uint64_t id = loadU64At(src.data() + i * 8);
         uint64_t mapped = 0;
         if (id == 0)
         {
@@ -1699,14 +2263,14 @@ bool reintern_ids(OvglBackend* be,
         {
             const bool as_path = (kind == 1) || (kind == 2 && (i % 2 == 0));
             std::string s;
-            const bool resolved = as_path ? dict_path_string(ext_dict, static_cast<ovx_primpath_t>(id), &s) :
-                                            dict_token_string(ext_dict, static_cast<ovx_token_t>(id), &s);
+            const bool resolved = as_path ? getDictionaryPathString(ext_dict, static_cast<ovx_primpath_t>(id), &s) :
+                                            getDictionaryTokenString(ext_dict, static_cast<ovx_token_t>(id), &s);
             if (!resolved)
             {
                 setBackendError("mirror: failed to resolve an id from the attached stage's dictionary");
                 return false;
             }
-            ovx_string_t sv = to_ovx(s);
+            ovx_string_t sv = toOvx(s);
             if (as_path)
             {
                 ovx_primpath_t ph = OVX_INVALID_PRIMPATH;
@@ -1743,47 +2307,47 @@ struct PreparedMirrorColumn
     bool is_array = false;
 };
 
-bool prepare_mirror_column(OvglBackend* be,
-                           const std::string& attribute,
-                           const PulledColumn& column,
-                           path_dictionary_instance_t* external_dictionary,
-                           PreparedMirrorColumn* prepared)
+bool prepareMirrorColumn(OvglBackend* be,
+                         const std::string& attribute,
+                         const PulledColumn& column,
+                         path_dictionary_instance_t* external_dictionary,
+                         PreparedMirrorColumn* prepared)
 {
     prepared->semantic = column.semantic;
     prepared->is_array = column.is_array;
     if (attribute == "usd-prim-type" || attribute == "usd-schemas" || column.semantic == OVSTAGE_SEMANTIC_TOKEN_ID)
     {
         prepared->dtype = DLDataType{ kDLUInt, 64, 1 };
-        return reintern_ids(be, external_dictionary, column.bytes, 0, &prepared->bytes);
+        return reinternIds(be, external_dictionary, column.bytes, 0, &prepared->bytes);
     }
     if (column.semantic == OVSTAGE_SEMANTIC_RELATIONSHIP_PATH_ID)
     {
         prepared->dtype = DLDataType{ kDLUInt, 64, 1 };
-        return reintern_ids(be, external_dictionary, column.bytes, 1, &prepared->bytes);
+        return reinternIds(be, external_dictionary, column.bytes, 1, &prepared->bytes);
     }
     if (column.semantic == OVSTAGE_SEMANTIC_CONNECTION_PATH_ID)
     {
         prepared->dtype = DLDataType{ kDLUInt, 64, 2 };
-        return reintern_ids(be, external_dictionary, column.bytes, 2, &prepared->bytes);
+        return reinternIds(be, external_dictionary, column.bytes, 2, &prepared->bytes);
     }
     prepared->bytes = column.bytes;
     prepared->dtype = column.dtype;
-    if (dl_elem_bytes(prepared->dtype) == 0 || prepared->bytes.size() % dl_elem_bytes(prepared->dtype) != 0)
+    if (dlElemBytes(prepared->dtype) == 0 || prepared->bytes.size() % dlElemBytes(prepared->dtype) != 0)
         prepared->dtype = DLDataType{ kDLUInt, 8, 1 };
     return true;
 }
 
-bool mirror_pulled_column(OvglBackend* be,
-                          ovstage_ordinal_t ordinal,
-                          const std::string& path,
-                          const std::string& attribute,
-                          const PulledColumn& column,
-                          path_dictionary_instance_t* external_dictionary)
+bool mirrorPulledColumn(OvglBackend* be,
+                        ovstage_ordinal_t ordinal,
+                        const std::string& path,
+                        const std::string& attribute,
+                        const PulledColumn& column,
+                        path_dictionary_instance_t* external_dictionary)
 {
     PreparedMirrorColumn prepared;
-    return prepare_mirror_column(be, attribute, column, external_dictionary, &prepared) &&
-           mirror_write_column(be, ordinal, path, attribute, prepared.bytes.data(), prepared.bytes.size(),
-                               prepared.dtype, prepared.semantic, prepared.is_array);
+    return prepareMirrorColumn(be, attribute, column, external_dictionary, &prepared) &&
+           mirrorWriteColumn(be, ordinal, path, attribute, prepared.bytes.data(), prepared.bytes.size(), prepared.dtype,
+                             prepared.semantic, prepared.is_array);
 }
 
 struct MirrorBatchKey
@@ -1810,10 +2374,10 @@ struct MirrorBatchRow
 
 using MirrorBatches = std::map<MirrorBatchKey, std::vector<MirrorBatchRow>>;
 
-void add_mirror_batch(MirrorBatches* batches,
-                      const std::string& path,
-                      const std::string& attribute,
-                      PreparedMirrorColumn prepared)
+void addMirrorBatch(MirrorBatches* batches,
+                    const std::string& path,
+                    const std::string& attribute,
+                    PreparedMirrorColumn prepared)
 {
     MirrorBatchKey key;
     key.attribute = attribute;
@@ -1824,10 +2388,10 @@ void add_mirror_batch(MirrorBatches* batches,
     (*batches)[std::move(key)].push_back(MirrorBatchRow{ path, std::move(prepared.bytes) });
 }
 
-bool add_matrix_mirror_batch(MirrorBatches* batches,
-                             const std::string& path,
-                             const std::string& attribute,
-                             const PulledColumn& column)
+bool addMatrixMirrorBatch(MirrorBatches* batches,
+                          const std::string& path,
+                          const std::string& attribute,
+                          const PulledColumn& column)
 {
     if (column.bytes.size() != 16 * sizeof(double))
     {
@@ -1838,14 +2402,14 @@ bool add_matrix_mirror_batch(MirrorBatches* batches,
     prepared.bytes = column.bytes;
     prepared.dtype = DLDataType{ kDLFloat, 64, 16 };
     prepared.semantic = OVSTAGE_SEMANTIC_MATRIX;
-    add_mirror_batch(batches, path, attribute, std::move(prepared));
+    addMirrorBatch(batches, path, attribute, std::move(prepared));
     return true;
 }
 
-bool mirror_write_batch(OvglBackend* be,
-                        ovstage_ordinal_t ordinal,
-                        const MirrorBatchKey& key,
-                        const std::vector<MirrorBatchRow>& rows)
+bool mirrorWriteBatch(OvglBackend* be,
+                      ovstage_ordinal_t ordinal,
+                      const MirrorBatchKey& key,
+                      const std::vector<MirrorBatchRow>& rows)
 {
     if (rows.empty())
         return true;
@@ -1854,7 +2418,7 @@ bool mirror_write_batch(OvglBackend* be,
         setBackendError("mirror batch has too many rows for " + key.attribute);
         return false;
     }
-    const size_t element_bytes = dl_elem_bytes(key.dtype);
+    const size_t element_bytes = dlElemBytes(key.dtype);
     if (element_bytes == 0)
     {
         setBackendError("mirror batch has invalid dtype for " + key.attribute);
@@ -1863,13 +2427,13 @@ bool mirror_write_batch(OvglBackend* be,
 
     std::vector<ovx_string_t> path_strings(rows.size());
     for (size_t index = 0; index < rows.size(); ++index)
-        path_strings[index] = to_ovx(rows[index].path);
+        path_strings[index] = toOvx(rows[index].path);
     owned_path_query query;
-    if (!create_owned_path_query(
+    if (!createOwnedPathQuery(
             be, path_strings.data(), path_strings.size(), "mirror batch query for " + key.attribute, &query))
         return false;
     const auto release_resources = [&]()
-    { return release_owned_path_query(be, &query, "mirror batch release for " + key.attribute); };
+    { return releaseOwnedPathQuery(be, &query, "mirror batch release for " + key.attribute); };
 
     std::vector<uint8_t> fixed_bytes;
     std::vector<DLTensor> tensors;
@@ -1957,7 +2521,7 @@ bool mirror_write_batch(OvglBackend* be,
     write.semantic = key.semantic;
     write.is_array = key.is_array;
     ovx_string_or_token_t attribute{};
-    attribute.string = to_ovx(key.attribute);
+    attribute.string = toOvx(key.attribute);
     const ovstage_enqueue_result_t enqueued =
         ovstage_write_attribute(be->stage, query.query, attribute, ordinal, write, OVSTAGE_PRIM_MODE_UPSERT);
     if (enqueued.status != OVSTAGE_OK)
@@ -1966,24 +2530,24 @@ bool mirror_write_batch(OvglBackend* be,
         setBackendError("mirror batch write for " + key.attribute);
         return false;
     }
-    const bool wrote = complete_enqueue(be, enqueued, "mirror batch write for " + key.attribute);
+    const bool wrote = completeEnqueue(be, enqueued, "mirror batch write for " + key.attribute);
     return release_resources() && wrote;
 }
 
-bool mirror_write_batches(OvglBackend* be, ovstage_ordinal_t ordinal, const MirrorBatches& batches)
+bool mirrorWriteBatches(OvglBackend* be, ovstage_ordinal_t ordinal, const MirrorBatches& batches)
 {
     for (const auto& batch : batches)
-        if (!mirror_write_batch(be, ordinal, batch.first, batch.second))
+        if (!mirrorWriteBatch(be, ordinal, batch.first, batch.second))
             return false;
     return true;
 }
 
 // USD Camera schema defaults (authored values override; population only
 // mirrors AUTHORED attributes, so unauthored ones fall back to the schema).
-constexpr float kUsdDefaultFocalLength = 50.0f;
-constexpr float kUsdDefaultHorizontalAperture = 20.955f;
+constexpr float g_kUsdDefaultFocalLength = 50.0f;
+constexpr float g_kUsdDefaultHorizontalAperture = 20.955f;
 
-bool pulled_scalar_f32(const PulledScene& scene, const std::string& prim, const std::string& attr, float* out)
+bool pulledScalarF32(const PulledScene& scene, const std::string& prim, const std::string& attr, float* out)
 {
     auto p = scene.find(prim);
     if (p == scene.end())
@@ -2000,7 +2564,7 @@ bool pulled_scalar_f32(const PulledScene& scene, const std::string& prim, const 
 // z-buffer linearizes to exactly this quantity; DepthSD (reverse-z unitless)
 // is pinned broken in the official 0.4.0 C readback and DistanceToCameraSD
 // (Euclidean) is a possible follow-on — see the contract-ledger notes.
-constexpr const char* kDepthVarName = "DistanceToImagePlaneSD";
+constexpr const char* g_kDepthVarName = "DistanceToImagePlaneSD";
 
 // Stage units -> meters for the depth payload. Population authors the
 // RESOLVED metersPerUnit ({kDLFloat,64,1}) onto the reserved stage-info prim
@@ -2008,20 +2572,20 @@ constexpr const char* kDepthVarName = "DistanceToImagePlaneSD";
 // columns) has no row, and the official USD fallback 0.01 applies — measured
 // on the official 0.4 engine: with metersPerUnit unauthored, DistanceTo*SD
 // payloads read stage units x 0.01 (official-depth probe, 2026-07-20).
-constexpr double kUsdFallbackMetersPerUnit = 0.01;
+constexpr double g_kUsdFallbackMetersPerUnit = 0.01;
 
-double pulled_meters_per_unit(const PulledScene& scene)
+double pulledMetersPerUnit(const PulledScene& scene)
 {
     const ovx_string_t info = ovstage_population_stage_info_path();
     auto p = scene.find(std::string(info.ptr ? info.ptr : "", info.ptr ? info.length : 0));
     if (p == scene.end())
-        return kUsdFallbackMetersPerUnit;
+        return g_kUsdFallbackMetersPerUnit;
     auto a = p->second.find("metersPerUnit");
     if (a == p->second.end() || a->second.deleted || a->second.bytes.size() < sizeof(double))
-        return kUsdFallbackMetersPerUnit;
+        return g_kUsdFallbackMetersPerUnit;
     double mpu = 0.0;
     std::memcpy(&mpu, a->second.bytes.data(), sizeof(double));
-    return (std::isfinite(mpu) && mpu > 0.0) ? mpu : kUsdFallbackMetersPerUnit;
+    return (std::isfinite(mpu) && mpu > 0.0) ? mpu : g_kUsdFallbackMetersPerUnit;
 }
 
 } // namespace
@@ -2105,21 +2669,21 @@ int resetStage(OvglBackend* be)
     // instead of skipping past an open accumulating frame.
     for (const std::string& p : be->prims)
     {
-        ovx_string_t ps = to_ovx(p);
+        ovx_string_t ps = toOvx(p);
         owned_path_query query;
-        if (!create_owned_path_query(be, &ps, 1, "reset_stage query for " + p, &query))
+        if (!createOwnedPathQuery(be, &ps, 1, "reset_stage query for " + p, &query))
             return 1;
 
-        const bool delete_ok = complete_enqueue(
+        const bool delete_ok = completeEnqueue(
             be, ovstage_delete_attributes(be->stage, query.query, nullptr, 0, o), "reset_stage delete " + p);
-        const bool query_release_ok = release_owned_path_query(be, &query, "reset_stage query release " + p);
+        const bool query_release_ok = releaseOwnedPathQuery(be, &query, "reset_stage query release " + p);
         if (!delete_ok || !query_release_ok)
         {
             return 1;
         }
     }
     bool ordinal_sealed = false;
-    if (!seal_ordinal(be, o, &ordinal_sealed))
+    if (!sealOrdinal(be, o, &ordinal_sealed))
     {
         // A successful floor advance followed by an op-handle release failure
         // still closes the ordinal; preserve that fact while retaining the
@@ -2136,21 +2700,28 @@ int resetStage(OvglBackend* be)
     be->attached_pull.clear();
     be->attached_source_pull.clear();
     be->attached_source_attributes.clear();
-    be->attached_prototype_roots.clear();
+    be->attached_scene_graph_instances = {};
     be->attached_pull_valid = false;
     be->attached_pull_ordinal = 0;
     be->attached_render_ordinal = 0;
     be->attached_scene_ordinal = 0;
+    be->mirror_transform_dirty = false;
+    be->attached_light_paths.clear();
+    be->attached_light_paths_valid = false;
+    be->pulled_transform_dirty = false;
+    be->transform_journal_generation = 0;
+    be->transform_journal_paths.clear();
+    be->transform_journal_routes.clear();
     return 0;
 }
 
-static int set_camera(OvglBackend* be,
-                      const double eye[3],
-                      const double target[3],
-                      const double up[3],
-                      double fov_y_rad,
-                      int width,
-                      int height)
+static int setCamera(OvglBackend* be,
+                     const double eye[3],
+                     const double target[3],
+                     const double up[3],
+                     double fov_y_rad,
+                     int width,
+                     int height)
 {
     if (!be || !eye || !target || !up)
         return 1;
@@ -2178,7 +2749,7 @@ const char* getOvglBackendError(void)
     return g_backendError.c_str();
 }
 
-// ── attach lane (ovrtx 0.4) ──────────────────────────────────────────────────
+// Attach lane (ovrtx 0.4).
 
 int attachStage(OvglBackend* be, ovstage_instance_t* externalInstance, char* err, size_t errlen)
 {
@@ -2264,8 +2835,8 @@ int getStageWriteFloor(OvglBackend* be, ovstage_ordinal_t* ordinal)
     ovstage_ordinal_t floor_ord = 0;
     const ovstage_api_status_t fe = ovstage_fetch_ordinal(be->ext, oh, OVSTAGE_TIMEOUT_INFINITE, &floor_ord);
     const bool released =
-        inst_complete(be->ext, ovstage_release_ordinal_query(be->ext, oh), "attached write-floor query release");
-    if (!inst_complete(be->ext, oe, "attached write-floor query") || fe != OVSTAGE_OK || !released)
+        instComplete(be->ext, ovstage_release_ordinal_query(be->ext, oh), "attached write-floor query release");
+    if (!instComplete(be->ext, oe, "attached write-floor query") || fe != OVSTAGE_OK || !released)
     {
         setBackendError("attached stage: fetch_ordinal(write floor) failed");
         return 1;
@@ -2281,12 +2852,12 @@ namespace
 // resolved from a pulled scene BEFORE any mirror mutation so a bad product
 // fails the step without advancing the mirror ordinal. `stage_word` provides
 // context in validation errors.
-bool derive_render_product(const PulledScene& scene,
-                           path_dictionary_instance_t* dict,
-                           const std::string& product,
-                           const char* stage_word,
-                           DerivedProduct* out,
-                           std::string* err)
+bool deriveRenderProduct(const PulledScene& scene,
+                         path_dictionary_instance_t* dict,
+                         const std::string& product,
+                         const char* stage_word,
+                         DerivedProduct* out,
+                         std::string* err)
 {
     auto product_it = scene.find(product);
     std::string product_type;
@@ -2294,7 +2865,7 @@ bool derive_render_product(const PulledScene& scene,
     {
         auto pt = product_it->second.find("usd-prim-type");
         if (pt != product_it->second.end() && pt->second.bytes.size() == sizeof(uint64_t))
-            (void)dict_token_string(dict, load_u64_at(pt->second.bytes.data()), &product_type);
+            (void)getDictionaryTokenString(dict, loadU64At(pt->second.bytes.data()), &product_type);
     }
     if (product_type != "RenderProduct")
     {
@@ -2313,7 +2884,7 @@ bool derive_render_product(const PulledScene& scene,
         *err = "render product '" + product + "' has no camera relationship";
         return false;
     }
-    if (!dict_path_string(dict, load_u64_at(cam_rel->bytes.data()), &out->camera_path))
+    if (!getDictionaryPathString(dict, loadU64At(cam_rel->bytes.data()), &out->camera_path))
     {
         *err = "render product camera target could not be resolved";
         return false;
@@ -2363,7 +2934,7 @@ bool derive_render_product(const PulledScene& scene,
         for (size_t i = 0; i < n; ++i)
         {
             std::string var_path;
-            if (!dict_path_string(dict, load_u64_at(ordered->bytes.data() + i * 8), &var_path))
+            if (!getDictionaryPathString(dict, loadU64At(ordered->bytes.data() + i * 8), &var_path))
             {
                 *err = "orderedVars target could not be resolved";
                 return false;
@@ -2377,7 +2948,7 @@ bool derive_render_product(const PulledScene& scene,
             std::string source_name;
             if (sn->second.semantic == OVSTAGE_SEMANTIC_TOKEN_ID && sn->second.bytes.size() == sizeof(uint64_t))
             {
-                if (!dict_token_string(dict, load_u64_at(sn->second.bytes.data()), &source_name))
+                if (!getDictionaryTokenString(dict, loadU64At(sn->second.bytes.data()), &source_name))
                 {
                     *err = "RenderVar sourceName token could not be resolved";
                     return false;
@@ -2398,12 +2969,12 @@ bool derive_render_product(const PulledScene& scene,
     // pixelAspectRatio / aspectRatioConformPolicy: official ovrtx 0.4 renders
     // byte-identical frames whatever any of the three say, so reading them
     // could only reintroduce a divergence. The measurements are in
-    // render_derived_product.
-    out->focal = kUsdDefaultFocalLength;
-    out->h_aperture = kUsdDefaultHorizontalAperture;
-    (void)pulled_scalar_f32(scene, out->camera_path, "focalLength", &out->focal);
-    (void)pulled_scalar_f32(scene, out->camera_path, "horizontalAperture", &out->h_aperture);
-    out->meters_per_unit = pulled_meters_per_unit(scene);
+    // renderDerivedProduct.
+    out->focal = g_kUsdDefaultFocalLength;
+    out->h_aperture = g_kUsdDefaultHorizontalAperture;
+    (void)pulledScalarF32(scene, out->camera_path, "focalLength", &out->focal);
+    (void)pulledScalarF32(scene, out->camera_path, "horizontalAperture", &out->h_aperture);
+    out->meters_per_unit = pulledMetersPerUnit(scene);
     return true;
 }
 
@@ -2413,16 +2984,17 @@ bool derive_render_product(const PulledScene& scene,
 // one ovgl_render_frame, publish the rasterizer-expressible vars — exactly
 // {"LdrColor", "DistanceToImagePlaneSD"}. Non-expressible vars (HdrColor,
 // NormalSD, PointCloud, ...) are ABSENT — an honest, documented gap.
-bool render_derived_product(OvglBackend* be,
-                            const DerivedProduct& product,
-                            ovstage_ordinal_t render_ordinal,
-                            ovstage_ordinal_t scene_ordinal,
-                            std::string* err)
+bool renderDerivedProduct(OvglBackend* be,
+                          const DerivedProduct& product,
+                          ovstage_ordinal_t render_ordinal,
+                          ovstage_ordinal_t scene_ordinal,
+                          const PresentRequest* present_request,
+                          std::string* err)
 {
     const DerivedProduct& effective_product = product;
     std::vector<uint8_t> camera_bytes;
     bool has_camera_matrix =
-        read_attr_host(be, render_ordinal, effective_product.camera_path, kMirrorWorldTransform, camera_bytes) &&
+        readAttributeHost(be, render_ordinal, effective_product.camera_path, g_kMirrorWorldTransform, camera_bytes) &&
         camera_bytes.size() == 16 * sizeof(double);
     if (!has_camera_matrix && effective_product.camera_path.find('/', 1) == std::string::npos)
     {
@@ -2432,9 +3004,9 @@ bool render_derived_product(OvglBackend* be,
         // for a prim first introduced after population; retain interactive
         // camera support without guessing for nested cameras.
         camera_bytes.clear();
-        has_camera_matrix =
-            read_attr_host(be, render_ordinal, effective_product.camera_path, kMirrorLocalTransform, camera_bytes) &&
-            camera_bytes.size() == 16 * sizeof(double);
+        has_camera_matrix = readAttributeHost(be, render_ordinal, effective_product.camera_path,
+                                              g_kMirrorLocalTransform, camera_bytes) &&
+                            camera_bytes.size() == 16 * sizeof(double);
     }
     if (!has_camera_matrix)
     {
@@ -2473,7 +3045,7 @@ bool render_derived_product(OvglBackend* be,
     //
     // Conforming unconditionally — rather than only when verticalAperture is
     // unauthored — is both what official does and the only honest option
-    // here, since pulled_scalar_f32 reports success for a schema default just
+    // here, since pulledScalarF32 reports success for a schema default just
     // as it does for an authored value and so cannot tell the two apart.
     // Measured on the official wheel, attach lane, same scene: overlaying
     // verticalAperture = 36, 72 or 100 yields three byte-identical PNGs, as
@@ -2488,10 +3060,57 @@ bool render_derived_product(OvglBackend* be,
     const double vert_ap =
         static_cast<double>(h_aperture) * (static_cast<double>(effective_product.height) / effective_product.width);
     const double fov_y = 2.0 * std::atan(vert_ap / (2.0 * static_cast<double>(focal)));
-    if (set_camera(be, eye, target, up, fov_y, effective_product.width, effective_product.height) != 0)
+    if (setCamera(be, eye, target, up, fov_y, effective_product.width, effective_product.height) != 0)
     {
         *err = std::string("attached camera: ") + g_backendError;
         return false;
+    }
+
+    // Optional dataWindowNDC crop: publish or present only the window's pixel rows/cols.
+    int x_lo = 0, y_lo = 0;
+    int x_hi = effective_product.width, y_hi = effective_product.height;
+    if (effective_product.has_data_window)
+    {
+        x_lo = static_cast<int>(std::lround(effective_product.data_window[0] * effective_product.width));
+        y_lo = static_cast<int>(std::lround(effective_product.data_window[1] * effective_product.height));
+        x_hi = static_cast<int>(std::lround(effective_product.data_window[2] * effective_product.width));
+        y_hi = static_cast<int>(std::lround(effective_product.data_window[3] * effective_product.height));
+        x_lo = std::max(0, std::min(x_lo, effective_product.width - 1));
+        y_lo = std::max(0, std::min(y_lo, effective_product.height - 1));
+        x_hi = std::max(x_lo + 1, std::min(x_hi, effective_product.width));
+        y_hi = std::max(y_lo + 1, std::min(y_hi, effective_product.height));
+    }
+
+    if (present_request)
+    {
+        if (std::find(effective_product.var_names.begin(), effective_product.var_names.end(), "LdrColor") ==
+            effective_product.var_names.end())
+        {
+            *err = "The configured RenderProduct has no LdrColor RenderVar output";
+            return false;
+        }
+        if (ovgl_set_depth_capture(be->renderer, 0).status != 0)
+        {
+            ovx_string_t e = ovgl_get_last_error();
+            *err = std::string("ovgl_set_depth_capture: ") + std::string(e.ptr ? e.ptr : "", e.ptr ? e.length : 0);
+            return false;
+        }
+        const ovgl_result_t result =
+            ovgl_render_to_fbo(be->renderer, scene_ordinal, present_request->framebuffer, effective_product.width,
+                               effective_product.height, x_lo, y_lo, x_hi, y_hi, present_request->destinationWidth,
+                               present_request->destinationHeight, present_request->overlayText);
+        if (result.status != 0)
+        {
+            const ovx_string_t e = ovgl_get_last_error();
+            *err = std::string("attached ovgl_render_to_fbo: ") + std::string(e.ptr ? e.ptr : "", e.ptr ? e.length : 0);
+            return false;
+        }
+        OvglBackend::AttachedProduct out;
+        out.path = effective_product.path;
+        out.width = x_hi - x_lo;
+        out.height = y_hi - y_lo;
+        be->attached_products.push_back(std::move(out));
+        return true;
     }
 
     // Depth capture is armed per product — exactly when its orderedVars
@@ -2501,7 +3120,7 @@ bool render_derived_product(OvglBackend* be,
     // kFull / kColumnsOnly / kXformOnly / kUnchanged all render through
     // here, so depth refreshes on the color cadence by construction.
     const bool want_depth = std::find(effective_product.var_names.begin(), effective_product.var_names.end(),
-                                      kDepthVarName) != effective_product.var_names.end();
+                                      g_kDepthVarName) != effective_product.var_names.end();
     if (ovgl_set_depth_capture(be->renderer, want_depth ? 1 : 0).status != 0)
     {
         ovx_string_t e = ovgl_get_last_error();
@@ -2537,20 +3156,8 @@ bool render_derived_product(OvglBackend* be,
 
     OvglBackend::AttachedProduct out;
     out.path = effective_product.path;
-    // Optional dataWindowNDC crop: publish only the window's pixel rows/cols.
-    int x_lo = 0, y_lo = 0;
-    int x_hi = effective_product.width, y_hi = effective_product.height;
-    if (effective_product.has_data_window)
-    {
-        x_lo = static_cast<int>(std::lround(effective_product.data_window[0] * effective_product.width));
-        y_lo = static_cast<int>(std::lround(effective_product.data_window[1] * effective_product.height));
-        x_hi = static_cast<int>(std::lround(effective_product.data_window[2] * effective_product.width));
-        y_hi = static_cast<int>(std::lround(effective_product.data_window[3] * effective_product.height));
-        x_lo = std::max(0, std::min(x_lo, effective_product.width - 1));
-        y_lo = std::max(0, std::min(y_lo, effective_product.height - 1));
-        x_hi = std::max(x_lo + 1, std::min(x_hi, effective_product.width));
-        y_hi = std::max(y_lo + 1, std::min(y_hi, effective_product.height));
-    }
+    out.width = effective_product.width;
+    out.height = effective_product.height;
     // The image-var filter: exactly {LdrColor, DistanceToImagePlaneSD} are
     // expressible; every other requested var stays ABSENT (fail-closed on
     // the absent side — the contract tests pin both directions).
@@ -2558,7 +3165,7 @@ bool render_derived_product(OvglBackend* be,
     for (const std::string& name : effective_product.var_names)
     {
         const bool is_color = (name == "LdrColor");
-        const bool is_depth = (name == kDepthVarName);
+        const bool is_depth = (name == g_kDepthVarName);
         if (!is_color && !is_depth)
             continue;
         OvglBackend::AttachedVar var;
@@ -2612,6 +3219,7 @@ static int stepAttached(OvglBackend* be,
                         ovstage_ordinal_t ordinal,
                         const char* const* render_product_paths,
                         size_t num_products,
+                        const PresentRequest* present_request,
                         char* err,
                         size_t errlen)
 {
@@ -2657,14 +3265,16 @@ static int stepAttached(OvglBackend* be,
         kFull,
         kDelta,
         kXformOnly,
+        kJournalXform,
         kUnchanged
     };
     StepMode mode = kFull;
+    TransformJournal transformJournal;
     PulledScene delta;
     PulledScene sourceDelta;
     PulledScene nextSource;
     std::set<std::string> nextSourceAttributes;
-    std::vector<std::string> nextPrototypeRoots;
+    SceneGraphInstanceIndex nextSceneGraphInstances;
     bool sourceCacheUpdated = false;
     // kDelta working set: the EFFECTIVE (non-restamp) window changes per
     // prim, captured during classification — after the fold below the
@@ -2681,65 +3291,86 @@ static int stepAttached(OvglBackend* be,
         }
         else
         {
-            // Public OVStage has no wildcard change stream. Revalidate
-            // membership, then range-read only columns authored after the
-            // retained sealed snapshot. A topology change takes the full
-            // resynchronization path below.
-            const PublicPullStatus pullStatus = pull_public_changes(
-                be, end_ordinal, &delta, &sourceDelta, &nextSource, &nextSourceAttributes, &nextPrototypeRoots);
-            if (pullStatus != PublicPullStatus::eSuccess)
+            const bool journalContinuous = readTransformJournal(be->ext, ext_dict, end_ordinal, &transformJournal) &&
+                                           transformJournal.baseOrdinal <= be->attached_pull_ordinal &&
+                                           be->attached_pull_ordinal < transformJournal.ordinal &&
+                                           (be->transform_journal_generation == 0 ||
+                                            be->transform_journal_generation == transformJournal.generation);
+            if (journalContinuous)
             {
-                delta.clear();
-                mode = kFull;
+                mode = kJournalXform;
             }
-            else
+            else if (!be->pulled_transform_dirty)
             {
-                // A window column whose payload is byte-identical to the retained
-                // snapshot is a no-op restamp (the engine restamps the reserved
-                // usd-prim-type/usd-schemas rows when a prim gains a column, and
-                // producers may rewrite unchanged values); the full path would
-                // mirror the same bytes again, so skipping it cannot change the
-                // mirror's committed view.
-                bool any_effective = false;
-                bool xform_only = true;
-                if (isProfilingEnabled())
-                    std::fprintf(stderr, "OVGLBEPROF delta prims=%zu range=[%llu,%llu]\n", delta.size(),
-                                 static_cast<unsigned long long>(be->attached_pull_ordinal + 1),
-                                 static_cast<unsigned long long>(end_ordinal));
-                for (const auto& prim : delta)
+                // Public OVStage has no wildcard change stream. Revalidate
+                // membership, then range-read only columns authored after the
+                // retained sealed snapshot. A topology change takes the full
+                // resynchronization path below.
+                const PublicPullStatus pullStatus = pullPublicChanges(
+                    be, end_ordinal, &delta, &sourceDelta, &nextSource, &nextSourceAttributes, &nextSceneGraphInstances);
+                if (pullStatus != PublicPullStatus::eSuccess)
                 {
-                    const auto known_prim = be->attached_pull.find(prim.first);
-                    const bool new_prim = !be->mirror_pulled.count(prim.first);
-                    for (const auto& col : prim.second)
-                    {
-                        if (known_prim != be->attached_pull.end())
-                        {
-                            const auto known = known_prim->second.find(col.first);
-                            if (known != known_prim->second.end() && known->second.deleted == col.second.deleted &&
-                                known->second.is_array == col.second.is_array &&
-                                known->second.semantic == col.second.semantic &&
-                                known->second.dtype.code == col.second.dtype.code &&
-                                known->second.dtype.bits == col.second.dtype.bits &&
-                                known->second.dtype.lanes == col.second.dtype.lanes &&
-                                known->second.bytes == col.second.bytes)
-                            {
-                                continue; // no-op restamp
-                            }
-                        }
-                        if (isProfilingEnabled() && delta.size() <= 8)
-                            std::fprintf(stderr, "OVGLBEPROF delta change path=%s attr=%s ordinal=%llu\n",
-                                         prim.first.c_str(), col.first.c_str(),
-                                         static_cast<unsigned long long>(col.second.ordinal));
-                        any_effective = true;
-                        if (new_prim || col.second.deleted || !is_transform_column(col.first))
-                            xform_only = false;
-                        effective_changes[prim.first].push_back(col.first);
-                    }
+                    delta.clear();
+                    mode = kFull;
                 }
-                mode = !any_effective ? kUnchanged : xform_only ? kXformOnly : kDelta;
-                sourceCacheUpdated = true;
-            } /* public snapshot diff succeeded */
+                else
+                {
+                    // A window column whose payload is byte-identical to the retained
+                    // snapshot is a no-op restamp (the engine restamps the reserved
+                    // usd-prim-type/usd-schemas rows when a prim gains a column, and
+                    // producers may rewrite unchanged values); the full path would
+                    // mirror the same bytes again, so skipping it cannot change the
+                    // mirror's committed view.
+                    bool any_effective = false;
+                    bool xform_only = true;
+                    if (isProfilingEnabled())
+                        std::fprintf(stderr, "OVGLBEPROF delta prims=%zu range=[%llu,%llu]\n", delta.size(),
+                                     static_cast<unsigned long long>(be->attached_pull_ordinal + 1),
+                                     static_cast<unsigned long long>(end_ordinal));
+                    for (const auto& prim : delta)
+                    {
+                        const auto known_prim = be->attached_pull.find(prim.first);
+                        const bool new_prim = !be->mirror_pulled.count(prim.first);
+                        for (const auto& col : prim.second)
+                        {
+                            if (known_prim != be->attached_pull.end())
+                            {
+                                const auto known = known_prim->second.find(col.first);
+                                if (known != known_prim->second.end() && known->second.deleted == col.second.deleted &&
+                                    known->second.is_array == col.second.is_array &&
+                                    known->second.semantic == col.second.semantic &&
+                                    known->second.dtype.code == col.second.dtype.code &&
+                                    known->second.dtype.bits == col.second.dtype.bits &&
+                                    known->second.dtype.lanes == col.second.dtype.lanes &&
+                                    known->second.bytes == col.second.bytes)
+                                {
+                                    continue; // no-op restamp
+                                }
+                            }
+                            if (isProfilingEnabled() && delta.size() <= 8)
+                                std::fprintf(stderr, "OVGLBEPROF delta change path=%s attr=%s ordinal=%llu\n",
+                                             prim.first.c_str(), col.first.c_str(),
+                                             static_cast<unsigned long long>(col.second.ordinal));
+                            any_effective = true;
+                            if (new_prim || col.second.deleted || !isTransformColumn(col.first))
+                                xform_only = false;
+                            effective_changes[prim.first].push_back(col.first);
+                        }
+                    }
+                    mode = !any_effective ? kUnchanged : xform_only ? kXformOnly : kDelta;
+                    sourceCacheUpdated = true;
+                } /* public snapshot diff succeeded */
+            }
         }
+    }
+
+    // A direct transform batch advances the resident renderer without
+    // advancing the private mirror. General deltas cannot safely build on that
+    // stale mirror, so recover through the cold/full path before folding them.
+    if (be->mirror_transform_dirty && mode == kDelta)
+    {
+        be->attached_pull_valid = false;
+        return stepAttached(be, ordinal, render_product_paths, num_products, present_request, err, errlen);
     }
 
     // 1. Pull the committed state <= ordinal through the public vtable
@@ -2749,10 +3380,10 @@ static int stepAttached(OvglBackend* be,
     PulledScene scene;
     PulledScene sourceScene;
     std::set<std::string> sourceAttributes;
-    std::vector<std::string> prototypeRoots;
+    SceneGraphInstanceIndex sceneGraphInstances;
     if (mode == kFull)
     {
-        if (!pull_scene(be->ext, end_ordinal, &scene, &sourceScene, &sourceAttributes, &prototypeRoots))
+        if (!pullScene(be->ext, end_ordinal, &scene, &sourceScene, &sourceAttributes, &sceneGraphInstances))
             return fail(g_backendError);
     }
     else
@@ -2760,7 +3391,7 @@ static int stepAttached(OvglBackend* be,
         // Fold the window into the retained snapshot. Tombstones are
         // canonicalized to absence so the cache has the same shape as a
         // cold pull.
-        apply_pulled_changes(&be->attached_pull, delta);
+        applyPulledChanges(&be->attached_pull, delta);
     }
     const PulledScene& view = (mode == kFull) ? scene : be->attached_pull;
 
@@ -2771,7 +3402,7 @@ static int stepAttached(OvglBackend* be,
     for (size_t i = 0; i < num_products; ++i)
     {
         std::string derr;
-        if (!derive_render_product(view, ext_dict, render_product_paths[i], "attached stage", &derived[i], &derr))
+        if (!deriveRenderProduct(view, ext_dict, render_product_paths[i], "attached stage", &derived[i], &derr))
             return fail(derr);
     }
 
@@ -2785,7 +3416,59 @@ static int stepAttached(OvglBackend* be,
 
     ovstage_ordinal_t render_ordinal = be->attached_render_ordinal;
     ovstage_ordinal_t scene_ordinal = be->attached_scene_ordinal;
-    if (mode == kXformOnly)
+    bool directTransformApplied = false;
+    if (mode == kJournalXform && be->attached_light_paths_valid &&
+        !pathsAffectTargets(transformJournal.paths, cameraPaths) &&
+        !pathsAffectTargets(transformJournal.paths, be->attached_light_paths))
+    {
+        std::vector<double> worldMatrices;
+        if (composeJournalMeshWorlds(be, view, transformJournal, &worldMatrices))
+        {
+            const size_t meshCount = worldMatrices.size() / 16;
+            if (ovgl_refresh_transform_batch(
+                    be->renderer, end_ordinal, worldMatrices.empty() ? nullptr : worldMatrices.data(), meshCount)
+                    .status == 0)
+            {
+                directTransformApplied = true;
+                be->mirror_transform_dirty = true;
+                be->pulled_transform_dirty = true;
+                scene_ordinal = end_ordinal;
+            }
+        }
+    }
+    if (mode == kJournalXform && !directTransformApplied)
+    {
+        be->attached_pull_valid = false;
+        return stepAttached(be, ordinal, render_product_paths, num_products, present_request, err, errlen);
+    }
+    if (mode == kXformOnly && be->attached_light_paths_valid && !changesAffectPaths(effective_changes, cameraPaths) &&
+        !changesAffectPaths(effective_changes, be->attached_light_paths))
+    {
+        std::vector<double> worldMatrices;
+        if (composeResidentMeshWorlds(be->renderer, view, &worldMatrices))
+        {
+            const size_t meshCount = worldMatrices.size() / 16;
+            if (ovgl_refresh_transform_batch(
+                    be->renderer, end_ordinal, worldMatrices.empty() ? nullptr : worldMatrices.data(), meshCount)
+                    .status == 0)
+            {
+                directTransformApplied = true;
+                be->mirror_transform_dirty = true;
+                scene_ordinal = end_ordinal;
+            }
+        }
+    }
+
+    // If the mirror was already stale, an unsupported/failed direct batch
+    // cannot use the incremental mirror transform path. Re-enter once with the
+    // retained cache invalidated; classification then selects kFull.
+    if (mode == kXformOnly && !directTransformApplied && be->mirror_transform_dirty)
+    {
+        be->attached_pull_valid = false;
+        return stepAttached(be, ordinal, render_product_paths, num_products, present_request, err, errlen);
+    }
+
+    if (mode == kXformOnly && !directTransformApplied)
     {
         // Transform-only mirror: retain local transforms as hierarchy inputs
         // and apply authoritative source worlds after hierarchy composition.
@@ -2799,38 +3482,38 @@ static int stepAttached(OvglBackend* be,
             if (merged == be->attached_pull.end())
                 continue;
             const auto& cols = merged->second;
-            const PulledColumn* world = pick_source_world(cols);
-            const PulledColumn* local = pick_local_authority(cols);
+            const PulledColumn* world = pickSourceWorld(cols);
+            const PulledColumn* local = pickLocalAuthority(cols);
             if (local)
             {
                 if (local->bytes.size() != 16 * sizeof(double))
                     return fail("transform for '" + prim.first + "' is not a 4x4 double matrix");
-                if (!mirror_write_column(be, o, prim.first, kMirrorLocalTransform, local->bytes.data(),
-                                         local->bytes.size(), DLDataType{ kDLFloat, 64, 16 }, OVSTAGE_SEMANTIC_MATRIX,
-                                         false))
+                if (!mirrorWriteColumn(be, o, prim.first, g_kMirrorLocalTransform, local->bytes.data(),
+                                       local->bytes.size(), DLDataType{ kDLFloat, 64, 16 }, OVSTAGE_SEMANTIC_MATRIX,
+                                       false))
                     return fail(g_backendError);
-                be->mirror_cols[prim.first].insert(kMirrorLocalTransform);
+                be->mirror_cols[prim.first].insert(g_kMirrorLocalTransform);
             }
             const PulledColumn* worldSeed = world ? world : local;
             if (worldSeed)
             {
                 if (worldSeed->bytes.size() != 16 * sizeof(double))
                     return fail("world transform seed for '" + prim.first + "' is not a 4x4 double matrix");
-                if (!mirror_write_column(be, o, prim.first, kMirrorWorldTransform, worldSeed->bytes.data(),
-                                         worldSeed->bytes.size(), DLDataType{ kDLFloat, 64, 16 },
-                                         OVSTAGE_SEMANTIC_MATRIX, false))
+                if (!mirrorWriteColumn(be, o, prim.first, g_kMirrorWorldTransform, worldSeed->bytes.data(),
+                                       worldSeed->bytes.size(), DLDataType{ kDLFloat, 64, 16 }, OVSTAGE_SEMANTIC_MATRIX,
+                                       false))
                     return fail(g_backendError);
             }
-            if (world && !add_matrix_mirror_batch(&worldOverrideBatches, prim.first, kMirrorWorldTransform, *world))
+            if (world && !addMatrixMirrorBatch(&worldOverrideBatches, prim.first, g_kMirrorWorldTransform, *world))
                 return fail(g_backendError);
         }
-        if (!seal_ordinal(be, o))
+        if (!sealOrdinal(be, o))
             return fail("attached seal(local) failed");
-        if (!compute_world_xforms(be->stage, o, o + 1, "attached compute hierarchy"))
+        if (!computeWorldXforms(be->stage, o, o + 1, "attached compute hierarchy"))
             return fail(g_backendError);
-        if (!mirror_write_batches(be, o + 1, worldOverrideBatches))
+        if (!mirrorWriteBatches(be, o + 1, worldOverrideBatches))
             return fail(g_backendError);
-        if (!seal_ordinal(be, o + 1))
+        if (!sealOrdinal(be, o + 1))
             return fail("attached seal(world) failed");
         be->cur_ordinal = o + 2;
         render_ordinal = o + 1;
@@ -2847,7 +3530,7 @@ static int stepAttached(OvglBackend* be,
         }
         // A camera-only edit has already been mirrored and composed above,
         // but it does not invalidate resident meshes, materials, lights, or
-        // bounds. render_derived_product reads the camera at render_ordinal
+        // bounds. renderDerivedProduct reads the camera at render_ordinal
         // and deliberately renders OVGL's previous scene_ordinal cache.
     }
 
@@ -2896,7 +3579,7 @@ static int stepAttached(OvglBackend* be,
                 any_topology = true;
                 if (was_mirrored)
                 {
-                    if (!mirror_delete_prim(be, o, path))
+                    if (!mirrorDeletePrim(be, o, path))
                         return fail(g_backendError);
                     be->mirror_pulled.erase(path);
                     be->mirror_cols.erase(path);
@@ -2915,13 +3598,13 @@ static int stepAttached(OvglBackend* be,
                 const auto column = cols.find(metadata);
                 if (column == cols.end() || column->second.deleted)
                     continue;
-                if (!mirror_pulled_column(be, o, path, metadata, column->second, ext_dict))
+                if (!mirrorPulledColumn(be, o, path, metadata, column->second, ext_dict))
                     return fail(g_backendError);
                 be->mirror_cols[path].insert(metadata);
             }
             for (const std::string& attr : changed.second)
             {
-                if (is_transform_column(attr))
+                if (isTransformColumn(attr))
                 {
                     touched_transform = true; // handled once below
                     continue;
@@ -2954,34 +3637,34 @@ static int stepAttached(OvglBackend* be,
                 if (cit->second.deleted)
                     continue; /* defensive: canonicalized above */
                 const PulledColumn& c = cit->second;
-                if (!mirror_pulled_column(be, o, path, attr, c, ext_dict))
+                if (!mirrorPulledColumn(be, o, path, attr, c, ext_dict))
                     return fail(g_backendError);
                 be->mirror_cols[path].insert(attr);
             }
             if (touched_transform)
             {
-                const PulledColumn* world = pick_source_world(cols);
-                const PulledColumn* local = pick_local_authority(cols);
+                const PulledColumn* world = pickSourceWorld(cols);
+                const PulledColumn* local = pickLocalAuthority(cols);
                 if (local)
                 {
                     if (local->bytes.size() != 16 * sizeof(double))
                         return fail("transform for '" + path + "' is not a 4x4 double matrix");
-                    if (!mirror_write_column(be, o, path, kMirrorLocalTransform, local->bytes.data(), local->bytes.size(),
-                                             DLDataType{ kDLFloat, 64, 16 }, OVSTAGE_SEMANTIC_MATRIX, false))
+                    if (!mirrorWriteColumn(be, o, path, g_kMirrorLocalTransform, local->bytes.data(), local->bytes.size(),
+                                           DLDataType{ kDLFloat, 64, 16 }, OVSTAGE_SEMANTIC_MATRIX, false))
                         return fail(g_backendError);
-                    be->mirror_cols[path].insert(kMirrorLocalTransform);
+                    be->mirror_cols[path].insert(g_kMirrorLocalTransform);
                 }
                 const PulledColumn* worldSeed = world ? world : local;
                 if (worldSeed)
                 {
                     if (worldSeed->bytes.size() != 16 * sizeof(double))
                         return fail("world transform seed for '" + path + "' is not a 4x4 double matrix");
-                    if (!mirror_write_column(be, o, path, kMirrorWorldTransform, worldSeed->bytes.data(),
-                                             worldSeed->bytes.size(), DLDataType{ kDLFloat, 64, 16 },
-                                             OVSTAGE_SEMANTIC_MATRIX, false))
+                    if (!mirrorWriteColumn(be, o, path, g_kMirrorWorldTransform, worldSeed->bytes.data(),
+                                           worldSeed->bytes.size(), DLDataType{ kDLFloat, 64, 16 },
+                                           OVSTAGE_SEMANTIC_MATRIX, false))
                         return fail(g_backendError);
                 }
-                if (world && !add_matrix_mirror_batch(&worldOverrideBatches, path, kMirrorWorldTransform, *world))
+                if (world && !addMatrixMirrorBatch(&worldOverrideBatches, path, g_kMirrorWorldTransform, *world))
                     return fail(g_backendError);
                 if (!local && !world)
                 {
@@ -2990,14 +3673,14 @@ static int stepAttached(OvglBackend* be,
                     // exactly as the full pass's now_live diff would decide.
                     refreshable = false;
                     const auto prev = be->mirror_cols.find(path);
-                    if (prev != be->mirror_cols.end() && prev->second.count(kMirrorLocalTransform))
+                    if (prev != be->mirror_cols.end() && prev->second.count(g_kMirrorLocalTransform))
                     {
-                        dead.push_back(kMirrorLocalTransform);
-                        prev->second.erase(kMirrorLocalTransform);
+                        dead.push_back(g_kMirrorLocalTransform);
+                        prev->second.erase(g_kMirrorLocalTransform);
                     }
                 }
             }
-            if (!dead.empty() && !mirror_delete_columns(be, o, path, dead))
+            if (!dead.empty() && !mirrorDeleteColumns(be, o, path, dead))
                 return fail(g_backendError);
             if (!was_mirrored)
             {
@@ -3008,13 +3691,13 @@ static int stepAttached(OvglBackend* be,
                 be->note(path);
             }
         }
-        if (!seal_ordinal(be, o))
+        if (!sealOrdinal(be, o))
             return fail("attached seal(local) failed");
-        if (!compute_world_xforms(be->stage, o, o + 1, "attached compute hierarchy"))
+        if (!computeWorldXforms(be->stage, o, o + 1, "attached compute hierarchy"))
             return fail(g_backendError);
-        if (!mirror_write_batches(be, o + 1, worldOverrideBatches))
+        if (!mirrorWriteBatches(be, o + 1, worldOverrideBatches))
             return fail(g_backendError);
-        if (!seal_ordinal(be, o + 1))
+        if (!sealOrdinal(be, o + 1))
             return fail("attached seal(world) failed");
         be->cur_ordinal = o + 2;
         render_ordinal = o + 1;
@@ -3041,7 +3724,7 @@ static int stepAttached(OvglBackend* be,
         for (const DerivedProduct& product : derived)
         {
             std::string rerr;
-            if (!render_derived_product(be, product, render_ordinal, scene_ordinal, &rerr))
+            if (!renderDerivedProduct(be, product, render_ordinal, scene_ordinal, present_request, &rerr))
             {
                 be->attached_products.clear();
                 return fail(rerr);
@@ -3053,20 +3736,25 @@ static int stepAttached(OvglBackend* be,
         if (sourceCacheUpdated)
         {
             if (nextSource.empty())
-                apply_pulled_changes(&be->attached_source_pull, sourceDelta);
+                applyPulledChanges(&be->attached_source_pull, sourceDelta);
             else
                 be->attached_source_pull = std::move(nextSource);
             be->attached_source_attributes = std::move(nextSourceAttributes);
-            be->attached_prototype_roots = std::move(nextPrototypeRoots);
+            be->attached_scene_graph_instances = std::move(nextSceneGraphInstances);
+        }
+        if (mode == kDelta)
+        {
+            be->attached_light_paths_valid = collectLightPaths(be->attached_pull, ext_dict, &be->attached_light_paths);
         }
         be->attached_pull_valid = true;
         if (isProfilingEnabled())
         {
             const double t_end = getCurrentTimeMilliseconds();
             std::fprintf(stderr, "OVGLBEPROF mode=%s pull=%.3f mirror+seal=%.3f render=%.3f total=%.3f\n",
-                         mode == kUnchanged ? "unchanged" :
-                         mode == kXformOnly ? "xform" :
-                                              "delta",
+                         mode == kUnchanged    ? "unchanged" :
+                         mode == kXformOnly    ? (directTransformApplied ? "direct-xform" : "xform") :
+                         mode == kJournalXform ? "journal-xform" :
+                                                 "delta",
                          t_mirror0 - t_pull0, t_render0 - t_mirror0, t_end - t_render0, t_end - t_pull0);
         }
         return 0;
@@ -3090,8 +3778,8 @@ static int stepAttached(OvglBackend* be,
         // also retained as an output override after hierarchy composition;
         // treating the two roles as mutually exclusive collapses populated
         // transforms because the mirror hierarchy then sees identity locals.
-        const PulledColumn* world = pick_source_world(prim.second);
-        const PulledColumn* local = pick_local_authority(prim.second);
+        const PulledColumn* world = pickSourceWorld(prim.second);
+        const PulledColumn* local = pickLocalAuthority(prim.second);
         bool any_live = false;
         std::set<std::string> now_live;
 
@@ -3104,16 +3792,16 @@ static int stepAttached(OvglBackend* be,
             if (column == prim.second.end() || column->second.deleted)
                 continue;
             PreparedMirrorColumn prepared;
-            if (!prepare_mirror_column(be, metadata, column->second, ext_dict, &prepared))
+            if (!prepareMirrorColumn(be, metadata, column->second, ext_dict, &prepared))
                 return fail(g_backendError);
-            add_mirror_batch(&metadata_batches, path, metadata, std::move(prepared));
+            addMirrorBatch(&metadata_batches, path, metadata, std::move(prepared));
             any_live = true;
             now_live.insert(metadata);
         }
         if (world)
         {
-            if (!add_matrix_mirror_batch(&data_batches, path, kMirrorWorldTransform, *world) ||
-                !add_matrix_mirror_batch(&worldOverrideBatches, path, kMirrorWorldTransform, *world))
+            if (!addMatrixMirrorBatch(&data_batches, path, g_kMirrorWorldTransform, *world) ||
+                !addMatrixMirrorBatch(&worldOverrideBatches, path, g_kMirrorWorldTransform, *world))
                 return fail(g_backendError);
             // worldMatrix stays a derived column in the diff bookkeeping (not now_live).
         }
@@ -3133,25 +3821,25 @@ static int stepAttached(OvglBackend* be,
             if (c.deleted)
                 continue; // not live: drops out of now_live -> tombstoned below
             any_live = true;
-            if (is_transform_column(attr))
+            if (isTransformColumn(attr))
                 continue; // transforms handled below; raw ops stay flattened
             if (attr == "usd-prim-type" || attr == "usd-schemas")
                 continue; // metadata was written first to establish the typed bucket
             now_live.insert(attr);
             PreparedMirrorColumn prepared;
-            if (!prepare_mirror_column(be, attr, c, ext_dict, &prepared))
+            if (!prepareMirrorColumn(be, attr, c, ext_dict, &prepared))
                 return fail(g_backendError);
-            add_mirror_batch(&data_batches, path, attr, std::move(prepared));
+            addMirrorBatch(&data_batches, path, attr, std::move(prepared));
         }
         if (local)
         {
-            if (!add_matrix_mirror_batch(&data_batches, path, kMirrorLocalTransform, *local))
+            if (!addMatrixMirrorBatch(&data_batches, path, g_kMirrorLocalTransform, *local))
                 return fail(g_backendError);
             // Seed the official hierarchy model's output column. USD
             // population does this automatically; generic mirror writes do not.
-            if (!world && !add_matrix_mirror_batch(&data_batches, path, kMirrorWorldTransform, *local))
+            if (!world && !addMatrixMirrorBatch(&data_batches, path, g_kMirrorWorldTransform, *local))
                 return fail(g_backendError);
-            now_live.insert(kMirrorLocalTransform);
+            now_live.insert(g_kMirrorLocalTransform);
             any_live = true;
         }
         if (any_live)
@@ -3185,17 +3873,17 @@ static int stepAttached(OvglBackend* be,
     // compatible attribute bucket instead of one query/write/wait per
     // (prim, attribute). This changes cold mirror cost from O(columns) public
     // operations to O(column signatures), while preserving the same rows.
-    if (!mirror_write_batches(be, o, metadata_batches) || !mirror_write_batches(be, o, data_batches))
+    if (!mirrorWriteBatches(be, o, metadata_batches) || !mirrorWriteBatches(be, o, data_batches))
         return fail(g_backendError);
     for (const auto& dead : dead_columns)
-        if (!mirror_delete_columns(be, o, dead.first, dead.second))
+        if (!mirrorDeleteColumns(be, o, dead.first, dead.second))
             return fail(g_backendError);
     // Prims that vanished from the attached stage get tombstoned in the mirror.
     for (const std::string& gone : be->mirror_pulled)
     {
         if (pulled_now.count(gone))
             continue;
-        if (!mirror_delete_prim(be, o, gone))
+        if (!mirrorDeletePrim(be, o, gone))
             return fail(g_backendError);
     }
     be->mirror_pulled = pulled_now;
@@ -3206,14 +3894,20 @@ static int stepAttached(OvglBackend* be,
     // 4. Seal + hierarchy cadence on the mirror (per-STEP work: the mirror
     //    ordinal advances by 2 once per step exactly as the single-product
     //    step always did, no matter how many products render).
-    if (!seal_ordinal(be, o))
+    if (!sealOrdinal(be, o))
         return fail("attached seal(local) failed");
-    if (!compute_world_xforms(be->stage, o, o + 1, "attached compute hierarchy"))
+    if (!computeWorldXforms(be->stage, o, o + 1, "attached compute hierarchy"))
         return fail(g_backendError);
-    if (!mirror_write_batches(be, o + 1, worldOverrideBatches))
+    if (!mirrorWriteBatches(be, o + 1, worldOverrideBatches))
         return fail(g_backendError);
-    if (!seal_ordinal(be, o + 1))
+    if (!sealOrdinal(be, o + 1))
         return fail("attached seal(world) failed");
+
+    // A preceding direct batch may have published an external ordinal whose
+    // numeric value aliases this mirror ordinal. Force the recovery render to
+    // consume the newly synchronized mirror regardless of that coincidence.
+    if (be->mirror_transform_dirty && ovgl_invalidate_scene(be->renderer).status != 0)
+        return fail("failed to invalidate the resident OVGL scene");
 
     // 5+6. Per PRODUCT: camera from the bound Camera prim's composed world
     //      transform (+ focalLength/apertures), one render, publish vars.
@@ -3225,7 +3919,7 @@ static int stepAttached(OvglBackend* be,
     for (const DerivedProduct& product : derived)
     {
         std::string rerr;
-        if (!render_derived_product(be, product, o + 1, o + 1, &rerr))
+        if (!renderDerivedProduct(be, product, o + 1, o + 1, present_request, &rerr))
         {
             be->attached_products.clear();
             return fail(rerr);
@@ -3237,10 +3931,16 @@ static int stepAttached(OvglBackend* be,
     be->attached_pull = std::move(scene);
     be->attached_source_pull = std::move(sourceScene);
     be->attached_source_attributes = std::move(sourceAttributes);
-    be->attached_prototype_roots = std::move(prototypeRoots);
+    be->attached_scene_graph_instances = std::move(sceneGraphInstances);
     be->attached_pull_ordinal = end_ordinal;
     be->attached_render_ordinal = o + 1;
     be->attached_scene_ordinal = o + 1;
+    be->mirror_transform_dirty = false;
+    be->pulled_transform_dirty = false;
+    be->transform_journal_generation = 0;
+    be->transform_journal_paths.clear();
+    be->transform_journal_routes.clear();
+    be->attached_light_paths_valid = collectLightPaths(be->attached_pull, ext_dict, &be->attached_light_paths);
     be->attached_pull_valid = true;
     if (isProfilingEnabled())
     {
@@ -3272,7 +3972,7 @@ int renderStage(OvglBackend* be,
         return fail("invalid attached-render arguments");
 
     const char* product_paths[] = { render_product_path };
-    if (stepAttached(be, ordinal, product_paths, 1, err, errlen) != 0)
+    if (stepAttached(be, ordinal, product_paths, 1, nullptr, err, errlen) != 0)
         return 1;
     if (be->attached_products.size() != 1 || be->attached_products[0].path != render_product_path)
         return fail("OVGL returned an invalid RenderProduct result");
@@ -3290,6 +3990,39 @@ int renderStage(OvglBackend* be,
         return 0;
     }
     return fail("The configured RenderProduct has no LdrColor RenderVar output");
+}
+
+int presentStage(OvglBackend* be,
+                 ovstage_ordinal_t ordinal,
+                 const char* render_product_path,
+                 unsigned framebuffer,
+                 int destination_width,
+                 int destination_height,
+                 const char* overlay_text,
+                 int* out_width,
+                 int* out_height,
+                 char* err,
+                 size_t errlen)
+{
+    auto fail = [&](const std::string& message) -> int
+    {
+        setBackendError(message);
+        if (err && errlen)
+            std::snprintf(err, errlen, "%s", message.c_str());
+        return 1;
+    };
+    if (!be || !render_product_path || destination_width <= 0 || destination_height <= 0 || !out_width || !out_height)
+        return fail("invalid attached-present arguments");
+
+    const PresentRequest request{ framebuffer, destination_width, destination_height, overlay_text };
+    const char* product_paths[] = { render_product_path };
+    if (stepAttached(be, ordinal, product_paths, 1, &request, err, errlen) != 0)
+        return 1;
+    if (be->attached_products.size() != 1 || be->attached_products[0].path != render_product_path)
+        return fail("OVGL returned an invalid RenderProduct result");
+    *out_width = be->attached_products[0].width;
+    *out_height = be->attached_products[0].height;
+    return 0;
 }
 
 } // namespace details

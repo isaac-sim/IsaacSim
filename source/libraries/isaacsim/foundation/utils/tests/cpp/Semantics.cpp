@@ -71,7 +71,7 @@ TEST_SUITE("Semantics")
         // Get labels from prim without semantics applied
         CHECK_EQ(getLabels("/World"), (std::unordered_map<std::string, std::vector<std::string>>{}));
 
-        // Get labels from prim without direct semantics but with labelled descendants
+        // Get labels from prim without direct semantics but with labeled descendants
         CHECK_EQ(getLabels("/World", /*includeDescendants=*/true),
                  (std::unordered_map<std::string, std::vector<std::string>>{
                      { "class", { "label_0", "label_1" } },

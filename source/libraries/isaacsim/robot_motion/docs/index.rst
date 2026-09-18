@@ -17,13 +17,23 @@
 .. _isaacsim-robot-motion-library:
 
 =====================
-isaacsim_robot_motion
+isaacsim-robot-motion
 =====================
 
-``isaacsim_robot_motion`` provides Kit-independent robot motion-generation APIs.
-It includes controller interfaces, trajectory following, obstacle handling, scene
-queries, and utilities for validating and binding motion-planning worlds.
+The ``isaacsim-robot-motion`` Python distribution provides Kit-independent
+robot motion APIs:
+
+* ``isaacsim.robot_motion.controllers`` provides Ackermann, differential-drive,
+  and holonomic controllers.
+* ``isaacsim.robot_motion.experimental.motion_generation`` provides trajectory
+  following, obstacle handling, scene queries, and motion-planning world bindings.
+* ``isaacsim.robot_motion.cumotion`` provides cuMotion planners, trajectory tools,
+  and packaged Franka and UR10 configurations.
 
 Use this distribution to construct motion-generation workflows without requiring
-an Isaac Sim application. The APIs are experimental and may evolve as legacy
-motion-generation functionality moves into the standalone libraries.
+an Isaac Sim application. APIs under the ``experimental`` namespace may evolve as
+legacy motion-generation functionality moves into the standalone libraries.
+
+The wheel remains platform-specific because it bundles the native cuMotion runtime.
+
+The corresponding CMake package group is named ``isaacsim_robot_motion``.

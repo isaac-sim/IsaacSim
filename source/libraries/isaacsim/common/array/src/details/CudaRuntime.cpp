@@ -13,15 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "isaacsim/common/array/details/CudaRuntime.hpp"
+#include "CudaRuntime.hpp"
 
 #include <isaacsim/common/exceptions/Exceptions.hpp>
 
 #if defined(_WIN32)
-#    ifndef NOMINMAX
+#    if !defined(NOMINMAX)
 #        define NOMINMAX
 #    endif
-#    ifndef WIN32_LEAN_AND_MEAN
+#    if !defined(WIN32_LEAN_AND_MEAN)
 #        define WIN32_LEAN_AND_MEAN
 #    endif
 #    include <windows.h>
@@ -33,7 +33,7 @@ namespace
 {
 
 #if defined(_WIN32)
-constexpr const char* kCudaRuntimeLibraries[] = { "cudart64_12.dll" };
+constexpr const char* g_kCudaRuntimeLibraries[] = { "cudart64_12.dll" };
 
 void* loadLibrary(const char* name)
 {
@@ -53,7 +53,7 @@ void unloadLibrary(void* library)
     }
 }
 #else
-constexpr const char* kCudaRuntimeLibraries[] = { "libcudart.so" };
+constexpr const char* g_kCudaRuntimeLibraries[] = { "libcudart.so" };
 
 void* loadLibrary(const char* name)
 {
@@ -85,13 +85,13 @@ namespace array
 
 CudaRuntime& CudaRuntime::getInstance(bool throwIfInvalid)
 {
-    static CudaRuntime instance;
-    if (!instance.isLoaded() && throwIfInvalid)
+    static CudaRuntime s_instance;
+    if (!s_instance.isLoaded() && throwIfInvalid)
     {
         throw isaacsim::common::exceptions::CudaRuntimeError(
             "CudaRuntime::getInstance", "the CUDA runtime was not loaded");
     }
-    return instance;
+    return s_instance;
 }
 
 bool CudaRuntime::isLoaded() const
@@ -137,6 +137,15 @@ bool CudaRuntime::cudaMemcpy(void* destination, const void* source, size_t size,
     return _checkResult(m_cudaMemcpy(destination, source, size, kind), "cudaMemcpy", throwIfInvalid);
 }
 
+bool CudaRuntime::cudaMemset(void* devicePointer, int value, size_t size, bool throwIfInvalid) const
+{
+    if (!m_cudaMemset)
+    {
+        return _reportUnavailable("cudaMemset", throwIfInvalid);
+    }
+    return _checkResult(m_cudaMemset(devicePointer, value, size), "cudaMemset", throwIfInvalid);
+}
+
 bool CudaRuntime::cudaGetDevice(int* device, bool throwIfInvalid) const
 {
     if (!m_cudaGetDevice)
@@ -157,7 +166,7 @@ bool CudaRuntime::cudaSetDevice(int device, bool throwIfInvalid) const
 
 CudaRuntime::CudaRuntime()
 {
-    for (const char* library : kCudaRuntimeLibraries)
+    for (const char* library : g_kCudaRuntimeLibraries)
     {
         m_handle = loadLibrary(library);
         if (m_handle)
@@ -170,15 +179,18 @@ CudaRuntime::CudaRuntime()
         return;
     }
 
-    m_cudaGetDeviceCount = reinterpret_cast<cudaGetDeviceCountFn>(loadSymbol(m_handle, "cudaGetDeviceCount"));
-    m_cudaMalloc = reinterpret_cast<cudaMallocFn>(loadSymbol(m_handle, "cudaMalloc"));
-    m_cudaFree = reinterpret_cast<cudaFreeFn>(loadSymbol(m_handle, "cudaFree"));
-    m_cudaMemcpy = reinterpret_cast<cudaMemcpyFn>(loadSymbol(m_handle, "cudaMemcpy"));
-    m_cudaGetDevice = reinterpret_cast<cudaGetDeviceFn>(loadSymbol(m_handle, "cudaGetDevice"));
-    m_cudaSetDevice = reinterpret_cast<cudaSetDeviceFn>(loadSymbol(m_handle, "cudaSetDevice"));
-    m_cudaGetErrorString = reinterpret_cast<cudaGetErrorStringFn>(loadSymbol(m_handle, "cudaGetErrorString"));
+    m_cudaGetDeviceCount = reinterpret_cast<CudaGetDeviceCountFunction>(loadSymbol(m_handle, "cudaGetDeviceCount"));
+    m_cudaMalloc = reinterpret_cast<CudaMallocFunction>(loadSymbol(m_handle, "cudaMalloc"));
+    m_cudaFree = reinterpret_cast<CudaFreeFunction>(loadSymbol(m_handle, "cudaFree"));
+    m_cudaMemcpy = reinterpret_cast<CudaMemcpyFunction>(loadSymbol(m_handle, "cudaMemcpy"));
+    m_cudaMemset = reinterpret_cast<CudaMemsetFunction>(loadSymbol(m_handle, "cudaMemset"));
+    m_cudaGetDevice = reinterpret_cast<CudaGetDeviceFunction>(loadSymbol(m_handle, "cudaGetDevice"));
+    m_cudaSetDevice = reinterpret_cast<CudaSetDeviceFunction>(loadSymbol(m_handle, "cudaSetDevice"));
+    m_cudaGetErrorString = reinterpret_cast<CudaGetErrorStringFunction>(loadSymbol(m_handle, "cudaGetErrorString"));
 
-    if (!m_cudaGetDeviceCount || !m_cudaMalloc || !m_cudaFree || !m_cudaMemcpy || !m_cudaGetDevice ||
+    // Every entry point is mandatory: a runtime missing any of them is not one this library can
+    // work against, so it is treated as absent rather than left partially usable.
+    if (!m_cudaGetDeviceCount || !m_cudaMalloc || !m_cudaFree || !m_cudaMemcpy || !m_cudaMemset || !m_cudaGetDevice ||
         !m_cudaSetDevice || !m_cudaGetErrorString)
     {
         unloadLibrary(m_handle);
@@ -187,6 +199,7 @@ CudaRuntime::CudaRuntime()
         m_cudaMalloc = nullptr;
         m_cudaFree = nullptr;
         m_cudaMemcpy = nullptr;
+        m_cudaMemset = nullptr;
         m_cudaGetDevice = nullptr;
         m_cudaSetDevice = nullptr;
         m_cudaGetErrorString = nullptr;

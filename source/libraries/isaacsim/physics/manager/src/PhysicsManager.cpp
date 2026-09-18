@@ -35,7 +35,7 @@ namespace registration = isaacsim::physics::registration;
 namespace
 {
 
-std::string _toLower(std::string value)
+std::string convertToLowercase(std::string value)
 {
     std::transform(value.begin(), value.end(), value.begin(),
                    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
@@ -46,8 +46,8 @@ std::string _toLower(std::string value)
 
 PhysicsManager& PhysicsManager::getInstance()
 {
-    static PhysicsManager instance;
-    return instance;
+    static PhysicsManager s_instance;
+    return s_instance;
 }
 
 bool PhysicsManager::isInitialized() const
@@ -55,23 +55,23 @@ bool PhysicsManager::isInitialized() const
     return m_initialized;
 }
 
-void PhysicsManager::setup(float dt)
+void PhysicsManager::configure(float deltaTime)
 {
-    m_dt = dt;
+    m_deltaTime = deltaTime;
     m_simulatedTime = 0.0f;
-    m_simulatedPhysicsSteps = 0;
+    m_simulatedPhysicsStepCount = 0;
 }
 
-bool PhysicsManager::initialize(void* ovstageInstancePtr, int64_t usdStageId)
+bool PhysicsManager::initialize(void* ovstageInstance, int64_t usdStageId)
 {
     // Check if there are any simulations registered
-    const size_t numSimulations = registration::getNumberOfSimulations();
-    if (!numSimulations)
+    const size_t simulationCount = registration::getSimulationCount();
+    if (!simulationCount)
     {
         return false;
     }
     // Check if there are any active simulations
-    std::vector<registration::SimulationId> simulationIds(numSimulations);
+    std::vector<registration::SimulationId> simulationIds(simulationCount);
     simulationIds.resize(registration::getSimulationIds(simulationIds.data(), simulationIds.size()));
     const bool anyActiveSimulation =
         std::any_of(simulationIds.begin(), simulationIds.end(),
@@ -82,12 +82,12 @@ bool PhysicsManager::initialize(void* ovstageInstancePtr, int64_t usdStageId)
     }
 
     const std::string usdIdentifier = std::to_string(usdStageId);
-    const InitializeResult result = isaacsim::physics::manager::initialize(ovstageInstancePtr, usdIdentifier.c_str());
+    const InitializeResult result = isaacsim::physics::manager::initialize(ovstageInstance, usdIdentifier.c_str());
     if (result == InitializeResult::eOk)
     {
         m_initialized = true;
         m_simulatedTime = 0.0f;
-        m_simulatedPhysicsSteps = 0;
+        m_simulatedPhysicsStepCount = 0;
         return true;
     }
     return false;
@@ -101,30 +101,39 @@ bool PhysicsManager::invalidate()
     }
     m_initialized = false;
     m_simulatedTime = 0.0f;
-    m_simulatedPhysicsSteps = 0;
+    m_simulatedPhysicsStepCount = 0;
     return true;
 }
 
-int PhysicsManager::step(int steps, std::function<bool(int, int)> callback)
+int PhysicsManager::step(int stepCount, std::function<bool(int, int)> callback)
 {
     if (!m_initialized)
     {
         throw std::runtime_error("PhysicsManager::step called before initialize()");
     }
     // Step the physics simulation
-    int step = 0;
-    for (; step < steps; ++step)
+    int currentStep = 0;
+    for (; currentStep < stepCount; ++currentStep)
     {
-        isaacsim::physics::manager::simulate(m_dt, m_simulatedTime);
-        m_simulatedTime += m_dt;
-        ++m_simulatedPhysicsSteps;
+        isaacsim::physics::manager::simulate(m_deltaTime, m_simulatedTime);
+        m_simulatedTime += m_deltaTime;
+        ++m_simulatedPhysicsStepCount;
 
-        if (callback && !callback(step + 1, steps))
+        if (callback && !callback(currentStep + 1, stepCount))
         {
-            return step + 1;
+            return currentStep + 1;
         }
     }
-    return step;
+    return currentStep;
+}
+
+bool PhysicsManager::publishTransformsToStage()
+{
+    if (!m_initialized)
+    {
+        throw std::runtime_error("PhysicsManager::publishTransformsToStage called before initialize()");
+    }
+    return isaacsim::physics::manager::publishTransformsToStage();
 }
 
 float PhysicsManager::getSimulatedTime() const
@@ -132,14 +141,14 @@ float PhysicsManager::getSimulatedTime() const
     return m_simulatedTime;
 }
 
-int PhysicsManager::getSimulatedPhysicsSteps() const
+int PhysicsManager::getSimulatedPhysicsStepCount() const
 {
-    return m_simulatedPhysicsSteps;
+    return m_simulatedPhysicsStepCount;
 }
 
 size_t PhysicsManager::registerCallback(SimulationEventFunction callback, PhysicsEvent event, int order)
 {
-    const size_t uid = ++m_callbackUid;
+    const size_t callbackId = ++m_nextCallbackId;
 
     switch (event)
     {
@@ -158,8 +167,8 @@ size_t PhysicsManager::registerCallback(SimulationEventFunction callback, Physic
             event == PhysicsEvent::ePhysicsPreStep, order, std::move(onStep));
         if (subscriptionId != registration::g_kInvalidSubscriptionId)
         {
-            m_callbacks[uid] = subscriptionId;
-            return uid;
+            m_callbacks[callbackId] = subscriptionId;
+            return callbackId;
         }
         break;
     }
@@ -170,9 +179,9 @@ size_t PhysicsManager::registerCallback(SimulationEventFunction callback, Physic
     return 0;
 }
 
-bool PhysicsManager::deregisterCallback(size_t uid) noexcept
+bool PhysicsManager::deregisterCallback(size_t callbackId) noexcept
 {
-    auto iterator = m_callbacks.find(uid);
+    auto iterator = m_callbacks.find(callbackId);
     if (iterator == m_callbacks.end())
     {
         return false;
@@ -184,7 +193,7 @@ bool PhysicsManager::deregisterCallback(size_t uid) noexcept
     catch (...)
     {
         // Backend threw during unsubscription; remove the tracked entry so this
-        // uid is not retried, but report failure to the caller.
+        // callbackId is not retried, but report failure to the caller.
         m_callbacks.erase(iterator);
         return false;
     }
@@ -194,15 +203,15 @@ bool PhysicsManager::deregisterCallback(size_t uid) noexcept
 
 void PhysicsManager::deregisterAllCallbacks() noexcept
 {
-    std::vector<size_t> uids;
-    uids.reserve(m_callbacks.size());
-    for (const auto& [uid, _] : m_callbacks)
+    std::vector<size_t> callbackIds;
+    callbackIds.reserve(m_callbacks.size());
+    for (const auto& [callbackId, _] : m_callbacks)
     {
-        uids.push_back(uid);
+        callbackIds.push_back(callbackId);
     }
-    for (size_t uid : uids)
+    for (size_t callbackId : callbackIds)
     {
-        this->deregisterCallback(uid);
+        this->deregisterCallback(callbackId);
     }
     m_callbacks.clear();
 }
@@ -211,13 +220,13 @@ std::vector<std::pair<std::string, bool>> PhysicsManager::getRegisteredPhysicsEn
 {
     std::vector<std::pair<std::string, bool>> engines;
 
-    const size_t numSimulations = registration::getNumberOfSimulations();
-    if (!numSimulations)
+    const size_t simulationCount = registration::getSimulationCount();
+    if (!simulationCount)
     {
         return engines;
     }
 
-    std::vector<registration::SimulationId> simulationIds(numSimulations);
+    std::vector<registration::SimulationId> simulationIds(simulationCount);
     const size_t copiedCount = registration::getSimulationIds(simulationIds.data(), simulationIds.size());
     simulationIds.resize(copiedCount);
     if (simulationIds.empty())
@@ -234,7 +243,7 @@ std::vector<std::pair<std::string, bool>> PhysicsManager::getRegisteredPhysicsEn
             continue;
         }
         const bool isActive = registration::isSimulationActive(simulationId);
-        engines.emplace_back(_toLower(simulationName), isActive);
+        engines.emplace_back(convertToLowercase(simulationName), isActive);
     }
     return engines;
 }
@@ -242,13 +251,13 @@ std::vector<std::pair<std::string, bool>> PhysicsManager::getRegisteredPhysicsEn
 bool PhysicsManager::switchPhysicsEngine(const std::string& engine)
 {
 
-    const size_t numSimulations = registration::getNumberOfSimulations();
-    if (!numSimulations)
+    const size_t simulationCount = registration::getSimulationCount();
+    if (!simulationCount)
     {
         return false;
     }
 
-    std::vector<registration::SimulationId> simulationIds(numSimulations);
+    std::vector<registration::SimulationId> simulationIds(simulationCount);
     const size_t copiedCount = registration::getSimulationIds(simulationIds.data(), simulationIds.size());
     simulationIds.resize(copiedCount);
     if (simulationIds.empty())
@@ -256,7 +265,7 @@ bool PhysicsManager::switchPhysicsEngine(const std::string& engine)
         return false;
     }
 
-    const std::string targetEngine = _toLower(engine);
+    const std::string targetEngine = convertToLowercase(engine);
     registration::SimulationId targetSimulationId = registration::g_kInvalidSimulationId;
     for (const registration::SimulationId simulationId : simulationIds)
     {
@@ -265,7 +274,7 @@ bool PhysicsManager::switchPhysicsEngine(const std::string& engine)
         {
             continue;
         }
-        if (_toLower(simulationName) == targetEngine)
+        if (convertToLowercase(simulationName) == targetEngine)
         {
             targetSimulationId = simulationId;
             break;
@@ -301,13 +310,14 @@ bool PhysicsManager::switchPhysicsEngine(const std::string& engine)
 
 std::shared_ptr<isaacsim::physics::tensors::IEntityView> PhysicsManager::createEntity(
     const std::string& engine,
-    const std::string& entity,
-    const std::variant<std::string, std::vector<std::string>>& paths) const
+    const std::string& entityType,
+    const std::variant<std::string, std::vector<std::string>>& primPathPatterns,
+    const std::optional<isaacsim::physics::tensors::EntityOptions>& options) const
 {
-    const std::vector<std::string> pathList = std::holds_alternative<std::string>(paths) ?
-                                                  std::vector<std::string>{ std::get<std::string>(paths) } :
-                                                  std::get<std::vector<std::string>>(paths);
-    return isaacsim::physics::tensors::TensorRegistry::getInstance().createEntity(engine, entity, pathList);
+    const std::vector<std::string> primPaths = std::holds_alternative<std::string>(primPathPatterns) ?
+                                                   std::vector<std::string>{ std::get<std::string>(primPathPatterns) } :
+                                                   std::get<std::vector<std::string>>(primPathPatterns);
+    return isaacsim::physics::tensors::TensorRegistry::getInstance().createEntity(engine, entityType, primPaths, options);
 }
 
 } // namespace manager

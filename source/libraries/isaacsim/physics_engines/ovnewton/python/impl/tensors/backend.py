@@ -33,6 +33,7 @@ def _no_profile(fn: Callable[..., Any]) -> Callable[..., Any]:
 
     Returns:
         The original callable.
+
     """
     return fn
 
@@ -154,6 +155,7 @@ class ArticulationSet:
 
         Returns:
             Newton model owned by the stage, or None before model construction.
+
         """
         return self.newton_stage.model
 
@@ -166,6 +168,7 @@ class ArticulationSet:
 
         Raises:
             IndexError: If the set contains no articulations.
+
         """
         return self.meta_types[0]
 
@@ -328,6 +331,7 @@ class RigidBodySet:
 
         Returns:
             Newton model owned by the stage, or None before model construction.
+
         """
         return self.newton_stage.model
 
@@ -384,6 +388,7 @@ class RigidContactSet:
 
         Returns:
             Newton model owned by the stage, or None before model construction.
+
         """
         return self.newton_stage.model
 
@@ -417,6 +422,7 @@ class NewtonSimView:
 
         Returns:
             Newton model owned by the stage, or None before model construction.
+
         """
         return self.newton_stage.model
 

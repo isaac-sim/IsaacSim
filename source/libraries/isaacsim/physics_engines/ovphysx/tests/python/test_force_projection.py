@@ -269,10 +269,10 @@ class TestForceProjectionSphericalY:
     """Validate force projection with the Y and Z rotation axes free."""
 
     def test_force_projection_spherical_y_ovphysx_cc(self) -> None:
-        """Check the spherical-labelled configuration with CPU simulation and CPU tensors."""
+        """Check the spherical-labeled configuration with CPU simulation and CPU tensors."""
         run_scenario(self, _JFP_Spherical_Y, "ovphysx", cpu_device())
 
     @gpu_only
     def test_force_projection_spherical_y_ovphysx_gg(self) -> None:
-        """Check the spherical-labelled configuration with GPU simulation and GPU tensors."""
+        """Check the spherical-labeled configuration with GPU simulation and GPU tensors."""
         run_scenario(self, _JFP_Spherical_Y, "ovphysx", gpu_device())

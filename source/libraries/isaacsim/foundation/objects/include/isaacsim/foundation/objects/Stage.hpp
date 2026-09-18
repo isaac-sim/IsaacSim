@@ -209,7 +209,7 @@ public:
     std::string generateStringRepresentation(const std::string& mode = "tree") const;
 
 private:
-    struct StageOps
+    struct StageOperations
     {
         int64_t (*createStage)();
         int64_t (*openStage)(const std::string&);
@@ -233,11 +233,11 @@ private:
     };
 
     void _validate() const;
-    static StageOps _populateStageOps(const std::string& backend);
+    static StageOperations _populateStageOps(const std::string& backend);
 
     int64_t m_stageId;
     std::string m_backend;
-    StageOps m_stageOps;
+    StageOperations m_stageOps;
 };
 
 namespace details

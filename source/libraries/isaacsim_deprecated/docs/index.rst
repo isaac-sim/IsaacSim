@@ -17,14 +17,18 @@
 .. _isaacsim-deprecated-library:
 
 ===================
-isaacsim_deprecated
+isaacsim-deprecated
 ===================
 
-``isaacsim_deprecated`` contains compatibility APIs retained while applications
-migrate from legacy ``isaacsim.core`` imports to the standalone Isaac Sim
-libraries. It currently provides compatibility objects, prims, and utility
-modules.
+The ``isaacsim-deprecated`` Python distribution contains compatibility APIs
+retained while applications migrate from legacy ``isaacsim.core`` imports to
+the standalone Isaac Sim libraries. It currently provides
+``isaacsim.core.experimental.objects``,
+``isaacsim.core.experimental.prims``, and
+``isaacsim.core.experimental.utils`` from one platform-independent Python wheel.
 
 Use this distribution only when existing code still depends on these legacy
 imports. New code should use the corresponding APIs from the public standalone
 library distributions instead.
+
+The corresponding CMake package group is named ``isaacsim_deprecated``.

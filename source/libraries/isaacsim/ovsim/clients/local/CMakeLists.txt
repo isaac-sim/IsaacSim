@@ -37,18 +37,6 @@ target_include_directories(isaacsim-ovsim-clients-local PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/ovsim/interfaces/cpp>
 )
 
-# The public wrappers include the canonical OV Sim interface headers,
-# so ship those headers with the same development component.
-get_target_property(isaacsim_ovsim_clients_local_group isaacsim-ovsim-clients-local ISAACSIM_GROUP_NAME)
-_isaacsim_get_group_component(
-    "${isaacsim_ovsim_clients_local_group}" development isaacsim_ovsim_clients_local_development_component
-)
-install(DIRECTORY "${CMAKE_SOURCE_DIR}/ovsim/interfaces/cpp/ovsim"
-    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-    COMPONENT "${isaacsim_ovsim_clients_local_development_component}"
-    FILES_MATCHING PATTERN "*.hpp"
-)
-
 isaacsim_add_cpp_tests(
     MODULE isaacsim.ovsim.clients.local
     RESOURCE_DIR resources/tests/isaacsim.ovsim.clients.local

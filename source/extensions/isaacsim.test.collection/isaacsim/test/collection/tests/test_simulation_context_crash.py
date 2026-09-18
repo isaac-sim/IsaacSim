@@ -15,14 +15,12 @@
 
 """Tests for simulation context crash scenarios to ensure timeline operations don't cause crashes."""
 
-import asyncio
-
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.test
-import omni.timeline
-from isaacsim.core.experimental.prims import Articulation
-from isaacsim.storage.native import get_assets_root_path_async
+from isaacsim.core.experimental.objects import Cube
+from isaacsim.core.experimental.prims import Articulation, GeomPrim, RigidPrim
+from pxr import UsdPhysics
 
 
 # Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will
@@ -33,45 +31,48 @@ class TestSimulationContextCrash(omni.kit.test.AsyncTestCase):
     # Before running each test
     async def setUp(self) -> None:
         """Set up test environment with new stage."""
-        self._physics_dt = 1 / 60  # duration of physics frame in seconds
-
-        self._timeline = omni.timeline.get_timeline_interface()
-
         await stage_utils.create_new_stage_async()
         await app_utils.update_app_async()
 
     # After running each test
     async def tearDown(self) -> None:
         """Clean up test environment and stop timeline."""
-        self._timeline.stop()
-        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
-            print("tearDown, assets still loading, waiting to finish...")
-            await asyncio.sleep(1.0)
+        app_utils.stop(commit=False)
         await app_utils.update_app_async()
 
     async def test_simulation_context_crash(self) -> None:
         """Test that stopping timeline after articulation creation does not crash."""
-        usd_path = await get_assets_root_path_async()
-        usd_path += "/Isaac/Robots_Multiphysics/Denso/CobottaPro900/cobotta_pro_900/cobotta_pro_900.usda"
-        robot_prim_path = "/cobotta_pro_900"
+        stage = stage_utils.get_current_stage()
+        robot_prim_path = "/World/Robot"
+        base_prim_path = f"{robot_prim_path}/base"
+        link_prim_path = f"{robot_prim_path}/link"
 
-        stage_utils.add_reference_to_stage(usd_path, robot_prim_path)
+        stage_utils.define_prim(robot_prim_path)
+        links = Cube([base_prim_path, link_prim_path])
+        RigidPrim(links.paths)
+        GeomPrim(links.paths, apply_collision_apis=True)
 
-        self._timeline = omni.timeline.get_timeline_interface()
+        root_joint = UsdPhysics.FixedJoint.Define(stage, f"{robot_prim_path}/root_joint")
+        root_joint.CreateBody1Rel().SetTargets([links.prims[0].GetPath()])
+        UsdPhysics.ArticulationRootAPI.Apply(root_joint.GetPrim())
+
+        link_joint = UsdPhysics.RevoluteJoint.Define(stage, f"{robot_prim_path}/link_joint")
+        link_joint.CreateBody0Rel().SetTargets([links.prims[0].GetPath()])
+        link_joint.CreateBody1Rel().SetTargets([links.prims[1].GetPath()])
 
         # Start Simulation and wait
-        self._timeline.play()
+        app_utils.play(commit=False)
         await app_utils.update_app_async()
 
         # Create Articulation while timeline is playing
         self._robot = Articulation(robot_prim_path)
-        await omni.kit.app.get_app().next_update_async()
-
-        # Stop the timeline to mimic the old World initialization behavior
-        self._timeline.stop()
         await app_utils.update_app_async()
 
-        self.assertEqual(self._timeline.is_playing(), False)
+        # Stop the timeline to mimic the old World initialization behavior
+        app_utils.stop(commit=False)
+        await app_utils.update_app_async()
+
+        self.assertFalse(app_utils.is_playing())
 
         # Make sure this call doesn't crash due to invalid physx handles
         # Use experimental API to disable gravity on the articulation links

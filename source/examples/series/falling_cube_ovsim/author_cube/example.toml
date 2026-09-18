@@ -4,8 +4,8 @@
 id = "falling_cube_ovsim.author_cube"
 title = "Author a Cube"
 summary = "Create a stage and author a cube."
-owners = ["isaacsim.foundation.objects"]
-topics = ["python", "usd"]
+owners = ["isaacsim.ovsim.api"]
+topics = ["usd"]
 
 [build]
 adapter = "none"
@@ -18,13 +18,10 @@ path = "main.py"
 system = ["python"]
 
 [[requirements.modules]]
-name = "isaacsim_foundation"
-surfaces = ["python"]
-
-[[requirements.modules]]
 name = "isaacsim_ovsim"
 surfaces = ["python"]
 
 [[test]]
 name = "default"
-stdout_contains = ["Authored /World/Cube at (0.0, 0.0, 2.0)."]
+path = "test.py"
+stdout_contains = ["OV SIM cube authoring test passed."]

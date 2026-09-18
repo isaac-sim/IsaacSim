@@ -22,7 +22,6 @@ isaacsim_add_module(
         isaacsim/physics/manager/PhysicsManager.hpp
         isaacsim/physics/manager/PhysicsBenchmark.hpp
         isaacsim/physics/manager/tensors/EntityView.hpp
-        isaacsim/physics/manager/tensors/SimulationView.hpp
         isaacsim/physics/manager/PhysicsInteraction.hpp
         isaacsim/physics/manager/PhysicsSceneQuery.hpp
         isaacsim/physics/manager/PhysicsSimulation.hpp
@@ -35,7 +34,6 @@ isaacsim_add_module(
         src/Interaction.cpp
         src/SceneQuery.cpp
         src/tensors/EntityView.cpp
-        src/tensors/SimulationView.cpp
     PUBLIC_DEPENDENCIES
         isaacsim::physics-registration
     PRIVATE_DEPENDENCIES
@@ -86,6 +84,5 @@ isaacsim_add_cpp_tests(
         tests/cpp/TestMultiSimulationSubscriptions.cpp
         tests/cpp/TestTensorRegistry.cpp
         tests/cpp/TestTensorEntityView.cpp
-        tests/cpp/TestTensorSimulationView.cpp
     RESOURCE_DIR resources/tests
 )

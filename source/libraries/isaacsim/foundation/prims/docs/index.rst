@@ -17,6 +17,7 @@
 .. _isaacsim-foundation-prims:
 .. _isaacsim-foundation-prims-overview:
 
+=========================
 isaacsim.foundation.prims
 =========================
 
@@ -24,6 +25,8 @@ isaacsim.foundation.prims
 of the base classes in ``isaacsim.foundation.objects``.  All classes in this
 module extend :py:class:`~isaacsim.foundation.objects.Xform` and operate on one
 or more USD prims resolved from the active stage.
+
+.. _isaacsim-foundation-prims-physics-prims:
 
 Physics prims
 -------------
@@ -40,6 +43,11 @@ offsets, torsional patch radii, and enable/disable controls.
 :py:class:`~isaacsim.foundation.prims.RigidBody` applies the
 ``PhysicsRigidBodyAPI`` and ``PhysicsMassAPI`` schemas and exposes mass,
 density, linear/angular velocity, gravity, and sleep properties.
+
+:py:class:`~isaacsim.foundation.prims.GroundPlane` wraps a composite prim
+made of a ``Plane`` (collision) and a ``Mesh`` (rendering), creating or
+wrapping them as needed, and exposes collision offsets, torsional patch
+radii, and enable/disable controls.
 
 .. toctree::
     :maxdepth: 2

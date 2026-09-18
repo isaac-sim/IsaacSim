@@ -121,12 +121,16 @@ def run_variant(
     variant: dict[str, Any],
     log_dir: Path,
     timeout: int | None,
+    *,
+    allow_trusted_scripts: bool = False,
 ) -> dict[str, Any]:
     """Run Actor SDG for one variant and return its result row."""
+    if not allow_trusted_scripts:
+        raise ValueError("Explicit trust is required to execute Actor SDG scripts.")
     variant_id = variant["variant_id"]
     config_path = variant["config_path"]
     log_path = log_dir / f"variant_{variant_id:04d}.log"
-    command = [str(python_launcher), str(actor_sdg_path), "-c", str(config_path)]
+    command = [str(python_launcher), str(actor_sdg_path), "-c", str(config_path), "--allow-trusted-scripts"]
     started = time.monotonic()
 
     try:
@@ -173,7 +177,7 @@ def write_results(results: list[dict[str, Any]], output_path: Path) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the command-line parser."""
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--variants", required=True, type=Path, help="Generated variants directory.")
     parser.add_argument("--python-sh", required=True, type=Path, help="Isaac Sim Python launcher.")
     parser.add_argument("--actor-sdg", type=Path, help="Path to actor_sdg.py.")
@@ -181,6 +185,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-count", type=int, help="Maximum number of variants to run.")
     parser.add_argument("--timeout", type=int, help="Timeout for each variant in seconds.")
     parser.add_argument("--dry-run", action="store_true", help="List selected variants without launching Actor SDG.")
+    parser.add_argument(
+        "--allow-trusted-scripts",
+        action="store_true",
+        help="Allow Python execution from trusted configurations and all referenced assets with your user permissions.",
+    )
     return parser
 
 
@@ -188,6 +197,10 @@ def main(argv: list[str] | None = None) -> int:
     """Run the Actor SDG batch command."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    if not args.dry_run and not args.allow_trusted_scripts:
+        parser.error(
+            "Execution requires --allow-trusted-scripts; use only trusted configurations and referenced assets."
+        )
     variants_dir = args.variants.expanduser().resolve()
     python_launcher = args.python_sh.expanduser().resolve()
     actor_sdg_path = find_actor_sdg(args.actor_sdg)
@@ -230,6 +243,7 @@ def main(argv: list[str] | None = None) -> int:
             variant,
             log_dir,
             args.timeout,
+            allow_trusted_scripts=args.allow_trusted_scripts,
         )
         for variant in variants
     ]

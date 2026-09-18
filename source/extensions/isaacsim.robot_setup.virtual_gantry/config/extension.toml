@@ -1,5 +1,5 @@
 [package]
-version = "0.3.0"
+version = "0.3.1"
 category = "Simulation"
 title = "Virtual Gantry"
 description = "A runtime spring-damper rope that suspends a robot from an anchor prim during bring-up and policy testing."

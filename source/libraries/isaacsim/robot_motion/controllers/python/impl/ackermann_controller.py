@@ -91,7 +91,7 @@ class AckermannController(BaseController):
     - Non-steerable-wheel angular velocities (if any).
 
     The setpoint must be a real velocity vector at the control point.  For a vehicle
-    travelling at total speed ``v`` with body turning angle ``θ``, the site's
+    traveling at total speed ``v`` with body turning angle ``θ``, the site's
     ``linear_velocity`` should be ``[v·cos θ, v·sin θ, 0]`` in the body frame.
 
     The controller recovers speed and angle by projection onto the body axes:

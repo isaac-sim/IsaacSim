@@ -15,6 +15,8 @@ versions that can build the project from source, while `[project].dependencies` 
 metadata. Internal `source/libraries` dependency names are listed in the `isaacsim_libraries_metadata` dynamic provider,
 which appends exact requirements derived from the shared `VERSION`; external requirements remain static and may use
 supported ranges. Concrete tools selected for an Isaac Sim release do not replace either published contract.
+Authored Python project and requirement names use canonical PEP 508 hyphens, such as `isaacsim-common`; CMake group
+selectors retain their underscore form, such as `--group isaacsim_common`.
 
 Build the libraries and assemble their wheels:
 
@@ -75,9 +77,9 @@ Use the wheel tool instead of invoking `python -m build` directly. The frontend 
 that the tool supplies through backend configuration; `pyproject.toml` intentionally contains no source-tree or build-
 tree payload paths.
 
-For wheels containing native code, the backend-generated platform tag describes the build host. Producing a wheel for a release portability policy, such
-as manylinux, is a separate CI repair and validation step performed with the platform's standard wheel tooling; do not
-change the filename or metadata tag manually.
+For wheels containing native code, the backend-generated platform tag describes the build host. Producing a wheel for
+a release portability policy, such as manylinux, is a separate CI repair and validation step performed with the
+platform's standard wheel tooling; do not change the filename or metadata tag manually.
 
 Validate a wheel by installing it into a clean environment without the source or build tree on `PYTHONPATH`, importing
 each module, querying its version through `importlib.metadata`, and checking its installed files. Source tests, caches,

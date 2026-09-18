@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+id = "motion_generation.follow_target"
+title = "cuMotion RMPflow Follow Target"
+summary = "Drive a Franka end effector to a Cartesian target with the cuMotion RMPflow controller."
+owners = [
+    "isaacsim.foundation.objects",
+    "isaacsim.physics.entities",
+    "isaacsim.physics.manager",
+    "isaacsim.physics_engines.ovphysx",
+    "isaacsim.robot_motion.cumotion",
+    "isaacsim.robot_motion.experimental.motion_generation",
+    "isaacsim.ovgl_viewport.debug",
+]
+topics = ["cumotion", "manipulation", "motion_generation", "physics", "rendering", "rmpflow", "viewport"]
+
+[build]
+adapter = "none"
+
+[run]
+adapter = "python"
+path = "main.py"
+
+[requirements]
+system = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_foundation"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_physics"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_physics_engines"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_robot_motion"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_ovgl_viewport"
+surfaces = ["python"]
+
+[[test]]
+name = "headless"
+path = "test.py"
+timeout_seconds = 300
+stdout_contains = [
+    "RMPflow target error:",
+    "Headless RMPflow rendering test passed.",
+]

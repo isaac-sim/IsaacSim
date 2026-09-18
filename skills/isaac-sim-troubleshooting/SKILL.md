@@ -3,7 +3,7 @@ name: isaac-sim-troubleshooting
 description: "Reference for Isaac Sim hangs, freezes, and performance stalls. Use when startup, MDL, physics, or Replicator blocks progress."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Isaac Sim 6 Troubleshooting — Large USD Scene Hangs

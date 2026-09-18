@@ -20,7 +20,9 @@
 
 #include <isaacsim/physics/registration/Export.h>
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 
 namespace isaacsim
@@ -118,7 +120,7 @@ ISAACSIM_PHYSICS_REGISTRATION_API std::string getSimulationName(const Simulation
  *
  * @return The number of simulations currently registered with the physics system.
  */
-ISAACSIM_PHYSICS_REGISTRATION_API size_t getNumberOfSimulations();
+ISAACSIM_PHYSICS_REGISTRATION_API size_t getSimulationCount();
 
 /**
  * @brief Copies registered simulation identifiers into a caller-provided buffer.

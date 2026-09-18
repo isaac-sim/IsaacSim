@@ -13,8 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "details/EntityUtils.hpp"
+
+#include <isaacsim/common/array/Array.hpp>
 #include <isaacsim/physics/entities/RigidBodyEntity.hpp>
-#include <isaacsim/physics/entities/details/EntityUtils.hpp>
 
 #include <cstring>
 #include <memory>
@@ -31,16 +33,6 @@ namespace entities
 
 namespace
 {
-
-array::Array logicalNot(const array::Array& data)
-{
-    std::vector<bool> mask = data.get<std::vector<bool>>();
-    for (size_t i = 0; i < mask.size(); ++i)
-    {
-        mask[i] = !mask[i];
-    }
-    return array::Array(mask, data.dtype());
-}
 
 std::tuple<array::Array, array::Array> getSplitData(PhysicsEntity& entity,
                                                     const std::string& name,
@@ -73,7 +65,7 @@ void setSplitData(PhysicsEntity& entity,
 // Build a zero-filled (count, 3) component, overwritten by the given data when it is defined.
 array::Array buildVectorComponent(size_t count, const std::optional<array::Array>& data)
 {
-    array::Array component = array::Array(std::vector<float>(count * 3, 0.0f), array::DType::Float32())
+    array::Array component = array::Array(std::vector<float>(count * 3, 0.0f), array::Dtype::Float32())
                                  .reshape(array::Shape(std::vector<int64_t>{ static_cast<int64_t>(count), 3 }));
     if (data.has_value())
     {
@@ -193,22 +185,26 @@ void RigidBodyEntity::setComs(const std::optional<array::Array>& positions,
 
 array::Array RigidBodyEntity::getEnabledRigidBodies(const std::optional<array::Array>& indices)
 {
-    return logicalNot(getData("disable-simulations", indices)).reshape(array::Shape({ -1, 1 }));
+    const array::Array disabled = getData("disable-simulations", indices);
+    return array::logicalNot(disabled).toDtype(disabled.dtype()).reshape(array::Shape({ -1, 1 }));
 }
 
 void RigidBodyEntity::setEnabledRigidBodies(const array::Array& enabled, const std::optional<array::Array>& indices)
 {
-    setData("disable-simulations", logicalNot(enabled.reshape(array::Shape({ -1 }))), indices);
+    setData("disable-simulations", array::logicalNot(enabled.reshape(array::Shape({ -1 }))).toDtype(enabled.dtype()),
+            indices);
 }
 
 array::Array RigidBodyEntity::getEnabledGravities(const std::optional<array::Array>& indices)
 {
-    return logicalNot(getData("disable-gravities", indices)).reshape(array::Shape({ -1, 1 }));
+    const array::Array disabled = getData("disable-gravities", indices);
+    return array::logicalNot(disabled).toDtype(disabled.dtype()).reshape(array::Shape({ -1, 1 }));
 }
 
 void RigidBodyEntity::setEnabledGravities(const array::Array& enabled, const std::optional<array::Array>& indices)
 {
-    setData("disable-gravities", logicalNot(enabled.reshape(array::Shape({ -1 }))), indices);
+    setData("disable-gravities", array::logicalNot(enabled.reshape(array::Shape({ -1 }))).toDtype(enabled.dtype()),
+            indices);
 }
 
 } // namespace entities

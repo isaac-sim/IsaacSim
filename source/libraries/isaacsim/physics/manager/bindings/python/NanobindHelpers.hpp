@@ -20,6 +20,7 @@
 #include <nanobind/stl/bind_vector.h>
 #include <nanobind/stl/function.h>
 #include <nanobind/stl/pair.h>
+#include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/tuple.h>
 #include <nanobind/stl/unordered_map.h>
@@ -128,7 +129,7 @@ inline void bindPythonSubscription(nanobind::module_& module)
         .def("unsubscribe", &PythonSubscription::unsubscribe, "Unsubscribe immediately. Idempotent.")
         .def_prop_ro("id", &PythonSubscription::getId,
                      "Underlying subscription identifier, or the invalid sentinel if released.")
-        .def_prop_ro("valid", &PythonSubscription::isValid);
+        .def_prop_ro("valid", &PythonSubscription::isValid, "Whether the subscription remains active.");
 }
 
 } // namespace manager

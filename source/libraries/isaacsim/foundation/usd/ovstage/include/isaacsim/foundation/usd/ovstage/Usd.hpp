@@ -504,7 +504,7 @@ ISAACSIM_FOUNDATION_USD_OVSTAGE_API void setXformLocalScales(int64_t stageId,
  * @param[in] paths List of absolute SdfPath strings of Xformable prims.
  * @return Tuple of two arrays:
  *         - translations of shape ``(N, 3)`` containing ``[x, y, z]`` for each prim;
- *         - orientations of shape ``(N, 4)`` containing ``[w, ix, iy, iz]`` quaternions for each prim.
+ *         - orientations of shape ``(N, 4)`` containing xyzw-ordered quaternions for each prim.
  * @throws std::invalid_argument If any path does not refer to a valid or Xformable prim.
  */
 ISAACSIM_FOUNDATION_USD_OVSTAGE_API std::tuple<array::Array, array::Array> getXformLocalPoses(
@@ -517,7 +517,7 @@ ISAACSIM_FOUNDATION_USD_OVSTAGE_API std::tuple<array::Array, array::Array> getXf
  * @param[in] stageId Stage to operate on.
  * @param[in] paths List of absolute SdfPath strings of Xformable prims.
  * @param[in] translations Optional array of shape ``(N, 3)`` with ``[x, y, z]`` local translations.
- * @param[in] orientations Optional array of shape ``(N, 4)`` with ``[w, ix, iy, iz]`` local orientations.
+ * @param[in] orientations Optional array of shape ``(N, 4)`` with xyzw-ordered local orientations.
  * @throws std::invalid_argument If any path does not refer to a valid or Xformable prim.
  * @throws std::invalid_argument If any prim does not have the canonical transform ops order [xformOp:translate,
  * xformOp:orient, xformOp:scale].
@@ -535,7 +535,7 @@ ISAACSIM_FOUNDATION_USD_OVSTAGE_API void setXformLocalPoses(int64_t stageId,
  * @param[in] paths List of absolute SdfPath strings of Xformable prims.
  * @return Tuple of two arrays:
  *         - positions of shape ``(N, 3)`` containing ``[x, y, z]`` for each prim;
- *         - orientations of shape ``(N, 4)`` containing ``[w, ix, iy, iz]`` quaternions for each prim.
+ *         - orientations of shape ``(N, 4)`` containing xyzw-ordered quaternions for each prim.
  * @throws std::invalid_argument If any path does not refer to a valid or Xformable prim.
  */
 ISAACSIM_FOUNDATION_USD_OVSTAGE_API std::tuple<array::Array, array::Array> getXformWorldPoses(
@@ -548,7 +548,7 @@ ISAACSIM_FOUNDATION_USD_OVSTAGE_API std::tuple<array::Array, array::Array> getXf
  * @param[in] stageId Stage to operate on.
  * @param[in] paths List of absolute SdfPath strings of Xformable prims.
  * @param[in] positions Optional array of shape ``(N, 3)`` with ``[x, y, z]`` world positions.
- * @param[in] orientations Optional array of shape ``(N, 4)`` with ``[w, ix, iy, iz]`` world orientations.
+ * @param[in] orientations Optional array of shape ``(N, 4)`` with xyzw-ordered world orientations.
  * @throws std::invalid_argument If any path does not refer to a valid or Xformable prim.
  * @throws std::invalid_argument If any prim does not have the canonical transform ops order [xformOp:translate,
  * xformOp:orient, xformOp:scale].

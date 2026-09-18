@@ -24,10 +24,26 @@ from pathlib import Path
 from typing import Any
 
 from omni.asset_validator.core import Requirement, RequirementsRegistry
-from simready.foundation.tier_core import tier as tier_core
-from simready.foundation.tier_isaac import tier as tier_isaac
+from simready.foundation import tier_core, tier_isaac
 
 _SIMREADY_NAMESPACE = "com.nvidia.simready."
+
+
+def _tier_content_paths(directory_name: str) -> tuple[Path, ...]:
+    """Get a content directory from each bundled SimReady tier package.
+
+    Container packaging deduplicates identical Python files with symlinks. Reading
+    the package locations from ``__path__`` preserves the imported package paths;
+    the tier descriptors resolve their symlinked ``_tier.py`` files and can both
+    incorrectly point at the core tier.
+
+    Args:
+        directory_name: Content directory name within each tier package.
+
+    Returns:
+        Content paths for the core and Isaac tiers.
+    """
+    return tuple(Path(package.__path__[0]) / directory_name for package in (tier_core, tier_isaac))
 
 
 class ProfileResolutionError(RuntimeError):
@@ -177,8 +193,8 @@ class ProfileResolver:
     def __init__(
         self, profile_paths: tuple[Path, ...] | None = None, feature_paths: tuple[Path, ...] | None = None
     ) -> None:
-        self._profile_paths = profile_paths or (tier_core.profiles_path, tier_isaac.profiles_path)
-        self._feature_paths = feature_paths or (tier_core.features_path, tier_isaac.features_path)
+        self._profile_paths = profile_paths or _tier_content_paths("profiles")
+        self._feature_paths = feature_paths or _tier_content_paths("features")
         self._profiles = self._load_profiles()
         self._features = self._load_features()
 

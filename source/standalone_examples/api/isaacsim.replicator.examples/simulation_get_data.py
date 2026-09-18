@@ -93,33 +93,47 @@ def run_example() -> None:
     )
     sem_annot.attach(rp)
 
-    # Initialize the simulation manager
-    SimulationManager.initialize_physics()
-
-    # Spawn and drop a few cubes, capture data when they stop moving
+    # Create the cubes and their tensor-backed wrappers before initializing GPU physics
+    cube_rigids = []
     for i in range(5):
         cube = rep.functional.create.cube(name=f"Cuboid_{i}", parent="/World")
         rep.functional.modify.position(cube, (0, 0, 10 + i))
         rep.functional.modify.semantics(cube, {"class": "cuboid"}, mode="add")
         rep.functional.physics.apply_rigid_body(cube, with_collider=True)
-        cube_rigid = RigidPrim(str(cube.GetPrimPath()))
+        cube_rigids.append(RigidPrim(str(cube.GetPrimPath())))
 
-        for s in range(500):
-            SimulationManager.step()
+    SimulationManager.initialize_physics()
+
+    # Capture each cube after it has moved and then settled
+    moved_cubes = set()
+    captured_cubes = set()
+    for simulation_step in range(500):
+        SimulationManager.step()
+        for i, cube_rigid in enumerate(cube_rigids):
+            if i in captured_cubes:
+                continue
             linear_velocity, _ = cube_rigid.get_velocities(indices=[0])
             speed = np.linalg.norm(linear_velocity.numpy()[0])
 
-            if speed < 0.1:
-                print(f"Cube_{i} stopped moving after {s} simulation steps, writing data..")
+            if speed >= 0.1:
+                moved_cubes.add(i)
+            elif i in moved_cubes:
+                print(f"Cube_{i} stopped moving after {simulation_step} simulation steps, writing data..")
                 # Reset DLSS history after physics-only stepping to avoid ghosting on capture
                 carb.settings.get_settings().set("/rtx-transient/post/dlss/forceParamReset", True)
                 # Capture the data
                 rep.orchestrator.step(rt_subframes=4, delta_time=0.0, pause_timeline=False)
-                rgb_path = os.path.join(annotator_dir, f"Cube_{i}_step_{s}_rgb.png")
+                rgb_path = os.path.join(annotator_dir, f"Cube_{i}_step_{simulation_step}_rgb.png")
                 write_image(path=rgb_path, data=rgb_annot.get_data())
-                sem_path = os.path.join(annotator_dir, f"Cube_{i}_step_{s}_sem")
+                sem_path = os.path.join(annotator_dir, f"Cube_{i}_step_{simulation_step}_sem")
                 write_sem_data(sem_annot.get_data(), sem_path)
-                break
+                captured_cubes.add(i)
+
+        if len(captured_cubes) == len(cube_rigids):
+            break
+
+    if len(captured_cubes) != len(cube_rigids):
+        raise RuntimeError(f"Only {len(captured_cubes)} of {len(cube_rigids)} cubes settled before the timeout")
 
     # Wait for the data to be written to disk and clean up resources
     rep.orchestrator.wait_until_complete()

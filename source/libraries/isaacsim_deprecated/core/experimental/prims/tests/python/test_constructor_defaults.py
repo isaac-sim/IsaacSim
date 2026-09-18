@@ -17,6 +17,8 @@
 
 import inspect
 
+import numpy as np
+import pytest
 from isaacsim.core.experimental.prims import GeomPrim, XformPrim
 from isaacsim.foundation.objects import Stage
 from pxr import Usd, UsdGeom, UsdPhysics, UsdUtils
@@ -89,5 +91,47 @@ def test_geom_prim_construction_preserves_existing_operations_and_schemas() -> N
 
         assert _get_ordered_xform_ops(prim) == expected_operations
         assert not prim.HasAPI(UsdPhysics.CollisionAPI)
+    finally:
+        stage.close_stage()
+
+
+def test_xform_prim_construction_applies_local_transform() -> None:
+    """Apply the local-frame constructor arguments that the base wrapper no longer accepts."""
+    stage = Stage("openusd").create_stage()
+    try:
+        prims = XformPrim(
+            "/World/Xform",
+            translations=[[1.0, 2.0, 3.0]],
+            scales=[[2.0, 2.0, 2.0]],
+            reset_xform_op_properties=True,
+        )
+
+        translations, _ = prims.get_local_poses()
+
+        assert np.allclose(translations.numpy(), [[1.0, 2.0, 3.0]])
+        assert np.allclose(prims.get_local_scales().numpy(), [[2.0, 2.0, 2.0]])
+    finally:
+        stage.close_stage()
+
+
+def test_xform_prim_construction_applies_world_positions() -> None:
+    """Apply the world-frame constructor arguments that the base wrapper no longer accepts."""
+    stage = Stage("openusd").create_stage()
+    try:
+        prims = XformPrim("/World/Xform", positions=[[4.0, 5.0, 6.0]], reset_xform_op_properties=True)
+
+        positions, _ = prims.get_world_poses()
+
+        assert np.allclose(positions.numpy(), [[4.0, 5.0, 6.0]])
+    finally:
+        stage.close_stage()
+
+
+def test_xform_prim_construction_rejects_positions_and_translations() -> None:
+    """Reject the mutually exclusive world- and local-frame constructor arguments."""
+    stage = Stage("openusd").create_stage()
+    try:
+        with pytest.raises(ValueError, match="Specify only one of them"):
+            XformPrim("/World/Xform", positions=[[0.0, 0.0, 0.0]], translations=[[0.0, 0.0, 0.0]])
     finally:
         stage.close_stage()

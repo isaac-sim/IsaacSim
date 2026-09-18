@@ -50,19 +50,21 @@ namespace isaacsim::hsb::core
  */
 struct CameraCalibration
 {
-    // Intrinsics: per-imager (fx, fy, cx, cy). Index 0 = left, 1 = right.
+    /** @brief Per-imager intrinsics ordered as fx, fy, cx, and cy. Index 0 is left and index 1 is right. */
     std::array<std::array<double, 4>, 2> intrinsics{};
 
-    // Distortion: per-imager (k1, k2, p1, p2, k3, k4, k5, k6). Zero by default.
+    /** @brief Per-imager distortion ordered as k1, k2, p1, p2, k3, k4, k5, and k6. */
     std::array<std::array<double, 8>, 2> distortion{};
 
-    // Rig rotation, axis-angle form (Rx, Ry, Rz). Zero = identity.
+    /** @brief Rig rotation in axis-angle form, ordered as Rx, Ry, and Rz. Zero represents the identity rotation. */
     std::array<double, 3> R{};
 
-    // Rig translation (Tx, Ty, Tz) written verbatim to the EEPROM's T field. The live
-    // receiver reconstructs base_T_cam via Pose3d{q, calib.T}.inverse(), so the value
-    // programmed here is the negated physical baseline. For Eagle hardware (physical
-    // +0.088 m along +x), program (-0.088, 0, 0).
+    /**
+     * @brief Rig translation ordered as Tx, Ty, and Tz and written directly to the EEPROM T field.
+     *
+     * The receiver reconstructs `base_T_cam` as the inverse of the calibrated pose, so this value is the negated
+     * physical baseline. For Eagle hardware with a physical +0.088 m baseline along +x, use (-0.088, 0, 0).
+     */
     std::array<double, 3> T{};
 };
 
@@ -87,20 +89,22 @@ namespace detail
  */
 struct SharedHSBEmulator
 {
+    /** @brief Construct the shared emulator for an IP address. @param[in] ipAddress Emulated board IP address. */
     explicit SharedHSBEmulator(const std::string& ipAddress);
     ~SharedHSBEmulator();
 
     SharedHSBEmulator(const SharedHSBEmulator&) = delete;
     SharedHSBEmulator& operator=(const SharedHSBEmulator&) = delete;
 
-    hololink::emulation::HSBEmulator emulator;
-    // Serializes the connect-lifecycle block (slot reservation + is_running/stop/attach/start)
-    // across all HSBSenders sharing this emulator. Without this, two senders on the same IP
-    // calling connect() concurrently can interleave stop/start and end up applying start() to
-    // a half-configured emulator.
+    hololink::emulation::HSBEmulator emulator; ///< Emulator shared by senders targeting `ipAddress`.
+    /**
+     * @brief Serialize slot reservation and emulator stop, attach, and start operations.
+     *
+     * This prevents concurrent senders from interleaving lifecycle operations on a partially configured emulator.
+     */
     std::mutex connectMutex;
-    std::set<uint8_t> takenSensorIds;
-    std::string ipAddress;
+    std::set<uint8_t> takenSensorIds; ///< Sensor identifiers currently reserved by connected senders.
+    std::string ipAddress; ///< Emulated board IP address shared by the senders.
 };
 
 } // namespace detail

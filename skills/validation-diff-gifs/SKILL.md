@@ -3,7 +3,7 @@ name: validation-diff-gifs
 description: "Pixel-diff GIFs comparing validation captures to golden images. Use to triage benchmark or regression image failures."
 license: Apache-2.0
 metadata:
-  author: Chris Dodd
+  author: Chris Dodd <info@nvidia.com>
   permissions:
     - shell
     - filesystem

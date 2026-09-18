@@ -13,11 +13,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "UsdHelpers.hpp"
+
 #include <isaacsim/common/exceptions/Exceptions.hpp>
-#include <isaacsim/foundation/usd/ovstage/details/UsdHelpers.hpp>
 #include <ovx/path_dictionary/path_dictionary.h>
 #include <ovx/path_dictionary/path_dictionary_utils.h>
 
+#include <algorithm>
+#include <limits>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -125,10 +128,10 @@ bool validatePrimAtPath(ovstage_instance_t* instance, const std::string& path, b
         return true;
     }
 
-    static constexpr char kUsdPathAttr[] = "usd-path";
+    static constexpr char s_kUsdPathAttr[] = "usd-path";
     const ovx_string_t pathValue{ path.c_str(), path.size() };
     ovstage_predicate_t predicate{};
-    predicate.attribute = { OVX_INVALID_TOKEN, ovx_string_t{ kUsdPathAttr, sizeof(kUsdPathAttr) - 1 } };
+    predicate.attribute = { OVX_INVALID_TOKEN, ovx_string_t{ s_kUsdPathAttr, sizeof(s_kUsdPathAttr) - 1 } };
     predicate.op = OVSTAGE_FILTER_OP_IN;
     predicate.values = &pathValue;
     predicate.value_count = 1;
@@ -195,6 +198,25 @@ ovstage_ordinal_t consumeOrdinal(int64_t stageId)
     auto it = g_stageCache.find(stageId);
     if (it == g_stageCache.end())
         return 0;
+
+    // OVStage can have serialized writers outside Foundation (for example a
+    // physics backend publishing simulation output). Reconcile our cached next
+    // ordinal with the stage's global floor before every Foundation write so we
+    // never reuse an ordinal another writer has already sealed.
+    ovstage_ordinal_query_handle_t query = OVSTAGE_INVALID_ORDINAL_QUERY_HANDLE;
+    const ovstage_enqueue_result_t enqueue = ovstage_get_attribute_write_floor(it->second.instance, {}, &query);
+    if (enqueue.status != OVSTAGE_OK || query == OVSTAGE_INVALID_ORDINAL_QUERY_HANDLE)
+        throw std::runtime_error("Unable to query the OVStage write floor");
+
+    ovstage_ordinal_t floor = 0;
+    const ovstage_api_status_t fetchStatus =
+        ovstage_fetch_ordinal(it->second.instance, query, OVSTAGE_TIMEOUT_INFINITE, &floor);
+    waitAndRelease(it->second.instance, enqueue);
+    waitAndRelease(it->second.instance, ovstage_release_ordinal_query(it->second.instance, query));
+    if (fetchStatus != OVSTAGE_OK || floor == std::numeric_limits<ovstage_ordinal_t>::max())
+        throw std::runtime_error("Unable to fetch a usable OVStage write floor");
+
+    it->second.nextOrdinal = std::max(it->second.nextOrdinal, floor + 1);
     return it->second.nextOrdinal++;
 }
 

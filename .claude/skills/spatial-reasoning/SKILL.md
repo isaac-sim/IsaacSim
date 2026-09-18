@@ -3,7 +3,7 @@ name: spatial-reasoning
 description: "USD spatial math: transforms, bbox, layouts, and planning helpers. Use when placing, scaling, or arranging scene assets."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # 3D Spatial Reasoning

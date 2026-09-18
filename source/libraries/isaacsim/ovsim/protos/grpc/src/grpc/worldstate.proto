@@ -1,0 +1,625 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+// World State Data Plane API — gRPC Service Definition
+//
+// Reads and writes simulation world state. All data is time-indexed with
+// nanosecond precision. Each (prim, attribute, timestamp) triple is written
+// exactly once — values are immutable once written.
+//
+// Maps to the Data Plane OpenAPI variant (worldstate-api.json) and the
+// implementation-agnostic spec (ov-sim-data-api-spec.md) for full semantics.
+//
+// Design note: all RPCs are unary (request-response). Long-poll reads use
+// the max_wait_ms wait-budget field. Server-streaming
+// and bidirectional streaming RPCs are under consideration for future versions
+// (see ov-sim-data-api-spec.md §9 — Future Work).
+
+syntax = "proto3";
+
+package nvidia.omniverse.simulation.worldstate.v1;
+
+option java_multiple_files = true;
+option java_package = "com.nvidia.omniverse.simulation.worldstate.v1";
+option go_package = "nvidia/omniverse/simulation/worldstate/v1";
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+service WorldStateService {
+  // Read world state values with optional long-poll support.
+  //
+  // Long-poll reads are unblocked as soon as new data matching the query is
+  // available — they do NOT require the global write watermark to be updated.
+  // May return partial results with an iterator.
+  //
+  // Errors (gRPC status — see the implementation-agnostic spec §3.3/§6.2 and the gRPC error mapping):
+  //   NOT_FOUND          — simulation does not exist
+  //   INVALID_ARGUMENT   — malformed request (bad range, unknown attr, bad iterator, type error,
+  //                        or change_history=true + timestamped=false)
+  //   UNIMPLEMENTED      — NOT_SUPPORTED: optional capability (filter op, negate, change_history)
+  //   OUT_OF_RANGE       — requested time in the past / purged (incl. a purged resume point)
+  //   FAILED_PRECONDITION— PRECONDITION_FAILED, split by request shape: on a NEW read the values at
+  //                        timestamps <= the requested time are not yet known and immutable for every
+  //                        selected attribute; on a CONTINUATION the iterator is no longer usable
+  //                        (expiry, restart, epoch change) — resume at read_watermark_ns + 1
+  //   DEADLINE_EXCEEDED  — TIMEOUT: the wait budget elapsed. MUST NOT invalidate the iterator; for a
+  //                        read following new data this is the normal steady state, retried at once
+  rpc ReadWorldState(ReadWorldStateRequest) returns (ReadWorldStateResponse);
+
+  // Write world state values. All operations are atomic.
+  //
+  // Each (prim, attribute, timestamp) triple is written exactly once.
+  // Writing at a timestamp <= the prim's current timestamp for the attribute
+  // is rejected (no overwrites).
+  //
+  // Errors (gRPC status — see the implementation-agnostic spec §4.4/§6.2 and the gRPC error mapping):
+  //   NOT_FOUND        — simulation does not exist
+  //   INVALID_ARGUMENT — malformed request, type mismatch, column-length mismatch, empty ops
+  //   ABORTED          — WRITE_CONFLICT: timestamp ordering violation (watermark / monotonic)
+  //   ALREADY_EXISTS   — INSERT (create-only) write_mode and the prim/attribute already exists
+  //   UNIMPLEMENTED    — NOT_SUPPORTED: optional capability (INSERT, delete, scoped watermark, …)
+  rpc WriteWorldState(WriteWorldStateRequest) returns (WriteWorldStateResponse);
+
+  // Read the current write simulation time (watermark).
+  //
+  // Returns the global simulation time; optionally per-attribute simulation
+  // times when requested and supported. Advancing simulation time is done via
+  // WriteWorldState (UpdateSimulationTimeNs), not here.
+  //
+  // Errors (gRPC status):
+  //   NOT_FOUND        — simulation does not exist
+  //   INVALID_ARGUMENT — a requested attribute name (for a per-attribute time read) is unknown or invalid
+  //   UNIMPLEMENTED    — NOT_SUPPORTED: per-attribute simulation-time read not supported
+  rpc ReadSimulationTime(ReadSimulationTimeRequest) returns (ReadSimulationTimeResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Read
+// ---------------------------------------------------------------------------
+
+message ReadWorldStateRequest {
+  string simulation_id = 1;
+
+  // Exactly one of read or iterator must be set.
+  oneof query {
+    ReadRequest read = 2;
+    string iterator = 3;  // opaque continuation token from a previous read
+  }
+
+  // Wait budget in WALL-CLOCK milliseconds (not simulation time). ABSENT or 0 =
+  // the read is IMMEDIATE (the server MUST NOT block). > 0 = LONG-POLL: the
+  // server MAY hold the request up to this long and MUST NOT hold it longer.
+  // Top-level (outside the query oneof) so a CONTINUATION can long-poll too; on
+  // a continuation the query is fixed by the token and only this may vary.
+  // It is a CEILING, not a promise: the effective wait is min(max_wait_ms,
+  // server maximum), and TIMEOUT.details.waited_ms reports the actual wait.
+  // A server WITHOUT long-poll MUST ignore this field and answer immediately —
+  // it MUST NOT return UNIMPLEMENTED. Renamed from timeout_ms (int64): "timeout"
+  // collided with the gRPC deadline and the TIMEOUT status. Distinct from the
+  // gRPC deadline, which is a transport give-up policy with no semantic effect;
+  // clients SHOULD set the deadline above max_wait_ms + a round-trip margin.
+  int32 max_wait_ms = 4;
+}
+
+message ReadRequest {
+  // Attribute names to return (projection). Empty = empty result.
+  // The reserved token "*" (exact string, alone or alongside names) selects ALL
+  // attributes -- resolved per read from filter + time range + flags against the
+  // data actually present, so the caller must read ResultSet.attributes to learn
+  // what it got and must not assume a fixed column layout. This does not weaken
+  // repeatability: the same complete, fully-specified window re-read returns the
+  // same set. usd-path is implied under "*" (always present, for correlation).
+  // Optional capability -> NOT_SUPPORTED. Any other entry containing '*' (e.g.
+  // "physics:*") is reserved and MUST be rejected with INVALID_ARGUMENT -- there
+  // are no glob patterns.
+  // select is a projection only and does NOT filter which prims appear; to
+  // require an attribute be present, add a HAS predicate to filter.
+  repeated string select = 1;
+
+  // Prim filter: AND-list of predicates (see Filter / implementation-agnostic spec §5).
+  Filter filter = 2;
+
+  // Time specification.
+  SimulationTimeRange simulation_time_range = 3;
+
+  // Optional (tri-state via field presence: set true / set false / ABSENT=AUTO).
+  // Whether to return the FULL CHANGE HISTORY — every change in the range (true)
+  // — or only the latest value in the range per (prim, attribute) (false).
+  // Renamed from coalesce_deltas and POLARITY
+  // FLIPPED (change_history=true == old coalesce_deltas=false). AUTO resolves to
+  // false if start is unset, else true. Requesting full history (true) is an
+  // optional capability; if unsupported the server returns NOT_SUPPORTED and
+  // MUST NOT silently ignore the flag.
+  optional bool change_history = 4;
+
+  // Optional (tri-state via field presence: set true / set false / ABSENT=AUTO).
+  // Whether each value carries its per-value write timestamp, segmenting results
+  // into one set per distinct timestamp (true), or is returned as a single
+  // combined, timeless set (false). AUTO resolves to false if start is unset,
+  // else true. Explicit change_history=true + timestamped=false is
+  // INVALID_ARGUMENT (a full change stream with no timestamps is unorderable).
+  optional bool timestamped = 5;
+}
+
+// Prim filter: an AND-list of predicates. A prim matches only if it satisfies
+// ALL predicates. Empty = matches all prims. See the implementation-agnostic spec §5.
+message Filter {
+  repeated FilterPredicate predicates = 1;
+}
+
+// A single filter predicate testing one attribute.
+// Conformance (implementation-agnostic spec §5): HAS/IN and filtering on "usd-path" are MUST;
+// other ops, negate, and non-usd-path attributes are MAY (else NOT_SUPPORTED).
+message FilterPredicate {
+  // Attribute name the predicate tests.
+  string attribute = 1;
+
+  // Operator.
+  FilterOp op = 2;
+
+  // Operand(s) as a typed value column (matches the attribute's type). Empty
+  // for HAS. For IN/CONTAINS/PREFIX this may carry MULTIPLE values and matches
+  // if the attribute matches AT LEAST ONE of them (OR within the predicate).
+  // LT/LE/GT/GE take exactly one value. "Match all values" is expressed as
+  // multiple predicates (which AND). See the implementation-agnostic spec §5.
+  ValueColumn values = 3;
+
+  // If true, logically NOTs this predicate (optional capability, MAY).
+  bool negate = 4;
+}
+
+enum FilterOp {
+  FILTER_OP_UNSPECIFIED = 0;
+  HAS = 1;       // attribute present (values empty) — MUST
+  IN = 2;        // value equals at least one of values (1+, OR) — MUST
+  CONTAINS = 3;  // array/string contains at least one of values (1+, OR) — MAY
+  PREFIX = 4;    // string starts with at least one of values (1+, OR) — MAY
+  LT = 5;        // scalar < value (exactly 1) — MAY
+  LE = 6;        // scalar <= value (exactly 1) — MAY
+  GT = 7;        // scalar > value (exactly 1) — MAY
+  GE = 8;        // scalar >= value (exactly 1) — MAY
+}
+
+// The [start, end] time range for a read; both bounds optional. All reads are
+// one range read over this pair (point / latest-value / bounded catch-up /
+// latest-in-range / delta are presets). See the implementation-agnostic spec §3.1.
+message SimulationTimeRange {
+  // END of the time range (inclusive), in nanoseconds. OPTIONAL: if unset there
+  // is NO SINGLE END — each selected attribute is read through ITS OWN latest
+  // write timestamp, generally a different timestamp for each, and
+  // available_watermark_ns reports the LOWEST of them. Such a read never waits
+  // and never returns FAILED_PRECONDITION, and it TERMINATES rather than
+  // following new data. The timestamp each attribute is read through is
+  // implementation-defined (recommended: fix it at read-start time). The
+  // read_watermark_ns == end finished test does NOT apply when end is unset.
+  // Must be distinguishable from an explicit value.
+  optional int64 simulation_time_ns = 1;
+
+  // START of the time range (inclusive), in nanoseconds. OPTIONAL: if unset, the
+  // start is -infinity. Setting start (INCLUDING start=0) flips the AUTO
+  // defaults of change_history/timestamped to the range-style presets (true).
+  optional int64 start_simulation_time_ns = 2;
+}
+
+message ReadWorldStateResponse {
+  // Zero or more result sets. A read returns its data as one or more result
+  // sets; each set is uniform (same timestamp, same attribute set, same
+  // deleted_attributes across all its prims). Non-uniform results are split
+  // across multiple sets. See the implementation-agnostic spec §3.2.
+  //
+  // ZERO result sets is a valid, useful answer, not an error: under the liveness
+  // rule a read whose end is beyond available_watermark_ns SHOULD return what it
+  // already has rather than withholding everything, and SHOULD advance the
+  // watermark fields below even when it carries no data — time progression is
+  // itself a read result. See §3.1.
+  repeated ResultSet result_sets = 1;
+
+  // Opaque cursor continuing this read where this response left off. A response
+  // carrying any result above read_watermark_ns SHOULD return one; the reader
+  // continues while an iterator is returned, and otherwise re-reads from
+  // read_watermark_ns + 1. A server that does not page MUST return the whole
+  // result in one response (no iterator). Servers SHOULD bind a query
+  // fingerprint into the token and reject a token presented with a different
+  // query as INVALID_ARGUMENT. See the implementation-agnostic spec §3.2.
+  optional string iterator = 2;
+
+  // Latest timestamp for which ALL results have been returned by this and all
+  // previous responses of this read (iterator progress + resume point).
+  // Monotonically non-decreasing across the read; MUST be strictly < start
+  // before anything has been delivered. With an EXPLICIT end,
+  // read_watermark_ns == end means the read is finished; with end unset that
+  // test does not apply. See §3.2.
+  int64 read_watermark_ns = 3;
+
+  // The LOWEST of the selected attributes' latest write timestamps — the
+  // minimum, across the selection, of each attribute's max(global watermark,
+  // per-attribute watermark, latest write timestamp). The timestamp through
+  // which the read can return everything for the whole selection. MAY exceed
+  // end. If it exceeds read_watermark_ns, more results are ready to return
+  // immediately (no long-poll needed). Comparing it with an explicit end tells
+  // pagination (>= end: fixed, repeatable result) from following new data
+  // (< end). See §3.2.
+  int64 available_watermark_ns = 4;
+}
+
+// A uniform group of read results sharing one timestamp, one selected-attribute
+// set, and one deleted_attributes set. See the implementation-agnostic spec §3.2.
+message ResultSet {
+  // The timestamp shared by all results in this set (nanoseconds).
+  int64 simulation_time_ns = 1;
+
+  // The selected attribute names present (inserted/updated) in this set — a
+  // duplicate-free set, each name at most once, in the same order as columns.
+  // Every prim in the set has a value for all of these at this timestamp.
+  // "usd-path" appears here only if it was named in select.
+  repeated string attributes = 2;
+
+  // One value column per entry in attributes, in the same order, row-aligned
+  // across columns. The "usd-path" column (present only when selected) carries
+  // each prim's path so rows can be correlated to prims. Plain value columns —
+  // no per-column attribute reference (the attribute is given by attributes[i])
+  // and no per-value timestamps (the timestamp is simulation_time_ns).
+  repeated ValueColumn columns = 3;
+
+  // The selected attribute names deleted at this timestamp, for every prim in
+  // the set; empty when nothing was deleted. Additive — does not change how
+  // attributes/columns behave. A whole-prim delete lists all of the prim's
+  // SELECTED attributes here (those named in select), including "usd-path".
+  // Populated for reads whose window includes a delete (delta reads).
+  repeated string deleted_attributes = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Write
+// ---------------------------------------------------------------------------
+
+message WriteWorldStateRequest {
+  string simulation_id = 1;
+
+  // Timestamp for all data writes in this request (nanoseconds).
+  int64 simulation_time_ns = 2;
+
+  // Ordered list of write operations. Executed atomically — if any fails,
+  // the entire request is rejected.
+  repeated WriteOp write = 3;
+}
+
+message WriteOp {
+  oneof op {
+    // Write attribute values for a set of prims (write_mode UPSERT/INSERT).
+    Update update = 1;
+
+    // Advance the write simulation time (watermark). Batched, ordered, and
+    // committed atomically with the data writes in this request.
+    UpdateSimulationTimeNs update_simulation_time_ns = 2;
+
+    // Remove attributes on prims matching specified criteria.
+    Delete delete = 3;
+  }
+}
+
+message Update {
+  // Key column identifying prims. Must use "usd-path" as the attribute.
+  Column keys = 1;
+
+  // One column per attribute to write. Each column's values must have
+  // the same length as the keys column.
+  repeated Column values = 2;
+
+  // Write mode. UPSERT (default): create prim/attribute if absent, else update.
+  // INSERT: create-only; existing prim is rejected (ALREADY_EXISTS). INSERT is
+  // an optional capability (MAY); NOT_SUPPORTED if unsupported.
+  WriteMode write_mode = 3;
+}
+
+enum WriteMode {
+  WRITE_MODE_UNSPECIFIED = 0;  // treated as UPSERT
+  UPSERT = 1;
+  INSERT = 2;
+}
+
+message UpdateSimulationTimeNs {
+  // New watermark value (nanoseconds). Must be >= current watermark.
+  // Smaller values are silently ignored. Writes at timestamps <= watermark
+  // are rejected.
+  int64 simulation_time_ns = 1;
+
+  // Watermark scope. ALL (default, MUST): advance the global write simulation
+  // time. INCLUDE/EXCLUDE (optional, MAY -> NOT_SUPPORTED): advance only the
+  // listed attributes, or all except the listed attributes (see attributes).
+  WatermarkScope scope = 2;
+
+  // Attribute names the scope applies to (used with INCLUDE/EXCLUDE; ignored
+  // for ALL).
+  repeated string attributes = 3;
+}
+
+enum WatermarkScope {
+  WATERMARK_SCOPE_UNSPECIFIED = 0;  // treated as ALL
+  ALL = 1;
+  INCLUDE = 2;
+  EXCLUDE = 3;
+}
+
+// Delete operation — removes attributes on prims matching the criteria.
+//
+// - delete names which attributes to remove on matching prims
+// - filter narrows the candidate prims (same Filter as Read)
+//
+// Delete timestamp is the request-level simulation_time_ns.
+// Reads at T' >= delete_T see no data for affected attributes.
+// Reads at T' < delete_T are unaffected (historical data is immutable).
+// Iterators are unaffected. In range reads, deletes are reported via
+// ResultSet.deleted_attributes.
+//
+// If "usd-path" is in delete, the entire prim is deleted (all attributes).
+// Prims can be recreated by writing at a later timestamp after deletion.
+// Idempotent: no error if nothing matches or attributes already deleted.
+message Delete {
+  // Attribute names to delete on matching prims. If "usd-path" is in the list,
+  // the entire prim is deleted (all attributes).
+  repeated string delete = 1;
+
+  // Prim filter (same Filter as Read) narrowing which prims to delete from.
+  Filter filter = 2;
+}
+
+message WriteWorldStateResponse {
+  // Empty on success. All write operations applied atomically.
+}
+
+// ---------------------------------------------------------------------------
+// Read simulation time
+// ---------------------------------------------------------------------------
+
+message ReadSimulationTimeRequest {
+  string simulation_id = 1;
+
+  // Optional (MAY). Attribute names to read per-attribute simulation time for.
+  // Empty = global simulation time only. NOT_SUPPORTED if per-attribute reads
+  // are unsupported.
+  repeated string attributes = 2;
+}
+
+message ReadSimulationTimeResponse {
+  // Global write simulation time (watermark) in nanoseconds.
+  int64 simulation_time_ns = 1;
+
+  // Optional. Per-attribute simulation time (ns) keyed by attribute name.
+  // Present only when per-attribute read was requested and is supported.
+  map<string, int64> attribute_simulation_time_ns = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Common Types
+// ---------------------------------------------------------------------------
+
+message AttributeReference {
+  string attribute_name = 1;
+}
+
+message Column {
+  AttributeReference attribute = 1;
+  ValueColumn values = 2;
+}
+
+// Columnar value container. Exactly one field is set, indicating the type.
+//
+// The value column format is extensible — new packed_* fields may be added
+// in future versions for new types or more efficient encodings (compression,
+// built-in timestamps, null support).
+message ValueColumn {
+  oneof packed {
+    PackedBool packed_bool = 1;
+    PackedUChar packed_uchar = 2;
+    PackedInt packed_int = 3;
+    PackedUInt packed_uint = 4;
+    PackedInt64 packed_int64 = 5;
+    PackedUInt64 packed_uint64 = 6;
+    PackedHalf packed_half = 7;
+    PackedFloat packed_float = 8;
+    PackedDouble packed_double = 9;
+    PackedString packed_string = 10;
+    PackedToken packed_token = 11;
+    PackedAsset packed_asset = 12;
+    PackedTimeCode packed_timecode = 13;
+
+    // Dimensioned types — fixed-size tuples
+    PackedFloat2 packed_float2 = 20;
+    PackedFloat3 packed_float3 = 21;
+    PackedFloat4 packed_float4 = 22;
+    PackedDouble2 packed_double2 = 23;
+    PackedDouble3 packed_double3 = 24;
+    PackedDouble4 packed_double4 = 25;
+    PackedInt2 packed_int2 = 26;
+    PackedInt3 packed_int3 = 27;
+    PackedInt4 packed_int4 = 28;
+    PackedHalf2 packed_half2 = 29;
+    PackedHalf3 packed_half3 = 30;
+    PackedHalf4 packed_half4 = 31;
+
+    // Quaternions
+    PackedQuatF packed_quatf = 40;
+    PackedQuatD packed_quatd = 41;
+    PackedQuatH packed_quath = 42;
+
+    // Matrices
+    PackedMatrix2d packed_matrix2d = 50;
+    PackedMatrix3d packed_matrix3d = 51;
+    PackedMatrix4d packed_matrix4d = 52;
+
+    // Opaque binary
+    PackedOpaque packed_opaque = 60;
+
+    // Variable-length arrays (per-prim, variable size)
+    PackedBoolArray packed_bool_array = 70;
+    PackedUCharArray packed_uchar_array = 71;
+    PackedIntArray packed_int_array = 72;
+    PackedUIntArray packed_uint_array = 73;
+    PackedInt64Array packed_int64_array = 74;
+    PackedUInt64Array packed_uint64_array = 75;
+    PackedHalfArray packed_half_array = 76;
+    PackedFloatArray packed_float_array = 77;
+    PackedDoubleArray packed_double_array = 78;
+    PackedStringArray packed_string_array = 79;
+    PackedTokenArray packed_token_array = 80;
+    PackedAssetArray packed_asset_array = 81;
+    PackedTimeCodeArray packed_timecode_array = 82;
+    PackedFloat2Array packed_float2_array = 83;
+    PackedFloat3Array packed_float3_array = 84;
+    PackedFloat4Array packed_float4_array = 85;
+    PackedDouble2Array packed_double2_array = 86;
+    PackedDouble3Array packed_double3_array = 87;
+    PackedDouble4Array packed_double4_array = 88;
+    PackedInt2Array packed_int2_array = 89;
+    PackedInt3Array packed_int3_array = 90;
+    PackedInt4Array packed_int4_array = 91;
+    PackedHalf2Array packed_half2_array = 92;
+    PackedHalf3Array packed_half3_array = 93;
+    PackedHalf4Array packed_half4_array = 94;
+    PackedQuatFArray packed_quatf_array = 95;
+    PackedQuatDArray packed_quatd_array = 96;
+    PackedQuatHArray packed_quath_array = 97;
+    PackedMatrix2dArray packed_matrix2d_array = 98;
+    PackedMatrix3dArray packed_matrix3d_array = 99;
+    PackedMatrix4dArray packed_matrix4d_array = 100;
+    PackedOpaqueArray packed_opaque_array = 101;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scalar packed types
+// ---------------------------------------------------------------------------
+
+message PackedBool { repeated bool values = 1; }
+message PackedUChar { repeated uint32 values = 1; }  // 0-255
+message PackedInt { repeated sint32 values = 1; }
+message PackedUInt { repeated uint32 values = 1; }
+message PackedInt64 { repeated sint64 values = 1; }
+message PackedUInt64 { repeated uint64 values = 1; }
+message PackedHalf { repeated uint32 values = 1; }   // raw u16 bit pattern
+message PackedFloat { repeated float values = 1; }
+message PackedDouble { repeated double values = 1; }
+message PackedString { repeated string values = 1; }
+message PackedToken { repeated string values = 1; }
+message PackedAsset { repeated string values = 1; }
+message PackedTimeCode { repeated double values = 1; }
+
+// ---------------------------------------------------------------------------
+// Dimensioned packed types — each element is a fixed-size tuple
+// ---------------------------------------------------------------------------
+
+message Vec2f { float x = 1; float y = 2; }
+message Vec3f { float x = 1; float y = 2; float z = 3; }
+message Vec4f { float x = 1; float y = 2; float z = 3; float w = 4; }
+message Vec2d { double x = 1; double y = 2; }
+message Vec3d { double x = 1; double y = 2; double z = 3; }
+message Vec4d { double x = 1; double y = 2; double z = 3; double w = 4; }
+message Vec2i { sint32 x = 1; sint32 y = 2; }
+message Vec3i { sint32 x = 1; sint32 y = 2; sint32 z = 3; }
+message Vec4i { sint32 x = 1; sint32 y = 2; sint32 z = 3; sint32 w = 4; }
+message Vec2h { uint32 x = 1; uint32 y = 2; }  // raw u16 bit patterns
+message Vec3h { uint32 x = 1; uint32 y = 2; uint32 z = 3; }
+message Vec4h { uint32 x = 1; uint32 y = 2; uint32 z = 3; uint32 w = 4; }
+
+// Quaternion (i, j, k, r)
+message Quatf { float i = 1; float j = 2; float k = 3; float r = 4; }
+message Quatd { double i = 1; double j = 2; double k = 3; double r = 4; }
+message Quath { uint32 i = 1; uint32 j = 2; uint32 k = 3; uint32 r = 4; }
+
+// Matrices — row-major flat arrays
+message Matrix2d { repeated double values = 1; }  // 4 elements
+message Matrix3d { repeated double values = 1; }  // 9 elements
+message Matrix4d { repeated double values = 1; }  // 16 elements
+
+message PackedFloat2 { repeated Vec2f values = 1; }
+message PackedFloat3 { repeated Vec3f values = 1; }
+message PackedFloat4 { repeated Vec4f values = 1; }
+message PackedDouble2 { repeated Vec2d values = 1; }
+message PackedDouble3 { repeated Vec3d values = 1; }
+message PackedDouble4 { repeated Vec4d values = 1; }
+message PackedInt2 { repeated Vec2i values = 1; }
+message PackedInt3 { repeated Vec3i values = 1; }
+message PackedInt4 { repeated Vec4i values = 1; }
+message PackedHalf2 { repeated Vec2h values = 1; }
+message PackedHalf3 { repeated Vec3h values = 1; }
+message PackedHalf4 { repeated Vec4h values = 1; }
+message PackedQuatF { repeated Quatf values = 1; }
+message PackedQuatD { repeated Quatd values = 1; }
+message PackedQuatH { repeated Quath values = 1; }
+message PackedMatrix2d { repeated Matrix2d values = 1; }
+message PackedMatrix3d { repeated Matrix3d values = 1; }
+message PackedMatrix4d { repeated Matrix4d values = 1; }
+message PackedOpaque { repeated bytes values = 1; }
+
+// ---------------------------------------------------------------------------
+// Variable-length array packed types — one array per prim
+// ---------------------------------------------------------------------------
+
+message BoolArray { repeated bool values = 1; }
+message UCharArray { repeated uint32 values = 1; }
+message IntArray { repeated sint32 values = 1; }
+message UIntArray { repeated uint32 values = 1; }
+message Int64Array { repeated sint64 values = 1; }
+message UInt64Array { repeated uint64 values = 1; }
+message HalfArray { repeated uint32 values = 1; }
+message FloatArray { repeated float values = 1; }
+message DoubleArray { repeated double values = 1; }
+message StringArray { repeated string values = 1; }
+message TokenArray { repeated string values = 1; }
+message AssetArray { repeated string values = 1; }
+message TimeCodeArray { repeated double values = 1; }
+message Float2Array { repeated Vec2f values = 1; }
+message Float3Array { repeated Vec3f values = 1; }
+message Float4Array { repeated Vec4f values = 1; }
+message Double2Array { repeated Vec2d values = 1; }
+message Double3Array { repeated Vec3d values = 1; }
+message Double4Array { repeated Vec4d values = 1; }
+message Int2Array { repeated Vec2i values = 1; }
+message Int3Array { repeated Vec3i values = 1; }
+message Int4Array { repeated Vec4i values = 1; }
+message Half2Array { repeated Vec2h values = 1; }
+message Half3Array { repeated Vec3h values = 1; }
+message Half4Array { repeated Vec4h values = 1; }
+message QuatFArray { repeated Quatf values = 1; }
+message QuatDArray { repeated Quatd values = 1; }
+message QuatHArray { repeated Quath values = 1; }
+message Matrix2dArray { repeated Matrix2d values = 1; }
+message Matrix3dArray { repeated Matrix3d values = 1; }
+message Matrix4dArray { repeated Matrix4d values = 1; }
+message OpaqueArray { repeated bytes values = 1; }
+
+message PackedBoolArray { repeated BoolArray values = 1; }
+message PackedUCharArray { repeated UCharArray values = 1; }
+message PackedIntArray { repeated IntArray values = 1; }
+message PackedUIntArray { repeated UIntArray values = 1; }
+message PackedInt64Array { repeated Int64Array values = 1; }
+message PackedUInt64Array { repeated UInt64Array values = 1; }
+message PackedHalfArray { repeated HalfArray values = 1; }
+message PackedFloatArray { repeated FloatArray values = 1; }
+message PackedDoubleArray { repeated DoubleArray values = 1; }
+message PackedStringArray { repeated StringArray values = 1; }
+message PackedTokenArray { repeated TokenArray values = 1; }
+message PackedAssetArray { repeated AssetArray values = 1; }
+message PackedTimeCodeArray { repeated TimeCodeArray values = 1; }
+message PackedFloat2Array { repeated Float2Array values = 1; }
+message PackedFloat3Array { repeated Float3Array values = 1; }
+message PackedFloat4Array { repeated Float4Array values = 1; }
+message PackedDouble2Array { repeated Double2Array values = 1; }
+message PackedDouble3Array { repeated Double3Array values = 1; }
+message PackedDouble4Array { repeated Double4Array values = 1; }
+message PackedInt2Array { repeated Int2Array values = 1; }
+message PackedInt3Array { repeated Int3Array values = 1; }
+message PackedInt4Array { repeated Int4Array values = 1; }
+message PackedHalf2Array { repeated Half2Array values = 1; }
+message PackedHalf3Array { repeated Half3Array values = 1; }
+message PackedHalf4Array { repeated Half4Array values = 1; }
+message PackedQuatFArray { repeated QuatFArray values = 1; }
+message PackedQuatDArray { repeated QuatDArray values = 1; }
+message PackedQuatHArray { repeated QuatHArray values = 1; }
+message PackedMatrix2dArray { repeated Matrix2dArray values = 1; }
+message PackedMatrix3dArray { repeated Matrix3dArray values = 1; }
+message PackedMatrix4dArray { repeated Matrix4dArray values = 1; }
+message PackedOpaqueArray { repeated OpaqueArray values = 1; }

@@ -37,10 +37,10 @@ from _scenario import (  # noqa: E402
     GridParams,
     GridTestBase,
     SimParams,
+    SimulationEntities,
     Transform,
     get_asset_root,
 )
-from isaacsim.physics.manager.impl.tensors import SimulationView  # noqa: E402
 from pxr import Gf, UsdPhysics  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -57,6 +57,7 @@ class JointBodyOrderCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -130,11 +131,12 @@ class JointBodyOrderCommon(GridTestBase):
     def _apply_engine_specifics(self) -> None:
         """Apply backend-specific schemas when a subclass requires them."""
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create views for both articulation variants.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.cartpoles_1 = sim.create_articulation_view("/envs/*/cartpole1")
         self.cartpoles_2 = sim.create_articulation_view("/envs/*/cartpole2")
@@ -166,19 +168,21 @@ class JointBodyOrderLimitsCommon(_LimitsExtraSetup, JointBodyOrderCommon):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
         super().__init__(test_case, device_params)
         self._apply_extra_init()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Compare degree-of-freedom limits after simulation starts.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 5:
             num_dof = 2
@@ -193,8 +197,8 @@ class JointBodyOrderLimitsCommon(_LimitsExtraSetup, JointBodyOrderCommon):
 def _make_property_step(
     impl: str,
     label: str,
-) -> Callable[[JointBodyOrderCommon, SimulationView, int, float], None]:
-    def on_physics_step(self: JointBodyOrderCommon, sim: SimulationView, stepno: int, dt: float) -> None:
+) -> Callable[[JointBodyOrderCommon, SimulationEntities, int, float], None]:
+    def on_physics_step(self: JointBodyOrderCommon, sim: SimulationEntities, stepno: int, dt: float) -> None:
         if stepno == 5:
             num_dof = 2
             v1 = self.cartpoles_1.get_data(impl).numpy().reshape(self.cartpoles_1.count, num_dof)
@@ -239,13 +243,14 @@ class JointBodyOrderDofForceCommon(JointBodyOrderCommon):
     force write.
     """
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Compare force tensors and finish after the fourth step.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 4:
             num_dof = 2
@@ -304,6 +309,7 @@ class JointBodyOrderLinkForceCommon(JointBodyOrderCommon):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     target_p_pole = 45.0
@@ -328,13 +334,14 @@ class JointBodyOrderLinkForceCommon(JointBodyOrderCommon):
                 pole_drive.CreateTargetPositionAttr(pole_target)
                 pole_drive.CreateTargetVelocityAttr(0.0)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Compare force tensors after the drive targets take effect.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 5:
             num_dof = 2

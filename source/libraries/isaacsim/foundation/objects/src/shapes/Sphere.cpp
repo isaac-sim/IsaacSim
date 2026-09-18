@@ -27,12 +27,8 @@ namespace shapes
 Sphere::Sphere(const std::variant<std::string, std::vector<std::string>>& paths,
                const std::optional<array::Array>& radii,
                const std::optional<ColorType>& colors,
-               const std::optional<array::Array>& positions,
-               const std::optional<array::Array>& translations,
-               const std::optional<array::Array>& orientations,
-               const std::optional<array::Array>& scales,
                bool resetXformOpProperties)
-    : Shape(paths, /*shapeType=*/"Sphere", colors, positions, translations, orientations, scales, resetXformOpProperties)
+    : Shape(paths, /*shapeType=*/"Sphere", colors, resetXformOpProperties)
 {
     // Initialize instance from arguments.
     if (radii.has_value())
@@ -55,6 +51,11 @@ array::Array Sphere::getRadii(const std::optional<array::Array>& indices)
 void Sphere::updateExtents()
 {
     // TODO: Implement and call it when setting values.
+}
+
+array::Array Sphere::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("Sphere");
 }
 
 } // namespace shapes

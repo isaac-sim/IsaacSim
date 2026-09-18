@@ -63,5 +63,6 @@ def get_shape_type(prim_path: str) -> type[Shape]:
         return Mesh
 
     raise RuntimeError(
-        f"Prim path {prim_path} does not point to a supported shape type. Supported shape types are: Sphere, Cube, Cone, Plane, Capsule, Cylinder, Mesh."
+        f"Prim path {prim_path} does not point to a supported shape type. Supported shape types are: "
+        "Sphere, Cube, Cone, Plane, Capsule, Cylinder, Mesh."
     )

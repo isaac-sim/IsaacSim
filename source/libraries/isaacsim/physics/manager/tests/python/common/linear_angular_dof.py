@@ -109,7 +109,7 @@ class _LinearDofsBase(GridTestBase):
         """Create the rail-cart articulation view.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.railcarts = sim.create_articulation_view("/envs/*/railcart")
@@ -121,7 +121,7 @@ class _LinearDofsBase(GridTestBase):
         """Configure the quantity exercised by a concrete scenario.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         del sim
@@ -134,7 +134,7 @@ class LinearDofPositionsCommon(_LinearDofsBase):
         """Set a distinct initial position for each rail cart.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         del sim
@@ -148,7 +148,7 @@ class LinearDofPositionsCommon(_LinearDofsBase):
         """Check that the linear joint positions match the requested values.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -168,7 +168,7 @@ class LinearDofVelocitiesCommon(_LinearDofsBase):
         """Set a distinct initial velocity for each rail cart.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         del sim
@@ -182,7 +182,7 @@ class LinearDofVelocitiesCommon(_LinearDofsBase):
         """Check that the linear joint velocities match the requested values.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -202,7 +202,7 @@ class LinearDofForcesCommon(_LinearDofsBase):
         """Initialize joint positions and allocate the force buffer.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         del sim
@@ -221,7 +221,7 @@ class LinearDofForcesCommon(_LinearDofsBase):
         """Drive every cart toward zero and validate the resulting state.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -272,7 +272,7 @@ class LinearDofPositionTargetsCommon(_LinearDofsBase):
         """Set a distinct linear position target for each rail cart.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         del sim
@@ -287,7 +287,7 @@ class LinearDofPositionTargetsCommon(_LinearDofsBase):
         """Check that each linear drive converges to its position target.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -319,7 +319,7 @@ class LinearDofVelocityTargetsCommon(_LinearDofsBase):
         """Set a distinct linear velocity target for each rail cart.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         del sim
@@ -334,7 +334,7 @@ class LinearDofVelocityTargetsCommon(_LinearDofsBase):
         """Check that each linear drive reaches its velocity target.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -375,7 +375,7 @@ class _AngularDofsBase(GridTestBase):
         """Create the pole-cart articulation view.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.polecarts = sim.create_articulation_view("/envs/*/polecart")
@@ -387,7 +387,7 @@ class _AngularDofsBase(GridTestBase):
         """Configure the quantity exercised by a concrete scenario.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         del sim
@@ -400,7 +400,7 @@ class AngularDofPositionsCommon(_AngularDofsBase):
         """Set a distinct initial angle for each pole cart.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         del sim
@@ -414,7 +414,7 @@ class AngularDofPositionsCommon(_AngularDofsBase):
         """Check that the angular joint positions match the requested values.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -434,7 +434,7 @@ class AngularDofVelocitiesCommon(_AngularDofsBase):
         """Set a distinct initial angular velocity for each pole cart.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         del sim
@@ -448,7 +448,7 @@ class AngularDofVelocitiesCommon(_AngularDofsBase):
         """Check that the angular velocities match the requested values.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -478,7 +478,7 @@ class AngularDofForcesCommon(_AngularDofsBase):
         """Initialize the angular joints and alternating torque buffer.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         del sim
@@ -500,7 +500,7 @@ class AngularDofForcesCommon(_AngularDofsBase):
         """Apply torques and compare torqued joints with unforced joints.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -536,7 +536,7 @@ class AngularDofPositionTargetsCommon(_AngularDofsBase):
         """Set a distinct angular position target for each pole cart.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         del sim
@@ -551,7 +551,7 @@ class AngularDofPositionTargetsCommon(_AngularDofsBase):
         """Check that each angular drive converges to its position target.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -583,7 +583,7 @@ class AngularDofVelocityTargetsCommon(_AngularDofsBase):
         """Set a distinct angular velocity target for each pole cart.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         del sim
@@ -598,7 +598,7 @@ class AngularDofVelocityTargetsCommon(_AngularDofsBase):
         """Check that each angular drive reaches its velocity target.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 

@@ -735,6 +735,23 @@ controller_manager:
         )
         self.assertLess(updated, steps, f"updated_instances {updated} did not decimate physics steps {steps}")
 
+        # Stop publishers and drain both subscription queues before comparing their
+        # latest timestamps. A single `spin_once()` processes only one ready callback,
+        # so the higher-rate `/clock` queue can otherwise lag `/joint_states` on CI.
+        self._timeline.stop()
+        await omni.kit.app.get_app().next_update_async()
+        idle_spins = 0
+        for _ in range(400):
+            message_counts = (len(clocks), len(stamps))
+            self._rclpy.spin_once(self._node, timeout_sec=0.01)
+            if message_counts == (len(clocks), len(stamps)):
+                idle_spins += 1
+                if idle_spins >= 20:
+                    break
+            else:
+                idle_spins = 0
+        self.assertGreaterEqual(idle_spins, 20, "ROS subscription queues did not become idle")
+
         # Sim-time stamps: /joint_states timestamps should advance at update_rate, not
         # at wall-clock or per-frame cadence.
         self.assertGreaterEqual(len(clocks), 3, "no /clock stamps captured")

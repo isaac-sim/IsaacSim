@@ -17,6 +17,7 @@
 .. _isaacsim-physics-manager:
 .. _isaacsim-physics-manager-overview:
 
+========================
 isaacsim.physics.manager
 ========================
 
@@ -30,6 +31,8 @@ The standalone physics modules expose two complementary APIs:
 
 Both C++ APIs use declarations from public headers directly. There are no
 interface objects to acquire or ``get_*_interface`` functions.
+
+.. _isaacsim-physics-manager-registering-backend:
 
 Registering a backend
 ---------------------
@@ -62,6 +65,8 @@ not implement the requested operation.
 The callback groups are ``simulation_fns``, ``scene_query_fns``,
 ``interaction_fns``, and ``benchmark_fns``.
 
+.. _isaacsim-physics-manager-driving-simulation:
+
 Driving simulation
 ------------------
 
@@ -91,6 +96,8 @@ caller-owned. The binding keeps it alive until every backend confirms detach.
         if not manager.close():
             raise RuntimeError("a backend did not detach its stage")
 
+.. _isaacsim-physics-manager-subscriptions:
+
 Subscriptions
 -------------
 
@@ -113,6 +120,8 @@ Registry, step, contact, and profile-stat subscriptions return a
         manager.simulate(1.0 / 60.0, 0.0)
     finally:
         subscription.unsubscribe()
+
+.. _isaacsim-physics-manager-scene-queries:
 
 Scene queries
 -------------
@@ -139,6 +148,8 @@ from the manager module.
 The manager provides closest, any, and reporting-callback variants for raycasts,
 sphere and box sweeps, authored-shape sweeps, and overlaps.
 
+.. _isaacsim-physics-manager-tensor-views:
+
 Tensor views
 ------------
 
@@ -148,17 +159,39 @@ view through the manager:
 
 .. code-block:: python
 
-    simulation_view = manager.create_simulation_view(
-        engine="ovphysx",
-        stage_id=simulation_id.id,
-        frontend_name="warp",
-    )
-    rigid_bodies = simulation_view.create_rigid_body_view("/World/envs/*/Cube")
+    import isaacsim.physics.manager.impl.tensors as tensors
+
+    rigid_bodies = tensors.create_entity("ovphysx", "rigid-body", "/World/envs/*/Cube")
     transforms = rigid_bodies.get_data("transforms")
 
-The ``stage_id`` factory argument is the registered simulation identifier used by
-the backend adapter; it is distinct from the ``usd_identifier`` passed to
-``initialize``.
+The first argument is the name the simulation registered its entity factories
+under, and the factory resolves the active simulation of that name. A single
+pattern is expanded by the engine; pass a list to resolve several patterns and
+concatenate the matches in the given order.
+
+Reads land on the device the view reports through ``device_ordinal``. An engine
+that cannot report its own device takes the ordinal from the caller, either at
+construction or later, since every read re-reads it::
+
+    rigid_bodies.device_ordinal = 0
+
+Paths alone cannot describe every view, so construction arguments an engine
+needs beyond them are passed as options:
+
+.. code-block:: python
+
+    contacts = tensors.create_entity(
+        "ovphysx",
+        "rigid-contact",
+        "/World/envs/*/Cube",
+        {"filter-patterns": ["/World/ground"], "max-contact-data-count": 128},
+    )
+    forces = contacts.get_data("contact-force-matrix")
+
+Each engine documents the option names it reads and ignores the rest, so an
+option one engine does not recognize is not an error.
+
+.. _isaacsim-physics-manager-cpp-usage:
 
 C++ usage
 ---------

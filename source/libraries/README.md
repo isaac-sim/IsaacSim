@@ -37,6 +37,7 @@ source/libraries/
 │   ├── IsaacSimModule.cmake               # Public entry point for build helpers.
 │   ├── IsaacSimModuleCore.cmake           # C++ targets, dependencies, installation, and source boundary.
 │   ├── IsaacSimPackage.cmake              # Distribution registration, metadata, and install components.
+│   ├── IsaacSimPackagingFilters.cmake      # Shared exclusions for generated caches and Python bytecode.
 │   ├── IsaacSimPython.cmake                # Python package staging, installation, and registration.
 │   ├── IsaacSimUsdSchema.cmake             # Codeless USD schema generation and packaging.
 │   ├── IsaacSimNanobind.cmake             # Bindings, runtime closure, and loader paths.
@@ -51,9 +52,9 @@ source/libraries/
 │   ├── CheckExportedSymbols.cmake         # Checks an explicitly stable C ABI.
 │   ├── CopyPythonPackage.cmake            # Copies package trees without generated cache files.
 │   ├── CopyRuntimeDirectory.cmake         # Copies runtime data without transient Python files.
-│   ├── InitializeNanobindRuntime.py       # Initializes installed binding runtime search paths.
-│   ├── RunNanobindStubgen.py              # Enables Windows binding runtime paths during stub generation.
-│   ├── RunUsdGenSchema.py                 # Runs USD schema generation in the locked environment.
+│   ├── initialize_nanobind_runtime.py      # Initializes installed binding runtime search paths.
+│   ├── run_nanobind_stubgen.py             # Enables Windows binding runtime paths during stub generation.
+│   ├── run_usd_gen_schema.py               # Runs USD schema generation in the locked environment.
 │   ├── StageEditableDirectory.cmake       # Links editable Python trees with a portable copy fallback.
 │   ├── RunInstallContractTest.cmake       # Tests relocated C, C++, and Python installations.
 │   └── tests/                             # Generic CMake helper contract tests.
@@ -62,6 +63,7 @@ source/libraries/
 │   └── python/                            # Source-only OV SIM Python callable type aliases.
 ├── packaging/
 │   ├── README.md                          # Native archive and Python wheel workflow.
+│   ├── isaacsim_libraries_metadata.py     # Exact shared-version Python dependency provider.
 │   ├── package.py                         # Standard-library native archive builder.
 │   ├── wheel.py                           # Packaging-only PEP 517 wheel orchestrator.
 │   └── tests/                             # Unit tests for packaging orchestration.
@@ -123,19 +125,27 @@ helper. The supported module shapes are:
 
 Compatibility migrations may pass `PRESERVE_PACKAGE_LAYOUT` to `isaacsim_add_python_module` when retaining an
 established leaf package exactly is more important than converting it to the standard `impl/` facade. New modules use
-the standard layout.
+the standard layout. Pass `REQUIRES_BINDINGS` to `isaacsim_add_python_module` or
+`isaacsim_add_compat_python_module` only when importing that module inherently requires a nanobind extension. A
+bindings-disabled install contract still installs and validates the distribution and its dependency closure, but omits
+only those marked imports; bindings-enabled contracts continue to import every registered module. This module-level
+flag describes import applicability and is separate from the identically named Python-test registration flag.
 
-A distribution package, such as `isaacsim_common`, is one independently installable and shippable unit. Its source
-root is normally the matching two-component path, `isaacsim/common`. A flat distribution root whose directory already
-matches the distribution name is also supported when it declares its logical `MODULE_PREFIX`; the compatibility
-package uses `isaacsim_deprecated` with `MODULE_PREFIX isaacsim.deprecated`. The CMake API historically calls this unit
-a *group*, so helper names, component placeholders, and internal properties use `group`; this documentation otherwise
-uses *distribution package* or *package*. A package can contain multiple C, C++, header-only, pure Python, or bound
-logical modules, such as `isaacsim.common.logging` at `isaacsim/common/logging`. A logical module does not need to
-provide Python. Each module owns its changelog but not an independent version. Every distribution package and module
-ships at the single version in `source/libraries/VERSION`.
+A distribution package is one independently installable and shippable unit. Its CMake package identity, such as
+`isaacsim_common`, normally derives from the matching two-component source path, `isaacsim/common`. A flat distribution
+root whose directory already matches the CMake package name is also supported when it declares its logical
+`MODULE_PREFIX`; the compatibility package uses `isaacsim_deprecated` with `MODULE_PREFIX isaacsim.deprecated`. The
+CMake API historically calls this unit a *group*, so helper names, component placeholders, and internal properties use
+`group`; this documentation otherwise uses *distribution package* or *package*. A package can contain multiple C,
+C++, header-only, pure Python, or bound logical modules, such as `isaacsim.common.logging` at
+`isaacsim/common/logging`. A logical module does not need to provide Python. Each module owns its changelog but not an
+independent version. Every distribution package and module ships at the single version in `source/libraries/VERSION`.
 The package exposes native runtime, native development, Python, and documentation payload components; these are views
 of one package and never carry separate versions.
+
+CMake group, component, manifest, and native archive names use underscores. Authored Python project names and internal
+requirements use their canonical hyphenated PEP 508 form, such as `isaacsim-common`; Python packaging tools normalize
+these separators, but the source metadata consistently uses hyphens. Logical modules and import paths remain dotted.
 
 Register a group before its modules:
 
@@ -159,7 +169,7 @@ distribution name and `MODULE_PREFIX` supplies the dotted logical prefix; the mo
 the remaining suffix. CMake names remain explicit, and configure-time validation rejects any mismatch. A compatibility
 Python module retains this source-aligned logical name while declaring its legacy installed import separately:
 
-| Source path relative to `source/libraries` | Distribution | Logical module | Python import |
+| Source path relative to `source/libraries` | CMake group | Logical module | Python import |
 |---|---|---|---|
 | `isaacsim/common/logging` | `isaacsim_common` | `isaacsim.common.logging` | `isaacsim.common.logging` |
 | `isaacsim/common/profiling` | `isaacsim_common` | `isaacsim.common.profiling` | `isaacsim.common.profiling` |
@@ -308,6 +318,21 @@ compiler separately through Packman; it is not part of the public dependency man
 
 See [cmake/README.md](cmake/README.md) for the complete public helper reference and generated-name rules.
 
+### Vendored source notices
+
+The gRPC protocol module includes the following third-party source file:
+
+| Component | Source file | Copyright | License |
+| --- | --- | --- | --- |
+| Google APIs RPC status protocol | [`google/rpc/status.proto`](isaacsim/ovsim/protos/grpc/src/grpc/google/rpc/status.proto) | Copyright 2026 Google LLC | [Apache-2.0](licenses/googleapis-LICENSE.txt) |
+
+The file retains its original Google copyright and license header. It matches
+the [upstream Google APIs file at revision `ebd1d23ac613b177828dad42ad8dfb13ba498279`](https://github.com/googleapis/googleapis/blob/ebd1d23ac613b177828dad42ad8dfb13ba498279/google/rpc/status.proto)
+except for three removed blank lines. The accompanying license text is copied unchanged from that revision.
+
+This entry covers the vendored protocol source, not the gRPC and Protobuf libraries downloaded for a build.
+Built library distributions carry the dependency license aggregate described above.
+
 ## Compiled module
 
 ```cmake
@@ -388,9 +413,9 @@ isaacsim_add_module(
 
 Use `PRIVATE_DEPENDENCIES` when logging is only an implementation detail. Use `PUBLIC_DEPENDENCIES` only when an
 installed public header directly uses logging API types. If the dependent distribution produces a wheel, its
-`pyproject.toml` adds `isaacsim_common` to the `isaacsim_libraries_metadata` provider so native and Python package
+`pyproject.toml` adds `isaacsim-common` to the `isaacsim_libraries_metadata` provider so native and Python package
 metadata agree. The dependent package does not copy the logging shared library into its own runtime or Python
-component; the exact `isaacsim_common` package dependency supplies it.
+component; the exact `isaacsim-common` package dependency supplies it.
 
 Use `isaacsim_add_header_module` for a header-only C API, C++ API, or both. Use
 `isaacsim_install_runtime_dependencies` when an
@@ -472,6 +497,7 @@ isaacsim_add_nanobind(
     MODULE isaacsim.common.logging
     SOURCES bindings/python/Bindings.cpp
     DEPENDENCIES SomeBindingSupportTarget
+    STUB_PRELOADS dependency.module
 )
 ```
 
@@ -481,7 +507,9 @@ compiled extension and installs the stub beside the binary. The native module mu
 `isaacsim_add_module` or `isaacsim_add_header_module`; the public package imports the private extension. Use
 `NO_STABLE_ABI` together with a non-empty `STABLE_ABI_EXCEPTION` only when a binding cannot use the stable ABI.
 `SOURCE` is accepted as a shorthand for a single file; use `SOURCES` for one or more files. `DEPENDENCIES` declares
-additional targets needed only by the binding. On Windows, `WINDOWS_RUNTIME_SIBLING_DIRECTORY` copies an SDK runtime
+additional targets needed only by the binding. `STUB_PRELOADS` lists nanobind modules whose private bindings stubgen
+must import first to register cross-module C++ types under their Python-facing names; each dependency binding is staged
+before the target stub is generated. On Windows, `WINDOWS_RUNTIME_SIBLING_DIRECTORY` copies an SDK runtime
 directory that sits beside, rather than below, the binding runtime directory into the installed leaf package. Use it
 only for an SDK with that split layout.
 
@@ -646,8 +674,8 @@ metadata without changing the source tree.
 The canonical version syntax is a deliberately constrained
 [PEP 440](https://peps.python.org/pep-0440/) subset: a three-part release tuple with optional `aN`, `bN`, or `rcN`,
 followed by optional `.postN`, `.devN`, and `+local.parts`. PEP 440 defines `aN` as the alpha pre-release form; this
-project numbers its first alpha as `a1`, so the first alpha for the 7.0.0 release is `7.0.0a1`. Identifiers are lowercase
-and numeric fields have no leading zero.
+project numbers its first alpha as `a1`, so the first alpha for the 7.0.0 release is `7.0.0a1`. Identifiers are
+lowercase and numeric fields have no leading zero.
 Examples include `7.0.0.dev0`, `7.0.0a1`, and `7.0.0rc1`. This one value is written to the package manifest and CMake
 package configuration; each package's `pyproject.toml` reads it as dynamic Python distribution metadata. Native shared
 libraries use its numeric release tuple for `VERSION`, because native platform version fields cannot represent PEP 440
@@ -690,16 +718,17 @@ module documentation layout is:
 
 ```text
 docs/
-├── index.rst                              # Required local table of contents and entry point.
-├── overview.rst                           # Optional concepts, examples, and migration guidance.
+├── index.rst                              # Required overview, local table of contents, and entry point.
 ├── api_c.rst                              # Optional C reference for modules exposing C.
 ├── api_cpp.rst                            # Optional C++ reference for modules exposing C++.
 └── api_python.rst                         # Optional Python reference for modules exposing Python.
 ```
 
-Create only the language-reference files the module needs. Public APIs must also be documented at their source in C or
-C++ headers, Python facades, binding docstrings, and typing information. CMake installs these reStructuredText sources
-as documentation payload; it does not assemble a Sphinx site. Module documentation does not depend on the repository's
+Keep the module overview and its local table of contents in `index.rst`. Substantial concept, example, or migration
+guides may use topic-specific filenames and must be linked from that table of contents. Create only the
+language-reference files the module needs. Public APIs must also be documented at their source in C or C++ headers,
+Python facades, binding docstrings, and typing information. CMake installs these reStructuredText sources as
+documentation payload; it does not assemble a Sphinx site. Module documentation does not depend on the repository's
 extension documentation tools. Do not copy Python signatures into prose; binding or facade docstrings are the
 reference source.
 
@@ -804,13 +833,14 @@ changing it and recreates a prefix when its locked contents change. Transitive t
 published compatibility contract.
 
 `--test-only` is intended for the separate Linux x86_64, Linux aarch64, and Windows x86_64 CI test jobs that restore
-their matching configured build-tree artifacts. The source checkout must remain at the same workspace path, and the
-initial build records the locked test environment in the CMake cache even when it does not run CTest. The command
-restores Packman plus the locked build-driver, native-runtime, runtime, and test environments before invoking CTest.
-It rejects missing, partial, or stale artifact state before running a test. Dependency directories are not
-portable build artifacts because Packman entries are symlinks into the runner cache. Use `--junit-output` for
-GitLab test reporting, `--test-timeout` to bound a hung top-level CTest test, `--test-regex` to select CTest tests by
-name, and `--exclude-test-regex` to omit matching tests.
+their matching configured build-tree artifacts. The producer and consumer checkout paths may differ; test-only
+execution validates the completed artifact and relocates generated CMake metadata to the consumer checkout. The
+command restores Packman plus the locked build-driver, native-runtime, runtime, and test environments before invoking
+CTest. Windows CI also restores the packaged MSVC and Windows SDK used by the build job. Dependency directories are
+not portable build artifacts because Packman entries are symlinks into the runner cache. The large generated
+`developer-environment` is also omitted from CI artifacts and rematerialized from the retained CMake install rules
+before CTest. Use `--junit-output` for GitLab test reporting, `--test-timeout` to bound a hung top-level CTest test,
+`--test-regex` to select CTest tests by name, and `--exclude-test-regex` to omit matching tests.
 
 The profile names have the same feature selections as the CMake presets:
 
@@ -821,6 +851,26 @@ The profile names have the same feature selections as the CMake presets:
 ./build.sh -r --profile cpp-library
 ./build.sh -r --profile werror --test
 ```
+
+### Reproduce the library CI pair locally
+
+The platform CI contract is one clean artifact-producing build followed by one complete CTest consumer. Run the same
+pair before pushing changes to `source/libraries` or `source/examples`:
+
+```text
+# Linux
+./build.sh -r --rebuild --profile standard
+./build.sh -r --profile standard --test-only --no-pull --test-timeout 600 \
+    --junit-output ../../_cmake_build/isaacsim-libraries-release/source-libraries-tests.xml
+
+# Windows
+build.bat -r --rebuild --profile standard
+build.bat -r --profile standard --test-only --no-pull --test-timeout 600 ^
+    --junit-output ..\..\_cmake_build\isaacsim-libraries-release\source-libraries-tests.xml
+```
+
+The complete CTest consumer includes the installed examples integration test. Use `--test-regex '^tests-examples$'`
+on the second command for a quicker examples-only iteration; omit it before pushing to exercise the same suite as CI.
 
 The supported options are:
 

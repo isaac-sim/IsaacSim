@@ -3,7 +3,7 @@ name: place-camera-aim-at
 description: "Occlusion-aware CircularCameraPlacement around one target prim or world point. Use for multi-angle product or robot inspection shots that must keep the subject visible."
 license: Apache-2.0
 metadata:
-  author: NVIDIA Isaac Sim
+  author: NVIDIA Isaac Sim <isaac-sim@nvidia.com>
 ---
 
 # Place Cameras Aimed At a Target

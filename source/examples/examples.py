@@ -1,43 +1,72 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-"""Build, run, and test published Isaac Sim examples."""
+"""Build, run, and test Isaac Sim examples."""
 
 from __future__ import annotations
 
 import argparse
 import contextlib
 import hashlib
+import importlib.metadata
+import importlib.util
 import json
 import os
 import re
+import runpy
 import shlex
+import shutil
 import signal
+import site
+import stat
 import subprocess
 import sys
+import sysconfig
+import tempfile
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-try:
+if sys.version_info >= (3, 11):
     import tomllib
-except ModuleNotFoundError:  # The developer bootstrap may initially run under Python 3.10.
+else:  # The developer bootstrap may initially run under Python 3.10.
     tomllib = None
+
+from packaging.requirements import InvalidRequirement, Requirement
+from packaging.tags import sys_tags
+from packaging.utils import canonicalize_name
+from packaging.version import InvalidVersion, Version
 
 DEFAULT_TEST_TIMEOUT_SECONDS = 60
 PROCESS_TERMINATION_TIMEOUT_SECONDS = 5
 DEVELOPER_ENVIRONMENT_VARIABLE = "ISAACSIM_EXAMPLES_DEVELOPER_ENVIRONMENT"
-DEVELOPER_BOOTSTRAP_PREFIX = "bootstrap:"
 DEVELOPER_ENVIRONMENT_DIRECTORY = "developer-environment"
 DEVELOPER_ENVIRONMENT_LOCK_SUFFIX = "developer-environment.lock"
+PYTHON_DEPENDENCY_DIRECTORY = "python-dependencies"
+DEPENDENCY_STATE_FILE = "dependency-state.json"
+CPP_DEPENDENCY_DIRECTORY = "cpp-dependencies"
+CPP_PACKAGE_PATTERN = re.compile(r"([a-z0-9][a-z0-9._-]*)==([A-Za-z0-9][A-Za-z0-9._+-]*)")
 EXAMPLE_ID_PATTERN = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
 NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
 TARGET_PATTERN = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.+-]*")
 ENVIRONMENT_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 ALLOWED_EXAMPLE_GROUPS = frozenset({"libraries", "series"})
 ALLOWED_LEVELS = frozenset({"beginner", "intermediate", "expert"})
+ALLOWED_SERIES_KINDS = frozenset({"collection", "sequence"})
 ALLOWED_MODULE_SURFACES = frozenset({"native_sdk", "python"})
 SYSTEM_REQUIREMENT_NAMES = frozenset({"c", "cmake", "cpp", "python", "python_development"})
 SYSTEM_REQUIREMENTS_FIELDS = frozenset(
@@ -65,6 +94,25 @@ class ExampleError(RuntimeError):
     """Error raised for an invalid example or failed example operation."""
 
 
+def _initialize_windows_native_toolchain() -> None:
+    """Initialize MSVC for native examples in an Isaac Sim source checkout.
+
+    Raises:
+        ExampleError: If the source library build tool cannot initialize MSVC.
+    """
+    if sys.platform != "win32":
+        return
+
+    build_tool_path = Path(__file__).resolve().parents[1] / "libraries" / "tools" / "build.py"
+    if not build_tool_path.is_file():
+        return
+    try:
+        build_tool = runpy.run_path(str(build_tool_path))
+        build_tool["ensure_windows_msvc_environment"]()
+    except Exception as error:
+        raise ExampleError(f"Cannot initialize the Windows C++ toolchain: {error}") from error
+
+
 @dataclass(frozen=True)
 class _BuildConfiguration:
     """Structured build configuration for an example."""
@@ -85,9 +133,10 @@ class _RunConfiguration:
 
 @dataclass(frozen=True)
 class _TestConfiguration:
-    """Test overlay for an example's normal run configuration."""
+    """Named automated-test configuration for an example."""
 
     name: str
+    path: Path | None
     arguments: tuple[str, ...] | None
     timeout_seconds: int
     expected_exit_code: int
@@ -105,10 +154,54 @@ class _ModuleRequirement:
 
 
 @dataclass(frozen=True)
+class _PythonPackageRequirement:
+    """One exact external Python distribution requirement."""
+
+    name: str
+    version: str
+
+    @property
+    def specifier(self) -> str:
+        """Return the canonical PEP 508 requirement string.
+
+        Returns:
+            Exact distribution requirement.
+        """
+        return f"{self.name}=={self.version}"
+
+
+@dataclass(frozen=True)
+class _CppPackageRequirement:
+    """One exact external Pixi package requirement."""
+
+    name: str
+    version: str
+
+    @property
+    def specifier(self) -> str:
+        """Return the exact Pixi package pin.
+
+        Returns:
+            Exact package requirement.
+        """
+        return f"{self.name}=={self.version}"
+
+
+@dataclass(frozen=True)
+class _CppDependencyEnvironment:
+    """Installed Pixi workspace used by external C++ dependencies."""
+
+    pixi: Path
+    manifest: Path
+
+
+@dataclass(frozen=True)
 class _Requirements:
-    """Validated module and system requirements."""
+    """Validated module, external package, and system requirements."""
 
     modules: tuple[_ModuleRequirement, ...]
+    python_packages: tuple[_PythonPackageRequirement, ...]
+    cpp_packages: tuple[_CppPackageRequirement, ...]
     system: tuple[str, ...]
 
 
@@ -142,7 +235,7 @@ class _Example:
 
 @dataclass(frozen=True)
 class _SeriesStep:
-    """One validated step in an ordered example series."""
+    """One validated entry in an example series."""
 
     example_id: str
     level: str
@@ -150,11 +243,12 @@ class _SeriesStep:
 
 @dataclass(frozen=True)
 class _Series:
-    """Validated ordered example series."""
+    """Validated example series."""
 
     id: str
     title: str
     summary: str
+    kind: str
     root: Path
     steps: tuple[_SeriesStep, ...]
 
@@ -388,11 +482,12 @@ def _library_source_digest(root: Path) -> str:
     """
     excluded = frozenset({"__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache", "dist"})
     digest = hashlib.sha256()
+    root_depth = len(root.parts)
     for path in sorted(root.rglob("*")):
-        relative = path.relative_to(root)
-        if any(part in excluded for part in relative.parts) or not path.is_file():
+        relative_parts = path.parts[root_depth:]
+        if any(part in excluded for part in relative_parts) or not path.is_file():
             continue
-        digest.update(relative.as_posix().encode())
+        digest.update("/".join(relative_parts).encode())
         digest.update(b"\0")
         with path.open("rb") as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -400,13 +495,16 @@ def _library_source_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
-def _validate_developer_artifact_state(repository_root: Path, library_build_dir: Path, config: str) -> Path:
+def _validate_developer_artifact_state(
+    repository_root: Path, library_build_dir: Path, config: str, *, validate_sources: bool = True
+) -> Path:
     """Validate successful full-build state and return its developer environment.
 
     Args:
         repository_root: Repository root directory.
         library_build_dir: Directory containing built Isaac Sim libraries.
         config: Build configuration name.
+        validate_sources: Whether to compare library contents with the recorded source digest.
 
     Returns:
         The resulting value.
@@ -451,7 +549,7 @@ def _validate_developer_artifact_state(repository_root: Path, library_build_dir:
     if (
         not isinstance(expected_source_digest, str)
         or re.fullmatch(r"[0-9a-f]{64}", expected_source_digest) is None
-        or _library_source_digest(source_root) != expected_source_digest
+        or (validate_sources and _library_source_digest(source_root) != expected_source_digest)
     ):
         raise ExampleError("Developer library sources changed since the build; rebuild source/libraries")
     developer_environment = artifact_state.get("developer_environment")
@@ -474,20 +572,19 @@ def _validate_developer_artifact_state(repository_root: Path, library_build_dir:
 
 
 @contextlib.contextmanager
-def _developer_environment_lock(build_directory: Path, *, exclusive: bool) -> Iterator[None]:
-    """Coordinate environment readers with replacement and cleanup.
+def _path_lock(lock_path: Path, *, exclusive: bool) -> Iterator[None]:
+    """Hold a cross-platform advisory lock on one filesystem path.
 
     Args:
-        build_directory: Directory containing the CMake build.
+        lock_path: File used for lock coordination.
         exclusive: Whether to acquire an exclusive lock.
 
     Yields:
-        Control while the developer-environment lock is held.
+        Control while the lock is held.
     """
-    lock_path = build_directory.parent / f".{build_directory.name}-{DEVELOPER_ENVIRONMENT_LOCK_SUFFIX}"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+b") as lock_file:
-        if os.name == "nt":
+        if sys.platform == "win32":
             import ctypes
             import msvcrt
             from ctypes import wintypes
@@ -528,7 +625,7 @@ def _developer_environment_lock(build_directory: Path, *, exclusive: bool) -> It
             unlock_file_ex.restype = wintypes.BOOL
 
             overlapped = Overlapped()
-            flags = 0x2 if exclusive else 0  # ``LOCKFILE_EXCLUSIVE_LOCK``.
+            flags = 0x2 if exclusive else 0  # `LOCKFILE_EXCLUSIVE_LOCK`.
             handle = msvcrt.get_osfhandle(lock_file.fileno())
             if not lock_file_ex(handle, flags, 0, 1, 0, ctypes.byref(overlapped)):
                 raise ctypes.WinError(ctypes.get_last_error())
@@ -548,12 +645,27 @@ def _developer_environment_lock(build_directory: Path, *, exclusive: bool) -> It
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
-def _read_developer_build(repository_root: Path, config: str) -> _DeveloperBuild:
+def _developer_environment_lock(build_directory: Path, *, exclusive: bool) -> contextlib.AbstractContextManager[None]:
+    """Coordinate developer-environment readers with replacement and cleanup.
+
+    Args:
+        build_directory: Library build directory that owns the developer environment.
+        exclusive: Whether to acquire an exclusive lock.
+
+    Returns:
+        Context manager holding the requested lock.
+    """
+    lock_path = build_directory.parent / f".{build_directory.name}-{DEVELOPER_ENVIRONMENT_LOCK_SUFFIX}"
+    return _path_lock(lock_path, exclusive=exclusive)
+
+
+def _read_developer_build(repository_root: Path, config: str, *, validate_sources: bool = True) -> _DeveloperBuild:
     """Read the configured library build selected for developer execution.
 
     Args:
         repository_root: Isaac Sim repository root.
         config: Requested build configuration.
+        validate_sources: Whether to compare library contents with the recorded source digest.
 
     Returns:
         Configured build tools and paths.
@@ -600,7 +712,9 @@ def _read_developer_build(repository_root: Path, config: str) -> _DeveloperBuild
             + ", ".join(str(path) for path in missing_paths)
         )
 
-    developer_environment = _validate_developer_artifact_state(repository_root, library_build_dir, config)
+    developer_environment = _validate_developer_artifact_state(
+        repository_root, library_build_dir, config, validate_sources=validate_sources
+    )
     for required_directory in (
         developer_environment / "lib" / "cmake",
         developer_environment / python_install_dir,
@@ -707,11 +821,15 @@ def _load_run_configuration(table: Any, example_root: Path, context: str) -> _Ru
     raise ExampleError(f"{context}.adapter is unsupported: {adapter}")
 
 
-def _load_test_configurations(value: Any, context: str) -> tuple[_TestConfiguration, ...]:
+def _load_test_configurations(
+    value: Any, example_root: Path, run: _RunConfiguration, context: str
+) -> tuple[_TestConfiguration, ...]:
     """Load and validate test overlays.
 
     Args:
         value: Test array value.
+        example_root: Root containing the example manifest.
+        run: Normal run configuration that each test overlays.
         context: User-facing location of the array.
 
     Returns:
@@ -728,6 +846,7 @@ def _load_test_configurations(value: Any, context: str) -> tuple[_TestConfigurat
         "arguments",
         "environment",
         "expected_exit_code",
+        "path",
         "stderr_contains",
         "stdout_contains",
         "timeout_seconds",
@@ -743,6 +862,16 @@ def _load_test_configurations(value: Any, context: str) -> tuple[_TestConfigurat
         if name in names:
             raise ExampleError(f"{context} contains duplicate test name: {name}")
         names.add(name)
+
+        path = None
+        if "path" in table:
+            if run.adapter != "python":
+                raise ExampleError(f"{test_context}.path is supported only by the Python run adapter")
+            path = _resolve_example_file(
+                example_root, _read_string(table, "path", test_context), f"{test_context}.path"
+            )
+            if not path.is_file():
+                raise ExampleError(f"{test_context}.path does not exist: {path}")
 
         arguments = None
         if "arguments" in table:
@@ -761,11 +890,12 @@ def _load_test_configurations(value: Any, context: str) -> tuple[_TestConfigurat
             for key, item in environment.items()
         ):
             raise ExampleError(f"{test_context}.environment must contain portable variable names and string values")
-        if any(key.upper() == "PYTHONDONTWRITEBYTECODE" for key in environment):
+        if "PYTHONDONTWRITEBYTECODE" in {key.upper() for key in environment}:
             raise ExampleError(f"{test_context}.environment must not override PYTHONDONTWRITEBYTECODE")
         tests.append(
             _TestConfiguration(
                 name=name,
+                path=path,
                 arguments=arguments,
                 timeout_seconds=timeout_seconds,
                 expected_exit_code=expected_exit_code,
@@ -778,7 +908,7 @@ def _load_test_configurations(value: Any, context: str) -> tuple[_TestConfigurat
 
 
 def _load_requirements(value: Any, context: str) -> _Requirements:
-    """Validate module and system requirements.
+    """Validate module, external package, and system requirements.
 
     Args:
         value: Requirements table.
@@ -789,7 +919,7 @@ def _load_requirements(value: Any, context: str) -> _Requirements:
     """
     if not isinstance(value, dict):
         raise ExampleError(f"{context} must be a table")
-    _validate_keys(value, {"modules"}, {"system"}, context)
+    _validate_keys(value, {"modules"}, {"cpp_packages", "python_packages", "system"}, context)
     modules = value["modules"]
     if not isinstance(modules, list) or not modules:
         raise ExampleError(f"{context}.modules must be a non-empty array of tables")
@@ -810,6 +940,50 @@ def _load_requirements(value: Any, context: str) -> _Requirements:
             raise ExampleError(f"{module_context}.surfaces is unsupported: {', '.join(sorted(unknown_surfaces))}")
         module_requirements.append(_ModuleRequirement(name=name, surfaces=surfaces))
 
+    python_packages: list[_PythonPackageRequirement] = []
+    package_names: set[str] = set()
+    for index, requirement_text in enumerate(_read_string_list(value, "python_packages", context, required=False)):
+        package_context = f"{context}.python_packages[{index}]"
+        try:
+            requirement = Requirement(requirement_text)
+        except InvalidRequirement as error:
+            raise ExampleError(f"{package_context} is not a valid PEP 508 requirement: {error}") from error
+        if requirement.url is not None:
+            raise ExampleError(f"{package_context} must not use a direct URL or path")
+        if requirement.marker is not None:
+            raise ExampleError(f"{package_context} must not use an environment marker")
+        if requirement.extras:
+            raise ExampleError(f"{package_context} must not request extras")
+        specifiers = list(requirement.specifier)
+        if len(specifiers) != 1 or specifiers[0].operator != "==" or "*" in specifiers[0].version:
+            raise ExampleError(f"{package_context} must use one exact == version")
+        try:
+            version = str(Version(specifiers[0].version))
+        except InvalidVersion as error:
+            raise ExampleError(f"{package_context} has an invalid PEP 440 version: {error}") from error
+        name = canonicalize_name(requirement.name)
+        if name == "isaacsim" or name.startswith("isaacsim-"):
+            raise ExampleError(f"{package_context} must declare Isaac Sim distributions through requirements.modules")
+        if name in package_names:
+            raise ExampleError(f"{context}.python_packages contains duplicate distribution: {name}")
+        package_names.add(name)
+        python_packages.append(_PythonPackageRequirement(name=name, version=version))
+
+    cpp_packages: list[_CppPackageRequirement] = []
+    cpp_package_names: set[str] = set()
+    for index, requirement_text in enumerate(_read_string_list(value, "cpp_packages", context, required=False)):
+        package_context = f"{context}.cpp_packages[{index}]"
+        match = CPP_PACKAGE_PATTERN.fullmatch(requirement_text)
+        if match is None:
+            raise ExampleError(f"{package_context} must use a lowercase package name and one exact == version")
+        name, version = match.groups()
+        if name == "isaacsim" or name.startswith("isaacsim-"):
+            raise ExampleError(f"{package_context} must declare Isaac Sim distributions through requirements.modules")
+        if name in cpp_package_names:
+            raise ExampleError(f"{context}.cpp_packages contains duplicate package: {name}")
+        cpp_package_names.add(name)
+        cpp_packages.append(_CppPackageRequirement(name=name, version=version))
+
     system = _read_string_list(value, "system", context, required=False, allow_empty=True)
     unknown_system_requirements = set(system) - SYSTEM_REQUIREMENT_NAMES
     if unknown_system_requirements:
@@ -818,7 +992,12 @@ def _load_requirements(value: Any, context: str) -> _Requirements:
         )
     if "python_development" in system and "python" not in system:
         raise ExampleError(f"{context}.system python_development requires python")
-    return _Requirements(modules=tuple(module_requirements), system=system)
+    return _Requirements(
+        modules=tuple(module_requirements),
+        python_packages=tuple(sorted(python_packages, key=lambda requirement: requirement.name)),
+        cpp_packages=tuple(sorted(cpp_packages, key=lambda requirement: requirement.name)),
+        system=system,
+    )
 
 
 def _validate_requirement_coherence(
@@ -852,6 +1031,10 @@ def _validate_requirement_coherence(
             raise ExampleError(
                 f"{context} uses mixed CMake/Python adapters but does not require Python development headers"
             )
+    if requirements.python_packages and (run.adapter != "python" or "python" not in system):
+        raise ExampleError(f"{context} declares Python packages without a Python run adapter and capability")
+    if requirements.cpp_packages and (build.adapter != "cmake" or "cpp" not in system):
+        raise ExampleError(f"{context} declares C++ packages without a CMake build adapter and C++ capability")
 
 
 def _load_example(example_root: Path) -> _Example:
@@ -896,7 +1079,7 @@ def _load_example(example_root: Path) -> _Example:
         raise ExampleError(f"{context}.run.target must name a declared CMake build target")
     requirements = _load_requirements(table["requirements"], f"{context}.requirements")
     _validate_requirement_coherence(build, run, requirements, context)
-    tests = _load_test_configurations(table.get("test"), f"{context}.test")
+    tests = _load_test_configurations(table.get("test"), example_root, run, f"{context}.test")
     return _Example(
         id=example_id,
         title=title,
@@ -920,7 +1103,7 @@ def _load_series(
 
     Args:
         series_root: Root containing the series manifest and steps.
-        examples_by_id: Published examples indexed by stable ID.
+        examples_by_id: Examples indexed by stable ID.
 
     Returns:
         Validated series definition.
@@ -930,12 +1113,15 @@ def _load_series(
         raise ExampleError(f"Series root has no README.md: {series_root}")
     table = _read_toml(manifest_path)
     context = str(manifest_path)
-    _validate_keys(table, {"id", "step", "summary", "title"}, set(), context)
+    _validate_keys(table, {"id", "kind", "step", "summary", "title"}, set(), context)
     series_id = _read_string(table, "id", context)
     if EXAMPLE_ID_PATTERN.fullmatch(series_id) is None:
         raise ExampleError(f"{context}.id is invalid: {series_id}")
     title = _read_string(table, "title", context)
     summary = _read_string(table, "summary", context)
+    kind = _read_string(table, "kind", context)
+    if kind not in ALLOWED_SERIES_KINDS:
+        raise ExampleError(f"{context}.kind is unsupported: {kind}")
     steps = table["step"]
     if not isinstance(steps, list) or not steps:
         raise ExampleError(f"{context}.step must be a non-empty array of tables")
@@ -964,7 +1150,15 @@ def _load_series(
     if co_located_ids != step_ids:
         missing = sorted(co_located_ids - step_ids)
         raise ExampleError(f"{context} does not list its co-located examples: {', '.join(missing)}")
-    return _Series(id=series_id, title=title, summary=summary, root=series_root, steps=tuple(validated_steps))
+
+    return _Series(
+        id=series_id,
+        title=title,
+        summary=summary,
+        kind=kind,
+        root=series_root,
+        steps=tuple(validated_steps),
+    )
 
 
 def _validate_source_tree(examples_dir: Path) -> None:
@@ -994,13 +1188,13 @@ def _validate_build_root(build_root: Path, examples_dir: Path) -> None:
 
 
 def _discover_published_example_roots(examples_dir: Path) -> tuple[Path, ...]:
-    """Discover published example roots beneath the examples collection.
+    """Discover example roots beneath the examples collection.
 
     Args:
         examples_dir: Root of the examples collection.
 
     Returns:
-        Published example roots in deterministic path order.
+        Example roots in deterministic path order.
     """
     examples_root = examples_dir.resolve()
     roots: list[Path] = []
@@ -1015,25 +1209,28 @@ def _discover_published_example_roots(examples_dir: Path) -> tuple[Path, ...]:
         root = manifest_path.parent.resolve()
         relative_parts = root.relative_to(examples_root).parts
         if not relative_parts or relative_parts[0] not in ALLOWED_EXAMPLE_GROUPS:
-            raise ExampleError(f"Published example must start with libraries or series: {root}")
+            raise ExampleError(f"Example must start with libraries or series: {root}")
         roots.append(root)
     return tuple(roots)
 
 
 def _load_collection(examples_dir: Path) -> tuple[tuple[_Example, ...], tuple[_Series, ...]]:
-    """Load and validate every published example and series.
+    """Load and validate every example and series.
 
     Args:
         examples_dir: Root of the examples collection.
 
     Returns:
-        Published examples and series in deterministic path order.
+        Examples and series in deterministic path order.
     """
     _validate_source_tree(examples_dir)
     examples = tuple(_load_example(root) for root in _discover_published_example_roots(examples_dir))
     examples_by_id = {example.id: example for example in examples}
     if len(examples_by_id) != len(examples):
-        raise ExampleError("Published examples contain duplicate stable example IDs")
+        raise ExampleError("Examples contain duplicate stable example IDs")
+    # Reject collection-wide pin conflicts before loading dependent series metadata.
+    _collect_python_packages(examples)
+    _collect_cpp_packages(examples)
 
     resolved_series_roots: list[Path] = []
     series_ids: set[str] = set()
@@ -1047,7 +1244,7 @@ def _load_collection(examples_dir: Path) -> tuple[tuple[_Example, ...], tuple[_S
             raise ExampleError(f"Series root must be located at series/<series-name>: {path}")
         series_entry = _load_series(path, examples_by_id)
         if series_entry.id in series_ids:
-            raise ExampleError(f"Published series contain duplicate stable series ID: {series_entry.id}")
+            raise ExampleError(f"Series contain duplicate stable series ID: {series_entry.id}")
         series_ids.add(series_entry.id)
         series.append(series_entry)
         resolved_series_roots.append(path)
@@ -1056,12 +1253,12 @@ def _load_collection(examples_dir: Path) -> tuple[tuple[_Example, ...], tuple[_S
         if example.root.relative_to(examples_dir.resolve()).parts[0] == "series" and not any(
             example.root.is_relative_to(series_root) for series_root in resolved_series_roots
         ):
-            raise ExampleError(f"Published series example is not owned by a published series: {example.root}")
+            raise ExampleError(f"Example under series is not declared by a series manifest: {example.root}")
     return examples, tuple(series)
 
 
 def _load_examples(examples_dir: Path) -> tuple[_Example, ...]:
-    """Load and validate every published example.
+    """Load and validate every example.
 
     Args:
         examples_dir: Root directory of the examples collection.
@@ -1119,6 +1316,27 @@ def _catalog_languages(example: _Example) -> list[str]:
     return languages
 
 
+def _format_examples_table(examples: tuple[_Example, ...]) -> str:
+    """Format examples as an aligned table.
+
+    Args:
+        examples: Examples to include.
+
+    Returns:
+        Table containing each example's stable ID and title.
+    """
+    id_header = "ID"
+    title_header = "TITLE"
+    id_width = max([len(id_header), *(len(example.id) for example in examples)])
+    title_width = max([len(title_header), *(len(example.title) for example in examples)])
+    lines = [
+        f"{id_header:<{id_width}} | {title_header}",
+        f"{'-' * id_width}-+-{'-' * title_width}",
+    ]
+    lines.extend(f"{example.id:<{id_width}} | {example.title}" for example in examples)
+    return "\n".join(lines)
+
+
 def _build_catalog(examples_dir: Path, library_catalog: Path) -> dict[str, Any]:
     """Build deterministic documentation data from the runner's validated manifests.
 
@@ -1142,6 +1360,7 @@ def _build_catalog(examples_dir: Path, library_catalog: Path) -> dict[str, Any]:
                 "id": series_entry.id,
                 "title": series_entry.title,
                 "summary": series_entry.summary,
+                "kind": series_entry.kind,
                 "readme_path": (series_entry.root / "README.md").relative_to(examples_dir).as_posix(),
                 "steps": steps,
             }
@@ -1160,7 +1379,7 @@ def _build_catalog(examples_dir: Path, library_catalog: Path) -> dict[str, Any]:
             raise ExampleError(f"Example {example.id} has unknown public API owners: {', '.join(unknown_owners)}")
         relative_root = example.root.relative_to(examples_dir).as_posix()
         relative_parts = example.root.relative_to(examples_dir).parts
-        group = {"libraries": "library", "series": "series", "workflows": "workflow"}[relative_parts[0]]
+        group = {"libraries": "library", "series": "series"}[relative_parts[0]]
         membership = series_membership.get(example.id)
         entry_point = (
             example.run.path.relative_to(example.root).as_posix()
@@ -1180,6 +1399,8 @@ def _build_catalog(examples_dir: Path, library_catalog: Path) -> dict[str, Any]:
                 "group": group,
                 "requirements": {
                     "distributions": requirements,
+                    "python_packages": [requirement.specifier for requirement in example.requirements.python_packages],
+                    "cpp_packages": [requirement.specifier for requirement in example.requirements.cpp_packages],
                     "capabilities": list(example.requirements.system),
                 },
                 "entry_point": entry_point,
@@ -1195,7 +1416,7 @@ def _build_catalog(examples_dir: Path, library_catalog: Path) -> dict[str, Any]:
             }
         )
     return {
-        "schema_version": 1,
+        "schema_version": 4,
         "release_version": release_version,
         "examples": serialized_examples,
         "series": serialized_series,
@@ -1228,6 +1449,549 @@ def _run_checked(command: list[str], working_directory: Path, environment: dict[
         raise ExampleError(f"Command failed with exit code {result.returncode}: {_render_command(command)}")
 
 
+def _collect_python_packages(examples: tuple[_Example, ...]) -> tuple[_PythonPackageRequirement, ...]:
+    """Collect the globally compatible external requirements for an examples payload.
+
+    Args:
+        examples: Examples sharing one external dependency directory.
+
+    Returns:
+        Combined external package requirements in deterministic name order.
+    """
+    packages: dict[str, tuple[str, str]] = {}
+    for example in examples:
+        for requirement in example.requirements.python_packages:
+            previous = packages.get(requirement.name)
+            candidate = (requirement.version, example.id)
+            if previous is not None:
+                if Version(previous[0]) != Version(requirement.version):
+                    raise ExampleError(
+                        f"Examples have conflicting Python package requirements for {requirement.name}: "
+                        f"{previous[1]} requires {previous[0]}, but {example.id} requires {requirement.version}"
+                    )
+                candidate = min(previous, candidate)
+            packages[requirement.name] = candidate
+    return tuple(
+        _PythonPackageRequirement(name=name, version=version) for name, (version, _) in sorted(packages.items())
+    )
+
+
+def _collect_cpp_packages(examples: tuple[_Example, ...]) -> tuple[_CppPackageRequirement, ...]:
+    """Collect the globally compatible external C++ requirements for an examples payload.
+
+    Args:
+        examples: Examples sharing one external dependency directory.
+
+    Returns:
+        Combined external package requirements in deterministic name order.
+    """
+    packages: dict[str, tuple[str, str]] = {}
+    for example in examples:
+        for requirement in example.requirements.cpp_packages:
+            previous = packages.get(requirement.name)
+            if previous is not None and previous[0] != requirement.version:
+                raise ExampleError(
+                    f"Examples have conflicting C++ package requirements for {requirement.name}: "
+                    f"{previous[1]} requires {previous[0]}, but {example.id} requires {requirement.version}"
+                )
+            packages[requirement.name] = (requirement.version, example.id)
+    return tuple(_CppPackageRequirement(name=name, version=version) for name, (version, _) in sorted(packages.items()))
+
+
+def _python_dependency_state(requirements: tuple[_PythonPackageRequirement, ...]) -> dict[str, Any]:
+    """Return the marker for the shared dependency directory.
+
+    Args:
+        requirements: External package requirements represented by the marker.
+
+    Returns:
+        Runtime and requirement state used to validate the directory.
+    """
+    python_tag = next(sys_tags())
+    return {
+        "schema_version": 1,
+        "requirements": [requirement.specifier for requirement in requirements],
+        "python_implementation": sys.implementation.name,
+        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
+        "python_abi": python_tag.abi,
+        "platform": sysconfig.get_platform(),
+    }
+
+
+def _python_dependency_path(build_root: Path) -> Path:
+    """Return the shared dependency directory for all examples.
+
+    Args:
+        build_root: Shared examples build root.
+
+    Returns:
+        Path to the external dependency directory.
+    """
+    return build_root / PYTHON_DEPENDENCY_DIRECTORY
+
+
+def _python_dependency_lock(build_root: Path, *, exclusive: bool) -> contextlib.AbstractContextManager[None]:
+    """Coordinate dependency publishers and command-lifetime consumers.
+
+    Args:
+        build_root: Shared examples build root.
+        exclusive: Whether to acquire an exclusive lock.
+
+    Returns:
+        Context manager holding the requested lock.
+    """
+    return _path_lock(build_root / f".{PYTHON_DEPENDENCY_DIRECTORY}.lock", exclusive=exclusive)
+
+
+def _is_redirected_directory(path: Path) -> bool:
+    """Return whether a path is a symlink or Windows junction.
+
+    Args:
+        path: Path to inspect.
+
+    Returns:
+        Whether the path redirects to another filesystem location.
+    """
+    is_junction = getattr(path, "is_junction", None)
+    return path.is_symlink() or (is_junction is not None and is_junction())
+
+
+def _dependency_state_matches(
+    dependency_dir: Path,
+    expected_state: dict[str, Any],
+) -> bool:
+    """Check whether a published dependency directory has the expected state.
+
+    Args:
+        dependency_dir: Prepared dependency directory.
+        expected_state: Marker selected for the current invocation.
+
+    Returns:
+        Whether the directory is safe and matches the expected state.
+    """
+    if not dependency_dir.is_dir() or _is_redirected_directory(dependency_dir):
+        return False
+    try:
+        state = json.loads((dependency_dir / DEPENDENCY_STATE_FILE).read_text(encoding="utf-8"))
+        return state == expected_state
+    except (OSError, TypeError, json.JSONDecodeError):
+        return False
+
+
+def _validate_external_distributions(dependency_dir: Path) -> None:
+    """Keep Isaac and conflicting ambient distributions out of the overlay.
+
+    Args:
+        dependency_dir: External dependency directory to validate.
+    """
+    ambient: dict[str, str] = {}
+    for distribution in importlib.metadata.distributions(path=_ambient_python_paths()):
+        ambient.setdefault(canonicalize_name(distribution.metadata.get("Name", "")), distribution.version)
+    for distribution in importlib.metadata.distributions(path=[str(dependency_dir)]):
+        name = canonicalize_name(distribution.metadata.get("Name", ""))
+        if name == "isaacsim" or name.startswith("isaacsim-"):
+            raise ExampleError(f"External Python dependency closure contains Isaac Sim distribution: {name}")
+        if name in ambient and Version(distribution.version) != Version(ambient[name]):
+            raise ExampleError(
+                f"External Python dependency {name}=={distribution.version} does not match {name}=={ambient[name]} "
+                "provided by the active Isaac Sim environment. Align the relevant example.toml requirement or its "
+                "parent dependency with the Isaac Sim version."
+            )
+
+
+def _validate_installed_python_dependencies(
+    requirements: tuple[_PythonPackageRequirement, ...], dependency_dir: Path
+) -> None:
+    """Verify that pip installed every declared package at its exact version.
+
+    Args:
+        requirements: Expected external package requirements.
+        dependency_dir: Directory containing the installed packages.
+    """
+    installed: dict[str, str] = {
+        canonicalize_name(distribution.metadata.get("Name", "")): distribution.version
+        for distribution in importlib.metadata.distributions(path=[str(dependency_dir)])
+    }
+    for requirement in requirements:
+        version = installed.get(requirement.name)
+        try:
+            matches = version is not None and Version(version) == Version(requirement.version)
+        except InvalidVersion:
+            matches = False
+        if not matches:
+            found = "missing" if version is None else f"version {version}"
+            raise ExampleError(
+                f"Python dependency installation did not produce {requirement.specifier} in {dependency_dir} "
+                f"(found {found}); check the pip configuration"
+            )
+
+
+def _ambient_python_paths() -> list[str]:
+    """Return the runner search path excluding user sites disabled for children.
+
+    Returns:
+        Search paths visible to example child processes.
+    """
+    configured_user_sites = site.getusersitepackages()
+    user_sites = [configured_user_sites] if isinstance(configured_user_sites, str) else configured_user_sites
+    excluded = {os.path.normcase(os.path.abspath(path)) for path in user_sites}
+    explicit_paths = [path for path in os.environ.get("PYTHONPATH", "").split(os.pathsep) if path]
+    if any(not Path(path).is_absolute() for path in explicit_paths):
+        raise ExampleError("PYTHONPATH entries must be absolute when examples use external Python packages")
+    explicit = {os.path.normcase(os.path.abspath(path)) for path in explicit_paths}
+    return [
+        path
+        for path in sys.path
+        if path
+        and (
+            os.path.normcase(os.path.abspath(path)) not in excluded
+            or os.path.normcase(os.path.abspath(path)) in explicit
+        )
+    ]
+
+
+def _remove_dependency_tree(dependency_dir: Path) -> None:
+    """Remove a dependency tree without following a redirected root.
+
+    Args:
+        dependency_dir: Dependency tree to remove.
+    """
+    if dependency_dir.is_symlink():
+        dependency_dir.unlink()
+        return
+    is_junction = getattr(dependency_dir, "is_junction", None)
+    if is_junction is not None and is_junction():
+        os.rmdir(dependency_dir)
+        return
+    if not dependency_dir.is_dir():
+        dependency_dir.unlink()
+        return
+
+    def make_writable(function: Any, path: str, _: Any) -> None:
+        target = Path(path)
+        if not _is_redirected_directory(target):
+            target.chmod(stat.S_IMODE(target.stat().st_mode) | stat.S_IWUSR)
+        target.parent.chmod(stat.S_IMODE(target.parent.stat().st_mode) | stat.S_IWUSR)
+        function(path)
+
+    shutil.rmtree(dependency_dir, onerror=make_writable)
+
+
+def _install_python_dependencies(
+    requirements: tuple[_PythonPackageRequirement, ...],
+    destination: Path,
+    working_directory: Path,
+    environment: dict[str, str],
+) -> None:
+    """Install external requirements into one unpublished dependency directory.
+
+    Args:
+        requirements: Combined external requirements for the examples payload.
+        destination: Unpublished target directory.
+        working_directory: Directory in which to invoke pip.
+        environment: Pip process environment.
+    """
+    _run_checked(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--ignore-installed",
+            "--no-compile",
+            "--no-input",
+            "--target",
+            str(destination),
+            *(requirement.specifier for requirement in requirements),
+        ],
+        working_directory,
+        environment,
+    )
+
+
+def _prepare_python_dependencies(examples: tuple[_Example, ...], build_root: Path) -> Path | None:
+    """Prepare and validate the shared external Python dependencies.
+
+    Args:
+        examples: Complete examples payload sharing the dependency directory.
+        build_root: Shared examples build root.
+
+    Returns:
+        Shared dependency directory, or None when the payload declares no packages.
+    """
+    requirements = _collect_python_packages(examples)
+    if not requirements:
+        return None
+
+    if importlib.util.find_spec("pip") is None:
+        raise ExampleError(f"Preparing shared Python dependencies requires pip for {sys.executable}")
+
+    dependency_dir = _python_dependency_path(build_root)
+    build_root.mkdir(parents=True, exist_ok=True)
+    staging_dir = Path(tempfile.mkdtemp(prefix=f".{PYTHON_DEPENDENCY_DIRECTORY}-", dir=build_root))
+    backup_dir = staging_dir.with_name(f"{staging_dir.name}-backup")
+    environment = os.environ.copy()
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment["PYTHONNOUSERSITE"] = "1"
+    install_environment = environment.copy()
+    install_environment.pop("PYTHONPATH", None)
+    try:
+        _install_python_dependencies(requirements, staging_dir, build_root, install_environment)
+        _validate_installed_python_dependencies(requirements, staging_dir)
+        _validate_external_distributions(staging_dir)
+        check_environment = environment.copy()
+        _prepend_environment_path(check_environment, "PYTHONPATH", [staging_dir])
+        _run_checked([sys.executable, "-m", "pip", "check"], build_root, check_environment)
+        state = _python_dependency_state(requirements)
+        (staging_dir / DEPENDENCY_STATE_FILE).write_text(
+            json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        try:
+            if dependency_dir.exists() or _is_redirected_directory(dependency_dir):
+                dependency_dir.rename(backup_dir)
+            staging_dir.rename(dependency_dir)
+        except BaseException:
+            if backup_dir.exists() or _is_redirected_directory(backup_dir):
+                if dependency_dir.exists() or _is_redirected_directory(dependency_dir):
+                    _remove_dependency_tree(dependency_dir)
+                backup_dir.rename(dependency_dir)
+            raise
+        if backup_dir.exists() or _is_redirected_directory(backup_dir):
+            _remove_dependency_tree(backup_dir)
+        return dependency_dir
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ExampleError(f"Cannot prepare shared Python dependencies: {error}") from error
+    finally:
+        if staging_dir.exists():
+            _remove_dependency_tree(staging_dir)
+
+
+def _require_python_dependencies(examples: tuple[_Example, ...], build_root: Path) -> Path | None:
+    """Return an existing valid dependency target without installing packages.
+
+    Args:
+        examples: Examples sharing one external dependency directory.
+        build_root: Shared examples build root.
+
+    Returns:
+        Valid dependency directory, or None when no external packages are required.
+    """
+    requirements = _collect_python_packages(examples)
+    if not requirements:
+        return None
+    dependency_dir = _python_dependency_path(build_root)
+    if not _dependency_state_matches(dependency_dir, _python_dependency_state(requirements)):
+        raise ExampleError("Shared Python dependencies are not built; run the examples build command first")
+    try:
+        _validate_installed_python_dependencies(requirements, dependency_dir)
+    except ExampleError as error:
+        raise ExampleError("Shared Python dependencies are invalid; run the examples build command again") from error
+    _validate_external_distributions(dependency_dir)
+    return dependency_dir
+
+
+def _cpp_dependency_platform() -> str:
+    """Return the Pixi platform supported by the current examples runner.
+
+    Returns:
+        Pixi platform name for the current host.
+    """
+    platform_name = sysconfig.get_platform().lower().replace("_", "-")
+    platforms = {
+        "linux-aarch64": "linux-aarch64",
+        "linux-x86-64": "linux-64",
+        "win-amd64": "win-64",
+    }
+    try:
+        return platforms[platform_name]
+    except KeyError as error:
+        raise ExampleError(f"External C++ packages are unsupported on platform {platform_name}") from error
+
+
+def _find_pixi() -> Path:
+    """Return the Pixi executable supplied by the launcher or caller.
+
+    Returns:
+        Resolved path to the Pixi executable.
+    """
+    configured = os.environ.get("PIXI_EXE")
+    executable = Path(configured).resolve() if configured else None
+    if executable is None:
+        discovered = shutil.which("pixi")
+        executable = Path(discovered).resolve() if discovered else None
+    if executable is None or not executable.is_file():
+        raise ExampleError("External C++ packages require Pixi through PIXI_EXE or PATH")
+    return executable
+
+
+def _scrub_pixi_update_environment(environment: dict[str, str]) -> None:
+    """Remove inherited options that can override the runner's update policy.
+
+    Args:
+        environment: Process environment to update.
+    """
+    update_names = {"PIXI_FROZEN", "PIXI_LOCKED", "PIXI_NO_INSTALL"}
+    for name in tuple(environment):
+        if name.upper() in update_names:
+            environment.pop(name)
+
+
+def _cpp_dependency_manifest(requirements: tuple[_CppPackageRequirement, ...]) -> str:
+    """Render the build-local Pixi manifest for the shared C++ requirements.
+
+    Args:
+        requirements: External C++ package requirements.
+
+    Returns:
+        Pixi manifest contents.
+    """
+    dependencies = "".join(
+        f"{json.dumps(requirement.name)} = {json.dumps(f'=={requirement.version}')}\n" for requirement in requirements
+    )
+    return (
+        "[workspace]\n"
+        'channels = ["conda-forge"]\n'
+        f"platforms = [{json.dumps(_cpp_dependency_platform())}]\n\n"
+        "[dependencies]\n"
+        f"{dependencies}"
+    )
+
+
+def _cpp_dependency_state(requirements: tuple[_CppPackageRequirement, ...]) -> dict[str, Any]:
+    """Return the marker for a successfully installed Pixi workspace.
+
+    Args:
+        requirements: External C++ package requirements represented by the marker.
+
+    Returns:
+        Manifest state used to validate the workspace.
+    """
+    return {
+        "schema_version": 1,
+        "manifest": _cpp_dependency_manifest(requirements),
+    }
+
+
+def _cpp_dependency_lock(build_root: Path, *, exclusive: bool) -> contextlib.AbstractContextManager[None]:
+    """Coordinate C++ dependency publishers and command-lifetime consumers.
+
+    Args:
+        build_root: Shared examples build root.
+        exclusive: Whether to acquire an exclusive lock.
+
+    Returns:
+        Context manager holding the requested lock.
+    """
+    return _path_lock(build_root / f".{CPP_DEPENDENCY_DIRECTORY}.lock", exclusive=exclusive)
+
+
+def _prepare_cpp_dependencies(examples: tuple[_Example, ...], build_root: Path) -> _CppDependencyEnvironment | None:
+    """Resolve and install the shared external C++ dependencies with Pixi.
+
+    Args:
+        examples: Complete examples payload sharing the dependency workspace.
+        build_root: Shared examples build root.
+
+    Returns:
+        Prepared dependency environment, or None when the payload declares no packages.
+    """
+    requirements = _collect_cpp_packages(examples)
+    if not requirements:
+        return None
+    pixi = _find_pixi()
+    workspace = build_root / CPP_DEPENDENCY_DIRECTORY
+    if _is_redirected_directory(workspace):
+        raise ExampleError(f"Shared C++ dependency workspace is redirected: {workspace}")
+    workspace.mkdir(parents=True, exist_ok=True)
+    manifest = workspace / "pixi.toml"
+    state_file = workspace / DEPENDENCY_STATE_FILE
+    state_file.unlink(missing_ok=True)
+    manifest.write_text(_cpp_dependency_manifest(requirements), encoding="utf-8")
+    environment = os.environ.copy()
+    _scrub_pixi_update_environment(environment)
+    _run_checked(
+        [
+            str(pixi),
+            "install",
+            "--manifest-path",
+            str(manifest),
+            "--no-config",
+            "--tls-root-certs",
+            "webpki",
+        ],
+        workspace,
+        environment,
+    )
+    prefix = workspace / ".pixi" / "envs" / "default"
+    if not (workspace / "pixi.lock").is_file() or not prefix.is_dir():
+        raise ExampleError(f"Pixi did not create the shared C++ dependency environment: {workspace}")
+    state_file.write_text(
+        json.dumps(_cpp_dependency_state(requirements), indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return _CppDependencyEnvironment(pixi=pixi, manifest=manifest)
+
+
+def _require_cpp_dependencies(examples: tuple[_Example, ...], build_root: Path) -> _CppDependencyEnvironment | None:
+    """Return the existing C++ dependency workspace without installing packages.
+
+    Args:
+        examples: Examples sharing one external dependency workspace.
+        build_root: Shared examples build root.
+
+    Returns:
+        Existing dependency environment, or None when no external packages are required.
+    """
+    requirements = _collect_cpp_packages(examples)
+    if not requirements:
+        return None
+    workspace = build_root / CPP_DEPENDENCY_DIRECTORY
+    manifest = workspace / "pixi.toml"
+    prefix = workspace / ".pixi" / "envs" / "default"
+    try:
+        state_matches = (
+            _dependency_state_matches(workspace, _cpp_dependency_state(requirements))
+            and manifest.read_text(encoding="utf-8") == _cpp_dependency_manifest(requirements)
+            and (workspace / "pixi.lock").is_file()
+            and prefix.is_dir()
+        )
+    except OSError:
+        state_matches = False
+    if not state_matches:
+        raise ExampleError("Shared C++ dependencies are not built; run the examples build command first")
+    return _CppDependencyEnvironment(pixi=_find_pixi(), manifest=manifest)
+
+
+def _wrap_cpp_dependency_command(
+    example: _Example, dependencies: _CppDependencyEnvironment | None, command: list[str]
+) -> list[str]:
+    """Wrap a C++ dependency consumer for the existing Pixi environment.
+
+    Args:
+        example: Example that consumes the command.
+        dependencies: Prepared external C++ dependency environment.
+        command: Command and arguments to wrap.
+
+    Returns:
+        Original command or a Pixi-wrapped command when dependencies are required.
+    """
+    if not example.requirements.cpp_packages:
+        return command
+    if dependencies is None:
+        raise ExampleError(f"Example {example.id} requires an unavailable C++ dependency environment")
+    return [
+        str(dependencies.pixi),
+        "run",
+        "--manifest-path",
+        str(dependencies.manifest),
+        "--no-config",
+        "--no-install",
+        "--locked",
+        "--",
+        *command,
+    ]
+
+
 def _restart_in_environment(executable: Path, environment: dict[str, str]) -> int:
     """Restart this command with a prepared execution environment.
 
@@ -1251,6 +2015,8 @@ def _restart_in_environment(executable: Path, environment: dict[str, str]) -> in
 
 def _build_example(
     example: _Example,
+    python_dependency_dir: Path | None,
+    cpp_dependencies: _CppDependencyEnvironment | None,
     system_requirements: _SystemRequirements,
     build_root: Path,
     cmake: str,
@@ -1264,6 +2030,8 @@ def _build_example(
 
     Args:
         example: Example to build.
+        python_dependency_dir: Shared external Python dependency directory.
+        cpp_dependencies: Shared external C++ dependency environment.
         system_requirements: Release-wide system toolchain requirements.
         build_root: Root for isolated example build directories.
         cmake: CMake executable.
@@ -1281,7 +2049,12 @@ def _build_example(
         print(f"Build {example.id}: no build required")
         return build_dir
 
+    _initialize_windows_native_toolchain()
     environment = os.environ.copy()
+    if example.requirements.cpp_packages:
+        _scrub_pixi_update_environment(environment)
+    if python_dependency_dir is not None:
+        _prepend_environment_path(environment, "PYTHONPATH", [python_dependency_dir])
     configure_command = [
         cmake,
         "-S",
@@ -1306,18 +2079,22 @@ def _build_example(
     if make_program:
         configure_command.append(f"-DCMAKE_MAKE_PROGRAM={make_program}")
     print(f"Build {example.id}")
-    _run_checked(configure_command, example.root, environment)
+    _run_checked(_wrap_cpp_dependency_command(example, cpp_dependencies, configure_command), example.root, environment)
     _run_checked(
-        [
-            cmake,
-            "--build",
-            str(build_dir),
-            "--config",
-            config,
-            "--target",
-            *example.build.targets,
-            "--parallel",
-        ],
+        _wrap_cpp_dependency_command(
+            example,
+            cpp_dependencies,
+            [
+                cmake,
+                "--build",
+                str(build_dir),
+                "--config",
+                config,
+                "--target",
+                *example.build.targets,
+                "--parallel",
+            ],
+        ),
         example.root,
         environment,
     )
@@ -1338,6 +2115,22 @@ def _prepend_environment_path(environment: dict[str, str], name: str, paths: lis
         values.append(current)
     if values:
         environment[name] = os.pathsep.join(values)
+
+
+def _prefix_native_runtime_paths(prefix: Path) -> list[Path]:
+    """Return native runtime search paths rooted at an installed prefix.
+
+    Args:
+        prefix: Installed SDK or developer environment prefix.
+
+    Returns:
+        Native binary and OVStage plugin search paths in lookup order.
+    """
+    paths = [prefix / "bin"]
+    if os.name == "nt":
+        plugins = prefix / "bin" / "plugins"
+        paths.extend((plugins, plugins / "omni.client.lib", plugins / "omni.usd_resolver"))
+    return paths
 
 
 def _create_developer_environment(
@@ -1364,64 +2157,83 @@ def _create_developer_environment(
             str(developer_build.python_runtime_dependencies),
         )
     )
-    native_runtime_paths = [prefix / "bin"]
+    native_runtime_paths = _prefix_native_runtime_paths(prefix)
     if os.name == "nt":
         native_runtime_paths.extend(
             (
-                prefix / "bin" / "plugins",
                 developer_build.python.parent,
                 developer_build.python_runtime_dependencies / "usd_exchange.libs",
             )
         )
     _prepend_environment_path(environment, "PATH", native_runtime_paths)
     if os.name != "nt":
-        _prepend_environment_path(environment, "LD_LIBRARY_PATH", [prefix / "lib"])
+        python_library_dir = developer_build.python.parent.parent / "lib"
+        _prepend_environment_path(environment, "LD_LIBRARY_PATH", [python_library_dir, prefix / "lib"])
     return environment
 
 
-def _create_runtime_environment(example: _Example, build_dir: Path) -> dict[str, str]:
+def _create_runtime_environment(
+    example: _Example,
+    build_dir: Path,
+    python_dependency_dir: Path | None = None,
+    overrides: dict[str, str] | None = None,
+) -> dict[str, str]:
     """Create the inherited runtime environment for an example.
 
     Args:
         example: Example being executed.
         build_dir: Example's isolated build directory.
+        python_dependency_dir: Shared external Python dependency directory.
+        overrides: Example-specific environment values.
 
     Returns:
         Runtime process environment.
     """
     environment = os.environ.copy()
+    if overrides is not None:
+        environment.update(overrides)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment["PYTHONNOUSERSITE"] = "1"
     prefix_paths = [Path(value) for value in environment.get("CMAKE_PREFIX_PATH", "").split(os.pathsep) if value]
-    native_runtime_paths = [prefix / "bin" for prefix in prefix_paths]
+    native_runtime_paths = [path for prefix in prefix_paths for path in _prefix_native_runtime_paths(prefix)]
     if os.name == "nt":
-        native_runtime_paths.extend(prefix / "bin" / "plugins" for prefix in prefix_paths)
         native_runtime_paths.append(Path(sys.executable).parent)
         for python_path in environment.get("PYTHONPATH", "").split(os.pathsep):
             if python_path:
                 native_runtime_paths.append(Path(python_path) / "usd_exchange.libs")
     _prepend_environment_path(environment, "PATH", native_runtime_paths)
     if os.name != "nt":
-        _prepend_environment_path(environment, "LD_LIBRARY_PATH", [prefix / "lib" for prefix in prefix_paths])
+        python_library_dir = Path(sys.executable).parent.parent / "lib"
+        library_paths = [python_library_dir, *(prefix / "lib" for prefix in prefix_paths)]
+        _prepend_environment_path(environment, "LD_LIBRARY_PATH", library_paths)
     if example.run.adapter == "python" and example.build.adapter == "cmake":
         _prepend_environment_path(environment, "PYTHONPATH", [build_dir / "python"])
+    if python_dependency_dir is not None:
+        _prepend_environment_path(environment, "PYTHONPATH", [python_dependency_dir])
     return environment
 
 
-def _create_run_command(example: _Example, build_dir: Path, arguments: tuple[str, ...]) -> list[str]:
+def _create_run_command(
+    example: _Example, build_dir: Path, arguments: tuple[str, ...], *, python_path: Path | None = None
+) -> list[str]:
     """Create the command for an example run adapter.
 
     Args:
         example: Example being executed.
         build_dir: Example's isolated build directory.
         arguments: Arguments for the normal entry point.
+        python_path: Optional test-specific Python entry point.
 
     Returns:
         Executable command and arguments.
     """
     if example.run.adapter == "python":
-        if example.run.path is None:
+        script_path = python_path or example.run.path
+        if script_path is None:
             raise ExampleError(f"Python example has no script path: {example.id}")
-        return [sys.executable, str(example.run.path), *arguments]
+        return [sys.executable, str(script_path), *arguments]
+    if python_path is not None:
+        raise ExampleError(f"Executable example cannot use a Python test path: {example.id}")
     if example.run.target is None:
         raise ExampleError(f"Executable example has no target: {example.id}")
     executable = build_dir / "bin" / example.run.target
@@ -1494,7 +2306,7 @@ def _run_captured(
     Returns:
         Captured process result.
     """
-    creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+    creation_flags = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)) if os.name == "nt" else 0
     process = subprocess.Popen(
         command,
         cwd=working_directory,
@@ -1521,36 +2333,80 @@ def _run_captured(
     return _CommandResult(process.returncode, stdout, stderr)
 
 
-def _run_example(example: _Example, build_dir: Path, arguments: tuple[str, ...]) -> int:
+def _run_example(
+    example: _Example,
+    build_dir: Path,
+    arguments: tuple[str, ...],
+    python_dependency_dir: Path | None = None,
+    cpp_dependencies: _CppDependencyEnvironment | None = None,
+) -> int:
     """Run one example interactively.
 
     Args:
         example: Example to run.
         build_dir: Example's isolated build directory.
         arguments: Additional user arguments.
+        python_dependency_dir: Shared external Python dependency directory.
+        cpp_dependencies: Shared external C++ dependency environment.
 
     Returns:
         Example process exit code.
     """
-    command = _create_run_command(example, build_dir, example.run.arguments + arguments)
-    environment = _create_runtime_environment(example, build_dir)
+    command = _wrap_cpp_dependency_command(
+        example,
+        cpp_dependencies,
+        _create_run_command(example, build_dir, example.run.arguments + arguments),
+    )
+    environment = _create_runtime_environment(example, build_dir, python_dependency_dir)
+    if example.requirements.cpp_packages:
+        _scrub_pixi_update_environment(environment)
     print(f"Run {example.id}: {_render_command(command)}")
-    return subprocess.run(command, cwd=example.root, env=environment, check=False).returncode
+    process = subprocess.Popen(command, cwd=example.root, env=environment)
+    try:
+        return process.wait()
+    except KeyboardInterrupt:
+        try:
+            process.wait(timeout=PROCESS_TERMINATION_TIMEOUT_SECONDS)
+        except (KeyboardInterrupt, subprocess.TimeoutExpired):
+            process.terminate()
+            try:
+                process.wait(timeout=PROCESS_TERMINATION_TIMEOUT_SECONDS)
+            except (KeyboardInterrupt, subprocess.TimeoutExpired):
+                process.kill()
+                while True:
+                    try:
+                        process.wait()
+                        break
+                    except KeyboardInterrupt:
+                        continue
+        return 130
 
 
-def _test_example(example: _Example, test: _TestConfiguration, build_dir: Path) -> None:
+def _test_example(
+    example: _Example,
+    test: _TestConfiguration,
+    build_dir: Path,
+    python_dependency_dir: Path | None = None,
+    cpp_dependencies: _CppDependencyEnvironment | None = None,
+) -> None:
     """Run and validate one named example test.
 
     Args:
         example: Example to test.
         test: Named test configuration.
         build_dir: Example's isolated build directory.
+        python_dependency_dir: Shared external Python dependency directory.
+        cpp_dependencies: Shared external C++ dependency environment.
     """
     arguments = example.run.arguments if test.arguments is None else test.arguments
-    command = _create_run_command(example, build_dir, arguments)
-    environment = _create_runtime_environment(example, build_dir)
-    environment.update(test.environment)
-    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    command = _wrap_cpp_dependency_command(
+        example,
+        cpp_dependencies,
+        _create_run_command(example, build_dir, arguments, python_path=test.path),
+    )
+    environment = _create_runtime_environment(example, build_dir, python_dependency_dir, test.environment)
+    if example.requirements.cpp_packages:
+        _scrub_pixi_update_environment(environment)
     print(f"Test {example.id}:{test.name}: {_render_command(command)}")
     result = _run_captured(command, example.root, environment, test.timeout_seconds)
     if result.stdout:
@@ -1576,7 +2432,7 @@ def _select_examples(examples: tuple[_Example, ...], selectors: list[str]) -> tu
     """Select examples by stable ID while preserving discovery order.
 
     Args:
-        examples: Complete published examples collection.
+        examples: Complete example collection.
         selectors: Stable IDs to select.
 
     Returns:
@@ -1598,7 +2454,7 @@ def _select_run_example(examples: tuple[_Example, ...], selector: str, examples_
     """Select one example by stable ID, root path, or declared Python script.
 
     Args:
-        examples: Complete published examples collection.
+        examples: Complete example collection.
         selector: Stable ID or path relative to the examples collection.
         examples_dir: Root of the examples collection.
 
@@ -1629,7 +2485,7 @@ def _select_tests(
     """Select all or named test configurations.
 
     Args:
-        examples: Complete published examples collection.
+        examples: Complete example collection.
         selectors: Example or named-test selectors.
 
     Returns:
@@ -1658,28 +2514,6 @@ def _select_tests(
             selected_keys.add(key)
             selected.append((example, test))
     return tuple(selected)
-
-
-def _select_command_examples(
-    arguments: argparse.Namespace, examples: tuple[_Example, ...], examples_dir: Path
-) -> tuple[_Example, ...]:
-    """Select examples whose installed requirements are needed by a command.
-
-    Args:
-        arguments: Parsed command-line arguments.
-        examples: Complete published examples collection.
-        examples_dir: Root of the examples collection.
-
-    Returns:
-        Selected examples in deterministic collection order.
-    """
-    if arguments.command == "build":
-        return _select_examples(examples, arguments.examples)
-    if arguments.command == "run":
-        return (_select_run_example(examples, arguments.example, examples_dir),)
-
-    selected_ids = {example.id for example, _ in _select_tests(examples, arguments.selectors)}
-    return tuple(example for example in examples if example.id in selected_ids)
 
 
 def _add_environment_arguments(parser: argparse.ArgumentParser, destination: str) -> None:
@@ -1726,7 +2560,7 @@ def _create_argument_parser(default_build_root: Path) -> argparse.ArgumentParser
     parser.add_argument("--make-program")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("list", help="List published examples by stable ID.")
+    subparsers.add_parser("list", help="List examples by stable ID.")
 
     build_parser = subparsers.add_parser("build", help="Build selected examples, or all examples by default.")
     _add_environment_arguments(build_parser, "command_environment_mode")
@@ -1746,7 +2580,7 @@ def _create_argument_parser(default_build_root: Path) -> argparse.ArgumentParser
     )
     test_parser.add_argument("selectors", nargs="*", metavar="EXAMPLE_ID[:TEST_NAME]")
 
-    catalog_parser = subparsers.add_parser("catalog", help="Write the validated published-example catalog.")
+    catalog_parser = subparsers.add_parser("catalog", help="Write the validated example catalog.")
     catalog_parser.add_argument("--format", choices=("json",), default="json")
     catalog_parser.add_argument("--output", type=Path, required=True)
     catalog_parser.add_argument(
@@ -1779,10 +2613,8 @@ def _main() -> int:
             arguments.output.parent.mkdir(parents=True, exist_ok=True)
             arguments.output.write_text(json.dumps(catalog, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             return 0
-        examples = _load_examples(examples_dir)
         if arguments.command == "list":
-            for example in examples:
-                print(f"{example.id}\t{example.title}")
+            print(_format_examples_table(_load_examples(examples_dir)))
             return 0
         selected_modes = {arguments.root_environment_mode, arguments.command_environment_mode} - {None}
         if len(selected_modes) > 1:
@@ -1794,40 +2626,33 @@ def _main() -> int:
         environment_mode = arguments.command_environment_mode or arguments.root_environment_mode
         environment_mode = environment_mode or ("dev" if source_checkout else "installed")
         developer_build = None
-        active_developer_build = None
-        environment_was_announced = False
         if environment_mode == "dev":
             if not source_checkout:
                 raise ExampleError("--dev requires examples.py to be run from an Isaac Sim source checkout")
             library_build_dir = repository_root / "_cmake_build" / f"isaacsim-libraries-{arguments.config.lower()}"
             resources.enter_context(_developer_environment_lock(library_build_dir, exclusive=False))
-            developer_build = _read_developer_build(repository_root, arguments.config)
-            expected_developer_build = str(developer_build.library_build_dir.resolve())
+            expected_developer_build = str(library_build_dir.resolve())
             active_developer_build = os.environ.get(DEVELOPER_ENVIRONMENT_VARIABLE)
-            if active_developer_build not in {
-                expected_developer_build,
-                f"{DEVELOPER_BOOTSTRAP_PREFIX}{expected_developer_build}",
-            }:
+            # Hash sources in the final environment while holding its lock. Metadata and
+            # path checks still run before the restart needed to select that environment.
+            developer_build = _read_developer_build(
+                repository_root,
+                arguments.config,
+                validate_sources=active_developer_build == expected_developer_build,
+            )
+            if (
+                active_developer_build != expected_developer_build
+                or Path(sys.executable).resolve() != developer_build.python.resolve()
+            ):
                 print(f"Examples environment: developer ({developer_build.library_build_dir})", flush=True)
-                environment_was_announced = True
-                if Path(sys.executable).resolve() != developer_build.python.resolve():
-                    bootstrap_environment = os.environ.copy()
-                    bootstrap_environment[DEVELOPER_ENVIRONMENT_VARIABLE] = (
-                        f"{DEVELOPER_BOOTSTRAP_PREFIX}{expected_developer_build}"
-                    )
-                    return _restart_in_environment(developer_build.python, bootstrap_environment)
+                environment = _create_developer_environment(developer_build)
+                return _restart_in_environment(developer_build.python, environment)
         system_requirements = _load_system_requirements(
             repository_root / "source" / "libraries" / "system_requirements.toml"
         )
         if environment_mode == "dev":
             if developer_build is None:
                 raise ExampleError("Developer environment selection did not resolve a configured build")
-            expected_developer_build = str(developer_build.library_build_dir.resolve())
-            if active_developer_build != expected_developer_build:
-                if not environment_was_announced:
-                    print(f"Examples environment: developer ({developer_build.library_build_dir})", flush=True)
-                environment = _create_developer_environment(developer_build)
-                return _restart_in_environment(developer_build.python, environment)
             arguments.cmake = str(developer_build.cmake)
             arguments.generator = arguments.generator or developer_build.generator
             arguments.generator_platform = arguments.generator_platform or developer_build.generator_platform
@@ -1836,9 +2661,26 @@ def _main() -> int:
         else:
             print("Examples environment: installed", flush=True)
         _validate_python_version(system_requirements)
+        examples = _load_examples(examples_dir)
         build_root = arguments.build_root.resolve()
         _validate_build_root(build_root, examples_dir)
+        selected_build_examples = _select_examples(examples, arguments.examples) if arguments.command == "build" else ()
+        run_example = (
+            _select_run_example(examples, arguments.example, examples_dir) if arguments.command == "run" else None
+        )
+        tests = _select_tests(examples, arguments.selectors) if arguments.command == "test" else ()
+        builds_dependencies = arguments.command == "build" or (arguments.command == "test" and not arguments.no_build)
+        if _collect_python_packages(examples):
+            resources.enter_context(_python_dependency_lock(build_root, exclusive=builds_dependencies))
+        if _collect_cpp_packages(examples):
+            resources.enter_context(_cpp_dependency_lock(build_root, exclusive=builds_dependencies))
+        python_dependency_loader = _prepare_python_dependencies if builds_dependencies else _require_python_dependencies
+        cpp_dependency_loader = _prepare_cpp_dependencies if builds_dependencies else _require_cpp_dependencies
+        python_dependency_dir = python_dependency_loader(examples, build_root)
+        cpp_dependencies = cpp_dependency_loader(examples, build_root)
         common_build_arguments = (
+            python_dependency_dir,
+            cpp_dependencies,
             system_requirements,
             build_root,
             arguments.cmake,
@@ -1849,18 +2691,20 @@ def _main() -> int:
             arguments.make_program,
         )
         if arguments.command == "build":
-            for example in _select_examples(examples, arguments.examples):
+            for example in selected_build_examples:
                 _build_example(example, *common_build_arguments)
             return 0
         if arguments.command == "run":
-            example = _select_run_example(examples, arguments.example, examples_dir)
-            build_dir = _build_example(example, *common_build_arguments)
+            if run_example is None:
+                raise ExampleError("Run command did not select an example")
+            example = run_example
+            build_dir = build_root / example.id
+            _build_example(example, *common_build_arguments)
             passthrough = tuple(arguments.arguments)
             if passthrough[:1] == ("--",):
                 passthrough = passthrough[1:]
-            return _run_example(example, build_dir, passthrough)
+            return _run_example(example, build_dir, passthrough, python_dependency_dir, cpp_dependencies)
 
-        tests = _select_tests(examples, arguments.selectors)
         selected_example_ids = {example.id for example, _ in tests}
         if arguments.selectors:
             explicitly_selected_examples = {selector.partition(":")[0] for selector in arguments.selectors}
@@ -1872,12 +2716,13 @@ def _main() -> int:
         build_directories: dict[str, Path] = {}
         for example in examples:
             if example.id in selected_example_ids:
+                build_dir = build_root / example.id
                 if arguments.no_build:
-                    build_directories[example.id] = build_root / example.id
+                    build_directories[example.id] = build_dir
                 else:
                     build_directories[example.id] = _build_example(example, *common_build_arguments)
         for example, test in tests:
-            _test_example(example, test, build_directories[example.id])
+            _test_example(example, test, build_directories[example.id], python_dependency_dir, cpp_dependencies)
         return 0
     except (ExampleError, OSError) as error:
         print(f"Error: {error}", file=sys.stderr)

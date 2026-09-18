@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [build-system]
-requires = ["scikit-build-core==1.0.3"]
+requires = ["scikit-build-core>=1.0.3"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "isaacsim_physics_engines"
+name = "isaacsim-physics-engines"
 dynamic = ["version", "dependencies"]
-description = "Isaac Sim physics engine backends: ovphysx (over PhysX) and ovnewton (over Newton), over the isaacsim.physics registration + manager API"
+description = "OvPhysX, Newton, and OVStage providers for the backend-neutral Isaac Sim physics APIs"
 requires-python = "==3.12.*"
 license = "Apache-2.0"
 authors = [{ name = "NVIDIA Corporation" }]
@@ -19,7 +19,7 @@ dependencies = [
     "warp-lang>=1.16.0",
 ]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]
@@ -33,7 +33,7 @@ regex = '''^(?P<value>[^\r\n]+)$'''
 [[tool.dynamic-metadata]]
 provider = { path = "../../packaging", module = "isaacsim_libraries_metadata" }
 field = "dependencies"
-names = ["isaacsim_physics"]
+names = ["isaacsim-physics"]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"

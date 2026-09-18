@@ -225,7 +225,8 @@ class ObstacleStrategy:
 
         if configuration.safety_tolerance < 0 and not allow_negative_tolerance:
             raise ValueError(
-                f"Safety tolerance cannot be negative. Got {configuration.safety_tolerance}. Use allow_negative_tolerance=True to allow negative tolerances."
+                f"Safety tolerance cannot be negative. Got {configuration.safety_tolerance}. "
+                "Use allow_negative_tolerance=True to allow negative tolerances."
             )
 
         self.__shape_configuration_overrides[prim_type] = configuration
@@ -251,7 +252,8 @@ class ObstacleStrategy:
         """
         if safety_tolerance < 0 and not allow_negative_tolerance:
             raise ValueError(
-                f"Safety tolerance cannot be negative. Got {safety_tolerance}. Use allow_negative_tolerance=True to allow negative tolerances."
+                f"Safety tolerance cannot be negative. Got {safety_tolerance}. "
+                "Use allow_negative_tolerance=True to allow negative tolerances."
             )
 
         for prim_type in self.__default_configurations:
@@ -310,12 +312,14 @@ class ObstacleStrategy:
             # verify that the representation is legal for this type:
             if not (configuration.representation in _LEGAL_REPRESENTATIONS[prim_type]):
                 raise ValueError(
-                    f"{configuration.representation} is not a valid obstacle representation for {prim_type}. No overrides will be applied."
+                    f"{configuration.representation} is not a valid obstacle representation for {prim_type}. "
+                    "No overrides will be applied."
                 )
 
             if configuration.safety_tolerance < 0 and not allow_negative_tolerance:
                 raise ValueError(
-                    f"Safety tolerance cannot be negative. Got {configuration.safety_tolerance}. Use allow_negative_tolerance=True to allow negative tolerances."
+                    f"Safety tolerance cannot be negative. Got {configuration.safety_tolerance}. "
+                    "Use allow_negative_tolerance=True to allow negative tolerances."
                 )
 
         # All configurations are valid, so set the overrides:

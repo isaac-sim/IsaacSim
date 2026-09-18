@@ -3,7 +3,7 @@ name: isaac-sim-orchestrator
 description: "Execute end-to-end Isaac Sim work through ordered specialist skills and validation. Use when an established goal requires multi-skill scene, robot, render, sensor, or SDG integration."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Isaac Sim Orchestrator

@@ -210,7 +210,8 @@ class JointState:
 
             if len(vector) != len(names):
                 raise ValueError(
-                    "Any defined [positions, velocities, efforts] must have the same length as their corresponding name list"
+                    "Any defined [positions, velocities, efforts] must have the same length as their corresponding "
+                    "name list"
                 )
 
             if len(set(names)) != len(names):
@@ -346,7 +347,8 @@ class JointState:
 
             if len(vector) != len(indices):
                 raise ValueError(
-                    "Any defined [positions, velocities, efforts] must have the same length as their corresponding index list."
+                    "Any defined [positions, velocities, efforts] must have the same length as their corresponding "
+                    "index list."
                 )
 
         # all inputs are valid, construct the joint-data and valid-arrays:
@@ -635,7 +637,8 @@ class SpatialState:
             position_data.shape == linear_velocity_data.shape == angular_velocity_data.shape == (len(spatial_space), 3)
         ):
             raise ValueError(
-                f"One of position_data, linear_velocity_data, or angular_velocity_data is not correctly sized for this spatial-space."
+                "One of position_data, linear_velocity_data, or angular_velocity_data is not correctly sized for "
+                "this spatial-space."
             )
 
         if not (valid_array.shape == (len(spatial_space), 4)):
@@ -746,7 +749,8 @@ class SpatialState:
                 or (vector.dtype not in (wp.float32, wp.float64, float))
             ):
                 raise ValueError(
-                    "Any defined [positions, orientations, linear or angular velocity] must be a 2D warp array of float types."
+                    "Any defined [positions, orientations, linear or angular velocity] must be a 2D Warp array of "
+                    "float types."
                 )
 
             if vector.shape[0] < 1:
@@ -764,7 +768,8 @@ class SpatialState:
 
             if vector.shape[0] != len(names):
                 raise ValueError(
-                    "Any defined [positions, orientations, linear or angular velocity] must have the same length as their corresponding name list"
+                    "Any defined [positions, orientations, linear or angular velocity] must have the same length as "
+                    "their corresponding name list"
                 )
 
             if not (set(names).issubset(spatial_space)):
@@ -887,7 +892,8 @@ class SpatialState:
                 or (vector.dtype not in (wp.float32, wp.float64, float))
             ):
                 raise ValueError(
-                    "Any defined [positions, orientations, linear or angular velocity] must be a 2D warp array of float types."
+                    "Any defined [positions, orientations, linear or angular velocity] must be a 2D Warp array of "
+                    "float types."
                 )
 
             if vector.shape[0] < 1:
@@ -897,7 +903,8 @@ class SpatialState:
 
             if not isinstance(indices, wp.array) or (indices.ndim != 1) or (indices.dtype not in (wp.int32, int)):
                 raise ValueError(
-                    "All defined [positions, orientations, linear or angular velocity] indices must be 1D-warp arrays of int types."
+                    "All defined [positions, orientations, linear or angular velocity] indices must be 1D Warp "
+                    "arrays of int types."
                 )
 
             if (indices.numpy() < 0).any() or (indices.numpy() >= len(spatial_space)).any():
@@ -910,7 +917,8 @@ class SpatialState:
 
             if vector.shape[0] != len(indices):
                 raise ValueError(
-                    "Any defined [positions, orientations, linear or angular velocity] must have the same length as their corresponding name list"
+                    "Any defined [positions, orientations, linear or angular velocity] must have the same length as "
+                    "their corresponding name list"
                 )
 
         if (positions is not None) and (positions[1].shape[1] != 3):

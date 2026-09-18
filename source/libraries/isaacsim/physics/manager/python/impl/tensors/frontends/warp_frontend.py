@@ -72,6 +72,7 @@ def parse_device(device_ordinal: int) -> wp.Device:
 
     Returns:
         Resolved Warp device.
+
     """
     if device_ordinal == -1:
         return wp.get_device("cpu")
@@ -89,6 +90,7 @@ def device_ordinal_from_warp(wp_device: wp.Device) -> int:
 
     Raises:
         ValueError: If ``wp_device`` is neither a CPU nor CUDA device.
+
     """
     if wp_device.is_cpu:
         return -1
@@ -111,6 +113,7 @@ def create_tensor(shape: Sequence[int], dtype: DType | wp.dtype, device_ordinal:
 
     Raises:
         KeyError: If ``dtype`` has no Warp mapping.
+
     """
     # Accept either an umbrella DType (canonical) or a raw Warp dtype.
     if dtype in _DTYPE_FROM_WARP:
@@ -135,6 +138,7 @@ def wrap_tensor(value: object | None) -> wp.array | None:
         ``value`` unchanged when it is already a Warp array, a Warp array
         imported through DLPack or copied from an array-like value, or ``None``
         when ``value`` is ``None``.
+
     """
     if value is None:
         return None
@@ -147,7 +151,7 @@ def wrap_tensor(value: object | None) -> wp.array | None:
 
 
 def unwrap_to_array(value: TensorValue) -> TensorValue:
-    """Placeholder outbound conversion: return the value unchanged.
+    """Return the value unchanged for placeholder outbound conversion.
 
     This is the write-direction counterpart to :func:`wrap_tensor` (frontend
     tensor -> value handed to the C++ binding), kept as a seam for a future
@@ -161,6 +165,7 @@ def unwrap_to_array(value: TensorValue) -> TensorValue:
 
     Returns:
         The original object, unchanged.
+
     """
     return value
 
@@ -181,6 +186,7 @@ def as_contiguous(tensor: wp.array, dtype: DType | wp.dtype | None) -> wp.array:
 
     Raises:
         TypeError: If the scalar data type does not match ``dtype``.
+
     """
     if dtype is None:
         return tensor
@@ -206,6 +212,7 @@ def dtype_to_warp(dtype: DType) -> wp.dtype:
 
     Raises:
         KeyError: If ``dtype`` has no Warp mapping.
+
     """
     return _DTYPE_TO_WARP[dtype]
 
@@ -224,5 +231,6 @@ def dtype_from_warp(wp_dtype: wp.dtype) -> DType:
 
     Raises:
         KeyError: If ``wp_dtype`` has no registration mapping.
+
     """
     return _DTYPE_FROM_WARP[wp_dtype]

@@ -15,8 +15,7 @@
 
 /* Internal OpenGL renderer interface for OVStage scenes.
  * ovgl_render_frame writes framebuffer output into a host RGBA8 buffer. */
-#ifndef OVGL_H
-#define OVGL_H
+#pragma once
 
 #include <ovstage/ovstage.h> /* ovstage_instance_t, ovstage_ordinal_t, ovx_string_t */
 
@@ -116,12 +115,24 @@ extern "C"
                                          int* out_tex_height);
 
     /* GUI present: render against `ordinal` in the caller's current GL context and blit the
-     * frame straight into `dst_fbo` (a Qt QOpenGLWidget's defaultFramebufferObject()) at w×h.
-     * All GL stays in C -- paintGL is a one-liner. dst_fbo must be single-sample. The first
-     * successful adopted render pins the renderer to the exact current context; later adopted
-     * renders and destruction require that same context and fail closed otherwise. */
-    ovgl_result_t ovgl_render_to_fbo(
-        ovgl_renderer_t* renderer, ovstage_ordinal_t ordinal, unsigned dst_fbo, int output_width, int output_height);
+     * frame straight into `dst_fbo`. The source rectangle uses top-down output coordinates. The
+     * destination is cleared and the source is aspect-fitted into destination_width x
+     * destination_height. Optional overlay text is composed after the blit and is not part of any
+     * host capture. dst_fbo must be single-sample. The first successful adopted render pins the
+     * renderer to the exact current context; later adopted renders and destruction require that
+     * same context and fail closed otherwise. */
+    ovgl_result_t ovgl_render_to_fbo(ovgl_renderer_t* renderer,
+                                     ovstage_ordinal_t ordinal,
+                                     unsigned dst_fbo,
+                                     int output_width,
+                                     int output_height,
+                                     int source_x0,
+                                     int source_y0,
+                                     int source_x1,
+                                     int source_y1,
+                                     int destination_width,
+                                     int destination_height,
+                                     const char* overlay_text);
 
     /* Cheap transform-only update: re-read worldMatrix (and re-derive world bounds) for the
      * already-cached meshes at `ordinal`, WITHOUT re-reading geometry or re-uploading GL buffers,
@@ -139,6 +150,23 @@ extern "C"
      * Requires a prior successful render_frame (topology built); fails otherwise so a caller
      * cannot skip the initial build. Does nothing while pull is paused. */
     ovgl_result_t ovgl_refresh_transforms(ovgl_renderer_t* renderer, ovstage_ordinal_t ordinal);
+
+    /* Replace the resident mesh transforms from an already-composed dense batch
+     * in ovgl mesh order. This is the attached backend's transform-only fast
+     * path: it avoids publishing and rereading the private mirror when the
+     * retained pulled snapshot can compose the exact worlds itself. The update
+     * is atomic and also refreshes mesh/scene bounds. Curves and compact
+     * instances are currently unsupported; failure leaves the resident scene
+     * and published ordinal unchanged so the caller can use its mirror path. */
+    ovgl_result_t ovgl_refresh_transform_batch(ovgl_renderer_t* renderer,
+                                               ovstage_ordinal_t ordinal,
+                                               const double* world_matrices,
+                                               size_t mesh_count);
+
+    /* Force the next render to rebuild its resident scene from the attached
+     * OVStage, even if the numeric ordinal happens to match the last direct
+     * transform batch. CPU/GPU resources remain owned until that rebuild. */
+    ovgl_result_t ovgl_invalidate_scene(ovgl_renderer_t* renderer);
 
     /* Targeted material refresh (companion to ovgl_refresh_transforms, for change
      * windows carrying only shader-input value edits): re-resolve each cached
@@ -207,7 +235,7 @@ extern "C"
     /* Fill `out` with mesh `index` in [0, ovgl_get_mesh_count). */
     ovgl_result_t ovgl_get_mesh_view(ovgl_renderer_t* renderer, int32_t index, ovgl_mesh_view_t* out);
 
-    /* ── Grid + axes overlay (stock-viewport parity) ───────────────────────────
+    /* Grid and axes overlay (stock-viewport parity).
      *
      * Opt-in per renderer, default OFF. While enabled, every render path
      * (render_frame / render_to_texture / render_to_fbo) draws a world-space
@@ -236,7 +264,7 @@ extern "C"
      * created renderers start with the overlay enabled. */
     ovgl_result_t ovgl_set_grid_overlay(ovgl_renderer_t* renderer, int enabled);
 
-    /* ── Screen-space ambient occlusion ───────────────────────────────────────
+    /* Screen-space ambient occlusion.
      *
      * ovgl computes geometric AO from a depth+normal prepass and applies it to the
      * AMBIENT (environment/IBL) term only — never to direct light, which already
@@ -273,7 +301,7 @@ extern "C"
     ovgl_result_t ovgl_get_ao_settings(
         ovgl_renderer_t* renderer, int* enabled, float* radius, float* bias, float* intensity, float* strength);
 
-    /* ── Depth AOV (linear image-plane depth readback) ─────────────────────────
+    /* Depth AOV (linear image-plane depth readback).
      *
      * Opt-in per renderer. While enabled, every successful HEADLESS
      * ovgl_render_frame additionally reads the frame's depth buffer back into a
@@ -319,5 +347,3 @@ extern "C"
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
-
-#endif /* OVGL_H */

@@ -143,7 +143,7 @@ function(isaacsim_add_usd_schema_module)
             set(schema_output_dir "${package_output_dir}/${schema_directory}")
             list(APPEND schema_commands
                 COMMAND ${Python_EXECUTABLE} -s
-                    "${_ISAACSIM_CMAKE_HELPER_DIR}/RunUsdGenSchema.py"
+                    "${_ISAACSIM_CMAKE_HELPER_DIR}/run_usd_gen_schema.py"
                     "--build-deps=${ISAACSIM_PYTHON_SCHEMA_BUILD_DEPS_DIR}"
                     "--usd-root=${usd_root}"
                     "--expected-usd-version=${usd_version}"
@@ -170,7 +170,7 @@ function(isaacsim_add_usd_schema_module)
                 ${schema_sources}
                 "${_ISAACSIM_CMAKE_HELPER_DIR}/CopyPythonPackage.cmake"
                 "${_ISAACSIM_CMAKE_HELPER_DIR}/IsaacSimPackagingFilters.cmake"
-                "${_ISAACSIM_CMAKE_HELPER_DIR}/RunUsdGenSchema.py"
+                "${_ISAACSIM_CMAKE_HELPER_DIR}/run_usd_gen_schema.py"
                 "${_ISAACSIM_CMAKE_HELPER_DIR}/StageEditableDirectory.cmake"
                 "${usd_root}/lib/python/pxr/Usd/usdGenSchema.py"
             VERBATIM

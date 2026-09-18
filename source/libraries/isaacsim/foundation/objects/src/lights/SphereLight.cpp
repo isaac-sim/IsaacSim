@@ -26,12 +26,8 @@ namespace lights
 
 SphereLight::SphereLight(const std::variant<std::string, std::vector<std::string>>& paths,
                          const std::optional<array::Array>& radii,
-                         const std::optional<array::Array>& positions,
-                         const std::optional<array::Array>& translations,
-                         const std::optional<array::Array>& orientations,
-                         const std::optional<array::Array>& scales,
                          bool resetXformOpProperties)
-    : Light(paths, /*lightType=*/"SphereLight", positions, translations, orientations, scales, resetXformOpProperties)
+    : Light(paths, /*lightType=*/"SphereLight", resetXformOpProperties)
 {
     // Initialize instance from arguments.
     if (radii.has_value())
@@ -60,6 +56,11 @@ void SphereLight::setEnabledTreatAsPoints(const array::Array& enabled, const std
 array::Array SphereLight::getEnabledTreatAsPoints(const std::optional<array::Array>& indices)
 {
     return std::get<array::Array>(this->getAttributeValues("treatAsPoint", indices));
+}
+
+array::Array SphereLight::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("SphereLight");
 }
 
 } // namespace lights

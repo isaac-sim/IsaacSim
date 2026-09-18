@@ -26,7 +26,6 @@ import os
 import sys
 
 import warp as wp
-from isaacsim.physics.manager.impl.tensors import SimulationView
 
 _PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PARENT_DIR not in sys.path:
@@ -38,6 +37,7 @@ from _scenario import (  # noqa: E402
     GridParams,
     GridTestBase,
     SimParams,
+    SimulationEntities,
     Transform,
     get_asset_root,
     pack_wrench,
@@ -63,11 +63,11 @@ class RigidBodyViewCommon(GridTestBase):
         transform = Transform((0.0, 0.0, 0.5))
         self.create_rigid_ball(actor_path, transform, 0.15)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create a view and verify its body count and any resolved paths.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         balls = sim.create_rigid_body_view("/envs/*/ball")
@@ -82,11 +82,11 @@ class RigidBodyViewCommon(GridTestBase):
 
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Ignore physics steps because the scenario finishes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -115,11 +115,11 @@ class RigidBodyEnableDisablePhysicsCommon(GridTestBase):
             ball = self.create_rigid_ball(actor_path, transform, 0.1)
             UsdPhysics.MassAPI(ball).GetMassAttr().Set(1.0)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Disable alternating bodies and verify the indexed state write.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.balls = sim.create_rigid_body_view("/envs/*/ball_*")
@@ -143,11 +143,11 @@ class RigidBodyEnableDisablePhysicsCommon(GridTestBase):
 
         self.dt = 1.0 / self.sim_params.time_steps_per_second
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Swap the disabled subset and verify only enabled bodies fall.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -190,6 +190,7 @@ class RigidBodyDisableGravityCommon(GridTestBase):
     Args:
         test_case: Test instance associated with the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -205,11 +206,12 @@ class RigidBodyDisableGravityCommon(GridTestBase):
             ball = self.create_rigid_ball(actor_path, transform, 0.1)
             UsdPhysics.MassAPI(ball).GetMassAttr().Set(1.0)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Disable gravity for alternating bodies and verify round-trip state.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.balls = sim.create_rigid_body_view("/envs/*/ball_*")
         self.check_rigid_body_view(self.balls, self.num_envs * self.num_balls)
@@ -237,13 +239,14 @@ class RigidBodyDisableGravityCommon(GridTestBase):
 
         self.dt = 1.0 / self.sim_params.time_steps_per_second
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Verify gravity-disabled bodies remain stationary.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Simulated time interval in seconds.
+
         """
         if stepno != 1:
             return
@@ -276,11 +279,11 @@ class ReproInertiaSetGetConsistencyCommon(GridTestBase):
         mass_api.CreatePrincipalAxesAttr().Set(Gf.Quatf(0.5, 0.5, 0.5, 0.5))
         mass_api.CreateDiagonalInertiaAttr().Set(Gf.Vec3f(0.1, 0.2, 0.3))
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Round-trip the authored inertia tensor through the rigid-body view.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         balls = sim.create_rigid_body_view("/envs/*/ball")
@@ -295,11 +298,11 @@ class ReproInertiaSetGetConsistencyCommon(GridTestBase):
         assert wp_utils.wp_allclose(initial_np, new_np), "set_inertias(get_inertias()) must be a no-op"
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Ignore physics steps because the scenario finishes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -320,11 +323,11 @@ class RigidBodyShapePropertiesCommon(GridTestBase):
         actor_path = self.env_template_path.AppendChild("ball")
         self.create_rigid_ball(actor_path, Transform((0.0, 0.0, 0.5)), 0.15)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Write and read material, contact-offset, and rest-offset data.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         balls = sim.create_rigid_body_view("/envs/*/ball")
@@ -357,11 +360,11 @@ class RigidBodyShapePropertiesCommon(GridTestBase):
 
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Ignore physics steps because the scenario finishes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -384,11 +387,11 @@ class RigidBodyPropertiesCommon(GridTestBase):
         actor_path = self.env_template_path.AppendChild("ball")
         self.create_rigid_ball(actor_path, Transform((0.0, 0.0, 0.5)), 0.15)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Round-trip writable properties and inspect inverse-property shapes.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         balls = sim.create_rigid_body_view("/envs/*/ball")
@@ -416,11 +419,11 @@ class RigidBodyPropertiesCommon(GridTestBase):
 
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Ignore physics steps because the scenario finishes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -446,11 +449,11 @@ class RigidBodyComsSubsetRoundTripCommon(GridTestBase):
         actor_path = self.env_template_path.AppendChild("ball")
         self.create_rigid_ball(actor_path, Transform((0.0, 0.0, 0.5)), 0.15)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Write and read a nonidentity center-of-mass transform.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         # One-body view of the last env's ball: its model body index is > 0, so
@@ -470,11 +473,11 @@ class RigidBodyComsSubsetRoundTripCommon(GridTestBase):
 
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Ignore physics steps because the scenario finishes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -500,11 +503,11 @@ class RigidBodyTransformsCommon(GridTestBase):
         actor_path = self.env_template_path.AppendChild("ball")
         self.create_rigid_ball(actor_path, Transform((0.0, 0.0, 0.5)), 0.15)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Apply distinct vertical offsets to the body transforms.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.balls = sim.create_rigid_body_view("/envs/*/ball")
@@ -518,11 +521,11 @@ class RigidBodyTransformsCommon(GridTestBase):
         self.balls.set_data("transforms", wp_transforms, self.all_indices)
         self.expected_transforms = transforms_np
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Verify the written transforms after simulation advances.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -554,11 +557,11 @@ class RigidBodyVelocitiesCommon(GridTestBase):
         actor_path = self.env_template_path.AppendChild("ball")
         self.create_rigid_ball(actor_path, Transform((0.0, 0.0, 0.5)), 0.15)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Assign distinct vertical velocities in the gravity-free scene.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.balls = sim.create_rigid_body_view("/envs/*/ball")
@@ -570,11 +573,11 @@ class RigidBodyVelocitiesCommon(GridTestBase):
         self.balls.set_data("velocities", wp_vels, self.all_indices)
         self.expected_vels = vels_np
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Verify the assigned velocities remain unchanged.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -604,11 +607,11 @@ class RigidBodyAccelerationsCommon(GridTestBase):
         actor_path = self.env_template_path.AppendChild("ball")
         self.create_rigid_ball(actor_path, Transform((0.0, 0.0, 0.5)), 0.15)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Assign initial vertical velocities before sampling acceleration.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.balls = sim.create_rigid_body_view("/envs/*/ball")
@@ -619,11 +622,11 @@ class RigidBodyAccelerationsCommon(GridTestBase):
         wp_vels = wp.from_numpy(vels_np, dtype=wp.float32, device=self.wp_device)
         self.balls.set_data("velocities", wp_vels, self.all_indices)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Compare acceleration data with consecutive velocity samples.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -662,11 +665,11 @@ class RigidBodyForceCommon(GridTestBase):
         self.transform = Transform((0.0, 0.0, 0.5), q)
         self.create_rigid_ball(self.env_template_path.AppendChild("ball"), self.transform, 0.15)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Prepare the body view and apply the CPU-pipeline force.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.balls = sim.create_rigid_body_view("/envs/*/ball")
@@ -688,11 +691,11 @@ class RigidBodyForceCommon(GridTestBase):
         indices = wp_utils.arange(self.balls.count, device=self.wp_device)
         self.balls.set_data("apply-forces-and-torques-at-position", wrench, indices)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Apply any deferred force and validate the launch trajectory.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -716,11 +719,11 @@ class RigidBodyZeroIndexSetCommon(RigidBodyForceCommon):
     omitted index array that selects every row.
     """
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Apply an empty indexed write and verify velocities are unchanged.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         balls = sim.create_rigid_body_view("/envs/*/ball")
@@ -735,11 +738,11 @@ class RigidBodyZeroIndexSetCommon(RigidBodyForceCommon):
         assert (before == after).all(), "K==0 indexed set must be a no-op"
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Ignore physics steps because the scenario finishes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -781,22 +784,22 @@ class _RigidBodiesGetSetBase(GridTestBase):
 class RigidBodiesGetSetTransformsCommon(_RigidBodiesGetSetBase):
     """Validate transform writes across a heterogeneous rigid-body view."""
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create a view containing free bodies and articulation links.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.rb_view = sim.create_rigid_body_view(self.patterns)
         self.check_rigid_body_view(self.rb_view, self.num_envs * self.body_per_env)
         self.all_indices = wp_utils.arange(self.rb_view.count, device=self.wp_device)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Raise every selected transform and verify its vertical position.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -815,22 +818,22 @@ class RigidBodiesGetSetTransformsCommon(_RigidBodiesGetSetBase):
 class RigidBodiesGetSetVelocitiesCommon(_RigidBodiesGetSetBase):
     """Validate velocity writes across a heterogeneous rigid-body view."""
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create a view containing free bodies and articulation links.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.rb_view = sim.create_rigid_body_view(self.patterns)
         self.check_rigid_body_view(self.rb_view, self.num_envs * self.body_per_env)
         self.all_indices = wp_utils.arange(self.rb_view.count, device=self.wp_device)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Increase every selected body's vertical velocity and verify the write.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -851,11 +854,11 @@ class RigidBodiesGetSetAppliedForcesCommon(_RigidBodiesGetSetBase):
 
     body_names = ("right_ball", "left_ball", "torso", "right_back_leg", "right_back_foot")
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Prepare upward forces and their application positions.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.rb_view = sim.create_rigid_body_view(self.patterns)
@@ -870,11 +873,11 @@ class RigidBodiesGetSetAppliedForcesCommon(_RigidBodiesGetSetBase):
         self.forces_wp = wp_utils.fill_vec3(self.rb_view.count, value=global_force, device=self.wp_device)
         self.positions_wp = wp.from_numpy(positions.flatten(), dtype=wp.float32, device=self.wp_device)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Apply the forces and verify every selected body rises.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -917,11 +920,11 @@ class RigidBodyForceAtPosCommon(GridTestBase):
         actor_path_2 = self.env_template_path.AppendChild("ant_2")
         self.create_actor_from_asset(actor_path_2, Transform((0.0, 10.0, 2.0)), ant_asset)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create equivalent views and prepare matching force inputs.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         # Select only articulation links so both views receive the same body set.
@@ -975,11 +978,11 @@ class RigidBodyForceAtPosCommon(GridTestBase):
             i for i, p in enumerate(self.rb_view.get_metadata("prim-paths") or []) if p.endswith("torso")
         ]
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Apply matching wrenches and compare all identifiable root heights.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -1004,49 +1007,3 @@ class RigidBodyForceAtPosCommon(GridTestBase):
                     arti_root[:, 2], rb_root[:, 2], rtol=1e-3, atol=1e-2
                 ), "root height matches between rb_view + arti_view force application"
             self.finish()
-
-
-class ObjectTypeCommon(GridTestBase):
-    """Validate object-type lookup for a rigid body and articulation root.
-
-    Args:
-        test_case: Test instance associated with the scenario.
-        device_params: Simulation and tensor device selection.
-
-    """
-
-    def __init__(self, test_case: object, device_params: DeviceParams) -> None:
-        grid_params = GridParams(num_envs=16, env_spacing=2.0)
-        super().__init__(test_case, grid_params, SimParams(), device_params)
-        self.create_rigid_ball(self.env_template_path.AppendChild("ball"), Transform((0.0, 0.0, 0.5)), 0.15)
-
-        ant_asset = os.path.join(get_asset_root(), "Ant.usda")
-        self.create_actor_from_asset(
-            self.env_template_path.AppendChild("ant"),
-            Transform((0.0, -2.0, 2.0)),
-            ant_asset,
-        )
-
-    def on_start(self, sim: SimulationView) -> None:
-        """Verify lookup returns values for both representative prims.
-
-        Args:
-            sim: Simulation view under test.
-
-        """
-        get_obj = sim.get_object_type
-        ot_ball = get_obj("/envs/env0/ball")
-        ot_torso = get_obj("/envs/env0/ant/torso")
-        assert ot_ball is not None, "rigid body should resolve to a non-None object type"
-        assert ot_torso is not None, "articulation root link should resolve to a non-None object type"
-        self.finish()
-
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
-        """Ignore physics steps because the scenario finishes during startup.
-
-        Args:
-            sim: Simulation view under test.
-            stepno: Zero-based simulation step number.
-            dt: Simulated time interval in seconds.
-
-        """

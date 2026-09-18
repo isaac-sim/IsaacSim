@@ -26,11 +26,11 @@ isaacsim_add_module(
         isaacsim::physics-manager
         isaacsim::physics-entities
     PUBLIC_CPP_HEADERS
-        isaacsim/physics/ovsim/details/Registry.hpp
         isaacsim/physics/ovsim/control/authoring/Authoring.hpp
         isaacsim/physics/ovsim/control/simulation/Simulation.hpp
         isaacsim/physics/ovsim/data/Data.hpp
     SOURCES
+        src/details/Registry.hpp
         src/details/Registry.cpp
         src/Control.cpp
         src/Data.cpp
@@ -41,7 +41,7 @@ target_include_directories(isaacsim-physics-ovsim PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/ovsim/interfaces/cpp>
 )
 
-# The public physics wrappers include the canonical OV Sim interface headers,
+# The public physics wrappers include the canonical OV SIM interface headers,
 # so ship those headers with the same development component.
 get_target_property(isaacsim_physics_ovsim_group isaacsim-physics-ovsim ISAACSIM_GROUP_NAME)
 _isaacsim_get_group_component(

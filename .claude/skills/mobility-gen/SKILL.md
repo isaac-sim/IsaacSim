@@ -3,7 +3,7 @@ name: mobility-gen
 description: "MobilityGen SDG: record trajectories then replay-render sensors. Use for mobile-robot synthetic datasets."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # MobilityGen Synthetic Data Generation

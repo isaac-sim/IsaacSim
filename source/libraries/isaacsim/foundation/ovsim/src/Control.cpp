@@ -13,14 +13,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "details/Registry.hpp"
+
 #include <isaacsim/common/string/String.hpp>
 #include <isaacsim/foundation/objects/Prim.hpp>
 #include <isaacsim/foundation/objects/Stage.hpp>
 #include <isaacsim/foundation/ovsim/control/authoring/Authoring.hpp>
 #include <isaacsim/foundation/ovsim/control/simulation/Simulation.hpp>
-#include <isaacsim/foundation/ovsim/details/Registry.hpp>
 #include <isaacsim/foundation/prims/physics/Articulation.hpp>
 #include <isaacsim/foundation/prims/physics/ColliderBody.hpp>
+#include <isaacsim/foundation/prims/physics/GroundPlane.hpp>
 #include <isaacsim/foundation/prims/physics/RigidBody.hpp>
 #include <isaacsim/foundation/utils/Stage.hpp>
 
@@ -112,6 +114,11 @@ bool definePrim(const std::string& path, const std::string& typeName)
         prims::physics::ColliderBody{ path };
         return true;
     }
+    else if (typeName == "GroundPlane")
+    {
+        prims::physics::GroundPlane{ path };
+        return true;
+    }
     else if (typeName == "RigidBody")
     {
         prims::physics::RigidBody{ path };
@@ -135,12 +142,12 @@ bool removePrim(const std::string& path)
 
 bool createPrimAttribute(const std::string& path, const std::string& attributeName, const std::string& typeName)
 {
-    return objects::Prim(path).createAttribute(attributeName, typeName).get<std::vector<bool>>()[0];
+    return objects::Prim(path).createAttribute(attributeName, typeName).at(0).item<bool>();
 }
 
 bool removePrimAttribute(const std::string& path, const std::string& attributeName)
 {
-    return objects::Prim(path).removeAttribute(attributeName).get<std::vector<bool>>()[0];
+    return objects::Prim(path).removeAttribute(attributeName).at(0).item<bool>();
 }
 
 void setParameter(const std::string& provider, const std::string& parameterName, const InputParameterType& value)
@@ -157,14 +164,14 @@ OutputParameterType getParameter(const std::string& provider, const std::string&
         throw std::invalid_argument("Invalid provider. Expected 'stage'.");
     }
 
-    static const std::vector<std::string> supportedParameterNames = { "openusd-stage-id", "openusd-stage-ptr",
-                                                                      "ovstage-stage-id", "ovstage-stage-ptr" };
+    static const std::vector<std::string> s_kSupportedParameterNames = { "openusd-stage-id", "openusd-stage-ptr",
+                                                                         "ovstage-stage-id", "ovstage-stage-ptr" };
 
-    if (std::find(supportedParameterNames.begin(), supportedParameterNames.end(), parameterName) ==
-        supportedParameterNames.end())
+    if (std::find(s_kSupportedParameterNames.begin(), s_kSupportedParameterNames.end(), parameterName) ==
+        s_kSupportedParameterNames.end())
     {
         throw std::invalid_argument("Invalid parameter name. Supported values: " +
-                                    common::string::join(supportedParameterNames, ", "));
+                                    common::string::join(s_kSupportedParameterNames, ", "));
     }
 
     if (parameterName == "openusd-stage-id")

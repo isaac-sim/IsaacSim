@@ -36,13 +36,13 @@ using ::ovsim::interfaces::data::PathType;
 /** @copydoc isaacsim::physics::ovsim::data::read */
 ISAACSIM_OVSIM_CLIENTS_LOCAL_API OutputValueType read(const PathType& paths,
                                                       const std::string& attributeName,
-                                                      std::optional<double> timeStamp = std::nullopt);
+                                                      std::optional<double> timestamp = std::nullopt);
 
 /** @copydoc isaacsim::physics::ovsim::data::write */
 ISAACSIM_OVSIM_CLIENTS_LOCAL_API void write(const PathType& paths,
                                             const std::string& attributeName,
                                             const InputValueType& values,
-                                            std::optional<double> timeStamp = std::nullopt);
+                                            std::optional<double> timestamp = std::nullopt);
 
 } // namespace data
 } // namespace local

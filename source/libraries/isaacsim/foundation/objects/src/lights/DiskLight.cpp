@@ -26,12 +26,8 @@ namespace lights
 
 DiskLight::DiskLight(const std::variant<std::string, std::vector<std::string>>& paths,
                      const std::optional<array::Array>& radii,
-                     const std::optional<array::Array>& positions,
-                     const std::optional<array::Array>& translations,
-                     const std::optional<array::Array>& orientations,
-                     const std::optional<array::Array>& scales,
                      bool resetXformOpProperties)
-    : Light(paths, /*lightType=*/"DiskLight", positions, translations, orientations, scales, resetXformOpProperties)
+    : Light(paths, /*lightType=*/"DiskLight", resetXformOpProperties)
 {
     // Initialize instance from arguments.
     if (radii.has_value())
@@ -49,6 +45,11 @@ void DiskLight::setRadii(const array::Array& radii, const std::optional<array::A
 array::Array DiskLight::getRadii(const std::optional<array::Array>& indices)
 {
     return std::get<array::Array>(this->getAttributeValues("inputs:radius", indices));
+}
+
+array::Array DiskLight::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("DiskLight");
 }
 
 } // namespace lights

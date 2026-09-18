@@ -14,20 +14,23 @@
 // limitations under the License.
 
 #include <doctest/doctest.h>
+#include <isaacsim/physics/manager/PhysicsManager.hpp>
 #include <isaacsim/physics/manager/tensors/EntityView.hpp>
-#include <isaacsim/physics/manager/tensors/SimulationView.hpp>
 #include <isaacsim/physics/registration/tensors/TensorRegistry.hpp>
 
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <variant>
+#include <vector>
 
 using namespace isaacsim::physics::tensors;
 
 namespace
 {
 
-// Minimal subclass — the registry tests don't exercise the impl callbacks.
+// Minimal subclass — the registry tests don't exercise the implementation callbacks.
 class StubEntityView : public EntityView
 {
 public:
@@ -36,25 +39,10 @@ public:
     }
 };
 
-class StubSimulationView : public SimulationView
-{
-public:
-    StubSimulationView(const std::string& engine, const std::string& frontend, int64_t stageId)
-        : SimulationView(engine, frontend, stageId)
-    {
-    }
-};
-
 EntityFactory makeStubEntityFactory()
 {
-    return [](const std::vector<std::string>& paths) -> std::shared_ptr<EntityView>
+    return [](const std::vector<std::string>& paths, const std::optional<EntityOptions>&) -> std::shared_ptr<EntityView>
     { return std::make_shared<StubEntityView>(paths); };
-}
-
-SimulationViewFactory makeStubSimulationViewFactory(const std::string& engine)
-{
-    return [engine](const std::string& frontend, int64_t stageId) -> std::shared_ptr<SimulationView>
-    { return std::make_shared<StubSimulationView>(engine, frontend, stageId); };
 }
 
 } // namespace
@@ -97,9 +85,9 @@ TEST_CASE("TensorRegistry: entity registration round-trip")
         std::vector<std::string> paths{ "/World/robot_0", "/World/robot_1" };
         auto view = std::static_pointer_cast<EntityView>(registry.createEntity("test", "articulation", paths));
         REQUIRE(view.get() != nullptr);
-        REQUIRE(view->getPaths().size() == 2);
-        REQUIRE(view->getPaths()[0] == "/World/robot_0");
-        REQUIRE(view->getPaths()[1] == "/World/robot_1");
+        REQUIRE(view->getPrimPathPatterns().size() == 2);
+        REQUIRE(view->getPrimPathPatterns()[0] == "/World/robot_0");
+        REQUIRE(view->getPrimPathPatterns()[1] == "/World/robot_1");
     }
 
     SUBCASE("createEntity with missing engine throws std::out_of_range")
@@ -120,7 +108,8 @@ TEST_CASE("TensorRegistry: entity registration round-trip")
         // Re-register with a DIFFERENT factory marker — the new one should
         // shadow the old. Use a factory that produces a distinguishable
         // view (zero paths regardless of input).
-        EntityFactory replacement = [](const std::vector<std::string>& /*paths*/)
+        EntityFactory replacement =
+            [](const std::vector<std::string>& /*paths*/, const std::optional<EntityOptions>& /*options*/)
         { return std::make_shared<StubEntityView>(std::vector<std::string>{}); };
         bool second = registry.registerEntity("test", "articulation", replacement);
         REQUIRE(second == false); // `false` = replaced an existing entry
@@ -128,33 +117,46 @@ TEST_CASE("TensorRegistry: entity registration round-trip")
         std::vector<std::string> paths{ "/World/robot_0" };
         auto view = std::static_pointer_cast<EntityView>(registry.createEntity("test", "articulation", paths));
         REQUIRE(view.get() != nullptr);
-        REQUIRE(view->getPaths().empty()); // replacement factory ignores input
+        REQUIRE(view->getPrimPathPatterns().empty()); // replacement factory ignores input
     }
 }
 
 //=============================================================================
-// TEST: registerSimulationView / createSimulationView
+// TEST: createEntity option passthrough
 //=============================================================================
-TEST_CASE("TensorRegistry: SimulationView registration round-trip")
+TEST_CASE("TensorRegistry: createEntity forwards construction options")
 {
     TensorRegistry& registry = TensorRegistry::getInstance();
     registry.clearForTesting();
 
-    SUBCASE("createSimulationView with no factory throws std::out_of_range")
+    // Captured by the factory below so each subcase can inspect what createEntity handed it.
+    auto observed = std::make_shared<std::optional<EntityOptions>>();
+    registry.registerEntity("test", "rigid-contact",
+                            [observed](const std::vector<std::string>& paths,
+                                       const std::optional<EntityOptions>& options) -> std::shared_ptr<IEntityView>
+                            {
+                                *observed = options;
+                                return std::make_shared<StubEntityView>(paths);
+                            });
+
+    SUBCASE("omitted options reach the factory as std::nullopt")
     {
-        REQUIRE_THROWS_AS(registry.createSimulationView("test", "warp", /*stageId=*/0), std::out_of_range);
+        registry.createEntity("test", "rigid-contact", { "/World/Sensor" });
+        REQUIRE_FALSE(observed->has_value());
     }
 
-    SUBCASE("registered factory is invoked with frontend and stage arguments")
+    SUBCASE("supplied options reach the factory unchanged")
     {
-        registry.registerSimulationView("test", makeStubSimulationViewFactory("test"));
+        EntityOptions options;
+        options["filter-patterns"] = std::vector<std::string>{ "/World/Ground" };
+        options["max-contact-data-count"] = int64_t{ 64 };
 
-        auto simulation =
-            std::static_pointer_cast<SimulationView>(registry.createSimulationView("test", "warp", /*stageId=*/12345));
-        REQUIRE(simulation.get() != nullptr);
-        REQUIRE(simulation->getEngine() == "test");
-        REQUIRE(simulation->getFrontendName() == "warp");
-        REQUIRE(simulation->getStageId() == 12345);
+        registry.createEntity("test", "rigid-contact", { "/World/Sensor" }, options);
+
+        REQUIRE(observed->has_value());
+        REQUIRE(std::get<std::vector<std::string>>((**observed).at("filter-patterns")) ==
+                std::vector<std::string>{ "/World/Ground" });
+        REQUIRE(std::get<int64_t>((**observed).at("max-contact-data-count")) == 64);
     }
 }
 
@@ -241,7 +243,7 @@ TEST_CASE("TensorRegistry: listEntities")
 }
 
 //=============================================================================
-// TEST: unregisterEntity / unregisterSimulationView
+// TEST: unregisterEntity
 //=============================================================================
 TEST_CASE("TensorRegistry: unregister")
 {
@@ -263,16 +265,6 @@ TEST_CASE("TensorRegistry: unregister")
         bool removed = registry.unregisterEntity("nope", "articulation");
         REQUIRE(removed == false);
     }
-
-    SUBCASE("unregisterSimulationView removes the engine factory")
-    {
-        registry.registerSimulationView("test", makeStubSimulationViewFactory("test"));
-        REQUIRE(registry.createSimulationView("test", "warp", 0).get() != nullptr);
-
-        bool removed = registry.unregisterSimulationView("test");
-        REQUIRE(removed == true);
-        REQUIRE_THROWS_AS(registry.createSimulationView("test", "warp", 0), std::out_of_range);
-    }
 }
 
 //=============================================================================
@@ -283,13 +275,50 @@ TEST_CASE("TensorRegistry::clearForTesting wipes all state")
     TensorRegistry& registry = TensorRegistry::getInstance();
 
     registry.registerEntity("test", "articulation", makeStubEntityFactory());
-    registry.registerSimulationView("test", makeStubSimulationViewFactory("test"));
+    registry.registerEngine("test");
     REQUIRE(registry.hasEntity("test", "articulation"));
-    REQUIRE(registry.createSimulationView("test", "warp", 0).get() != nullptr);
 
     registry.clearForTesting();
 
     REQUIRE_FALSE(registry.hasEntity("test", "articulation"));
-    REQUIRE_THROWS_AS(registry.createSimulationView("test", "warp", 0), std::out_of_range);
     REQUIRE(registry.listEngines().empty());
+}
+
+//=============================================================================
+// TEST: PhysicsManager::createEntity forwards to the registry
+//=============================================================================
+TEST_CASE("PhysicsManager::createEntity forwards paths and options")
+{
+    TensorRegistry& registry = TensorRegistry::getInstance();
+    registry.clearForTesting();
+
+    auto observedPaths = std::make_shared<std::vector<std::string>>();
+    auto observedOptions = std::make_shared<std::optional<EntityOptions>>();
+    registry.registerEntity(
+        "test", "rigid-contact",
+        [observedPaths, observedOptions](const std::vector<std::string>& paths,
+                                         const std::optional<EntityOptions>& options) -> std::shared_ptr<IEntityView>
+        {
+            *observedPaths = paths;
+            *observedOptions = options;
+            return std::make_shared<StubEntityView>(paths);
+        });
+
+    isaacsim::physics::manager::PhysicsManager& manager = isaacsim::physics::manager::PhysicsManager::getInstance();
+
+    SUBCASE("a single path is wrapped into a one-element list")
+    {
+        manager.createEntity("test", "rigid-contact", std::string("/World/Sensor"));
+        REQUIRE(*observedPaths == std::vector<std::string>{ "/World/Sensor" });
+        REQUIRE_FALSE(observedOptions->has_value());
+    }
+
+    SUBCASE("options reach the registered factory")
+    {
+        EntityOptions options;
+        options["max-contact-data-count"] = int64_t{ 32 };
+        manager.createEntity("test", "rigid-contact", std::vector<std::string>{ "/World/Sensor" }, options);
+        REQUIRE(observedOptions->has_value());
+        REQUIRE(std::get<int64_t>((**observedOptions).at("max-contact-data-count")) == 32);
+    }
 }

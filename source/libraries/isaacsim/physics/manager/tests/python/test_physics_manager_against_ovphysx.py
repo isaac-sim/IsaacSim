@@ -55,6 +55,7 @@ def test_physics_manager(capsys: Any) -> None:
 
     Args:
         capsys: Pytest output-capture fixture.
+
     """
     _physics_setup.set_suppress_readback(False)  # CPU tensors
     _, handle, usd_stage_id = _build_ovstage(os.path.join(_ASSETS, "CartPole.usda"))

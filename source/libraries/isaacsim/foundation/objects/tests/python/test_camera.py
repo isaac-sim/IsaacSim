@@ -324,3 +324,25 @@ def test_enforce_square_pixels(capsys: Any, stage: Any, populate: Any, mode: Any
         # horizontal adjusted: vertical * aspect = 24 * (16/9) ≈ 42.667
         isaacsim_test.check_allclose(vertical.numpy(), np.full((5, 1), 24.0))
         isaacsim_test.check_allclose(horizontal.numpy(), np.full((5, 1), 128.0 / 3.0))
+
+
+def test_are_of_type(capsys: Any, stage: Any) -> None:
+    """Test are of type.
+
+    Args:
+        capsys: Pytest output-capture fixture.
+        stage: Stage used by the test.
+    """
+    type_names = ["Camera", "Xform", "Scope"]
+    for index, type_name in enumerate(type_names):
+        stage.define_prim(f"/World/Prim{index}", type_name)
+    paths = [f"/World/Prim{index}" for index in range(len(type_names))]
+    # boolean flags are reported per prim, in the order the paths were given
+    output = Camera.are_of_type(paths)
+    isaacsim_test.check_array(output, shape=(len(type_names), 1), dtype=wp.bool)
+    isaacsim_test.check_equal(np.array([1, 0, 0], dtype=np.bool_).reshape(-1, 1), output)
+    # regular expressions are expanded against the active stage
+    isaacsim_test.check_array(Camera.are_of_type("/World/Prim.*"), shape=(len(type_names), 1), dtype=wp.bool)
+    # non-existing prims
+    with pytest.raises(RuntimeError):
+        Camera.are_of_type("/World/NonExistent")

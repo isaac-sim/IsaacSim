@@ -153,7 +153,7 @@ class ArticulationViewNestedLinksCommon(_NestedLinkArticulationBase):
         """Check articulation counts, topology, and resolved root paths.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         arti_view = sim.create_articulation_view("/envs/*/Robot")
@@ -172,7 +172,7 @@ class ArticulationViewNestedLinksCommon(_NestedLinkArticulationBase):
         """Accept the unused callback after validation completes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -187,7 +187,7 @@ class ArticulationViewAtNestedRootLinkCommon(_NestedLinkArticulationBase):
         """Check topology when each base link is used as the view pattern.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         arti_view = sim.create_articulation_view("/envs/*/Robot/base_link")
@@ -204,7 +204,7 @@ class ArticulationViewAtNestedRootLinkCommon(_NestedLinkArticulationBase):
         """Accept the unused callback after validation completes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -225,7 +225,7 @@ class RigidBodyViewExplicitNestedPathsCommon(_NestedLinkArticulationBase):
         """Check one explicitly selected deepest link per environment.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         # Hit `link_2` (the deepest link in each env), specified as
@@ -239,7 +239,7 @@ class RigidBodyViewExplicitNestedPathsCommon(_NestedLinkArticulationBase):
         """Accept the unused callback after validation completes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -254,7 +254,7 @@ class RigidBodyViewRecursiveUnderRobotCommon(_NestedLinkArticulationBase):
         """Check that recursive descent selects every rigid link.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         rb_view = sim.create_rigid_body_view("/envs/*/Robot/**")
@@ -265,7 +265,7 @@ class RigidBodyViewRecursiveUnderRobotCommon(_NestedLinkArticulationBase):
         """Accept the unused callback after validation completes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -280,7 +280,7 @@ class RigidBodyViewRecursiveNamedLinkCommon(_NestedLinkArticulationBase):
         """Check one recursively selected ``link_2`` per environment.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         rb_view = sim.create_rigid_body_view("/envs/*/Robot/**/link_2")
@@ -291,7 +291,7 @@ class RigidBodyViewRecursiveNamedLinkCommon(_NestedLinkArticulationBase):
         """Accept the unused callback after validation completes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -306,7 +306,7 @@ class ArticulationViewRecursiveRootLinkCommon(_NestedLinkArticulationBase):
         """Check articulation topology through recursive root-link resolution.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         arti_view = sim.create_articulation_view("/envs/*/Robot/**/base_link")
@@ -317,7 +317,7 @@ class ArticulationViewRecursiveRootLinkCommon(_NestedLinkArticulationBase):
         """Accept the unused callback after validation completes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -332,7 +332,7 @@ class RigidBodyViewWildcardUnderRobotCommon(_NestedLinkArticulationBase):
         """Check that a single wildcard does not descend into child links.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         rb_view = sim.create_rigid_body_view("/envs/*/Robot/*")
@@ -344,7 +344,7 @@ class RigidBodyViewWildcardUnderRobotCommon(_NestedLinkArticulationBase):
         """Accept the unused callback after validation completes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -359,7 +359,7 @@ class RigidBodyViewNestedAlternationCommon(_NestedLinkArticulationBase):
         """Check that alternation returns two rigid bodies per environment.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         rb_view = sim.create_rigid_body_view("/envs/*/Robot/base_link|link_0")
@@ -370,7 +370,7 @@ class RigidBodyViewNestedAlternationCommon(_NestedLinkArticulationBase):
         """Accept the unused callback after validation completes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -416,7 +416,7 @@ class RigidBodyViewStandaloneExplicitPathsCommon(_StandaloneClusterBase):
         """Check explicit-path resolution across clusters and body indices.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         explicit = [
@@ -430,7 +430,7 @@ class RigidBodyViewStandaloneExplicitPathsCommon(_StandaloneClusterBase):
         """Accept the unused callback after validation completes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -445,7 +445,7 @@ class RigidBodyViewStandaloneRecursiveUnderClusterCommon(_StandaloneClusterBase)
         """Check recursive resolution across all standalone clusters.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         rb_view = sim.create_rigid_body_view("/envs/*/cluster/**")
@@ -456,7 +456,7 @@ class RigidBodyViewStandaloneRecursiveUnderClusterCommon(_StandaloneClusterBase)
         """Accept the unused callback after validation completes during startup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 

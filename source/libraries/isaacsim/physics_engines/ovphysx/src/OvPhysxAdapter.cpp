@@ -16,20 +16,26 @@
 #include "OvPhysxAdapter.hpp"
 
 #include <isaacsim/common/logging/Logging.hpp>
+#include <isaacsim/common/ovstage/TransformJournal.hpp>
 #include <isaacsim/physics/registration/Physics.hpp>
 #include <isaacsim/physics/registration/simulator/Benchmark.hpp>
 #include <isaacsim/physics/registration/simulator/Interaction.hpp>
 #include <isaacsim/physics/registration/simulator/Simulator.hpp>
 #include <ovphysx/ovphysx.h>
 #include <ovstage/ovstage.h>
+#include <ovx/path_dictionary/path_dictionary.h>
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace isaacsim
 {
@@ -57,6 +63,13 @@ void initializeGlobalState()
     std::lock_guard<std::mutex> lock(g_lifecycleMutex);
     if (g_instanceCount == 0)
     {
+#if defined(_WIN32)
+        const ovstage_api_status_t status = ovstage_initialize(nullptr);
+        if (status != OVSTAGE_OK)
+        {
+            throw std::runtime_error("ovstage_initialize failed with status " + std::to_string(static_cast<int>(status)));
+        }
+#endif
         // A non-success status means the latch was already set -- the only failure
         // ovphysx_initialize() documents -- i.e. another consumer owns the lifecycle.
         g_weInitialized = (ovphysx_initialize().status == OVPHYSX_API_SUCCESS);
@@ -64,7 +77,7 @@ void initializeGlobalState()
     ++g_instanceCount;
 }
 
-void globalRelease()
+void releaseGlobalState()
 {
     std::lock_guard<std::mutex> lock(g_lifecycleMutex);
     --g_instanceCount;
@@ -77,6 +90,13 @@ void globalRelease()
             ovphysx_shutdown();
         }
         g_weInitialized = false;
+#if defined(_WIN32)
+        const ovstage_api_status_t status = ovstage_shutdown();
+        if (status != OVSTAGE_OK)
+        {
+            ISAACSIM_LOG_ERROR(g_kLogger, "ovstage_shutdown failed with status {}", static_cast<int>(status));
+        }
+#endif
     }
 }
 
@@ -98,11 +118,503 @@ void checkResult(ovphysx_result_t result, const char* context)
 // dual-input contract documented on PhysicsSimulation::initialize.
 constexpr ovstage_ordinal_t g_kAttachOrdinal = 1;
 
+constexpr char g_kWorldMatrixAttribute[] = "omni:fabric:worldMatrix";
+
+using TransformJournalEntry = isaacsim::common::ovstage::TransformJournalEntry;
+using TransformJournalHeader = isaacsim::common::ovstage::TransformJournalHeader;
+
+struct TransformJournalBatch
+{
+    std::vector<TransformJournalEntry> entries;
+    bool valid{ true };
+};
+
+std::atomic<uint64_t> g_nextTransformJournalGeneration{ 1 };
+
+ovx_string_or_token_t createAttributeName(const char* name)
+{
+    ovx_string_or_token_t result{};
+    result.string = { name, std::strlen(name) };
+    return result;
+}
+
+bool completeOvstageOperation(ovstage_instance_t* stage, ovstage_enqueue_result_t enqueue, const char* context)
+{
+    if (enqueue.status != OVSTAGE_OK)
+    {
+        ISAACSIM_LOG_ERROR(g_kLogger, "{}: {}", context, ovstage_get_error_string(stage, enqueue.status));
+        return false;
+    }
+    if (enqueue.op_index == OVSTAGE_INVALID_OP_ID)
+    {
+        return true;
+    }
+
+    ovstage_op_wait_result_t waitResult{};
+    const ovstage_api_status_t status = ovstage_wait_op(stage, enqueue.op_index, OVSTAGE_TIMEOUT_INFINITE, &waitResult);
+    if (status != OVSTAGE_OK)
+    {
+        ISAACSIM_LOG_ERROR(g_kLogger, "{}: {}", context, ovstage_get_error_string(stage, status));
+    }
+    for (size_t index = 0; index < waitResult.error_op_id_count; ++index)
+    {
+        const ovx_string_t error = ovstage_get_last_op_error(stage, waitResult.error_op_ids[index]);
+        ISAACSIM_LOG_ERROR(
+            g_kLogger, "{}: {}", context, std::string_view(error.ptr ? error.ptr : "", error.ptr ? error.length : 0));
+    }
+    const ovstage_api_status_t releaseStatus = ovstage_release_op(stage, enqueue.op_index);
+    if (releaseStatus != OVSTAGE_OK)
+    {
+        ISAACSIM_LOG_ERROR(g_kLogger, "Release {}: {}", context, ovstage_get_error_string(stage, releaseStatus));
+    }
+    return status == OVSTAGE_OK && waitResult.error_op_id_count == 0 && releaseStatus == OVSTAGE_OK;
+}
+
+bool getNextOrdinal(ovstage_instance_t* stage, ovstage_ordinal_t& ordinal)
+{
+    ovstage_ordinal_query_handle_t query = OVSTAGE_INVALID_ORDINAL_QUERY_HANDLE;
+    const ovstage_enqueue_result_t enqueue = ovstage_get_attribute_write_floor(stage, {}, &query);
+    if (enqueue.status != OVSTAGE_OK || query == OVSTAGE_INVALID_ORDINAL_QUERY_HANDLE)
+    {
+        ISAACSIM_LOG_ERROR(g_kLogger, "Unable to query the attached OVStage write floor");
+        return false;
+    }
+
+    ovstage_ordinal_t floor = 0;
+    const ovstage_api_status_t fetchStatus = ovstage_fetch_ordinal(stage, query, OVSTAGE_TIMEOUT_INFINITE, &floor);
+    const bool queryCompleted = completeOvstageOperation(stage, enqueue, "Query OVStage write floor");
+    const bool queryReleased = completeOvstageOperation(
+        stage, ovstage_release_ordinal_query(stage, query), "Release OVStage write-floor query");
+    if (fetchStatus != OVSTAGE_OK || !queryCompleted || !queryReleased ||
+        floor == std::numeric_limits<ovstage_ordinal_t>::max())
+    {
+        ISAACSIM_LOG_ERROR(g_kLogger, "Unable to fetch a usable attached OVStage write floor");
+        return false;
+    }
+    ordinal = floor + 1;
+    return true;
+}
+
+bool sealOrdinal(ovstage_instance_t* stage, ovstage_ordinal_t ordinal)
+{
+    ovstage_write_floor_desc_t description{};
+    description.ordinal = ordinal;
+    description.scope = OVSTAGE_SCOPE_ALL;
+    return completeOvstageOperation(
+        stage, ovstage_advance_write_floor(stage, &description), "Advance OVStage write floor");
+}
+
+bool isCpuFloatVector(const DLTensor& tensor, uint8_t lanes)
+{
+    return tensor.data != nullptr && tensor.device.device_type == kDLCPU && tensor.ndim == 1 && tensor.shape != nullptr &&
+           tensor.dtype.code == kDLFloat && tensor.dtype.bits == 32 && tensor.dtype.lanes == lanes;
+}
+
+const float* getFloatVector(const DLTensor& tensor, size_t index)
+{
+    const size_t elementBytes = sizeof(float) * tensor.dtype.lanes;
+    const int64_t stride = tensor.strides ? tensor.strides[0] : 1;
+    const auto* bytes = static_cast<const unsigned char*>(tensor.data) + tensor.byte_offset;
+    return reinterpret_cast<const float*>(bytes + index * static_cast<size_t>(stride) * elementBytes);
+}
+
+void buildWorldMatrix(const float* position, const float* orientation, const double* scale, double* matrix)
+{
+    const double x = orientation[0];
+    const double y = orientation[1];
+    const double z = orientation[2];
+    const double w = orientation[3];
+    const double length = std::sqrt(x * x + y * y + z * z + w * w);
+    const double inverseLength = length > std::numeric_limits<double>::epsilon() ? 1.0 / length : 1.0;
+    const double qx = x * inverseLength;
+    const double qy = y * inverseLength;
+    const double qz = z * inverseLength;
+    const double qw = length > std::numeric_limits<double>::epsilon() ? w * inverseLength : 1.0;
+
+    // OVStage/USD matrices use row vectors, so this is the transpose of the usual
+    // column-vector quaternion matrix. Preserve the authored world scale because
+    // scale is not a simulated OVPhysX output.
+    matrix[0] = scale[0] * (1.0 - 2.0 * (qy * qy + qz * qz));
+    matrix[1] = scale[0] * (2.0 * (qx * qy + qw * qz));
+    matrix[2] = scale[0] * (2.0 * (qx * qz - qw * qy));
+    matrix[3] = 0.0;
+    matrix[4] = scale[1] * (2.0 * (qx * qy - qw * qz));
+    matrix[5] = scale[1] * (1.0 - 2.0 * (qx * qx + qz * qz));
+    matrix[6] = scale[1] * (2.0 * (qy * qz + qw * qx));
+    matrix[7] = 0.0;
+    matrix[8] = scale[2] * (2.0 * (qx * qz + qw * qy));
+    matrix[9] = scale[2] * (2.0 * (qy * qz - qw * qx));
+    matrix[10] = scale[2] * (1.0 - 2.0 * (qx * qx + qy * qy));
+    matrix[11] = 0.0;
+    matrix[12] = position[0];
+    matrix[13] = position[1];
+    matrix[14] = position[2];
+    matrix[15] = 1.0;
+}
+
+std::vector<double> readWorldScales(ovstage_instance_t* stage,
+                                    ovstage_query_handle_t query,
+                                    size_t primCount,
+                                    ovstage_ordinal_t ordinal)
+{
+    std::vector<double> scales(primCount * 3, 1.0);
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(stage);
+    if (!dictionary)
+    {
+        return scales;
+    }
+
+    const char* names[] = { g_kWorldMatrixAttribute, "worldMatrix" };
+    ovx_string_t strings[] = { { names[0], std::strlen(names[0]) }, { names[1], std::strlen(names[1]) } };
+    ovx_token_t attributes[2]{};
+    if (path_dictionary_create_tokens_from_strings(dictionary, strings, 2, attributes).status != OVX_API_SUCCESS)
+    {
+        return scales;
+    }
+
+    ovstage_ordinal_range_t range{};
+    range.end_ordinal = ordinal;
+    ovstage_read_handle_t read = OVSTAGE_INVALID_READ_HANDLE;
+    const ovstage_enqueue_result_t enqueue = ovstage_read_attributes(stage, query, attributes, 2, range, &read);
+    if (enqueue.status != OVSTAGE_OK || read == OVSTAGE_INVALID_READ_HANDLE)
+    {
+        return scales;
+    }
+    if (!completeOvstageOperation(stage, enqueue, "Read authored world scales"))
+    {
+        completeOvstageOperation(stage, ovstage_release_read(stage, read), "Release failed world-scale read");
+        return scales;
+    }
+
+    for (;;)
+    {
+        ovstage_read_group_t group{};
+        const ovstage_api_status_t status = ovstage_fetch_read_next(stage, read, OVSTAGE_TIMEOUT_INFINITE, &group);
+        if (status == OVSTAGE_ERROR_END_OF_ITERATION)
+        {
+            break;
+        }
+        if (status != OVSTAGE_OK)
+        {
+            ISAACSIM_LOG_WARN(g_kLogger, "Unable to read an authored world-matrix group: {}",
+                              ovstage_get_error_string(stage, status));
+            break;
+        }
+
+        if (!group.is_delete && !group.is_array && !group.data.mask && group.data.tensors && group.data.tensor_count == 1)
+        {
+            const DLTensor& tensor = group.data.tensors[0];
+            if (tensor.data && tensor.device.device_type == kDLCPU && tensor.ndim == 1 && tensor.shape &&
+                tensor.dtype.code == kDLFloat && tensor.dtype.bits == 64 && tensor.dtype.lanes == 16)
+            {
+                const auto* bytes = static_cast<const unsigned char*>(tensor.data) + tensor.byte_offset;
+                const size_t elementBytes = 16 * sizeof(double);
+                const int64_t stride = tensor.strides ? tensor.strides[0] : 1;
+                for (size_t index = 0; index < group.prims.count; ++index)
+                {
+                    const size_t outputIndex =
+                        group.prims.index_map ? group.prims.index_map[index] : group.prims.offset + index;
+                    const size_t dataIndex = group.data.index_map ? group.data.index_map[index] : index;
+                    if (outputIndex >= primCount || dataIndex >= static_cast<size_t>(tensor.shape[0]))
+                    {
+                        continue;
+                    }
+                    const auto* matrix =
+                        reinterpret_cast<const double*>(bytes + dataIndex * static_cast<size_t>(stride) * elementBytes);
+                    for (size_t axis = 0; axis < 3; ++axis)
+                    {
+                        const size_t row = axis * 4;
+                        scales[outputIndex * 3 + axis] =
+                            std::sqrt(matrix[row] * matrix[row] + matrix[row + 1] * matrix[row + 1] +
+                                      matrix[row + 2] * matrix[row + 2]);
+                    }
+                }
+            }
+        }
+        ovstage_release_group(stage, &group);
+    }
+    completeOvstageOperation(stage, ovstage_release_read(stage, read), "Release authored world-scale read");
+    return scales;
+}
+
+struct PoseOutputGroups
+{
+    const ovstage_read_group_t* positions{ nullptr };
+    const ovstage_read_group_t* orientations{ nullptr };
+};
+
+bool writeWorldMatrices(ovstage_instance_t* stage,
+                        const ovstage_read_group_t& positions,
+                        const ovstage_read_group_t& orientations,
+                        ovstage_ordinal_t readOrdinal,
+                        ovstage_ordinal_t writeOrdinal,
+                        TransformJournalBatch& journal);
+
+bool publishObjectTransforms(ovphysx_handle_t handle,
+                             ovstage_instance_t* stage,
+                             ovphysx_sim_object_type_t objectType,
+                             ovstage_ordinal_t readOrdinal,
+                             ovstage_ordinal_t writeOrdinal,
+                             bool& wroteOutput,
+                             TransformJournalBatch& journal)
+{
+    ovphysx_query_handle_t query = 0;
+    // The API promises the latest complete stage state, not merely objects moved
+    // during the last solver substep. A caller may publish after several steps,
+    // by which time a body can already be sleeping even though its authored pose
+    // is stale. Query all objects so that settled poses are not omitted.
+    const ovphysx_result_t queryResult = ovphysx_query(handle, objectType, OVPHYSX_SCOPE_ALL, &query);
+    if (queryResult.status != OVPHYSX_API_SUCCESS || query == 0)
+    {
+        ISAACSIM_LOG_ERROR(g_kLogger, "Unable to query OVPhysX transform output");
+        return false;
+    }
+    const ovx_string_or_token_t attributes[] = { createAttributeName(OVPHYSX_ATTR_POSITION),
+                                                 createAttributeName(OVPHYSX_ATTR_ORIENTATION) };
+    ovphysx_read_handle_t read = 0;
+    const ovphysx_result_t readResult = ovphysx_read(handle, query, attributes, 2, &read);
+    if (readResult.status != OVPHYSX_API_SUCCESS || read == 0)
+    {
+        ovphysx_release_query(handle, query);
+        ISAACSIM_LOG_ERROR(g_kLogger, "Unable to read OVPhysX transform output");
+        return false;
+    }
+
+    bool success = true;
+    PoseOutputGroups outputs;
+    for (;;)
+    {
+        const ovstage_read_group_t* group = nullptr;
+        const ovphysx_result_t fetchResult = ovphysx_fetch_read_next(handle, read, &group);
+        if (fetchResult.status == OVPHYSX_API_END_OF_ITERATION)
+        {
+            break;
+        }
+        if (fetchResult.status != OVPHYSX_API_SUCCESS || group == nullptr)
+        {
+            ISAACSIM_LOG_ERROR(g_kLogger, "Unable to fetch OVPhysX transform output");
+            success = false;
+            break;
+        }
+        if (group->is_delete || group->data.tensor_count == 0 || group->data.tensors == nullptr ||
+            group->prims.count == 0 || group->prims.list == OVX_INVALID_PRIMPATH_LIST)
+        {
+            continue;
+        }
+        if (group->is_array)
+        {
+            // Point-instancer transforms are outside the initial publication scope.
+            continue;
+        }
+
+        const uint8_t lanes = group->data.tensors[0].dtype.lanes;
+        if (lanes == 3)
+        {
+            outputs.positions = group;
+        }
+        else if (lanes == 4)
+        {
+            outputs.orientations = group;
+        }
+        else
+        {
+            ISAACSIM_LOG_ERROR(g_kLogger, "OVPhysX returned an unexpected transform output width ({})", lanes);
+            success = false;
+        }
+    }
+
+    if (outputs.positions || outputs.orientations)
+    {
+        if (!outputs.positions || !outputs.orientations)
+        {
+            ISAACSIM_LOG_ERROR(g_kLogger, "OVPhysX returned an incomplete position/orientation output pair");
+            success = false;
+        }
+        else
+        {
+            success = writeWorldMatrices(
+                          stage, *outputs.positions, *outputs.orientations, readOrdinal, writeOrdinal, journal) &&
+                      success;
+            wroteOutput = true;
+        }
+    }
+    if (ovphysx_release_read(handle, read).status != OVPHYSX_API_SUCCESS)
+    {
+        success = false;
+    }
+    if (ovphysx_release_query(handle, query).status != OVPHYSX_API_SUCCESS)
+    {
+        success = false;
+    }
+    return success;
+}
+
+bool writeWorldMatrices(ovstage_instance_t* stage,
+                        const ovstage_read_group_t& positions,
+                        const ovstage_read_group_t& orientations,
+                        ovstage_ordinal_t readOrdinal,
+                        ovstage_ordinal_t writeOrdinal,
+                        TransformJournalBatch& journal)
+{
+    if (positions.prims.offset != 0 || orientations.prims.offset != 0 || positions.prims.index_map ||
+        orientations.prims.index_map || positions.data.index_map || orientations.data.index_map ||
+        positions.data.mask || orientations.data.mask || positions.prims.count != orientations.prims.count ||
+        positions.data.tensor_count != 1 || orientations.data.tensor_count != 1)
+    {
+        ISAACSIM_LOG_ERROR(g_kLogger, "OVPhysX returned incompatible position/orientation output groups");
+        return false;
+    }
+
+    const DLTensor& positionTensor = positions.data.tensors[0];
+    const DLTensor& orientationTensor = orientations.data.tensors[0];
+    const size_t count = positions.prims.count;
+    if (!isCpuFloatVector(positionTensor, 3) || !isCpuFloatVector(orientationTensor, 4) ||
+        positionTensor.shape[0] != static_cast<int64_t>(count) ||
+        orientationTensor.shape[0] != static_cast<int64_t>(count))
+    {
+        ISAACSIM_LOG_ERROR(
+            g_kLogger, "OVPhysX transform publication currently requires dense CPU float position/orientation output");
+        return false;
+    }
+
+    ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
+    if (ovstage_query_from_path_list(stage, positions.prims.list, &query) != OVSTAGE_OK ||
+        query == OVSTAGE_INVALID_QUERY_HANDLE)
+    {
+        ISAACSIM_LOG_ERROR(g_kLogger, "Unable to target OVPhysX poses in OVStage");
+        return false;
+    }
+
+    const std::vector<double> scales = readWorldScales(stage, query, count, readOrdinal);
+    std::vector<double> matrices(count * 16);
+    for (size_t index = 0; index < count; ++index)
+    {
+        buildWorldMatrix(getFloatVector(positionTensor, index), getFloatVector(orientationTensor, index),
+                         scales.data() + index * 3, matrices.data() + index * 16);
+    }
+
+    int64_t shape = static_cast<int64_t>(count);
+    DLTensor tensor{};
+    tensor.data = matrices.data();
+    tensor.device = { kDLCPU, 0 };
+    tensor.ndim = 1;
+    tensor.dtype = { kDLFloat, 64, 16 };
+    tensor.shape = &shape;
+    ovstage_write_data_t write{};
+    write.tensors = &tensor;
+    write.tensor_count = 1;
+    write.semantic = OVSTAGE_SEMANTIC_MATRIX;
+    write.is_array = false;
+    const bool written =
+        completeOvstageOperation(stage,
+                                 ovstage_write_attribute(stage, query, createAttributeName(g_kWorldMatrixAttribute),
+                                                         writeOrdinal, write, OVSTAGE_PRIM_MODE_UPSERT),
+                                 "Publish OVPhysX world matrices");
+    const bool released =
+        completeOvstageOperation(stage, ovstage_release_query(stage, query), "Release OVStage pose query");
+    if (!written || !released)
+    {
+        return false;
+    }
+
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(stage);
+    std::vector<ovx_primpath_t> paths(count);
+    size_t pathCount = 0;
+    if (!dictionary ||
+        path_dictionary_get_paths_from_path_list(dictionary, positions.prims.list, 0, count, paths.data(), &pathCount).status !=
+            OVX_API_SUCCESS ||
+        pathCount != count)
+    {
+        ISAACSIM_LOG_WARN(g_kLogger, "Unable to capture OVPhysX transform paths for the optional change journal");
+        journal.entries.clear();
+        journal.valid = false;
+        return true;
+    }
+    if (!journal.valid)
+    {
+        return true;
+    }
+    journal.entries.reserve(journal.entries.size() + count);
+    for (size_t index = 0; index < count; ++index)
+    {
+        TransformJournalEntry entry{};
+        entry.primPath = static_cast<uint64_t>(paths[index]);
+        std::memcpy(entry.worldMatrix, matrices.data() + index * 16, sizeof(entry.worldMatrix));
+        journal.entries.push_back(entry);
+    }
+    return true;
+}
+
+bool publishTransformJournal(ovstage_instance_t* stage,
+                             const TransformJournalBatch& journal,
+                             ovstage_ordinal_t baseOrdinal,
+                             ovstage_ordinal_t ordinal,
+                             uint64_t generation)
+{
+    using namespace isaacsim::common::ovstage;
+    if (!journal.valid || journal.entries.empty())
+    {
+        return false;
+    }
+
+    TransformJournalHeader header{};
+    header.generation = generation;
+    header.baseOrdinal = baseOrdinal;
+    header.ordinal = ordinal;
+    header.entryCount = journal.entries.size();
+    std::vector<uint8_t> payload(sizeof(header) + journal.entries.size() * sizeof(TransformJournalEntry));
+    std::memcpy(payload.data(), &header, sizeof(header));
+    std::memcpy(payload.data() + sizeof(header), journal.entries.data(),
+                journal.entries.size() * sizeof(TransformJournalEntry));
+
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(stage);
+    if (!dictionary)
+    {
+        return false;
+    }
+    const ovx_string_t journalPath{ g_kTransformJournalPrimPath, std::strlen(g_kTransformJournalPrimPath) };
+    ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
+    if (path_dictionary_create_path_list_from_strings(dictionary, &journalPath, 1, &pathList).status != OVX_API_SUCCESS ||
+        pathList == OVX_INVALID_PRIMPATH_LIST)
+    {
+        return false;
+    }
+    ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
+    if (ovstage_query_from_path_list(stage, pathList, &query) != OVSTAGE_OK || query == OVSTAGE_INVALID_QUERY_HANDLE)
+    {
+        path_dictionary_release_path_list_reference(dictionary, pathList);
+        return false;
+    }
+
+    int64_t shape[2] = { 1, static_cast<int64_t>(payload.size()) };
+    DLTensor tensor{};
+    tensor.data = payload.data();
+    tensor.device = { kDLCPU, 0 };
+    tensor.ndim = 2;
+    tensor.dtype = { kDLUInt, 8, 1 };
+    tensor.shape = shape;
+    ovstage_write_data_t write{};
+    write.tensors = &tensor;
+    write.tensor_count = 1;
+    write.semantic = OVSTAGE_SEMANTIC_NONE;
+    write.is_array = true;
+    const bool written =
+        completeOvstageOperation(stage,
+                                 ovstage_write_attribute(stage, query, createAttributeName(g_kTransformJournalAttribute),
+                                                         ordinal, write, OVSTAGE_PRIM_MODE_UPSERT),
+                                 "Publish OVPhysX transform journal");
+    const bool queryReleased =
+        completeOvstageOperation(stage, ovstage_release_query(stage, query), "Release transform-journal query");
+    const bool pathsReleased =
+        path_dictionary_release_path_list_reference(dictionary, pathList).status == OVX_API_SUCCESS;
+    return written && queryReleased && pathsReleased;
+}
+
 // ovphysx reports the contact-pair event kind as 0 = found, 1 = lost, 2 = persist. Map the three
 // known values explicitly rather than casting, and report anything else instead of passing it off
 // as a persist -- a renumbering on either side would otherwise mislabel every event silently. The
 // warning fires once per process: this runs per contact pair per step.
-isaacsim::physics::registration::ContactEventType toContactEventType(int32_t eventType)
+isaacsim::physics::registration::ContactEventType convertToContactEventType(int32_t eventType)
 {
     using isaacsim::physics::registration::ContactEventType;
     switch (eventType)
@@ -131,7 +643,7 @@ isaacsim::physics::registration::ContactEventType toContactEventType(int32_t eve
 // SweepHit and RaycastHit share the same set of fields; fill them from one
 // templated helper so the two converters can't drift out of sync.
 template <class HitType>
-HitType toHit(const ovphysx_scene_query_hit_t& sourceHit)
+HitType convertToHit(const ovphysx_scene_query_hit_t& sourceHit)
 {
     HitType outputHit{};
     outputHit.collision = static_cast<isaacsim::physics::registration::PathToken>(sourceHit.collision);
@@ -145,17 +657,17 @@ HitType toHit(const ovphysx_scene_query_hit_t& sourceHit)
     return outputHit;
 }
 
-isaacsim::physics::registration::SweepHit toSweepHit(const ovphysx_scene_query_hit_t& sourceHit)
+isaacsim::physics::registration::SweepHit convertToSweepHit(const ovphysx_scene_query_hit_t& sourceHit)
 {
-    return toHit<isaacsim::physics::registration::SweepHit>(sourceHit);
+    return convertToHit<isaacsim::physics::registration::SweepHit>(sourceHit);
 }
 
-isaacsim::physics::registration::RaycastHit toRaycastHit(const ovphysx_scene_query_hit_t& sourceHit)
+isaacsim::physics::registration::RaycastHit convertToRaycastHit(const ovphysx_scene_query_hit_t& sourceHit)
 {
-    return toHit<isaacsim::physics::registration::RaycastHit>(sourceHit);
+    return convertToHit<isaacsim::physics::registration::RaycastHit>(sourceHit);
 }
 
-isaacsim::physics::registration::OverlapHit toOverlapHit(const ovphysx_scene_query_hit_t& sourceHit)
+isaacsim::physics::registration::OverlapHit convertToOverlapHit(const ovphysx_scene_query_hit_t& sourceHit)
 {
     isaacsim::physics::registration::OverlapHit outputHit{};
     outputHit.collision = static_cast<isaacsim::physics::registration::PathToken>(sourceHit.collision);
@@ -213,7 +725,7 @@ OvPhysxAdapter::GlobalLifecycleGuard::GlobalLifecycleGuard()
 
 OvPhysxAdapter::GlobalLifecycleGuard::~GlobalLifecycleGuard()
 {
-    globalRelease();
+    releaseGlobalState();
 }
 
 OvPhysxAdapter::OvPhysxAdapter(const Configuration& configuration)
@@ -310,6 +822,7 @@ void OvPhysxAdapter::_buildSimulation(isaacsim::physics::registration::Simulatio
     simulationFunctions.simulate = [this](float elapsed, float current) { _doSimulate(elapsed, current); };
     simulationFunctions.fetchResults = [this]() { _doFetchResults(); };
     simulationFunctions.checkResults = [this]() { return _doCheckResults(); };
+    simulationFunctions.publishTransformsToStage = [this]() { return _doPublishTransformsToStage(); };
     simulationFunctions.flushChanges = [this]() { _doFlushChanges(); };
     simulationFunctions.pauseChangeTracking = [this](bool pause) { _doPauseChangeTracking(pause); };
     simulationFunctions.isChangeTrackingPaused = [this]() { return _doIsChangeTrackingPaused(); };
@@ -403,6 +916,9 @@ bool OvPhysxAdapter::_doInitialize(void* callerOvstage, const char* usdIdentifie
     // and its post-step event must not fire against the new one.
     m_hasPendingStep = false;
     m_postStepPending = false;
+    m_transformJournalGeneration = g_nextTransformJournalGeneration.fetch_add(1);
+    m_transformJournalBaseOrdinal = 0;
+    m_lastTransformJournalOrdinal = 0;
 
     // ovphysx parses physics from the caller-owned ovstage. The USD identifier (a
     // StageCache id as a string, or "0") is only republished via getAttachedStage();
@@ -566,6 +1082,58 @@ bool OvPhysxAdapter::_doCheckResults()
     }
     // On an internal error keep the pending op so _doFetchResults' blocking wait resolves it.
     return true;
+}
+
+bool OvPhysxAdapter::_doPublishTransformsToStage()
+{
+    if (!m_initialized || m_ovstage == nullptr || m_handle == OVPHYSX_INVALID_HANDLE)
+    {
+        return false;
+    }
+
+    // Publishing is a read of the latest completed simulation state. Settle an
+    // asynchronous step through the adapter first so its operation bookkeeping and
+    // post-step notifications remain consistent with an explicit fetchResults().
+    _doFetchResults();
+
+    ovstage_ordinal_t writeOrdinal = 0;
+    if (!getNextOrdinal(m_ovstage, writeOrdinal))
+    {
+        return false;
+    }
+
+    bool wroteOutput = false;
+    bool success = true;
+    TransformJournalBatch journal;
+    const bool continuesJournalChain = m_lastTransformJournalOrdinal != 0 &&
+                                       m_lastTransformJournalOrdinal != std::numeric_limits<ovstage_ordinal_t>::max() &&
+                                       writeOrdinal == m_lastTransformJournalOrdinal + 1;
+    const ovstage_ordinal_t journalBaseOrdinal = continuesJournalChain ? m_transformJournalBaseOrdinal : writeOrdinal - 1;
+    // The initial API supports the two transform categories exercised by the examples.
+    constexpr ovphysx_sim_object_type_t kTransformObjectTypes[] = { OVPHYSX_OBJECT_RIGID_BODY,
+                                                                    OVPHYSX_OBJECT_ARTICULATION_LINK };
+    for (const ovphysx_sim_object_type_t objectType : kTransformObjectTypes)
+    {
+        success = publishObjectTransforms(
+                      m_handle, m_ovstage, objectType, writeOrdinal - 1, writeOrdinal, wroteOutput, journal) &&
+                  success;
+    }
+
+    // An empty transform set is a successful no-op. Only seal an ordinal that
+    // actually received output, since sealing an empty frame needlessly advances
+    // every stage consumer.
+    if (success && wroteOutput &&
+        !publishTransformJournal(m_ovstage, journal, journalBaseOrdinal, writeOrdinal, m_transformJournalGeneration))
+    {
+        ISAACSIM_LOG_WARN(g_kLogger, "Unable to publish the optional OVPhysX transform journal; consumers will query");
+    }
+    const bool sealed = success && (!wroteOutput || sealOrdinal(m_ovstage, writeOrdinal));
+    if (sealed && wroteOutput)
+    {
+        m_transformJournalBaseOrdinal = journalBaseOrdinal;
+        m_lastTransformJournalOrdinal = writeOrdinal;
+    }
+    return sealed;
 }
 
 void OvPhysxAdapter::_doFlushChanges()
@@ -732,7 +1300,7 @@ void OvPhysxAdapter::_fireContactReportSubscribers()
     {
         const ovphysx_contact_event_header_t& source = eventHeaders[i];
         isaacsim::physics::registration::ContactEventHeader header{};
-        header.type = toContactEventType(source.type);
+        header.type = convertToContactEventType(source.type);
         header.stageId = source.stageId;
         header.actor0 = static_cast<isaacsim::physics::registration::PathToken>(source.actor0);
         header.actor1 = static_cast<isaacsim::physics::registration::PathToken>(source.actor1);
@@ -808,7 +1376,7 @@ void OvPhysxAdapter::_fillSceneQueryFunctions(isaacsim::physics::registration::S
         {
             return false;
         }
-        hit = toRaycastHit(hits[0]);
+        hit = convertToRaycastHit(hits[0]);
         return true;
     };
 
@@ -837,7 +1405,7 @@ void OvPhysxAdapter::_fillSceneQueryFunctions(isaacsim::physics::registration::S
                         &hits, &count);
         for (uint32_t i = 0; i < count; ++i)
         {
-            if (!callback(toRaycastHit(hits[i])))
+            if (!callback(convertToRaycastHit(hits[i])))
             {
                 break;
             }
@@ -859,7 +1427,7 @@ void OvPhysxAdapter::_fillSceneQueryFunctions(isaacsim::physics::registration::S
         {
             return false;
         }
-        hit = toSweepHit(hits[0]);
+        hit = convertToSweepHit(hits[0]);
         return true;
     };
 
@@ -889,7 +1457,7 @@ void OvPhysxAdapter::_fillSceneQueryFunctions(isaacsim::physics::registration::S
             m_handle, &geometry, directionCoordinates, distance, both, OVPHYSX_SCENE_QUERY_MODE_ALL, &hits, &count);
         for (uint32_t i = 0; i < count; ++i)
         {
-            if (!callback(toSweepHit(hits[i])))
+            if (!callback(convertToSweepHit(hits[i])))
             {
                 break;
             }
@@ -912,7 +1480,7 @@ void OvPhysxAdapter::_fillSceneQueryFunctions(isaacsim::physics::registration::S
         {
             return false;
         }
-        hit = toSweepHit(hits[0]);
+        hit = convertToSweepHit(hits[0]);
         return true;
     };
 
@@ -945,7 +1513,7 @@ void OvPhysxAdapter::_fillSceneQueryFunctions(isaacsim::physics::registration::S
             m_handle, &geometry, directionCoordinates, distance, both, OVPHYSX_SCENE_QUERY_MODE_ALL, &hits, &count);
         for (uint32_t i = 0; i < count; ++i)
         {
-            if (!callback(toSweepHit(hits[i])))
+            if (!callback(convertToSweepHit(hits[i])))
             {
                 break;
             }
@@ -969,7 +1537,7 @@ void OvPhysxAdapter::_fillSceneQueryFunctions(isaacsim::physics::registration::S
         ovphysx_overlap(m_handle, &geometry, OVPHYSX_SCENE_QUERY_MODE_ALL, &hits, &count);
         for (uint32_t i = 0; i < count; ++i)
         {
-            if (!callback(toOverlapHit(hits[i])))
+            if (!callback(convertToOverlapHit(hits[i])))
             {
                 break;
             }
@@ -998,7 +1566,7 @@ void OvPhysxAdapter::_fillSceneQueryFunctions(isaacsim::physics::registration::S
         ovphysx_overlap(m_handle, &geometry, OVPHYSX_SCENE_QUERY_MODE_ALL, &hits, &count);
         for (uint32_t i = 0; i < count; ++i)
         {
-            if (!callback(toOverlapHit(hits[i])))
+            if (!callback(convertToOverlapHit(hits[i])))
             {
                 break;
             }

@@ -16,7 +16,6 @@
 """Controller structures for composing and organizing multiple robot motion controllers."""
 
 from enum import Enum
-from typing import Optional
 
 from ._logging import log
 from .base_controller import BaseController
@@ -60,9 +59,7 @@ class SelectableController(BaseController):
         self._active_controller_selection = initial_controller_selection
         self._next_controller_selection = initial_controller_selection
 
-    def reset(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
-    ) -> bool:
+    def reset(self, estimated_state: RobotState, setpoint_state: RobotState | None, t: float, **kwargs: object) -> bool:
         """Set the initial controller to be active again and call reset on it.
 
         Args:
@@ -88,8 +85,8 @@ class SelectableController(BaseController):
         return self._active_controller.reset(estimated_state, setpoint_state, t, **kwargs)
 
     def forward(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
-    ) -> Optional[RobotState]:
+        self, estimated_state: RobotState, setpoint_state: RobotState | None, t: float, **kwargs: object
+    ) -> RobotState | None:
         """Run the active controller.
 
         If the active controller has changed since the last forward call, the controller is
@@ -222,9 +219,7 @@ class CombinedController(BaseController):
             raise ValueError("CombinedController must have at least two controllers.")
         self._controllers = controllers
 
-    def reset(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
-    ) -> bool:
+    def reset(self, estimated_state: RobotState, setpoint_state: RobotState | None, t: float, **kwargs: object) -> bool:
         """Reset all contained controllers.
 
         Args:
@@ -250,8 +245,8 @@ class CombinedController(BaseController):
         return True
 
     def forward(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
-    ) -> Optional[RobotState]:
+        self, estimated_state: RobotState, setpoint_state: RobotState | None, t: float, **kwargs: object
+    ) -> RobotState | None:
         """Run all controllers and combine their outputs.
 
         Args:
@@ -312,9 +307,7 @@ class ChainedController(BaseController):
             raise ValueError("ChainedController must have at least two controllers.")
         self._controllers = controllers
 
-    def reset(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
-    ) -> bool:
+    def reset(self, estimated_state: RobotState, setpoint_state: RobotState | None, t: float, **kwargs: object) -> bool:
         """Reset all contained controllers.
 
         Args:
@@ -340,8 +333,8 @@ class ChainedController(BaseController):
         return True
 
     def forward(
-        self, estimated_state: RobotState, setpoint_state: Optional[RobotState], t: float, **kwargs: object
-    ) -> Optional[RobotState]:
+        self, estimated_state: RobotState, setpoint_state: RobotState | None, t: float, **kwargs: object
+    ) -> RobotState | None:
         """Run controllers sequentially, passing outputs as setpoints.
 
         Args:

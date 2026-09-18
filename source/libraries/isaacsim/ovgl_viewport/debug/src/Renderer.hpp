@@ -41,10 +41,15 @@ public:
     Renderer& operator=(Renderer&&) noexcept;
 
     void render(const std::string& renderProductPath, Frame& frame);
+    void present(const std::string& renderProductPath,
+                 uint32_t destinationWidth,
+                 uint32_t destinationHeight,
+                 const char* overlayText,
+                 Frame& frame);
 
 private:
-    class Impl;
-    std::unique_ptr<Impl> m_impl;
+    class Implementation;
+    std::unique_ptr<Implementation> m_implementation;
 };
 
 } // namespace details

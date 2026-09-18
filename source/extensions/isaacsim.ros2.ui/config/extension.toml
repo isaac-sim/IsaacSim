@@ -53,6 +53,7 @@ stdoutFailPatterns.exclude = [
 [[test]]
 timeout = 1200
 dependencies = [
+    "isaacsim.ros2.bridge",
     "isaacsim.sensors.rtx",
     "isaacsim.test.utils",
     "omni.isaac.ml_archive",

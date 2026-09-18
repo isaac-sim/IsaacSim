@@ -47,7 +47,7 @@ class ISAACSIM_FOUNDATION_OBJECTS_API Mesh : public Xform
 {
 public:
     /**
-     * @brief Construct a Mesh wrapper and optionally configure initial geometry and transform.
+     * @brief Construct a Mesh wrapper and optionally configure the initial geometry.
      * @details
      * When the prims are created rather than wrapped, @p primitives selects the geometry generated at
      * each path. Supported names are @c "Cone", @c "Cube", @c "Cylinder", @c "Disk", @c "Plane",
@@ -60,12 +60,7 @@ public:
      * @param[in] primitives             Names of the primitives to generate (shape @c (N,)). Used only when
      *                                   creating prims; ignored when wrapping existing ones. Optional.
      * @param[in] colors                 Initial display colors. Optional.
-     * @param[in] positions              Initial world-frame positions (shape @c (N,3)). Optional.
-     * @param[in] translations           Initial local-frame translations (shape @c (N,3)). Optional.
-     * @param[in] orientations           Initial orientations as quaternions @c wxyz (shape @c (N,4)). Optional.
-     * @param[in] scales                 Initial local scales (shape @c (N,3)). Optional.
-     * @param[in] resetXformOpProperties Whether to normalize the xformOp stack before applying the
-     *                                   initial transform.
+     * @param[in] resetXformOpProperties Whether to normalize the xformOp stack to translate/orient/scale.
      * @throws std::runtime_error if a wrapped prim is not a USD Mesh.
      * @throws std::invalid_argument if a primitive name is not supported, or if the number of primitives
      *         is neither one nor the number of paths.
@@ -75,12 +70,19 @@ public:
          const std::optional<std::variant<std::string, std::vector<std::string>>>& primitives = std::nullopt,
          const std::optional<ColorType>& colors = std::nullopt,
          // XformPrim
-         const std::optional<array::Array>& positions = std::nullopt,
-         const std::optional<array::Array>& translations = std::nullopt,
-         const std::optional<array::Array>& orientations = std::nullopt,
-         const std::optional<array::Array>& scales = std::nullopt,
          bool resetXformOpProperties = true);
     ~Mesh() = default;
+
+    /**
+     * @brief Check whether the prims at the given paths are of the type handled by this class.
+     * @details The paths are resolved against the active stage before being checked.
+     *          Since this method is static, the returned array is always allocated on the CPU.
+     * @param[in] paths Single path string or list of path strings. May include regular
+     *                  expressions that are expanded against the active stage.
+     * @return Boolean flags (dtype bool, shape @c (N,1)), one per resolved prim.
+     * @throws std::runtime_error if the given paths do not correspond to existing prims.
+     */
+    static array::Array areOfType(const std::variant<std::string, std::vector<std::string>>& paths);
 
     /**
      * @brief Get the number of faces of all wrapped meshes.
@@ -138,7 +140,7 @@ public:
      * @throws std::invalid_argument if none of @p vertexIndices, @p vertexCounts,
      *         @p varyingLinearInterpolations and @p holeIndices is defined.
      */
-    void setFaceSpecs(
+    void setFaceSpecifications(
         const std::optional<std::vector<array::Array>>& vertexIndices = std::nullopt,
         const std::optional<std::vector<array::Array>>& vertexCounts = std::nullopt,
         const std::optional<std::variant<std::string, std::vector<std::string>>>& varyingLinearInterpolations = std::nullopt,
@@ -152,7 +154,7 @@ public:
      *         2) List of the number of vertices in each face. 3) List of face-varying interpolation rules.
      *         4) List of indices of all face holes.
      */
-    std::tuple<std::vector<array::Array>, std::vector<array::Array>, std::vector<std::string>, std::vector<array::Array>> getFaceSpecs(
+    std::tuple<std::vector<array::Array>, std::vector<array::Array>, std::vector<std::string>, std::vector<array::Array>> getFaceSpecifications(
         const std::optional<array::Array>& indices = std::nullopt);
 
     /**
@@ -172,10 +174,10 @@ public:
      *         elements of @p creaseIndices, or if the number of elements of @p creaseSharpnesses matches neither
      *         the number of elements of @p creaseLengths nor the sum over all X of @c (creaseLengths[X] - 1).
      */
-    void setCreaseSpecs(const std::vector<array::Array>& creaseIndices,
-                        const std::vector<array::Array>& creaseLengths,
-                        const std::vector<array::Array>& creaseSharpnesses,
-                        const std::optional<array::Array>& indices = std::nullopt);
+    void setCreaseSpecifications(const std::vector<array::Array>& creaseIndices,
+                                 const std::vector<array::Array>& creaseLengths,
+                                 const std::vector<array::Array>& creaseSharpnesses,
+                                 const std::optional<array::Array>& indices = std::nullopt);
 
     /**
      * @brief Get the crease (set of adjacent sharpened edges) specifications of the selected prims.
@@ -183,7 +185,7 @@ public:
      * @return Three-element tuple. 1) List of point indices. 2) List of the number of points of each crease.
      *         3) List of sharpness values.
      */
-    std::tuple<std::vector<array::Array>, std::vector<array::Array>, std::vector<array::Array>> getCreaseSpecs(
+    std::tuple<std::vector<array::Array>, std::vector<array::Array>, std::vector<array::Array>> getCreaseSpecifications(
         const std::optional<array::Array>& indices = std::nullopt);
 
     /**
@@ -197,16 +199,16 @@ public:
      * @throws std::invalid_argument if a pair of items from @p cornerIndices and @p cornerSharpnesses has
      *         different sizes.
      */
-    void setCornerSpecs(const std::vector<array::Array>& cornerIndices,
-                        const std::vector<array::Array>& cornerSharpnesses,
-                        const std::optional<array::Array>& indices = std::nullopt);
+    void setCornerSpecifications(const std::vector<array::Array>& cornerIndices,
+                                 const std::vector<array::Array>& cornerSharpnesses,
+                                 const std::optional<array::Array>& indices = std::nullopt);
 
     /**
      * @brief Get the corner specifications of the selected prims.
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
      * @return Two-element tuple. 1) List of point indices. 2) List of sharpness values.
      */
-    std::tuple<std::vector<array::Array>, std::vector<array::Array>> getCornerSpecs(
+    std::tuple<std::vector<array::Array>, std::vector<array::Array>> getCornerSpecifications(
         const std::optional<array::Array>& indices = std::nullopt);
 
     /**
@@ -220,7 +222,7 @@ public:
      * @throws std::invalid_argument if none of @p subdivisionSchemes, @p interpolateBoundaries and
      *         @p triangleSubdivisionRules is defined.
      */
-    void setSubdivisionSpecs(
+    void setSubdivisionSpecifications(
         const std::optional<std::variant<std::string, std::vector<std::string>>>& subdivisionSchemes = std::nullopt,
         const std::optional<std::variant<std::string, std::vector<std::string>>>& interpolateBoundaries = std::nullopt,
         const std::optional<std::variant<std::string, std::vector<std::string>>>& triangleSubdivisionRules = std::nullopt,
@@ -232,7 +234,7 @@ public:
      * @return Three-element tuple. 1) Subdivision schemes. 2) Boundary interpolation rules.
      *         3) Triangle subdivision rules.
      */
-    std::tuple<std::vector<std::string>, std::vector<std::string>, std::vector<std::string>> getSubdivisionSpecs(
+    std::tuple<std::vector<std::string>, std::vector<std::string>, std::vector<std::string>> getSubdivisionSpecifications(
         const std::optional<array::Array>& indices = std::nullopt);
 
     /**

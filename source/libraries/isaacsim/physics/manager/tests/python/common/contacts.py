@@ -50,10 +50,59 @@ from _scenario import (  # noqa: E402
 )
 from pxr import Gf, UsdPhysics  # noqa: E402
 
-# Consecutive in-tolerance steps required before accepting the resting-contact
+# Consecutive in-tolerance steps required before accepting one sensor's resting-contact
 # reaction as equal to the weight. A short streak rejects the position-solver
 # contact ramp-up's transient overshoot without assuming a fixed settle step.
 _CONTACT_FORCE_STREAK = 3
+
+
+class _PerSensorSettlingTracker:
+    """Track independently when every sensor sustains an acceptable measurement.
+
+    Args:
+        num_sensors: Number of sensors to track.
+
+    """
+
+    __slots__ = ("_consecutive_steps", "_longest_streaks", "_settled")
+
+    def __init__(self, num_sensors: int) -> None:
+        self._consecutive_steps = np.zeros(num_sensors, dtype=np.int32)
+        self._longest_streaks = np.zeros(num_sensors, dtype=np.int32)
+        self._settled = np.zeros(num_sensors, dtype=bool)
+
+    @property
+    def is_complete(self) -> bool:
+        """Whether every sensor has sustained an acceptable measurement."""
+        return bool(self._settled.all())
+
+    def update(self, is_in_tolerance: np.ndarray) -> None:
+        """Record one step of per-sensor tolerance results.
+
+        Args:
+            is_in_tolerance: Boolean result for each sensor in the batched view.
+
+        """
+        self._consecutive_steps = np.where(is_in_tolerance, self._consecutive_steps + 1, 0)
+        self._longest_streaks = np.maximum(self._longest_streaks, self._consecutive_steps)
+        self._settled |= self._consecutive_steps >= _CONTACT_FORCE_STREAK
+
+    def format_unsettled(self, values: np.ndarray) -> str:
+        """Format the final values and longest streaks for sensors that never settled.
+
+        Args:
+            values: Final scalar or vector measurement for each sensor.
+
+        Returns:
+            Diagnostic text containing only sensors that did not settle.
+
+        """
+        indices = np.flatnonzero(~self._settled)
+        return (
+            f"unsettled sensor indices={indices.tolist()}, "
+            f"longest streaks={self._longest_streaks[indices].tolist()}, "
+            f"final values={values[indices].tolist()}"
+        )
 
 
 class RigidContactsCommon(GridTestBase):
@@ -91,19 +140,19 @@ class RigidContactsCommon(GridTestBase):
         """Create the rigid-contact view and reset settling state.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         contacts = sim.create_rigid_contact_view("/envs/*/box")
         self.check_rigid_contact_view(contacts, self.num_envs, 0)
         self.contacts = contacts
-        self._settled_steps = 0
+        self._settling = _PerSensorSettlingTracker(contacts.get_metadata("num-sensors"))
 
     def on_physics_step(self, sim: object, stepno: int, dt: float) -> None:
         """Wait for a stable ground reaction equal to each box's weight.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -111,20 +160,15 @@ class RigidContactsCommon(GridTestBase):
         del sim, dt
         num_sensors = self.contacts.get_metadata("num-sensors")
         net_forces = self.contacts.get_data("net-contact-forces").numpy().reshape(num_sensors, 3)
-        expected = [[0.0, 0.0, 9.81]] * num_sensors
-        if wp_utils.wp_allclose(net_forces, expected, rtol=1e-03, atol=1e-2):
-            self._settled_steps += 1
-        else:
-            self._settled_steps = 0
-        # The box is authored already resting on the ground, so its only steady
-        # state is a contact reaction equal to its weight m*g. Assert once the
-        # reaction has held at m*g for a few consecutive steps: there is no drop
-        # to wait out, so the pass does not depend on a hand-picked settle step;
-        # the streak only rejects the contact ramp-up's transient overshoot.
-        if self._settled_steps >= _CONTACT_FORCE_STREAK:
+        expected = np.array([0.0, 0.0, 9.81])
+        self._settling.update(np.all(np.isclose(net_forces, expected, rtol=1e-3, atol=1e-2), axis=1))
+        # Each spatially isolated box can settle on different steps, so accept its
+        # own stable window instead of requiring every window to coincide.
+        if self._settling.is_complete:
             self.finish()
         elif stepno + 1 >= self.maxsteps:
-            assert False, f"net contact force never reached weight m*g: {net_forces.tolist()}"
+            details = self._settling.format_unsettled(net_forces)
+            assert False, f"net contact force never reached weight m*g: {details}"
             self.finish()
 
 
@@ -168,7 +212,7 @@ class RigidContactMatrixCommon(GridTestBase):
         """Create body and contact views and initialize the hover force.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         balls = sim.create_rigid_body_view("/envs/*/ball")
@@ -187,13 +231,13 @@ class RigidContactMatrixCommon(GridTestBase):
             max_contact_data_count=self.num_envs * 6,
         )
         self.check_rigid_contact_view(self.box_contacts, self.num_envs, 2)
-        self._settled_steps = 0
+        self._settling = _PerSensorSettlingTracker(self.box_contacts.get_metadata("num-sensors"))
 
     def on_physics_step(self, sim: object, stepno: int, dt: float) -> None:
         """Maintain the hover force and validate the filtered ground reaction.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -209,17 +253,14 @@ class RigidContactMatrixCommon(GridTestBase):
         )
         ground_z_force = box_force_matrix[:, 0, 2]
         expected = self.box_mass * self.g
-        if wp_utils.wp_allclose(abs(ground_z_force), expected, rtol=0.5, atol=0.5):
-            self._settled_steps += 1
-        else:
-            self._settled_steps = 0
-        # Box authored already resting on the ground, so its ground reaction settles
-        # to the box weight. Assert once it has held for a few consecutive steps (see
-        # RigidContactsCommon) rather than betting on a fixed settle step.
-        if self._settled_steps >= _CONTACT_FORCE_STREAK:
+        self._settling.update(np.isclose(np.abs(ground_z_force), expected, rtol=0.5, atol=0.5))
+        if self._settling.is_complete:
             self.finish()
         elif stepno + 1 >= self.maxsteps:
-            assert False, f"box-vs-ground Z reaction never reached {expected}: {ground_z_force.tolist()}"
+            assert False, (
+                f"box-vs-ground Z reaction never reached {expected}: "
+                f"{self._settling.format_unsettled(ground_z_force)}"
+            )
             self.finish()
 
 
@@ -275,9 +316,11 @@ class ContactDataCommon(RigidContactMatrixCommon):
         n_sensors = self.box_contacts.get_metadata("num-sensors")
         n_filters = self.box_contacts.get_metadata("num-filters")
         want_cuda = "cuda" in str(self.wp_device)
-        for i, t in enumerate(out):
-            assert bool(t.device.is_cuda) == want_cuda, f"{impl}[{i}] on {t.device}, expected cuda={want_cuda}"
-            assert np.isfinite(t.numpy()).all(), f"{impl}[{i}] contains non-finite values"
+        for i, tensor in enumerate(out):
+            assert (
+                bool(tensor.device.is_cuda) == want_cuda
+            ), f"{impl}[{i}] on {tensor.device}, expected cuda={want_cuda}"
+            assert np.isfinite(tensor.numpy()).all(), f"{impl}[{i}] contains non-finite values"
         for i in vec3_indices:
             assert out[i].shape[1] == 3, f"{impl}[{i}] should be a [C, 3] buffer"
         # The last two outputs are the per-(sensor, filter) count/start tables.
@@ -311,7 +354,7 @@ class ContactDataCommon(RigidContactMatrixCommon):
         """Read and validate contact buffers after initial contact generation.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -387,7 +430,7 @@ class RawContactDataCommon(GridTestBase):
         """Create contact views for both overlapping-box roles.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.top_contacts = sim.create_rigid_contact_view(
@@ -403,7 +446,7 @@ class RawContactDataCommon(GridTestBase):
         """Verify that every top-box sensor returns a raw contact record.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -478,7 +521,7 @@ class RawContactSignConventionCommon(GridTestBase):
         """Create one contact view for each side of the overlap.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.a_contacts = sim.create_rigid_contact_view("/envs/*/box_a", max_contact_data_count=64)
@@ -504,7 +547,7 @@ class RawContactSignConventionCommon(GridTestBase):
         """Match shared records and verify opposite normals and separations.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -572,7 +615,7 @@ class ArticulationContactsFullCommon(GridTestBase):
         UsdPhysics.MassAPI(box).GetMassAttr().Set(1.0)
 
         # Apply contact-report API to every ant link, not just the box.
-        # The engine's rigid-contact-sensor resolution recognises
+        # The engine's rigid-contact-sensor resolution recognizes
         # articulation links as valid sensors but requires
         # PhysxContactReportAPI on the prim. The legacy upstream test
         # achieved this via a stage-wide traversal
@@ -601,7 +644,7 @@ class ArticulationContactsFullCommon(GridTestBase):
         """Create articulation-link and companion box contact views.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         # Articulation link contact view — exercises legacy
@@ -616,7 +659,7 @@ class ArticulationContactsFullCommon(GridTestBase):
         """Validate torso sensor paths after the articulation settles.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -677,18 +720,18 @@ class ArticulationContactsCommon(GridTestBase):
         """Create the box contact view and reset settling state.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.cubes_contact = sim.create_rigid_contact_view("/envs/*/box")
         self.check_rigid_contact_view(self.cubes_contact, self.num_envs, 0)
-        self._settled_steps = 0
+        self._settling = _PerSensorSettlingTracker(self.cubes_contact.get_metadata("num-sensors"))
 
     def on_physics_step(self, sim: object, stepno: int, dt: float) -> None:
         """Wait for a stable ground reaction equal to each box's weight.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -696,19 +739,13 @@ class ArticulationContactsCommon(GridTestBase):
         del sim, dt
         num_sensors = self.cubes_contact.get_metadata("num-sensors")
         net_forces = self.cubes_contact.get_data("net-contact-forces").numpy().reshape(num_sensors, 3)
-        expected = [[0.0, 0.0, 9.81]] * num_sensors
-        if wp_utils.wp_allclose(net_forces, expected, rtol=1e-2, atol=1e-2):
-            self._settled_steps += 1
-        else:
-            self._settled_steps = 0
-        # Box authored already resting on the ground: its only steady state is a
-        # contact reaction equal to its weight. Assert once that reaction has
-        # held for a few consecutive steps (see RigidContactsCommon) rather than
-        # betting on a fixed settle step.
-        if self._settled_steps >= _CONTACT_FORCE_STREAK:
+        expected = np.array([0.0, 0.0, 9.81])
+        self._settling.update(np.all(np.isclose(net_forces, expected, rtol=1e-2, atol=1e-2), axis=1))
+        if self._settling.is_complete:
             self.finish()
         elif stepno + 1 >= self.maxsteps:
-            assert False, f"box net contact force never reached weight m*g: {net_forces.tolist()}"
+            details = self._settling.format_unsettled(net_forces)
+            assert False, f"box net contact force never reached weight m*g: {details}"
             self.finish()
 
 
@@ -742,7 +779,7 @@ class ContactCapacityResizeCommon(RawContactDataCommon):
         """Create a single contact view at the initial capacity.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         # Filters are supplied so `contact-data` and `friction-data` register too: all three reads share one
@@ -761,6 +798,7 @@ class ContactCapacityResizeCommon(RawContactDataCommon):
 
         Returns:
             First axis of that operation's first payload output.
+
         """
         specs = self.contacts.get_impl_spec_multi(impl, t.ImplKind.Get)
         return int(specs[0].shape_hint[0])
@@ -774,6 +812,7 @@ class ContactCapacityResizeCommon(RawContactDataCommon):
         Args:
             capacity: Extent every read is expected to declare.
             label: Phase name used in assertion messages.
+
         """
         for impl in ("raw-contact-data", "contact-data", "friction-data"):
             assert (
@@ -789,6 +828,7 @@ class ContactCapacityResizeCommon(RawContactDataCommon):
 
         Returns:
             One buffer per registered output.
+
         """
         buffers = []
         for slot, tensor in enumerate(reference):
@@ -806,7 +846,7 @@ class ContactCapacityResizeCommon(RawContactDataCommon):
         came back on the next. That gap is the engine's contract, not a defect.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 

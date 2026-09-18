@@ -13,6 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "Registry.hpp"
+
+#include <isaacsim/common/array/Array.hpp>
 #include <isaacsim/common/exceptions/Exceptions.hpp>
 #include <isaacsim/common/string/String.hpp>
 #include <isaacsim/foundation/objects/Camera.hpp>
@@ -31,13 +34,12 @@
 #include <isaacsim/foundation/objects/shapes/Cylinder.hpp>
 #include <isaacsim/foundation/objects/shapes/Plane.hpp>
 #include <isaacsim/foundation/objects/shapes/Sphere.hpp>
-#include <isaacsim/foundation/ovsim/details/Registry.hpp>
 #include <isaacsim/foundation/prims/physics/Articulation.hpp>
 #include <isaacsim/foundation/prims/physics/ColliderBody.hpp>
+#include <isaacsim/foundation/prims/physics/GroundPlane.hpp>
 #include <isaacsim/foundation/prims/physics/RigidBody.hpp>
 #include <ovsim/interfaces/details/Exception.hpp>
 
-#include <algorithm>
 #include <memory>
 #include <unordered_map>
 
@@ -60,6 +62,7 @@ enum class InstanceType
 {
     // physics
     eArticulation,
+    eGroundPlane,
     eRigidBody,
     eColliderBody,
     // objects (shapes)
@@ -100,6 +103,9 @@ std::unordered_map<InstanceType, std::unordered_map<std::string, std::variant<st
     g_instanceMethodMap = {
         // physics
         { InstanceType::eArticulation,
+          { { "position", InstanceMethodType::eXformWorldPositions },
+            { "orientation", InstanceMethodType::eXformWorldOrientations } } },
+        { InstanceType::eGroundPlane,
           { { "position", InstanceMethodType::eXformWorldPositions },
             { "orientation", InstanceMethodType::eXformWorldOrientations } } },
         { InstanceType::eRigidBody,
@@ -195,16 +201,9 @@ std::unordered_map<InstanceType, std::unordered_map<std::string, std::variant<st
             { "orientation", InstanceMethodType::eXformWorldOrientations } } },
     };
 
-bool areOfType(const objects::Prim& prim, const std::string& schemaType)
+bool allOf(const array::Array& flags)
 {
-    const auto results = prim.isA(schemaType).get<std::vector<bool>>();
-    return std::all_of(results.begin(), results.end(), [](bool b) { return b; });
-}
-
-bool allHaveApi(const objects::Prim& prim, const std::string& apiType)
-{
-    const auto results = prim.hasApi(apiType).get<std::vector<bool>>();
-    return std::all_of(results.begin(), results.end(), [](bool b) { return b; });
+    return array::all(flags).item<bool>();
 }
 
 objects::ColorType toColorType(const InputValueType& values, const std::string& attributeName)
@@ -233,111 +232,128 @@ std::pair<InstanceType, std::shared_ptr<objects::Prim>> getOrCreateInstance(cons
         return it->second;
     }
 
-    objects::Prim probe{ paths, /*resolvePaths=*/true };
+    objects::Prim probe{ paths, /*resolvePaths=*/true }; // avoid re-expanding regular expressions
+    auto resolvedPaths = probe.paths();
     InstanceType instanceType;
     std::shared_ptr<objects::Prim> instance;
 
-    // TODO: identify articulation prims properly
-    if (allHaveApi(probe, "PhysicsArticulationRootAPI"))
+    // Prims (physics)
+    if (allOf(probe.hasApi("PhysicsArticulationRootAPI")))
     {
+        // Check for articulation root before every other structural tests.
         instanceType = InstanceType::eArticulation;
-        instance = std::make_shared<physics::Articulation>(paths);
+        instance = std::make_shared<physics::Articulation>(resolvedPaths);
     }
-    else if (allHaveApi(probe, "PhysicsRigidBodyAPI"))
+    else if (allOf(physics::RigidBody::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eRigidBody;
-        instance = std::make_shared<physics::RigidBody>(paths, std::nullopt, std::nullopt, /*applyPhysicsApis=*/false);
+        instance =
+            std::make_shared<physics::RigidBody>(resolvedPaths, std::nullopt, std::nullopt, /*applyPhysicsApis=*/false);
     }
-    else if (allHaveApi(probe, "PhysicsCollisionAPI"))
+    else if (allOf(physics::ColliderBody::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eColliderBody;
-        instance = std::make_shared<physics::ColliderBody>(paths, std::nullopt, /*applyCollisionApis=*/false);
+        instance = std::make_shared<physics::ColliderBody>(resolvedPaths, std::nullopt, /*applyCollisionApis=*/false);
+    }
+    else if (allOf(physics::GroundPlane::areOfType(resolvedPaths)))
+    {
+        // Ground planes carry no physics API of their own and are matched by their child structure.
+        instanceType = InstanceType::eGroundPlane;
+        instance = std::make_shared<physics::GroundPlane>(resolvedPaths);
     }
     // Objects (shapes)
-    else if (areOfType(probe, "Capsule"))
+    else if (allOf(objects::shapes::Capsule::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eCapsule;
-        instance = std::make_shared<objects::shapes::Capsule>(paths);
+        instance = std::make_shared<objects::shapes::Capsule>(resolvedPaths);
     }
-    else if (areOfType(probe, "Cone"))
+    else if (allOf(objects::shapes::Cone::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eCone;
-        instance = std::make_shared<objects::shapes::Cone>(paths);
+        instance = std::make_shared<objects::shapes::Cone>(resolvedPaths);
     }
-    else if (areOfType(probe, "Cube"))
+    else if (allOf(objects::shapes::Cube::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eCube;
-        instance = std::make_shared<objects::shapes::Cube>(paths);
+        instance = std::make_shared<objects::shapes::Cube>(resolvedPaths);
     }
-    else if (areOfType(probe, "Cylinder"))
+    else if (allOf(objects::shapes::Cylinder::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eCylinder;
-        instance = std::make_shared<objects::shapes::Cylinder>(paths);
+        instance = std::make_shared<objects::shapes::Cylinder>(resolvedPaths);
     }
-    else if (areOfType(probe, "Plane"))
+    else if (allOf(objects::shapes::Plane::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::ePlane;
-        instance = std::make_shared<objects::shapes::Plane>(paths);
+        instance = std::make_shared<objects::shapes::Plane>(resolvedPaths);
     }
-    else if (areOfType(probe, "Sphere"))
+    else if (allOf(objects::shapes::Sphere::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eSphere;
-        instance = std::make_shared<objects::shapes::Sphere>(paths);
+        instance = std::make_shared<objects::shapes::Sphere>(resolvedPaths);
     }
     // Objects (lights)
-    else if (areOfType(probe, "CylinderLight"))
+    else if (allOf(objects::lights::CylinderLight::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eCylinderLight;
-        instance = std::make_shared<objects::lights::CylinderLight>(paths);
+        instance = std::make_shared<objects::lights::CylinderLight>(resolvedPaths);
     }
-    else if (areOfType(probe, "DiskLight"))
+    else if (allOf(objects::lights::DiskLight::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eDiskLight;
-        instance = std::make_shared<objects::lights::DiskLight>(paths);
+        instance = std::make_shared<objects::lights::DiskLight>(resolvedPaths);
     }
-    else if (areOfType(probe, "DistantLight"))
+    else if (allOf(objects::lights::DistantLight::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eDistantLight;
-        instance = std::make_shared<objects::lights::DistantLight>(paths);
+        instance = std::make_shared<objects::lights::DistantLight>(resolvedPaths);
     }
-    else if (areOfType(probe, "DomeLight"))
+    else if (allOf(objects::lights::DomeLight::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eDomeLight;
-        instance = std::make_shared<objects::lights::DomeLight>(paths);
+        instance = std::make_shared<objects::lights::DomeLight>(resolvedPaths);
     }
-    else if (areOfType(probe, "RectLight"))
+    else if (allOf(objects::lights::RectLight::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eRectLight;
-        instance = std::make_shared<objects::lights::RectLight>(paths);
+        instance = std::make_shared<objects::lights::RectLight>(resolvedPaths);
     }
-    else if (areOfType(probe, "SphereLight"))
+    else if (allOf(objects::lights::SphereLight::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eSphereLight;
-        instance = std::make_shared<objects::lights::SphereLight>(paths);
+        instance = std::make_shared<objects::lights::SphereLight>(resolvedPaths);
     }
     // Objects (Camera)
-    else if (areOfType(probe, "Camera"))
+    else if (allOf(objects::Camera::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eCamera;
-        instance = std::make_shared<objects::Camera>(paths);
+        instance = std::make_shared<objects::Camera>(resolvedPaths);
     }
     // Objects (Mesh)
-    else if (areOfType(probe, "Mesh"))
+    else if (allOf(objects::Mesh::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eMesh;
-        instance = std::make_shared<objects::Mesh>(paths);
+        instance = std::make_shared<objects::Mesh>(resolvedPaths);
+    }
+    // Prims (physics::Articulation)
+    else if (allOf(physics::Articulation::areOfType(resolvedPaths)))
+    {
+        // The prim is a wrapper above an articulation root rather than the root itself.
+        // TODO: identify wrapper above articulation root properly.
+        instanceType = InstanceType::eArticulation;
+        instance = std::make_shared<physics::Articulation>(resolvedPaths);
     }
     // Objects (Xform)
-    else if (areOfType(probe, "Xformable"))
+    else if (allOf(objects::Xform::areOfType(resolvedPaths)))
     {
         instanceType = InstanceType::eXform;
-        instance = std::make_shared<objects::Xform>(paths);
+        instance = std::make_shared<objects::Xform>(resolvedPaths);
     }
     // Objects (base class)
     else
     {
         instanceType = InstanceType::ePrim;
-        instance = std::make_shared<objects::Prim>(paths);
+        instance = std::make_shared<objects::Prim>(resolvedPaths);
     }
 
     g_instanceMap.emplace(paths, std::make_pair(instanceType, instance));
@@ -399,7 +415,7 @@ OutputValueType getAttributeValues(const std::vector<std::string>& paths,
     }
     catch (const isaacsim::common::exceptions::AttributeNameError& e)
     {
-        std::vector<std::string> validAttributeNames = e.validAttributeNames();
+        std::vector<std::string> validAttributeNames = e.getValidAttributeNames();
         if (instanceTypeIterator != g_instanceMethodMap.end())
         {
             for (const auto& entry : instanceTypeIterator->second)
@@ -463,7 +479,7 @@ void setAttributeValues(const std::vector<std::string>& paths,
     }
     catch (const isaacsim::common::exceptions::AttributeNameError& e)
     {
-        std::vector<std::string> validAttributeNames = e.validAttributeNames();
+        std::vector<std::string> validAttributeNames = e.getValidAttributeNames();
         if (instanceTypeIterator != g_instanceMethodMap.end())
         {
             for (const auto& entry : instanceTypeIterator->second)

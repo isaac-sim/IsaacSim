@@ -125,7 +125,7 @@ inline void bindPythonSubscription(nanobind::module_& module)
         .def("unsubscribe", &PythonSubscription::unsubscribe, "Unsubscribe immediately. Idempotent.")
         .def_prop_ro(
             "id", &PythonSubscription::getId, "Underlying SubscriptionId, or k_invalid_subscription_id if released.")
-        .def_prop_ro("valid", &PythonSubscription::isValid);
+        .def_prop_ro("valid", &PythonSubscription::isValid, "Whether the subscription remains active.");
 }
 
 } // namespace details

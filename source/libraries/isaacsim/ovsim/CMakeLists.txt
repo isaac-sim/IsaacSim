@@ -19,12 +19,26 @@ isaacsim_add_group(
         isaacsim.ovsim.api
         isaacsim.ovsim.clients.grpc
         isaacsim.ovsim.clients.local
+        isaacsim.ovsim.protos.grpc
+        isaacsim.ovsim.servers.grpc
 )
 
 isaacsim_add_group_dependency(GROUP isaacsim_ovsim DEPENDS_ON isaacsim_common)
 isaacsim_add_group_dependency(GROUP isaacsim_ovsim DEPENDS_ON isaacsim_foundation)
 isaacsim_add_group_dependency(GROUP isaacsim_ovsim DEPENDS_ON isaacsim_physics)
+isaacsim_add_group_dependency(GROUP isaacsim_ovsim DEPENDS_ON isaacsim_physics_engines)
 
+add_subdirectory(protos/grpc)
 add_subdirectory(clients/grpc)
 add_subdirectory(clients/local)
+add_subdirectory(servers/grpc)
 add_subdirectory(api)
+
+# Every public OV SIM wrapper includes the canonical interface contract. Install one
+# shared copy for the package instead of repeating the same rule in each module.
+_isaacsim_get_group_component("isaacsim_ovsim" development isaacsim_ovsim_development_component)
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/ovsim/interfaces/cpp/ovsim"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+    COMPONENT "${isaacsim_ovsim_development_component}"
+    FILES_MATCHING PATTERN "*.hpp"
+)

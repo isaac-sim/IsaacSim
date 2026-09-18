@@ -29,7 +29,7 @@ from isaacsim.physics.registration import (
 from .newton_config import NewtonConfig
 from .newton_stage import NewtonStage
 from .simulation_functions import NewtonSimulationFunctions
-from .tensors.simulation_view import DEFAULT_SIMULATION_NAME
+from .tensors.entity_factories import DEFAULT_SIMULATION_NAME
 
 _log = Logger("isaacsim.physics_engines.ovnewton.impl")
 
@@ -40,6 +40,7 @@ class NewtonSimulationRegistry:
     Args:
         config: Newton backend configuration. Defaults are used when omitted.
         simulation_name: Name used to register the simulation.
+
     """
 
     def __init__(self, config: NewtonConfig | None = None, simulation_name: str | None = None) -> None:
@@ -63,6 +64,7 @@ class NewtonSimulationRegistry:
 
         Raises:
             RuntimeError: If the registration API rejects the simulation.
+
         """
         self.simulation = Simulation()
 
@@ -119,11 +121,10 @@ class NewtonSimulationRegistry:
 
 # Module-level convenience handles -------------------------------------------
 
-# Global registry keyed by the SimulationId's integer payload. The manager's
-# `create_simulation_view(engine, stage_id, frontend_name)` factory looks up
-# the engine's stage by this int; callers that hold a `SimulationId`
-# object can pass either the object or `sim_id.id` interchangeably (see
-# `_resolve_key`).
+# Global registry keyed by the SimulationId's integer payload. The Newton entity
+# factories look up the engine's stage by this int; callers that hold a
+# `SimulationId` object can pass either the object or `sim_id.id`
+# interchangeably (see `_resolve_key`).
 _active: dict[int, NewtonSimulationRegistry] = {}
 
 
@@ -135,6 +136,7 @@ def _resolve_key(simulation_id: SimulationId | int) -> int:
 
     Returns:
         Integer payload used as the active-registry key.
+
     """
     if hasattr(simulation_id, "id"):
         return int(simulation_id.id)
@@ -154,6 +156,7 @@ def register(config: NewtonConfig | None = None, simulation_name: str | None = N
 
     Raises:
         RuntimeError: If the physics registration API rejects the simulation.
+
     """
     reg = NewtonSimulationRegistry(config, simulation_name)
     sim_id = reg.register()
@@ -169,6 +172,7 @@ def unregister(simulation_id: SimulationId | int) -> None:
 
     Args:
         simulation_id: Registered simulation identifier or its integer payload.
+
     """
     reg = _active.pop(_resolve_key(simulation_id), None)
     if reg is None:
@@ -188,5 +192,6 @@ def get_registry(simulation_id: SimulationId | int) -> NewtonSimulationRegistry 
 
     Returns:
         Active registry for the identifier, or None when the simulation is not registered.
+
     """
     return _active.get(_resolve_key(simulation_id))

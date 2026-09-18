@@ -15,8 +15,8 @@
 
 #include "isaacsim/common/array/Array.hpp"
 
-#include "isaacsim/common/array/details/CudaKernel.hpp"
-#include "isaacsim/common/array/details/CudaRuntime.hpp"
+#include "details/CudaKernel.hpp"
+#include "details/CudaRuntime.hpp"
 
 #include <isaacsim/common/exceptions/Exceptions.hpp>
 
@@ -34,26 +34,26 @@ namespace array
 namespace details
 {
 
-static DType inferDType(const SupportedInputSpec& value)
+static Dtype inferDtype(const SupportedInputSpecification& value)
 {
     return std::visit(
-        [](const auto& v) -> DType
+        [](const auto& v) -> Dtype
         {
             using T = std::decay_t<decltype(v)>;
             if constexpr (std::is_arithmetic_v<T>)
-                return DType::fromType<T>();
+                return Dtype::fromType<T>();
             else if constexpr (std::is_arithmetic_v<typename T::value_type>)
-                return DType::fromType<typename T::value_type>();
+                return Dtype::fromType<typename T::value_type>();
             else
-                return DType::fromType<typename T::value_type::value_type>();
+                return Dtype::fromType<typename T::value_type::value_type>();
         },
         value);
 }
 
 } // namespace details
 
-Array::Array(const details::SupportedInputSpec& value, const std::optional<DType>& dtype, const Device& device)
-    : m_dtype(dtype.has_value() ? *dtype : details::inferDType(value)), m_device(device), m_offset(0)
+Array::Array(const details::SupportedInputSpecification& value, const std::optional<Dtype>& dtype, const Device& device)
+    : m_dtype(dtype.has_value() ? *dtype : details::inferDtype(value)), m_device(device), m_offset(0)
 {
     // CUDA
     if (device.isCuda())
@@ -97,52 +97,6 @@ Array::Array(const details::SupportedInputSpec& value, const std::optional<DType
     }
 }
 
-Array::Array(const Array& other) : m_shape(other.m_shape), m_dtype(other.m_dtype), m_device(other.m_device), m_offset(0)
-{
-    size_t n = other.nbytes();
-    // CUDA
-    if (m_device.isCuda())
-    {
-        auto& cudaRuntime = CudaRuntime::getInstance();
-        void* devicePointer = nullptr;
-        {
-            DeviceGuard deviceGuard(m_device);
-            cudaRuntime.cudaMalloc(&devicePointer, n);
-            try
-            {
-                cudaRuntime.cudaMemcpy(devicePointer, other.data(), n, cudaMemcpyDeviceToDevice);
-            }
-            catch (...)
-            {
-                cudaRuntime.cudaFree(devicePointer, false);
-                throw;
-            }
-        }
-        auto deleter = [device = m_device](void* pointer)
-        {
-            DeviceGuard deleterDeviceGuard(device);
-            CudaRuntime::getInstance().cudaFree(pointer);
-        };
-        m_storage = details::CudaStorage{ std::shared_ptr<void>(devicePointer, deleter) };
-    }
-    // CPU
-    else
-    {
-        auto buffer = std::shared_ptr<std::byte[]>(new std::byte[n]());
-        std::memcpy(buffer.get(), other.data(), n);
-        m_storage = details::CpuStorage{ std::move(buffer) };
-    }
-}
-
-Array& Array::operator=(const Array& other)
-{
-    if (this != &other)
-    {
-        *this = Array(other);
-    }
-    return *this;
-}
-
 const Shape& Array::shape() const
 {
     return m_shape;
@@ -153,7 +107,7 @@ Device Array::device() const
     return m_device;
 }
 
-DType Array::dtype() const
+Dtype Array::dtype() const
 {
     return m_dtype;
 }
@@ -183,12 +137,14 @@ const void* Array::data() const
     // CUDA
     if (m_device.isCuda())
     {
-        return static_cast<const std::byte*>(std::get<details::CudaStorage>(m_storage).data.get()) + m_offset;
+        const auto* data = static_cast<const std::byte*>(std::get<details::CudaStorage>(m_storage).data.get());
+        return data ? data + m_offset : nullptr;
     }
     // CPU
     else
     {
-        return _cpuBuffer().get() + m_offset;
+        const auto* data = _copyToCpuBuffer().get();
+        return data ? data + m_offset : nullptr;
     }
 }
 
@@ -205,7 +161,7 @@ std::shared_ptr<std::byte[]> Array::buffer() const
     // CPU
     else
     {
-        return _cpuBuffer();
+        return _copyToCpuBuffer();
     }
 }
 
@@ -220,13 +176,53 @@ Array Array::reshape(const Shape& shape) const
     // CPU
     else
     {
-        return Array(details::CpuStorage{ _cpuBuffer() }, m_offset, m_shape.resolve(shape), m_dtype, m_device);
+        return Array(details::CpuStorage{ _copyToCpuBuffer() }, m_offset, m_shape.resolve(shape), m_dtype, m_device);
     }
+}
+
+Array Array::flatten() const
+{
+    return this->reshape(Shape({ static_cast<int64_t>(this->size()) }));
 }
 
 Array Array::copy() const
 {
-    return Array(*this);
+    // Only the visible elements are duplicated, so any bytes preceding element 0 are dropped and
+    // the offset is reset to 0 (unlike clone(), which preserves the whole allocation).
+    const size_t byteCount = this->nbytes();
+    // CUDA
+    if (m_device.isCuda())
+    {
+        auto& cudaRuntime = CudaRuntime::getInstance();
+        void* devicePointer = nullptr;
+        {
+            DeviceGuard deviceGuard(m_device);
+            cudaRuntime.cudaMalloc(&devicePointer, byteCount);
+            try
+            {
+                cudaRuntime.cudaMemcpy(devicePointer, this->data(), byteCount, cudaMemcpyDeviceToDevice);
+            }
+            catch (...)
+            {
+                cudaRuntime.cudaFree(devicePointer, false);
+                throw;
+            }
+        }
+        auto deleter = [device = m_device](void* pointer)
+        {
+            DeviceGuard deleterDeviceGuard(device);
+            CudaRuntime::getInstance().cudaFree(pointer);
+        };
+        return Array(
+            details::CudaStorage{ std::shared_ptr<void>(devicePointer, deleter) }, 0, m_shape, m_dtype, m_device);
+    }
+    // CPU
+    else
+    {
+        auto buffer = std::shared_ptr<std::byte[]>(new std::byte[byteCount]);
+        std::memcpy(buffer.get(), this->data(), byteCount);
+        return Array(details::CpuStorage{ std::move(buffer) }, 0, m_shape, m_dtype, m_device);
+    }
 }
 
 Array Array::clone() const
@@ -265,12 +261,12 @@ Array Array::clone() const
     else
     {
         auto newData = std::shared_ptr<std::byte[]>(new std::byte[totalSize]());
-        std::memcpy(newData.get(), _cpuBuffer().get(), totalSize);
+        std::memcpy(newData.get(), _copyToCpuBuffer().get(), totalSize);
         return Array(details::CpuStorage{ std::move(newData) }, m_offset, m_shape, m_dtype, m_device);
     }
 }
 
-Array Array::fromBuffer(std::shared_ptr<std::byte[]> data, const Shape& shape, DType dtype, const Device& device, size_t offset)
+Array Array::fromBuffer(std::shared_ptr<std::byte[]> data, const Shape& shape, Dtype dtype, const Device& device, size_t offset)
 {
     // CUDA: `data` holds a device pointer (as returned by buffer() for a CUDA array):
     // adopt it as device storage via the aliasing constructor, which keeps the caller's deleter and
@@ -303,7 +299,7 @@ Array Array::toDevice(const Device& device, bool copy) const
             return Array(details::CudaStorage{ std::get<details::CudaStorage>(m_storage).data }, m_offset, m_shape,
                          m_dtype, m_device);
         }
-        return Array(details::CpuStorage{ _cpuBuffer() }, m_offset, m_shape, m_dtype, m_device);
+        return Array(details::CpuStorage{ _copyToCpuBuffer() }, m_offset, m_shape, m_dtype, m_device);
     }
 
     // Different device
@@ -374,7 +370,7 @@ Array Array::toDevice(const Device& device, bool copy) const
     }
 }
 
-Array Array::toDtype(DType dtype, bool copy) const
+Array Array::toDtype(Dtype dtype, bool copy) const
 {
     // Same dtype
     if (dtype == m_dtype)
@@ -390,7 +386,7 @@ Array Array::toDtype(DType dtype, bool copy) const
             return Array(details::CudaStorage{ std::get<details::CudaStorage>(m_storage).data }, m_offset, m_shape,
                          m_dtype, m_device);
         }
-        return Array(details::CpuStorage{ _cpuBuffer() }, m_offset, m_shape, m_dtype, m_device);
+        return Array(details::CpuStorage{ _copyToCpuBuffer() }, m_offset, m_shape, m_dtype, m_device);
     }
 
     // Different dtype
@@ -475,7 +471,7 @@ Array Array::broadcastTo(const Shape& shape, bool copy) const
             return Array(details::CudaStorage{ std::get<details::CudaStorage>(m_storage).data }, m_offset, m_shape,
                          m_dtype, m_device);
         }
-        return Array(details::CpuStorage{ _cpuBuffer() }, m_offset, m_shape, m_dtype, m_device);
+        return Array(details::CpuStorage{ _copyToCpuBuffer() }, m_offset, m_shape, m_dtype, m_device);
     }
 
     const size_t sourceNdim = this->ndim();
@@ -595,11 +591,11 @@ Array Array::at(int64_t index)
     // CPU
     else
     {
-        return Array(details::CpuStorage{ _cpuBuffer() }, newOffset, Shape(newShape), m_dtype, m_device);
+        return Array(details::CpuStorage{ _copyToCpuBuffer() }, newOffset, Shape(newShape), m_dtype, m_device);
     }
 }
 
-void Array::set(const details::SupportedInputSpec& value)
+void Array::set(const details::SupportedInputSpecification& value)
 {
     this->set(Array(value, m_dtype, m_device));
 }
@@ -619,7 +615,7 @@ void Array::set(const Array& other)
     // CPU
     else
     {
-        if (prepared._cpuBuffer() == _cpuBuffer())
+        if (prepared._copyToCpuBuffer() == _copyToCpuBuffer())
         {
             std::memmove(this->data(), prepared.data(), n);
         }
@@ -632,17 +628,17 @@ void Array::set(const Array& other)
 
 std::string Array::toString() const
 {
-    const std::string data = m_device.isCuda() ? this->toDevice(Device::Cpu())._dataToString() : _dataToString();
+    const std::string data = m_device.isCuda() ? this->toDevice(Device::Cpu())._formatData() : _formatData();
     return "Array(" + data + ", shape=" + m_shape.toString() + ", dtype='" + m_dtype.toString() + "', device='" +
            m_device.toString() + "')";
 }
 
-std::shared_ptr<std::byte[]> Array::_cpuBuffer() const
+std::shared_ptr<std::byte[]> Array::_copyToCpuBuffer() const
 {
     return std::get<details::CpuStorage>(m_storage).data;
 }
 
-std::shared_ptr<std::byte[]> Array::_buildCpuBuffer(const details::SupportedInputSpec& value)
+std::shared_ptr<std::byte[]> Array::_buildCpuBuffer(const details::SupportedInputSpecification& value)
 {
     return std::visit(
         [this](const auto& v) -> std::shared_ptr<std::byte[]>
@@ -710,49 +706,49 @@ std::shared_ptr<std::byte[]> Array::_buildCpuBuffer(const details::SupportedInpu
 Array::Array(std::variant<details::CpuStorage, details::CudaStorage> storage,
              size_t offset,
              Shape shape,
-             DType dtype,
+             Dtype dtype,
              Device device)
     : m_shape(std::move(shape)), m_dtype(dtype), m_device(device), m_offset(offset), m_storage(std::move(storage))
 {
 }
 
-std::string Array::_itemToString() const
+std::string Array::_formatItem() const
 {
     // TODO: use std::format once C++20 is supported
     switch (m_dtype.kind())
     {
-    case DType::Kind::eBool:
+    case Dtype::Kind::eBool:
         return item<bool>() ? "True" : "False";
-    case DType::Kind::eInt8:
+    case Dtype::Kind::eInt8:
         return std::to_string(static_cast<int>(item<int8_t>()));
-    case DType::Kind::eInt16:
+    case Dtype::Kind::eInt16:
         return std::to_string(item<int16_t>());
-    case DType::Kind::eInt32:
+    case Dtype::Kind::eInt32:
         return std::to_string(item<int32_t>());
-    case DType::Kind::eInt64:
+    case Dtype::Kind::eInt64:
         return std::to_string(item<int64_t>());
-    case DType::Kind::eUInt8:
+    case Dtype::Kind::eUInt8:
         return std::to_string(static_cast<unsigned>(item<uint8_t>()));
-    case DType::Kind::eUInt16:
+    case Dtype::Kind::eUInt16:
         return std::to_string(item<uint16_t>());
-    case DType::Kind::eUInt32:
+    case Dtype::Kind::eUInt32:
         return std::to_string(item<uint32_t>());
-    case DType::Kind::eUInt64:
+    case Dtype::Kind::eUInt64:
         return std::to_string(item<uint64_t>());
-    case DType::Kind::eFloat32:
+    case Dtype::Kind::eFloat32:
         return std::to_string(item<float>());
-    case DType::Kind::eFloat64:
+    case Dtype::Kind::eFloat64:
         return std::to_string(item<double>());
     default:
         return "?";
     }
 }
 
-std::string Array::_dataToString() const
+std::string Array::_formatData() const
 {
     if (this->ndim() == 0)
     {
-        return _itemToString();
+        return _formatItem();
     }
     if (this->ndim() == 1)
     {
@@ -762,7 +758,7 @@ std::string Array::_dataToString() const
         {
             if (i)
                 s += ", ";
-            s += const_cast<Array*>(this)->at(static_cast<int64_t>(i))._itemToString();
+            s += const_cast<Array*>(this)->at(static_cast<int64_t>(i))._formatItem();
         }
         return s + "]";
     }
@@ -774,7 +770,7 @@ std::string Array::_dataToString() const
         {
             if (i)
                 s += ", ";
-            s += const_cast<Array*>(this)->at(static_cast<int64_t>(i))._dataToString();
+            s += const_cast<Array*>(this)->at(static_cast<int64_t>(i))._formatData();
         }
         return s + "]";
     }

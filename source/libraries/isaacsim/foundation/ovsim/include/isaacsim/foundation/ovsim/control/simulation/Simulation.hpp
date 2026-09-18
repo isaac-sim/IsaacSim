@@ -18,6 +18,8 @@
 #include <isaacsim/foundation/ovsim/Export.h>
 #include <ovsim/interfaces/control/simulation/Simulation.hpp>
 
+#include <string>
+
 namespace isaacsim
 {
 namespace foundation
@@ -32,18 +34,42 @@ namespace simulation
 using ::ovsim::interfaces::control::simulation::InputParameterType;
 using ::ovsim::interfaces::control::simulation::OutputParameterType;
 
+/** @brief Accept a play request without changing simulation state. */
 ISAACSIM_FOUNDATION_OVSIM_API void play();
+
+/** @brief Accept a pause request without changing simulation state. */
 ISAACSIM_FOUNDATION_OVSIM_API void pause();
+
+/** @brief Accept a stop request without changing simulation state. */
 ISAACSIM_FOUNDATION_OVSIM_API void stop();
-ISAACSIM_FOUNDATION_OVSIM_API void step();
 
+/** @brief Copy the active OpenUSD stage into a retained OVStage simulation snapshot. */
 ISAACSIM_FOUNDATION_OVSIM_API void initialize();
+
+/** @brief Close and release the retained OVStage simulation snapshot, if one exists. */
 ISAACSIM_FOUNDATION_OVSIM_API void invalidate();
+
+/** @brief Accept a manual simulation step request without changing simulation state. */
 ISAACSIM_FOUNDATION_OVSIM_API void step();
 
+/**
+ * @brief Reject a simulation provider parameter because simulation configuration is not implemented.
+ * @param[in] provider Provider identifier.
+ * @param[in] parameterName Provider-specific parameter name.
+ * @param[in] value Parameter value.
+ * @throws std::logic_error Always.
+ */
 ISAACSIM_FOUNDATION_OVSIM_API void setParameter(const std::string& provider,
                                                 const std::string& parameterName,
                                                 const InputParameterType& value);
+
+/**
+ * @brief Reject a simulation provider query because simulation configuration is not implemented.
+ * @param[in] provider Provider identifier.
+ * @param[in] parameterName Provider-specific parameter name.
+ * @return This function does not return a value.
+ * @throws std::logic_error Always.
+ */
 ISAACSIM_FOUNDATION_OVSIM_API OutputParameterType getParameter(const std::string& provider,
                                                                const std::string& parameterName);
 

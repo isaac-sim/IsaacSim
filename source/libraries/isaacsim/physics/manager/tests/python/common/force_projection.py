@@ -29,7 +29,6 @@ import sys
 
 import pytest
 import warp as wp
-from isaacsim.physics.manager.impl.tensors import SimulationView
 
 _PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PARENT_DIR not in sys.path:
@@ -41,6 +40,7 @@ from _scenario import (  # noqa: E402
     GridParams,
     GridTestBase,
     SimParams,
+    SimulationEntities,
     Transform,
 )
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade  # noqa: E402
@@ -369,11 +369,11 @@ class JointForceDofProjectionSingleLinkCommon(GridTestBase):
     def _apply_engine_specifics(self) -> None:
         """Apply optional backend-specific articulation configuration."""
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the articulation view and apply the configured motor torque.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.pendulums = sim.create_articulation_view("/envs/*/pendulum")
@@ -393,11 +393,11 @@ class JointForceDofProjectionSingleLinkCommon(GridTestBase):
         self.applied_dof_forces = wp.from_numpy(forces_np, dtype=wp.float32, device=self.wp_device)
         self.pendulums.set_data("dof-actuation-forces", self.applied_dof_forces, all_indices)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Compare measured joint and projected forces with equilibrium values.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -607,20 +607,20 @@ class JointForceDofProjectionTwoLinksCommon(GridTestBase):
     def _apply_engine_specifics(self) -> None:
         """Apply optional backend-specific articulation configuration."""
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the articulation view and apply torque to the selected DOF.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.pendulums = sim.create_articulation_view("/envs/*/pendulum")
         # If the engine reports zero DOFs the articulation wasn't
-        # recognised at all (e.g. Newton's adapter doesn't accept the
+        # recognized at all (e.g. Newton's adapter doesn't accept the
         # D6-with-LimitAPI lock pattern). Skip with a clear engine
         # reason rather than failing on a zero-axis index.
         if self.pendulums.get_metadata("num-dofs") == 0:
-            pytest.skip("engine reported max_dofs=0 — articulation/D6-joint " "configuration not recognised")
+            pytest.skip("engine reported max_dofs=0 — articulation/D6-joint " "configuration not recognized")
         self.check_articulation_view(self.pendulums, self.num_envs, 3, self.pendulums.get_metadata("num-dofs"), True)
         all_indices = wp_utils.arange(self.pendulums.count, device=self.wp_device)
         dof_pos_np = wp.zeros(
@@ -654,11 +654,11 @@ class JointForceDofProjectionTwoLinksCommon(GridTestBase):
         self.applied_dof_forces = wp.from_numpy(forces_np, dtype=wp.float32, device=self.wp_device)
         self.pendulums.set_data("dof-actuation-forces", self.applied_dof_forces, all_indices)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Compare both joint wrenches and projected forces with references.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -726,7 +726,7 @@ class JFP_Torsional_Y_Common(JointForceDofProjectionTwoLinksCommon):  # noqa: N8
 
 
 class JFP_Spherical_Y_Common(JointForceDofProjectionTwoLinksCommon):  # noqa: N801
-    """Free Y and Z rotations in the spherical-labelled configuration."""
+    """Free Y and Z rotations in the spherical-labeled configuration."""
 
     free_rotation_axis = "rotY"
     dof_torque_multiplier = -1.0

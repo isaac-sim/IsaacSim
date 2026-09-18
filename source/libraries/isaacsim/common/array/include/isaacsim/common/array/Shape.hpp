@@ -42,22 +42,22 @@ namespace details
  * given value. Vector variants are interpreted as an ordered list of dimension
  * sizes, one element per axis.
  */
-using SupportedShapeSpec = std::variant<int8_t,
-                                        int16_t,
-                                        int32_t,
-                                        int64_t,
-                                        uint8_t,
-                                        uint16_t,
-                                        uint32_t,
-                                        uint64_t,
-                                        std::vector<int8_t>,
-                                        std::vector<int16_t>,
-                                        std::vector<int32_t>,
-                                        std::vector<int64_t>,
-                                        std::vector<uint8_t>,
-                                        std::vector<uint16_t>,
-                                        std::vector<uint32_t>,
-                                        std::vector<uint64_t>>;
+using SupportedShapeSpecification = std::variant<int8_t,
+                                                 int16_t,
+                                                 int32_t,
+                                                 int64_t,
+                                                 uint8_t,
+                                                 uint16_t,
+                                                 uint32_t,
+                                                 uint64_t,
+                                                 std::vector<int8_t>,
+                                                 std::vector<int16_t>,
+                                                 std::vector<int32_t>,
+                                                 std::vector<int64_t>,
+                                                 std::vector<uint8_t>,
+                                                 std::vector<uint16_t>,
+                                                 std::vector<uint32_t>,
+                                                 std::vector<uint64_t>>;
 
 } // namespace details
 
@@ -84,7 +84,7 @@ public:
      *
      * @param[in] shape Integer scalar or vector of dimension sizes.
      */
-    Shape(const details::SupportedShapeSpec& shape);
+    Shape(const details::SupportedShapeSpecification& shape);
 
     /**
      * @brief Constructs a Shape from a brace-enclosed list of integral dimension sizes.
@@ -144,6 +144,13 @@ public:
      * @return A vector of length @ref ndim() containing the size of each axis.
      */
     std::vector<int64_t> shape() const;
+
+    /**
+     * @brief Returns a read-only pointer to the stored dimension sizes.
+     * @details The pointer remains valid until this Shape is assigned or destroyed.
+     * @return Pointer to the first dimension, or an unspecified pointer for a zero-dimensional shape.
+     */
+    const int64_t* data() const;
 
     /**
      * @brief Returns the number of dimensions (rank) of this shape.

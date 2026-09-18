@@ -15,6 +15,8 @@
 
 """Provides classes for representing and converting joint-space paths to minimal-time trajectories."""
 
+from __future__ import annotations
+
 from typing import Optional
 
 import numpy as np

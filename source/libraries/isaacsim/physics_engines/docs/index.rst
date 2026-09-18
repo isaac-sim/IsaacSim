@@ -17,7 +17,7 @@
 .. _isaacsim-physics-engines-library:
 
 ========================
-isaacsim_physics_engines
+isaacsim-physics-engines
 ========================
 
 ``isaacsim-physics-engines`` supplies engine implementations for the
@@ -29,3 +29,5 @@ backend-neutral registration and manager APIs:
 
 Activate or register an engine before selecting it through
 ``isaacsim.physics.manager``.
+
+The corresponding CMake package group is named ``isaacsim_physics_engines``.

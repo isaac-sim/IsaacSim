@@ -13,10 +13,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "details/Registry.hpp"
+
 #include <isaacsim/physics/manager/PhysicsManager.hpp>
 #include <isaacsim/physics/ovsim/control/authoring/Authoring.hpp>
 #include <isaacsim/physics/ovsim/control/simulation/Simulation.hpp>
-#include <isaacsim/physics/ovsim/details/Registry.hpp>
 
 #include <stdexcept>
 
@@ -35,7 +36,7 @@ namespace
 {
 
 int64_t g_usdStageId = 0;
-void* g_ovstageInstancePtr = nullptr;
+void* g_ovstageInstancePointer = nullptr;
 
 } // namespace
 
@@ -152,20 +153,26 @@ void stop()
 
 void initialize()
 {
-    if (!g_ovstageInstancePtr)
+    if (!g_ovstageInstancePointer)
     {
         throw std::runtime_error(
             "Cannot initialize simulation: ovstage instance pointer is not valid. "
             "Set the 'ovstage-stage-ptr' parameter before calling initialize.");
     }
     details::clearRegistry();
-    manager::PhysicsManager::getInstance().initialize(g_ovstageInstancePtr, g_usdStageId);
+    if (!manager::PhysicsManager::getInstance().initialize(g_ovstageInstancePointer, g_usdStageId))
+    {
+        throw std::runtime_error("Physics manager initialization failed.");
+    }
 }
 
 void invalidate()
 {
     details::clearRegistry();
-    manager::PhysicsManager::getInstance().invalidate();
+    if (!manager::PhysicsManager::getInstance().invalidate())
+    {
+        throw std::runtime_error("Physics manager invalidation failed.");
+    }
 }
 
 void step()
@@ -184,7 +191,7 @@ void setParameter(const std::string& provider, const std::string& parameterName,
     {
         if (std::holds_alternative<uintptr_t>(value))
         {
-            g_ovstageInstancePtr = reinterpret_cast<void*>(std::get<uintptr_t>(value));
+            g_ovstageInstancePointer = reinterpret_cast<void*>(std::get<uintptr_t>(value));
         }
         else
         {
@@ -206,6 +213,10 @@ void setParameter(const std::string& provider, const std::string& parameterName,
             throw std::invalid_argument("Invalid value type for parameter 'physics-engine'. Expected std::string.");
         }
     }
+    else
+    {
+        throw std::invalid_argument("Invalid parameter name. Expected 'ovstage-stage-ptr' or 'physics-engine'.");
+    }
 }
 
 OutputParameterType getParameter(const std::string& provider, const std::string& parameterName)
@@ -217,7 +228,7 @@ OutputParameterType getParameter(const std::string& provider, const std::string&
 
     if (parameterName == "ovstage-stage-ptr")
     {
-        return reinterpret_cast<uintptr_t>(g_ovstageInstancePtr);
+        return reinterpret_cast<uintptr_t>(g_ovstageInstancePointer);
     }
     else
     {

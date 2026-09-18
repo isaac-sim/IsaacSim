@@ -17,6 +17,7 @@
 .. _isaacsim-common-array:
 .. _isaacsim-common-array-overview:
 
+=====================
 isaacsim.common.array
 =====================
 
@@ -31,18 +32,18 @@ simulation components.
 Design
 ------
 
-An ``Array`` combines a contiguous element buffer with a ``Shape``, a ``DType``, and
+An ``Array`` combines a contiguous element buffer with a ``Shape``, a ``Dtype``, and
 a ``Device``. The buffer is managed through shared ownership, so copying an ``Array``
-shares the allocation rather than duplicating it. Use ``clone()`` when an independent
-copy is required.
+shares the allocation rather than duplicating it. Use ``copy()`` when an independent,
+compacted copy is required, or ``clone()`` to also preserve the offset of a slice.
 
 The three supporting value types are:
 
-- ``Shape`` — an ordered sequence of signed 64-bit dimension sizes. Supports
+- ``Shape`` --- an ordered sequence of signed 64-bit dimension sizes. Supports
   NumPy-style broadcasting rules and -1 dimension inference for ``reshape()``.
-- ``DType`` — an element type token covering ``bool``, the fixed-width integer types
+- ``Dtype`` --- an element type token covering ``bool``, the fixed-width integer types
   from ``<cstdint>``, ``float``, and ``double``.
-- ``Device`` — a compute target, either the CPU (ordinal -1) or a CUDA GPU
+- ``Device`` --- a compute target, either the CPU (ordinal -1) or a CUDA GPU
   (non-negative ordinal). ``DeviceGuard`` provides RAII device switching.
 
 CUDA operations load the platform CUDA runtime dynamically. The runtime must be

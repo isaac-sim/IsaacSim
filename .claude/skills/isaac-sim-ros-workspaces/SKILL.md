@@ -3,7 +3,7 @@ name: isaac-sim-ros-workspaces
 description: "Clone, configure, or build IsaacSim-ros_workspaces using native ROS, Docker, custom interfaces, or Pixi. Use only for Isaac Sim ROS workspace requests, not generic workspace setup."
 license: Apache-2.0
 metadata:
-  author: Krishna Patil
+  author: Krishna Patil <info@nvidia.com>
 ---
 
 # Isaac Sim ROS Workspaces

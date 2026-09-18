@@ -17,13 +17,15 @@
 .. _isaacsim-ovsim-library:
 
 ==============
-isaacsim_ovsim
+isaacsim-ovsim
 ==============
 
-``isaacsim_ovsim`` provides a common OV SIM client API for authoring scenes,
+The ``isaacsim-ovsim`` Python distribution provides a common OV SIM client API for authoring scenes,
 controlling simulations, and retrieving simulation data. Applications can select
 either the in-process client or a remote gRPC session without changing the API
 used by their simulation code.
 
 Use this distribution to integrate OV SIM workflows into standalone applications.
 It includes the public API and the local and gRPC client implementations.
+
+The corresponding CMake package group is named ``isaacsim_ovsim``.

@@ -18,7 +18,9 @@
 from typing import Any
 
 import isaacsim_test
+import numpy as np
 import pytest
+import warp as wp
 from isaacsim.foundation.objects import Prim
 
 from .fixtures import stage  # noqa: F401 - imported so pytest can discover the fixture
@@ -241,6 +243,39 @@ def test_get_applied_schemas(capsys: Any, stage: Any) -> None:
     assert len(result[0]) == 3 and len(result[1]) == 0
 
 
+def test_is_a(capsys: Any, stage: Any) -> None:
+    """Test is a.
+
+    Args:
+        capsys: Pytest output-capture fixture.
+        stage: Stage used by the test.
+    """
+    stage.define_prim("/World/Cube", "Cube")
+    stage.define_prim("/World/Sphere", "Sphere")
+
+    prim = Prim("/World/Cube")
+    prims = Prim(["/World/Cube", "/World/Sphere"])
+
+    # flags are reported per prim, one row each
+    output = prim.is_a("Cube")
+    isaacsim_test.check_array(output, shape=(1, 1), dtype=wp.bool)
+    isaacsim_test.check_equal(np.array([[1]], dtype=np.bool_), output)
+
+    output = prims.is_a("Cube")
+    isaacsim_test.check_array(output, shape=(2, 1), dtype=wp.bool)
+    isaacsim_test.check_equal(np.array([[1], [0]], dtype=np.bool_), output)
+
+    # the abstract base schema matches both
+    isaacsim_test.check_equal(np.array([[1], [1]], dtype=np.bool_), prims.is_a("Gprim"))
+
+    # subset of prims
+    isaacsim_test.check_array(prims.is_a("Cube", indices=[1]), shape=(1, 1), dtype=wp.bool)
+
+    # unknown schema type
+    with pytest.raises(ValueError):
+        prim.is_a("NonExistentType")
+
+
 def test_api(capsys: Any, stage: Any) -> None:
     """Test api.
 
@@ -254,8 +289,16 @@ def test_api(capsys: Any, stage: Any) -> None:
     prim = Prim("/World/Cube")
     prims = Prim(["/World/Cube", "/World/Sphere"])
 
+    # flags are reported per prim, one row each
+    isaacsim_test.check_array(prim.has_api("PhysicsRigidBodyAPI"), shape=(1, 1), dtype=wp.bool)
+    isaacsim_test.check_array(prims.has_api("PhysicsRigidBodyAPI"), shape=(2, 1), dtype=wp.bool)
+    isaacsim_test.check_array(prims.apply_api("PhysicsRigidBodyAPI"), shape=(2, 1), dtype=wp.bool)
+    isaacsim_test.check_array(prims.remove_api("PhysicsRigidBodyAPI"), shape=(2, 1), dtype=wp.bool)
+
     # single-apply API: PhysicsRigidBodyAPI
-    assert not any(prim.has_api("PhysicsRigidBodyAPI").numpy())
+    has_api = prim.has_api("PhysicsRigidBodyAPI")
+    isaacsim_test.check_array(has_api, shape=(1, 1), dtype=wp.bool)
+    assert not any(has_api.numpy())
     assert all(prim.apply_api("PhysicsRigidBodyAPI").numpy())
     assert all(prim.has_api("PhysicsRigidBodyAPI").numpy())
     assert all(prim.remove_api("PhysicsRigidBodyAPI").numpy())

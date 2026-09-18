@@ -128,8 +128,8 @@ CameraPose getCameraPose(const Camera& camera)
     if (trace > 0.0)
     {
         const double scale = 2.0 * std::sqrt(trace + 1.0);
-        orientation = { 0.25 * scale, (matrix[1][2] - matrix[2][1]) / scale, (matrix[2][0] - matrix[0][2]) / scale,
-                        (matrix[0][1] - matrix[1][0]) / scale };
+        orientation = { (matrix[1][2] - matrix[2][1]) / scale, (matrix[2][0] - matrix[0][2]) / scale,
+                        (matrix[0][1] - matrix[1][0]) / scale, 0.25 * scale };
     }
     else
     {
@@ -145,10 +145,10 @@ CameraPose getCameraPose(const Camera& camera)
         const size_t next = (diagonal + 1) % 3;
         const size_t last = (diagonal + 2) % 3;
         const double scale = 2.0 * std::sqrt(1.0 + matrix[diagonal][diagonal] - matrix[next][next] - matrix[last][last]);
-        orientation[diagonal + 1] = 0.25 * scale;
-        orientation[0] = (matrix[next][last] - matrix[last][next]) / scale;
-        orientation[next + 1] = (matrix[diagonal][next] + matrix[next][diagonal]) / scale;
-        orientation[last + 1] = (matrix[diagonal][last] + matrix[last][diagonal]) / scale;
+        orientation[diagonal] = 0.25 * scale;
+        orientation[3] = (matrix[next][last] - matrix[last][next]) / scale;
+        orientation[next] = (matrix[diagonal][next] + matrix[next][diagonal]) / scale;
+        orientation[last] = (matrix[diagonal][last] + matrix[last][diagonal]) / scale;
     }
     return { eye, orientation };
 }
@@ -212,41 +212,63 @@ class SdlWindow final
 public:
     SdlWindow(uint32_t width, uint32_t height, const std::string& title)
     {
+#if !defined(_WIN32)
+        // NVIDIA may otherwise override SDL's zero swap interval and quantize a late frame to the next vblank.
+        (void)SDL_setenv_unsafe("__GL_SYNC_TO_VBLANK", "0", 0);
+#endif
         if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
         {
             throwSdlError("Unable to initialize SDL video");
         }
         m_videoInitialized = true;
-        m_window =
-            SDL_CreateWindow(title.c_str(), static_cast<int>(width), static_cast<int>(height), SDL_WINDOW_RESIZABLE);
+#if defined(_WIN32)
+        const int contextMajorVersion = 4;
+        const int contextMinorVersion = 1;
+        const int contextProfile = SDL_GL_CONTEXT_PROFILE_CORE;
+#else
+        const int contextMajorVersion = 3;
+        const int contextMinorVersion = 2;
+        const int contextProfile = SDL_GL_CONTEXT_PROFILE_ES;
+#endif
+        if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, contextMajorVersion) ||
+            !SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, contextMinorVersion) ||
+            !SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, contextProfile) ||
+            !SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1) || !SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0) ||
+            !SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0) || !SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0))
+        {
+            const std::runtime_error error = makeSdlError("Unable to configure the SDL OpenGL context");
+            _reset();
+            throw error;
+        }
+        m_window = SDL_CreateWindow(
+            title.c_str(), static_cast<int>(width), static_cast<int>(height), SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
         if (!m_window)
         {
             const std::runtime_error error = makeSdlError("Unable to create SDL viewport window");
-            reset();
+            _reset();
             throw error;
         }
         m_windowId = SDL_GetWindowID(m_window);
         if (m_windowId == 0)
         {
             const std::runtime_error error = makeSdlError("Unable to query the SDL viewport window identifier");
-            reset();
+            _reset();
             throw error;
         }
-        // Keep presentation on a different graphics API from OVGL's OpenGL ES
-        // context. SDL's GPU renderer selects Vulkan on Linux and Direct3D on
-        // Windows; software remains a portable fallback when neither is present.
-        m_renderer = SDL_CreateRenderer(m_window, "gpu,software");
-        if (!m_renderer)
+        m_context = SDL_GL_CreateContext(m_window);
+        if (!m_context)
         {
-            const std::runtime_error error = makeSdlError("Unable to create SDL viewport presenter");
-            reset();
+            const std::runtime_error error = makeSdlError("Unable to create the SDL OpenGL context");
+            _reset();
             throw error;
         }
+        makeCurrent();
+        (void)SDL_GL_SetSwapInterval(0);
     }
 
     ~SdlWindow()
     {
-        reset();
+        _reset();
     }
 
     SdlWindow(const SdlWindow&) = delete;
@@ -286,94 +308,29 @@ public:
         (void)SDL_CaptureMouse(enabled);
     }
 
-    void present(const Frame& frame, uint32_t windowWidth, uint32_t windowHeight, std::string_view hudText)
+    void makeCurrent()
     {
-        if (frame.width == 0 || frame.height == 0 || windowWidth == 0 || windowHeight == 0 ||
-            frame.width > static_cast<uint32_t>(std::numeric_limits<int>::max() / 4) ||
-            frame.width > std::numeric_limits<size_t>::max() / 4 ||
-            frame.height > std::numeric_limits<size_t>::max() / (static_cast<size_t>(frame.width) * 4) ||
-            frame.rgba.size() < static_cast<size_t>(frame.width) * frame.height * 4)
+        if (!SDL_GL_MakeCurrent(m_window, m_context))
         {
-            throw std::runtime_error("OVGL color frame has an invalid byte extent");
+            throwSdlError("Unable to make the SDL OpenGL context current");
         }
-        ensureTexture(frame.width, frame.height);
-        if (!SDL_UpdateTexture(m_texture, nullptr, frame.rgba.data(), static_cast<int>(frame.width * 4)))
-        {
-            throwSdlError("Unable to upload the OVGL frame to SDL");
-        }
+    }
 
-        const double scale =
-            std::min(static_cast<double>(windowWidth) / frame.width, static_cast<double>(windowHeight) / frame.height);
-        const float presentedWidth =
-            std::max(1.0F, std::min(static_cast<float>(windowWidth), static_cast<float>(frame.width * scale)));
-        const float presentedHeight =
-            std::max(1.0F, std::min(static_cast<float>(windowHeight), static_cast<float>(frame.height * scale)));
-        const SDL_FRect destination{ (static_cast<float>(windowWidth) - presentedWidth) * 0.5F,
-                                     (static_cast<float>(windowHeight) - presentedHeight) * 0.5F, presentedWidth,
-                                     presentedHeight };
-
-        if (!SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, SDL_ALPHA_OPAQUE) || !SDL_RenderClear(m_renderer) ||
-            !SDL_RenderTexture(m_renderer, m_texture, nullptr, &destination))
-        {
-            throwSdlError("Unable to present the OVGL frame with SDL");
-        }
-        if (!hudText.empty())
-        {
-            drawHud(hudText);
-        }
-        if (!SDL_RenderPresent(m_renderer))
+    void present()
+    {
+        if (!SDL_GL_SwapWindow(m_window))
         {
             throwSdlError("Unable to swap the SDL viewport window");
         }
     }
 
 private:
-    void drawHud(std::string_view text)
+    void _reset()
     {
-        constexpr float margin = 10.0F;
-        constexpr float padding = 6.0F;
-        const std::string nullTerminatedText(text);
-        const SDL_FRect background{ margin, margin,
-                                    static_cast<float>(text.size() * SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE) + 2 * padding,
-                                    SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE + 2 * padding };
-        if (!SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, SDL_ALPHA_OPAQUE) ||
-            !SDL_RenderFillRect(m_renderer, &background) ||
-            !SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, SDL_ALPHA_OPAQUE) ||
-            !SDL_RenderDebugText(m_renderer, margin + padding, margin + padding, nullTerminatedText.c_str()))
-        {
-            throwSdlError("Unable to draw the SDL viewport HUD");
-        }
-    }
-
-    void ensureTexture(uint32_t width, uint32_t height)
-    {
-        if (m_texture && m_textureWidth == width && m_textureHeight == height)
-        {
-            return;
-        }
-        SDL_DestroyTexture(m_texture);
-        m_texture = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING,
-                                      static_cast<int>(width), static_cast<int>(height));
-        if (!m_texture)
-        {
-            throwSdlError("Unable to create the SDL viewport texture");
-        }
-        if (!SDL_SetTextureScaleMode(m_texture, SDL_SCALEMODE_LINEAR))
-        {
-            SDL_DestroyTexture(m_texture);
-            m_texture = nullptr;
-            throwSdlError("Unable to configure SDL viewport scaling");
-        }
-        m_textureWidth = width;
-        m_textureHeight = height;
-    }
-
-    void reset()
-    {
-        SDL_DestroyTexture(m_texture);
-        m_texture = nullptr;
-        SDL_DestroyRenderer(m_renderer);
-        m_renderer = nullptr;
+        if (m_context && SDL_GL_GetCurrentContext() == m_context)
+            (void)SDL_GL_MakeCurrent(m_window, nullptr);
+        SDL_GL_DestroyContext(m_context);
+        m_context = nullptr;
         SDL_DestroyWindow(m_window);
         m_window = nullptr;
         m_windowId = 0;
@@ -386,37 +343,34 @@ private:
 
     SDL_Window* m_window{ nullptr };
     SDL_WindowID m_windowId{ 0 };
-    SDL_Renderer* m_renderer{ nullptr };
-    SDL_Texture* m_texture{ nullptr };
-    uint32_t m_textureWidth{ 0 };
-    uint32_t m_textureHeight{ 0 };
+    SDL_GLContext m_context{ nullptr };
     bool m_videoInitialized{ false };
 };
 
 } // namespace
 
-class Viewport::Impl
+class Viewport::Implementation
 {
 public:
-    Impl(ovstage_instance_t* stage, CameraPoseWriter cameraPoseWriter, ViewportConfig config)
+    Implementation(ovstage_instance_t* stage, CameraPoseWriter cameraPoseWriter, ViewportConfiguration configuration)
         : m_cameraPoseWriter(std::move(cameraPoseWriter)),
-          m_config(std::move(config)),
-          m_camera(m_config.camera),
-          m_resetCamera(m_config.camera),
-          m_width(m_config.width),
-          m_height(m_config.height)
+          m_configuration(std::move(configuration)),
+          m_camera(m_configuration.camera),
+          m_resetCamera(m_configuration.camera),
+          m_width(m_configuration.width),
+          m_height(m_configuration.height)
     {
         if (!m_cameraPoseWriter)
         {
             throw std::invalid_argument("Viewport camera-pose writer must not be empty");
         }
-        if (m_config.width == 0 || m_config.height == 0 ||
-            m_config.width > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
-            m_config.height > static_cast<uint32_t>(std::numeric_limits<int>::max()))
+        if (m_configuration.width == 0 || m_configuration.height == 0 ||
+            m_configuration.width > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
+            m_configuration.height > static_cast<uint32_t>(std::numeric_limits<int>::max()))
         {
             throw std::invalid_argument("Viewport dimensions must be positive SDL-compatible pixel extents");
         }
-        if (m_config.renderProductPath.empty() || m_config.renderProductPath.front() != '/')
+        if (m_configuration.renderProductPath.empty() || m_configuration.renderProductPath.front() != '/')
         {
             throw std::invalid_argument("Viewport RenderProduct path must be absolute");
         }
@@ -428,19 +382,24 @@ public:
         {
             throw std::invalid_argument("Viewport camera pose must be finite, non-singular, and have positive distance");
         }
-        m_renderer = std::make_unique<details::Renderer>(stage);
-        if (m_config.visible)
+        if (m_configuration.visible)
         {
-            m_window = std::make_unique<SdlWindow>(m_width, m_height, m_config.title);
+            m_window = std::make_unique<SdlWindow>(m_width, m_height, m_configuration.title);
             const auto pixelSize = m_window->getPixelSize();
             m_width = pixelSize[0];
             m_height = pixelSize[1];
         }
+        m_renderer = std::make_unique<details::Renderer>(stage);
+    }
+
+    ~Implementation()
+    {
+        close();
     }
 
     bool pollEvents()
     {
-        if (!m_running || (m_config.maximumFrames != 0 && m_frame.frameNumber >= m_config.maximumFrames))
+        if (!m_running || (m_configuration.maximumFrames != 0 && m_frame.frameNumber >= m_configuration.maximumFrames))
         {
             m_running = false;
             return false;
@@ -448,19 +407,19 @@ public:
         const auto pollTime = std::chrono::steady_clock::now();
         const double elapsedSeconds = std::chrono::duration<double>(pollTime - m_previousPollTime).count();
         m_previousPollTime = pollTime;
-        const bool movementWasActive = hasMovementInput();
+        const bool movementWasActive = _hasMovementInput();
         if (m_window)
         {
             SDL_Event event{};
             while (SDL_PollEvent(&event))
             {
-                handleEvent(event);
+                _handleEvent(event);
             }
         }
-        applyMouseLook();
-        if (m_running && hasMovementInput())
+        _applyMouseLook();
+        if (m_running && _hasMovementInput())
         {
-            applyMovement(movementWasActive ? std::clamp(elapsedSeconds, 0.0, g_kMaximumMovementDeltaSeconds) : 0.0);
+            _applyMovement(movementWasActive ? std::clamp(elapsedSeconds, 0.0, g_kMaximumMovementDeltaSeconds) : 0.0);
         }
         if (m_running && m_cameraDirty)
         {
@@ -470,23 +429,60 @@ public:
         return m_running;
     }
 
+    void close() noexcept
+    {
+        m_running = false;
+        if (m_window && m_renderer)
+        {
+            try
+            {
+                m_window->makeCurrent();
+            }
+            catch (...)
+            {
+            }
+        }
+        m_renderer.reset();
+        m_window.reset();
+        m_cameraPoseWriter = {};
+    }
+
+    bool isClosed() const noexcept
+    {
+        return !m_renderer;
+    }
+
     const Frame& render()
     {
         if (!m_running)
         {
             throw std::runtime_error("Cannot render a closed OVGL viewport");
         }
-        m_renderer->render(m_config.renderProductPath, m_frame);
         if (m_window)
         {
             m_frameRateCounter.recordFrame(std::chrono::steady_clock::now());
-            presentFrame();
+            char fpsText[32]{};
+            const char* overlayText = nullptr;
+            if (m_hudVisible)
+            {
+                const double framesPerSecond = m_frameRateCounter.getFramesPerSecond();
+                if (framesPerSecond > 0.0)
+                    std::snprintf(fpsText, sizeof(fpsText), "FPS: %.1f", framesPerSecond);
+                else
+                    std::snprintf(fpsText, sizeof(fpsText), "FPS: --");
+                overlayText = fpsText;
+            }
+            m_window->makeCurrent();
+            m_renderer->present(m_configuration.renderProductPath, m_width, m_height, overlayText, m_frame);
+            m_window->present();
         }
+        else
+            m_renderer->render(m_configuration.renderProductPath, m_frame);
         return m_frame;
     }
 
 private:
-    void handleEvent(const SDL_Event& event)
+    void _handleEvent(const SDL_Event& event)
     {
         switch (event.type)
         {
@@ -502,13 +498,13 @@ private:
         case SDL_EVENT_KEY_DOWN:
             if (event.key.windowID == m_window->getId() && !event.key.repeat)
             {
-                handleKey(event.key.scancode, true);
+                _handleKey(event.key.scancode, true);
             }
             break;
         case SDL_EVENT_KEY_UP:
             if (event.key.windowID == m_window->getId())
             {
-                handleKey(event.key.scancode, false);
+                _handleKey(event.key.scancode, false);
             }
             break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -554,22 +550,12 @@ private:
             {
                 m_width = static_cast<uint32_t>(std::max(event.window.data1, 1));
                 m_height = static_cast<uint32_t>(std::max(event.window.data2, 1));
-                if (m_frame.frameNumber != 0)
-                {
-                    presentFrame();
-                }
-            }
-            break;
-        case SDL_EVENT_WINDOW_EXPOSED:
-            if (event.window.windowID == m_window->getId() && m_frame.frameNumber != 0)
-            {
-                presentFrame();
             }
             break;
         case SDL_EVENT_WINDOW_FOCUS_LOST:
             if (event.window.windowID == m_window->getId())
             {
-                clearInput();
+                _clearInput();
             }
             break;
         default:
@@ -577,7 +563,7 @@ private:
         }
     }
 
-    void handleKey(SDL_Scancode key, bool pressed)
+    void _handleKey(SDL_Scancode key, bool pressed)
     {
         if (key == SDL_SCANCODE_ESCAPE && pressed)
         {
@@ -639,13 +625,13 @@ private:
         }
     }
 
-    bool hasMovementInput() const
+    bool _hasMovementInput() const
     {
         return m_movementKeys.forward || m_movementKeys.backward || m_movementKeys.left || m_movementKeys.right ||
                m_movementKeys.down || m_movementKeys.up;
     }
 
-    void applyMouseLook()
+    void _applyMouseLook()
     {
         double deltaX = m_pendingMouseDelta[0];
         double deltaY = m_pendingMouseDelta[1];
@@ -672,27 +658,7 @@ private:
         }
     }
 
-    void presentFrame()
-    {
-        std::string_view hudText;
-        char fpsText[32]{};
-        if (m_hudVisible)
-        {
-            const double framesPerSecond = m_frameRateCounter.getFramesPerSecond();
-            if (framesPerSecond > 0.0)
-            {
-                std::snprintf(fpsText, sizeof(fpsText), "FPS: %.1f", framesPerSecond);
-            }
-            else
-            {
-                std::snprintf(fpsText, sizeof(fpsText), "FPS: --");
-            }
-            hudText = fpsText;
-        }
-        m_window->present(m_frame, m_width, m_height, hudText);
-    }
-
-    void applyMovement(double elapsedSeconds)
+    void _applyMovement(double elapsedSeconds)
     {
         double forwardAmount = static_cast<double>(m_movementKeys.forward) - m_movementKeys.backward;
         double rightAmount = static_cast<double>(m_movementKeys.right) - m_movementKeys.left;
@@ -710,7 +676,7 @@ private:
         m_cameraDirty = true;
     }
 
-    void clearInput()
+    void _clearInput()
     {
         if (m_window && m_dragging)
         {
@@ -737,7 +703,7 @@ private:
 
     std::unique_ptr<details::Renderer> m_renderer;
     CameraPoseWriter m_cameraPoseWriter;
-    ViewportConfig m_config;
+    ViewportConfiguration m_configuration;
     Camera m_camera;
     Camera m_resetCamera;
     std::unique_ptr<SdlWindow> m_window;
@@ -759,23 +725,40 @@ private:
     bool m_hudVisible{ false };
 };
 
-Viewport::Viewport(ovstage_instance_t* stage, CameraPoseWriter cameraPoseWriter, ViewportConfig config)
-    : m_impl(std::make_unique<Impl>(stage, std::move(cameraPoseWriter), std::move(config)))
+Viewport::Viewport(ovstage_instance_t* stage, CameraPoseWriter cameraPoseWriter, ViewportConfiguration configuration)
+    : m_implementation(std::make_unique<Implementation>(stage, std::move(cameraPoseWriter), std::move(configuration)))
 {
 }
 
 Viewport::~Viewport() = default;
-Viewport::Viewport(Viewport&&) noexcept = default;
-Viewport& Viewport::operator=(Viewport&&) noexcept = default;
+Viewport::Viewport(Viewport&& other) noexcept = default;
+Viewport& Viewport::operator=(Viewport&& other) noexcept = default;
+
+void Viewport::close() noexcept
+{
+    if (m_implementation)
+    {
+        m_implementation->close();
+    }
+}
+
+bool Viewport::isClosed() const noexcept
+{
+    return !m_implementation || m_implementation->isClosed();
+}
 
 bool Viewport::pollEvents()
 {
-    return m_impl->pollEvents();
+    return m_implementation && m_implementation->pollEvents();
 }
 
 const Frame& Viewport::render()
 {
-    return m_impl->render();
+    if (!m_implementation)
+    {
+        throw std::runtime_error("Cannot render a moved-from OVGL viewport");
+    }
+    return m_implementation->render();
 }
 
 } // namespace debug

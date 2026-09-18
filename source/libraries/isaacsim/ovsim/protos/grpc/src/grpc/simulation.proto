@@ -1,0 +1,91 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+// Minimal OV SIM control-plane API used by the standalone gRPC host.
+//
+// This is intentionally a reduced variant of the upstream simulation.proto. The
+// server accepts USD content directly because its source repository is not a
+// runtime dependency of this distribution.
+
+syntax = "proto3";
+
+package nvidia.omniverse.simulation.v1;
+
+import "google/rpc/status.proto";
+
+service ControlPlaneService {
+  // Reserves the server's single simulation slot and starts asynchronous USD
+  // import and physics initialization. The client chooses simulation_id.
+  // Returns INVALID_ARGUMENT for missing required content, ALREADY_EXISTS when
+  // that ID already owns the slot, or RESOURCE_EXHAUSTED when another ID owns
+  // it. An OK response means initialization was accepted, not completed; poll
+  // GetSimulation for READY or FAILED.
+  rpc CreateSimulation(CreateSimulationRequest) returns (CreateSimulationResponse);
+
+  // Returns the current lifecycle state for one accepted simulation. Returns
+  // NOT_FOUND when simulation_id is not active. The RPC itself returns OK for
+  // INITIALIZING, READY, FAILED, and DELETING; FAILED carries the original
+  // asynchronous failure as a google.rpc.Status payload.
+  rpc GetSimulation(GetSimulationRequest) returns (Simulation);
+
+  // Starts asynchronous cleanup for the active simulation. Returns NOT_FOUND
+  // for an ID that is not active. Repeating the request while deletion is in
+  // progress is idempotent. Calling it after cleanup FAILED queues one retry of
+  // incomplete cleanup milestones. Poll GetSimulation until it returns
+  // NOT_FOUND to confirm the slot was released.
+  rpc DeleteSimulation(DeleteSimulationRequest) returns (DeleteSimulationResponse);
+}
+
+enum SimulationStatus {
+  // The status was not set; servers never intentionally return this value.
+  SIMULATION_STATUS_UNSPECIFIED = 0;
+
+  // USD import or physics initialization is in progress.
+  INITIALIZING = 1;
+
+  // The simulation accepts world-state reads, writes, and time updates.
+  READY = 2;
+
+  // Initialization, rollback, or cleanup failed. Simulation.error is present.
+  FAILED = 3;
+
+  // Cleanup is in progress and the simulation slot remains occupied.
+  DELETING = 4;
+}
+
+message CreateSimulationRequest {
+  // Required client-generated identifier. It remains private to GrpcSession.
+  string simulation_id = 1;
+
+  // Required complete USDA text imported by the local native implementation.
+  string usd_content = 2;
+}
+
+// Empty acknowledgement that asynchronous initialization was accepted.
+message CreateSimulationResponse {}
+
+message GetSimulationRequest {
+  // Required identifier supplied to CreateSimulation.
+  string simulation_id = 1;
+}
+
+message Simulation {
+  // Echoes the requested active simulation identifier.
+  string simulation_id = 1;
+
+  // Current asynchronous lifecycle state.
+  SimulationStatus status = 2;
+
+  // Original asynchronous server failure. Present only when status is FAILED;
+  // synchronous RPC failures are returned as the RPC status instead.
+  google.rpc.Status error = 3;
+}
+
+message DeleteSimulationRequest {
+  // Required identifier supplied to CreateSimulation.
+  string simulation_id = 1;
+}
+
+// Empty acknowledgement that asynchronous cleanup was accepted or was already
+// in progress.
+message DeleteSimulationResponse {}

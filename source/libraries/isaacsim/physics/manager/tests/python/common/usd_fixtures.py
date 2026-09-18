@@ -80,6 +80,7 @@ def populate_ovstage_from_usd_path(usd_path: str, *, name: str = "umbrella-physi
 
     Returns:
         ``(ovstage, native_handle)`` ready for ``physics_manager.initialize``.
+
     """
     from isaacsim.physics_engines.ovstage import get_native_handle, setup
 
@@ -111,6 +112,7 @@ def populate_ovstage(stage_handle: StageHandle, *, name: str = "umbrella-physics
 
     Raises:
         ValueError: If the handle has no on-disk USD path.
+
     """
     if not stage_handle.file_path:
         raise ValueError("StageHandle.file_path is required to populate an ovstage")

@@ -31,10 +31,6 @@ namespace shapes
 Shape::Shape(const std::variant<std::string, std::vector<std::string>>& paths,
              const std::string& shapeType,
              const std::optional<ColorType>& colors,
-             const std::optional<array::Array>& positions,
-             const std::optional<array::Array>& translations,
-             const std::optional<array::Array>& orientations,
-             const std::optional<array::Array>& scales,
              bool resetXformOpProperties)
     : Xform()
 {
@@ -44,7 +40,7 @@ Shape::Shape(const std::variant<std::string, std::vector<std::string>>& paths,
     if (!existentPaths.empty())
     {
         m_paths = std::move(existentPaths);
-        const std::vector<bool> isShape = this->isA(shapeType).get<std::vector<bool>>();
+        const std::vector<bool> isShape = this->isA(shapeType).flatten().get<std::vector<bool>>();
         for (std::size_t i = 0; i < m_paths.size(); ++i)
         {
             if (!isShape[i])
@@ -63,7 +59,7 @@ Shape::Shape(const std::variant<std::string, std::vector<std::string>>& paths,
         }
     }
     // Initialize instance from arguments.
-    _initialize(positions, translations, orientations, scales, resetXformOpProperties);
+    _initialize(resetXformOpProperties);
     if (colors.has_value())
     {
         this->setDisplayColors(*colors);
@@ -125,6 +121,11 @@ std::vector<std::string> Shape::_resolveAxes(const std::variant<std::string, std
             }
         },
         axes);
+}
+
+array::Array Shape::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("Gprim");
 }
 
 } // namespace shapes

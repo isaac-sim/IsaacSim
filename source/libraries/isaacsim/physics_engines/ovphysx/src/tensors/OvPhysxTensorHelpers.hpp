@@ -20,7 +20,7 @@
 // can compile them directly without linking the backend .so.
 
 #include <dlpack/dlpack.h>
-#include <isaacsim/physics/registration/tensors/TensorDesc.hpp>
+#include <isaacsim/physics/registration/tensors/TensorDescription.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -77,7 +77,7 @@ inline size_t checkedElementCount(std::initializer_list<int64_t> dimensions, con
     return checkedElementCountFromRange(dimensions, label);
 }
 
-inline DLDataType toDLDataType(isaacsim::physics::tensors::DType dtype)
+inline DLDataType convertToDLDataType(isaacsim::physics::tensors::DType dtype)
 {
     using isaacsim::physics::tensors::DType;
     switch (dtype)
@@ -109,11 +109,11 @@ inline DLDataType toDLDataType(isaacsim::physics::tensors::DType dtype)
     }
 }
 
-// Convert a manager TensorDesc to a stack-allocated DLTensor. The DLTensor borrows
+// Convert a manager TensorDescription to a stack-allocated DLTensor. The DLTensor borrows
 // descriptor.data and descriptor.shape -- the caller must keep `descriptor` alive for the engine call. A GPU
 // tensor must name its device; C-contiguous strides normalize to nullptr (the DLPack
 // convention), while genuine strides pass through so ovphysx rejects them loudly.
-inline DLTensor toDLTensor(const isaacsim::physics::tensors::TensorDesc& descriptor)
+inline DLTensor convertToDLTensor(const isaacsim::physics::tensors::TensorDescription& descriptor)
 {
     using isaacsim::physics::tensors::DeviceKind;
     DLTensor tensor{};
@@ -126,7 +126,7 @@ inline DLTensor toDLTensor(const isaacsim::physics::tensors::TensorDesc& descrip
         throw std::runtime_error("GPU tensor has no device ordinal");
     }
     tensor.device.device_id = (descriptor.deviceOrdinal >= 0) ? descriptor.deviceOrdinal : 0;
-    tensor.dtype = toDLDataType(descriptor.dtype);
+    tensor.dtype = convertToDLDataType(descriptor.dtype);
     if (descriptor.shape.size() > static_cast<size_t>(std::numeric_limits<int32_t>::max()))
     {
         throw std::overflow_error("tensor rank exceeds the DLPack int32 range");
@@ -173,7 +173,7 @@ inline DLTensor toDLTensor(const isaacsim::physics::tensors::TensorDesc& descrip
 // True if `descriptor` is C-contiguous (row-major): no explicit strides, or strides equal to the
 // row-major strides for its shape. The ndarray-to-descriptor conversion always records element-strides, so an empty
 // strides vector also counts as contiguous. A unit dim's stride is irrelevant to contiguity.
-inline bool isContiguousRowMajor(const isaacsim::physics::tensors::TensorDesc& descriptor)
+inline bool isContiguousRowMajor(const isaacsim::physics::tensors::TensorDescription& descriptor)
 {
     if (descriptor.strides.empty())
     {
@@ -211,7 +211,7 @@ inline bool isContiguousRowMajor(const isaacsim::physics::tensors::TensorDesc& d
 // read as adjacent values. Skip only an omitted index (empty shape); a supplied zero-size
 // tensor -- (0,), (0,1), (1,0), which Warp gives a null pointer -- is still validated, so its
 // dtype/rank cannot slip past isEmpty() (which is also true for null data).
-inline void requireInt32Indices(const isaacsim::physics::tensors::TensorDesc& indices, const char* label)
+inline void requireInt32Indices(const isaacsim::physics::tensors::TensorDescription& indices, const char* label)
 {
     using isaacsim::physics::tensors::DType;
     if (indices.shape.empty())
@@ -245,7 +245,7 @@ inline void requireInt32Indices(const isaacsim::physics::tensors::TensorDesc& in
 // capacity check is on element count, not the shape vector: the binding reports some data 1-D
 // (e.g. masses [N]) while callers legitimately allocate the matching 2-D buffer ([N, 1]) --
 // same capacity, different layout.
-inline void requireMatchingOutput(const isaacsim::physics::tensors::TensorDesc& output,
+inline void requireMatchingOutput(const isaacsim::physics::tensors::TensorDescription& output,
                                   const std::vector<int64_t>& shape,
                                   isaacsim::physics::tensors::DType dtype,
                                   const char* label)

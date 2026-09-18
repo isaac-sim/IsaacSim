@@ -15,10 +15,21 @@
 
 """Test data behavior."""
 
+from __future__ import annotations
+
 import isaacsim.physics.ovsim as ovsim
+import pytest
 
 data = ovsim.data
 
 
-def test_data() -> None:
-    """Test data."""
+def test_read_requires_an_initialized_simulation() -> None:
+    """Reject reads until an active physics simulation is initialized."""
+    with pytest.raises(RuntimeError):
+        data.read("/World/Missing", "mass", timestamp=1.0)
+
+
+def test_write_requires_an_initialized_simulation() -> None:
+    """Reject writes until an active physics simulation is initialized."""
+    with pytest.raises(RuntimeError):
+        data.write("/World/Missing", "mass", "value", timestamp=1.0)

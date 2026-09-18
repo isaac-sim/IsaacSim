@@ -222,7 +222,8 @@ def define_prim(path: str, type_name: str = "Xform") -> Usd.Prim:
 
     * ``"Camera"``, ``"Mesh"``, ``"PhysicsScene"``, ``"Scope"``, ``"Xform"``
     * Shapes (``"Capsule"``, ``"Cone"``, ``"Cube"``, ``"Cylinder"``, ``"Plane"``, ``"Sphere"``)
-    * Lights (``"CylinderLight"``, ``"DiskLight"``, ``"DistantLight"``, ``"DomeLight"``, ``"RectLight"``, ``"SphereLight"``)
+    * Lights (``"CylinderLight"``, ``"DiskLight"``, ``"DistantLight"``, ``"DomeLight"``,
+      ``"RectLight"``, ``"SphereLight"``)
 
     Args:
         path: Absolute prim path.

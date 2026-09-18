@@ -199,10 +199,31 @@ function(_isaacsim_finalize_python_runtime_stage)
     add_dependencies(stage-isaacsim-python-runtime stage-isaacsim-python-runtime-worker)
 endfunction()
 
+function(_isaacsim_resolve_nanobind_stub_preloads module_name output_modules output_dependencies)
+    set(preload_modules)
+    set(preload_dependencies)
+    foreach(preload IN LISTS ARGN)
+        _isaacsim_get_module_names(
+            "${preload}" preload_target preload_alias preload_path preload_output_dir)
+        if(NOT TARGET "${preload_target}-python")
+            message(FATAL_ERROR
+                "${module_name} STUB_PRELOADS entry has no registered nanobind target: ${preload}")
+        endif()
+        if(NOT TARGET "stage-${preload_target}-python")
+            message(FATAL_ERROR
+                "${module_name} STUB_PRELOADS entry has no staged nanobind target: ${preload}")
+        endif()
+        list(APPEND preload_modules "${preload}.bindings._bindings")
+        list(APPEND preload_dependencies "stage-${preload_target}-python")
+    endforeach()
+    set(${output_modules} "${preload_modules}" PARENT_SCOPE)
+    set(${output_dependencies} "${preload_dependencies}" PARENT_SCOPE)
+endfunction()
+
 function(isaacsim_add_nanobind)
     set(options NO_STABLE_ABI)
     set(one_value_args MODULE SOURCE STABLE_ABI_EXCEPTION WINDOWS_RUNTIME_SIBLING_DIRECTORY)
-    set(multi_value_args SOURCES DEPENDENCIES)
+    set(multi_value_args SOURCES DEPENDENCIES STUB_PRELOADS)
     cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
     if(ARG_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "isaacsim_add_nanobind received unknown arguments: ${ARG_UNPARSED_ARGUMENTS}")
@@ -281,7 +302,7 @@ function(isaacsim_add_nanobind)
     set(binding_build_dir "${module_output_dir}/bindings")
     _isaacsim_get_python_stage_dir(python_stage_dir)
     set(python_binding_dir "${python_stage_dir}/${module_path}/bindings")
-    set(binding_runtime_initializer "${_ISAACSIM_CMAKE_HELPER_DIR}/InitializeNanobindRuntime.py")
+    set(binding_runtime_initializer "${_ISAACSIM_CMAKE_HELPER_DIR}/initialize_nanobind_runtime.py")
     set(python_library_dir "${python_stage_dir}/isaacsim/lib")
     set(python_runtime_stage_dir "${python_library_dir}")
     if(WIN32)
@@ -516,16 +537,6 @@ function(isaacsim_add_nanobind)
         endif()
         list(APPEND stub_environment "LD_LIBRARY_PATH=${_stub_library_path}")
     endif()
-    set(stub_command "${stub_python}" -I "${nanobind_stubgen}")
-    set(stub_launcher)
-    if(WIN32)
-        set(stub_launcher "${_ISAACSIM_CMAKE_HELPER_DIR}/RunNanobindStubgen.py")
-        set(stub_command
-            "${stub_python}" -I "${stub_launcher}"
-            --binding-dir "${python_binding_dir}"
-            "${nanobind_stubgen}"
-        )
-    endif()
     if(NOT WIN32)
         nanobind_sanitizer_preload_env(stub_sanitizer_environment ${binding_target} ${module_target})
         if(stub_sanitizer_environment)
@@ -537,6 +548,17 @@ function(isaacsim_add_nanobind)
             endif()
         endif()
     endif()
+    set(stub_launcher "${_ISAACSIM_CMAKE_HELPER_DIR}/run_nanobind_stubgen.py")
+    set(stub_command "${stub_python}" -I "${stub_launcher}")
+    if(WIN32)
+        list(APPEND stub_command --binding-dir "${python_binding_dir}")
+    endif()
+    _isaacsim_resolve_nanobind_stub_preloads(
+        "${ARG_MODULE}" stub_preload_modules stub_preload_dependencies ${ARG_STUB_PRELOADS})
+    foreach(stub_preload_module IN LISTS stub_preload_modules)
+        list(APPEND stub_command --preload-module "${stub_preload_module}")
+    endforeach()
+    list(APPEND stub_command "${nanobind_stubgen}")
     add_custom_command(
         OUTPUT "${binding_stub}"
         COMMAND ${CMAKE_COMMAND} -E env ${stub_environment}
@@ -553,6 +575,7 @@ function(isaacsim_add_nanobind)
             "${python_package_stage_stamp}"
             "${nanobind_stubgen}"
             ${stub_launcher}
+            ${stub_preload_dependencies}
         VERBATIM
     )
     add_custom_target(generate-${binding_target}-stub ALL DEPENDS "${binding_stub}")

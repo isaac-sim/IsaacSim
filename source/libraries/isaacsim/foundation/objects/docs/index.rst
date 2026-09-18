@@ -17,11 +17,14 @@
 .. _isaacsim-foundation-objects:
 .. _isaacsim-foundation-objects-overview:
 
+===========================
 isaacsim.foundation.objects
 ===========================
 
 ``isaacsim.foundation.objects`` provides object-oriented wrappers around
 common USD scene elements used across Isaac Sim.
+
+.. _isaacsim-foundation-objects-stage-and-prims:
 
 Stage and prims
 ---------------
@@ -32,16 +35,22 @@ its stage ID for interop with lower-level USD APIs. A backend string
 
 :py:class:`~isaacsim.foundation.objects.Prim` wraps one or more USD prim paths on the default stage.
 
+.. _isaacsim-foundation-objects-xform:
+
 Xform
 -----
 
 :py:class:`~isaacsim.foundation.objects.Xform` extends it with transform read/write helpers.
+
+.. _isaacsim-foundation-objects-camera:
 
 Camera
 ------
 
 :py:class:`~isaacsim.foundation.objects.Camera` wraps a ``UsdGeom.Camera`` prim and provides helpers for
 reading and writing intrinsic parameters.
+
+.. _isaacsim-foundation-objects-mesh:
 
 Mesh
 ----
@@ -50,6 +59,8 @@ Mesh
 and face, crease, corner and subdivision specifications. It can also generate
 the geometry of a set of built-in primitives (cone, cube, cylinder, disk,
 plane, sphere and torus) when creating new prims.
+
+.. _isaacsim-foundation-objects-shapes:
 
 Shapes
 ------
@@ -60,6 +71,8 @@ Concrete geometry classes (:py:class:`~isaacsim.foundation.objects.Capsule`,
 :py:class:`~isaacsim.foundation.objects.Sphere`) inherit from the abstract
 :py:class:`~isaacsim.foundation.objects.Shape` base and handle USD
 mesh authoring for each geometry type.
+
+.. _isaacsim-foundation-objects-lights:
 
 Lights
 ------

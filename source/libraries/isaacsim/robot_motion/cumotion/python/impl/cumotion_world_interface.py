@@ -569,12 +569,14 @@ class CumotionWorldInterface(mg.WorldInterface):
 
             if points_array.shape[1] != 3:
                 raise ValueError(
-                    f"Points must have 3 elements (x, y, z) in add_triangulated_meshes call. Got {points_array.shape[1]} elements."
+                    "Points must have 3 elements (x, y, z) in add_triangulated_meshes call. "
+                    f"Got {points_array.shape[1]} elements."
                 )
 
             if face_vertex_indices_array.shape[1] != 3:
                 raise ValueError(
-                    f"Face vertex indices must have 3 elements (i1, i2, i3) in add_triangulated_meshes call. Got {face_vertex_indices_array.shape[1]} elements."
+                    "Face vertex indices must have 3 elements (i1, i2, i3) in add_triangulated_meshes call. "
+                    f"Got {face_vertex_indices_array.shape[1]} elements."
                 )
 
             # Apply scaling to the input points:
@@ -1123,12 +1125,14 @@ class CumotionWorldInterface(mg.WorldInterface):
 
         if positions.shape[1] != 3:
             raise ValueError(
-                f"Positions must have 3 elements (x, y, z) in update_world_to_robot_root_transforms call. Got {positions.shape[1]} elements."
+                "Positions must have 3 elements (x, y, z) in update_world_to_robot_root_transforms call. "
+                f"Got {positions.shape[1]} elements."
             )
 
         if quaternions.shape[1] != 4:
             raise ValueError(
-                f"Quaternions must have 4 elements (w, x, y, z) in update_world_to_robot_root_transforms call. Got {quaternions.shape[1]} elements."
+                "Quaternions must have 4 elements (w, x, y, z) in update_world_to_robot_root_transforms call. "
+                f"Got {quaternions.shape[1]} elements."
             )
 
         self._update_world_to_robot_root_transforms(poses)

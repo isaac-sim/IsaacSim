@@ -78,6 +78,7 @@ _PACKAGED_WINDOWS_TOOLCHAIN_ENVIRONMENT_VARIABLES = (
     "__VSCMD_PREINIT_PATH",
 )
 ARTIFACT_STATE_FILE = "artifact-state.json"
+CONFIGURE_CONTEXT_FILE = "configure-context.json"
 DEVELOPER_ENVIRONMENT_DIRECTORY = "developer-environment"
 DEVELOPER_ENVIRONMENT_LOCK_SUFFIX = "developer-environment.lock"
 DEVELOPER_ENVIRONMENT_SURFACES = ("runtime", "development", "python")
@@ -281,11 +282,14 @@ def ensure_windows_msvc_environment(*, require_debug_runtime: bool = False) -> P
     packaged_vsdevcmd = packaged_installation / "Common7" / "Tools" / "VsDevCmd.bat"
     original_environment = os.environ.copy()
     ambient_compiler = shutil.which("cl.exe")
+    ambient_environment_ready = all(
+        _windows_environment_value(original_environment, name) for name in ("INCLUDE", "LIB")
+    )
     use_packaged_toolchain = packaged_vsdevcmd.is_file() and _has_packaged_windows_sdk(packaged_sdk)
     if use_packaged_toolchain:
         installation_path = packaged_installation
     else:
-        if ambient_compiler is not None:
+        if ambient_compiler is not None and ambient_environment_ready:
             return Path(ambient_compiler).resolve()
 
         installer_root = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
@@ -343,7 +347,7 @@ def ensure_windows_msvc_environment(*, require_debug_runtime: bool = False) -> P
             compiler = None
 
     if compiler is None:
-        if use_packaged_toolchain and ambient_compiler is not None:
+        if use_packaged_toolchain and ambient_compiler is not None and ambient_environment_ready:
             resolved_compiler = Path(ambient_compiler).resolve()
             print(
                 f"Packaged MSVC initialization returned {completed.returncode} without a usable compiler; "
@@ -580,6 +584,58 @@ def _write_json_atomically(path: Path, document: dict[str, object]) -> None:
     except Exception:
         temporary.unlink(missing_ok=True)
         raise
+
+
+def _configure_context(environment: dict[str, str] | None = None) -> dict[str, object]:
+    """Describe the environment whose system paths CMake may cache.
+
+    Args:
+        environment: Environment to inspect, or None to inspect the current process environment.
+
+    Returns:
+        Stable description of the CMake execution environment.
+    """
+    effective_environment = os.environ if environment is None else environment
+    return {
+        "schema_version": 1,
+        "execution_environment": "linbuild" if "LINBUILD_EMBEDDED" in effective_environment else "host",
+        "platform": sys.platform,
+        "machine": platform.machine().lower(),
+    }
+
+
+def _configuration_refresh_reason(build_directory: Path, context: dict[str, object]) -> str | None:
+    """Return why an existing CMake cache must be regenerated.
+
+    Args:
+        build_directory: CMake binary directory to inspect.
+        context: Current CMake execution-environment description.
+
+    Returns:
+        Reason to refresh the cache, or None when the existing cache remains valid.
+    """
+    cache = build_directory / "CMakeCache.txt"
+    if not cache.is_file():
+        return None
+
+    context_path = build_directory / CONFIGURE_CONTEXT_FILE
+    try:
+        recorded_context = json.loads(context_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "its execution environment was not recorded"
+    if recorded_context != context:
+        return "the execution environment changed"
+
+    missing_paths: list[str] = []
+    for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
+        key_and_type, separator, value = line.partition("=")
+        if not separator or not key_and_type.endswith(":FILEPATH") or value.endswith("-NOTFOUND"):
+            continue
+        if Path(value).is_absolute() and not Path(value).exists():
+            missing_paths.append(value)
+    if missing_paths:
+        return f"a cached dependency is missing: {missing_paths[0]}"
+    return None
 
 
 def _artifact_state_inputs(
@@ -844,6 +900,28 @@ def _materialize_developer_environment(
     return components
 
 
+def _ensure_developer_environment(cmake: Path, build_directory: Path, configuration: str) -> None:
+    """Recreate an omitted developer environment from retained install rules.
+
+    Args:
+        cmake: Path to the CMake executable.
+        build_directory: Directory containing the CMake build.
+        configuration: CMake build type.
+    """
+    environment_path = build_directory / DEVELOPER_ENVIRONMENT_DIRECTORY
+    is_junction = getattr(environment_path, "is_junction", None)
+    if (
+        environment_path.is_dir()
+        and not environment_path.is_symlink()
+        and not (is_junction is not None and is_junction())
+        and (environment_path / "lib" / "cmake").is_dir()
+        and (environment_path / "python").is_dir()
+    ):
+        return
+    print(f"Rematerializing developer environment from restored build artifact: {environment_path}")
+    _materialize_developer_environment(cmake, build_directory, configuration)
+
+
 def _validate_artifact_state(
     build_directory: Path,
     *,
@@ -892,51 +970,33 @@ def _relocate_cmake_metadata(
     build_directory: Path,
     producer_root: str,
     consumer_root: Path,
-    consumer_build_prefix: Path,
 ) -> None:
     """Retarget generated CMake metadata after a CI artifact changes checkout roots.
 
     CTest and install metadata embed absolute paths to executables, sources,
     dependency environments, build outputs, and child install scripts. GitLab
-    Windows executors use a job-specific checkout directory, so a restored build
-    artifact must reference the consuming checkout before tests can run it.
+    executors use a job-specific checkout directory, so a restored build artifact
+    must reference the consuming checkout before tests can run it.
 
     Args:
         build_directory: Directory containing the CMake build.
         producer_root: Producer installation root.
         consumer_root: Consumer build root.
-        consumer_build_prefix: Active build-tool environment in the consuming checkout.
     """
     source = producer_root.replace("\\", "/").rstrip("/")
     destination = consumer_root.as_posix().rstrip("/")
-    destination_build_prefix = consumer_build_prefix.as_posix().rstrip("/")
-    if not source or not destination_build_prefix:
+    if not source or source == destination:
         return
 
-    replacements: list[tuple[str, str]] = []
-    for build_prefix in (
-        f"{source}/.pixi/envs/build-driver",
-        f"{destination}/.pixi/envs/build-driver",
-    ):
-        for tool in (
-            "python.exe",
-            "Library/bin/cmake.exe",
-            "Library/bin/ctest.exe",
-            "bin/python",
-            "bin/cmake",
-            "bin/ctest",
-        ):
-            source_tool = f"{build_prefix}/{tool}"
-            destination_tool = f"{destination_build_prefix}/{tool}"
-            replacement = (source_tool, destination_tool)
-            if source_tool != destination_tool and replacement not in replacements:
-                replacements.append(replacement)
-    if source != destination:
-        replacements.append((f"{source}/", f"{destination}/"))
-    if not replacements:
-        return
+    source_prefix = f"{source}/"
+    destination_prefix = f"{destination}/"
+    native_source_prefix = source_prefix.replace("/", "\\")
+    native_destination_prefix = destination_prefix.replace("/", "\\")
+    escaped_source_prefix = source_prefix.replace("/", "\\\\")
+    escaped_destination_prefix = destination_prefix.replace("/", "\\\\")
 
-    metadata_files = tuple(
+    cache = build_directory / "CMakeCache.txt"
+    metadata_files = ((cache,) if cache.is_file() else ()) + tuple(
         path
         for filename in ("CTestTestfile.cmake", "cmake_install.cmake", "InstallScripts.json")
         for path in build_directory.rglob(filename)
@@ -948,15 +1008,12 @@ def _relocate_cmake_metadata(
     already_relocated = False
     for path in metadata_files:
         content = path.read_text(encoding="utf-8")
-        updated = content
-        for source_prefix, destination_prefix in replacements:
-            escaped_source_prefix = source_prefix.replace("/", "\\\\")
-            escaped_destination_prefix = destination_prefix.replace("/", "\\\\")
-            already_relocated = (
-                already_relocated or destination_prefix in content or escaped_destination_prefix in content
-            )
-            updated = updated.replace(source_prefix, destination_prefix)
-            updated = updated.replace(escaped_source_prefix, escaped_destination_prefix)
+        already_relocated = already_relocated or any(
+            prefix in content for prefix in (destination_prefix, native_destination_prefix, escaped_destination_prefix)
+        )
+        updated = content.replace(source_prefix, destination_prefix)
+        updated = updated.replace(native_source_prefix, native_destination_prefix)
+        updated = updated.replace(escaped_source_prefix, escaped_destination_prefix)
         if updated == content:
             continue
         path.write_text(updated, encoding="utf-8", newline="")
@@ -985,6 +1042,7 @@ def _configure(
     coverage_enabled: bool = False,
     msvc_compiler: Path | None = None,
     extension_usd_root: Path | None = None,
+    fresh: bool = False,
 ) -> None:
     """Configure one complete library build.
 
@@ -1004,27 +1062,32 @@ def _configure(
         coverage_enabled: Whether to instrument supported native targets for coverage.
         msvc_compiler: Explicit MSVC compiler path on Windows.
         extension_usd_root: Optional Kit OpenUSD root for extension schema generation.
+        fresh: Whether to discard an existing CMake cache before configuring.
     """
-    command: list[object] = [
-        cmake,
-        "-S",
-        LIBRARIES_DIRECTORY,
-        "-B",
-        build_directory,
-        "-G",
-        "Ninja",
-        f"-DCMAKE_MAKE_PROGRAM={ninja}",
-        f"-DCMAKE_BUILD_TYPE={configuration}",
-        f"-DBUILD_TESTING={'ON' if profile.testing_enabled else 'OFF'}",
-        f"-DISAACSIM_ENABLE_PYTHON={'ON' if profile.python_enabled else 'OFF'}",
-        f"-DISAACSIM_ENABLE_PYTHON_BINDINGS={'ON' if profile.bindings_enabled else 'OFF'}",
-        f"-DISAACSIM_WARNINGS_AS_ERRORS={'ON' if profile.warnings_as_errors else 'OFF'}",
-        "-DISAACSIM_ENFORCE_COMPLETE_PACKAGES=ON",
-        f"-DISAACSIM_ENABLE_COVERAGE={'ON' if coverage_enabled else 'OFF'}",
-        f"-DISAACSIM_PUBLIC_DEPS_ROOT={pixi_build_prefix}",
-        f"-DISAACSIM_NATIVE_RUNTIME_DEPS_DIR={native_runtime_dependencies}",
-        f"-DISAACSIM_COLLECTED_PYTHON_LICENSE_FILE={python_license_file}",
-    ]
+    command: list[object] = [cmake]
+    if fresh:
+        command.append("--fresh")
+    command.extend(
+        [
+            "-S",
+            LIBRARIES_DIRECTORY,
+            "-B",
+            build_directory,
+            "-G",
+            "Ninja",
+            f"-DCMAKE_MAKE_PROGRAM={ninja}",
+            f"-DCMAKE_BUILD_TYPE={configuration}",
+            f"-DBUILD_TESTING={'ON' if profile.testing_enabled else 'OFF'}",
+            f"-DISAACSIM_ENABLE_PYTHON={'ON' if profile.python_enabled else 'OFF'}",
+            f"-DISAACSIM_ENABLE_PYTHON_BINDINGS={'ON' if profile.bindings_enabled else 'OFF'}",
+            f"-DISAACSIM_WARNINGS_AS_ERRORS={'ON' if profile.warnings_as_errors else 'OFF'}",
+            "-DISAACSIM_ENFORCE_COMPLETE_PACKAGES=ON",
+            f"-DISAACSIM_ENABLE_COVERAGE={'ON' if coverage_enabled else 'OFF'}",
+            f"-DISAACSIM_PUBLIC_DEPS_ROOT={pixi_build_prefix}",
+            f"-DISAACSIM_NATIVE_RUNTIME_DEPS_DIR={native_runtime_dependencies}",
+            f"-DISAACSIM_COLLECTED_PYTHON_LICENSE_FILE={python_license_file}",
+        ]
+    )
     if msvc_compiler is not None:
         command.extend(
             (
@@ -1304,11 +1367,6 @@ def _parse_arguments() -> argparse.Namespace:
         help="Run CTest from an existing build tree without configuring or building.",
     )
     parser.add_argument(
-        "--test-without-compiler",
-        action="store_true",
-        help="Skip Windows compiler setup for test-only suites that do not compile consumers; requires --test-only.",
-    )
-    parser.add_argument(
         "--junit-output",
         type=Path,
         help="Write CTest results as JUnit XML; requires --test or --test-only.",
@@ -1365,8 +1423,6 @@ def _parse_arguments() -> argparse.Namespace:
         parser.error("--test-timeout must be greater than zero")
     if arguments.test and arguments.test_only:
         parser.error("--test and --test-only are mutually exclusive")
-    if arguments.test_without_compiler and not arguments.test_only:
-        parser.error("--test-without-compiler requires --test-only")
     if arguments.pull_only and (
         arguments.clean
         or arguments.rebuild
@@ -1523,7 +1579,7 @@ def _main() -> int:
 
     msvc_compiler = (
         ensure_windows_msvc_environment(require_debug_runtime="Debug" in configurations)
-        if host.name == "windows-x86_64" and not arguments.test_without_compiler
+        if host.name == "windows-x86_64"
         else None
     )
 
@@ -1535,7 +1591,9 @@ def _main() -> int:
                 profile=arguments.profile,
                 dependency_profile=arguments.dependency_profile,
             )
-            _relocate_cmake_metadata(build_directory, producer_root, REPOSITORY_ROOT, pixi_build_prefix)
+            _relocate_cmake_metadata(build_directory, producer_root, REPOSITORY_ROOT)
+            if arguments.profile == "standard" and arguments.dependency_profile == "locked":
+                _ensure_developer_environment(cmake, build_directory, configuration)
             junit_output = arguments.junit_output
             if junit_output is not None and len(build_directories) > 1:
                 junit_output = junit_output.with_name(
@@ -1570,6 +1628,10 @@ def _main() -> int:
                     f"Kit OpenUSD schema generator is missing: {extension_usd_root}. "
                     "Run the repository dependency pull before preparing schema carriers."
                 )
+        context = _configure_context()
+        refresh_reason = _configuration_refresh_reason(build_directory, context)
+        if refresh_reason:
+            print(f"Refreshing CMake configuration because {refresh_reason}.")
         (build_directory / ARTIFACT_STATE_FILE).unlink(missing_ok=True)
         _configure(
             cmake,
@@ -1587,7 +1649,9 @@ def _main() -> int:
             coverage_enabled=arguments.coverage,
             msvc_compiler=msvc_compiler,
             extension_usd_root=extension_usd_root,
+            fresh=refresh_reason is not None,
         )
+        _write_json_atomically(build_directory / CONFIGURE_CONTEXT_FILE, context)
         if arguments.generate:
             continue
         _build(cmake, build_directory, configuration, arguments.target, arguments.jobs)

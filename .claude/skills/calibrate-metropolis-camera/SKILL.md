@@ -3,7 +3,7 @@ name: calibrate-metropolis-camera
 description: "Extract camera intrinsics, extrinsics, and FOV polygons to calibration.json. Use after cameras are placed; to place them first use place-camera-max-coverage."
 license: Apache-2.0
 metadata:
-  author: NVIDIA Isaac Sim
+  author: NVIDIA Isaac Sim <isaac-sim@nvidia.com>
 ---
 
 # Calibrate Placed Cameras

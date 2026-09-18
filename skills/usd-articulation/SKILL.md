@@ -3,7 +3,7 @@ name: usd-articulation
 description: "Validate and build multi-arm articulations in USD. Use when assembling or fixing robot joint hierarchies."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # USD Articulation — Multi-Arm Robots

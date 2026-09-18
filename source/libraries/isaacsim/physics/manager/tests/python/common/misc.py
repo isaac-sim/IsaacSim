@@ -15,13 +15,11 @@
 
 """Provide miscellaneous lifecycle and articulation scenarios.
 
-The module covers prim deactivation, simulation-view invalidation, locked D6
-motion, and Newton's rejection of unsupported articulation root types.
+The module covers prim deactivation, locked D6 motion, and Newton's rejection
+of unsupported articulation root types.
 
 * ``UsdPrimDeletionCommon`` — exercises USD prim activation/deactivation
   during simulation (no engine-specific schemas).
-* ``SimViewInvalidateCommon`` — exercises ``sim.invalidate()`` semantics
-  (no engine-specific schemas).
 * ``ArtJointFreeMotionToLimitMotionCommon`` — manually built D6
   articulation with all translations locked. Engine-specific
   subclasses override ``_apply_engine_specifics()`` to layer their
@@ -80,7 +78,7 @@ class UsdPrimDeletionCommon(GridTestBase):
         """Create rigid-body and articulation views for the replicated actors.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         rigid_body_view = sim.create_rigid_body_view("/envs/*/ball")
@@ -95,7 +93,7 @@ class UsdPrimDeletionCommon(GridTestBase):
         """Deactivate one ball and verify the simulation view stays valid.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -108,69 +106,6 @@ class UsdPrimDeletionCommon(GridTestBase):
             if prim:
                 prim.SetActive(False)
         elif stepno == 10:
-            self.finish()
-
-
-class SimViewInvalidateCommon(GridTestBase):
-    """Scenario that verifies explicit simulation-view invalidation.
-
-    Args:
-        test_case: Test instance associated with the scenario.
-        device_params: Simulation and tensor device selection.
-
-    """
-
-    def __init__(self, test_case: object, device_params: DeviceParams) -> None:
-        grid_params = GridParams(16, 4.0)
-        sim_params = SimParams()
-        sim_params.gravity_dir = Gf.Vec3f(0.0, 0.0, 0.0)
-        sim_params.gravity_mag = 1
-        super().__init__(test_case, grid_params, sim_params, device_params)
-
-        actor_path = self.env_template_path.AppendChild("ball")
-        transform = Transform((0.1, 0.1, 0.5))
-        self.create_rigid_ball(actor_path, transform, 0.2)
-        self.actor_path = actor_path
-
-        asset_path = os.path.join(get_asset_root(), "Ant.usda")
-        actor_path = self.env_template_path.AppendChild("ant")
-        transform = Transform((0.0, 0.0, 1.0))
-        self.create_actor_from_asset(actor_path, transform, asset_path)
-
-    def on_start(self, sim: object) -> None:
-        """Create rigid-body and articulation views before invalidation.
-
-        Args:
-            sim: Simulation view under test.
-
-        """
-        self.rigid_body_view = sim.create_rigid_body_view("/envs/*/ball")
-        self.articulation_view = sim.create_articulation_view("/envs/*/ant/torso")
-
-    def on_physics_step(self, sim: object, stepno: int, dt: float) -> None:
-        """Invalidate the simulation view and verify its state transition.
-
-        Args:
-            sim: Simulation view under test.
-            stepno: Zero-based simulation step number.
-            dt: Simulated time interval in seconds.
-
-        """
-
-        # `sim.is_valid` is a method on the umbrella's SimulationView;
-        # legacy harness exposed it as a property. Invoke it explicitly
-        # so the assertion checks the boolean value, not the bound
-        # method.
-        def _alive(s: object) -> bool:
-            v = getattr(s, "is_valid", True)
-            return v() if callable(v) else bool(v)
-
-        if stepno == 1:
-            assert _alive(sim)
-        if stepno == 2:
-            sim.invalidate()
-            assert not (_alive(sim))
-        if stepno == 3:
             self.finish()
 
 
@@ -232,7 +167,7 @@ class ArtJointFreeMotionToLimitMotionCommon(GridTestBase):
         """Create and validate the locked D6 articulation view.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.arti_view = sim.create_articulation_view("/envs/*/SimpleArticulation")
@@ -242,7 +177,7 @@ class ArtJointFreeMotionToLimitMotionCommon(GridTestBase):
         """Finish after the first completed simulation step.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -281,7 +216,7 @@ class ArticulationExoticRootRejectedCommon(GridTestBase):
         """Retype the root joint and verify articulation-view creation fails.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         import newton
@@ -302,7 +237,7 @@ class ArticulationExoticRootRejectedCommon(GridTestBase):
         """Accept the unused per-step callback required by the scenario harness.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 

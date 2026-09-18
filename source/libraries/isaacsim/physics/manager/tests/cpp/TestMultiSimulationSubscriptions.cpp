@@ -35,7 +35,11 @@ class MultiSimulationMockSimulator
 {
 public:
     MultiSimulationMockSimulator()
-        : m_nextStepSubscriptionId(0), m_nextContactSubscriptionId(0), m_stepCallbackCount(0), m_contactCallbackCount(0)
+        : m_nextStepSubscriptionId(0),
+          m_nextContactSubscriptionId(0),
+          m_stepCallbackCount(0),
+          m_contactCallbackCount(0),
+          m_publishCount(0)
     {
     }
 
@@ -71,6 +75,11 @@ public:
             functions.fetchResults();
         };
         functions.checkResults = []() -> bool { return true; };
+        functions.publishTransformsToStage = [this]()
+        {
+            ++m_publishCount;
+            return true;
+        };
         functions.flushChanges = []() {};
         functions.pauseChangeTracking = [](bool) {};
         functions.isChangeTrackingPaused = []() -> bool { return false; };
@@ -123,6 +132,10 @@ public:
     {
         return m_contactCallbackCount;
     }
+    int getPublishCount() const
+    {
+        return m_publishCount;
+    }
 
     // Invoke all registered step callbacks
     void fireStepCallbacks(float timeStep)
@@ -155,6 +168,7 @@ private:
     std::unordered_map<SubscriptionId, OnContactReportEventFunction, SubscriptionIdHash> m_contactEventCallbacks;
     std::atomic<int> m_stepCallbackCount;
     std::atomic<int> m_contactCallbackCount;
+    std::atomic<int> m_publishCount;
 };
 
 // ---------------------------------------------------------------------------
@@ -415,7 +429,29 @@ TEST_CASE("Multi-Simulation Subscription Tests")
         activateSimulation(simulationId2);
     }
 
+    SUBCASE("Transform publication dispatches only to active simulations")
+    {
+        REQUIRE(manager::publishTransformsToStage());
+        REQUIRE(mockSimulation1.getPublishCount() == 1);
+        REQUIRE(mockSimulation2.getPublishCount() == 1);
+
+        deactivateSimulation(simulationId2);
+        REQUIRE(manager::publishTransformsToStage());
+        REQUIRE(mockSimulation1.getPublishCount() == 2);
+        REQUIRE(mockSimulation2.getPublishCount() == 1);
+        activateSimulation(simulationId2);
+    }
+
     // Cleanup
     unregisterSimulation(simulationId1);
     unregisterSimulation(simulationId2);
+}
+
+TEST_CASE("Transform publication reports unsupported backends")
+{
+    Simulation simulation;
+    const SimulationId simulationId = registerSimulation(simulation, "NoTransformPublisher");
+    REQUIRE(simulationId != g_kInvalidSimulationId);
+    REQUIRE_FALSE(manager::publishTransformsToStage());
+    unregisterSimulation(simulationId);
 }

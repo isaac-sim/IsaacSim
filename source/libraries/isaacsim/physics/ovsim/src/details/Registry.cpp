@@ -13,13 +13,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "Registry.hpp"
+
 #include <isaacsim/common/exceptions/Exceptions.hpp>
 #include <isaacsim/common/string/String.hpp>
 #include <isaacsim/physics/entities/ArticulationEntity.hpp>
 #include <isaacsim/physics/entities/PhysicsEntity.hpp>
 #include <isaacsim/physics/entities/RigidBodyEntity.hpp>
 #include <isaacsim/physics/manager/PhysicsManager.hpp>
-#include <isaacsim/physics/ovsim/details/Registry.hpp>
 #include <ovsim/interfaces/details/Exception.hpp>
 
 #include <algorithm>
@@ -64,8 +65,8 @@ std::unordered_map<std::vector<std::string>,
                    std::pair<InstanceType, std::shared_ptr<entities::PhysicsEntity>>,
                    isaacsim::common::string::VectorStringHasher>
     g_instanceMap;
-std::unordered_map<InstanceType, std::unordered_map<std::string, std::variant<std::string, InstanceMethodType>>>
-    g_instanceMethodMap = {
+const std::unordered_map<InstanceType, std::unordered_map<std::string, std::variant<std::string, InstanceMethodType>>>
+    g_kInstanceMethodMap = {
         { InstanceType::eArticulationEntity,
           { { "dof-efforts", "dof-actuation-forces" },
             { "dof-lower-limits", InstanceMethodType::eArticulationEntityDofLowerLimits },
@@ -99,7 +100,7 @@ std::pair<InstanceType, std::shared_ptr<entities::PhysicsEntity>> getOrCreateIns
     std::string activeEngine = getActivePhysicsEngine();
 
     // TODO: Provide using the umbrella/tensor API a list of supported implementations for each entity type.
-    static const std::vector<std::string> articulationImplementationNames = {
+    static const std::vector<std::string> s_kArticulationImplementationNames = {
         "dof-armatures",
         "dof-positions",
         "dof-position-targets",
@@ -118,7 +119,7 @@ std::pair<InstanceType, std::shared_ptr<entities::PhysicsEntity>> getOrCreateIns
         "jacobians",
         "generalized-mass-matrices",
     };
-    static const std::vector<std::string> rigidBodyImplementationNames = {
+    static const std::vector<std::string> s_kRigidBodyImplementationNames = {
         "mass",     "inverse-mass", "inertia",         "inverse-inertia",
         "position", "orientation",  "linear-velocity", "angular-velocity"
     };
@@ -126,19 +127,19 @@ std::pair<InstanceType, std::shared_ptr<entities::PhysicsEntity>> getOrCreateIns
     auto inList = [](const std::string& name, const std::vector<std::string>& list)
     { return std::find(list.begin(), list.end(), name) != list.end(); };
 
-    if (inList(attributeName, articulationImplementationNames))
+    if (inList(attributeName, s_kArticulationImplementationNames))
     {
         instanceType = InstanceType::eArticulationEntity;
         instance = std::make_shared<entities::ArticulationEntity>(activeEngine, paths);
     }
-    else if (inList(attributeName, rigidBodyImplementationNames))
+    else if (inList(attributeName, s_kRigidBodyImplementationNames))
     {
         instanceType = InstanceType::eRigidBodyEntity;
         instance = std::make_shared<entities::RigidBodyEntity>(activeEngine, paths);
     }
     else
     {
-        throw std::runtime_error("Unable to determine entity type for the given paths");
+        throw ::ovsim::interfaces::details::AttributeError(attributeName);
     }
 
     g_instanceMap.emplace(paths, std::make_pair(instanceType, instance));
@@ -182,8 +183,8 @@ OutputValueType getAttributeValues(const std::vector<std::string>& paths,
 {
     auto [instanceType, instance] = getOrCreateInstance(paths, attributeName);
     // Look up for instance-specific implementations.
-    auto instanceTypeIterator = g_instanceMethodMap.find(instanceType);
-    if (instanceTypeIterator != g_instanceMethodMap.end())
+    auto instanceTypeIterator = g_kInstanceMethodMap.find(instanceType);
+    if (instanceTypeIterator != g_kInstanceMethodMap.end())
     {
         // Look up for attribute-specific implementations.
         auto methodIterator = instanceTypeIterator->second.find(attributeName);
@@ -252,8 +253,8 @@ void setAttributeValues(const std::vector<std::string>& paths,
 
     auto [instanceType, instance] = getOrCreateInstance(paths, attributeName);
     // Look up for instance-specific implementations.
-    auto instanceTypeIterator = g_instanceMethodMap.find(instanceType);
-    if (instanceTypeIterator != g_instanceMethodMap.end())
+    auto instanceTypeIterator = g_kInstanceMethodMap.find(instanceType);
+    if (instanceTypeIterator != g_kInstanceMethodMap.end())
     {
         // Look up for attribute-specific implementations.
         auto methodIterator = instanceTypeIterator->second.find(attributeName);

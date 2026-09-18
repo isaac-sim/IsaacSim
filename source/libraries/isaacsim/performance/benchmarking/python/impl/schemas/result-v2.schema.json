@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "isaacsim.performance.benchmarking.result.v2",
+  "title": "Isaac Sim library benchmark result",
+  "type": "object",
+  "required": [
+    "schema",
+    "generated_at",
+    "run_id",
+    "benchmark",
+    "sampling",
+    "status",
+    "lifecycle",
+    "metrics",
+    "regions",
+    "environment"
+  ],
+  "properties": {
+    "schema": {"const": "isaacsim.performance.benchmarking.result.v2"},
+    "generated_at": {"type": "string"},
+    "run_id": {"type": "string", "minLength": 1},
+    "benchmark": {"type": "object"},
+    "sampling": {"type": "object"},
+    "status": {
+      "type": "object",
+      "required": ["valid", "errors"],
+      "properties": {
+        "valid": {"type": "boolean"},
+        "errors": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "lifecycle": {"type": "object"},
+    "metrics": {"type": "object"},
+    "regions": {"type": "object"},
+    "environment": {"type": "object"}
+  },
+  "additionalProperties": false
+}

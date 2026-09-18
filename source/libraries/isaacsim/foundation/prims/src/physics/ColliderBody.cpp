@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <isaacsim/foundation/objects/Prim.hpp>
 #include <isaacsim/foundation/prims/physics/ColliderBody.hpp>
 
 #include <numeric>
@@ -48,10 +49,6 @@ std::string joinPaths(const std::vector<std::string>& v)
 ColliderBody::ColliderBody(const std::variant<std::string, std::vector<std::string>>& paths,
                            const std::optional<std::variant<std::string, std::vector<std::string>>>& approximations,
                            bool applyCollisionApis,
-                           const std::optional<array::Array>& positions,
-                           const std::optional<array::Array>& translations,
-                           const std::optional<array::Array>& orientations,
-                           const std::optional<array::Array>& scales,
                            bool resetXformOpProperties)
     : isaacsim::foundation::objects::Xform()
 {
@@ -63,7 +60,7 @@ ColliderBody::ColliderBody(const std::variant<std::string, std::vector<std::stri
     }
     m_paths = std::move(existentPaths);
     // Initialize instance from arguments.
-    _initialize(positions, translations, orientations, scales, resetXformOpProperties);
+    _initialize(resetXformOpProperties);
     if (applyCollisionApis)
     {
         this->applyCollisionApis();
@@ -173,7 +170,7 @@ void ColliderBody::setEnabledCollisions(const array::Array& enabled, const std::
     const int64_t batchSize = _resolveIndexedSize(indices);
     const std::vector<int64_t> resolvedIndices = _resolveIndexValues(indices);
     const std::vector<bool> enabledValues =
-        enabled.reshape(array::Shape({ int64_t{ -1 } })).broadcastTo(array::Shape({ batchSize })).get<std::vector<bool>>();
+        enabled.flatten().broadcastTo(array::Shape({ batchSize })).get<std::vector<bool>>();
     for (size_t i = 0; i < resolvedIndices.size(); ++i)
     {
         Prim prim = Prim(m_paths[resolvedIndices[i]], /*resolvePaths=*/false);
@@ -203,6 +200,20 @@ array::Array ColliderBody::getEnabledCollisions(const std::optional<array::Array
         {
             result[i] = std::get<array::Array>(prim.getAttributeValues("physics:collisionEnabled")).item<bool>();
         }
+    }
+    return array::Array(result).reshape(array::Shape({ -1, 1 }));
+}
+
+array::Array ColliderBody::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    // A collider body is a transformable prim carrying the Collision API.
+    const isaacsim::foundation::objects::Prim prims(paths);
+    const std::vector<bool> areXformable = prims.isA("Xformable").flatten().get<std::vector<bool>>();
+    const std::vector<bool> haveApi = prims.hasApi("PhysicsCollisionAPI").flatten().get<std::vector<bool>>();
+    std::vector<bool> result(areXformable.size());
+    for (std::size_t i = 0; i < result.size(); ++i)
+    {
+        result[i] = areXformable[i] && haveApi[i];
     }
     return array::Array(result).reshape(array::Shape({ -1, 1 }));
 }

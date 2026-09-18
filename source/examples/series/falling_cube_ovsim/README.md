@@ -5,11 +5,8 @@ SPDX-License-Identifier: Apache-2.0
 
 # Falling Cube (OV SIM API)
 
-From the examples collection root, start with the authoring step, then run the simulation step:
+The sequence compares in-process and gRPC clients without changing the cube-authoring and simulation workflow.
 
-```bash
-python examples.py run series/falling_cube_ovsim/author_cube/main.py
-python examples.py run series/falling_cube_ovsim/simulate_cube/main.py
-```
-
-After activating the required Python environment, you can also run either `main.py` directly from its step directory.
+For the gRPC step, follow the platform-specific instructions in **Simulate a Cube over gRPC**, linked in the series
+steps below. Configure the server paths and start the server in the first terminal before running the client in a
+second terminal. The client requires `--endpoint 127.0.0.1:50051`; the server remains running until you press **Ctrl+C**.

@@ -60,15 +60,15 @@ startup. Unselected fields leave the current process-wide Carbonite setting unch
 
 .. code-block:: c
 
-    IsaacSimCommonLoggingGlobalConfig config = ISAACSIM_COMMON_LOGGING_GLOBAL_CONFIG_INIT;
-    config.fields = ISAACSIM_COMMON_LOGGING_CONFIG_FILE_PATH |
+    IsaacSimCommonLoggingGlobalConfig configuration = ISAACSIM_COMMON_LOGGING_GLOBAL_CONFIG_INIT;
+    configuration.fields = ISAACSIM_COMMON_LOGGING_CONFIG_FILE_PATH |
                     ISAACSIM_COMMON_LOGGING_CONFIG_FILE_APPEND |
                     ISAACSIM_COMMON_LOGGING_CONFIG_FILE_LEVEL;
-    config.filePath = "logs/isaac-sim-${pid}.log";
-    config.fileAppend = 1;
-    config.fileLevel = ISAACSIM_COMMON_LOGGING_LOG_INFO;
+    configuration.filePath = "logs/isaac-sim-${pid}.log";
+    configuration.fileAppend = 1;
+    configuration.fileLevel = ISAACSIM_COMMON_LOGGING_LOG_INFO;
 
-    if (isaacsimCommonLoggingConfigureGlobal(&config) != ISAACSIM_COMMON_LOGGING_CONFIGURE_SUCCESS)
+    if (isaacsimCommonLoggingConfigureGlobal(&configuration) != ISAACSIM_COMMON_LOGGING_CONFIGURE_SUCCESS)
     {
         /* Invalid configuration or unavailable backend. */
     }
@@ -86,11 +86,11 @@ Use ``CHANNELS`` to override Carbonite's process-wide enablement or threshold fo
     channel.enabledBehavior = ISAACSIM_COMMON_LOGGING_CHANNEL_SETTING_OVERRIDE;
     channel.enabled = 0;
 
-    IsaacSimCommonLoggingGlobalConfig config = ISAACSIM_COMMON_LOGGING_GLOBAL_CONFIG_INIT;
-    config.fields = ISAACSIM_COMMON_LOGGING_CONFIG_CHANNELS;
-    config.channelConfigs = &channel;
-    config.channelConfigCount = 1;
-    isaacsimCommonLoggingConfigureGlobal(&config);
+    IsaacSimCommonLoggingGlobalConfig configuration = ISAACSIM_COMMON_LOGGING_GLOBAL_CONFIG_INIT;
+    configuration.fields = ISAACSIM_COMMON_LOGGING_CONFIG_CHANNELS;
+    configuration.channelConfigs = &channel;
+    configuration.channelConfigCount = 1;
+    isaacsimCommonLoggingConfigureGlobal(&configuration);
 
 Set a behavior to ``INHERIT`` to clear that channel override and resume using the process-wide setting. Set it to
 ``UNCHANGED`` to leave the corresponding Carbonite setting untouched. Enablement and minimum-level behaviors are
@@ -103,6 +103,8 @@ the complete field inventory.
 
 ``isaacsimCommonLoggingFlush`` drains Carbonite's process-wide backend. The C API has no logger handles, callback
 registry, local filtering engine, or per-instance lifecycle.
+
+.. _isaacsim-common-logging-api-c-host-integration:
 
 Host integration
 ================

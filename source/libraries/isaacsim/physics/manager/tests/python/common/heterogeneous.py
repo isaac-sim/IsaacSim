@@ -90,7 +90,7 @@ class HeterogeneousSceneArticulationsCommon(GridTestBase):
         """Create cabinet and Franka views for every replicated environment.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.cabinet = sim.create_articulation_view("/envs/*/cabinet")
@@ -101,7 +101,7 @@ class HeterogeneousSceneArticulationsCommon(GridTestBase):
         """Compare environment-local link transforms after one step.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -166,7 +166,7 @@ class HeterogeneousBaseDynamicsCommon(GridTestBase):
         """Create Cartpole and Ant articulation views.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.cartpoles = sim.create_articulation_view("/envs/*/cartpole")
@@ -177,7 +177,7 @@ class HeterogeneousBaseDynamicsCommon(GridTestBase):
         """Compare state and dynamics tensors at scheduled simulation steps.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 

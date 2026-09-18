@@ -15,7 +15,7 @@
 
 #include "isaacsim/common/array/Device.hpp"
 
-#include "isaacsim/common/array/details/CudaRuntime.hpp"
+#include "details/CudaRuntime.hpp"
 
 #include <stdexcept>
 
@@ -26,7 +26,7 @@ namespace common
 namespace array
 {
 
-Device::Device(details::SupportedDeviceSpec input)
+Device::Device(details::SupportedDeviceSpecification input)
     : m_ordinal(std::visit(
           [](auto&& arg) -> int32_t
           {

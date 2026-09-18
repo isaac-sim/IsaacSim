@@ -196,7 +196,8 @@ def convert_urdf_to_physx(joint: Usd.Prim) -> None:
     if joint_limits:
         if joint_limits < 0:
             _logger.warning(
-                f"Invalid joint limits {joint_limits} for joint {joint.GetPath()}, will be set to 0 (unrestricted force)"
+                f"Invalid joint limits {joint_limits} for joint {joint.GetPath()}, will be set to 0 "
+                "(unrestricted force)"
             )
             joint_limits = 0
         drive_api.CreateMaxForceAttr().Set(joint_limits)
@@ -302,7 +303,8 @@ def create_mjc_actuator_from_physics(joint: Usd.Prim, stage: Usd.Stage, path: Sd
 
     else:
         _logger.warning(
-            f"Stiffness and damping not available joint {joint.GetPath()}, actuator will be created without gain parameters"
+            f"Stiffness and damping not available joint {joint.GetPath()}, actuator will be created without gain "
+            "parameters"
         )
 
     return mjc_actuator

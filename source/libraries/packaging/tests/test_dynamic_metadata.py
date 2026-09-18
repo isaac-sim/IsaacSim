@@ -23,6 +23,7 @@ class DynamicMetadataTests(unittest.TestCase):
     """Validate generated internal Python requirements."""
 
     def test_dynamic_metadata_pins_names_to_the_shared_version(self) -> None:
+        """Test pinning internal distribution names to the shared version."""
         version = PROVIDER_PATH.parents[1].joinpath("VERSION").read_text(encoding="utf-8").strip()
 
         metadata = provider.dynamic_metadata(
@@ -36,6 +37,7 @@ class DynamicMetadataTests(unittest.TestCase):
         )
 
     def test_dynamic_metadata_rejects_duplicate_normalized_names(self) -> None:
+        """Test rejecting distribution names that normalize to duplicates."""
         with self.assertRaisesRegex(RuntimeError, "must be unique"):
             provider.dynamic_metadata(
                 {"field": "dependencies", "names": ["isaacsim-common", "isaacsim_common"]},
@@ -43,6 +45,7 @@ class DynamicMetadataTests(unittest.TestCase):
             )
 
     def test_dynamic_metadata_requires_the_dependencies_field(self) -> None:
+        """Test requiring the dynamic dependencies field."""
         with self.assertRaisesRegex(RuntimeError, "field must be 'dependencies'"):
             provider.dynamic_metadata({"field": "version", "names": ["isaacsim-common"]}, {})
 

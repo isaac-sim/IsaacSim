@@ -56,7 +56,7 @@ endif()
 # Both roots are supplied by the caller, so on Windows they can arrive in native
 # form. A backslash path reaches install(DIRECTORY) verbatim and is re-parsed as
 # CMake code in the generated cmake_install.cmake, where "C:\Users\..." fails with
-# "Invalid character escape '\U'". Only -D of a PATH cache entry gets normalised
+# "Invalid character escape '\U'". Only -D of a PATH cache entry gets normalized
 # for free; the environment fallbacks above do not.
 file(TO_CMAKE_PATH "${_ovphysx_dep}" _ovphysx_dep)
 if(_ovstage_root)
@@ -117,6 +117,7 @@ endif()
 
 set(_ovphysx_private_dependencies
     isaacsim::common-logging
+    isaacsim::common-ovstage
     isaacsim::physics-manager
     ovphysx::ovphysx
     ${_ovstage_target})
@@ -138,8 +139,13 @@ isaacsim_add_module(
     SOURCES
         src/OvPhysxPlugin.cpp
         src/OvPhysxAdapter.cpp
+        src/OvPhysxAdapter.hpp
         src/tensors/OvPhysxEntityViews.cpp
-        src/tensors/OvPhysxSimulationViewImpl.cpp
+        src/tensors/OvPhysxEntityViews.hpp
+        src/tensors/OvPhysxEntityFactories.cpp
+        src/tensors/OvPhysxEntityFactories.hpp
+        src/tensors/OvPhysxResultHelpers.hpp
+        src/tensors/OvPhysxTensorHelpers.hpp
     PRIVATE_DEPENDENCIES
         ${_ovphysx_private_dependencies}
 )
@@ -159,6 +165,31 @@ target_include_directories(${_ovphysx_target} SYSTEM PRIVATE ${_ovphysx_system_i
 if(WIN32)
     isaacsim_install_runtime_dependencies(MODULE isaacsim.physics_engines.ovphysx
         TARGETS ${_ovphysx_runtime_dependencies})
+    isaacsim_add_runtime_directory(MODULE isaacsim.physics_engines.ovphysx
+        SOURCE "${_ovstage_plugins_dir}"
+        DESTINATION plugins
+        WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/plugins")
+    if(EXISTS "${_ovstage_runtime_dir}/ovstage_usd_schemas")
+        isaacsim_add_runtime_directory(MODULE isaacsim.physics_engines.ovphysx
+            SOURCE "${_ovstage_runtime_dir}/ovstage_usd_schemas"
+            DESTINATION ovstage_usd_schemas
+            WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/ovstage_usd_schemas")
+    endif()
+    get_target_property(_ovphysx_group ${_ovphysx_target} ISAACSIM_GROUP_NAME)
+    _isaacsim_get_group_component("${_ovphysx_group}" runtime _ovphysx_runtime_component)
+    # Preserve the SDK's two-root Windows layout. OvPhysX requires config.toml
+    # beside its DLL and derives engine plugins from the sibling ../plugins
+    # directory, while OVStage keeps its private tree under bin/plugins. The
+    # physics-engine distribution owns both so it remains usable without
+    # isaacsim.foundation.
+    install(FILES
+        "${_ovphysx_dep}/bin/config.toml"
+        "${_ovphysx_dep}/bin/ovphysx_internal.dll"
+        DESTINATION "${CMAKE_INSTALL_BINDIR}"
+        COMPONENT "${_ovphysx_runtime_component}")
+    install(DIRECTORY "${_ovphysx_dep}/plugins/"
+        DESTINATION plugins
+        COMPONENT "${_ovphysx_runtime_component}")
 else()
     set_property(TARGET ${_ovphysx_target} APPEND PROPERTY
         INSTALL_RPATH "${ISAACSIM_LOADER_ORIGIN}/ovphysx/bin")
@@ -243,6 +274,13 @@ isaacsim_add_nanobind(
     SOURCE bindings/python/BindingsOvPhysxPython.cpp
     WINDOWS_RUNTIME_SIBLING_DIRECTORY "${_ovphysx_dep}/plugins"
 )
+# Stubgen imports the binding through the public package, whose import activates the
+# backend and calls `isaacsim.physics_engines.ovstage.setup()`. Ensure that package is
+# staged first in a clean parallel build rather than relying on an existing build tree.
+if(ISAACSIM_ENABLE_PYTHON_BINDINGS)
+    add_dependencies(generate-${_ovphysx_target}-python-stub
+        stage-isaacsim-physics_engines-ovstage-python-package)
+endif()
 if(WIN32 AND TARGET ${_ovphysx_target}-python)
     ovphysx_copy_runtime_dlls(${_ovphysx_target}-python)
     add_custom_command(TARGET ${_ovphysx_target}-python POST_BUILD
@@ -421,6 +459,10 @@ elseif(TARGET ${_ovphysx_test_target})
     if(_ovstage_root)
         set(_ovstage_ldpath ":${_ovstage_root}/bin")
     endif()
+    set(_ovphysx_test_ld_library_path
+        "${_ovphysx_dep}/lib:${_ovphysx_dep}/plugins:${ISAACSIM_PUBLIC_DEPS_ROOT}/lib${_ovstage_ldpath}")
     set_tests_properties(${_ovphysx_test_target} PROPERTIES
-        ENVIRONMENT "LD_LIBRARY_PATH=${_ovphysx_dep}/lib:${_ovphysx_dep}/plugins:${ISAACSIM_PUBLIC_DEPS_ROOT}/lib${_ovstage_ldpath}")
+        ENVIRONMENT
+            "LD_LIBRARY_PATH=${_ovphysx_test_ld_library_path}"
+    )
 endif()

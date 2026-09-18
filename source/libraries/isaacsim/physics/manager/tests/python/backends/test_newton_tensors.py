@@ -24,14 +24,14 @@ from __future__ import annotations
 
 import _physics_setup  # noqa: F401
 import isaacsim.physics_engines.ovnewton.impl.tensors  # noqa: F401
-from common.simulation_view_tests import (
+from common.tensor_registry_tests import (
     LegacyMethodDelegationMixin,
-    SimulationViewBasicsMixin,
+    TensorRegistryBasicsMixin,
 )
 
 
-class TestNewtonSimulationViewBasics(SimulationViewBasicsMixin):
-    """Run the shared simulation-view contract against Newton and Warp."""
+class TestNewtonTensorRegistryBasics(TensorRegistryBasicsMixin):
+    """Run the shared tensor-registry contract against Newton and Warp."""
 
     backend = "newton"
     frontend = "warp"
@@ -41,4 +41,4 @@ class TestNewtonLegacyMethodDelegation(LegacyMethodDelegationMixin):
     """Verify Newton compatibility-method delegation through the Warp adapter."""
 
     backend = "newton"
-    adapter_module = "isaacsim.physics_engines.ovnewton.impl.tensors.simulation_view"
+    adapter_module = "isaacsim.physics_engines.ovnewton.impl.tensors.entity_factories"

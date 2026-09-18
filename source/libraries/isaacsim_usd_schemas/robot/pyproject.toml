@@ -17,7 +17,7 @@
 name = "isaacsim-robot-schema"
 dynamic = ["version"]
 description = "Isaac Sim USD robot schema helpers and applied schema utilities"
-requires-python = ">=3.12"
+requires-python = "==3.12.*"
 dependencies = [
     "usd-exchange==2.3.0",
 ]
@@ -28,7 +28,7 @@ authors = [
     {name = "NVIDIA Corporation"},
 ]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]

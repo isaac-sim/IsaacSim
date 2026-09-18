@@ -32,6 +32,7 @@
 #include <pxr/usd/usdPhysics/rigidBodyAPI.h>
 
 #include <array>
+#include <cstddef>
 #include <deque>
 #include <functional>
 #include <iostream>
@@ -387,7 +388,7 @@ private:
  * @param[in] root Root node to print.
  * @param[in] indent Current indentation width.
  */
-inline void PrintRobotTree(const std::shared_ptr<RobotLinkNode>& root, size_t indent = 0)
+inline void PrintRobotTree(const std::shared_ptr<RobotLinkNode>& root, std::size_t indent = 0)
 {
     if (!root)
     {
@@ -659,7 +660,7 @@ inline std::shared_ptr<RobotLinkNode> GenerateRobotLinkTree(const pxr::UsdStageP
         stack.pop_back();
         const pxr::SdfPath currentPath = current->getPath();
 
-        for (size_t index = 0; index < jointsPerBody.size(); ++index)
+        for (std::size_t index = 0; index < jointsPerBody.size(); ++index)
         {
             auto iterator = jointsPerBody[index].find(currentPath);
             if (iterator == jointsPerBody[index].end())
@@ -704,6 +705,6 @@ inline std::shared_ptr<RobotLinkNode> GenerateRobotLinkTree(const pxr::UsdStageP
     return root;
 }
 
-}
-}
-}
+} // namespace schema
+} // namespace robot
+} // namespace isaacsim

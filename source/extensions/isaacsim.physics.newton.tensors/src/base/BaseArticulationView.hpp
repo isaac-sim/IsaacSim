@@ -748,7 +748,7 @@ protected:
 
     bool m_cacheValid = false; ///< True after _cacheWarpPointers() succeeds.
     int m_modelDeviceOrdinal = -1; ///< Device of the Newton model's Warp arrays.
-    std::string m_modelDeviceString;
+    std::string m_modelDeviceString; ///< Canonical Warp device string for the Newton model.
     size_t m_totalBodyCount = 0; ///< Total body count in the Newton model.
 
     // Cached raw pointers into Warp arrays from state_0 and the model.
@@ -776,12 +776,13 @@ protected:
 
     /// python buffers, cached for performance
     mutable py::object m_jacobianBuffer = py::none();
-    mutable py::object m_jacobianWarp = py::none();
-    mutable py::object m_jacobianTensor = py::none();
+    mutable py::object m_jacobianWarp = py::none(); ///< Warp array that exposes the cached Jacobian buffer.
+    mutable py::object m_jacobianTensor = py::none(); ///< Tensor wrapper that exposes the cached Jacobian buffer.
 
-    mutable py::object m_massMatricesBuffer = py::none();
-    mutable py::object m_massMatricesWarp = py::none();
-    mutable py::object m_massMatricesTensor = py::none();
+    mutable py::object m_massMatricesBuffer = py::none(); ///< Python object that owns the cached mass-matrix buffer.
+    mutable py::object m_massMatricesWarp = py::none(); ///< Warp array that exposes the cached mass-matrix buffer.
+    mutable py::object m_massMatricesTensor = py::none(); ///< Tensor wrapper that exposes the cached mass-matrix
+                                                          ///< buffer.
 
     /// Extracts and caches raw float*/int* pointers from all relevant Warp arrays in the
     /// Newton model and state. Called lazily before the first getter/setter access.

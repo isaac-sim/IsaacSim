@@ -39,7 +39,7 @@ converts a control-point body twist setpoint `[vx, vy, wz]` into per-wheel angul
 targets for mecanum-wheeled robots using closed-form
 inverse kinematics:
 
-```
+```text
 phi_dot_i = K_i * (M[i, :] @ [vx, vy, wz])
 ```
 

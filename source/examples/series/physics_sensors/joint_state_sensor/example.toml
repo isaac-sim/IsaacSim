@@ -3,15 +3,15 @@
 
 id = "physics_sensors.joint_state_sensor"
 title = "Joint State Sensor"
-summary = "Read the position, velocity, and effort of every degree of freedom of an articulation."
+summary = "Read position, velocity, and effort for every degree of freedom in an articulation."
 owners = [
+    "isaacsim.common.logging",
     "isaacsim.foundation.objects",
-    "isaacsim.foundation.prims",
     "isaacsim.physics.entities",
     "isaacsim.physics.manager",
     "isaacsim.physics_engines.ovphysx",
 ]
-topics = ["articulation", "physics", "python", "robotics", "sensors", "usd"]
+topics = ["articulation", "physics", "robotics", "sensors", "usd"]
 
 [build]
 adapter = "none"
@@ -22,6 +22,10 @@ path = "main.py"
 
 [requirements]
 system = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_common"
+surfaces = ["python"]
 
 [[requirements.modules]]
 name = "isaacsim_foundation"
@@ -37,25 +41,20 @@ surfaces = ["python"]
 
 [[test]]
 name = "default"
+# The robot is fetched from the Isaac Sim asset root, so the first run pays for the download.
+timeout_seconds = 300
 stdout_contains = [
+    "Joint state of the articulation at /Articulation.",
     "Reporting measured joint effort, not commanded actuation.",
-    "DOF names and types match the articulation: lift (translation), spin (rotation).",
-    "Readings are stamped with the time their newest sample was taken.",
-    "Descending lift velocity matches the drive rate in stage units and in SI units.",
-    "Descending lift velocity is the drive rate, in metres per second.",
-    "Descending lift acceleration is zero at a constant rate.",
-    "Free spin DOF holds its rate in radians per second.",
-    "Free spin DOF position advances at its rate.",
-    "Free spin DOF measures no effort while the lift beside it carries a load.",
-    "Resting lift position matches the joint limit, in metres.",
-    "Resting lift effort matches the 3 kg it carries:",
-    "Selecting DOFs by name reorders the reading: spin, lift.",
+    "The stage is authored in meters, so the raw DOF values are already SI.",
+    "Moving at t =",
+    "Slider parked on its limit at t =",
 ]
 
 
 [[test]]
-name = "self_test"
-arguments = ["--self-test"]
+name = "unit"
+path = "test.py"
 stdout_contains = [
-    "Self-test: all ",
+    "joint_state.py unit tests passed.",
 ]

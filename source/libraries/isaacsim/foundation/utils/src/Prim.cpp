@@ -80,27 +80,33 @@ std::vector<std::string> getAllMatchingChildPrims(const std::string& path,
 
 std::optional<std::string> getFirstMatchingChildPrim(const std::string& path,
                                                      std::function<bool(const std::string&)> predicate,
-                                                     bool includeSelf)
+                                                     bool includeSelf,
+                                                     std::optional<std::size_t> maxDepth)
 {
     int64_t stageId = getActiveStage().getStageId();
-    std::deque<std::string> queue;
+    std::deque<std::pair<std::string, std::size_t>> queue;
 
     if (includeSelf)
     {
-        queue.push_back(path);
+        queue.push_back({ path, 0 });
     }
     else
     {
         for (const auto& child : openusd::getChildren(stageId, path))
         {
-            queue.push_back(child);
+            queue.push_back({ child, 1 });
         }
     }
 
     while (!queue.empty())
     {
-        auto currentPath = queue.front();
+        auto [currentPath, currentDepth] = queue.front();
         queue.pop_front();
+
+        if (maxDepth.has_value() && currentDepth > maxDepth.value())
+        {
+            break; // all remaining items are at this depth or deeper
+        }
 
         if (predicate(currentPath))
         {
@@ -109,7 +115,7 @@ std::optional<std::string> getFirstMatchingChildPrim(const std::string& path,
 
         for (const auto& child : openusd::getChildren(stageId, currentPath))
         {
-            queue.push_back(child);
+            queue.push_back({ child, currentDepth + 1 });
         }
     }
 

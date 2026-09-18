@@ -15,14 +15,23 @@
    limitations under the License.
 
 .. _isaacsim-physics-ovsim:
+.. _isaacsim-physics-ovsim-overview:
 
-=====================================
+========================
 Isaac Sim physics OV SIM
-=====================================
+========================
+
+``isaacsim.physics.ovsim`` implements OV SIM data access and manual simulation
+control on top of the ``isaacsim-physics`` distribution. Select a registered
+physics engine and supply an OVStage native handle before initializing manual
+simulation.
+
+Stage authoring operations are not available from this physics-only adapter and
+raise ``RuntimeError``. Use an OV SIM client with stage-authoring support
+when you need to create, open, save, or edit a stage.
 
 .. toctree::
     :maxdepth: 2
 
-    overview
     api_cpp
     api_python

@@ -199,7 +199,7 @@ int egl_headless_suspend_foreign(void)
  * change. Unlike EGL it coexists with a host GLX context on another thread,
  * which is exactly the robot-ovui case: omni.ui's GLFW window holds GLX on the
  * UI thread while ovgl renders on a backend thread. Verified on a worker thread
- * with omni.ui initialised on the main thread.
+ * with omni.ui initialized on the main thread.
  *
  * ovgl renders into its own FBOs and reads back from resolve_fbo, never from
  * the default framebuffer, so the pbuffer here exists only to satisfy

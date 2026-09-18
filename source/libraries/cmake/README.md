@@ -25,6 +25,7 @@ build orchestration and schema-wheel staging.
 | `IsaacSimModule.cmake` | Public include point. |
 | `IsaacSimModuleCore.cmake` | Native targets, public headers, runtime payloads, naming, and boundary checks. |
 | `IsaacSimPackage.cmake` | Distribution registration, shared version metadata, install components, and finalization. |
+| `IsaacSimPackagingFilters.cmake` | Shared exclusions for generated caches and Python bytecode in package payloads. |
 | `IsaacSimPython.cmake` | Pure-Python package staging and installation. |
 | `IsaacSimUsdSchema.cmake` | Codeless USD schema generation, Python staging, and SDK header installation. |
 | `IsaacSimNanobind.cmake` | Nanobind targets, generated stubs, loader paths, and native runtime closure. |
@@ -34,12 +35,12 @@ build orchestration and schema-wheel staging.
 | `FindCarbonite.cmake` | Locates the pinned static Carbonite archive when a consuming module requests it. |
 | `CheckBinaryDependencies.cmake` | Reject linked framework libraries outside the module boundary. |
 | `CheckExportedSymbols.cmake` | Compare or explicitly update an opt-in stable C symbol baseline. |
-| `InitializeNanobindRuntime.py` | Initialize binding-local Windows runtime search paths in installed packages. |
-| `RunNanobindStubgen.py` | Run nanobind stub generation with required Windows runtime directories enabled. |
+| `initialize_nanobind_runtime.py` | Initialize binding-local Windows runtime search paths in installed packages. |
+| `run_nanobind_stubgen.py` | Run nanobind stub generation with required Windows runtime directories enabled. |
 | `StageEditableDirectory.cmake` | Symlink editable Python directories with a copy fallback. |
 | `CopyPythonPackage.cmake` | Copy a clean Python package tree while excluding generated and cache files. |
 | `CopyRuntimeDirectory.cmake` | Copy runtime payloads while excluding transient Python cache files. |
-| `RunUsdGenSchema.py` | Run OpenUSD schema generation with isolated module dependencies. |
+| `run_usd_gen_schema.py` | Run OpenUSD schema generation with isolated module dependencies. |
 | `RunInstallContractTest.cmake` | Install a package closure and exercise downstream native and Python consumers. |
 | `tests/PackageDependencies.cmake` | Exercise valid and adversarial exact package dependency declarations. |
 | `tests/PythonImports.cmake` | Exercise compatibility import registration and ownership validation. |
@@ -210,6 +211,11 @@ helper then requires only `__init__.py` and `py.typed`, stages the complete `pyt
 and does not impose the `impl/` facade. This option is for compatibility migrations; new modules use the standard
 facade layout.
 
+Pass `REQUIRES_BINDINGS` when a pure-Python module imports a binding-backed module at import time. The module is still
+staged and installed in every Python-enabled profile, but binding-disabled install contracts omit that import because
+its runtime prerequisite is intentionally unavailable. Binding-enabled install contracts continue to import it. Use
+the option only for import-time requirements; ordinary optional or function-local binding use does not need it.
+
 Use `isaacsim_add_compat_python_module` when a compatibility distribution must own a legacy import outside its
 logical source namespace:
 
@@ -217,12 +223,14 @@ logical source namespace:
 isaacsim_add_compat_python_module(
     NAME isaacsim.deprecated.core.experimental.objects
     IMPORT_NAME isaacsim.core.experimental.objects
+    REQUIRES_BINDINGS
 )
 ```
 
 `NAME` remains subject to the physical identity rule and determines targets, output directories, tests, changelogs,
 and distribution membership. `IMPORT_NAME` must be a valid `isaacsim.*` module name and determines the Python stage,
 install destination, and package-manifest import. Each import name can have only one registered provider.
+`REQUIRES_BINDINGS` has the same install-contract meaning as on `isaacsim_add_python_module`.
 
 Codeless USD schema packages use the source import layout directly and declare each import root and schema input:
 
@@ -252,11 +260,14 @@ isaacsim_add_nanobind(
     MODULE isaacsim.common.logging
     SOURCES bindings/python/Bindings.cpp
     DEPENDENCIES binding_support_target
+    STUB_PRELOADS dependency.module
 )
 ```
 
 The compiled or header-only native module must be registered first. `SOURCE` is supported for one source; `SOURCES`
-accepts multiple. `DEPENDENCIES` adds binding-only targets. Bindings use the CPython stable ABI by default.
+accepts multiple. `DEPENDENCIES` adds binding-only targets. `STUB_PRELOADS` names nanobind modules whose private
+bindings must be imported before stub generation so cross-module C++ types retain their Python-facing annotations.
+The helper stages each listed binding first. Bindings use the CPython stable ABI by default.
 `NO_STABLE_ABI` requires a non-empty `STABLE_ABI_EXCEPTION` explaining why. Generated `_bindings.pyi` files remain in
 the build tree and are installed beside the binding binary. The helper validates its declaration and source files even
 when bindings are disabled, while binding-only target dependencies are resolved only in a binding-enabled build.
@@ -275,19 +286,23 @@ install under a different explicitly registered Python import name without chang
 
 ## Runtime payloads
 
-`isaacsim_install_runtime_dependencies(MODULE <name> TARGETS ... [DESTINATION ...])` installs target files needed by
-the standalone native package and stages them with bindings. On platforms with SONAMEs, both the imported target's
-file name and its load-time SONAME are emitted so relocated packages do not depend on the build prefix. `DESTINATION` places the libraries below the platform's
-installed library directory and mirrors that relative path under `isaacsim/lib` in Python packages. Pass only
+`isaacsim_install_runtime_dependencies(MODULE <name> TARGETS ... [DESTINATION ...] [NATIVE_ONLY])` installs target
+files needed by the standalone native package and stages them with bindings. On platforms with SONAMEs, both the
+imported target's file name and its load-time SONAME are emitted so relocated packages do not depend on the build
+prefix. `DESTINATION` places the libraries below the platform's installed library directory and mirrors that relative
+path under `isaacsim/lib` in Python packages. Pass only
 runtime-loadable library targets; the helper validates target existence but does not infer whether installing a static
-archive is meaningful.
+archive is meaningful. `NATIVE_ONLY` prevents the dependency from also being copied into Python packages that use the
+module.
 
-`isaacsim_add_runtime_directory(MODULE <name> SOURCE ... DESTINATION ...)` registers non-library data such as schema
-registries. `SOURCE` may be absolute or module-relative; `DESTINATION` is relative to the installed library directory
+`isaacsim_add_runtime_directory(MODULE <name> SOURCE ... DESTINATION ... [NATIVE_ONLY])` registers non-library data
+such as schema registries. `SOURCE` may be absolute or module-relative; `DESTINATION` is relative to the installed
+library directory
 and must not contain `..`. On Windows, `WINDOWS_INSTALL_DESTINATION` overrides the native install destination for
 payloads that must remain beside a DLL. `WINDOWS_PYTHON_SHARED` keeps the Python payload under `isaacsim/lib` instead of
 placing it beside each importing binding. Files placed under `resources/` have no effect until one of these helpers or a
-test helper explicitly references them.
+test helper explicitly references them. `NATIVE_ONLY` prevents the directory from also being copied into Python
+packages that use the module.
 
 ## Tests
 

@@ -68,7 +68,6 @@ def _read_pyproject(path: Path) -> dict:
     Returns:
         Parsed TOML document.
     """
-
     try:
         with path.open("rb") as stream:
             document = tomllib.load(stream)
@@ -147,7 +146,6 @@ def _read_dynamic_internal_dependencies(path: Path, libraries_root: Path) -> tup
     Returns:
         Internal distribution names declared by the provider.
     """
-
     document = _read_pyproject(path)
     project = document.get("project")
     tool = document.get("tool", {})

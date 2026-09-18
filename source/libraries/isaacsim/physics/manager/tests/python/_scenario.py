@@ -49,6 +49,7 @@ from __future__ import annotations
 import math
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from types import ModuleType
 from typing import Protocol
 
@@ -94,16 +95,150 @@ class _OperationView(Protocol):
     def get_impl_spec(self, op: str, kind: object) -> _ImplSpec: ...
 
 
-class _SimulationView(Protocol):
-    is_valid: bool
-
-
 class _CountedView(Protocol):
     count: int
 
 
 class _ContactView(Protocol):
     def get_metadata(self, name: str) -> object | None: ...
+
+
+# ---------------------------------------------------------------------------
+# Entity-view factory handed to scenarios
+# ---------------------------------------------------------------------------
+
+
+class SimulationEntities:
+    """Create entity views for one running simulation.
+
+    Every method is a thin call to ``isaacsim.physics.manager.impl.tensors.create_entity`` with the entity
+    type filled in, so scenarios exercise the registry path rather than a parallel one.
+
+    Args:
+        engine: Name the simulation registered its entity factories under.
+        device_ordinal: Ordinal of the device holding the simulation's tensors, or ``None`` for an engine
+            that reports its own. Only engines that cannot report one at creation need this.
+
+    """
+
+    def __init__(self, engine: str, device_ordinal: int | None = None) -> None:
+        self.engine = engine
+        self.device_ordinal = device_ordinal
+
+    def create_view(self, entity: str, paths: str | Sequence[str], options: dict[str, object] | None = None) -> object:
+        """Create an entity view of any registered type.
+
+        Args:
+            entity: Registered entity type, such as ``"articulation"``.
+            paths: Path pattern or sequence of path patterns.
+            options: Engine-defined construction arguments forwarded verbatim.
+
+        Returns:
+            Entity view for the requested type.
+
+        """
+        import isaacsim.physics.manager.impl.tensors as t
+
+        return t.create_entity(self.engine, entity, paths, options or None, device_ordinal=self.device_ordinal)
+
+    def create_articulation_view(self, paths: str | Sequence[str]) -> object:
+        """Create an articulation view.
+
+        Args:
+            paths: Path pattern or sequence of path patterns.
+
+        Returns:
+            Articulation entity view.
+
+        """
+        return self.create_view("articulation", paths)
+
+    def create_rigid_body_view(self, paths: str | Sequence[str]) -> object:
+        """Create a rigid-body view.
+
+        Args:
+            paths: Path pattern or sequence of path patterns.
+
+        Returns:
+            Rigid-body entity view.
+
+        """
+        return self.create_view("rigid-body", paths)
+
+    def create_rigid_contact_view(
+        self,
+        paths: str | Sequence[str],
+        filter_patterns: Sequence[str] | None = None,
+        max_contact_data_count: int = 0,
+    ) -> object:
+        """Create a rigid-contact view.
+
+        Args:
+            paths: Sensor path pattern or sequence of sensor path patterns.
+            filter_patterns: Contact counterparts to report against.
+            max_contact_data_count: Maximum raw contact records retained by the view.
+
+        Returns:
+            Rigid-contact entity view.
+
+        """
+        options: dict[str, object] = {}
+        if filter_patterns:
+            options["filter-patterns"] = list(filter_patterns)
+        # Pass an explicit 0 through rather than treating it as "unset": it asks for a view that retains no
+        # raw contact records, which is not the same as letting the engine pick its default.
+        if max_contact_data_count is not None:
+            options["max-contact-data-count"] = int(max_contact_data_count)
+        return self.create_view("rigid-contact", paths, options)
+
+    def create_sdf_shape_view(self, paths: str | Sequence[str], num_points: int) -> object:
+        """Create a signed-distance-field shape view.
+
+        Args:
+            paths: Path pattern or sequence of path patterns.
+            num_points: Query points allocated per selected shape.
+
+        Returns:
+            Signed-distance-field shape entity view.
+
+        """
+        return self.create_view("sdf-shape", paths, {"num-points": int(num_points)})
+
+    def create_volume_deformable_body_view(self, paths: str | Sequence[str]) -> object:
+        """Create a volume-deformable-body view.
+
+        Args:
+            paths: Path pattern or sequence of path patterns.
+
+        Returns:
+            Volume-deformable-body entity view.
+
+        """
+        return self.create_view("volume-deformable-body", paths)
+
+    def create_surface_deformable_body_view(self, paths: str | Sequence[str]) -> object:
+        """Create a surface-deformable-body view.
+
+        Args:
+            paths: Path pattern or sequence of path patterns.
+
+        Returns:
+            Surface-deformable-body entity view.
+
+        """
+        return self.create_view("surface-deformable-body", paths)
+
+    def create_deformable_material_view(self, paths: str | Sequence[str]) -> object:
+        """Create a deformable-material view.
+
+        Args:
+            paths: Path pattern or sequence of path patterns.
+
+        Returns:
+            Deformable-material entity view.
+
+        """
+        return self.create_view("deformable-material", paths)
 
 
 # ---------------------------------------------------------------------------
@@ -347,20 +482,20 @@ class ScenarioBase(ABC):
         return self.finished or self.failed
 
     @abstractmethod
-    def on_start(self, sim: object) -> None:
-        """Initialize the scenario after creating its simulation view.
+    def on_start(self, sim: SimulationEntities) -> None:
+        """Initialize the scenario before the first simulated frame.
 
         Args:
-            sim: Backend-specific simulation view.
+            sim: Entity-view factory bound to the running simulation.
 
         """
 
     @abstractmethod
-    def on_physics_step(self, sim: object, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Advance scenario assertions after one simulated frame.
 
         Args:
-            sim: Backend-specific simulation view.
+            sim: Entity-view factory bound to the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -627,20 +762,6 @@ class GridTestBase(GridScenarioBase):
 
     # -- view introspection helpers ------------------------------------
 
-    def check_simulation_view(self, sim_view: _SimulationView, expected_device: str) -> None:
-        """Check that a backend simulation view is valid.
-
-        Args:
-            sim_view: Backend-specific simulation view.
-            expected_device: Expected device retained by the shared test contract.
-
-        """
-        # Umbrella's SimulationView is the umbrella-side base class; we
-        # don't strict-isinstance against it (engines subclass it
-        # privately). Just verify `is_valid` and that the device ordinal
-        # is consistent with the expected device string.
-        assert getattr(sim_view, "is_valid", True)
-
     def check_articulation_view(
         self,
         view: _CountedView,
@@ -827,7 +948,7 @@ class RunnerInMemory:
 
         # Replicate env_template into each env_N before the engine sees
         # the stage — subclasses populate the template in their `__init__`
-        # and the runner finalises layout here.
+        # and the runner finalizes layout here.
         if hasattr(self.scenario, "_replicate_template_into_envs"):
             self.scenario._replicate_template_into_envs()
 
@@ -844,9 +965,14 @@ class RunnerInMemory:
             # /physics/suppressReadback opts the scene into PhysX DirectGPU
             # (GPU-resident tensors). Set it per test from the scenario's
             # GPU-pipeline choice, before the scene is (re)created below; ovphysx
-            # reads it at scene creation and the SimulationView reports the device
-            # off the resulting eENABLE_DIRECT_GPU_API flag.
-            _physics_setup.set_suppress_readback(self.scenario.wp_device != "cpu")
+            # reads it at scene creation.
+            wp_device = self.scenario.wp_device
+            _physics_setup.set_suppress_readback(wp_device != "cpu")
+            # ovphysx has no query for the device its scene picked, so declare it once here; every entity
+            # view it builds reports this value.
+            _physics_setup.set_tensor_device_ordinal(
+                -1 if wp_device == "cpu" else int(str(wp_device).rsplit(":", 1)[-1])
+            )
         else:
             from isaacsim.physics_engines.ovnewton.impl import NewtonConfig
 
@@ -889,22 +1015,9 @@ class RunnerInMemory:
                 f"physics initialize failed (ovstage={ovstage_handle}, usd_identifier={usd_identifier!r})"
             )
 
-        import isaacsim.physics.manager.impl.tensors as t
-
-        sim_view_key = int(getattr(self._registered_id, "id", -1))
-        self._sim_view = t.create_simulation_view(
-            engine=self.engine,
-            frontend_name=self.frontend,
-            stage_id=sim_view_key,
-        )
-
-        # ovphysx's C++ view no longer reads its device off a USD scene, so the
-        # caller (who knows the configured tensor device) pushes it. Newton sets
-        # its own device internally.
-        if self.engine == "ovphysx":
-            wp_device = self.scenario.wp_device
-            device_ordinal = -1 if wp_device == "cpu" else int(str(wp_device).rsplit(":", 1)[-1])
-            self._sim_view.set_device_ordinal(device_ordinal)
+        # Both engines report their own device now -- ovphysx from the declaration made in `start()`,
+        # Newton from its backend -- so the factory pushes nothing.
+        self._sim_view = SimulationEntities(self.engine)
 
         # User hook.
         self.scenario.on_start(self._sim_view)

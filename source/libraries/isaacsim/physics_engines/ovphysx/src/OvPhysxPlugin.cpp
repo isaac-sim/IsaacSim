@@ -18,11 +18,12 @@
 // clang-format on
 
 #include "OvPhysxAdapter.hpp"
-#include "tensors/OvPhysxSimulationViewImpl.hpp"
+#include "tensors/OvPhysxEntityFactories.hpp"
 
 #include <isaacsim/common/logging/Logging.hpp>
 #include <ovphysx/ovphysx.h>
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -41,7 +42,22 @@ std::mutex g_pluginMutex;
 std::shared_ptr<OvPhysxAdapter> g_adapter;
 bool g_started = false;
 
+// Declared by the caller that configured the tensor device; ovphysx offers no query for it. Read on every
+// entity-view access, so it may be declared after the views exist. Atomic because views read it from whichever
+// thread drives the data plane.
+std::atomic<int> g_tensorDeviceOrdinal{ -1 };
+
 } // namespace
+
+void setTensorDeviceOrdinal(int ordinal)
+{
+    g_tensorDeviceOrdinal.store(ordinal, std::memory_order_relaxed);
+}
+
+int getTensorDeviceOrdinal()
+{
+    return g_tensorDeviceOrdinal.load(std::memory_order_relaxed);
+}
 
 bool activate()
 {
@@ -59,10 +75,9 @@ bool activate()
         g_adapter = OvPhysxAdapter::create(configuration);
         size_t simulationId = g_adapter->registerWithManager("ovphysx");
         // Register the adapter in the global map keyed by simulationId so the
-        // SimulationView factory (create_simulation_view(engine, sim_id)) can
-        // find the live handle.
+        // entity factories (create_entity(engine, entity, paths)) can find the live handle.
         storeAdapter(static_cast<int64_t>(simulationId), g_adapter);
-        registerOvPhysxSimulationViewFactory();
+        registerOvPhysxEntityFactories();
         g_started = true;
         return true;
     }
@@ -100,7 +115,7 @@ void shutdown()
         return;
     }
 
-    unregisterOvPhysxSimulationViewFactory();
+    unregisterOvPhysxEntityFactories();
     if (g_adapter)
     {
         size_t simulationId = g_adapter->getSimulationId();
