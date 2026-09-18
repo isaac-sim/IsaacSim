@@ -21,6 +21,10 @@ on:
         description: "Run optional (non-blocking) test suites"
         type: boolean
         default: false
+      run_libraries_linux:
+        description: "Run Linux libraries build + test"
+        type: boolean
+        default: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -171,6 +175,39 @@ jobs:
       suite: ${{ matrix.suite }}
       bucket: ${{ matrix.bucket }}
       coverage: true
+
+  # ===========================================================================
+  # Build Libraries (standalone CMake/Pixi graph, no Kit dependency)
+  # ===========================================================================
+  build-libraries:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_libraries_linux }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            config: release
+    uses: ./.github/workflows/build-libraries.yml
+    with:
+      platform: ${{ matrix.platform }}
+      config: ${{ matrix.config }}
+
+  # ===========================================================================
+  # Test Libraries - Linux (uses libraries build, needs GPU)
+  # ===========================================================================
+  test-libraries:
+    needs: build-libraries
+    if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.run_libraries_linux) && needs.build-libraries.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            config: release
+    uses: ./.github/workflows/test-libraries.yml
+    with:
+      platform: ${{ matrix.platform }}
+      config: ${{ matrix.config }}
 
   # ===========================================================================
   # Combine Coverage (runs after all tests, even if some fail)

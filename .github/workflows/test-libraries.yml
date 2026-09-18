@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Test Libraries
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        required: true
+        type: string
+      config:
+        required: true
+        type: string
+
+jobs:
+  test:
+    name: "Test Libraries (${{ inputs.platform }} / ${{ inputs.config }})"
+    runs-on: [self-hosted, gpu]
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      OMNI_KIT_ALLOW_ROOT: 1
+      PM_PACKAGES_ROOT: ${{ github.workspace }}/.cache/packman
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Ensure LFS files are smudged
+        run: git lfs checkout
+
+      - name: Clean checkout
+        run: |
+          git clean -fdx
+          git reset --hard HEAD
+
+      - name: Make all files user-writable
+        run: chmod -R u+w .
+
+      - name: Create caches
+        run: mkdir -p "${{ github.workspace }}/.cache/packman"
+
+      - name: Download library build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: isaac-sim-libraries-${{ inputs.platform }}-${{ inputs.config }}
+          path: _cmake_build/
+
+      - name: GPU info
+        run: |
+          echo "=== GPU info ==="
+          nvidia-smi || echo "nvidia-smi not available"
+
+      - name: Extract library build artifacts
+        run: tar -xpf _cmake_build/isaacsim-libraries-release.tar -C _cmake_build
+
+      - name: Run library tests
+        run: |
+          set -euo pipefail
+          set -x
+
+          find . -type f -iname "*.sh" -exec chmod +x {} +
+
+          echo "::group::Test Libraries (${{ inputs.config }})"
+          ./source/libraries/build.sh -r \
+            --profile standard \
+            --test-only \
+            --test-timeout 600 \
+            --junit-output _cmake_build/isaacsim-libraries-release/source-libraries-tests.xml
+          echo "::endgroup::"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-libraries-${{ inputs.platform }}-${{ inputs.config }}
+          path: _cmake_build/isaacsim-libraries-release/source-libraries-*.xml
+          retention-days: 7
+        if: always()
+
+      - name: Upload test logs (on failure)
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-libraries-logs-${{ inputs.platform }}-${{ inputs.config }}
+          path: |
+            _cmake_build/**/*.log
+          retention-days: 7
+        if: failure()
