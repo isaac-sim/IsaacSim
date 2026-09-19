@@ -23,6 +23,7 @@ from typing import IO
 
 from pxr import Gf, Usd, UsdGeom, UsdShade
 
+from .material_reader import copy_texture_payload, resolve_texture_paths, texture_reference_filename
 from .transform_utils import get_prim_name, linear_to_srgb
 
 _logger = logging.getLogger(__name__)
@@ -347,6 +348,7 @@ def _write_obj(prim: Usd.Prim, obj_path: str, bake_transform: Gf.Matrix4d | None
                 has_t=has_texcoords,
                 tc_interp=tc_interp,
                 tc_indices=tc_indices,
+                texcoords=texcoords,
             )
 
             subsets = _get_geom_subsets(mesh_prim)
@@ -362,9 +364,14 @@ def _write_obj(prim: Usd.Prim, obj_path: str, bake_transform: Gf.Matrix4d | None
             else:
                 mat_name = _collect_material(mesh_prim, materials_to_write)
                 if mat_name:
-                    f.write(f"usemtl {mat_name}\n")
-
-                _write_faces(f, face_data)
+                    _write_faces_with_material(
+                        f,
+                        face_data,
+                        mat_name,
+                        materials_to_write,
+                    )
+                else:
+                    _write_faces(f, face_data)
 
             vertex_offset += len(points)
             if has_texcoords:
@@ -394,6 +401,7 @@ class _FaceIndexData:
     normal_interp: str = "faceVarying"
     tc_interp: str = "faceVarying"
     tc_indices: list | None = None
+    texcoords: list | None = None
 
 
 def _write_faces(f: IO[str], fd: _FaceIndexData) -> None:
@@ -405,6 +413,34 @@ def _write_faces(f: IO[str], fd: _FaceIndexData) -> None:
     """
     idx = 0
     for count in fd.face_counts:
+        f.write("f")
+        for _ in range(count):
+            _write_face_vertex(f, fd, idx)
+            idx += 1
+        f.write("\n")
+
+
+def _write_faces_with_material(
+    f: IO[str],
+    fd: _FaceIndexData,
+    material_name: str,
+    materials_dict: dict[str, _MtlData],
+) -> None:
+    """Write faces using a conventional material or concrete UDIM tile variants."""
+    current_mat = None
+    idx = 0
+    for count in fd.face_counts:
+        face_mat = _resolve_face_material(
+            material_name,
+            materials_dict,
+            fd,
+            idx,
+            int(count),
+        )
+        if face_mat != current_mat:
+            f.write(f"usemtl {face_mat}\n")
+            current_mat = face_mat
+
         f.write("f")
         for _ in range(count):
             _write_face_vertex(f, fd, idx)
@@ -440,7 +476,18 @@ def _write_faces_with_subsets(
     current_mat = None
     idx = 0
     for face_idx, count in enumerate(fd.face_counts):
-        mat = face_to_subset_mat.get(face_idx, mesh_mat)
+        base_mat = face_to_subset_mat.get(face_idx, mesh_mat)
+        mat = (
+            _resolve_face_material(
+                base_mat,
+                materials_dict,
+                fd,
+                idx,
+                int(count),
+            )
+            if base_mat
+            else None
+        )
         if mat and mat != current_mat:
             f.write(f"usemtl {mat}\n")
             current_mat = mat
@@ -495,6 +542,99 @@ def _write_face_vertex(f: IO[str], fd: _FaceIndexData, idx: int) -> None:
         f.write(f" {vi}")
 
 
+def _resolve_face_material(
+    material_name: str,
+    materials_dict: dict[str, _MtlData],
+    fd: _FaceIndexData,
+    face_vertex_start: int,
+    face_vertex_count: int,
+) -> str:
+    """Resolve a material name, specializing UDIM materials per concrete face tile."""
+    data = materials_dict[material_name]
+    if not data.texture_file or not UsdShade.UdimUtils.IsUdimIdentifier(data.texture_file):
+        return material_name
+
+    tile = _face_udim_tile(fd, face_vertex_start, face_vertex_count)
+    variant_name = _sanitize_filename(f"{material_name}_udim_{tile}")
+    if variant_name in materials_dict:
+        return variant_name
+
+    expected_name = os.path.basename(data.texture_file.replace("<UDIM>", str(tile)))
+    payload = next(
+        (candidate for candidate in data.texture_payloads if os.path.basename(candidate) == expected_name),
+        None,
+    )
+    if payload is None:
+        raise ValueError(f"UDIM tile {tile} required by material {material_name!r} has no resolved payload")
+
+    variant = _MtlData()
+    variant.kd = data.kd
+    variant.ks = data.ks
+    variant.ke = data.ke
+    variant.ns = data.ns
+    variant.metallic = data.metallic
+    variant.roughness = data.roughness
+    variant.opacity = data.opacity
+    variant.texture_file = payload
+    variant.texture_payloads = [payload]
+    materials_dict[variant_name] = variant
+    return variant_name
+
+
+def _face_udim_tile(
+    fd: _FaceIndexData,
+    face_vertex_start: int,
+    face_vertex_count: int,
+) -> int:
+    """Return the one UDIM tile containing a face, rejecting ambiguous boundaries."""
+    if not fd.has_t or fd.texcoords is None:
+        raise ValueError("UDIM material requires complete texture coordinates")
+    if fd.tc_interp not in ("vertex", "faceVarying"):
+        raise ValueError(f"Unsupported UDIM texture interpolation: {fd.tc_interp}")
+
+    uvs: list[tuple[float, float]] = []
+    for face_vertex_index in range(face_vertex_start, face_vertex_start + face_vertex_count):
+        if fd.tc_indices is not None:
+            texcoord_index = int(fd.tc_indices[face_vertex_index])
+        elif fd.tc_interp == "vertex":
+            texcoord_index = int(fd.face_indices[face_vertex_index])
+        else:
+            texcoord_index = face_vertex_index
+        if texcoord_index < 0 or texcoord_index >= len(fd.texcoords):
+            raise ValueError(
+                f"UDIM texture coordinate index {texcoord_index} is outside "
+                f"the available range 0..{len(fd.texcoords) - 1}"
+            )
+        texcoord = fd.texcoords[texcoord_index]
+        u = float(texcoord[0])
+        v = float(texcoord[1])
+        if not math.isfinite(u) or not math.isfinite(v):
+            raise ValueError("UDIM texture coordinates must be finite")
+        uvs.append((u, v))
+
+    mean_u = sum(uv[0] for uv in uvs) / len(uvs)
+    mean_v = sum(uv[1] for uv in uvs) / len(uvs)
+    tile_u = math.floor(mean_u)
+    tile_v = math.floor(mean_v)
+    if tile_u < 0 or tile_u > 9 or tile_v < 0:
+        raise ValueError(f"Unsupported UDIM tile coordinates: u={tile_u}, v={tile_v}")
+
+    tolerance = 1e-6
+    for u, v in uvs:
+        if (
+            u < tile_u - tolerance
+            or u > tile_u + 1.0 + tolerance
+            or v < tile_v - tolerance
+            or v > tile_v + 1.0 + tolerance
+        ):
+            raise ValueError(
+                "UDIM face crosses tile boundaries; deterministic OBJ material assignment "
+                "requires each face to belong to one tile"
+            )
+
+    return 1001 + tile_u + 10 * tile_v
+
+
 # --- GeomSubset handling ---
 
 
@@ -537,6 +677,7 @@ class _MtlData:
         self.roughness: float = 0.5
         self.opacity: float = 1.0
         self.texture_file: str | None = None
+        self.texture_payloads: list[str] = []
 
 
 def _collect_material(prim: Usd.Prim, materials_dict: dict[str, _MtlData]) -> str | None:
@@ -714,13 +855,7 @@ def _read_shader_color(shader: UsdShade.Shader, data: _MtlData) -> bool:
     for name in _TEXTURE_INPUTS:
         inp = shader.GetInput(name)
         if inp and inp.Get() is not None:
-            val = inp.Get()
-            from pxr import Sdf as _Sdf
-
-            if isinstance(val, _Sdf.AssetPath):
-                resolved = val.resolvedPath or val.path
-                if resolved:
-                    data.texture_file = resolved
+            _set_texture_data(inp.Get(), shader.GetPrim(), inp, data)
 
     _METALLIC_INPUTS = ["metallic_constant", "metallic"]
     for name in _METALLIC_INPUTS:
@@ -1029,14 +1164,22 @@ def _read_texture_from_shader(shader: UsdShade.Shader, data: _MtlData) -> None:
     val = file_input.Get()
     if not val:
         return
-    from pxr import Sdf as _Sdf
+    _set_texture_data(val, shader.GetPrim(), file_input, data)
 
-    if isinstance(val, _Sdf.AssetPath):
-        resolved = val.resolvedPath or val.path
-        if resolved:
-            data.texture_file = resolved
-    elif val:
-        data.texture_file = str(val)
+
+def _set_texture_data(value: object, prim: Usd.Prim, source_property: object, data: _MtlData) -> None:
+    """Record a portable texture reference plus every required payload."""
+    resolved_paths = resolve_texture_paths(value, prim, source_property)
+    if not resolved_paths:
+        return
+
+    reference_filename = texture_reference_filename(value)
+    if reference_filename and UsdShade.UdimUtils.IsUdimIdentifier(reference_filename):
+        data.texture_file = reference_filename
+        data.texture_payloads = resolved_paths
+    else:
+        data.texture_file = resolved_paths[0]
+        data.texture_payloads = [resolved_paths[0]]
 
 
 def _get_sources(connectable: UsdShade.ConnectableAPI) -> list:
@@ -1119,6 +1262,10 @@ def _write_mtl(mtl_path: str, materials: dict[str, _MtlData]) -> None:
     with open(mtl_path, "w") as f:
         f.write("# Exported from USD\n\n")
         for mat_name, data in materials.items():
+            if data.texture_file and UsdShade.UdimUtils.IsUdimIdentifier(data.texture_file):
+                # OBJ/MTL consumers generally do not implement USD UDIM token semantics.
+                # Concrete per-tile variants are emitted and referenced by faces instead.
+                continue
             f.write(f"newmtl {mat_name}\n")
             f.write(f"Kd {data.kd[0]:.6f} {data.kd[1]:.6f} {data.kd[2]:.6f}\n")
             f.write("Ka 0.000000 0.000000 0.000000\n")
@@ -1131,8 +1278,14 @@ def _write_mtl(mtl_path: str, materials: dict[str, _MtlData]) -> None:
                 f.write(f"Ke {data.ke[0]:.6f} {data.ke[1]:.6f} {data.ke[2]:.6f}\n")
             f.write("illum 2\n")
             if data.texture_file:
-                basename = os.path.basename(data.texture_file)
-                f.write(f"map_Kd {basename}\n")
+                sources = data.texture_payloads or [data.texture_file]
+                delivered_names = [
+                    delivered_name
+                    for source in sources
+                    if (delivered_name := copy_texture_payload(source, os.path.dirname(mtl_path)))
+                ]
+                if delivered_names:
+                    f.write(f"map_Kd {delivered_names[0]}\n")
             f.write("\n")
 
 

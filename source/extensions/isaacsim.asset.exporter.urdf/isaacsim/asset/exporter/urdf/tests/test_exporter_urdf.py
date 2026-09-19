@@ -35,7 +35,7 @@ from isaacsim.asset.exporter.urdf.converter.inertia_utils import (
 )
 from isaacsim.asset.exporter.urdf.converter.joint_reader import _read_joint_velocity_limit
 from isaacsim.storage.native import get_assets_root_path
-from pxr import Usd, UsdPhysics
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 
 
 class TestUrdfExporter(omni.kit.test.AsyncTestCase):
@@ -2222,3 +2222,276 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
                 self.assertAlmostEqual(actual, expected, places=6)
             for actual in joint_rpy:
                 self.assertAlmostEqual(actual, 0.0, places=6)
+
+    @staticmethod
+    def _build_issue709_collision_role_stage() -> Usd.Stage:
+        """Create visual-only, collision-only, and visible dual-role controls."""
+        stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+
+        robot = UsdGeom.Xform.Define(stage, "/robot")
+        stage.SetDefaultPrim(robot.GetPrim())
+        UsdPhysics.ArticulationRootAPI.Apply(robot.GetPrim())
+
+        base = UsdGeom.Xform.Define(stage, "/robot/base")
+        UsdPhysics.RigidBodyAPI.Apply(base.GetPrim())
+        mass_api = UsdPhysics.MassAPI.Apply(base.GetPrim())
+        mass_api.CreateMassAttr().Set(1.0)
+        mass_api.CreateDiagonalInertiaAttr().Set(Gf.Vec3f(0.001, 0.001, 0.001))
+
+        world_joint = UsdPhysics.FixedJoint.Define(stage, "/robot/world_joint")
+        world_joint.GetBody1Rel().SetTargets([Sdf.Path("/robot/base")])
+
+        visual = UsdGeom.Cube.Define(stage, "/robot/base/visual_marker")
+        visual.CreateSizeAttr().Set(0.1)
+        visual.CreatePurposeAttr().Set(UsdGeom.Tokens.render)
+        visual.AddTranslateOp().Set(Gf.Vec3d(-0.2, 0.0, 0.0))
+
+        collision_default = UsdGeom.Cube.Define(stage, "/robot/base/collision_marker_default_purpose")
+        collision_default.CreateSizeAttr().Set(0.1)
+        collision_default.CreateVisibilityAttr().Set(UsdGeom.Tokens.invisible)
+        collision_default.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, 0.0))
+        UsdPhysics.CollisionAPI.Apply(collision_default.GetPrim())
+
+        collision_dual_role = UsdGeom.Cube.Define(stage, "/robot/base/collision_dual_role_visible")
+        collision_dual_role.CreateSizeAttr().Set(0.1)
+        collision_dual_role.AddTranslateOp().Set(Gf.Vec3d(0.2, 0.0, 0.0))
+        UsdPhysics.CollisionAPI.Apply(collision_dual_role.GetPrim())
+
+        collision_guide = UsdGeom.Cube.Define(stage, "/robot/base/collision_guide_control")
+        collision_guide.CreateSizeAttr().Set(0.1)
+        collision_guide.CreatePurposeAttr().Set(UsdGeom.Tokens.guide)
+        collision_guide.AddTranslateOp().Set(Gf.Vec3d(0.4, 0.0, 0.0))
+        UsdPhysics.CollisionAPI.Apply(collision_guide.GetPrim())
+
+        UsdGeom.Scope.Define(stage, "/robot/Physics")
+        return stage
+
+    @staticmethod
+    def _build_issue709_udim_stage(texture_path: str) -> Usd.Stage:
+        """Create a one-link mesh using a UsdPreviewSurface UDIM texture."""
+        stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+
+        robot = UsdGeom.Xform.Define(stage, "/robot")
+        stage.SetDefaultPrim(robot.GetPrim())
+        UsdPhysics.ArticulationRootAPI.Apply(robot.GetPrim())
+
+        base = UsdGeom.Xform.Define(stage, "/robot/base")
+        UsdPhysics.RigidBodyAPI.Apply(base.GetPrim())
+        mass_api = UsdPhysics.MassAPI.Apply(base.GetPrim())
+        mass_api.CreateMassAttr().Set(1.0)
+        mass_api.CreateDiagonalInertiaAttr().Set(Gf.Vec3f(0.001, 0.001, 0.001))
+
+        world_joint = UsdPhysics.FixedJoint.Define(stage, "/robot/world_joint")
+        world_joint.GetBody1Rel().SetTargets([Sdf.Path("/robot/base")])
+
+        mesh = UsdGeom.Mesh.Define(stage, "/robot/base/udim_mesh")
+        mesh.CreatePointsAttr().Set(
+            [
+                Gf.Vec3f(0.0, 0.0, 0.0),
+                Gf.Vec3f(0.1, 0.0, 0.0),
+                Gf.Vec3f(0.0, 0.1, 0.0),
+                Gf.Vec3f(0.2, 0.0, 0.0),
+                Gf.Vec3f(0.3, 0.0, 0.0),
+                Gf.Vec3f(0.2, 0.1, 0.0),
+            ]
+        )
+        mesh.CreateFaceVertexCountsAttr().Set([3, 3])
+        mesh.CreateFaceVertexIndicesAttr().Set([0, 1, 2, 3, 4, 5])
+        st = UsdGeom.PrimvarsAPI(mesh).CreatePrimvar(
+            "st",
+            Sdf.ValueTypeNames.TexCoord2fArray,
+            UsdGeom.Tokens.faceVarying,
+        )
+        st.Set(
+            [
+                Gf.Vec2f(0.1, 0.1),
+                Gf.Vec2f(0.9, 0.1),
+                Gf.Vec2f(0.1, 0.9),
+                Gf.Vec2f(1.1, 0.1),
+                Gf.Vec2f(1.9, 0.1),
+                Gf.Vec2f(1.1, 0.9),
+            ]
+        )
+
+        material = UsdShade.Material.Define(stage, "/robot/Looks/issue709_material")
+        surface = UsdShade.Shader.Define(stage, "/robot/Looks/issue709_material/preview_surface")
+        surface.CreateIdAttr("UsdPreviewSurface")
+        material.CreateSurfaceOutput().ConnectToSource(surface.ConnectableAPI(), "surface")
+
+        texture = UsdShade.Shader.Define(stage, "/robot/Looks/issue709_material/albedo_texture")
+        texture.CreateIdAttr("UsdUVTexture")
+        texture.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(Sdf.AssetPath(texture_path))
+        texture.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+        surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(texture.ConnectableAPI(), "rgb")
+        UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(material)
+
+        UsdGeom.Scope.Define(stage, "/robot/Physics")
+        return stage
+
+    @staticmethod
+    def _issue709_map_kd_references(mesh_dir: str) -> list[tuple[str, str]]:
+        """Return MTL path and map_Kd payload pairs in deterministic order."""
+        references: list[tuple[str, str]] = []
+        for root_dir, dir_names, file_names in os.walk(mesh_dir):
+            dir_names.sort()
+            for file_name in sorted(file_names):
+                if not file_name.lower().endswith(".mtl"):
+                    continue
+                mtl_path = os.path.join(root_dir, file_name)
+                with open(mtl_path, encoding="utf-8") as stream:
+                    for line in stream:
+                        if line.lstrip().startswith("map_Kd "):
+                            references.append((mtl_path, line.split(maxsplit=1)[1].strip()))
+        return references
+
+    async def test_issue709_collision_default_purpose_is_not_visual_when_disabled(self) -> None:
+        """Hidden or guide collisions stay collision-only while visible dual-role geometry survives."""
+        stage = self._build_issue709_collision_role_stage()
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            _, root = await self._export_to_urdf(
+                stage,
+                temp_dir,
+                visualize_collision_meshes=False,
+            )
+
+            visual_names = {element.get("name") for element in root.findall(".//visual")}
+            collision_names = {element.get("name") for element in root.findall(".//collision")}
+
+            self.assertIn("visual_marker", visual_names)
+            self.assertNotIn(
+                "collision_marker_default_purpose",
+                visual_names,
+                "CollisionAPI geometry leaked into <visual> while collision visualization was disabled",
+            )
+            self.assertIn("collision_marker_default_purpose", collision_names)
+            self.assertIn("collision_dual_role_visible", visual_names)
+            self.assertIn("collision_dual_role_visible", collision_names)
+            self.assertIn("collision_guide_control", collision_names)
+            self.assertNotIn("collision_guide_control", visual_names)
+
+    async def test_issue709_resolvable_udim_tiles_are_delivered(self) -> None:
+        """A resolvable UDIM template must deliver its concrete texture tiles."""
+        png_bytes = bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+            "0000000d4944415408996360000002000154a24f5d0000000049454e44ae426082"
+        )
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            source_dir = os.path.join(temp_dir, "source")
+            output_dir = os.path.join(temp_dir, "export")
+            os.makedirs(source_dir)
+            os.makedirs(output_dir)
+
+            for tile in ("1001", "1002"):
+                tile_path = os.path.join(source_dir, f"albedo_{tile}.png")
+                with open(tile_path, "wb") as stream:
+                    stream.write(png_bytes)
+
+            template_path = os.path.join(source_dir, "albedo_<UDIM>.png").replace("\\", "/")
+            stage = self._build_issue709_udim_stage(template_path)
+            await self._export_to_urdf(stage, output_dir)
+
+            references = self._issue709_map_kd_references(os.path.join(output_dir, "meshes"))
+            self.assertEqual(
+                sorted(reference for _, reference in references),
+                ["albedo_1001.png", "albedo_1002.png"],
+            )
+            for mtl_path, reference in references:
+                self.assertNotIn("<UDIM>", reference)
+                concrete_path = os.path.join(os.path.dirname(mtl_path), reference)
+                self.assertTrue(
+                    os.path.isfile(concrete_path),
+                    f"UDIM map_Kd payload was not delivered: {concrete_path}",
+                )
+
+    async def test_issue709_percent_encoded_udim_tiles_are_delivered(self) -> None:
+        """A percent-encoded UDIM token must resolve to a concrete delivered tile."""
+        png_bytes = bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+            "0000000d4944415408996360000002000154a24f5d0000000049454e44ae426082"
+        )
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            source_dir = os.path.join(temp_dir, "source")
+            output_dir = os.path.join(temp_dir, "export")
+            os.makedirs(source_dir)
+            os.makedirs(output_dir)
+
+            for tile in ("1001", "1002"):
+                tile_path = os.path.join(source_dir, f"albedo_{tile}.png")
+                with open(tile_path, "wb") as stream:
+                    stream.write(png_bytes)
+
+            template_path = os.path.join(source_dir, "albedo_%3CUDIM%3E.png").replace("\\", "/")
+            stage = self._build_issue709_udim_stage(template_path)
+            await self._export_to_urdf(stage, output_dir)
+
+            references = self._issue709_map_kd_references(os.path.join(output_dir, "meshes"))
+            self.assertEqual(
+                sorted(reference for _, reference in references),
+                ["albedo_1001.png", "albedo_1002.png"],
+            )
+            for mtl_path, reference in references:
+                self.assertNotIn("<UDIM>", reference)
+                self.assertNotIn("%3CUDIM%3E", reference)
+                self.assertTrue(
+                    os.path.isfile(os.path.join(os.path.dirname(mtl_path), reference)),
+                    f"Encoded UDIM map_Kd payload was not delivered: {reference}",
+                )
+
+    async def test_issue709_udim_face_crossing_tile_boundary_is_rejected(self) -> None:
+        """A face spanning multiple UDIM tiles must fail instead of silently mis-texturing."""
+        png_bytes = bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+            "0000000d4944415408996360000002000154a24f5d0000000049454e44ae426082"
+        )
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            source_dir = os.path.join(temp_dir, "source")
+            output_dir = os.path.join(temp_dir, "export")
+            os.makedirs(source_dir)
+            os.makedirs(output_dir)
+
+            for tile in ("1001", "1002"):
+                with open(os.path.join(source_dir, f"albedo_{tile}.png"), "wb") as stream:
+                    stream.write(png_bytes)
+
+            template_path = os.path.join(source_dir, "albedo_<UDIM>.png").replace("\\", "/")
+            stage = self._build_issue709_udim_stage(template_path)
+            st = UsdGeom.PrimvarsAPI(stage.GetPrimAtPath("/robot/base/udim_mesh")).GetPrimvar("st")
+            st.Set(
+                [
+                    Gf.Vec2f(0.9, 0.1),
+                    Gf.Vec2f(1.1, 0.1),
+                    Gf.Vec2f(0.9, 0.9),
+                    Gf.Vec2f(1.1, 0.1),
+                    Gf.Vec2f(1.9, 0.1),
+                    Gf.Vec2f(1.1, 0.9),
+                ]
+            )
+
+            with self.assertRaisesRegex(ValueError, "crosses tile boundaries"):
+                await self._export_to_urdf(stage, output_dir)
+
+    async def test_issue709_unresolved_udim_does_not_emit_broken_map_reference(self) -> None:
+        """An unresolved UDIM template must not produce a broken map_Kd."""
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            source_dir = os.path.join(temp_dir, "source")
+            output_dir = os.path.join(temp_dir, "export")
+            os.makedirs(source_dir)
+            os.makedirs(output_dir)
+
+            template_path = os.path.join(source_dir, "missing_<UDIM>.png").replace("\\", "/")
+            stage = self._build_issue709_udim_stage(template_path)
+            await self._export_to_urdf(stage, output_dir)
+
+            references = self._issue709_map_kd_references(os.path.join(output_dir, "meshes"))
+            self.assertFalse(
+                references,
+                f"Exporter emitted a map_Kd without a complete UDIM payload: {references}",
+            )
