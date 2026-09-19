@@ -15,6 +15,8 @@
 
 #include <carb/BindingsUtils.h>
 #include <carb/PluginUtils.h>
+#include <carb/extras/ScopeExit.h>
+#include <carb/settings/ISettings.h>
 
 #include <doctest/doctest.h>
 #include <isaacsim/core/experimental/prims/IPrimDataReaderManager.hpp>
@@ -24,6 +26,7 @@
 #include <omni/usd/UsdManager.h>
 #include <pxr/base/tf/token.h>
 #include <pxr/usd/sdf/path.h>
+#include <pxr/usd/usdGeom/xform.h>
 
 #include <BufferRegistry.hpp>
 #include <string>
@@ -157,6 +160,60 @@ TEST_SUITE("isaacsim.core.experimental.primdata.tests")
         CHECK_UNARY(entry.buffer == nullptr);
         CHECK_UNARY(entry.hostStaging == nullptr);
         CHECK_UNARY(!entry.callback);
+    }
+
+    TEST_CASE("Xform views respect resetXformStack in the USD fallback")
+    {
+        auto* settings = carb::getCachedInterface<carb::settings::ISettings>();
+        REQUIRE_UNARY(settings != nullptr);
+        const bool useFabricSceneDelegate = settings->getAsBool("/app/useFabricSceneDelegate");
+        CARB_SCOPE_EXIT
+        {
+            settings->setBool("/app/useFabricSceneDelegate", useFabricSceneDelegate);
+        };
+        settings->setBool("/app/useFabricSceneDelegate", false);
+
+        const std::string contextName = "PrimDataReaderResetXformStackTest";
+        auto* usdContext = omni::usd::UsdManager::createContext(contextName);
+        REQUIRE_UNARY(usdContext != nullptr);
+        CARB_SCOPE_EXIT
+        {
+            usdContext->closeStage();
+            omni::usd::UsdManager::destroyContext(contextName);
+        };
+        REQUIRE_UNARY(usdContext->newStage());
+
+        auto stage = usdContext->getStage();
+        auto parent = pxr::UsdGeomXform::Define(stage, pxr::SdfPath("/Parent"));
+        auto child = pxr::UsdGeomXform::Define(stage, pxr::SdfPath("/Parent/Child"));
+        auto grandchild = pxr::UsdGeomXform::Define(stage, pxr::SdfPath("/Parent/Child/Grandchild"));
+        REQUIRE_UNARY(parent.AddTranslateOp().Set(pxr::GfVec3d(10.0, 0.0, 0.0)));
+        REQUIRE_UNARY(child.AddTranslateOp().Set(pxr::GfVec3d(1.0, 2.0, 3.0)));
+        REQUIRE_UNARY(grandchild.AddTranslateOp().Set(pxr::GfVec3d(4.0, 0.0, 0.0)));
+
+        auto* manager = carb::getCachedInterface<IPrimDataReaderManager>();
+        REQUIRE_UNARY(manager != nullptr);
+        REQUIRE_UNARY(manager->ensureInitialized(usdContext->getStageId(), -1));
+        const char* paths[] = { "/Parent/Child/Grandchild" };
+        auto* view = manager->getReader()->createXformView("reset_xform_stack_view", paths, 1, "newton");
+        REQUIRE_UNARY(view != nullptr);
+
+        auto checkPosition = [&](const pxr::GfVec3d& expected)
+        {
+            float position[3] = {};
+            float orientation[4] = {};
+            REQUIRE_UNARY(view->getPrimWorldTransform(paths[0], position, orientation));
+            for (size_t i = 0; i < 3; ++i)
+            {
+                CHECK_EQ(position[i], doctest::Approx(expected[i]));
+            }
+        };
+
+        checkPosition(pxr::GfVec3d(15.0, 2.0, 3.0));
+        REQUIRE_UNARY(child.SetResetXformStack(true));
+        checkPosition(pxr::GfVec3d(5.0, 2.0, 3.0));
+        REQUIRE_UNARY(grandchild.SetResetXformStack(true));
+        checkPosition(pxr::GfVec3d(4.0, 0.0, 0.0));
     }
 
     TEST_CASE("Stage closing releases reader-owned stage references for views")
