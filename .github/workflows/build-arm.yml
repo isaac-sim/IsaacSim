@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Build (ARM)
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        required: true
+        type: string
+      config:
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: "Build (${{ inputs.platform }} / ${{ inputs.config }})"
+    runs-on: [self-hosted, Linux, aarch64]
+    timeout-minutes: 300
+    defaults:
+      run:
+        shell: bash
+    env:
+      OMNI_KIT_ALLOW_ROOT: 1
+      PM_PACKAGES_ROOT: ${{ github.workspace }}/.cache/packman
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Ensure LFS files are smudged
+        run: git lfs checkout
+
+      - name: Make all files user-writable
+        run: chmod -R u+w .
+
+      - name: Create caches
+        run: |
+          mkdir -p "${{ github.workspace }}/.cache/packman"
+          mkdir -p "${{ github.workspace }}/.cache/ccache"
+
+      - name: Configure graphics build dependencies
+        run: |
+          set -euo pipefail
+          egl_runtime="$(ldconfig -p | awk '$1 == "libEGL.so.1" && !found { print $NF; found = 1 } END { exit !found }')"
+          mkdir -p "${RUNNER_TEMP}/isaacsim-ci-libs"
+          ln -sf "${egl_runtime}" "${RUNNER_TEMP}/isaacsim-ci-libs/libEGL.so"
+          echo "CMAKE_LIBRARY_PATH=${RUNNER_TEMP}/isaacsim-ci-libs${CMAKE_LIBRARY_PATH:+:${CMAKE_LIBRARY_PATH}}" >> "${GITHUB_ENV}"
+
+          ./source/libraries/build.sh --pull-only
+          khronos_header="$(find .pixi/bld/sdl3 -type f -path '*/work/src/video/khronos/GLES3/gl32.h' -print -quit)"
+          test -n "${khronos_header}"
+          khronos_include="${GITHUB_WORKSPACE}/${khronos_header%/GLES3/gl32.h}"
+          echo "CMAKE_INCLUDE_PATH=${khronos_include}${CMAKE_INCLUDE_PATH:+:${CMAKE_INCLUDE_PATH}}" >> "${GITHUB_ENV}"
+          echo "CFLAGS=${CFLAGS:+${CFLAGS} }-isystem ${khronos_include}" >> "${GITHUB_ENV}"
+          echo "CXXFLAGS=${CXXFLAGS:+${CXXFLAGS} }-isystem ${khronos_include}" >> "${GITHUB_ENV}"
+
+      - name: Build and Package
+        env:
+          BUILD_CONFIG: ${{ inputs.config }}
+        run: |
+          set -euo pipefail
+          set -x
+
+          touch .eula_accepted
+          find . -type f -iname "*.sh" -exec chmod +x {} +
+
+          echo "::group::Build (${BUILD_CONFIG})"
+          ./build.sh -r
+          echo "::endgroup::"
+
+          mkdir -p "${{ github.workspace }}/.cache/package_temp/${{ github.run_id }}"
+
+          echo "::group::Package"
+          mkdir -p _build/docs/isaac-sim/latest/py
+          ./repo.sh package -c "${BUILD_CONFIG}" -m isaac-sim-standalone \
+            --temp-dir "${{ github.workspace }}/.cache/package_temp/${{ github.run_id }}"
+          echo "::endgroup::"
+
+          rm -rf "${{ github.workspace }}/.cache/package_temp/${{ github.run_id }}"
+
+      - name: List packaged artifacts
+        run: |
+          echo "=== Packages created ==="
+          ls -lah _build/packages/ || echo "No packages directory found"
+
+      - name: Upload packaged artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: isaac-sim-packages-${{ inputs.platform }}-${{ inputs.config }}
+          path: _build/packages/
+          compression-level: 0
+          retention-days: 7
+        if: success()
+
+      - name: Upload build logs (on failure)
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ inputs.platform }}-${{ inputs.config }}
+          path: |
+            _build/**/*.log
+            _repo/repo.log
+            _repo/repolog*.txt
+          retention-days: 7
+        if: failure()
