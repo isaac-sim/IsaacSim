@@ -1,0 +1,133 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Test (Windows)
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        required: true
+        type: string
+      config:
+        required: true
+        type: string
+      suite:
+        required: true
+        type: string
+      bucket:
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  test:
+    name: "Test (${{ inputs.suite }}${{ inputs.bucket != '' && format(':{0}', inputs.bucket) || '' }})"
+    runs-on: [self-hosted, gpu-windows]
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: powershell
+    env:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
+
+    steps:
+      - name: Enable Git long paths
+        run: git config --global core.longpaths true
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Clean checkout
+        run: |
+          git clean -fdx
+          git reset --hard HEAD
+
+      - name: Create short-path junction
+        run: |
+          if (Test-Path 'C:\b') {
+            cmd /c "rmdir C:\b" 2>$null
+            if (Test-Path 'C:\b') { Remove-Item -Recurse -Force 'C:\b' }
+          }
+          cmd /c "mklink /J C:\b ${{ github.workspace }}"
+          Write-Host "Junction created: C:\b -> ${{ github.workspace }}"
+          if (!(Test-Path 'C:\b\repo.bat')) {
+            throw "Junction verification failed - repo.bat not found at C:\b\repo.bat"
+          }
+
+      - name: Patch repoman.py to respect OMNI_REPO_ROOT
+        run: |
+          python 'C:\b\.github\ci\patch_repoman.py'
+
+      - name: Install VC++ Redistributable
+        run: |
+          Write-Host "Installing Visual C++ Redistributable 2015-2022..."
+          $wingetAvailable = Get-Command winget -ErrorAction SilentlyContinue
+          if ($wingetAvailable) {
+            Write-Host "Using winget..."
+            winget install Microsoft.VCRedist.2015+.x64 --silent --accept-package-agreements --accept-source-agreements
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "winget returned $LASTEXITCODE, trying direct download..."
+            }
+          }
+          Write-Host "Downloading VC++ Redistributable directly..."
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "vc_redist.x64.exe"
+          Start-Process -FilePath ".\vc_redist.x64.exe" -ArgumentList "/install","/quiet","/norestart" -Wait
+          Write-Host "VC++ Redistributable installed."
+
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: isaac-sim-packages-${{ inputs.platform }}-${{ inputs.config }}
+          path: C:\b\_build\packages\
+
+      - name: Accept EULA
+        run: |
+          New-Item -Path 'C:\b\.eula_accepted' -ItemType File -Force | Out-Null
+
+      - name: Run tests
+        working-directory: C:\b
+        env:
+          OMNI_REPO_ROOT: "C:\\b"
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $BucketCmd = @()
+          if ("${{ inputs.bucket }}" -ne "") {
+            $BucketCmd = @("-b", "${{ inputs.bucket }}")
+          }
+
+          Write-Host "::group::Test ${{ inputs.suite }} ${{ inputs.bucket }}"
+          cmd /c "cd /d C:\b && set OMNI_REPO_ROOT=C:\b && C:\b\repo.bat ci test -- -s ${{ inputs.suite }} $($BucketCmd -join ' ') -e=--no-window"
+          if ($LASTEXITCODE -ne 0) { throw "Tests failed with exit code $LASTEXITCODE" }
+          Write-Host "::endgroup::"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-windows-${{ inputs.suite }}-${{ inputs.bucket || 'all' }}
+          path: |
+            C:\b\_build\packages\**\_testoutput\**
+            C:\b\_build\packages\*\kit\logs\**
+          retention-days: 7
+        if: always()
+
+      - name: Upload test logs (on failure)
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-windows-${{ inputs.suite }}-${{ inputs.bucket || 'all' }}
+          path: |
+            C:\b\_build\**\*.log
+            C:\b\_repo\repo.log
+            C:\b\_repo\repolog*.txt
+          retention-days: 7
+        if: failure()
+
+      - name: Remove junction
+        if: always()
+        run: |
+          if (Test-Path 'C:\b') { cmd /c "rmdir C:\b" }

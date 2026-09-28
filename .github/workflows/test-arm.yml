@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-name: Test
+name: Test (ARM)
 
 on:
   workflow_call:
@@ -27,7 +27,7 @@ on:
 jobs:
   test:
     name: "Test (${{ inputs.suite }}${{ inputs.bucket != '' && format(':{0}', inputs.bucket) || '' }})"
-    runs-on: [self-hosted, gpu]
+    runs-on: [self-hosted, Linux, aarch64]
     timeout-minutes: 120
     defaults:
       run:
@@ -59,7 +59,6 @@ jobs:
           name: isaac-sim-packages-${{ inputs.platform }}-${{ inputs.config }}${{ inputs.coverage && '-cov' || '' }}
           path: _build/packages/
 
-
       - name: Run tests
         env:
           TEST_BUCKET: ${{ inputs.bucket }}
@@ -84,7 +83,7 @@ jobs:
       - name: Upload test results
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ inputs.suite }}-${{ inputs.bucket || 'all' }}
+          name: test-results-arm-${{ inputs.suite }}-${{ inputs.bucket || 'all' }}
           path: |
             _build/packages/*/_testoutput/**
             _build/packages/*/kit/logs/**
@@ -119,7 +118,7 @@ jobs:
         if: always() && inputs.coverage
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ inputs.suite }}-${{ inputs.bucket || 'all' }}
+          name: coverage-arm-${{ inputs.suite }}-${{ inputs.bucket || 'all' }}
           path: _coverage_output/
           retention-days: 7
           if-no-files-found: warn

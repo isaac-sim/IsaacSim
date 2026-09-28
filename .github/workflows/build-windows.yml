@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Build (Windows)
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        required: true
+        type: string
+      config:
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: "Build (${{ inputs.platform }} / ${{ inputs.config }})"
+    runs-on: [self-hosted, gpu-windows]
+    timeout-minutes: 300
+    defaults:
+      run:
+        shell: powershell
+    env:
+      PM_PACKAGES_ROOT: ${{ github.workspace }}\.cache\packman
+
+    steps:
+      - name: Enable Git long paths
+        run: git config --global core.longpaths true
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Clean checkout
+        run: |
+          git clean -fdx
+          git reset --hard HEAD
+
+      - name: Create short-path junction
+        run: |
+          # Windows path lengths blow up MSVC compiles on deep extension paths.
+          # Junction C:\b -> workspace keeps paths short.
+          if (Test-Path 'C:\b') {
+            cmd /c "rmdir C:\b" 2>$null
+            if (Test-Path 'C:\b') { Remove-Item -Recurse -Force 'C:\b' }
+          }
+          cmd /c "mklink /J C:\b ${{ github.workspace }}"
+          Write-Host "Junction created: C:\b -> ${{ github.workspace }}"
+          if (!(Test-Path 'C:\b\build.bat')) {
+            throw "Junction verification failed - build.bat not found at C:\b\build.bat"
+          }
+
+      - name: Patch repoman.py to respect OMNI_REPO_ROOT
+        run: |
+          # repoman.py uses os.path.realpath(__file__) which follows the junction
+          # back to the long checkout path. Patch it to prefer OMNI_REPO_ROOT.
+          python 'C:\b\.github\ci\patch_repoman.py'
+
+      - name: Build and Package
+        working-directory: C:\b
+        env:
+          OMNI_REPO_ROOT: "C:\\b"
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          New-Item -Path 'C:\b\.eula_accepted' -ItemType File -Force | Out-Null
+
+          Write-Host "::group::Build (${{ inputs.config }})"
+          cmd /c "cd /d C:\b && C:\b\build.bat -r"
+          if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE" }
+          Write-Host "::endgroup::"
+
+          Write-Host "::group::Package"
+          cmd /c "cd /d C:\b && C:\b\repo.bat package -c ${{ inputs.config }} -m isaac-sim-standalone"
+          if ($LASTEXITCODE -ne 0) { throw "Package failed with exit code $LASTEXITCODE" }
+          Write-Host "::endgroup::"
+
+      - name: List packaged artifacts
+        run: |
+          Write-Host "=== Packages created ==="
+          if (Test-Path "C:\b\_build\packages\") {
+            Get-ChildItem -Path "C:\b\_build\packages\" | Format-Table Name, Length, LastWriteTime
+          } else {
+            Write-Host "No packages directory found"
+          }
+
+      - name: Upload packaged artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: isaac-sim-packages-${{ inputs.platform }}-${{ inputs.config }}
+          path: C:\b\_build\packages\
+          compression-level: 0
+          retention-days: 7
+        if: success()
+
+      - name: Upload build logs (on failure)
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ inputs.platform }}-${{ inputs.config }}
+          path: |
+            C:\b\_build\**\*.log
+            C:\b\_repo\repo.log
+            C:\b\_repo\repolog*.txt
+          retention-days: 7
+        if: failure()
+
+      - name: Remove junction
+        if: always()
+        run: |
+          if (Test-Path 'C:\b') { cmd /c "rmdir C:\b" }
