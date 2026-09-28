@@ -1,0 +1,124 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Test (ARM)
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        required: true
+        type: string
+      config:
+        required: true
+        type: string
+      suite:
+        required: true
+        type: string
+      bucket:
+        required: false
+        type: string
+        default: ""
+      coverage:
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  test:
+    name: "Test (${{ inputs.suite }}${{ inputs.bucket != '' && format(':{0}', inputs.bucket) || '' }})"
+    runs-on: [self-hosted, Linux, aarch64]
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      OMNI_KIT_ALLOW_ROOT: 1
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
+      CUDA_HOME: /usr/local/cuda
+      LD_LIBRARY_PATH: /usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64
+      DISPLAY: ':0'
+      GITLAB_CI: gitlab
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Make repo scripts executable
+        run: |
+          chmod -R u+w .
+          find . -type f -iname "*.sh" -exec chmod +x {} +
+
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: isaac-sim-packages-${{ inputs.platform }}-${{ inputs.config }}${{ inputs.coverage && '-cov' || '' }}
+          path: _build/packages/
+
+      - name: Run tests
+        env:
+          TEST_BUCKET: ${{ inputs.bucket }}
+          TEST_CONFIG: ${{ inputs.config }}
+          TEST_SUITE: ${{ inputs.suite }}
+        run: |
+          set -euo pipefail
+          set -x
+
+          touch .eula_accepted
+
+          BUCKET_ARGS=()
+          if [ -n "${TEST_BUCKET}" ]; then
+            BUCKET_ARGS=(-b "${TEST_BUCKET}")
+          fi
+
+          echo "::group::Test ${TEST_SUITE} ${TEST_BUCKET}"
+          ./repo.sh test -c "${TEST_CONFIG}" -s "${TEST_SUITE}" "${BUCKET_ARGS[@]}" --from-package \
+            --extra-arg="--/rtx-transient/ngx/enabled=false"
+          echo "::endgroup::"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-arm-${{ inputs.suite }}-${{ inputs.bucket || 'all' }}
+          path: |
+            _build/packages/*/_testoutput/**
+            _build/packages/*/kit/logs/**
+            _build/packages/*/portable_root/logs/**
+          retention-days: 7
+        if: always()
+
+      - name: Collect coverage data
+        if: always() && inputs.coverage
+        run: |
+          set -x
+          echo "=== Collecting coverage artifacts ==="
+
+          mkdir -p _coverage_output
+
+          # Collect C++ coverage data (.gcda files produced during test execution)
+          find . -name "*.gcda" -not -path "./.git/*" -exec cp --parents {} _coverage_output/ \; 2>/dev/null || true
+          GCDA_COUNT=$(find _coverage_output -name "*.gcda" 2>/dev/null | wc -l)
+          echo "Found $GCDA_COUNT .gcda files"
+
+          # Collect Python coverage data (.pycov files)
+          find . -name "*.pycov" -not -path "./.git/*" -exec cp --parents {} _coverage_output/ \; 2>/dev/null || true
+          PYCOV_COUNT=$(find _coverage_output -name "*.pycov" 2>/dev/null | wc -l)
+          echo "Found $PYCOV_COUNT .pycov files"
+
+          echo "=== Coverage collection summary ==="
+          echo "  .gcda files: $GCDA_COUNT"
+          echo "  .pycov files: $PYCOV_COUNT"
+          du -sh _coverage_output/ 2>/dev/null || true
+
+      - name: Upload coverage artifacts
+        if: always() && inputs.coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-arm-${{ inputs.suite }}-${{ inputs.bucket || 'all' }}
+          path: _coverage_output/
+          retention-days: 7
+          if-no-files-found: warn
