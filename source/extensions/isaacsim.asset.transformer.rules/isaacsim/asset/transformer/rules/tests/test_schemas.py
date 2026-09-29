@@ -23,11 +23,19 @@ import omni.kit.test
 from isaacsim.asset.transformer.rules.core.schemas import (
     SchemaRoutingRule,
 )
-from pxr import Sdf, Usd
+from pxr import Sdf, Usd, UsdGeom, UsdPhysics
 
 from .common import _TEST_DATA_DIR
 
 _TEST_USD = os.path.join(_TEST_DATA_DIR, "test_prims", "base.usda")
+
+# MuJoCo and physics schema routing as configured in `isaacsim_structure.json`.
+_MUJOCO_RULE_PARAMS = {"stage_name": "mujoco.usda", "schemas": ["Mjc.*", "mjc.*"]}
+_PHYSICS_RULE_PARAMS = {
+    "stage_name": "physics.usda",
+    "schemas": ["Physics.*", "Newton.*"],
+    "ignore_schemas": ["PhysicsCollisionAPI"],
+}
 
 
 def get_all_schema_items(api_schemas: Sdf.TokenListOp | None) -> list[object]:
@@ -51,6 +59,59 @@ def get_all_schema_items(api_schemas: Sdf.TokenListOp | None) -> list[object]:
     return all_items
 
 
+def _build_builtin_api_stage(path: str) -> Usd.Stage:
+    """Build a stage whose MuJoCo API schemas have built-in Newton and physics API schemas.
+
+    The joint equality and the collider apply their API schemas the way mujoco-usd-converter does.
+
+    Args:
+        path: File path for the new stage.
+
+    Returns:
+        The new stage.
+
+    """
+    stage = Usd.Stage.CreateNew(path)
+    stage.SetDefaultPrim(UsdGeom.Xform.Define(stage, "/robot").GetPrim())
+    UsdPhysics.RevoluteJoint.Define(stage, "/robot/lead")
+
+    # `MjcEqualityJointAPI` has the built-in `NewtonMimicAPI`.
+    follow = UsdPhysics.RevoluteJoint.Define(stage, "/robot/follow").GetPrim()
+    follow.ApplyAPI("NewtonMimicAPI")
+    follow.ApplyAPI("MjcEqualityJointAPI")
+    follow.GetRelationship("newton:mimicJoint").SetTargets([Sdf.Path("/robot/lead")])
+    follow.GetAttribute("newton:mimicCoef0").Set(5.0)
+    follow.GetAttribute("newton:mimicCoef1").Set(0.5)
+    follow.GetAttribute("mjc:solref").Set([0.05, 1.0])
+
+    # `MjcCollisionAPI` has the built-in `NewtonCollisionAPI` and `PhysicsCollisionAPI`.
+    collider = UsdGeom.Cube.Define(stage, "/robot/collider").GetPrim()
+    UsdPhysics.CollisionAPI.Apply(collider).CreateCollisionEnabledAttr(False)
+    collider.ApplyAPI("NewtonCollisionAPI")
+    collider.ApplyAPI("MjcCollisionAPI")
+    collider.GetAttribute("newton:contactGap").Set(0.004)
+    collider.GetAttribute("mjc:condim").Set(4)
+    return stage
+
+
+def _get_prim_spec_contents(layer: Sdf.Layer, path: str) -> tuple[set[str], set[str]]:
+    """Get the applied schema tokens and property names that a layer authors on a prim.
+
+    Args:
+        layer: Layer to inspect.
+        path: Prim path.
+
+    Returns:
+        Tuple of (applied schema tokens, property names), both empty if the layer has no prim spec at the path.
+
+    """
+    prim_spec = layer.GetPrimAtPath(path)
+    if not prim_spec:
+        return set(), set()
+    schemas = {str(item) for item in get_all_schema_items(prim_spec.GetInfo("apiSchemas"))}
+    return schemas, set(prim_spec.properties.keys())
+
+
 class TestSchemaRoutingRule(omni.kit.test.AsyncTestCase):
     """Async tests for SchemaRoutingRule."""
 
@@ -63,6 +124,26 @@ class TestSchemaRoutingRule(omni.kit.test.AsyncTestCase):
         """Remove temporary directory after successful tests."""
         if self._success:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _route_schemas(self, stage: Usd.Stage, params: dict[str, object]) -> Sdf.Layer:
+        """Run the rule into `payloads/Physics` and return the destination layer.
+
+        Args:
+            stage: Source stage for the rule.
+            params: Rule parameters.
+
+        Returns:
+            The destination layer.
+
+        """
+        rule = SchemaRoutingRule(
+            source_stage=stage,
+            package_root=self._tmpdir,
+            destination_path="payloads/Physics",
+            args={"params": params},
+        )
+        rule.process_rule()
+        return Sdf.Layer.FindOrOpen(os.path.join(self._tmpdir, "payloads", "Physics", params["stage_name"]))
 
     async def test_get_configuration_parameters(self) -> None:
         """Verify configuration parameters are exposed."""
@@ -294,4 +375,83 @@ class TestSchemaRoutingRule(omni.kit.test.AsyncTestCase):
                         self.assertFalse(any("Physics" not in str(item) for item in all_items))
                         self.assertFalse("PhysicsRigidBodyAPI" in all_items)
 
+        self._success = True
+
+    async def test_process_rule_skips_builtin_api_properties(self) -> None:
+        """Verify a matched API schema moves only its own properties, not those of its built-in API schemas."""
+        stage = _build_builtin_api_stage(os.path.join(self._tmpdir, "robot.usda"))
+
+        mujoco_layer = self._route_schemas(stage, _MUJOCO_RULE_PARAMS)
+
+        self.assertEqual(
+            _get_prim_spec_contents(mujoco_layer, "/robot/follow"), ({"MjcEqualityJointAPI"}, {"mjc:solref"})
+        )
+        self.assertEqual(
+            _get_prim_spec_contents(mujoco_layer, "/robot/collider"), ({"MjcCollisionAPI"}, {"mjc:condim"})
+        )
+        source_layer = stage.GetRootLayer()
+        self.assertEqual(
+            _get_prim_spec_contents(source_layer, "/robot/follow"),
+            ({"NewtonMimicAPI"}, {"newton:mimicJoint", "newton:mimicCoef0", "newton:mimicCoef1"}),
+        )
+        self.assertEqual(
+            _get_prim_spec_contents(source_layer, "/robot/collider"),
+            ({"PhysicsCollisionAPI", "NewtonCollisionAPI"}, {"physics:collisionEnabled", "newton:contactGap"}),
+        )
+        self._success = True
+
+    async def test_process_rule_routes_builtin_api_properties_with_their_schema(self) -> None:
+        """Verify built-in API properties follow the rule that matches their schema, and a second pass is a no-op."""
+        stage = _build_builtin_api_stage(os.path.join(self._tmpdir, "robot.usda"))
+        layers = []
+        for _ in range(2):
+            mujoco_layer = self._route_schemas(stage, _MUJOCO_RULE_PARAMS)
+            physics_layer = self._route_schemas(stage, _PHYSICS_RULE_PARAMS)
+            layers.append([layer.ExportToString() for layer in (stage.GetRootLayer(), mujoco_layer, physics_layer)])
+
+        self.assertEqual(
+            _get_prim_spec_contents(physics_layer, "/robot/follow"),
+            ({"NewtonMimicAPI"}, {"newton:mimicJoint", "newton:mimicCoef0", "newton:mimicCoef1"}),
+        )
+        mimic_joint = physics_layer.GetPropertyAtPath("/robot/follow.newton:mimicJoint")
+        self.assertEqual(list(mimic_joint.targetPathList.explicitItems), [Sdf.Path("/robot/lead")])
+        # `PhysicsCollisionAPI` is ignored by the rule, so its properties stay with it in the source layer.
+        self.assertEqual(
+            _get_prim_spec_contents(physics_layer, "/robot/collider"), ({"NewtonCollisionAPI"}, {"newton:contactGap"})
+        )
+        self.assertEqual(
+            _get_prim_spec_contents(stage.GetRootLayer(), "/robot/collider"),
+            ({"PhysicsCollisionAPI"}, {"physics:collisionEnabled"}),
+        )
+        self.assertEqual(layers[0], layers[1])
+        self._success = True
+
+    async def test_process_rule_routes_matched_builtin_apis(self) -> None:
+        """Verify built-in API schemas matched by the same rule are routed with it and ignored ones are not."""
+        stage = _build_builtin_api_stage(os.path.join(self._tmpdir, "robot.usda"))
+        # Only `MjcEqualityJointAPI` is applied, so `NewtonMimicAPI` is applied only as its built-in.
+        implied = UsdPhysics.RevoluteJoint.Define(stage, "/robot/implied").GetPrim()
+        implied.ApplyAPI("MjcEqualityJointAPI")
+        implied.GetAttribute("newton:mimicCoef1").Set(2.0)
+
+        layer = self._route_schemas(stage, {**_PHYSICS_RULE_PARAMS, "schemas": ["Mjc.*", "Newton.*"]})
+
+        self.assertEqual(
+            _get_prim_spec_contents(layer, "/robot/follow"),
+            (
+                {"NewtonMimicAPI", "MjcEqualityJointAPI"},
+                {"newton:mimicJoint", "newton:mimicCoef0", "newton:mimicCoef1", "mjc:solref"},
+            ),
+        )
+        self.assertEqual(
+            _get_prim_spec_contents(layer, "/robot/implied"), ({"MjcEqualityJointAPI"}, {"newton:mimicCoef1"})
+        )
+        self.assertEqual(
+            _get_prim_spec_contents(layer, "/robot/collider"),
+            ({"NewtonCollisionAPI", "MjcCollisionAPI"}, {"newton:contactGap", "mjc:condim"}),
+        )
+        self.assertEqual(
+            _get_prim_spec_contents(stage.GetRootLayer(), "/robot/collider"),
+            ({"PhysicsCollisionAPI"}, {"physics:collisionEnabled"}),
+        )
         self._success = True
