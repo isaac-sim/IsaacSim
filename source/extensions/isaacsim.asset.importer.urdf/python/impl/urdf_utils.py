@@ -370,7 +370,7 @@ def _rotation_matrix_to_rpy(R: np.ndarray) -> tuple[float, float, float]:
     if abs(sy) >= 1.0 - 1e-12:
         # gimbal lock
         pitch = math.copysign(math.pi / 2, sy)
-        roll = math.atan2(R[0, 1], R[0, 2])
+        roll = math.atan2(R[0, 1], R[0, 2]) if sy > 0 else math.atan2(-R[0, 1], -R[0, 2])
         yaw = 0.0
     else:
         pitch = math.asin(np.clip(sy, -1.0, 1.0))

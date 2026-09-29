@@ -26,6 +26,8 @@ import numpy as np
 import omni.kit.test
 from isaacsim.asset.importer.urdf.impl.urdf_utils import (
     _rewrite_relative_mesh_paths_to_absolute,
+    _rotation_matrix_to_rpy,
+    _rpy_to_rotation_matrix,
     merge_fixed_joints,
 )
 
@@ -67,6 +69,13 @@ def _get_origin_xyz(elem: ET.Element) -> list[float]:
     if origin is None:
         return [0.0, 0.0, 0.0]
     return [float(v) for v in origin.get("xyz", "0 0 0").split()]
+
+
+def _get_origin_rpy(elem: ET.Element) -> list[float]:
+    origin = elem.find("origin")
+    if origin is None:
+        return [0.0, 0.0, 0.0]
+    return [float(v) for v in origin.get("rpy", "0 0 0").split()]
 
 
 def _find_link(root: ET.Element, name: str) -> ET.Element | None:
@@ -485,6 +494,58 @@ class TestUrdfUtils(omni.kit.test.AsyncTestCase):
         visual = base.findall("visual")[0]
         xyz = _get_origin_xyz(visual)
         np.testing.assert_allclose(xyz, [0.0, 1.0, 0.0], atol=1e-9)
+        self._success = True
+
+    async def test_rotation_composition_at_gimbal_lock(self) -> None:
+        """A -90-deg pitch in the joint should not flip re-parented joint or merged geometry rotations."""
+        pitch = -math.pi / 2
+        urdf = textwrap.dedent(f"""\
+            <robot name="test">
+              <link name="base"/>
+              <link name="adapter">
+                <visual>
+                  <origin xyz="0 0 0" rpy="0.4 0 0"/>
+                  <geometry><box size="1 1 1"/></geometry>
+                </visual>
+                <collision>
+                  <origin xyz="0 0 0" rpy="0.4 0 0"/>
+                  <geometry><box size="1 1 1"/></geometry>
+                </collision>
+              </link>
+              <link name="end"/>
+              <joint name="fixed_j" type="fixed">
+                <parent link="base"/>
+                <child link="adapter"/>
+                <origin xyz="0 0 0" rpy="0.2 {pitch} 0.3"/>
+              </joint>
+              <joint name="revolute_j" type="revolute">
+                <parent link="adapter"/>
+                <child link="end"/>
+                <origin xyz="0 0 0" rpy="0.4 0 0"/>
+                <axis xyz="0 0 1"/>
+              </joint>
+            </robot>
+        """)
+        inp = _write_urdf(urdf, self._tmpdir)
+        merge_fixed_joints(inp, self._output_path)
+        root = _parse_output(self._output_path)
+
+        expected = _rpy_to_rotation_matrix([0.2, pitch, 0.3]) @ _rpy_to_rotation_matrix([0.4, 0.0, 0.0])
+        base = _find_link(root, "base")
+        for elem in (root.findall("joint")[0], base.find("visual"), base.find("collision")):
+            rotation = _rpy_to_rotation_matrix(_get_origin_rpy(elem))
+            np.testing.assert_allclose(rotation, expected, atol=1e-9, err_msg=elem.tag)
+        self._success = True
+
+    async def test_rotation_matrix_to_rpy_gimbal_lock(self) -> None:
+        """Converting a rotation with a +/-90-deg pitch to RPY and back should reproduce the rotation."""
+        # +/-1.5707963 falls inside the gimbal-lock tolerance, where the pitch is snapped to +/-pi/2
+        for pitch in (math.pi / 2, -math.pi / 2, 1.5707963, -1.5707963):
+            rotation = _rpy_to_rotation_matrix([0.2, pitch, 0.3])
+            rpy = _rotation_matrix_to_rpy(rotation)
+            np.testing.assert_allclose(
+                _rpy_to_rotation_matrix(list(rpy)), rotation, atol=1e-6, err_msg=f"pitch={pitch}"
+            )
         self._success = True
 
     # -- joint re-parenting --------------------------------------------------
