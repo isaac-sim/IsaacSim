@@ -1419,9 +1419,10 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
         """Verify physics material bindings survive geometry routing unchanged.
 
         A mesh with both a visual ``material:binding`` and a physics-purpose
-        ``material:binding:physics`` must have the physics binding preserved
-        in the instance delta with its original target path, while the visual
-        binding is routed through VisualMaterials as usual.
+        ``material:binding:physics`` must still resolve to its original physics
+        material on the composed output stage, while the visual binding is routed
+        through VisualMaterials as usual. The physics material lies outside the
+        instance prototype, so the prototype itself must not carry the binding.
         """
         os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
         input_path = os.path.join(self._tmpdir, "phys_binding.usda")
@@ -1478,28 +1479,34 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
         updated_path = rule.process_rule()
         self.assertIsNotNone(updated_path)
 
+        # The mesh is now an instance proxy; its physics material must resolve on the composed stage
+        updated_stage = Usd.Stage.Open(updated_path)
+        mesh_prim = updated_stage.GetPrimAtPath("/root/body/Mesh")
+        self.assertTrue(mesh_prim.IsInstanceProxy())
+        phys_material, _ = UsdShade.MaterialBindingAPI(mesh_prim).ComputeBoundMaterial(materialPurpose="physics")
+        self.assertTrue(phys_material, "Physics material binding is lost on the composed stage")
+        self.assertEqual(
+            phys_material.GetPath().pathString,
+            "/root/Physics/PhysicsMat",
+            "Physics material binding must resolve to the original material",
+        )
+        self.assertTrue(
+            updated_stage.GetPrimAtPath("/root/body").HasAPI(UsdShade.MaterialBindingAPI),
+            "The instanceable prim that carries the physics material binding must have MaterialBindingAPI",
+        )
+
         # Open the instances layer and find the instance prim
         instances_path = os.path.join(self._tmpdir, "payloads", "instances.usda")
         instances_stage = Usd.Stage.Open(instances_path)
         instances_root = instances_stage.GetPrimAtPath("/Instances")
         self.assertTrue(instances_root.IsValid())
 
-        # Walk instance children to find a prim with material:binding:physics
-        phys_binding_found = False
+        # A binding in the prototype would target a path outside the reference, which USD drops
         for inst_child in Usd.PrimRange(instances_root):
-            rel = inst_child.GetRelationship("material:binding:physics")
-            if rel and rel.HasAuthoredTargets():
-                targets = rel.GetTargets()
-                self.assertEqual(len(targets), 1)
-                self.assertEqual(
-                    targets[0].pathString,
-                    "/root/Physics/PhysicsMat",
-                    "Physics material binding must point to the original path",
-                )
-                phys_binding_found = True
-                break
-
-        self.assertTrue(phys_binding_found, "No material:binding:physics found in instances layer")
+            self.assertFalse(
+                inst_child.HasRelationship("material:binding:physics"),
+                f"Instance prototype prim {inst_child.GetPath()} must not carry the physics material binding",
+            )
 
         # Visual material binding must NOT point to the original material path
         # (it should go through VisualMaterials instead)
@@ -1518,6 +1525,225 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
                 break
 
         self.assertTrue(vis_binding_found, "No visual material:binding found in instances layer")
+
+        self._success = True
+
+    async def test_process_rule_resolves_physics_material_per_instance(self) -> None:
+        """Verify instances that share a prototype keep their own physics materials.
+
+        Identical mesh colliders bound to different physics materials are routed to one
+        shared instance prototype, and each instance proxy must still resolve to its own
+        physics material on the composed output stage. ``left`` is merged into its parent
+        Xform, ``right`` has a sibling and is routed in place, and ``plain`` has no physics
+        binding, which must not pick one up. Routing the output again must reproduce the
+        same prototypes.
+        """
+        os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
+        input_path = os.path.join(self._tmpdir, "phys_binding_per_instance.usda")
+
+        stage = Usd.Stage.CreateNew(input_path)
+        stage.SetMetadata("metersPerUnit", 1.0)
+        stage.SetMetadata("upAxis", "Z")
+
+        root = UsdGeom.Xform.Define(stage, "/root")
+        stage.SetDefaultPrim(root.GetPrim())
+
+        phys_materials = {}
+        for name, friction in (("Rubber", 0.9), ("Steel", 0.2)):
+            phys_mat_prim = stage.DefinePrim(f"/root/Physics/{name}", "Material")
+            UsdPhysics.MaterialAPI.Apply(phys_mat_prim).CreateStaticFrictionAttr(friction)
+            phys_materials[name] = UsdShade.Material(phys_mat_prim)
+
+        # Physics material bound to the identical mesh collider of each body
+        body_materials = {"left": "Rubber", "right": "Steel", "plain": None}
+        for index, (body_name, material_name) in enumerate(body_materials.items()):
+            UsdGeom.Xform.Define(stage, f"/root/{body_name}").AddTranslateOp().Set(Gf.Vec3d(index, 0, 0))
+            mesh = UsdGeom.Mesh.Define(stage, f"/root/{body_name}/Mesh")
+            mesh.GetPointsAttr().Set([Gf.Vec3f(0, 0, 0), Gf.Vec3f(1, 0, 0), Gf.Vec3f(0, 1, 0)])
+            mesh.GetFaceVertexCountsAttr().Set([3])
+            mesh.GetFaceVertexIndicesAttr().Set([0, 1, 2])
+            UsdPhysics.CollisionAPI.Apply(mesh.GetPrim())
+            if material_name:
+                UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(
+                    phys_materials[material_name], materialPurpose="physics"
+                )
+
+        # A non-empty sibling keeps the right mesh from being merged into its parent
+        UsdGeom.Xform.Define(stage, "/root/right/marker").AddTranslateOp().Set(Gf.Vec3d(0, 0, 1))
+
+        stage.Export(input_path)
+        stage = Usd.Stage.Open(input_path)
+
+        rule = GeometriesRoutingRule(
+            source_stage=stage,
+            package_root=self._tmpdir,
+            destination_path="payloads",
+            args={
+                "params": {
+                    "geometries_layer": "geometries.usd",
+                    "instance_layer": "instances.usda",
+                }
+            },
+        )
+
+        updated_path = rule.process_rule()
+        self.assertIsNotNone(updated_path)
+        updated_stage = Usd.Stage.Open(updated_path)
+        self.assertTrue(updated_stage.GetPrimAtPath("/root/left").IsInstance(), "left should be merged into its parent")
+        self.assertTrue(updated_stage.GetPrimAtPath("/root/right/Mesh").IsInstance(), "right should be routed in place")
+
+        composed_meshes = {}
+        for body_name, material_name in body_materials.items():
+            meshes = [
+                prim
+                for prim in Usd.PrimRange(
+                    updated_stage.GetPrimAtPath(f"/root/{body_name}"), Usd.TraverseInstanceProxies()
+                )
+                if prim.IsA(UsdGeom.Mesh)
+            ]
+            self.assertEqual(len(meshes), 1, f"Expected one mesh under /root/{body_name}, got {meshes}")
+            mesh_prim = meshes[0]
+            self.assertTrue(mesh_prim.IsInstanceProxy(), f"{mesh_prim.GetPath()} should be an instance proxy")
+            phys_material, _ = UsdShade.MaterialBindingAPI(mesh_prim).ComputeBoundMaterial(materialPurpose="physics")
+            self.assertEqual(
+                phys_material.GetPath().pathString if phys_material else None,
+                f"/root/Physics/{material_name}" if material_name else None,
+                f"Unexpected physics material for {mesh_prim.GetPath()}",
+            )
+            composed_meshes[body_name] = mesh_prim
+
+        self.assertEqual(
+            composed_meshes["left"].GetPrimInPrototype().GetPath(),
+            composed_meshes["right"].GetPrimInPrototype().GetPath(),
+            "Meshes that differ only in their physics material should share one instance prototype",
+        )
+
+        # The bindings now sit on the instanceable prims, so routing the output again must not regroup prototypes
+        rerun_root = os.path.join(self._tmpdir, "rerun")
+        os.makedirs(os.path.join(rerun_root, "payloads"), exist_ok=True)
+        rerun_rule = GeometriesRoutingRule(
+            source_stage=updated_stage,
+            package_root=rerun_root,
+            destination_path="payloads",
+            args={
+                "params": {
+                    "geometries_layer": "geometries.usd",
+                    "instance_layer": "instances.usda",
+                }
+            },
+        )
+        self.assertIsNotNone(rerun_rule.process_rule())
+        self.assertEqual(
+            Sdf.Layer.FindOrOpen(os.path.join(rerun_root, "payloads", "instances.usda")).ExportToString(),
+            Sdf.Layer.FindOrOpen(os.path.join(self._tmpdir, "payloads", "instances.usda")).ExportToString(),
+            "Routing the output again must reproduce the same instance prototypes",
+        )
+
+        self._success = True
+
+    async def test_process_rule_keeps_physics_material_bound_as_visual_material(self) -> None:
+        """Verify a physics material that is also bound as the visual material still resolves for physics.
+
+        The visual binding relocates the material to VisualMaterials, but the physics binding on the
+        instanceable prim still targets the original material, which must therefore be kept.
+        """
+        os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
+        input_path = os.path.join(self._tmpdir, "phys_binding_visual_material.usda")
+
+        stage = Usd.Stage.CreateNew(input_path)
+        stage.SetMetadata("metersPerUnit", 1.0)
+        stage.SetMetadata("upAxis", "Z")
+
+        root = UsdGeom.Xform.Define(stage, "/root")
+        stage.SetDefaultPrim(root.GetPrim())
+
+        material = UsdShade.Material.Define(stage, "/root/Materials/Rubber")
+        UsdPhysics.MaterialAPI.Apply(material.GetPrim()).CreateStaticFrictionAttr(0.9)
+
+        UsdGeom.Xform.Define(stage, "/root/body")
+        mesh = UsdGeom.Mesh.Define(stage, "/root/body/Mesh")
+        mesh.GetPointsAttr().Set([Gf.Vec3f(0, 0, 0), Gf.Vec3f(1, 0, 0), Gf.Vec3f(0, 1, 0)])
+        mesh.GetFaceVertexCountsAttr().Set([3])
+        mesh.GetFaceVertexIndicesAttr().Set([0, 1, 2])
+        binding_api = UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim())
+        binding_api.Bind(material)
+        binding_api.Bind(material, materialPurpose="physics")
+
+        stage.Export(input_path)
+        stage = Usd.Stage.Open(input_path)
+
+        rule = GeometriesRoutingRule(
+            source_stage=stage,
+            package_root=self._tmpdir,
+            destination_path="payloads",
+            args={
+                "params": {
+                    "geometries_layer": "geometries.usd",
+                    "instance_layer": "instances.usda",
+                }
+            },
+        )
+
+        updated_path = rule.process_rule()
+        self.assertIsNotNone(updated_path)
+
+        updated_stage = Usd.Stage.Open(updated_path)
+        mesh_prim = updated_stage.GetPrimAtPath("/root/body/Mesh")
+        self.assertTrue(mesh_prim.IsInstanceProxy())
+        phys_material, _ = UsdShade.MaterialBindingAPI(mesh_prim).ComputeBoundMaterial(materialPurpose="physics")
+        self.assertEqual(phys_material.GetPath().pathString if phys_material else None, "/root/Materials/Rubber")
+
+        self._success = True
+
+    async def test_process_rule_keeps_stronger_parent_physics_material(self) -> None:
+        """Verify a stronger-than-descendants physics binding on a merged parent still overrides the mesh's own."""
+        os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
+        input_path = os.path.join(self._tmpdir, "phys_binding_stronger_parent.usda")
+
+        stage = Usd.Stage.CreateNew(input_path)
+        stage.SetMetadata("metersPerUnit", 1.0)
+        stage.SetMetadata("upAxis", "Z")
+
+        root = UsdGeom.Xform.Define(stage, "/root")
+        stage.SetDefaultPrim(root.GetPrim())
+
+        phys_materials = {
+            name: UsdShade.Material.Define(stage, f"/root/Physics/{name}") for name in ("Rubber", "Steel")
+        }
+        body = UsdGeom.Xform.Define(stage, "/root/body")
+        UsdShade.MaterialBindingAPI.Apply(body.GetPrim()).Bind(
+            phys_materials["Steel"], UsdShade.Tokens.strongerThanDescendants, materialPurpose="physics"
+        )
+        mesh = UsdGeom.Mesh.Define(stage, "/root/body/Mesh")
+        mesh.GetPointsAttr().Set([Gf.Vec3f(0, 0, 0), Gf.Vec3f(1, 0, 0), Gf.Vec3f(0, 1, 0)])
+        mesh.GetFaceVertexCountsAttr().Set([3])
+        mesh.GetFaceVertexIndicesAttr().Set([0, 1, 2])
+        UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(phys_materials["Rubber"], materialPurpose="physics")
+
+        stage.Export(input_path)
+        stage = Usd.Stage.Open(input_path)
+
+        rule = GeometriesRoutingRule(
+            source_stage=stage,
+            package_root=self._tmpdir,
+            destination_path="payloads",
+            args={
+                "params": {
+                    "geometries_layer": "geometries.usd",
+                    "instance_layer": "instances.usda",
+                }
+            },
+        )
+
+        updated_path = rule.process_rule()
+        self.assertIsNotNone(updated_path)
+
+        updated_stage = Usd.Stage.Open(updated_path)
+        self.assertTrue(updated_stage.GetPrimAtPath("/root/body").IsInstance(), "Mesh should be merged into body")
+        mesh_prim = updated_stage.GetPrimAtPath("/root/body/Mesh")
+        self.assertTrue(mesh_prim.IsInstanceProxy())
+        phys_material, _ = UsdShade.MaterialBindingAPI(mesh_prim).ComputeBoundMaterial(materialPurpose="physics")
+        self.assertEqual(phys_material.GetPath().pathString if phys_material else None, "/root/Physics/Steel")
 
         self._success = True
 
