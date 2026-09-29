@@ -94,6 +94,8 @@ def get_schema_property_namespace(schema_token: object) -> str | None:
 def props_from_applied_api_token(schema_token: object) -> set[str]:
     """Get property names defined by an applied API schema.
 
+    Properties that come from the schema's built-in API schemas are not included.
+
     Args:
         schema_token: The API schema token to query.
 
@@ -108,8 +110,16 @@ def props_from_applied_api_token(schema_token: object) -> set[str]:
 
     """
     reg = Usd.SchemaRegistry()
-    primDef = reg.FindAppliedAPIPrimDefinition(schema_token)
-    return set(primDef.GetPropertyNames()) if primDef else set()
+    prim_def = reg.FindAppliedAPIPrimDefinition(schema_token)
+    if not prim_def:
+        return set()
+    props = set(prim_def.GetPropertyNames())
+    # Skip the schema itself; the properties of its built-in API schemas are left to the rules that match them.
+    for builtin_token in prim_def.GetAppliedAPISchemas()[1:]:
+        builtin_def = reg.FindAppliedAPIPrimDefinition(builtin_token)
+        if builtin_def:
+            props -= set(builtin_def.GetPropertyNames())
+    return props
 
 
 def move_applied_api_schemas(src_spec: Sdf.PrimSpec, dst_spec: Sdf.PrimSpec, schema_tokens: list[object]) -> None:
