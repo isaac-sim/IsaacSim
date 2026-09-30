@@ -81,6 +81,15 @@ Summary
     RectLight
     SphereLight
 
+.. rubric:: physics scenes
+.. autosummary::
+    :nosignatures:
+
+    NewtonMjcScene
+    PhysicsScene
+    PhysxGpuCfg
+    PhysxScene
+
 .. _isaacsim-foundation-objects-python-backend:
 
 Implementations
@@ -216,6 +225,32 @@ Lights
     :show-inheritance:
 
 .. autoclass:: isaacsim.foundation.objects.SphereLight
+    :members:
+    :undoc-members:
+    :inherited-members:
+    :show-inheritance:
+
+Physics scenes
+^^^^^^^^^^^^^^
+
+.. autoclass:: isaacsim.foundation.objects.PhysicsScene
+    :members:
+    :undoc-members:
+    :inherited-members:
+    :show-inheritance:
+
+.. autoclass:: isaacsim.foundation.objects.PhysxScene
+    :members:
+    :undoc-members:
+    :inherited-members:
+    :show-inheritance:
+
+.. autoclass:: isaacsim.foundation.objects.PhysxGpuCfg
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+.. autoclass:: isaacsim.foundation.objects.NewtonMjcScene
     :members:
     :undoc-members:
     :inherited-members:

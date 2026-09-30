@@ -877,10 +877,6 @@ MeshData generatePrimitive(const std::string& primitive, double halfScale)
 Mesh::Mesh(const std::variant<std::string, std::vector<std::string>>& paths,
            const std::optional<std::variant<std::string, std::vector<std::string>>>& primitives,
            const std::optional<ColorType>& colors,
-           const std::optional<array::Array>& positions,
-           const std::optional<array::Array>& translations,
-           const std::optional<array::Array>& orientations,
-           const std::optional<array::Array>& scales,
            bool resetXformOpProperties)
     : Xform()
 {
@@ -890,7 +886,7 @@ Mesh::Mesh(const std::variant<std::string, std::vector<std::string>>& paths,
     if (!existentPaths.empty())
     {
         m_paths = std::move(existentPaths);
-        const std::vector<bool> isMesh = this->isA("Mesh").get<std::vector<bool>>();
+        const std::vector<bool> isMesh = this->isA("Mesh").flatten().get<std::vector<bool>>();
         for (std::size_t i = 0; i < m_paths.size(); ++i)
         {
             if (!isMesh[i])
@@ -958,7 +954,7 @@ Mesh::Mesh(const std::variant<std::string, std::vector<std::string>>& paths,
         }
     }
     // Initialize instance from arguments.
-    _initialize(positions, translations, orientations, scales, resetXformOpProperties);
+    _initialize(resetXformOpProperties);
     if (colors.has_value())
     {
         this->setDisplayColors(*colors);
@@ -1026,11 +1022,12 @@ std::vector<array::Array> Mesh::getNormals(const std::optional<array::Array>& in
     return result;
 }
 
-void Mesh::setFaceSpecs(const std::optional<std::vector<array::Array>>& vertexIndices,
-                        const std::optional<std::vector<array::Array>>& vertexCounts,
-                        const std::optional<std::variant<std::string, std::vector<std::string>>>& varyingLinearInterpolations,
-                        const std::optional<std::vector<array::Array>>& holeIndices,
-                        const std::optional<array::Array>& indices)
+void Mesh::setFaceSpecifications(
+    const std::optional<std::vector<array::Array>>& vertexIndices,
+    const std::optional<std::vector<array::Array>>& vertexCounts,
+    const std::optional<std::variant<std::string, std::vector<std::string>>>& varyingLinearInterpolations,
+    const std::optional<std::vector<array::Array>>& holeIndices,
+    const std::optional<array::Array>& indices)
 {
     if (!vertexIndices.has_value() && !vertexCounts.has_value() && !varyingLinearInterpolations.has_value() &&
         !holeIndices.has_value())
@@ -1068,8 +1065,8 @@ void Mesh::setFaceSpecs(const std::optional<std::vector<array::Array>>& vertexIn
     }
 }
 
-std::tuple<std::vector<array::Array>, std::vector<array::Array>, std::vector<std::string>, std::vector<array::Array>> Mesh::getFaceSpecs(
-    const std::optional<array::Array>& indices)
+std::tuple<std::vector<array::Array>, std::vector<array::Array>, std::vector<std::string>, std::vector<array::Array>> Mesh::
+    getFaceSpecifications(const std::optional<array::Array>& indices)
 {
     const std::vector<int64_t> indexValues = _resolveIndexValues(indices);
     std::vector<array::Array> vertexIndices, vertexCounts, holeIndices;
@@ -1088,10 +1085,10 @@ std::tuple<std::vector<array::Array>, std::vector<array::Array>, std::vector<std
              std::move(holeIndices) };
 }
 
-void Mesh::setCreaseSpecs(const std::vector<array::Array>& creaseIndices,
-                          const std::vector<array::Array>& creaseLengths,
-                          const std::vector<array::Array>& creaseSharpnesses,
-                          const std::optional<array::Array>& indices)
+void Mesh::setCreaseSpecifications(const std::vector<array::Array>& creaseIndices,
+                                   const std::vector<array::Array>& creaseLengths,
+                                   const std::vector<array::Array>& creaseSharpnesses,
+                                   const std::optional<array::Array>& indices)
 {
     const std::vector<int64_t> indexValues = _resolveIndexValues(indices);
     for (std::size_t i = 0; i < indexValues.size(); ++i)
@@ -1101,7 +1098,7 @@ void Mesh::setCreaseSpecs(const std::vector<array::Array>& creaseIndices,
         const array::Array& creaseSharpness = resolveItem(creaseSharpnesses, i, indexValues.size(), "creaseSharpnesses");
 
         // Each crease is at least one edge long, so its length accounts for one more point than edges.
-        const std::vector<int64_t> lengths = creaseLength.reshape(array::Shape({ -1 })).get<std::vector<int64_t>>();
+        const std::vector<int64_t> lengths = creaseLength.flatten().get<std::vector<int64_t>>();
         const int64_t pointCount = std::accumulate(lengths.begin(), lengths.end(), int64_t{ 0 });
         const int64_t edgeCount = pointCount - static_cast<int64_t>(lengths.size());
         if (pointCount != static_cast<int64_t>(creaseIndex.size()))
@@ -1128,7 +1125,7 @@ void Mesh::setCreaseSpecs(const std::vector<array::Array>& creaseIndices,
     }
 }
 
-std::tuple<std::vector<array::Array>, std::vector<array::Array>, std::vector<array::Array>> Mesh::getCreaseSpecs(
+std::tuple<std::vector<array::Array>, std::vector<array::Array>, std::vector<array::Array>> Mesh::getCreaseSpecifications(
     const std::optional<array::Array>& indices)
 {
     const std::vector<int64_t> indexValues = _resolveIndexValues(indices);
@@ -1146,9 +1143,9 @@ std::tuple<std::vector<array::Array>, std::vector<array::Array>, std::vector<arr
     return { std::move(creaseIndices), std::move(creaseLengths), std::move(creaseSharpnesses) };
 }
 
-void Mesh::setCornerSpecs(const std::vector<array::Array>& cornerIndices,
-                          const std::vector<array::Array>& cornerSharpnesses,
-                          const std::optional<array::Array>& indices)
+void Mesh::setCornerSpecifications(const std::vector<array::Array>& cornerIndices,
+                                   const std::vector<array::Array>& cornerSharpnesses,
+                                   const std::optional<array::Array>& indices)
 {
     const std::vector<int64_t> indexValues = _resolveIndexValues(indices);
     for (std::size_t i = 0; i < indexValues.size(); ++i)
@@ -1169,7 +1166,7 @@ void Mesh::setCornerSpecs(const std::vector<array::Array>& cornerIndices,
     }
 }
 
-std::tuple<std::vector<array::Array>, std::vector<array::Array>> Mesh::getCornerSpecs(
+std::tuple<std::vector<array::Array>, std::vector<array::Array>> Mesh::getCornerSpecifications(
     const std::optional<array::Array>& indices)
 {
     const std::vector<int64_t> indexValues = _resolveIndexValues(indices);
@@ -1185,7 +1182,7 @@ std::tuple<std::vector<array::Array>, std::vector<array::Array>> Mesh::getCorner
     return { std::move(cornerIndices), std::move(cornerSharpnesses) };
 }
 
-void Mesh::setSubdivisionSpecs(
+void Mesh::setSubdivisionSpecifications(
     const std::optional<std::variant<std::string, std::vector<std::string>>>& subdivisionSchemes,
     const std::optional<std::variant<std::string, std::vector<std::string>>>& interpolateBoundaries,
     const std::optional<std::variant<std::string, std::vector<std::string>>>& triangleSubdivisionRules,
@@ -1212,7 +1209,7 @@ void Mesh::setSubdivisionSpecs(
     }
 }
 
-std::tuple<std::vector<std::string>, std::vector<std::string>, std::vector<std::string>> Mesh::getSubdivisionSpecs(
+std::tuple<std::vector<std::string>, std::vector<std::string>, std::vector<std::string>> Mesh::getSubdivisionSpecifications(
     const std::optional<array::Array>& indices)
 {
     return { std::get<std::vector<std::string>>(this->getAttributeValues("subdivisionScheme", indices)),
@@ -1237,6 +1234,11 @@ array::Array Mesh::getDisplayColors(const std::optional<array::Array>& indices)
 void Mesh::updateExtents()
 {
     // TODO: Implement and call it when setting values.
+}
+
+array::Array Mesh::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("Mesh");
 }
 
 } // namespace objects

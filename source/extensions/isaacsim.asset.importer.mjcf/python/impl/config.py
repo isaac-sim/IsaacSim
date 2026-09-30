@@ -41,11 +41,13 @@ class MJCFImporterConfig:
             "Convex Decomposition", "Bounding Sphere", "Bounding Cube".
         allow_self_collision: If True, allows the model to collide with itself.
         fix_base: Tri-state base-type toggle.
+
             - ``True``: adds a fixed joint from the world to the root rigid-body link and
               relocates ArticulationRootAPI to the correct ancestor prim.
             - ``False``: removes any existing world-to-root fixed joint so the robot
               becomes floating-base.
             - ``None`` (default): leaves the source asset's base authoring untouched.
+
         link_density: Default density (kg/m^3) applied to rigid body links that have no
             explicit mass.  ``None`` means no density override.
         override_gain_type: MuJoCo actuator gain type (e.g. ``"fixed"``).  ``None`` leaves

@@ -17,6 +17,6 @@
 # cross-module nanobind inheritance (RigidBody -> Xform) works at import time.
 import isaacsim.foundation.objects  # noqa: F401 - register foundation objects
 
-from .physics import Articulation, ColliderBody, RigidBody
+from .physics import Articulation, ColliderBody, GroundPlane, RigidBody
 
-__all__ = ["Articulation", "ColliderBody", "RigidBody"]
+__all__ = ["Articulation", "ColliderBody", "GroundPlane", "RigidBody"]

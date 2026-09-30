@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = ["scikit-build-core>=1.0.3"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "isaacsim-performance"
+dynamic = ["version"]
+description = "Isaac Sim benchmark authoring and measurement"
+requires-python = "==3.12.*"
+license = "Apache-2.0"
+authors = [{ name = "NVIDIA Corporation" }]
+dependencies = ["nvidia-ml-py>=13.610.43"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+
+[[tool.dynamic-metadata]]
+provider = "scikit_build_core.metadata.regex"
+field = "version"
+input = "../../VERSION"
+regex = '''^(?P<value>[^\r\n]+)$'''
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+cmake.version = ">=3.26"
+wheel.cmake = false
+wheel.packages = []
+wheel.platlib = false
+wheel.reproducible = true

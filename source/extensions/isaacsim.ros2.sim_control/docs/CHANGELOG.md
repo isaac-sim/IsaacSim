@@ -4,6 +4,9 @@
 ### Changed
 - Publish ROS 2 simulation-control APIs explicitly and stop publishing the Kit lifecycle class.
 
+### Fixed
+- Stabilize the spawn-with-namespace test by waiting for asynchronous ROS 2 topic discovery.
+
 ## [1.6.7] - 2026-06-26
 ### Fixed
 - Update the `GetAvailableWorlds` test coverage to use the current SICK `picoScan100` asset folder instead of the removed `picoScan150` folder.

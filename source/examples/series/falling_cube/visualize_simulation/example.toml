@@ -3,7 +3,7 @@
 
 id = "falling_cube.visualize_simulation"
 title = "Visualize the Simulation"
-summary = "Watch the falling-cube simulation in an interactive viewport rendered by the simple OpenGL backend."
+summary = "Watch the falling-cube simulation in the interactive OVGL debug viewport."
 owners = [
     "isaacsim.foundation.objects",
     "isaacsim.physics.entities",
@@ -11,7 +11,7 @@ owners = [
     "isaacsim.physics_engines.ovphysx",
     "isaacsim.ovgl_viewport.debug",
 ]
-topics = ["physics", "python", "rendering", "usd", "viewport"]
+topics = ["physics", "rendering", "usd", "viewport"]
 
 [build]
 adapter = "none"
@@ -41,6 +41,6 @@ surfaces = ["python"]
 
 [[test]]
 name = "headless"
-arguments = ["--headless"]
+path = "test.py"
 timeout_seconds = 60
-stdout_contains = ["Cube top:", "Headless rendering smoke test passed."]
+stdout_contains = ["Cube height:", "Headless rendering smoke test passed."]

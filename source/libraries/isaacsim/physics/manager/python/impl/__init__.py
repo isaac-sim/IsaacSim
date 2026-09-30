@@ -18,6 +18,11 @@
 Nanobind bindings provide simulation lifecycle, stepping, scene queries,
 interaction, benchmarking, and tensor-view creation. Shared data types and the
 engine registration API live in ``isaacsim.physics.registration``.
+
+The ``create_entity`` exposed here is the raw binding: it returns a view whose
+reads hand back DLPack arrays. Applications working in Warp should use
+``isaacsim.physics.manager.impl.tensors.create_entity`` instead, which wraps the
+same factory with Warp dispatch, device handling, and path validation.
 """
 
 from isaacsim.physics.manager.bindings._bindings import *  # noqa: F401,F403
@@ -42,6 +47,7 @@ __all__ = [
     "simulate",
     "fetch_results",
     "check_results",
+    "publish_transforms_to_stage",
     "flush_changes",
     "pause_change_tracking",
     "is_change_tracking_paused",
@@ -74,6 +80,5 @@ __all__ = [
     "subscribe_profile_stats_events",
     "PhysicsProfileStats",
     "DebugDataItemType",
-    "create_simulation_view",
     "create_entity",
 ]

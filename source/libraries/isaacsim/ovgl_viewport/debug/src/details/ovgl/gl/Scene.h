@@ -13,8 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef NUSD_SCENE_H
-#define NUSD_SCENE_H
+#pragma once
 
 /*
  * scene.h — USD scene data extracted via the nanousd C API (nanousdapi.h).
@@ -120,7 +119,7 @@ extern "C"
          *
          * Lifetime caveat (activates with step 3): the owning Scene MUST
          * keep the nanousd stage alive past the current scene_release-
-         * after-attach behaviour once step 3 lands. Dormant in step 2. */
+         * after-attach behavior once step 3 lands. Dormant in step 2. */
         int lazy_prim_idx;
 
         /* Preprocessed meshlet range — populated only by the geometry cache
@@ -400,5 +399,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* NUSD_SCENE_H */

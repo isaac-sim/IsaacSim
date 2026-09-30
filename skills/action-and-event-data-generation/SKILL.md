@@ -3,7 +3,7 @@ name: action-and-event-data-generation
 description: "Entry point for Isaac Sim synthetic data generation (SDG) with actors, humans, robots, events, incidents, captions, or cameras. Use when planning an Action and Event Data Generation (AEDG) run."
 license: Apache-2.0
 metadata:
-  author: NVIDIA Isaac Sim
+  author: NVIDIA Isaac Sim <isaac-sim@nvidia.com>
 ---
 
 # Action and Event Data Generation
@@ -158,10 +158,13 @@ Add the extension to expose it:
 ./isaac-sim.action_and_event_data_generation.sh --enable isaacsim.code_editor.python_server
 ```
 
-Headless, config-driven actor runs use the bundled script:
+Headless, config-driven actor runs use the bundled script. Before running, explain that the
+configuration and all referenced assets, including USD layers and scripts, can execute Python
+with the user's permissions. Obtain explicit acknowledgement that they are trusted; this is not
+a sandbox. Do not add `--allow-trusted-scripts` automatically or run without that acknowledgement.
 
 ```bash
-./python.sh tools/actor_sdg/actor_sdg.py --config_file my_scene.yaml
+./python.sh tools/actor_sdg/actor_sdg.py --config_file my_scene.yaml --allow-trusted-scripts
 ```
 
 ## Version rules (read before authoring any config)

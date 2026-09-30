@@ -25,13 +25,13 @@
 namespace
 {
 
-void append_u16(std::vector<uint8_t>& bytes, uint16_t value)
+void appendU16(std::vector<uint8_t>& bytes, uint16_t value)
 {
     bytes.push_back(static_cast<uint8_t>(value));
     bytes.push_back(static_cast<uint8_t>(value >> 8));
 }
 
-void append_u32(std::vector<uint8_t>& bytes, uint32_t value)
+void appendU32(std::vector<uint8_t>& bytes, uint32_t value)
 {
     bytes.push_back(static_cast<uint8_t>(value));
     bytes.push_back(static_cast<uint8_t>(value >> 8));
@@ -39,31 +39,31 @@ void append_u32(std::vector<uint8_t>& bytes, uint32_t value)
     bytes.push_back(static_cast<uint8_t>(value >> 24));
 }
 
-void append_entry(std::vector<uint8_t>& bytes,
-                  const std::string& name,
-                  const std::vector<uint8_t>& payload,
-                  uint16_t method = 0,
-                  uint32_t declared_uncompressed_size = 0,
-                  uint16_t flags = 0,
-                  uint32_t declared_compressed_size = 0)
+void appendEntry(std::vector<uint8_t>& bytes,
+                 const std::string& name,
+                 const std::vector<uint8_t>& payload,
+                 uint16_t method = 0,
+                 uint32_t declared_uncompressed_size = 0,
+                 uint16_t flags = 0,
+                 uint32_t declared_compressed_size = 0)
 {
-    append_u32(bytes, 0x04034b50u);
-    append_u16(bytes, 20); /* version needed */
-    append_u16(bytes, flags);
-    append_u16(bytes, method);
-    append_u16(bytes, 0); /* time */
-    append_u16(bytes, 0); /* date */
-    append_u32(bytes, 0); /* CRC: not consumed by the local-header reader */
-    append_u32(bytes, declared_compressed_size == 0 ? static_cast<uint32_t>(payload.size()) : declared_compressed_size);
-    append_u32(
+    appendU32(bytes, 0x04034b50u);
+    appendU16(bytes, 20); /* version needed */
+    appendU16(bytes, flags);
+    appendU16(bytes, method);
+    appendU16(bytes, 0); /* time */
+    appendU16(bytes, 0); /* date */
+    appendU32(bytes, 0); /* CRC: not consumed by the local-header reader */
+    appendU32(bytes, declared_compressed_size == 0 ? static_cast<uint32_t>(payload.size()) : declared_compressed_size);
+    appendU32(
         bytes, declared_uncompressed_size == 0 ? static_cast<uint32_t>(payload.size()) : declared_uncompressed_size);
-    append_u16(bytes, static_cast<uint16_t>(name.size()));
-    append_u16(bytes, 0); /* extra length */
+    appendU16(bytes, static_cast<uint16_t>(name.size()));
+    appendU16(bytes, 0); /* extra length */
     bytes.insert(bytes.end(), name.begin(), name.end());
     bytes.insert(bytes.end(), payload.begin(), payload.end());
 }
 
-bool write_file(const std::filesystem::path& path, const std::vector<uint8_t>& bytes)
+bool writeFile(const std::filesystem::path& path, const std::vector<uint8_t>& bytes)
 {
     std::ofstream stream(path, std::ios::binary | std::ios::trunc);
     stream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
@@ -96,9 +96,9 @@ int main()
     } cleanup{ path };
 
     std::vector<uint8_t> package;
-    append_entry(package, "0/red.bin", { 255, 0, 0, 255 });
-    append_entry(package, "0/green.bin", { 0, 255, 0, 255 });
-    if (!expect(write_file(path, package), "write valid package"))
+    appendEntry(package, "0/red.bin", { 255, 0, 0, 255 });
+    appendEntry(package, "0/green.bin", { 0, 255, 0, 255 });
+    if (!expect(writeFile(path, package), "write valid package"))
         return 1;
 
     isaacsim::ovgl_viewport::debug::details::ovgl::UsdzArchiveCache cache;
@@ -116,8 +116,8 @@ int main()
     ok &= expect(cache.getArchiveLoadCount() == 1, "missing entry does not reread the package");
 
     package.clear();
-    append_entry(package, "0/green.bin", { 0, 0, 255, 255 });
-    if (!expect(write_file(path, package), "rewrite package between builds"))
+    appendEntry(package, "0/green.bin", { 0, 0, 255, 255 });
+    if (!expect(writeFile(path, package), "rewrite package between builds"))
         return 1;
     isaacsim::ovgl_viewport::debug::details::ovgl::UsdzArchiveCache next_build_cache;
     ok &= expect(next_build_cache.readEntry(path.string(), "0/green.bin", out, error),
@@ -128,8 +128,8 @@ int main()
     ok &= expect(out == std::vector<uint8_t>({ 0, 255, 0, 255 }), "archive snapshots are isolated between builds");
 
     package.clear();
-    append_entry(package, "0/compressed.bin", { 1, 2, 3 }, 8);
-    if (!expect(write_file(path, package), "write compressed package"))
+    appendEntry(package, "0/compressed.bin", { 1, 2, 3 }, 8);
+    if (!expect(writeFile(path, package), "write compressed package"))
         return 1;
     isaacsim::ovgl_viewport::debug::details::ovgl::UsdzArchiveCache compressed_cache;
     ok &= expect(
@@ -137,8 +137,8 @@ int main()
     ok &= expect(error.find("compressed") != std::string::npos, "compressed entry reports the cause");
 
     package.clear();
-    append_entry(package, "0/oversized.bin", { 1 }, 0, 4);
-    if (!expect(write_file(path, package), "write malformed package"))
+    appendEntry(package, "0/oversized.bin", { 1 }, 0, 4);
+    if (!expect(writeFile(path, package), "write malformed package"))
         return 1;
     isaacsim::ovgl_viewport::debug::details::ovgl::UsdzArchiveCache malformed_cache;
     ok &= expect(
@@ -146,8 +146,8 @@ int main()
     ok &= expect(error.find("invalid size") != std::string::npos, "oversized entry reports the cause");
 
     package.clear();
-    append_entry(package, "0/descriptor.bin", { 1, 2, 3 }, 0, 3, 0x0008);
-    if (!expect(write_file(path, package), "write data-descriptor package"))
+    appendEntry(package, "0/descriptor.bin", { 1, 2, 3 }, 0, 3, 0x0008);
+    if (!expect(writeFile(path, package), "write data-descriptor package"))
         return 1;
     isaacsim::ovgl_viewport::debug::details::ovgl::UsdzArchiveCache descriptor_cache;
     ok &= expect(!descriptor_cache.readEntry(path.string(), "0/descriptor.bin", out, error),
@@ -155,8 +155,8 @@ int main()
     ok &= expect(error.find("unsupported flags") != std::string::npos, "data-descriptor entry reports unsupported flags");
 
     package.clear();
-    append_entry(package, "0/truncated.bin", { 1, 2, 3, 4 }, 0, 2, 0, 4);
-    if (!expect(write_file(path, package), "write unequal stored-size package"))
+    appendEntry(package, "0/truncated.bin", { 1, 2, 3, 4 }, 0, 2, 0, 4);
+    if (!expect(writeFile(path, package), "write unequal stored-size package"))
         return 1;
     isaacsim::ovgl_viewport::debug::details::ovgl::UsdzArchiveCache unequal_size_cache;
     ok &= expect(!unequal_size_cache.readEntry(path.string(), "0/truncated.bin", out, error),

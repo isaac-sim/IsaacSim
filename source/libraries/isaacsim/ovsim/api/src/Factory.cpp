@@ -97,9 +97,9 @@ types::Implementation makeGrpcClient(const std::optional<std::unordered_map<std:
         { return session->removePrimAttribute(path, attributeName); },
         [session](const std::string& provider, const std::string& parameterName,
                   const iface_authoring::InputParameterType& value)
-        { session->authoringSetParameter(provider, parameterName, value); },
+        { session->setAuthoringParameter(provider, parameterName, value); },
         [session](const std::string& provider, const std::string& parameterName) -> iface_authoring::OutputParameterType
-        { return session->authoringGetParameter(provider, parameterName); },
+        { return session->getAuthoringParameter(provider, parameterName); },
     };
 
     types::Simulation simulation{
@@ -111,17 +111,17 @@ types::Implementation makeGrpcClient(const std::optional<std::unordered_map<std:
         [session]() { session->step(); },
         [session](const std::string& provider, const std::string& parameterName,
                   const iface_simulation::InputParameterType& value)
-        { session->simulationSetParameter(provider, parameterName, value); },
+        { session->setSimulationParameter(provider, parameterName, value); },
         [session](const std::string& provider, const std::string& parameterName) -> iface_simulation::OutputParameterType
-        { return session->simulationGetParameter(provider, parameterName); },
+        { return session->getSimulationParameter(provider, parameterName); },
     };
 
     types::Data data{
-        [session](const client_grpc::PathType& paths, const std::string& attributeName, std::optional<double> timeStamp)
-        { return session->read(paths, attributeName, timeStamp); },
+        [session](const client_grpc::PathType& paths, const std::string& attributeName, std::optional<double> timestamp)
+        { return session->read(paths, attributeName, timestamp); },
         [session](const client_grpc::PathType& paths, const std::string& attributeName,
-                  const client_grpc::InputValueType& values, std::optional<double> timeStamp)
-        { session->write(paths, attributeName, values, timeStamp); },
+                  const client_grpc::InputValueType& values, std::optional<double> timestamp)
+        { session->write(paths, attributeName, values, timestamp); },
     };
 
     return types::Implementation{ types::Control{ authoring, simulation }, data };

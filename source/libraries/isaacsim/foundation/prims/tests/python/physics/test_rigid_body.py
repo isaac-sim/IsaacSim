@@ -22,7 +22,9 @@ import hypothesis.extra.numpy
 import hypothesis.strategies
 import isaacsim_test
 import numpy as np
+import pytest
 import warp as wp
+from isaacsim.foundation.objects import Prim
 from isaacsim.foundation.prims import RigidBody
 
 from ..fixtures import stage  # noqa: F401 - imported so pytest can discover the fixture
@@ -164,11 +166,11 @@ def test_enabled_rigid_bodies(capsys: Any, stage: Any, values: Any) -> None:
     prims = RigidBody(_get_paths(stage))
     # get values
     output = prims.get_enabled_rigid_bodies()
-    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.uint8)
+    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.bool)
     # round-trip values
     prims.set_enabled_rigid_bodies(values)
     output = prims.get_enabled_rigid_bodies()
-    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.uint8)
+    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.bool)
     isaacsim_test.check_equal(values, output)
 
 
@@ -186,11 +188,11 @@ def test_enabled_gravities(capsys: Any, stage: Any, values: Any) -> None:
     prims = RigidBody(_get_paths(stage))
     # get values
     output = prims.get_enabled_gravities()
-    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.uint8)
+    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.bool)
     # round-trip values
     prims.set_enabled_gravities(values)
     output = prims.get_enabled_gravities()
-    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.uint8)
+    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.bool)
     isaacsim_test.check_equal(values, output)
 
 
@@ -208,3 +210,30 @@ def test_physics_apis(capsys: Any, stage: Any) -> None:
     prims.remove_physics_apis()
     assert not any(prims.has_api("PhysicsRigidBodyAPI").numpy())
     assert not any(prims.has_api("PhysxRigidBodyAPI").numpy())
+
+
+def test_are_of_type(stage: Any) -> None:
+    """Test are of type.
+
+    Args:
+        stage: Stage used by the test.
+    """
+    stage.define_prim("/World/Body", "Cube")
+    stage.define_prim("/World/Other", "Cube")
+    paths = ["/World/Body", "/World/Other"]
+    # the Rigid Body API is not applied yet
+    output = RigidBody.are_of_type(paths)
+    isaacsim_test.check_array(output, shape=(2, 1), dtype=wp.bool)
+    isaacsim_test.check_equal(np.array([[0], [0]], dtype=np.bool_), output)
+    # the constructor applies it to the prims it wraps
+    RigidBody("/World/Body")
+    isaacsim_test.check_equal(np.array([[1], [0]], dtype=np.bool_), RigidBody.are_of_type(paths))
+    # a non-transformable prim never matches, even with the schema applied
+    stage.define_prim("/World/Scope", "Scope")
+    Prim("/World/Scope").apply_api("PhysicsRigidBodyAPI")
+    isaacsim_test.check_equal(np.array([[0]], dtype=np.bool_), RigidBody.are_of_type("/World/Scope"))
+    # regular expressions are expanded against the active stage
+    isaacsim_test.check_array(RigidBody.are_of_type("/World/(Body|Other)"), shape=(2, 1), dtype=wp.bool)
+    # non-existing prims
+    with pytest.raises(RuntimeError):
+        RigidBody.are_of_type("/World/NonExistent")

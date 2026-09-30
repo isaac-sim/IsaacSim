@@ -14,8 +14,8 @@
 // limitations under the License.
 
 // Thin nanobind control surface for the ovphysx backend. The data hot path stays
-// in C++ (the tensor SimulationView / EntityView subclasses registered by
-// activate()); this module only exposes lifecycle + a few USD-free queries.
+// in C++ (the tensor EntityView subclasses registered by activate()); this module
+// only exposes lifecycle + a few USD-free queries.
 
 #include "isaacsim/physics_engines/ovphysx/Backend.hpp"
 
@@ -27,12 +27,16 @@ NB_MODULE(_bindings, m)
 {
     namespace ov = isaacsim::physics_engines::ovphysx;
 
-    m.doc() = "ovphysx simulation backend control bindings";
+    m.doc() = "Control the OvPhysX simulation backend.";
 
-    m.def("activate", &ov::activate,
-          "Create + register the ovphysx backend with the physics manager and tensor registry.");
-    m.def("shutdown", &ov::shutdown, "Unregister and destroy the ovphysx backend.");
+    m.def("activate", &ov::activate, "Create and register the OvPhysX simulation backend.");
+    m.def("shutdown", &ov::shutdown, "Unregister and destroy the OvPhysX simulation backend.");
     m.def(
         "set_suppress_readback", [](bool enable) { ov::setSuppressReadback(enable); }, nb::arg("enable"),
-        "Set the process-global /physics/suppressReadback (PhysX DirectGPU opt-in).");
+        "Enable or disable PhysX Direct GPU operation without host readback.");
+    m.def(
+        "set_tensor_device_ordinal", [](int ordinal) { ov::setTensorDeviceOrdinal(ordinal); }, nb::arg("ordinal"),
+        "Set the device holding backend tensors, using -1 for host memory.");
+    m.def("get_tensor_device_ordinal", &ov::getTensorDeviceOrdinal,
+          "Return the device holding backend tensors, or -1 for host memory.");
 }

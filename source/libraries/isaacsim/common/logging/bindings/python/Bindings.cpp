@@ -120,9 +120,9 @@ void reportWithReleasedGil(const Logger& logger, std::string_view message, bool 
     logger.report(message, location.get());
 }
 
-ConfigureResult configureGlobalWithReleasedGil(const GlobalLoggingConfig& config)
+ConfigureResult configureGlobalWithReleasedGil(const GlobalLoggingConfiguration& configuration)
 {
-    const GlobalLoggingConfig snapshot = config;
+    const GlobalLoggingConfiguration snapshot = configuration;
     nb::gil_scoped_release release;
     return configureGlobalLogging(snapshot);
 }
@@ -160,8 +160,8 @@ NB_MODULE(_bindings, module)
         .value("INHERIT", ChannelSettingBehavior::eInherit, "Clear the override and inherit the global setting.")
         .value("OVERRIDE", ChannelSettingBehavior::eOverride, "Apply the supplied channel value.");
 
-    nb::class_<ChannelLoggingConfig>(module, "ChannelLoggingConfig",
-                                     R"doc(Patch-style settings for one logging channel.
+    nb::class_<ChannelLoggingConfiguration>(module, "ChannelLoggingConfig",
+                                            R"doc(Patch-style settings for one logging channel.
 
 Example:
 
@@ -173,15 +173,15 @@ Example:
     >>> channel.channel = "isaacsim.sensors.camera"
 )doc")
         .def(nb::init<>())
-        .def_rw("channel", &ChannelLoggingConfig::channel, "The non-empty logging channel.")
-        .def_rw("enabled_behavior", &ChannelLoggingConfig::enabledBehavior, "The action to apply to enabled.")
-        .def_rw("enabled", &ChannelLoggingConfig::enabled, "The enabled value used by OVERRIDE.")
-        .def_rw("minimum_level_behavior", &ChannelLoggingConfig::minimumLevelBehavior,
+        .def_rw("channel", &ChannelLoggingConfiguration::channel, "The non-empty logging channel.")
+        .def_rw("enabled_behavior", &ChannelLoggingConfiguration::enabledBehavior, "The action to apply to enabled.")
+        .def_rw("enabled", &ChannelLoggingConfiguration::enabled, "The enabled value used by OVERRIDE.")
+        .def_rw("minimum_level_behavior", &ChannelLoggingConfiguration::minimumLevelBehavior,
                 "The action to apply to minimum_level.")
-        .def_rw("minimum_level", &ChannelLoggingConfig::minimumLevel, "The threshold used by OVERRIDE.");
+        .def_rw("minimum_level", &ChannelLoggingConfiguration::minimumLevel, "The threshold used by OVERRIDE.");
 
-    nb::class_<GlobalLoggingConfig>(module, "GlobalLoggingConfig",
-                                    R"doc(Application-level logging configuration patch.
+    nb::class_<GlobalLoggingConfiguration>(module, "GlobalLoggingConfig",
+                                           R"doc(Application-level logging configuration patch.
 
 An attribute set to ``None`` leaves the corresponding scalar setting unchanged.
 
@@ -195,44 +195,51 @@ Example:
     >>> config.minimum_level = LogLevel.WARNING
 )doc")
         .def(nb::init<>())
-        .def_rw("enabled", &GlobalLoggingConfig::enabled, "Whether process-wide logging is enabled.")
-        .def_rw("minimum_level", &GlobalLoggingConfig::minimumLevel, "The process-wide admission threshold.")
-        .def_rw("asynchronous", &GlobalLoggingConfig::asynchronous, "Whether backend delivery is asynchronous.")
-        .def_rw("standard_stream_enabled", &GlobalLoggingConfig::standardStreamEnabled,
+        .def_rw("enabled", &GlobalLoggingConfiguration::enabled, "Whether process-wide logging is enabled.")
+        .def_rw("minimum_level", &GlobalLoggingConfiguration::minimumLevel, "The process-wide admission threshold.")
+        .def_rw("asynchronous", &GlobalLoggingConfiguration::asynchronous, "Whether backend delivery is asynchronous.")
+        .def_rw("standard_stream_enabled", &GlobalLoggingConfiguration::standardStreamEnabled,
                 "Whether stdout and stderr output is enabled.")
-        .def_rw("standard_stream_level", &GlobalLoggingConfig::standardStreamLevel, "The standard-stream threshold.")
-        .def_rw("standard_stream_flush", &GlobalLoggingConfig::standardStreamFlush,
-                "Whether stdout is flushed after every record.")
-        .def_rw("output_stream", &GlobalLoggingConfig::outputStream,
-                "Default stdout/stderr routing or forced stderr output.")
-        .def_rw("debug_console_enabled", &GlobalLoggingConfig::debugConsoleEnabled,
-                "Whether the Windows debug console destination is enabled.")
-        .def_rw("debug_console_level", &GlobalLoggingConfig::debugConsoleLevel, "The Windows debug-console threshold.")
-        .def_rw("file_path", &GlobalLoggingConfig::filePath, "Log path; an empty string disables file logging.")
-        .def_rw("file_append", &GlobalLoggingConfig::fileAppend, "Whether file output appends instead of replacing.")
-        .def_rw("file_level", &GlobalLoggingConfig::fileLevel, "The file-destination threshold.")
-        .def_rw("file_flush_level", &GlobalLoggingConfig::fileFlushLevel, "The minimum severity that flushes the file.")
-        .def_rw("filename_included", &GlobalLoggingConfig::filenameIncluded, "Whether source filenames are included.")
-        .def_rw("line_number_included", &GlobalLoggingConfig::lineNumberIncluded,
-                "Whether source line numbers are included.")
-        .def_rw("function_name_included", &GlobalLoggingConfig::functionNameIncluded,
-                "Whether source function names are included.")
-        .def_rw("timestamp_included", &GlobalLoggingConfig::timestampIncluded, "Whether absolute timestamps are included.")
-        .def_rw("utc_timestamps", &GlobalLoggingConfig::utcTimestamps, "Whether absolute timestamps use UTC.")
-        .def_rw("microsecond_timestamps", &GlobalLoggingConfig::microsecondTimestamps,
-                "Whether absolute timestamps use microsecond precision.")
-        .def_rw("elapsed_time", &GlobalLoggingConfig::elapsedTime, "The elapsed-time prefix unit.")
-        .def_rw("thread_id_included", &GlobalLoggingConfig::threadIdIncluded, "Whether thread identifiers are included.")
-        .def_rw("source_included", &GlobalLoggingConfig::sourceIncluded, "Whether logger channels are included.")
         .def_rw(
-            "process_id_included", &GlobalLoggingConfig::processIdIncluded, "Whether process identifiers are included.")
-        .def_rw("trace_id_included", &GlobalLoggingConfig::traceIdIncluded,
+            "standard_stream_level", &GlobalLoggingConfiguration::standardStreamLevel, "The standard-stream threshold.")
+        .def_rw("standard_stream_flush", &GlobalLoggingConfiguration::standardStreamFlush,
+                "Whether stdout is flushed after every record.")
+        .def_rw("output_stream", &GlobalLoggingConfiguration::outputStream,
+                "Default stdout/stderr routing or forced stderr output.")
+        .def_rw("debug_console_enabled", &GlobalLoggingConfiguration::debugConsoleEnabled,
+                "Whether the Windows debug console destination is enabled.")
+        .def_rw("debug_console_level", &GlobalLoggingConfiguration::debugConsoleLevel,
+                "The Windows debug-console threshold.")
+        .def_rw("file_path", &GlobalLoggingConfiguration::filePath, "Log path; an empty string disables file logging.")
+        .def_rw(
+            "file_append", &GlobalLoggingConfiguration::fileAppend, "Whether file output appends instead of replacing.")
+        .def_rw("file_level", &GlobalLoggingConfiguration::fileLevel, "The file-destination threshold.")
+        .def_rw("file_flush_level", &GlobalLoggingConfiguration::fileFlushLevel,
+                "The minimum severity that flushes the file.")
+        .def_rw("filename_included", &GlobalLoggingConfiguration::filenameIncluded,
+                "Whether source filenames are included.")
+        .def_rw("line_number_included", &GlobalLoggingConfiguration::lineNumberIncluded,
+                "Whether source line numbers are included.")
+        .def_rw("function_name_included", &GlobalLoggingConfiguration::functionNameIncluded,
+                "Whether source function names are included.")
+        .def_rw("timestamp_included", &GlobalLoggingConfiguration::timestampIncluded,
+                "Whether absolute timestamps are included.")
+        .def_rw("utc_timestamps", &GlobalLoggingConfiguration::utcTimestamps, "Whether absolute timestamps use UTC.")
+        .def_rw("microsecond_timestamps", &GlobalLoggingConfiguration::microsecondTimestamps,
+                "Whether absolute timestamps use microsecond precision.")
+        .def_rw("elapsed_time", &GlobalLoggingConfiguration::elapsedTime, "The elapsed-time prefix unit.")
+        .def_rw("thread_id_included", &GlobalLoggingConfiguration::threadIdIncluded,
+                "Whether thread identifiers are included.")
+        .def_rw("source_included", &GlobalLoggingConfiguration::sourceIncluded, "Whether logger channels are included.")
+        .def_rw("process_id_included", &GlobalLoggingConfiguration::processIdIncluded,
+                "Whether process identifiers are included.")
+        .def_rw("trace_id_included", &GlobalLoggingConfiguration::traceIdIncluded,
                 "Whether active trace identifiers are included.")
-        .def_rw("color_included", &GlobalLoggingConfig::colorIncluded, "Whether terminal color codes are included.")
-        .def_rw("force_ansi_color", &GlobalLoggingConfig::forceAnsiColor, "Whether ANSI color codes are forced.")
-        .def_rw("multiprocess_group_id", &GlobalLoggingConfig::multiprocessGroupId,
+        .def_rw("color_included", &GlobalLoggingConfiguration::colorIncluded, "Whether terminal color codes are included.")
+        .def_rw("force_ansi_color", &GlobalLoggingConfiguration::forceAnsiColor, "Whether ANSI color codes are forced.")
+        .def_rw("multiprocess_group_id", &GlobalLoggingConfiguration::multiprocessGroupId,
                 "A nonzero identifier for cross-process output serialization.")
-        .def_rw("channels", &GlobalLoggingConfig::channels, "Per-channel enablement and threshold patches.");
+        .def_rw("channels", &GlobalLoggingConfiguration::channels, "Per-channel enablement and threshold patches.");
 
     nb::class_<Logger>(module, "Logger",
                        R"doc(Logger with one immutable channel.

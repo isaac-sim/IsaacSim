@@ -20,14 +20,26 @@ _VERSION_FILE = Path(__file__).resolve().parents[1] / "VERSION"
 
 
 def _normalize_distribution_name(name: str) -> str:
-    """Normalize a Python distribution name for identity comparisons."""
+    """Normalize a Python distribution name for identity comparisons.
 
+    Args:
+        name: Distribution name to normalize.
+
+    Returns:
+        Normalized distribution name.
+    """
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
 def _read_shared_version() -> str:
-    """Read the canonical shared library version."""
+    """Read the canonical shared library version.
 
+    Returns:
+        Canonical shared library version.
+
+    Raises:
+        RuntimeError: If the version file cannot be read or contains an invalid version.
+    """
     try:
         version = _VERSION_FILE.read_text(encoding="utf-8").strip()
     except OSError as error:
@@ -50,7 +62,6 @@ def dynamic_metadata(settings: Mapping[str, Any], _project: Mapping[str, Any]) -
     Raises:
         RuntimeError: If the provider settings or shared version are invalid.
     """
-
     expected_keys = {"field", "names"}
     unknown_keys = settings.keys() - expected_keys
     if unknown_keys:

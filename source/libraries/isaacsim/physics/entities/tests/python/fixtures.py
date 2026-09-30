@@ -205,10 +205,12 @@ def engine() -> Iterator[None]:
 
     Yields:
         Control while the mock engine is registered.
+
     """
     registry = tensors.get_registry()
-    registry.register_entity("engine", "rigid-body", _MockRigidBodyEntityView)
-    registry.register_entity("engine", "articulation", _MockArticulationEntityView)
+    # Entity factories take (paths, options); these mocks read no options.
+    registry.register_entity("engine", "rigid-body", lambda paths, options=None: _MockRigidBodyEntityView(paths))
+    registry.register_entity("engine", "articulation", lambda paths, options=None: _MockArticulationEntityView(paths))
     yield
     registry.unregister_entity("engine", "rigid-body")
     registry.unregister_entity("engine", "articulation")

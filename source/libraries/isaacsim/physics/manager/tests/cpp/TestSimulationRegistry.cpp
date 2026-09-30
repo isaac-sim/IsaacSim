@@ -66,17 +66,17 @@ TEST_CASE("Simulation Registry Tests")
 
     SUBCASE("Get number of simulations")
     {
-        size_t initialCount = getNumberOfSimulations();
+        size_t initialCount = getSimulationCount();
 
         Simulation simulation;
         SimulationId simulationId = registerSimulation(simulation, "CountTest");
 
-        size_t newCount = getNumberOfSimulations();
+        size_t newCount = getSimulationCount();
         REQUIRE(newCount == initialCount + 1);
 
         unregisterSimulation(simulationId);
 
-        size_t finalCount = getNumberOfSimulations();
+        size_t finalCount = getSimulationCount();
         REQUIRE(finalCount == initialCount);
     }
 
@@ -113,7 +113,7 @@ TEST_CASE("Simulation Registry Tests")
         }
 
         // Get simulation IDs via the public buffer API
-        std::vector<SimulationId> allIds(getNumberOfSimulations());
+        std::vector<SimulationId> allIds(getSimulationCount());
         const size_t idCount = getSimulationIds(allIds.data(), allIds.size());
         REQUIRE(idCount >= 3);
 

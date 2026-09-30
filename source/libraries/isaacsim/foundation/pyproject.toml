@@ -8,7 +8,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "isaacsim-foundation"
 dynamic = ["version", "dependencies"]
-description = "USD Foundation for Isaac Sim"
+description = "Kit-independent Isaac Sim USD adapters, scene objects, prims, and utilities"
 requires-python = "==3.12.*"
 license = "Apache-2.0"
 authors = [{ name = "NVIDIA Corporation" }]
@@ -16,7 +16,7 @@ dependencies = [
     "usd-exchange==2.3.0",
 ]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]

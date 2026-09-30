@@ -70,9 +70,9 @@ public:
     /// \return The simulation name, or an empty string if the simulation id is not registered.
     std::string getSimulationName(const SimulationId& simulationId) const;
 
-    /// Get the number of simulations
-    /// \return Return the number of simulation registered
-    size_t getNumberOfSimulations() const
+    /// Get the number of registered simulations.
+    /// \return Number of registered simulations.
+    size_t getSimulationCount() const
     {
         return m_simulations.size();
     }
@@ -127,7 +127,7 @@ private:
 };
 
 /// Return the process-owned simulation registry.
-SimulationRegistry& simulationRegistry();
+SimulationRegistry& getSimulationRegistry();
 
 } // namespace registration
 } // namespace physics

@@ -18,8 +18,8 @@
 #include <isaacsim/physics/manager/Export.h>
 #include <isaacsim/physics/registration/tensors/IEntityView.hpp>
 #include <isaacsim/physics/registration/tensors/Metadata.hpp>
-#include <isaacsim/physics/registration/tensors/TensorDesc.hpp>
-#include <isaacsim/physics/registration/tensors/TensorSpec.hpp>
+#include <isaacsim/physics/registration/tensors/TensorDescription.hpp>
+#include <isaacsim/physics/registration/tensors/TensorSpecification.hpp>
 #include <isaacsim/physics/registration/tensors/TensorTypes.hpp>
 
 #include <functional>
@@ -45,9 +45,10 @@ namespace tensors
  * @param[in,out] output Optional destination tensor descriptor. The callback may write to the referenced backing
  *                       memory but does not modify the descriptor object.
  * @return Descriptor for the resulting tensor. It may reference storage supplied by `output` or other
- *         provider-selected storage. A nonempty `keepalive` member retains that storage's owner.
+ *         provider-selected storage. A nonempty `keepAlive` member retains that storage's owner.
  */
-using GetImplFunction = std::function<TensorDesc(const TensorDesc& indices, const TensorDesc& output)>;
+using GetImplementationFunction =
+    std::function<TensorDescription(const TensorDescription& indices, const TensorDescription& output)>;
 
 /**
  * @brief Callback that writes one tensor to an entity view.
@@ -58,7 +59,7 @@ using GetImplFunction = std::function<TensorDesc(const TensorDesc& indices, cons
  * @param[in] data Source tensor descriptor.
  * @param[in] indices Operation-defined selector descriptor.
  */
-using SetImplFunction = std::function<void(const TensorDesc& data, const TensorDesc& indices)>;
+using SetImplementationFunction = std::function<void(const TensorDescription& data, const TensorDescription& indices)>;
 
 /**
  * @brief Callback that reads multiple tensors from an entity view.
@@ -71,10 +72,10 @@ using SetImplFunction = std::function<void(const TensorDesc& data, const TensorD
  * @param[in,out] output Optional destination tensor descriptors. The callback may write to their referenced backing
  *                       memory but does not modify the descriptor objects.
  * @return Descriptors for the resulting tensors. They may reference storage supplied by `output` or other
- *         provider-selected storage. A nonempty `keepalive` member retains the corresponding storage owner.
+ *         provider-selected storage. A nonempty `keepAlive` member retains the corresponding storage owner.
  */
-using GetMultiImplFunction =
-    std::function<std::vector<TensorDesc>(const TensorDesc& indices, const std::vector<TensorDesc>& output)>;
+using GetMultiImplementationFunction = std::function<std::vector<TensorDescription>(
+    const TensorDescription& indices, const std::vector<TensorDescription>& output)>;
 
 /**
  * @brief Callback that writes multiple tensors to an entity view.
@@ -85,14 +86,15 @@ using GetMultiImplFunction =
  * @param[in] data Source tensor descriptors.
  * @param[in] indices Operation-defined selector descriptor.
  */
-using SetMultiImplFunction = std::function<void(const std::vector<TensorDesc>& data, const TensorDesc& indices)>;
+using SetMultiImplementationFunction =
+    std::function<void(const std::vector<TensorDescription>& data, const TensorDescription& indices)>;
 
 /**
  * @brief Callback that returns provider-specific entity-view metadata.
  *
  * @return Provider-specific metadata.
  */
-using MetadataImplFunction = std::function<Metadata()>;
+using MetadataImplementationFunction = std::function<Metadata()>;
 
 /**
  * @class EntityView
@@ -116,9 +118,9 @@ public:
     /**
      * @brief Constructs an entity view from prim-path patterns.
      *
-     * @param[in] paths Prim-path patterns or explicit prim paths represented by the view.
+     * @param[in] primPathPatterns Prim-path patterns or explicit prim paths represented by the view.
      */
-    explicit EntityView(std::vector<std::string> paths);
+    explicit EntityView(std::vector<std::string> primPathPatterns);
 
     /**
      * @brief Destroys the entity view and its registered callbacks.
@@ -142,14 +144,17 @@ public:
      * operation name cannot be registered as both single-buffer and multi-buffer.
      *
      * @param[in] operationName Name used to discover and invoke the operation.
-     * @param[in] kind Operation kind, which must be @c ImplKind::eGet.
+     * @param[in] kind Operation kind, which must be @c ImplementationKind::eGet.
      * @param[in] callback Read callback to store.
      * @param[in] specification Tensor capabilities and layout advertised by the callback.
      * @return `true` for a new registration; `false` when an existing registration was replaced.
-     * @throws std::invalid_argument If `kind` is not @c ImplKind::eGet or `operationName` is already registered as a
-     *         multi-buffer read operation.
+     * @throws std::invalid_argument If `kind` is not @c ImplementationKind::eGet or `operationName` is already
+     *         registered as a multi-buffer read operation.
      */
-    bool registerImpl(const std::string& operationName, ImplKind kind, GetImplFunction callback, TensorSpec specification);
+    bool registerImplementation(const std::string& operationName,
+                                ImplementationKind kind,
+                                GetImplementationFunction callback,
+                                TensorSpecification specification);
 
     /**
      * @brief Registers a single-buffer write operation.
@@ -158,14 +163,17 @@ public:
      * operation name cannot be registered as both single-buffer and multi-buffer.
      *
      * @param[in] operationName Name used to discover and invoke the operation.
-     * @param[in] kind Operation kind, which must be @c ImplKind::eSet.
+     * @param[in] kind Operation kind, which must be @c ImplementationKind::eSet.
      * @param[in] callback Write callback to store.
      * @param[in] specification Tensor capabilities and layout advertised by the callback.
      * @return `true` for a new registration; `false` when an existing registration was replaced.
-     * @throws std::invalid_argument If `kind` is not @c ImplKind::eSet or `operationName` is already registered as a
-     *         multi-buffer write operation.
+     * @throws std::invalid_argument If `kind` is not @c ImplementationKind::eSet or `operationName` is already
+     *         registered as a multi-buffer write operation.
      */
-    bool registerImpl(const std::string& operationName, ImplKind kind, SetImplFunction callback, TensorSpec specification);
+    bool registerImplementation(const std::string& operationName,
+                                ImplementationKind kind,
+                                SetImplementationFunction callback,
+                                TensorSpecification specification);
 
     /**
      * @brief Registers a multi-buffer read operation with one aggregate specification.
@@ -174,17 +182,17 @@ public:
      * operation name cannot be registered as both single-buffer and multi-buffer.
      *
      * @param[in] operationName Name used to discover and invoke the operation.
-     * @param[in] kind Operation kind, which must be @c ImplKind::eGet.
+     * @param[in] kind Operation kind, which must be @c ImplementationKind::eGet.
      * @param[in] callback Multi-buffer read callback to store.
      * @param[in] specification Aggregate tensor capabilities advertised by the callback.
      * @return `true` for a new registration; `false` when an existing registration was replaced.
-     * @throws std::invalid_argument If `kind` is not @c ImplKind::eGet or `operationName` is already registered as a
-     *         single-buffer read operation.
+     * @throws std::invalid_argument If `kind` is not @c ImplementationKind::eGet or `operationName` is already
+     *         registered as a single-buffer read operation.
      */
-    bool registerImpl(const std::string& operationName,
-                      ImplKind kind,
-                      GetMultiImplFunction callback,
-                      TensorSpec specification);
+    bool registerImplementation(const std::string& operationName,
+                                ImplementationKind kind,
+                                GetMultiImplementationFunction callback,
+                                TensorSpecification specification);
 
     /**
      * @brief Registers a multi-buffer write operation.
@@ -193,17 +201,17 @@ public:
      * operation name cannot be registered as both single-buffer and multi-buffer.
      *
      * @param[in] operationName Name used to discover and invoke the operation.
-     * @param[in] kind Operation kind, which must be @c ImplKind::eSet.
+     * @param[in] kind Operation kind, which must be @c ImplementationKind::eSet.
      * @param[in] callback Multi-buffer write callback to store.
      * @param[in] specification Aggregate tensor capabilities advertised by the callback.
      * @return `true` for a new registration; `false` when an existing registration was replaced.
-     * @throws std::invalid_argument If `kind` is not @c ImplKind::eSet or `operationName` is already registered as a
-     *         single-buffer write operation.
+     * @throws std::invalid_argument If `kind` is not @c ImplementationKind::eSet or `operationName` is already
+     *         registered as a single-buffer write operation.
      */
-    bool registerImpl(const std::string& operationName,
-                      ImplKind kind,
-                      SetMultiImplFunction callback,
-                      TensorSpec specification);
+    bool registerImplementation(const std::string& operationName,
+                                ImplementationKind kind,
+                                SetMultiImplementationFunction callback,
+                                TensorSpecification specification);
 
     /**
      * @brief Registers a metadata provider.
@@ -212,7 +220,7 @@ public:
      * @param[in] callback Metadata callback to store.
      * @return `true` for a new registration; `false` when an existing callback was replaced.
      */
-    bool registerMetadata(const std::string& operationName, MetadataImplFunction callback);
+    bool registerMetadata(const std::string& operationName, MetadataImplementationFunction callback);
 
     /**
      * @brief Registers a multi-buffer read operation with a specification for each output.
@@ -223,17 +231,17 @@ public:
      * `supports` set to `false`.
      *
      * @param[in] operationName Name used to discover and invoke the operation.
-     * @param[in] kind Operation kind, which must be @c ImplKind::eGet.
+     * @param[in] kind Operation kind, which must be @c ImplementationKind::eGet.
      * @param[in] callback Multi-buffer read callback to store.
      * @param[in] outputSpecifications Tensor specification for each returned buffer.
      * @return `true` for a new registration; `false` when an existing registration was replaced.
-     * @throws std::invalid_argument If `kind` is not @c ImplKind::eGet or `operationName` is already registered as a
-     *         single-buffer read operation.
+     * @throws std::invalid_argument If `kind` is not @c ImplementationKind::eGet or `operationName` is already
+     *         registered as a single-buffer read operation.
      */
-    bool registerImpl(const std::string& operationName,
-                      ImplKind kind,
-                      GetMultiImplFunction callback,
-                      std::vector<TensorSpec> outputSpecifications);
+    bool registerImplementation(const std::string& operationName,
+                                ImplementationKind kind,
+                                GetMultiImplementationFunction callback,
+                                std::vector<TensorSpecification> outputSpecifications);
 
     /**
      * @brief Lists registered operation names for a read or write kind.
@@ -241,10 +249,11 @@ public:
      * The order of returned names is unspecified. The list includes operations whose tensor specification has
      * `supports` set to `false`.
      *
-     * @param[in] kind @c ImplKind::eGet to list read operations or @c ImplKind::eSet to list write operations.
+     * @param[in] kind @c ImplementationKind::eGet to list read operations or @c ImplementationKind::eSet to list
+     *                 write operations.
      * @return Names of registered single-buffer and multi-buffer operations for `kind`.
      */
-    std::vector<std::string> listImpls(ImplKind kind) const;
+    std::vector<std::string> listImplementations(ImplementationKind kind) const;
 
     /**
      * @brief Checks whether a supported operation is registered.
@@ -254,7 +263,7 @@ public:
      * @return `true` if the operation is registered and its specification has `supports` set to `true`; otherwise,
      *         `false`.
      */
-    bool hasImpl(const std::string& operationName, ImplKind kind) const;
+    bool hasImplementation(const std::string& operationName, ImplementationKind kind) const;
 
     /**
      * @brief Gets the aggregate tensor specification for an operation.
@@ -264,17 +273,18 @@ public:
      * @return The operation's tensor specification.
      * @throws std::out_of_range If no matching operation is registered.
      */
-    TensorSpec getImplSpec(const std::string& operationName, ImplKind kind) const;
+    TensorSpecification getImplementationSpecification(const std::string& operationName, ImplementationKind kind) const;
 
     /**
      * @brief Gets per-output specifications for a multi-buffer read operation.
      *
      * @param[in] operationName Operation name to query.
-     * @param[in] kind Operation kind, expected to be @c ImplKind::eGet.
+     * @param[in] kind Operation kind, expected to be @c ImplementationKind::eGet.
      * @return Per-output specifications, or an empty vector if the operation was registered with one aggregate
      *         specification, is not a multi-buffer read operation, or is not registered.
      */
-    std::vector<TensorSpec> getImplSpecMulti(const std::string& operationName, ImplKind kind) const;
+    std::vector<TensorSpecification> getMultiImplementationSpecifications(const std::string& operationName,
+                                                                          ImplementationKind kind) const;
 
     /**
      * @brief Gets metadata from a registered provider.
@@ -296,7 +306,7 @@ public:
      * @param[in,out] output Optional destination tensor descriptor supplied to the provider. The provider may write to
      *                       its referenced backing memory but does not modify the descriptor object.
      * @return Descriptor for the resulting tensor. It may reference storage supplied by `output` or other
-     *         provider-selected storage. A nonempty `keepalive` member retains that storage's owner.
+     *         provider-selected storage. A nonempty `keepAlive` member retains that storage's owner.
      * @throws std::out_of_range If no matching single-buffer read operation is registered.
      * @throws std::runtime_error If the operation is registered but not supported by the provider.
      * @throws std::invalid_argument If `indices` is nonempty and the operation does not support indexed reads.
@@ -304,7 +314,9 @@ public:
      *
      * @note Other exceptions raised by the provider callback propagate to the caller.
      */
-    TensorDesc getData(const std::string& operationName, const TensorDesc& indices, const TensorDesc& output) const;
+    TensorDescription getData(const std::string& operationName,
+                              const TensorDescription& indices,
+                              const TensorDescription& output) const;
 
     /**
      * @brief Invokes a registered multi-buffer read operation.
@@ -315,7 +327,7 @@ public:
      * @param[in,out] output Optional destination tensor descriptors supplied to the provider. The provider may write
      *                       to their referenced backing memory but does not modify the descriptor objects.
      * @return Descriptors for the resulting tensors. They may reference storage supplied by `output` or other
-     *         provider-selected storage. A nonempty `keepalive` member retains the corresponding storage owner.
+     *         provider-selected storage. A nonempty `keepAlive` member retains the corresponding storage owner.
      * @throws std::out_of_range If no matching multi-buffer read operation is registered.
      * @throws std::runtime_error If the operation is registered but not supported by the provider.
      * @throws std::invalid_argument If `indices` is nonempty and the operation does not support indexed reads.
@@ -323,9 +335,9 @@ public:
      *
      * @note Other exceptions raised by the provider callback propagate to the caller.
      */
-    std::vector<TensorDesc> getDataMulti(const std::string& operationName,
-                                         const TensorDesc& indices,
-                                         const std::vector<TensorDesc>& output) const;
+    std::vector<TensorDescription> getDataMulti(const std::string& operationName,
+                                                const TensorDescription& indices,
+                                                const std::vector<TensorDescription>& output) const;
 
     /**
      * @brief Invokes a registered single-buffer write operation.
@@ -341,7 +353,7 @@ public:
      *
      * @note Other exceptions raised by the provider callback propagate to the caller.
      */
-    void setData(const std::string& operationName, const TensorDesc& data, const TensorDesc& indices) const;
+    void setData(const std::string& operationName, const TensorDescription& data, const TensorDescription& indices) const;
 
     /**
      * @brief Invokes a registered multi-buffer write operation.
@@ -358,8 +370,8 @@ public:
      * @note Other exceptions raised by the provider callback propagate to the caller.
      */
     void setDataMulti(const std::string& operationName,
-                      const std::vector<TensorDesc>& data,
-                      const TensorDesc& indices) const;
+                      const std::vector<TensorDescription>& data,
+                      const TensorDescription& indices) const;
 
     /**
      * @brief Gets the prim-path patterns supplied at construction.
@@ -367,9 +379,9 @@ public:
      * @return A reference to the stored path patterns. The reference remains valid until a derived class modifies the
      *         stored vector or the view is destroyed.
      */
-    const std::vector<std::string>& getPaths() const noexcept
+    const std::vector<std::string>& getPrimPathPatterns() const noexcept
     {
-        return m_paths;
+        return m_primPathPatterns;
     }
 
     /**
@@ -381,7 +393,7 @@ public:
      */
     virtual std::vector<std::string> getResolvedPrimPaths() const
     {
-        return m_paths;
+        return m_primPathPatterns;
     }
 
     /**
@@ -395,13 +407,13 @@ public:
     }
 
     /**
-     * @brief Gets the number of entities resolved by the engine.
+     * @brief Gets the entity count resolved by the engine.
      *
      * @return The resolved entity count.
      */
-    int64_t getCount() const noexcept
+    int64_t getEntityCount() const noexcept
     {
-        return m_count;
+        return m_entityCount;
     }
 
     /**
@@ -410,11 +422,34 @@ public:
      * @param[in] count Resolved entity count.
      * @pre `count` is nonnegative.
      */
-    void setCount(int64_t count) noexcept
+    void setEntityCount(int64_t count) noexcept
     {
-        m_count = count;
+        m_entityCount = count;
     }
 
+    /**
+     * @brief Gets the ordinal of the device on which this view's tensors reside.
+     *
+     * Consumers read this on every access rather than caching it, because an engine may select its device
+     * after the view is created. An engine that resolves its device later overrides this to report the
+     * current one; the base implementation returns the stored value.
+     *
+     * @return The device ordinal, or `-1` for host memory.
+     */
+    virtual int getDeviceOrdinal() const noexcept
+    {
+        return m_deviceOrdinal;
+    }
+
+    /**
+     * @brief Sets the ordinal of the device on which this view's tensors reside.
+     *
+     * @param[in] ordinal Device ordinal, or `-1` to indicate host memory.
+     */
+    void setDeviceOrdinal(int ordinal) noexcept
+    {
+        m_deviceOrdinal = ordinal;
+    }
 
 protected:
     /**
@@ -425,36 +460,40 @@ protected:
      * that callback.
      *
      * @param[in] operationName Operation name to update.
-     * @param[in] kind Operation kind, expected to be @c ImplKind::eGet.
+     * @param[in] kind Operation kind, expected to be @c ImplementationKind::eGet.
      * @param[in] shapeHints One shape per registered output, in registration order.
      * @return @c true if the operation was found and updated; @c false if it is not a registered multi-buffer read.
      * @throws std::invalid_argument If @p shapeHints does not have one entry per registered output.
      */
-    bool _setImplOutputShapeHints(const std::string& operationName,
-                                  ImplKind kind,
-                                  const std::vector<std::vector<int64_t>>& shapeHints);
+    bool _setImplementationOutputShapeHints(const std::string& operationName,
+                                            ImplementationKind kind,
+                                            const std::vector<std::vector<int64_t>>& shapeHints);
 
     /**
      * @brief Rewrites the declared shape of a registered single-buffer operation.
      *
-     * The single-buffer counterpart of @ref _setImplOutputShapeHints, with the same guarantee: only the shape hint
-     * changes, so it is safe to call from within the registered callback.
+     * The single-buffer counterpart of @ref _setImplementationOutputShapeHints, with the same guarantee: only the
+     * shape hint changes, so it is safe to call from within the registered callback.
      *
      * @param[in] operationName Operation name to update.
      * @param[in] kind Operation kind to update.
      * @param[in] shapeHint The replacement shape.
      * @return @c true if the operation was found and updated; @c false if it is not registered for @p kind.
      */
-    bool _setImplShapeHint(const std::string& operationName, ImplKind kind, const std::vector<int64_t>& shapeHint);
+    bool _setImplementationShapeHint(const std::string& operationName,
+                                     ImplementationKind kind,
+                                     const std::vector<int64_t>& shapeHint);
 
     /** @brief Prim-path patterns supplied at construction. */
-    std::vector<std::string> m_paths;
+    std::vector<std::string> m_primPathPatterns;
     /** @brief Number of entities resolved by the engine. */
-    int64_t m_count{ 0 };
+    int64_t m_entityCount{ 0 };
+    /** @brief Ordinal of the device holding this view's tensors, or `-1` for host memory. */
+    int m_deviceOrdinal{ -1 };
 
 private:
-    struct Impl;
-    std::unique_ptr<Impl> m_impl;
+    struct Implementation;
+    std::unique_ptr<Implementation> m_implementation;
 };
 
 } // namespace tensors

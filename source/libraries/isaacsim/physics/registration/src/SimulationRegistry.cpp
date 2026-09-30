@@ -31,7 +31,7 @@ namespace physics
 namespace registration
 {
 
-SimulationRegistry& simulationRegistry()
+SimulationRegistry& getSimulationRegistry()
 {
     static SimulationRegistry s_registry;
     return s_registry;

@@ -50,7 +50,7 @@ InitializeResult initialize(void* ovstage, const char* usdIdentifier)
     // Transactional across backends: initialize() is broadcast to every active backend,
     // so a partial success (e.g. ovphysx attaches the ovstage, then Newton fails) must
     // not report a plain failure with a stage still attached -- the caller pins its
-    // keepalive on Ok, and also on FailedDirty (below) when the rollback could not
+    // keepAlive on Ok, and also on FailedDirty (below) when the rollback could not
     // confirm the detach. Roll the succeeded backends back before returning, so Failed
     // means nothing is attached and FailedDirty means a stage may still be.
     std::vector<const details::SimulationSnapshotRecord*> succeeded;
@@ -256,6 +256,26 @@ bool checkResults()
         }
     }
     return workDone;
+}
+
+bool publishTransformsToStage()
+{
+    bool participated = false;
+    const details::SimulationSnapshots simulations = details::getSimulationSnapshots();
+    for (const auto& simulation : simulations)
+    {
+        if (!simulation.second.isActive)
+        {
+            continue;
+        }
+        const auto& publish = simulation.second.simulation.simulationFunctions.publishTransformsToStage;
+        if (!publish || !publish())
+        {
+            return false;
+        }
+        participated = true;
+    }
+    return participated;
 }
 
 // Flush changes

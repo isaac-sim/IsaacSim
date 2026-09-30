@@ -35,6 +35,7 @@ def _no_profile(fn: Callable[..., Any]) -> Callable[..., Any]:
 
     Returns:
         The original callable.
+
     """
     return fn
 
@@ -148,6 +149,7 @@ class NewtonRigidContactView:
     Args:
         backend: Backend selection containing sensor, filter, and model mappings.
         frontend: Tensor frontend used to allocate and wrap returned values.
+
     """
 
     def __init__(self, backend: RigidContactSet, frontend: NumpyFrontend | TorchFrontend | WarpFrontend) -> None:

@@ -49,6 +49,7 @@ class _ContactReportScenario(GridTestBase):
     Args:
         test_case: Test case that owns the scenario.
         device_params: Simulation device parameters.
+
     """
 
     def __init__(self, test_case: object, device_params: object) -> None:
@@ -81,6 +82,7 @@ class _ContactReportScenario(GridTestBase):
             headers: Contact report headers.
             data: Contact report payload data.
             anchors: Contact friction-anchor data.
+
         """
         self.events.append((len(headers), len(data), len(anchors)))
 
@@ -99,6 +101,7 @@ class _ContactReportScenario(GridTestBase):
 
         Args:
             sim: Active simulation view.
+
         """
         self.subscribe()
 
@@ -109,6 +112,7 @@ class _ContactReportScenario(GridTestBase):
             sim: Active simulation view.
             stepno: Zero-based simulation step number.
             dt: Simulation time step.
+
         """
 
 
@@ -120,6 +124,7 @@ def _contact_events(scenario: _ContactReportScenario) -> list[tuple[int, int, in
 
     Returns:
         The resulting value.
+
     """
     return [event for event in scenario.events if event[0] > 0 and event[1] > 0]
 

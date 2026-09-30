@@ -3,7 +3,7 @@ name: skills-eval-triage
 description: "Interpret SkillEvaluator T1/T2/T3 reports and apply targeted fixes to skills. Use when a skill is blocking or has actionable findings after an eval run."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
   tags: [ci, skills, triage, quality]
 ---
 

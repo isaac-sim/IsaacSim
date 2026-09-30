@@ -34,6 +34,7 @@ class MockSimulator:
 
         Returns:
             The resulting value.
+
         """
         return True
 
@@ -42,6 +43,7 @@ class MockSimulator:
 
         Returns:
             The resulting value.
+
         """
         return True
 
@@ -56,6 +58,7 @@ class MockSimulator:
 
         Returns:
             The resulting value.
+
         """
         return 0
 
@@ -64,6 +67,7 @@ class MockSimulator:
 
         Returns:
             The resulting value.
+
         """
         return 0
 
@@ -76,6 +80,7 @@ class MockSimulator:
 
         Returns:
             The resulting value.
+
         """
         return 0
 
@@ -84,6 +89,7 @@ class MockSimulator:
 
         Returns:
             The resulting value.
+
         """
         return 0
 
@@ -96,6 +102,7 @@ class MockSimulator:
 
         Returns:
             The resulting value.
+
         """
         return True
 
@@ -107,6 +114,7 @@ class MockSimulator:
 
         Returns:
             Whether capable of simulating.
+
         """
         return (True, [True] * len(schema_names))
 
@@ -115,6 +123,7 @@ class MockSimulator:
 
         Returns:
             Whether change tracking paused.
+
         """
         return False
 
@@ -123,6 +132,7 @@ class MockSimulator:
 
         Args:
             pause: Whether to pause the simulation.
+
         """
 
     def set_capability_check_enabled(self, enabled: Any) -> None:
@@ -130,6 +140,7 @@ class MockSimulator:
 
         Args:
             enabled: Whether the feature is enabled.
+
         """
 
     def set_supported_capability(self, schema_name: Any, is_supported: Any) -> None:
@@ -138,6 +149,7 @@ class MockSimulator:
         Args:
             schema_name: Name of the schema to inspect.
             is_supported: Whether the backend supports the operation.
+
         """
 
     def simulate(self, elapsed_time: Any, current_time: Any) -> None:
@@ -146,6 +158,7 @@ class MockSimulator:
         Args:
             elapsed_time: Elapsed simulation time.
             current_time: Current simulation time.
+
         """
         self.simulate_async(elapsed_time, current_time)
         self.fetch_results()
@@ -156,6 +169,7 @@ class MockSimulator:
         Args:
             elapsed_time: Elapsed simulation time.
             current_time: Current simulation time.
+
         """
         context = registration.PhysicsStepContext()
         context.simulation_id = self._simulation_id
@@ -176,6 +190,7 @@ class MockSimulator:
 
         Returns:
             The resulting value.
+
         """
         return registration.k_invalid_subscription_id
 
@@ -189,6 +204,7 @@ class MockSimulator:
 
         Returns:
             The resulting value.
+
         """
         self._physics_subscription_id += 1
         subscription_type = "pre" if pre_step else "post"
@@ -200,6 +216,7 @@ class MockSimulator:
 
         Args:
             subscription_id: Identifier of the event subscription.
+
         """
 
     def unsubscribe_physics_on_step_events(self, subscription_id: Any) -> None:
@@ -207,6 +224,7 @@ class MockSimulator:
 
         Args:
             subscription_id: Identifier of the event subscription.
+
         """
         for subscription_type in ["pre", "post"]:
             if subscription_id in self._physics_subscriptions[subscription_type]:
@@ -220,6 +238,7 @@ def setup_simulation_fns(simulation: Any, simulator: Any) -> None:
     Args:
         simulation: Simulation registration to exercise.
         simulator: Mock simulator backing the registration.
+
     """
     simulation.simulation_fns.check_results = simulator.check_results
     simulation.simulation_fns.close = simulator.close

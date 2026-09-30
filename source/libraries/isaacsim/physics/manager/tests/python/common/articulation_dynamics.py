@@ -41,10 +41,10 @@ from _scenario import (  # noqa: E402
     GridParams,
     GridTestBase,
     SimParams,
+    SimulationEntities,
     Transform,
     get_asset_root,
 )
-from isaacsim.physics.manager.impl.tensors import SimulationView  # noqa: E402
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics  # noqa: E402
 
 
@@ -62,11 +62,12 @@ class _AntArticulationBase(GridTestBase):
             asset_path,
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the shared Ant articulation view and index buffer.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.ants = sim.create_articulation_view("/envs/*/ant/torso")
         self.check_articulation_view(self.ants, self.num_envs, 9, 8, True)
@@ -76,13 +77,14 @@ class _AntArticulationBase(GridTestBase):
 class JacobiansCommon(_AntArticulationBase):
     """Validate that articulation Jacobians are finite and nonzero."""
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Read and validate Jacobians after the articulation settles.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 20:
             jac = self.ants.get_data("jacobians").numpy()
@@ -97,13 +99,14 @@ class JacobiansCommon(_AntArticulationBase):
 class MassMatricesCommon(_AntArticulationBase):
     """Validate generalized mass-matrix shape and positive definiteness."""
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Read and validate generalized mass matrices.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 5:
             mm_np = self.ants.get_data("generalized-mass-matrices").numpy()
@@ -121,13 +124,14 @@ class MassMatricesCommon(_AntArticulationBase):
 class CoriolisCentrifugalCommon(_AntArticulationBase):
     """Validate Coriolis-and-centrifugal compensation force rows."""
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Read the compensation forces and validate their batch size.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 5:
             self.skip_if_unsupported(self.ants, "coriolis-and-centrifugal-compensation-forces", "get")
@@ -142,19 +146,21 @@ class GravityCompensationCommon(_AntArticulationBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
         super().__init__(test_case, device_params)
         self.sim_params.gravity_mag = 9.81
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Read gravity compensation and validate its batch size.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 5:
             self.skip_if_unsupported(self.ants, "gravity-compensation-forces", "get")
@@ -171,11 +177,12 @@ class ArticulationRootTransformsCommon(_AntArticulationBase):
     offsets and checks both root and link transforms on the next step.
     """
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Prepare per-environment transform offsets.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         super().on_start(sim)
         # Save the per-env Z delta only. Do not read or write pose yet
@@ -187,13 +194,14 @@ class ArticulationRootTransformsCommon(_AntArticulationBase):
         self.expected_root_transforms = None
         self.expected_link_transforms = None
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Write settled root transforms and verify propagated link poses.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 0:
             # First simulate() has absorbed the projection drift. Read
@@ -238,13 +246,14 @@ class ArticulationRootTransformsGetCommon(_AntArticulationBase):
     distinct world positions across the environment grid.
     """
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Read and validate root transforms.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 3:
             rt = self.ants.get_data("root-transforms").numpy().reshape(self.ants.count, 7)
@@ -264,11 +273,12 @@ class ArticulationRootVelocitiesCommon(_AntArticulationBase):
     include any velocity induced by initial joint-manifold projection.
     """
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Prepare per-environment vertical velocity offsets.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         super().on_start(sim)
         # Save the per-env linear-Z delta only. See class docstring for
@@ -277,13 +287,14 @@ class ArticulationRootVelocitiesCommon(_AntArticulationBase):
         self.expected_root_vels = None
         self.expected_link_vels = None
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Write settled root velocities and verify propagated link state.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 0:
             # Post-projection: read current root + link velocities, add
@@ -334,13 +345,14 @@ class RootVelocityThroughDofSetCommon(_AntArticulationBase):
     of the submitted root velocity.
     """
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Apply reset-order writes and verify the root velocity is unchanged.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno != 0:
             return
@@ -376,13 +388,14 @@ class DofVelocityThroughRootVelocitySetCommon(_AntArticulationBase):
     velocity, and verifies that all joint velocities remain unchanged.
     """
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Write root velocity and compare joint velocities.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno != 0:
             return
@@ -437,6 +450,7 @@ class DofDriveTypeCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -471,11 +485,12 @@ class DofDriveTypeCommon(GridTestBase):
                 drive.CreateTypeAttr("acceleration")
                 self.expected_drive_types[i, 1] = 2
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the CartPole view and compare the reported drive types to the authored ones.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.cartpoles = sim.create_articulation_view("/envs/*/cartpole")
         self.check_articulation_view(self.cartpoles, self.num_envs, 3, 2, True)
@@ -489,13 +504,14 @@ class DofDriveTypeCommon(GridTestBase):
             drive_types, self.expected_drive_types
         ), f"expected drive types — got {drive_types.tolist()}, expected {self.expected_drive_types.tolist()}"
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Finish after startup validates the drive types.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         self.finish()
 
@@ -509,6 +525,7 @@ class JointPerformanceEnvelopeCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -528,11 +545,12 @@ class JointPerformanceEnvelopeCommon(GridTestBase):
             franka_asset,
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the Franka view and write drive-model properties.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.franka = sim.create_articulation_view("/envs/*/franka")
         self.all_indices = wp_utils.arange(self.franka.count, device=self.wp_device)
@@ -550,13 +568,14 @@ class JointPerformanceEnvelopeCommon(GridTestBase):
         self.skip_if_unsupported(self.franka, "dof-drive-model-properties", "set")
         self.franka.set_data("dof-drive-model-properties", wp_dm, self.cpu_all_indices)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Read back drive-model properties and validate their batch size.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 1:
             actual = self.franka.get_data("dof-drive-model-properties").numpy()
@@ -570,6 +589,7 @@ class JointActuationForcesCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -586,11 +606,12 @@ class JointActuationForcesCommon(GridTestBase):
             os.path.join(get_asset_root(), "CartPole.usda"),
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Verify initial forces and submit uniform joint actuation.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.cartpoles = sim.create_articulation_view("/envs/*/cartpole")
         self.check_articulation_view(self.cartpoles, self.num_envs, 3, 2, True)
@@ -605,13 +626,14 @@ class JointActuationForcesCommon(GridTestBase):
         self.applied_dof_forces = wp.from_numpy(forces, dtype=wp.float32, device=self.wp_device)
         self.cartpoles.set_data("dof-actuation-forces", self.applied_dof_forces, self.all_indices)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Compare projected and applied joint forces.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno >= 1:
             dof_forces = self.cartpoles.get_data("dof-projected-joint-forces").numpy()
@@ -674,6 +696,7 @@ def _create_revolute_pendulum_articulation(
 
     Returns:
         Paths of the root and child links.
+
     """
     pendulum_path = Sdf.Path(pendulum_path)
     xform = UsdGeom.Xform.Define(stage, pendulum_path)
@@ -726,6 +749,7 @@ class LinkAccelerationsCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     link_half_length = 0.5
@@ -751,11 +775,12 @@ class LinkAccelerationsCommon(GridTestBase):
             revolute_joint_axis="Y",
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the pendulum view and initialize joint state.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.pendulums = sim.create_articulation_view("/envs/*/pendulum")
         self.check_articulation_view(self.pendulums, self.num_envs, 2, 1, True)
@@ -778,13 +803,14 @@ class LinkAccelerationsCommon(GridTestBase):
         self.pendulums.set_data("dof-positions", dof_pos, self.all_indices)
         self.pre_dof_vel = self.pendulums.get_data("dof-velocities").numpy().reshape(self.pendulums.count)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Compare finite-difference and link angular accelerations.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno > 1:
             dof_vel = self.pendulums.get_data("dof-velocities").numpy().reshape(self.pendulums.count)
@@ -837,6 +863,7 @@ class DofPositionTargetReadbackCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     target_angle = 0.5
@@ -861,11 +888,12 @@ class DofPositionTargetReadbackCommon(GridTestBase):
             if joint_prim and joint_prim.IsValid():
                 _set_drive(joint_prim, "angular", "position", 0.0, 200.0, 25.0, 1000.0)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the pole view and submit its joint target.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.polecarts = sim.create_articulation_view("/envs/*/polecart")
         self.check_articulation_view(self.polecarts, self.num_envs, 2, 1, True)
@@ -878,13 +906,14 @@ class DofPositionTargetReadbackCommon(GridTestBase):
         )
         self.polecarts.set_data("dof-position-targets", targets, self.all_indices)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Verify the joint position across settled drive samples.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         # Assert the read holds at the target across the last few steps, not a single
         # sample, so an under-damped drive still oscillating would fail.
@@ -906,6 +935,7 @@ class DofPositionSetReadbackCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     set_angle = 0.5
@@ -926,11 +956,12 @@ class DofPositionSetReadbackCommon(GridTestBase):
             os.path.join(get_asset_root(), "CartPoleNoRail.usda"),
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the pole view and submit its joint position.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.polecarts = sim.create_articulation_view("/envs/*/polecart")
         self.check_articulation_view(self.polecarts, self.num_envs, 2, 1, True)
@@ -943,13 +974,14 @@ class DofPositionSetReadbackCommon(GridTestBase):
         )
         self.polecarts.set_data("dof-positions", positions, self.all_indices)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Verify that the submitted position survives simulation.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         # Step first: a bare read of joint_q would pass without eval_fk, so the set
         # must survive stepping. No drive/gravity, so a free joint holds its angle.
@@ -973,6 +1005,7 @@ class DofVelocitySetReadbackCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     set_velocity = 0.5
@@ -993,11 +1026,12 @@ class DofVelocitySetReadbackCommon(GridTestBase):
             os.path.join(get_asset_root(), "CartPoleNoRail.usda"),
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the pole view and submit its joint velocity.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.polecarts = sim.create_articulation_view("/envs/*/polecart")
         self.check_articulation_view(self.polecarts, self.num_envs, 2, 1, True)
@@ -1010,13 +1044,14 @@ class DofVelocitySetReadbackCommon(GridTestBase):
         )
         self.polecarts.set_data("dof-velocities", velocities, self.all_indices)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Verify that the submitted velocity survives simulation.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno >= 3:
             v = self.polecarts.get_data("dof-velocities").numpy().reshape(self.polecarts.count)
@@ -1037,6 +1072,7 @@ class DofPositionSetSubsetReadbackCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     set_angle = 0.5
@@ -1057,11 +1093,12 @@ class DofPositionSetSubsetReadbackCommon(GridTestBase):
             os.path.join(get_asset_root(), "CartPoleNoRail.usda"),
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the pole view and write even-numbered rows.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.polecarts = sim.create_articulation_view("/envs/*/polecart")
         self.check_articulation_view(self.polecarts, self.num_envs, 2, 1, True)
@@ -1074,13 +1111,14 @@ class DofPositionSetSubsetReadbackCommon(GridTestBase):
         )
         self.polecarts.set_data("dof-positions", positions, self.even)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Compare addressed and unaddressed joint positions.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno >= 3:
             p = self.polecarts.get_data("dof-positions").numpy().reshape(self.polecarts.count)
@@ -1104,6 +1142,7 @@ class DofPositionSetFloatingBaseReadbackCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     set_angle = 0.3
@@ -1121,11 +1160,12 @@ class DofPositionSetFloatingBaseReadbackCommon(GridTestBase):
             os.path.join(get_asset_root(), "Ant.usda"),
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the Ant view and cache its link count.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.ants = sim.create_articulation_view("/envs/*/ant/torso")
         self.check_articulation_view(self.ants, self.num_envs, 9, 8, True)
@@ -1137,13 +1177,14 @@ class DofPositionSetFloatingBaseReadbackCommon(GridTestBase):
             self.ants.get_data("link-transforms").numpy().reshape(self.ants.count, self.num_links, 7)[:, 0, :3].copy()
         )
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Write joint positions and verify the free root is unchanged.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 1:
             root_before = self._root_xyz()
@@ -1175,13 +1216,14 @@ class DofVelocitySetFloatingBaseReadbackCommon(DofPositionSetFloatingBaseReadbac
 
     set_velocity = 0.3
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Write joint velocities and verify the free root is unchanged.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 1:
             root_before = self._root_xyz()

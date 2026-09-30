@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "isaacsim/common/array/details/CudaKernel.hpp"
+#include "CudaKernel.hpp"
 
 #include <isaacsim/common/exceptions/Exceptions.hpp>
 
@@ -21,10 +21,10 @@
 #include <string>
 
 #if defined(_WIN32)
-#    ifndef NOMINMAX
+#    if !defined(NOMINMAX)
 #        define NOMINMAX
 #    endif
-#    ifndef WIN32_LEAN_AND_MEAN
+#    if !defined(WIN32_LEAN_AND_MEAN)
 #        define WIN32_LEAN_AND_MEAN
 #    endif
 #    include <windows.h>
@@ -36,7 +36,7 @@ namespace
 {
 
 #if defined(_WIN32)
-constexpr const char* kKernelLibraryFileName = "isaacsim-common-array-cuda-kernels.dll";
+constexpr const char* g_kKernelLibraryFileName = "isaacsim-common-array-cuda-kernels.dll";
 
 // Resolves the sibling kernel library next to the DLL this code itself lives in, so the lookup
 // does not depend on the process' PATH or working directory.
@@ -46,14 +46,14 @@ std::filesystem::path siblingLibraryPath()
     if (!::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                               reinterpret_cast<LPCSTR>(&siblingLibraryPath), &ownModule))
     {
-        return kKernelLibraryFileName;
+        return g_kKernelLibraryFileName;
     }
     char path[MAX_PATH]{};
     if (::GetModuleFileNameA(ownModule, path, MAX_PATH) == 0)
     {
-        return kKernelLibraryFileName;
+        return g_kKernelLibraryFileName;
     }
-    return std::filesystem::path(path).parent_path() / kKernelLibraryFileName;
+    return std::filesystem::path(path).parent_path() / g_kKernelLibraryFileName;
 }
 
 void* loadLibrary(const char* name)
@@ -80,9 +80,9 @@ void unloadLibrary(void* library)
 }
 #else
 #    if defined(__APPLE__)
-constexpr const char* kKernelLibraryFileName = "libisaacsim-common-array-cuda-kernels.dylib";
+constexpr const char* g_kKernelLibraryFileName = "libisaacsim-common-array-cuda-kernels.dylib";
 #    else
-constexpr const char* kKernelLibraryFileName = "libisaacsim-common-array-cuda-kernels.so";
+constexpr const char* g_kKernelLibraryFileName = "libisaacsim-common-array-cuda-kernels.so";
 #    endif
 
 // Resolves the sibling kernel library next to the shared object this code itself lives in, so
@@ -92,9 +92,9 @@ std::filesystem::path siblingLibraryPath()
     Dl_info info{};
     if (::dladdr(reinterpret_cast<const void*>(&siblingLibraryPath), &info) == 0 || !info.dli_fname)
     {
-        return kKernelLibraryFileName;
+        return g_kKernelLibraryFileName;
     }
-    return std::filesystem::path(info.dli_fname).parent_path() / kKernelLibraryFileName;
+    return std::filesystem::path(info.dli_fname).parent_path() / g_kKernelLibraryFileName;
 }
 
 void* loadLibrary(const char* name)
@@ -135,13 +135,13 @@ namespace details
 
 CudaKernel& CudaKernel::getInstance(bool throwIfInvalid)
 {
-    static CudaKernel instance;
-    if (!instance.isLoaded() && throwIfInvalid)
+    static CudaKernel s_instance;
+    if (!s_instance.isLoaded() && throwIfInvalid)
     {
         throw isaacsim::common::exceptions::CudaRuntimeError(
-            "CudaKernel::getInstance", "the CUDA kernel library was not loaded: " + instance.m_loadError);
+            "CudaKernel::getInstance", "the CUDA kernel library was not loaded: " + s_instance.m_loadError);
     }
-    return instance;
+    return s_instance;
 }
 
 bool CudaKernel::isLoaded() const
@@ -152,8 +152,8 @@ bool CudaKernel::isLoaded() const
 bool CudaKernel::cast(const void* source,
                       void* destination,
                       size_t count,
-                      DType::Kind sourceKind,
-                      DType::Kind destinationKind,
+                      Dtype::Kind sourceKind,
+                      Dtype::Kind destinationKind,
                       cudaStream_t stream,
                       bool throwIfInvalid) const
 {
@@ -222,6 +222,146 @@ bool CudaKernel::broadcastTo(const void* source,
     return true;
 }
 
+bool CudaKernel::take(const void* source,
+                      void* destination,
+                      const std::vector<int64_t>& indices,
+                      size_t axisSize,
+                      size_t inner,
+                      size_t elementSize,
+                      size_t totalElements,
+                      cudaStream_t stream,
+                      bool throwIfInvalid) const
+{
+    if (!m_take)
+    {
+        if (throwIfInvalid)
+        {
+            throw isaacsim::common::exceptions::CudaRuntimeError(
+                "CudaKernel::take", "the CUDA kernel library was not loaded: " + m_loadError);
+        }
+        return false;
+    }
+    // takeKernel divides by `inner` and `indices.size()`, and only a zero `totalElements` keeps it
+    // from running at all, so a non-empty destination whose extents do not multiply out is rejected
+    // here rather than reaching a modulo by zero on the device.
+    if (totalElements != 0 && (inner == 0 || indices.empty() || totalElements % (inner * indices.size()) != 0))
+    {
+        if (throwIfInvalid)
+        {
+            throw isaacsim::common::exceptions::CudaRuntimeError(
+                "CudaKernel::take", "the destination element count is not a multiple of indices.size() * inner",
+                static_cast<int>(cudaErrorInvalidValue));
+        }
+        return false;
+    }
+    cudaError_t result =
+        m_take(source, destination, indices.data(), axisSize, inner, indices.size(), elementSize, totalElements, stream);
+    if (result != cudaSuccess)
+    {
+        if (throwIfInvalid)
+        {
+            throw isaacsim::common::exceptions::CudaRuntimeError(
+                "CudaKernel::take", "kernel launch failed", static_cast<int>(result));
+        }
+        return false;
+    }
+    return true;
+}
+
+bool CudaKernel::binaryOp(const void* source1,
+                          const void* source2,
+                          void* destination,
+                          size_t count,
+                          Dtype::Kind kind,
+                          BinaryOp operation,
+                          cudaStream_t stream,
+                          bool throwIfInvalid) const
+{
+    if (!m_binaryOp)
+    {
+        if (throwIfInvalid)
+        {
+            throw isaacsim::common::exceptions::CudaRuntimeError(
+                "CudaKernel::binaryOp", "the CUDA kernel library was not loaded: " + m_loadError);
+        }
+        return false;
+    }
+    cudaError_t result = m_binaryOp(
+        source1, source2, destination, count, static_cast<int32_t>(kind), static_cast<int32_t>(operation), stream);
+    if (result != cudaSuccess)
+    {
+        if (throwIfInvalid)
+        {
+            throw isaacsim::common::exceptions::CudaRuntimeError(
+                "CudaKernel::binaryOp", "kernel launch failed", static_cast<int>(result));
+        }
+        return false;
+    }
+    return true;
+}
+
+bool CudaKernel::unaryOp(const void* source,
+                         void* destination,
+                         size_t count,
+                         Dtype::Kind kind,
+                         UnaryOp operation,
+                         cudaStream_t stream,
+                         bool throwIfInvalid) const
+{
+    if (!m_unaryOp)
+    {
+        if (throwIfInvalid)
+        {
+            throw isaacsim::common::exceptions::CudaRuntimeError(
+                "CudaKernel::unaryOp", "the CUDA kernel library was not loaded: " + m_loadError);
+        }
+        return false;
+    }
+    cudaError_t result =
+        m_unaryOp(source, destination, count, static_cast<int32_t>(kind), static_cast<int32_t>(operation), stream);
+    if (result != cudaSuccess)
+    {
+        if (throwIfInvalid)
+        {
+            throw isaacsim::common::exceptions::CudaRuntimeError(
+                "CudaKernel::unaryOp", "kernel launch failed", static_cast<int>(result));
+        }
+        return false;
+    }
+    return true;
+}
+
+bool CudaKernel::reduceOp(const void* source,
+                          void* destination,
+                          size_t count,
+                          Dtype::Kind kind,
+                          ReduceOp operation,
+                          cudaStream_t stream,
+                          bool throwIfInvalid) const
+{
+    if (!m_reduceOp)
+    {
+        if (throwIfInvalid)
+        {
+            throw isaacsim::common::exceptions::CudaRuntimeError(
+                "CudaKernel::reduceOp", "the CUDA kernel library was not loaded: " + m_loadError);
+        }
+        return false;
+    }
+    cudaError_t result =
+        m_reduceOp(source, destination, count, static_cast<int32_t>(kind), static_cast<int32_t>(operation), stream);
+    if (result != cudaSuccess)
+    {
+        if (throwIfInvalid)
+        {
+            throw isaacsim::common::exceptions::CudaRuntimeError(
+                "CudaKernel::reduceOp", "kernel launch failed", static_cast<int>(result));
+        }
+        return false;
+    }
+    return true;
+}
+
 CudaKernel::CudaKernel()
 {
     const std::string libraryPath = siblingLibraryPath().string();
@@ -248,16 +388,26 @@ CudaKernel::CudaKernel()
         return symbol;
     };
 
-    m_cast = reinterpret_cast<CastFn>(resolveSymbol("arrayCast"));
-    m_broadcastTo = reinterpret_cast<BroadcastToFn>(resolveSymbol("arrayBroadcastTo"));
+    m_cast = reinterpret_cast<CastFunction>(resolveSymbol("castFunction"));
+    m_broadcastTo = reinterpret_cast<BroadcastToFunction>(resolveSymbol("broadcastToFunction"));
+    m_take = reinterpret_cast<TakeFunction>(resolveSymbol("takeFunction"));
+    m_binaryOp = reinterpret_cast<BinaryOpFunction>(resolveSymbol("binaryOpFunction"));
+    m_unaryOp = reinterpret_cast<UnaryOpFunction>(resolveSymbol("unaryOpFunction"));
+    m_reduceOp = reinterpret_cast<ReduceOpFunction>(resolveSymbol("reduceOpFunction"));
 
     if (!missingSymbols.empty())
     {
+        // Every entry point is cleared, not just the ones that failed: the library is unloaded
+        // below, so a pointer that did resolve would dangle into unmapped memory.
         m_loadError = "loaded '" + libraryPath + "' but could not resolve: " + missingSymbols;
         unloadLibrary(m_handle);
         m_handle = nullptr;
         m_cast = nullptr;
         m_broadcastTo = nullptr;
+        m_take = nullptr;
+        m_binaryOp = nullptr;
+        m_unaryOp = nullptr;
+        m_reduceOp = nullptr;
     }
 }
 

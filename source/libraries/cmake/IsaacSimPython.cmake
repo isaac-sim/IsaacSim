@@ -25,7 +25,7 @@ function(_isaacsim_validate_python_import_name python_import_name)
     endif()
 endfunction()
 
-function(_isaacsim_register_python_import module_name python_import_name group_name)
+function(_isaacsim_register_python_import module_name python_import_name group_name requires_bindings)
     _isaacsim_validate_python_import_name("${python_import_name}")
     get_property(python_imports GLOBAL PROPERTY ISAACSIM_PYTHON_IMPORTS)
     if(python_import_name IN_LIST python_imports)
@@ -39,12 +39,15 @@ function(_isaacsim_register_python_import module_name python_import_name group_n
     endif()
     set_property(GLOBAL APPEND PROPERTY ISAACSIM_PYTHON_IMPORTS "${python_import_name}")
     set_property(GLOBAL APPEND PROPERTY ISAACSIM_PYTHON_IMPORT_OWNERS "${module_name}")
+    set_property(GLOBAL PROPERTY
+        "ISAACSIM_PYTHON_IMPORT_${python_import_name}_REQUIRES_BINDINGS" "${requires_bindings}"
+    )
     set_property(GLOBAL APPEND PROPERTY "ISAACSIM_GROUP_${group_name}_PYTHON_IMPORTS" "${python_import_name}")
     string(MAKE_C_IDENTIFIER "${module_name}" module_key)
     set_property(GLOBAL APPEND PROPERTY "ISAACSIM_MODULE_${module_key}_PYTHON_IMPORTS" "${python_import_name}")
 endfunction()
 
-function(_isaacsim_add_python_module module_name python_import_name preserve_package_layout)
+function(_isaacsim_add_python_module module_name python_import_name preserve_package_layout requires_bindings)
     _isaacsim_prepare_module("${module_name}"
         module_target module_alias module_path module_output_dir group_name group_version
     )
@@ -73,7 +76,8 @@ function(_isaacsim_add_python_module module_name python_import_name preserve_pac
         )
         if(NOT public_init_statements STREQUAL required_public_init_statements)
             message(FATAL_ERROR
-                "${module_name} python/__init__.py may contain only license comments, blank lines, and these statements: "
+                "${module_name} python/__init__.py may contain only license comments, blank lines, and these "
+                "statements: "
                 "${required_public_init_statements}"
             )
         endif()
@@ -90,7 +94,9 @@ function(_isaacsim_add_python_module module_name python_import_name preserve_pac
     if(module_name IN_LIST python_modules)
         message(FATAL_ERROR "Python module ${module_name} is already registered")
     endif()
-    _isaacsim_register_python_import("${module_name}" "${python_import_name}" "${group_name}")
+    _isaacsim_register_python_import(
+        "${module_name}" "${python_import_name}" "${group_name}" "${requires_bindings}"
+    )
 
     set(stage_target "stage-${module_target}-python-package")
     _isaacsim_get_python_stage_dir(python_stage_dir)
@@ -169,7 +175,7 @@ function(_isaacsim_add_python_module module_name python_import_name preserve_pac
 endfunction()
 
 function(isaacsim_add_python_module)
-    cmake_parse_arguments(ARG "PRESERVE_PACKAGE_LAYOUT" "NAME" "" ${ARGN})
+    cmake_parse_arguments(ARG "PRESERVE_PACKAGE_LAYOUT;REQUIRES_BINDINGS" "NAME" "" ${ARGN})
 
     if(ARG_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "isaacsim_add_python_module received unknown arguments: ${ARG_UNPARSED_ARGUMENTS}")
@@ -178,11 +184,13 @@ function(isaacsim_add_python_module)
         message(FATAL_ERROR "isaacsim_add_python_module requires NAME")
     endif()
 
-    _isaacsim_add_python_module("${ARG_NAME}" "${ARG_NAME}" "${ARG_PRESERVE_PACKAGE_LAYOUT}")
+    _isaacsim_add_python_module(
+        "${ARG_NAME}" "${ARG_NAME}" "${ARG_PRESERVE_PACKAGE_LAYOUT}" "${ARG_REQUIRES_BINDINGS}"
+    )
 endfunction()
 
 function(isaacsim_add_compat_python_module)
-    cmake_parse_arguments(ARG "" "NAME;IMPORT_NAME" "" ${ARGN})
+    cmake_parse_arguments(ARG "REQUIRES_BINDINGS" "NAME;IMPORT_NAME" "" ${ARGN})
 
     if(ARG_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR
@@ -201,5 +209,5 @@ function(isaacsim_add_compat_python_module)
         )
     endif()
 
-    _isaacsim_add_python_module("${ARG_NAME}" "${ARG_IMPORT_NAME}" FALSE)
+    _isaacsim_add_python_module("${ARG_NAME}" "${ARG_IMPORT_NAME}" FALSE "${ARG_REQUIRES_BINDINGS}")
 endfunction()

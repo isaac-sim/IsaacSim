@@ -3,7 +3,7 @@ name: data-collection-sim
 description: "Headless Replicator SDG for static scenes (writers, poses, Kitti). Use when collecting annotated training data. Do NOT use for mobile-robot SDG (use mobility-gen)."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Data Collection Simulation

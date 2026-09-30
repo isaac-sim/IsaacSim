@@ -17,7 +17,7 @@
 
 #include <pxr/base/plug/registry.h>
 
-#ifdef _WIN32
+#if defined(_WIN32)
 #    include <windows.h>
 #else
 #    include <dlfcn.h>
@@ -25,13 +25,16 @@
 
 #include <filesystem>
 #include <string>
+#if defined(_WIN32)
+#    include <vector>
+#endif
 
 namespace
 {
 
 namespace logging = isaacsim::common::logging;
 
-#ifndef _WIN32
+#if !defined(_WIN32)
 std::filesystem::path getSharedLibraryDirectory()
 {
     Dl_info info;
@@ -58,12 +61,54 @@ std::filesystem::path getSharedLibraryDirectory()
 }
 #endif
 
+#if defined(_WIN32)
+bool registerPluginRoot(const logging::Logger& logger, const std::filesystem::path& searchPath, const char* description)
+{
+    std::error_code errorCode;
+    if (!std::filesystem::is_regular_file(searchPath / "plugInfo.json", errorCode))
+    {
+        return false;
+    }
+
+    const std::string pluginPath = searchPath.lexically_normal().string();
+    ISAACSIM_REPORT(logger, "Registering {}: {}", description, pluginPath);
+    PXR_NS::PlugRegistry::GetInstance().RegisterPlugins({ pluginPath });
+    return true;
+}
+#endif
+
 struct UsdSchemaRegistration
 {
     UsdSchemaRegistration()
     {
         const logging::Logger logger("isaacsim.foundation.usd.openusd");
-        const std::filesystem::path searchPath = getSharedLibraryDirectory() / "third-party-schemas";
+        const std::filesystem::path sharedLibraryDirectory = getSharedLibraryDirectory();
+
+#if defined(_WIN32)
+        // OpenUSD normally discovers these manifests through its package
+        // layout. Native Windows tests and installed executables copy the DLLs
+        // beside the executable, so register the staged core manifest before
+        // anything asks Ar for its default resolver.
+        const std::vector<std::filesystem::path> openUsdSearchPaths = {
+            sharedLibraryDirectory / "usd",
+            sharedLibraryDirectory / ".." / "lib" / "usd",
+        };
+        bool registeredOpenUsd = false;
+        for (const std::filesystem::path& searchPath : openUsdSearchPaths)
+        {
+            if (registerPluginRoot(logger, searchPath, "OpenUSD plugins"))
+            {
+                registeredOpenUsd = true;
+                break;
+            }
+        }
+        if (!registeredOpenUsd)
+        {
+            ISAACSIM_LOG_WARNING(logger, "No OpenUSD plugin manifest found beside {}", sharedLibraryDirectory.string());
+        }
+#endif
+
+        const std::filesystem::path searchPath = sharedLibraryDirectory / "third-party-schemas";
         size_t registeredSchemas = 0;
         std::error_code errorCode;
         for (const auto& entry : std::filesystem::recursive_directory_iterator(searchPath, errorCode))

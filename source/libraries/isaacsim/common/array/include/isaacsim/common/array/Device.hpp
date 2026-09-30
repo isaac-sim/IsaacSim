@@ -38,7 +38,7 @@ namespace details
  * is parsed by @ref Device::fromString to resolve named devices such as `"cpu"`
  * or `"cuda:0"`.
  */
-using SupportedDeviceSpec =
+using SupportedDeviceSpecification =
     std::variant<int8_t, int16_t, int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t, std::string>;
 
 } // namespace details
@@ -62,7 +62,7 @@ public:
      * @brief Constructs a Device from a supported device specification.
      * @param[in] input Integer ordinal or string descriptor identifying the device.
      */
-    Device(details::SupportedDeviceSpec input);
+    Device(details::SupportedDeviceSpecification input);
 
     Device() = delete;
     /** @brief Copy-constructs a device descriptor. */

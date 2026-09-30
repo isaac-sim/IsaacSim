@@ -22,7 +22,7 @@
 namespace
 {
 
-bool expect_vector(const char* label, const std::vector<float>& actual, const std::vector<float>& expected)
+bool expectVector(const char* label, const std::vector<float>& actual, const std::vector<float>& expected)
 {
     if (actual == expected)
         return true;
@@ -31,7 +31,7 @@ bool expect_vector(const char* label, const std::vector<float>& actual, const st
     return false;
 }
 
-bool test_quad_fan_with_authored_streams()
+bool testQuadFanWithAuthoredStreams()
 {
     const float points[] = { 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0 };
     const int counts[] = { 4 };
@@ -45,69 +45,69 @@ bool test_quad_fan_with_authored_streams()
                                                                  output_normals, output_texcoords);
 
     bool ok = true;
-    ok &= expect_vector("points", output_points,
-                        {
-                            0,
-                            0,
-                            0,
-                            1,
-                            0,
-                            0,
-                            1,
-                            1,
-                            0,
-                            0,
-                            0,
-                            0,
-                            1,
-                            1,
-                            0,
-                            0,
-                            1,
-                            0,
-                        });
-    ok &= expect_vector("face-varying normals", output_normals,
-                        {
-                            1,
-                            0,
-                            0,
-                            0,
-                            1,
-                            0,
-                            0,
-                            0,
-                            1,
-                            1,
-                            0,
-                            0,
-                            0,
-                            0,
-                            1,
-                            -1,
-                            0,
-                            0,
-                        });
-    ok &= expect_vector("indexed face-varying UVs", output_texcoords,
-                        {
-                            0,
-                            1,
-                            1,
-                            1,
-                            1,
-                            0,
-                            0,
-                            1,
-                            1,
-                            0,
-                            0,
-                            0,
-                        });
+    ok &= expectVector("points", output_points,
+                       {
+                           0,
+                           0,
+                           0,
+                           1,
+                           0,
+                           0,
+                           1,
+                           1,
+                           0,
+                           0,
+                           0,
+                           0,
+                           1,
+                           1,
+                           0,
+                           0,
+                           1,
+                           0,
+                       });
+    ok &= expectVector("face-varying normals", output_normals,
+                       {
+                           1,
+                           0,
+                           0,
+                           0,
+                           1,
+                           0,
+                           0,
+                           0,
+                           1,
+                           1,
+                           0,
+                           0,
+                           0,
+                           0,
+                           1,
+                           -1,
+                           0,
+                           0,
+                       });
+    ok &= expectVector("indexed face-varying UVs", output_texcoords,
+                       {
+                           0,
+                           1,
+                           1,
+                           1,
+                           1,
+                           0,
+                           0,
+                           1,
+                           1,
+                           0,
+                           0,
+                           0,
+                       });
     return ok;
 }
 
 // Stock HdMeshUtil::ComputeTriangleIndices skips degenerate faces (count < 3)
 // and keeps triangulating the faces after them (pxr/imaging/hd/meshUtil.cpp).
-bool test_degenerate_face_skipped()
+bool testDegenerateFaceSkipped()
 {
     const float points[] = {
         0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 2, 0, 0, 3, 0, 0, 3, 1, 0, 2, 1, 0,
@@ -119,7 +119,7 @@ bool test_degenerate_face_skipped()
                                                                  0, nullptr, 0, output_points, output_normals,
                                                                  output_texcoords);
 
-    return expect_vector(
+    return expectVector(
         "points around degenerate face", output_points,
         {
             0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 2, 0, 0, 3, 0, 0, 3, 1, 0, 2, 0, 0, 3, 1, 0, 2, 1, 0,
@@ -128,7 +128,7 @@ bool test_degenerate_face_skipped()
 
 // The out-of-range corner guard is a malformed-buffer stop, not a skip: a
 // face whose corners run past faceVertexIndices must end triangulation.
-bool test_truncated_index_buffer_stops()
+bool testTruncatedIndexBufferStops()
 {
     const float points[] = { 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0 };
     const int counts[] = { 4, 4 };
@@ -138,27 +138,27 @@ bool test_truncated_index_buffer_stops()
                                                                  0, nullptr, 0, output_points, output_normals,
                                                                  output_texcoords);
 
-    return expect_vector("points after truncated buffer", output_points,
-                         {
-                             0,
-                             0,
-                             0,
-                             1,
-                             0,
-                             0,
-                             1,
-                             1,
-                             0,
-                             0,
-                             0,
-                             0,
-                             1,
-                             1,
-                             0,
-                             0,
-                             1,
-                             0,
-                         });
+    return expectVector("points after truncated buffer", output_points,
+                        {
+                            0,
+                            0,
+                            0,
+                            1,
+                            0,
+                            0,
+                            1,
+                            1,
+                            0,
+                            0,
+                            0,
+                            0,
+                            1,
+                            1,
+                            0,
+                            0,
+                            1,
+                            0,
+                        });
 }
 
 // A mesh that authors NO normals is smooth-shaded, not faceted: official
@@ -166,7 +166,7 @@ bool test_truncated_index_buffer_stops()
 // Two unit quads folded 90 degrees about the y=1 edge, so the answer is exact:
 // the two corners shared by both faces average to normalize(0,-1,1), and the
 // corners belonging to one face keep that face's own normal.
-bool test_unauthored_normals_are_smooth()
+bool testUnauthoredNormalsAreSmooth()
 {
     const float points[] = {
         0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, // quad A, in z=0  -> +Z
@@ -208,9 +208,9 @@ bool test_unauthored_normals_are_smooth()
 int main()
 {
     bool ok = true;
-    ok &= test_quad_fan_with_authored_streams();
-    ok &= test_degenerate_face_skipped();
-    ok &= test_truncated_index_buffer_stops();
-    ok &= test_unauthored_normals_are_smooth();
+    ok &= testQuadFanWithAuthoredStreams();
+    ok &= testDegenerateFaceSkipped();
+    ok &= testTruncatedIndexBufferStops();
+    ok &= testUnauthoredNormalsAreSmooth();
     return ok ? 0 : 1;
 }

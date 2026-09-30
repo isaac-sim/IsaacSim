@@ -28,7 +28,7 @@ namespace common
 namespace array
 {
 
-Shape::Shape(const details::SupportedShapeSpec& shape)
+Shape::Shape(const details::SupportedShapeSpecification& shape)
     : m_shape(std::visit(
           [](const auto& value) -> std::vector<int64_t>
           {
@@ -79,6 +79,11 @@ bool Shape::operator!=(const Shape& other) const
 std::vector<int64_t> Shape::shape() const
 {
     return m_shape;
+}
+
+const int64_t* Shape::data() const
+{
+    return m_shape.data();
 }
 
 size_t Shape::ndim() const
@@ -152,7 +157,8 @@ Shape Shape::resolve(const Shape& other) const
             if (totalElements)
             {
                 throw std::invalid_argument(
-                    "Shape::resolve(): cannot infer dimension with a zero-size known dimension and non-zero total size");
+                    "Shape::resolve(): cannot infer dimension with a zero-size known dimension and non-zero total "
+                    "size");
             }
             dimensions[*inferredIndex] = 0;
         }

@@ -321,7 +321,8 @@ class ControllerAckermann(Controller):
                 raise TypeError("steerable_wheels_at_rear must be wp.array[bool] or None.")
             if int(steerable_wheels_at_rear.size) != num_robots:
                 raise ValueError(
-                    f"steerable_wheels_at_rear length {steerable_wheels_at_rear.size} must equal num_robots={num_robots}."
+                    f"steerable_wheels_at_rear length {steerable_wheels_at_rear.size} must equal "
+                    f"num_robots={num_robots}."
                 )
             self._steerable_at_rear = steerable_wheels_at_rear
 

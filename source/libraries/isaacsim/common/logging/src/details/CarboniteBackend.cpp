@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "isaacsim/common/logging/details/CarboniteBackend.hpp"
+#include "CarboniteBackend.hpp"
 
 #include "LoggingHostInternal.hpp"
 
@@ -58,8 +58,8 @@ public:
 namespace
 {
 
-constexpr uint64_t kAllGlobalConfigFields = (UINT64_C(1) << 28) - 1;
-constexpr size_t kGlobalConfigBaseSize = offsetof(IsaacSimCommonLoggingGlobalConfig, channelConfigs);
+constexpr uint64_t g_kAllGlobalConfigFields = (UINT64_C(1) << 28) - 1;
+constexpr size_t g_kGlobalConfigurationBaseSize = offsetof(IsaacSimCommonLoggingGlobalConfig, channelConfigs);
 
 bool isValidLevel(int32_t level)
 {
@@ -82,52 +82,57 @@ bool isValidChannelSettingBehavior(int32_t behavior)
            behavior <= ISAACSIM_COMMON_LOGGING_CHANNEL_SETTING_OVERRIDE;
 }
 
-bool isValidChannelConfig(const IsaacSimCommonLoggingChannelConfig& config)
+bool isValidChannelConfiguration(const IsaacSimCommonLoggingChannelConfig& configuration)
 {
-    if (config.structSize < sizeof(config) || config.channel == nullptr || config.channel[0] == '\0' ||
-        !isValidChannelSettingBehavior(config.enabledBehavior) ||
-        !isValidChannelSettingBehavior(config.minimumLevelBehavior))
+    if (configuration.structSize < sizeof(configuration) || configuration.channel == nullptr ||
+        configuration.channel[0] == '\0' || !isValidChannelSettingBehavior(configuration.enabledBehavior) ||
+        !isValidChannelSettingBehavior(configuration.minimumLevelBehavior))
     {
         return false;
     }
-    if (config.enabledBehavior == ISAACSIM_COMMON_LOGGING_CHANNEL_SETTING_OVERRIDE && !isValidBoolean(config.enabled))
+    if (configuration.enabledBehavior == ISAACSIM_COMMON_LOGGING_CHANNEL_SETTING_OVERRIDE &&
+        !isValidBoolean(configuration.enabled))
     {
         return false;
     }
-    return config.minimumLevelBehavior != ISAACSIM_COMMON_LOGGING_CHANNEL_SETTING_OVERRIDE ||
-           isValidLevel(config.minimumLevel);
+    return configuration.minimumLevelBehavior != ISAACSIM_COMMON_LOGGING_CHANNEL_SETTING_OVERRIDE ||
+           isValidLevel(configuration.minimumLevel);
 }
 
-bool isValidGlobalConfig(const IsaacSimCommonLoggingGlobalConfig& config)
+bool isValidGlobalConfiguration(const IsaacSimCommonLoggingGlobalConfig& configuration)
 {
-    if (config.structSize < kGlobalConfigBaseSize || (config.fields & ~kAllGlobalConfigFields) != 0)
+    if (configuration.structSize < g_kGlobalConfigurationBaseSize ||
+        (configuration.fields & ~g_kAllGlobalConfigFields) != 0)
     {
         return false;
     }
 
-    if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_CHANNELS))
+    if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_CHANNELS))
     {
-        if (config.structSize < sizeof(config) || (config.channelConfigCount != 0 && config.channelConfigs == nullptr))
+        if (configuration.structSize < sizeof(configuration) ||
+            (configuration.channelConfigCount != 0 && configuration.channelConfigs == nullptr))
         {
             return false;
         }
-        for (size_t index = 0; index < config.channelConfigCount; ++index)
+        for (size_t index = 0; index < configuration.channelConfigCount; ++index)
         {
-            if (!isValidChannelConfig(config.channelConfigs[index]))
+            if (!isValidChannelConfiguration(configuration.channelConfigs[index]))
             {
                 return false;
             }
         }
     }
 
-    if ((isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_MINIMUM_LEVEL) && !isValidLevel(config.minimumLevel)) ||
-        (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_LEVEL) &&
-         !isValidLevel(config.standardStreamLevel)) ||
-        (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_DEBUG_CONSOLE_LEVEL) &&
-         !isValidLevel(config.debugConsoleLevel)) ||
-        (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_LEVEL) && !isValidLevel(config.fileLevel)) ||
-        (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_FLUSH_LEVEL) &&
-         !isValidLevel(config.fileFlushLevel)))
+    if ((isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_MINIMUM_LEVEL) &&
+         !isValidLevel(configuration.minimumLevel)) ||
+        (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_LEVEL) &&
+         !isValidLevel(configuration.standardStreamLevel)) ||
+        (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_DEBUG_CONSOLE_LEVEL) &&
+         !isValidLevel(configuration.debugConsoleLevel)) ||
+        (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_LEVEL) &&
+         !isValidLevel(configuration.fileLevel)) ||
+        (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_FLUSH_LEVEL) &&
+         !isValidLevel(configuration.fileFlushLevel)))
     {
         return false;
     }
@@ -136,42 +141,42 @@ bool isValidGlobalConfig(const IsaacSimCommonLoggingGlobalConfig& config)
         uint64_t field;
         uint32_t value;
     } booleans[] = {
-        { ISAACSIM_COMMON_LOGGING_CONFIG_ENABLED, config.enabled },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_ASYNCHRONOUS, config.asynchronous },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_ENABLED, config.standardStreamEnabled },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_FLUSH, config.standardStreamFlush },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_DEBUG_CONSOLE_ENABLED, config.debugConsoleEnabled },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_FILE_APPEND, config.fileAppend },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_FILENAME_INCLUDED, config.filenameIncluded },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_LINE_NUMBER_INCLUDED, config.lineNumberIncluded },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_FUNCTION_NAME_INCLUDED, config.functionNameIncluded },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_TIMESTAMP_INCLUDED, config.timestampIncluded },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_UTC_TIMESTAMPS, config.utcTimestamps },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_MICROSECOND_TIMESTAMPS, config.microsecondTimestamps },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_THREAD_ID_INCLUDED, config.threadIdIncluded },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_SOURCE_INCLUDED, config.sourceIncluded },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_PROCESS_ID_INCLUDED, config.processIdIncluded },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_TRACE_ID_INCLUDED, config.traceIdIncluded },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_COLOR_INCLUDED, config.colorIncluded },
-        { ISAACSIM_COMMON_LOGGING_CONFIG_FORCE_ANSI_COLOR, config.forceAnsiColor },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_ENABLED, configuration.enabled },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_ASYNCHRONOUS, configuration.asynchronous },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_ENABLED, configuration.standardStreamEnabled },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_FLUSH, configuration.standardStreamFlush },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_DEBUG_CONSOLE_ENABLED, configuration.debugConsoleEnabled },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_FILE_APPEND, configuration.fileAppend },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_FILENAME_INCLUDED, configuration.filenameIncluded },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_LINE_NUMBER_INCLUDED, configuration.lineNumberIncluded },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_FUNCTION_NAME_INCLUDED, configuration.functionNameIncluded },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_TIMESTAMP_INCLUDED, configuration.timestampIncluded },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_UTC_TIMESTAMPS, configuration.utcTimestamps },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_MICROSECOND_TIMESTAMPS, configuration.microsecondTimestamps },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_THREAD_ID_INCLUDED, configuration.threadIdIncluded },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_SOURCE_INCLUDED, configuration.sourceIncluded },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_PROCESS_ID_INCLUDED, configuration.processIdIncluded },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_TRACE_ID_INCLUDED, configuration.traceIdIncluded },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_COLOR_INCLUDED, configuration.colorIncluded },
+        { ISAACSIM_COMMON_LOGGING_CONFIG_FORCE_ANSI_COLOR, configuration.forceAnsiColor },
     };
     for (const auto& boolean : booleans)
     {
-        if (isSelected(config.fields, boolean.field) && !isValidBoolean(boolean.value))
+        if (isSelected(configuration.fields, boolean.field) && !isValidBoolean(boolean.value))
         {
             return false;
         }
     }
 
-    if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_OUTPUT_STREAM) &&
-        config.outputStream != ISAACSIM_COMMON_LOGGING_OUTPUT_STREAM_DEFAULT &&
-        config.outputStream != ISAACSIM_COMMON_LOGGING_OUTPUT_STREAM_STDERR)
+    if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_OUTPUT_STREAM) &&
+        configuration.outputStream != ISAACSIM_COMMON_LOGGING_OUTPUT_STREAM_DEFAULT &&
+        configuration.outputStream != ISAACSIM_COMMON_LOGGING_OUTPUT_STREAM_STDERR)
     {
         return false;
     }
-    if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_ELAPSED_TIME) &&
-        (config.elapsedTime < ISAACSIM_COMMON_LOGGING_ELAPSED_TIME_DISABLED ||
-         config.elapsedTime > ISAACSIM_COMMON_LOGGING_ELAPSED_TIME_NANOSECONDS))
+    if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_ELAPSED_TIME) &&
+        (configuration.elapsedTime < ISAACSIM_COMMON_LOGGING_ELAPSED_TIME_DISABLED ||
+         configuration.elapsedTime > ISAACSIM_COMMON_LOGGING_ELAPSED_TIME_NANOSECONDS))
     {
         return false;
     }
@@ -223,8 +228,8 @@ carb::logging::LogSettingBehavior convertToCarboniteBehavior(int32_t behavior)
 
 void writeToStandardOutput(std::string_view channel, std::string_view message) noexcept
 {
-    static std::mutex standardOutputMutex;
-    const std::lock_guard<std::mutex> lock(standardOutputMutex);
+    static std::mutex s_standardOutputMutex;
+    const std::lock_guard<std::mutex> lock(s_standardOutputMutex);
     std::fputc('[', stdout);
     if (!channel.empty())
     {
@@ -300,7 +305,7 @@ public:
             }
             logging = m_logging;
             ++m_activeBackendCalls;
-            ++g_backendCallDepth;
+            ++s_backendCallDepth;
         }
         try
         {
@@ -317,7 +322,7 @@ public:
 
     IsaacSimCommonLoggingHostResult attachHost(void* carboniteLogging, IsaacSimCommonLoggingHostToken& token) noexcept
     {
-        if (carboniteLogging == nullptr || g_backendCallDepth != 0)
+        if (carboniteLogging == nullptr || s_backendCallDepth != 0)
         {
             return ISAACSIM_COMMON_LOGGING_HOST_INVALID_ARGUMENT;
         }
@@ -337,7 +342,7 @@ public:
 
     IsaacSimCommonLoggingHostResult detachHost(IsaacSimCommonLoggingHostToken token) noexcept
     {
-        if (token == 0 || g_backendCallDepth != 0)
+        if (token == 0 || s_backendCallDepth != 0)
         {
             return ISAACSIM_COMMON_LOGGING_HOST_INVALID_ARGUMENT;
         }
@@ -419,13 +424,13 @@ public:
         _endBackendCall();
     }
 
-    IsaacSimCommonLoggingConfigureResult configureGlobal(const IsaacSimCommonLoggingGlobalConfig& config) noexcept
+    IsaacSimCommonLoggingConfigureResult configureGlobal(const IsaacSimCommonLoggingGlobalConfig& configuration) noexcept
     {
-        if (g_backendCallDepth != 0)
+        if (s_backendCallDepth != 0)
         {
             return ISAACSIM_COMMON_LOGGING_CONFIGURE_BACKEND_UNAVAILABLE;
         }
-        if (!isValidGlobalConfig(config))
+        if (!isValidGlobalConfiguration(configuration))
         {
             return ISAACSIM_COMMON_LOGGING_CONFIGURE_INVALID_ARGUMENT;
         }
@@ -447,141 +452,143 @@ public:
         IsaacSimCommonLoggingConfigureResult result = ISAACSIM_COMMON_LOGGING_CONFIGURE_SUCCESS;
         try
         {
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_ENABLED))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_ENABLED))
             {
-                logging->setLogEnabled(config.enabled != 0);
+                logging->setLogEnabled(configuration.enabled != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_MINIMUM_LEVEL))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_MINIMUM_LEVEL))
             {
                 int32_t level = 0;
-                convertToCarboniteLevel(static_cast<LogLevel>(config.minimumLevel), level);
+                convertToCarboniteLevel(static_cast<LogLevel>(configuration.minimumLevel), level);
                 logging->setLevelThreshold(level);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_ASYNCHRONOUS))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_ASYNCHRONOUS))
             {
-                logging->setLogAsync(config.asynchronous != 0);
+                logging->setLogAsync(configuration.asynchronous != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_ENABLED))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_ENABLED))
             {
-                logger->setStandardStreamOutput(config.standardStreamEnabled != 0);
+                logger->setStandardStreamOutput(configuration.standardStreamEnabled != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_LEVEL))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_LEVEL))
             {
                 int32_t level = 0;
-                convertToCarboniteLevel(static_cast<LogLevel>(config.standardStreamLevel), level);
+                convertToCarboniteLevel(static_cast<LogLevel>(configuration.standardStreamLevel), level);
                 logger->setStandardStreamOutputLevelThreshold(level);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_FLUSH))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_FLUSH))
             {
-                logger->setFlushStandardStreamOutput(config.standardStreamFlush != 0);
+                logger->setFlushStandardStreamOutput(configuration.standardStreamFlush != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_OUTPUT_STREAM))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_OUTPUT_STREAM))
             {
                 const carb::logging::OutputStream stream =
-                    config.outputStream == ISAACSIM_COMMON_LOGGING_OUTPUT_STREAM_STDERR ?
+                    configuration.outputStream == ISAACSIM_COMMON_LOGGING_OUTPUT_STREAM_STDERR ?
                         carb::logging::OutputStream::eStderr :
                         carb::logging::OutputStream::eDefault;
                 logger->setOutputStream(stream);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_DEBUG_CONSOLE_ENABLED))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_DEBUG_CONSOLE_ENABLED))
             {
-                logger->setDebugConsoleOutput(config.debugConsoleEnabled != 0);
+                logger->setDebugConsoleOutput(configuration.debugConsoleEnabled != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_DEBUG_CONSOLE_LEVEL))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_DEBUG_CONSOLE_LEVEL))
             {
                 int32_t level = 0;
-                convertToCarboniteLevel(static_cast<LogLevel>(config.debugConsoleLevel), level);
+                convertToCarboniteLevel(static_cast<LogLevel>(configuration.debugConsoleLevel), level);
                 logger->setDebugConsoleOutputLevelThreshold(level);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_PATH) ||
-                isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_APPEND))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_PATH) ||
+                isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_APPEND))
             {
-                carb::logging::LogFileConfiguration fileConfig{};
-                logger->getFileConfiguration(nullptr, 0, &fileConfig);
-                if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_APPEND))
+                carb::logging::LogFileConfiguration fileConfiguration{};
+                logger->getFileConfiguration(nullptr, 0, &fileConfiguration);
+                if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_APPEND))
                 {
-                    fileConfig.append = config.fileAppend != 0;
+                    fileConfiguration.append = configuration.fileAppend != 0;
                 }
                 const char* filePath = carb::logging::kKeepSameFile;
-                if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_PATH))
+                if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_PATH))
                 {
-                    filePath = config.filePath != nullptr && config.filePath[0] != '\0' ? config.filePath : nullptr;
+                    filePath = configuration.filePath != nullptr && configuration.filePath[0] != '\0' ?
+                                   configuration.filePath :
+                                   nullptr;
                 }
-                logger->setFileConfiguration(filePath, &fileConfig);
+                logger->setFileConfiguration(filePath, &fileConfiguration);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_LEVEL))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_LEVEL))
             {
                 int32_t level = 0;
-                convertToCarboniteLevel(static_cast<LogLevel>(config.fileLevel), level);
+                convertToCarboniteLevel(static_cast<LogLevel>(configuration.fileLevel), level);
                 logger->setFileOutputLevelThreshold(level);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_FLUSH_LEVEL))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_FLUSH_LEVEL))
             {
                 int32_t level = 0;
-                convertToCarboniteLevel(static_cast<LogLevel>(config.fileFlushLevel), level);
+                convertToCarboniteLevel(static_cast<LogLevel>(configuration.fileFlushLevel), level);
                 logger->setFileOuputFlushLevel(level);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILENAME_INCLUDED))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FILENAME_INCLUDED))
             {
-                logger->setFilenameIncluded(config.filenameIncluded != 0);
+                logger->setFilenameIncluded(configuration.filenameIncluded != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_LINE_NUMBER_INCLUDED))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_LINE_NUMBER_INCLUDED))
             {
-                logger->setLineNumberIncluded(config.lineNumberIncluded != 0);
+                logger->setLineNumberIncluded(configuration.lineNumberIncluded != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FUNCTION_NAME_INCLUDED))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FUNCTION_NAME_INCLUDED))
             {
-                logger->setFunctionNameIncluded(config.functionNameIncluded != 0);
+                logger->setFunctionNameIncluded(configuration.functionNameIncluded != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_TIMESTAMP_INCLUDED))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_TIMESTAMP_INCLUDED))
             {
-                logger->setTimestampIncluded(config.timestampIncluded != 0);
+                logger->setTimestampIncluded(configuration.timestampIncluded != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_UTC_TIMESTAMPS))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_UTC_TIMESTAMPS))
             {
-                logger->setUtcTimestamps(config.utcTimestamps != 0);
+                logger->setUtcTimestamps(configuration.utcTimestamps != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_MICROSECOND_TIMESTAMPS))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_MICROSECOND_TIMESTAMPS))
             {
-                logger->setMicrosecondTimestamp(config.microsecondTimestamps != 0);
+                logger->setMicrosecondTimestamp(configuration.microsecondTimestamps != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_ELAPSED_TIME))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_ELAPSED_TIME))
             {
-                logger->setElapsedTimeUnits(getElapsedTimeUnits(config.elapsedTime));
+                logger->setElapsedTimeUnits(getElapsedTimeUnits(configuration.elapsedTime));
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_THREAD_ID_INCLUDED))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_THREAD_ID_INCLUDED))
             {
-                logger->setThreadIdIncluded(config.threadIdIncluded != 0);
+                logger->setThreadIdIncluded(configuration.threadIdIncluded != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_SOURCE_INCLUDED))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_SOURCE_INCLUDED))
             {
-                logger->setSourceIncluded(config.sourceIncluded != 0);
+                logger->setSourceIncluded(configuration.sourceIncluded != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_PROCESS_ID_INCLUDED))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_PROCESS_ID_INCLUDED))
             {
-                logger->setProcessIdIncluded(config.processIdIncluded != 0);
+                logger->setProcessIdIncluded(configuration.processIdIncluded != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_TRACE_ID_INCLUDED))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_TRACE_ID_INCLUDED))
             {
-                logger->setTraceIdIncluded(config.traceIdIncluded != 0);
+                logger->setTraceIdIncluded(configuration.traceIdIncluded != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_COLOR_INCLUDED))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_COLOR_INCLUDED))
             {
-                logger->setColorOutputIncluded(config.colorIncluded != 0);
+                logger->setColorOutputIncluded(configuration.colorIncluded != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FORCE_ANSI_COLOR))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_FORCE_ANSI_COLOR))
             {
-                logger->setForceAnsiColor(config.forceAnsiColor != 0);
+                logger->setForceAnsiColor(configuration.forceAnsiColor != 0);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_MULTIPROCESS_GROUP_ID))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_MULTIPROCESS_GROUP_ID))
             {
-                logger->setMultiProcessGroupId(config.multiprocessGroupId);
+                logger->setMultiProcessGroupId(configuration.multiprocessGroupId);
             }
-            if (isSelected(config.fields, ISAACSIM_COMMON_LOGGING_CONFIG_CHANNELS))
+            if (isSelected(configuration.fields, ISAACSIM_COMMON_LOGGING_CONFIG_CHANNELS))
             {
-                for (size_t index = 0; index < config.channelConfigCount; ++index)
+                for (size_t index = 0; index < configuration.channelConfigCount; ++index)
                 {
-                    const IsaacSimCommonLoggingChannelConfig& channel = config.channelConfigs[index];
+                    const IsaacSimCommonLoggingChannelConfig& channel = configuration.channelConfigs[index];
                     _acquireChannel(channel.channel, logging);
                     if (channel.enabledBehavior != ISAACSIM_COMMON_LOGGING_CHANNEL_SETTING_UNCHANGED)
                     {
@@ -673,14 +680,14 @@ private:
             return nullptr;
         }
         ++m_activeBackendCalls;
-        ++g_backendCallDepth;
+        ++s_backendCallDepth;
         return m_logging;
     }
 
     void _endBackendCall() noexcept
     {
         const std::lock_guard<std::mutex> backendLock(m_backendMutex);
-        --g_backendCallDepth;
+        --s_backendCallDepth;
         --m_activeBackendCalls;
         if (m_stopping && m_activeBackendCalls == 0)
         {
@@ -775,7 +782,7 @@ private:
         m_channels.clear();
     }
 
-    static thread_local size_t g_backendCallDepth;
+    static thread_local size_t s_backendCallDepth;
 
     std::mutex m_backendMutex;
     std::condition_variable m_backendCondition;
@@ -792,12 +799,12 @@ private:
     std::map<std::string, std::shared_ptr<CarboniteChannel>, std::less<>> m_channels;
 };
 
-thread_local size_t CarboniteBackend::g_backendCallDepth = 0;
+thread_local size_t CarboniteBackend::s_backendCallDepth = 0;
 
 CarboniteBackend& getBackend()
 {
-    static CarboniteBackend backend;
-    return backend;
+    static CarboniteBackend s_backend;
+    return s_backend;
 }
 
 } // namespace
@@ -850,9 +857,9 @@ void reportToStandardOutputAndCarbonite(std::string_view message, const char* ch
     emitToCarbonite(LogLevel::eInfo, message, channel, location);
 }
 
-IsaacSimCommonLoggingConfigureResult configureCarboniteGlobal(const IsaacSimCommonLoggingGlobalConfig& config) noexcept
+IsaacSimCommonLoggingConfigureResult configureCarboniteGlobal(const IsaacSimCommonLoggingGlobalConfig& configuration) noexcept
 {
-    return getBackend().configureGlobal(config);
+    return getBackend().configureGlobal(configuration);
 }
 
 void flushCarboniteBackend() noexcept

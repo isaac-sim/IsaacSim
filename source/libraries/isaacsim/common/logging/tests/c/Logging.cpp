@@ -26,43 +26,43 @@ TEST_SUITE("C API")
 {
     TEST_CASE("Global configuration accepts the legacy structure size")
     {
-        IsaacSimCommonLoggingGlobalConfig config = ISAACSIM_COMMON_LOGGING_GLOBAL_CONFIG_INIT;
-        config.fields = ISAACSIM_COMMON_LOGGING_CONFIG_ELAPSED_TIME;
-        config.elapsedTime = ISAACSIM_COMMON_LOGGING_ELAPSED_TIME_MILLISECONDS;
+        IsaacSimCommonLoggingGlobalConfig configuration = ISAACSIM_COMMON_LOGGING_GLOBAL_CONFIG_INIT;
+        configuration.fields = ISAACSIM_COMMON_LOGGING_CONFIG_ELAPSED_TIME;
+        configuration.elapsedTime = ISAACSIM_COMMON_LOGGING_ELAPSED_TIME_MILLISECONDS;
 
-        CHECK(isaacsimCommonLoggingConfigureGlobal(&config) == ISAACSIM_COMMON_LOGGING_CONFIGURE_SUCCESS);
+        CHECK(isaacsimCommonLoggingConfigureGlobal(&configuration) == ISAACSIM_COMMON_LOGGING_CONFIGURE_SUCCESS);
 
-        config.structSize = offsetof(IsaacSimCommonLoggingGlobalConfig, channelConfigs);
-        CHECK(isaacsimCommonLoggingConfigureGlobal(&config) == ISAACSIM_COMMON_LOGGING_CONFIGURE_SUCCESS);
+        configuration.structSize = offsetof(IsaacSimCommonLoggingGlobalConfig, channelConfigs);
+        CHECK(isaacsimCommonLoggingConfigureGlobal(&configuration) == ISAACSIM_COMMON_LOGGING_CONFIGURE_SUCCESS);
     }
 
     TEST_CASE("Channel enablement can be overridden and restored")
     {
-        constexpr const char* kChannel = "isaacsim.test.c";
+        constexpr const char* channelName = "isaacsim.test.c";
         IsaacSimCommonLoggingChannelConfig channel = ISAACSIM_COMMON_LOGGING_CHANNEL_CONFIG_INIT;
-        channel.channel = kChannel;
+        channel.channel = channelName;
         channel.enabledBehavior = ISAACSIM_COMMON_LOGGING_CHANNEL_SETTING_OVERRIDE;
         channel.enabled = 0;
 
-        IsaacSimCommonLoggingGlobalConfig config = ISAACSIM_COMMON_LOGGING_GLOBAL_CONFIG_INIT;
-        config.fields = ISAACSIM_COMMON_LOGGING_CONFIG_CHANNELS;
-        config.channelConfigs = &channel;
-        config.channelConfigCount = 1;
+        IsaacSimCommonLoggingGlobalConfig configuration = ISAACSIM_COMMON_LOGGING_GLOBAL_CONFIG_INIT;
+        configuration.fields = ISAACSIM_COMMON_LOGGING_CONFIG_CHANNELS;
+        configuration.channelConfigs = &channel;
+        configuration.channelConfigCount = 1;
 
-        REQUIRE(isaacsimCommonLoggingConfigureGlobal(&config) == ISAACSIM_COMMON_LOGGING_CONFIGURE_SUCCESS);
-        ISAACSIM_COMMON_LOGGING_ERROR(kChannel, "disabled channel record");
+        REQUIRE(isaacsimCommonLoggingConfigureGlobal(&configuration) == ISAACSIM_COMMON_LOGGING_CONFIGURE_SUCCESS);
+        ISAACSIM_COMMON_LOGGING_ERROR(channelName, "disabled channel record");
 
         channel.enabledBehavior = ISAACSIM_COMMON_LOGGING_CHANNEL_SETTING_INHERIT;
-        CHECK(isaacsimCommonLoggingConfigureGlobal(&config) == ISAACSIM_COMMON_LOGGING_CONFIGURE_SUCCESS);
+        CHECK(isaacsimCommonLoggingConfigureGlobal(&configuration) == ISAACSIM_COMMON_LOGGING_CONFIGURE_SUCCESS);
     }
 
     TEST_CASE("Logging macros submit C API records")
     {
-        constexpr const char* kChannel = "isaacsim.test.c";
-        ISAACSIM_COMMON_LOGGING_VERBOSE(kChannel, "verbose record");
-        ISAACSIM_COMMON_LOGGING_INFO(kChannel, "info record");
-        ISAACSIM_COMMON_LOGGING_WARNING(kChannel, "isaacsim-c-api-backend-probe");
-        ISAACSIM_COMMON_LOGGING_ERROR(kChannel, "error record");
+        constexpr const char* channelName = "isaacsim.test.c";
+        ISAACSIM_COMMON_LOGGING_VERBOSE(channelName, "verbose record");
+        ISAACSIM_COMMON_LOGGING_INFO(channelName, "info record");
+        ISAACSIM_COMMON_LOGGING_WARNING(channelName, "isaacsim-c-api-backend-probe");
+        ISAACSIM_COMMON_LOGGING_ERROR(channelName, "error record");
     }
 
     TEST_CASE("Report writes to standard output and submits to Carbonite")
@@ -72,13 +72,13 @@ TEST_SUITE("C API")
 
     TEST_CASE("Invalid supplemental logging input is ignored")
     {
-        constexpr const char* kChannel = "isaacsim.test.c";
+        constexpr const char* channelName = "isaacsim.test.c";
         isaacsimCommonLoggingWrite(ISAACSIM_COMMON_LOGGING_LOG_INFO, nullptr, "message", nullptr, nullptr, 0);
-        isaacsimCommonLoggingWrite(ISAACSIM_COMMON_LOGGING_LOG_INFO, kChannel, nullptr, nullptr, nullptr, 0);
+        isaacsimCommonLoggingWrite(ISAACSIM_COMMON_LOGGING_LOG_INFO, channelName, nullptr, nullptr, nullptr, 0);
         isaacsimCommonLoggingWrite(
-            static_cast<IsaacSimCommonLoggingLogLevel>(99), kChannel, "message", nullptr, nullptr, 0);
+            static_cast<IsaacSimCommonLoggingLogLevel>(99), channelName, "message", nullptr, nullptr, 0);
         isaacsimCommonLoggingReport(nullptr, "message", nullptr, nullptr, 0);
-        isaacsimCommonLoggingReport(kChannel, nullptr, nullptr, nullptr, 0);
+        isaacsimCommonLoggingReport(channelName, nullptr, nullptr, nullptr, 0);
     }
 
     TEST_CASE("Invalid global configuration is rejected")
@@ -87,24 +87,24 @@ TEST_SUITE("C API")
 
         IsaacSimCommonLoggingChannelConfig channel = ISAACSIM_COMMON_LOGGING_CHANNEL_CONFIG_INIT;
         channel.channel = "isaacsim.test.c";
-        IsaacSimCommonLoggingGlobalConfig config = ISAACSIM_COMMON_LOGGING_GLOBAL_CONFIG_INIT;
+        IsaacSimCommonLoggingGlobalConfig configuration = ISAACSIM_COMMON_LOGGING_GLOBAL_CONFIG_INIT;
 
-        config.fields = UINT64_C(1) << 63;
-        CHECK(isaacsimCommonLoggingConfigureGlobal(&config) == ISAACSIM_COMMON_LOGGING_CONFIGURE_INVALID_ARGUMENT);
+        configuration.fields = UINT64_C(1) << 63;
+        CHECK(isaacsimCommonLoggingConfigureGlobal(&configuration) == ISAACSIM_COMMON_LOGGING_CONFIGURE_INVALID_ARGUMENT);
 
-        config.fields = ISAACSIM_COMMON_LOGGING_CONFIG_CHANNELS;
-        config.channelConfigs = &channel;
-        config.channelConfigCount = 1;
+        configuration.fields = ISAACSIM_COMMON_LOGGING_CONFIG_CHANNELS;
+        configuration.channelConfigs = &channel;
+        configuration.channelConfigCount = 1;
         channel.enabledBehavior = 99;
-        CHECK(isaacsimCommonLoggingConfigureGlobal(&config) == ISAACSIM_COMMON_LOGGING_CONFIGURE_INVALID_ARGUMENT);
+        CHECK(isaacsimCommonLoggingConfigureGlobal(&configuration) == ISAACSIM_COMMON_LOGGING_CONFIGURE_INVALID_ARGUMENT);
 
         channel.enabledBehavior = ISAACSIM_COMMON_LOGGING_CHANNEL_SETTING_INHERIT;
-        config.channelConfigs = nullptr;
-        CHECK(isaacsimCommonLoggingConfigureGlobal(&config) == ISAACSIM_COMMON_LOGGING_CONFIGURE_INVALID_ARGUMENT);
+        configuration.channelConfigs = nullptr;
+        CHECK(isaacsimCommonLoggingConfigureGlobal(&configuration) == ISAACSIM_COMMON_LOGGING_CONFIGURE_INVALID_ARGUMENT);
 
-        config.channelConfigs = &channel;
+        configuration.channelConfigs = &channel;
         channel.structSize = 0;
-        CHECK(isaacsimCommonLoggingConfigureGlobal(&config) == ISAACSIM_COMMON_LOGGING_CONFIGURE_INVALID_ARGUMENT);
+        CHECK(isaacsimCommonLoggingConfigureGlobal(&configuration) == ISAACSIM_COMMON_LOGGING_CONFIGURE_INVALID_ARGUMENT);
     }
 
     TEST_CASE("Flush drains the process backend")

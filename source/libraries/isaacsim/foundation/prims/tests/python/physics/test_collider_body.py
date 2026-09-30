@@ -24,6 +24,7 @@ import isaacsim_test
 import numpy as np
 import pytest
 import warp as wp
+from isaacsim.foundation.objects import Prim
 from isaacsim.foundation.prims import ColliderBody
 
 from ..fixtures import stage  # noqa: F401 - imported so pytest can discover the fixture
@@ -152,9 +153,36 @@ def test_enabled_collisions(stage: Any, values: Any) -> None:
     prims = ColliderBody(_get_paths(stage))
     # get values
     output = prims.get_enabled_collisions()
-    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.uint8)
+    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.bool)
     # round-trip values
     prims.set_enabled_collisions(values)
     output = prims.get_enabled_collisions()
-    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.uint8)
+    isaacsim_test.check_array(output, shape=(5, 1), dtype=wp.bool)
     isaacsim_test.check_equal(values, output)
+
+
+def test_are_of_type(stage: Any) -> None:
+    """Test are of type.
+
+    Args:
+        stage: Stage used by the test.
+    """
+    stage.define_prim("/World/Body", "Cube")
+    stage.define_prim("/World/Other", "Cube")
+    paths = ["/World/Body", "/World/Other"]
+    # the Collision API is not applied yet
+    output = ColliderBody.are_of_type(paths)
+    isaacsim_test.check_array(output, shape=(2, 1), dtype=wp.bool)
+    isaacsim_test.check_equal(np.array([[0], [0]], dtype=np.bool_), output)
+    # the constructor applies it to the prims it wraps
+    ColliderBody("/World/Body")
+    isaacsim_test.check_equal(np.array([[1], [0]], dtype=np.bool_), ColliderBody.are_of_type(paths))
+    # a non-transformable prim never matches, even with the schema applied
+    stage.define_prim("/World/Scope", "Scope")
+    Prim("/World/Scope").apply_api("PhysicsCollisionAPI")
+    isaacsim_test.check_equal(np.array([[0]], dtype=np.bool_), ColliderBody.are_of_type("/World/Scope"))
+    # regular expressions are expanded against the active stage
+    isaacsim_test.check_array(ColliderBody.are_of_type("/World/(Body|Other)"), shape=(2, 1), dtype=wp.bool)
+    # non-existing prims
+    with pytest.raises(RuntimeError):
+        ColliderBody.are_of_type("/World/NonExistent")

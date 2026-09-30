@@ -42,7 +42,7 @@ struct FileCloser
 };
 } // namespace
 
-bool UsdzArchiveCache::loadArchive(const std::string& archive, const std::vector<uint8_t>*& bytes, std::string& error)
+bool UsdzArchiveCache::_loadArchive(const std::string& archive, const std::vector<uint8_t>*& bytes, std::string& error)
 {
     const auto cached = m_archives.find(archive);
     if (cached != m_archives.end())
@@ -98,7 +98,7 @@ bool UsdzArchiveCache::readEntry(const std::string& archive,
     out.clear();
     error.clear();
     const std::vector<uint8_t>* archive_bytes = nullptr;
-    if (!loadArchive(archive, archive_bytes, error))
+    if (!_loadArchive(archive, archive_bytes, error))
         return false;
     const std::vector<uint8_t>& zip = *archive_bytes;
 

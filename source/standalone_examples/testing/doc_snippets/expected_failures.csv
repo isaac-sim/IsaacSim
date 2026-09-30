@@ -161,13 +161,6 @@ migration_guides/isaac_sim_6_0/urdf_importer/import_urdf_with_base_type.py,Value
 # Extension not available in default experience
 digital_twin/warehouse_logistics/ext_omni_warehouse_creator/headless_generation.py,ModuleNotFoundError.*omni\.warehouse
 #
-# ---- WG12: action_and_event_data_generation/ ----
-# These run with isaacsim.exp.action_and_event_data_generation.full.kit experience
-# Modules not available in default test environment
-action_and_event_data_generation/ira_config_read_update.py,ModuleNotFoundError.*isaacsim\.replicator\.agent
-action_and_event_data_generation/ira_setup_and_data_generation.py,ModuleNotFoundError.*isaacsim\.replicator\.agent
-action_and_event_data_generation/ira_config_load_save.py,ModuleNotFoundError.*isaacsim\.replicator\.agent
-#
 # ---- Sequential physics walkthrough snippets ----
 # These require the Factory assets loaded by the preceding walkthrough step.
 physics/hydroelastic_contact_walkthrough/apply_newton_sdf_collision_api.py,RuntimeError.*Collider prim does not exist

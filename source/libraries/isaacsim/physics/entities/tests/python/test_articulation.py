@@ -45,6 +45,7 @@ def test_metadata(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     assert prims.num_prims == N
@@ -66,6 +67,7 @@ def test_unavailable_metadata(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     for name in ["dof_paths", "dof_types", "joint_paths", "joint_types", "link_paths"]:
@@ -79,6 +81,7 @@ def test_indices(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     # single name
@@ -104,6 +107,7 @@ def test_dof_limits(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     lower, upper = prims.get_dof_limits()
@@ -123,6 +127,7 @@ def test_dof_friction_properties(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     static_frictions, dynamic_frictions, viscous_frictions = prims.get_dof_friction_properties()
@@ -146,6 +151,7 @@ def test_dof_armatures(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     output = prims.get_dof_armatures()
@@ -176,6 +182,7 @@ def test_dof_state(capsys: Any, engine: Any, getter: Any, setter: Any) -> None:
         engine: Physics engine supplied by the test fixture.
         getter: Callback that reads the property.
         setter: Callback that writes the property.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     output = getattr(prims, getter)()
@@ -192,6 +199,7 @@ def test_dof_projected_joint_forces(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     output = prims.get_dof_projected_joint_forces()
@@ -204,6 +212,7 @@ def test_dof_gains(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     stiffnesses, dampings = prims.get_dof_gains()
@@ -223,6 +232,7 @@ def test_switch_dof_control_mode(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     # position mode keeps the current gains
@@ -239,6 +249,7 @@ def test_world_poses(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     positions, orientations = prims.get_world_poses()
@@ -260,6 +271,7 @@ def test_velocities(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     linear_velocities, angular_velocities = prims.get_velocities()
@@ -281,6 +293,7 @@ def test_link_incoming_joint_force(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     forces, torques = prims.get_link_incoming_joint_force()
@@ -293,6 +306,7 @@ def test_jacobian_matrices(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     output = prims.get_jacobian_matrices()
@@ -305,6 +319,7 @@ def test_mass_matrices(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     output = prims.get_mass_matrices()
@@ -317,6 +332,7 @@ def test_compensation_forces(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     output = prims.get_dof_coriolis_and_centrifugal_compensation_forces()
@@ -331,6 +347,7 @@ def test_link_masses(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     output = prims.get_link_masses()
@@ -350,6 +367,7 @@ def test_link_inertias(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     output = prims.get_link_inertias()
@@ -369,6 +387,7 @@ def test_link_coms(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     positions, orientations = prims.get_link_coms()
@@ -392,6 +411,7 @@ def test_link_enabled_gravities(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     output = prims.get_link_enabled_gravities()
@@ -419,6 +439,7 @@ def test_fixed_tendon_properties(capsys: Any, engine: Any, getter: Any) -> None:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
         getter: Callback that reads the property.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     output = getattr(prims, getter)()
@@ -431,6 +452,7 @@ def test_fixed_tendon_limits(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     lower_limits, upper_limits = prims.get_fixed_tendon_limits()
@@ -443,6 +465,7 @@ def test_set_fixed_tendon_properties(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     prims.set_fixed_tendon_properties(
@@ -469,6 +492,7 @@ def test_unsupported_dof_drive_queries(capsys: Any, engine: Any, getter: Any) ->
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
         getter: Callback that reads the property.
+
     """
     prims = ArticulationEntity("engine", PATHS)
     with pytest.raises(Exception):

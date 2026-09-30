@@ -20,20 +20,25 @@ isaacsim_add_module(
     PUBLIC_DEPENDENCIES
         isaacsim::common-exceptions
     PUBLIC_CPP_HEADERS
-        isaacsim/common/array/details/CudaKernel.hpp
-        isaacsim/common/array/details/CudaRuntime.hpp
         isaacsim/common/array/nanobind/ArrayCaster.hpp
         isaacsim/common/array/Array.hpp
         isaacsim/common/array/Array.tpp
         isaacsim/common/array/Device.hpp
+        isaacsim/common/array/DLPack.hpp
         isaacsim/common/array/Dtype.hpp
+        isaacsim/common/array/Functions.hpp
         isaacsim/common/array/Shape.hpp
     SOURCES
+        src/details/CudaKernel.hpp
         src/details/CudaKernel.cpp
+        src/details/CudaRuntime.hpp
         src/details/CudaRuntime.cpp
+        src/details/KernelExport.hpp
         src/Array.cpp
         src/Device.cpp
+        src/DLPack.cpp
         src/Dtype.cpp
+        src/Functions.cpp
         src/Shape.cpp
 )
 
@@ -100,8 +105,12 @@ if(EXISTS "${isaacsim_array_nvcc}")
     endif()
 
     add_library(isaacsim-common-array-cuda-kernels SHARED
+        src/details/cuda_kernels/BinaryOp.cu
         src/details/cuda_kernels/Broadcast.cu
         src/details/cuda_kernels/Cast.cu
+        src/details/cuda_kernels/ReduceOp.cu
+        src/details/cuda_kernels/Take.cu
+        src/details/cuda_kernels/UnaryOp.cu
     )
     get_target_property(isaacsim_array_module_output_dir isaacsim-common-array LIBRARY_OUTPUT_DIRECTORY)
     set_target_properties(isaacsim-common-array-cuda-kernels PROPERTIES
@@ -111,8 +120,9 @@ if(EXISTS "${isaacsim_array_nvcc}")
     )
     target_include_directories(isaacsim-common-array-cuda-kernels PRIVATE
         "${isaacsim_array_cuda_root}/include"
-        # DType::Kind only (header-only usage: no isaacsim-common-array symbols are linked in).
+        # header-only usage: no isaacsim-common-array symbols are linked in.
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
         "${CMAKE_CURRENT_BINARY_DIR}/generated"
     )
     # Static CUDA runtime: the resulting library has no libcudart.so DT_NEEDED entry, so it still
@@ -154,33 +164,41 @@ isaacsim_add_cpp_tests(
     SOURCES
         tests/cpp/Array.cpp
         tests/cpp/Device.cpp
+        tests/cpp/DLPack.cpp
+        tests/cpp/Dtype.cpp
+        tests/cpp/Functions.cpp
         tests/cpp/Shape.cpp
     LABELS
         unit
 )
+if(BUILD_TESTING)
+    target_include_directories(tests-isaacsim-common-array PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+endif()
 
-if(WIN32)
-    # Windows has no RPATH, so isaacsim-common-array.dll is copied next to the test executable.
-    # CudaKernel resolves the kernel library as a sibling of whichever copy is loaded, so it has to
-    # follow the module there. It is not a link dependency, so the generic test DLL copy misses it.
-    #
-    # Attached to the kernel library rather than the test executable: the executable does not link
-    # the kernel library, so rebuilding kernel sources never relinks it, and a POST_BUILD copy
-    # hanging off the executable would keep serving a stale copy. The test output directory may not
-    # exist yet, since the kernel library builds before the executable.
-    add_custom_command(TARGET isaacsim-common-array-cuda-kernels POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-            "$<TARGET_FILE_DIR:tests-isaacsim-common-array>"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:isaacsim-common-array-cuda-kernels>"
-            "$<TARGET_FILE_DIR:tests-isaacsim-common-array>"
-        VERBATIM
-    )
-    set_property(TEST tests-isaacsim-common-array APPEND PROPERTY
-        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${isaacsim_array_cuda_root}/bin"
-    )
-else()
-    set_property(TEST tests-isaacsim-common-array APPEND PROPERTY
-        ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:${isaacsim_array_cuda_root}/lib64"
-    )
+if(BUILD_TESTING)
+    if(WIN32)
+        # Windows has no RPATH, so isaacsim-common-array.dll is copied next to the test executable.
+        # CudaKernel resolves the kernel library as a sibling of whichever copy is loaded, so it has to
+        # follow the module there. It is not a link dependency, so the generic test DLL copy misses it.
+        #
+        # Attached to the kernel library rather than the test executable: the executable does not link
+        # the kernel library, so rebuilding kernel sources never relinks it, and a POST_BUILD copy
+        # hanging off the executable would keep serving a stale copy. The test output directory may not
+        # exist yet, since the kernel library builds before the executable.
+        add_custom_command(TARGET isaacsim-common-array-cuda-kernels POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:tests-isaacsim-common-array>"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:isaacsim-common-array-cuda-kernels>"
+                "$<TARGET_FILE_DIR:tests-isaacsim-common-array>"
+            VERBATIM
+        )
+        set_property(TEST tests-isaacsim-common-array APPEND PROPERTY
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${isaacsim_array_cuda_root}/bin"
+        )
+    else()
+        set_property(TEST tests-isaacsim-common-array APPEND PROPERTY
+            ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:${isaacsim_array_cuda_root}/lib64"
+        )
+    endif()
 endif()

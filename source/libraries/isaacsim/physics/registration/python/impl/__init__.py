@@ -51,6 +51,12 @@ __all__ = [
     "FrictionAnchorsDataVector",
     "ForceMode",
     "PhysicsStepContext",
+    "SceneQueryHitObject",
+    "SceneQueryHitLocation",
+    "OverlapHit",
+    "RaycastHit",
+    "SweepHit",
+    "PhysicsProfileStats",
     "Subscription",
     "Float3",
     "Float4",
@@ -70,5 +76,4 @@ __all__ = [
     "TensorRegistry",
     "get_registry",
     "register_entity",
-    "register_simulation_view",
 ]

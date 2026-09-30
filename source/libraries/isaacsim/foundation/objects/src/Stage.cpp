@@ -115,7 +115,7 @@ Stage::~Stage()
 {
 }
 
-Stage::StageOps Stage::_populateStageOps(const std::string& backend)
+Stage::StageOperations Stage::_populateStageOps(const std::string& backend)
 {
     if (backend == "openusd")
     {

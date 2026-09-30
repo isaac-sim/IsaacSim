@@ -36,18 +36,26 @@ pip = "==26.2.1"
 sdl3 = { path = "deps/recipes/sdl3/recipe.yaml" }
 stb = { path = "deps/recipes/stb/recipe.yaml" }
 tsl_robin_map = "==1.4.0"
+libgrpc = "==1.83.0"
+zlib = "==1.3.2"
 
 [feature.build-tools.target.linux-64-glibc-2-35.dependencies]
 doctest = "==2.5.3"
+libegl-devel = "==1.7.0"
+libgles-devel = "==1.7.0"
+libopengl-devel = "==1.7.0"
 
 [feature.build-tools.target.linux-aarch64-glibc-2-35.dependencies]
 doctest = { path = "deps/recipes/doctest/recipe.yaml" }
+libegl-devel = "==1.7.0"
+libgles-devel = "==1.7.0"
+libopengl-devel = "==1.7.0"
 
 [feature.build-tools.target.win-64.dependencies]
 doctest = "==2.5.3"
 
-[feature.ctest.dependencies]
-cmake = "==4.3.2"
+[feature.examples-runner.dependencies]
+packaging = "==26.3"
 
 [feature.schema-runtime.pypi-dependencies]
 ovstage = { version = "==0.1.1.355824", index = "https://pypi.org/simple" }
@@ -60,6 +68,7 @@ coacd = "==1.0.7"
 fast-simplification = "==0.1.13"
 mujoco-usd-converter = { version = "==0.5.0", index = "https://pypi.org/simple" }
 newton-usd-schemas = "==0.4.1"
+nvidia-ml-py = "==13.610.43"
 scipy = "==1.16.3"
 tinyobjloader = "==2.0.0rc13"
 usd-exchange = "==2.3.0"
@@ -89,6 +98,7 @@ coacd = "==1.0.7"
 fast-simplification = "==0.1.11"
 mujoco-usd-converter = { version = "==0.5.0", index = "https://pypi.org/simple" }
 newton-usd-schemas = "==0.4.1"
+nvidia-ml-py = "==13.610.43"
 scipy = "==1.11.2"
 tinyobjloader = "==2.0.0rc13"
 usd-exchange = "==2.3.0"
@@ -109,8 +119,8 @@ packaging = "==24.2"
 scikit-build-core = "==1.0.3"
 
 [environments]
-build-driver = { features = ["python", "build-tools"], no-default-feature = true }
-test-driver = { features = ["python", "ctest"], no-default-feature = true }
+examples-runner = { features = ["python", "examples-runner"], no-default-feature = true }
+build-driver = { features = ["python", "build-tools", "examples-runner"], no-default-feature = true }
 runtime = { features = ["python", "schema-runtime", "runtime"], no-default-feature = true, solve-group = "locked-python" }
 native-runtime = { features = ["python", "schema-runtime", "native-runtime"], no-default-feature = true, solve-group = "locked-python" }
 schema-build = { features = ["python", "schema-build"], no-default-feature = true, solve-group = "locked-python" }

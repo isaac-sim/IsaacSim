@@ -45,6 +45,17 @@ int renderStage(OvglBackend* backend,
                 int* height,
                 char* error,
                 std::size_t errorLength);
+int presentStage(OvglBackend* backend,
+                 ovstage_ordinal_t ordinal,
+                 const char* renderProductPath,
+                 unsigned framebuffer,
+                 int destinationWidth,
+                 int destinationHeight,
+                 const char* overlayText,
+                 int* width,
+                 int* height,
+                 char* error,
+                 std::size_t errorLength);
 const char* getOvglBackendError(void);
 
 } // namespace details

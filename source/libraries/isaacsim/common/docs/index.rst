@@ -17,12 +17,14 @@
 .. _isaacsim-common-library:
 
 ===============
-isaacsim_common
+isaacsim-common
 ===============
 
-``isaacsim_common`` contains shared infrastructure used by the standalone Isaac Sim
-libraries. It defines common array and device types, exception types, logging,
-profiling, and string utilities for native and Python code.
+The ``isaacsim-common`` distribution (CMake group ``isaacsim_common``) contains shared
+infrastructure used by the standalone Isaac Sim libraries. It provides common array
+and device types, exception types, logging, profiling, and string utilities for native
+and Python code. The ``isaacsim.common.ovstage`` module defines the shared native
+OVStage transform-journal contract.
 
 Use these modules when multiple libraries need the same low-level contracts. The
 distribution does not depend on another Isaac Sim library distribution.

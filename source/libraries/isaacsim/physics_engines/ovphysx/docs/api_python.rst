@@ -20,6 +20,24 @@
 Python guide and API reference
 ==============================
 
+.. _isaacsim-physics-engines-ovphysx-registration:
+
+Backend registration
+====================
+
+Import the module to load and register the OvPhysX backend. Then select it through the physics manager:
+
+.. code-block:: python
+
+    import isaacsim.physics_engines.ovphysx
+    from isaacsim.physics.manager import PhysicsManager
+
+    physics_manager = PhysicsManager.get_instance()
+    if not physics_manager.switch_physics_engine("ovphysx"):
+        raise RuntimeError("OvPhysX physics engine is unavailable.")
+
+You do not need to call ``activate()`` or ``shutdown()`` for normal application use.
+
 .. currentmodule:: isaacsim.physics_engines.ovphysx
 
 .. automodule:: isaacsim.physics_engines.ovphysx

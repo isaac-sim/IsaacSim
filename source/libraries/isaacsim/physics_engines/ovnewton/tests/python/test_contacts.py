@@ -55,8 +55,10 @@ class TestRigidContacts:
 
     @gpu_only
     def test_rigid_contacts_newton_gc(self) -> None:
-        """Verify rigid contacts with Newton GPU simulation and GPU tensors."""
-        run_scenario(self, RigidContactsCommon, "newton", gpu_device())
+        """Verify rigid contacts with Newton GPU simulation and CPU tensors."""
+        from _scenario import DeviceParams
+
+        run_scenario(self, RigidContactsCommon, "newton", DeviceParams(True, False))
 
     @gpu_only
     def test_rigid_contacts_newton_gg(self) -> None:

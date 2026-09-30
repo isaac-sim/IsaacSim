@@ -116,9 +116,11 @@ isaacsim_add_cpp_tests(
         abi
         threading
 )
-target_include_directories(tests-isaacsim-common-profiling PRIVATE
-    "${ISAACSIM_CARBONITE_ROOT}/include"
-)
+if(BUILD_TESTING)
+    target_include_directories(tests-isaacsim-common-profiling PRIVATE
+        "${ISAACSIM_CARBONITE_ROOT}/include"
+    )
+endif()
 
 isaacsim_add_c_tests(
     MODULE isaacsim.common.profiling

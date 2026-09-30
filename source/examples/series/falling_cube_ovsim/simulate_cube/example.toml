@@ -5,12 +5,10 @@ id = "falling_cube_ovsim.simulate_cube"
 title = "Simulate a Cube"
 summary = "Author a cube and simulate it falling onto a ground plane."
 owners = [
-    "isaacsim.foundation.objects",
-    "isaacsim.foundation.prims",
-    "isaacsim.physics.manager",
+    "isaacsim.ovsim.api",
     "isaacsim.physics_engines.ovphysx",
 ]
-topics = ["physics", "python", "usd"]
+topics = ["physics", "usd"]
 
 [build]
 adapter = "none"
@@ -23,14 +21,6 @@ path = "main.py"
 system = ["python"]
 
 [[requirements.modules]]
-name = "isaacsim_foundation"
-surfaces = ["python"]
-
-[[requirements.modules]]
-name = "isaacsim_physics"
-surfaces = ["python"]
-
-[[requirements.modules]]
 name = "isaacsim_ovsim"
 surfaces = ["python"]
 
@@ -40,4 +30,5 @@ surfaces = ["python"]
 
 [[test]]
 name = "default"
-stdout_contains = ["The cube fell."]
+path = "test.py"
+stdout_contains = ["OV SIM falling cube test passed."]

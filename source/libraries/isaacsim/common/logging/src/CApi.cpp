@@ -13,23 +13,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "details/CarboniteBackend.hpp"
 #include "details/LoggingHostInternal.hpp"
 #include "isaacsim/common/logging/Logging.h"
 #include "isaacsim/common/logging/LoggingHost.h"
-#include "isaacsim/common/logging/details/CarboniteBackend.hpp"
 
 namespace logging = isaacsim::common::logging;
 
 extern "C"
 {
 
-    IsaacSimCommonLoggingConfigureResult isaacsimCommonLoggingConfigureGlobal(const IsaacSimCommonLoggingGlobalConfig* config)
+    IsaacSimCommonLoggingConfigureResult isaacsimCommonLoggingConfigureGlobal(
+        const IsaacSimCommonLoggingGlobalConfig* configuration)
     {
-        if (config == nullptr)
+        if (configuration == nullptr)
         {
             return ISAACSIM_COMMON_LOGGING_CONFIGURE_INVALID_ARGUMENT;
         }
-        return logging::details::configureCarboniteGlobal(*config);
+        return logging::details::configureCarboniteGlobal(*configuration);
     }
 
     void isaacsimCommonLoggingWrite(IsaacSimCommonLoggingLogLevel severity,

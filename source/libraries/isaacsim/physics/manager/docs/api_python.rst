@@ -24,5 +24,6 @@ Python guide and API reference
 
 .. automodule:: isaacsim.physics.manager
     :members:
+    :exclude-members: PhysicsProfileStats
     :undoc-members:
     :show-inheritance:

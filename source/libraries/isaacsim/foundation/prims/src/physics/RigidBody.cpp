@@ -14,6 +14,7 @@
 // limitations under the License.
 
 #include <isaacsim/common/logging/Logging.hpp>
+#include <isaacsim/foundation/objects/Prim.hpp>
 #include <isaacsim/foundation/prims/physics/RigidBody.hpp>
 
 #include <sstream>
@@ -33,8 +34,8 @@ namespace array = isaacsim::common::array;
 namespace
 {
 
-constexpr float kRadiansToDegrees = 57.29577951308f;
-constexpr float kDegreesToRadians = 0.01745329252f;
+constexpr float g_kRadiansToDegrees = 57.29577951308f;
+constexpr float g_kDegreesToRadians = 0.01745329252f;
 
 std::string joinPaths(const std::vector<std::string>& v)
 {
@@ -54,10 +55,6 @@ RigidBody::RigidBody(const std::variant<std::string, std::vector<std::string>>& 
                      const std::optional<array::Array>& masses,
                      const std::optional<array::Array>& densities,
                      bool applyPhysicsApis,
-                     const std::optional<array::Array>& positions,
-                     const std::optional<array::Array>& translations,
-                     const std::optional<array::Array>& orientations,
-                     const std::optional<array::Array>& scales,
                      bool resetXformOpProperties)
     : isaacsim::foundation::objects::Xform()
 {
@@ -69,7 +66,7 @@ RigidBody::RigidBody(const std::variant<std::string, std::vector<std::string>>& 
     }
     m_paths = std::move(existentPaths);
     // Initialize instance from arguments.
-    _initialize(positions, translations, orientations, scales, resetXformOpProperties);
+    _initialize(resetXformOpProperties);
     if (applyPhysicsApis)
     {
         this->applyPhysicsApis();
@@ -118,11 +115,11 @@ void RigidBody::setVelocities(const std::optional<array::Array>& linearVelocitie
     {
         auto values = angularVelocities->reshape(array::Shape({ int64_t{ -1 }, int64_t{ 3 } }))
                           .broadcastTo(array::Shape({ batchSize, int64_t{ 3 } }))
-                          .reshape(array::Shape({ int64_t{ -1 } }))
+                          .flatten()
                           .get<std::vector<float>>();
         for (float& value : values)
         {
-            value *= kRadiansToDegrees;
+            value *= g_kRadiansToDegrees;
         }
         this->setAttributeValues("physics:angularVelocity",
                                  array::Array(values).reshape(array::Shape({ batchSize, int64_t{ 3 } })), indices);
@@ -133,10 +130,10 @@ std::tuple<array::Array, array::Array> RigidBody::getVelocities(const std::optio
 {
     auto linearVelocities = std::get<array::Array>(this->getAttributeValues("physics:velocity", indices));
     auto angularVelocities = std::get<array::Array>(this->getAttributeValues("physics:angularVelocity", indices));
-    auto values = angularVelocities.reshape(array::Shape({ int64_t{ -1 } })).get<std::vector<float>>();
+    auto values = angularVelocities.flatten().get<std::vector<float>>();
     for (float& value : values)
     {
-        value *= kDegreesToRadians;
+        value *= g_kDegreesToRadians;
     }
     return { linearVelocities, array::Array(values).reshape(angularVelocities.shape()) };
 }
@@ -149,7 +146,7 @@ array::Array RigidBody::getMasses(const std::optional<array::Array>& indices, bo
     {
         return result;
     }
-    auto values = result.reshape(array::Shape({ int64_t{ -1 } })).get<std::vector<float>>();
+    auto values = result.flatten().get<std::vector<float>>();
     for (float& value : values)
     {
         value = 1.0f / (value + 1e-8f);
@@ -214,8 +211,7 @@ array::Array RigidBody::getEnabledRigidBodies(const std::optional<array::Array>&
 void RigidBody::setEnabledGravities(const array::Array& enabled, const std::optional<array::Array>& indices)
 {
     const int64_t batchSize = _resolveIndexedSize(indices);
-    auto values =
-        enabled.reshape(array::Shape({ int64_t{ -1 } })).broadcastTo(array::Shape({ batchSize })).get<std::vector<bool>>();
+    auto values = enabled.flatten().broadcastTo(array::Shape({ batchSize })).get<std::vector<bool>>();
     std::vector<bool> disabled(values.size());
     for (std::size_t i = 0; i < values.size(); ++i)
     {
@@ -228,13 +224,27 @@ void RigidBody::setEnabledGravities(const array::Array& enabled, const std::opti
 array::Array RigidBody::getEnabledGravities(const std::optional<array::Array>& indices)
 {
     auto disabled = std::get<array::Array>(this->getAttributeValues("physxRigidBody:disableGravity", indices));
-    auto values = disabled.reshape(array::Shape({ int64_t{ -1 } })).get<std::vector<bool>>();
+    auto values = disabled.flatten().get<std::vector<bool>>();
     std::vector<bool> enabled(values.size());
     for (std::size_t i = 0; i < values.size(); ++i)
     {
         enabled[i] = !values[i];
     }
     return array::Array(enabled).reshape(disabled.shape());
+}
+
+array::Array RigidBody::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    // A rigid body is a transformable prim carrying the Rigid Body API.
+    const isaacsim::foundation::objects::Prim prims(paths);
+    const std::vector<bool> areXformable = prims.isA("Xformable").flatten().get<std::vector<bool>>();
+    const std::vector<bool> haveApi = prims.hasApi("PhysicsRigidBodyAPI").flatten().get<std::vector<bool>>();
+    std::vector<bool> result(areXformable.size());
+    for (std::size_t i = 0; i < result.size(); ++i)
+    {
+        result[i] = areXformable[i] && haveApi[i];
+    }
+    return array::Array(result).reshape(array::Shape({ -1, 1 }));
 }
 
 } // namespace physics

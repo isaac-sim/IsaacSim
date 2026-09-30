@@ -29,7 +29,7 @@
 #include <ovx/path_dictionary/path_dictionary.h>
 #include <ovx/types.h>
 
-#ifdef OVGL_HAS_CUDA
+#if defined(OVGL_HAS_CUDA)
 #    include <cuda_runtime.h>
 #endif
 
@@ -50,7 +50,7 @@ namespace
 
 thread_local std::string g_error;
 
-bool finish_enqueue(ovstage_instance_t* stage, ovstage_enqueue_result_t enqueue)
+bool finishEnqueue(ovstage_instance_t* stage, ovstage_enqueue_result_t enqueue)
 {
     if (!stage || enqueue.status != OVSTAGE_OK || enqueue.op_index == OVSTAGE_INVALID_OP_ID)
         return false;
@@ -78,7 +78,7 @@ struct ScopedQueryHandle
     ~ScopedQueryHandle()
     {
         if (stage && handle != OVSTAGE_INVALID_QUERY_HANDLE)
-            (void)finish_enqueue(stage, ovstage_release_query(stage, handle));
+            (void)finishEnqueue(stage, ovstage_release_query(stage, handle));
     }
 };
 
@@ -89,7 +89,7 @@ struct ScopedReadHandle
     ~ScopedReadHandle()
     {
         if (stage && handle != OVSTAGE_INVALID_READ_HANDLE)
-            (void)finish_enqueue(stage, ovstage_release_read(stage, handle));
+            (void)finishEnqueue(stage, ovstage_release_read(stage, handle));
     }
 };
 
@@ -131,7 +131,7 @@ struct PointInstancer
     bool included = true;
 };
 
-ovx_string_t to_ovx(const std::string& value)
+ovx_string_t toOvx(const std::string& value)
 {
     ovx_string_t output{};
     output.ptr = value.c_str();
@@ -139,12 +139,12 @@ ovx_string_t to_ovx(const std::string& value)
     return output;
 }
 
-ovx_token_t intern_attr(ovstage_instance_t* stage, const std::string& name)
+ovx_token_t internAttribute(ovstage_instance_t* stage, const std::string& name)
 {
     path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(stage);
     if (!dictionary)
         return OVX_INVALID_TOKEN;
-    const ovx_string_t value = to_ovx(name);
+    const ovx_string_t value = toOvx(name);
     ovx_token_t token = OVX_INVALID_TOKEN;
     if (path_dictionary_create_tokens_from_strings(dictionary, &value, 1, &token).status != OVX_API_SUCCESS)
     {
@@ -153,15 +153,15 @@ ovx_token_t intern_attr(ovstage_instance_t* stage, const std::string& name)
     return token;
 }
 
-ReadStatus read_attribute(ovstage_instance_t* stage,
-                          ovstage_ordinal_t ordinal,
-                          const std::string& path,
-                          const std::string& name,
-                          HostAttribute& output,
-                          size_t maximum_bytes = std::numeric_limits<size_t>::max())
+ReadStatus readAttribute(ovstage_instance_t* stage,
+                         ovstage_ordinal_t ordinal,
+                         const std::string& path,
+                         const std::string& name,
+                         HostAttribute& output,
+                         size_t maximum_bytes = std::numeric_limits<size_t>::max())
 {
     output = HostAttribute{};
-    const ovx_token_t token = intern_attr(stage, name);
+    const ovx_token_t token = internAttribute(stage, name);
     if (token == OVX_INVALID_TOKEN)
     {
         g_error = "could not intern " + name;
@@ -173,7 +173,7 @@ ReadStatus read_attribute(ovstage_instance_t* stage,
         g_error = "stage has no path dictionary";
         return ReadStatus::Invalid;
     }
-    const ovx_string_t path_string = to_ovx(path);
+    const ovx_string_t path_string = toOvx(path);
     ovx_primpath_list_t path_list = OVX_INVALID_PRIMPATH_LIST;
     ScopedPathListReference path_ref{ dictionary, path_list };
     if (path_dictionary_create_path_list_from_strings(dictionary, &path_string, 1, &path_list).status != OVX_API_SUCCESS ||
@@ -302,7 +302,7 @@ ReadStatus read_attribute(ovstage_instance_t* stage,
                         }
                         else if (value.device.device_type == kDLCUDA)
                         {
-#ifdef OVGL_HAS_CUDA
+#if defined(OVGL_HAS_CUDA)
                             const cudaError_t copy =
                                 cudaMemcpy(output.bytes.data(), source, last - first, cudaMemcpyDeviceToHost);
                             if (copy != cudaSuccess)
@@ -340,7 +340,7 @@ ReadStatus read_attribute(ovstage_instance_t* stage,
         if (result == ReadStatus::Invalid)
             break;
     }
-    if (!finish_enqueue(stage, begin))
+    if (!finishEnqueue(stage, begin))
     {
         g_error = "could not complete read for " + path + "." + name;
         result = ReadStatus::Invalid;
@@ -349,15 +349,15 @@ ReadStatus read_attribute(ovstage_instance_t* stage,
 }
 
 template <typename T>
-ReadStatus read_array(ovstage_instance_t* stage,
-                      ovstage_ordinal_t ordinal,
-                      const std::string& path,
-                      const char* name,
-                      uint8_t code,
-                      uint8_t bits,
-                      uint16_t lanes,
-                      std::vector<T>& output,
-                      size_t maximum_elements = std::numeric_limits<size_t>::max())
+ReadStatus readArray(ovstage_instance_t* stage,
+                     ovstage_ordinal_t ordinal,
+                     const std::string& path,
+                     const char* name,
+                     uint8_t code,
+                     uint8_t bits,
+                     uint16_t lanes,
+                     std::vector<T>& output,
+                     size_t maximum_elements = std::numeric_limits<size_t>::max())
 {
     HostAttribute value;
     output.clear();
@@ -371,7 +371,7 @@ ReadStatus read_array(ovstage_instance_t* stage,
         }
         maximum_bytes = maximum_elements * sizeof(T);
     }
-    const ReadStatus status = read_attribute(stage, ordinal, path, name, value, maximum_bytes);
+    const ReadStatus status = readAttribute(stage, ordinal, path, name, value, maximum_bytes);
     if (status != ReadStatus::Valid)
         return status;
     if (!value.is_array || value.dtype.code != code || value.dtype.bits != bits || value.dtype.lanes != lanes ||
@@ -388,7 +388,7 @@ ReadStatus read_array(ovstage_instance_t* stage,
     return ReadStatus::Valid;
 }
 
-std::vector<std::string> resolve_path_ids(ovstage_instance_t* stage, const std::vector<uint8_t>& bytes)
+std::vector<std::string> resolvePathIds(ovstage_instance_t* stage, const std::vector<uint8_t>& bytes)
 {
     if (bytes.empty() || bytes.size() % sizeof(ovx_primpath_t) != 0)
         return {};
@@ -413,14 +413,14 @@ std::vector<std::string> resolve_path_ids(ovstage_instance_t* stage, const std::
     return output.size() == paths.size() ? output : std::vector<std::string>{};
 }
 
-ReadStatus read_prototypes(ovstage_instance_t* stage,
-                           ovstage_ordinal_t ordinal,
-                           const std::string& path,
-                           std::vector<std::string>& output)
+ReadStatus readPrototypes(ovstage_instance_t* stage,
+                          ovstage_ordinal_t ordinal,
+                          const std::string& path,
+                          std::vector<std::string>& output)
 {
     HostAttribute value;
     output.clear();
-    const ReadStatus status = read_attribute(stage, ordinal, path, "prototypes", value);
+    const ReadStatus status = readAttribute(stage, ordinal, path, "prototypes", value);
     if (status != ReadStatus::Valid)
         return status;
     if (!value.is_array)
@@ -448,7 +448,7 @@ ReadStatus read_prototypes(ovstage_instance_t* stage,
     }
     else if (value.dtype.code == kDLUInt && value.dtype.bits == 64 && value.dtype.lanes == 1)
     {
-        output = resolve_path_ids(stage, value.bytes);
+        output = resolvePathIds(stage, value.bytes);
         if (output.empty() && !value.bytes.empty())
         {
             g_error = "unresolvable PointInstancer prototype paths at " + path;
@@ -478,10 +478,10 @@ ReadStatus read_prototypes(ovstage_instance_t* stage,
 
 void identity(double output[16])
 {
-    static const double value[16] = {
+    static const double s_kValue[16] = {
         1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
     };
-    std::memcpy(output, value, sizeof(value));
+    std::memcpy(output, s_kValue, sizeof(s_kValue));
 }
 
 void multiply(const double left[16], const double right[16], double output[16])
@@ -500,12 +500,12 @@ void multiply(const double left[16], const double right[16], double output[16])
     std::memcpy(output, value, sizeof(value));
 }
 
-bool read_matrix(
+bool readMatrix(
     ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& path, const char* name, double output[16])
 {
     identity(output);
     HostAttribute value;
-    const ReadStatus status = read_attribute(stage, ordinal, path, name, value, 16 * sizeof(double));
+    const ReadStatus status = readAttribute(stage, ordinal, path, name, value, 16 * sizeof(double));
     if (status == ReadStatus::Missing)
         return true;
     if (status == ReadStatus::Invalid)
@@ -525,25 +525,25 @@ bool read_matrix(
     return true;
 }
 
-std::string parent_path(const std::string& path)
+std::string parentPath(const std::string& path)
 {
     const size_t slash = path.rfind('/');
     return slash == std::string::npos || slash == 0 ? "/" : path.substr(0, slash);
 }
 
-bool same_or_descendant(const std::string& path, const std::string& root)
+bool sameOrDescendant(const std::string& path, const std::string& root)
 {
     return path == root ||
            (path.size() > root.size() && path.compare(0, root.size(), root) == 0 && path[root.size()] == '/');
 }
 
-std::string read_text(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& path, const char* name)
+std::string readText(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& path, const char* name)
 {
     HostAttribute value;
     /* purpose/visibility are tokens. Keep even malformed dormant metadata from
      * causing an unbounded allocation during the structural-prune pass. */
     constexpr size_t kMaximumTokenBytes = 4096;
-    if (read_attribute(stage, ordinal, path, name, value, kMaximumTokenBytes) != ReadStatus::Valid ||
+    if (readAttribute(stage, ordinal, path, name, value, kMaximumTokenBytes) != ReadStatus::Valid ||
         value.dtype.code != kDLUInt || value.bytes.empty())
     {
         return {};
@@ -569,11 +569,11 @@ std::string read_text(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, cons
     return output;
 }
 
-bool included_purpose(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& prim)
+bool includedPurpose(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& prim)
 {
-    for (std::string path = prim; path.size() > 1; path = parent_path(path))
+    for (std::string path = prim; path.size() > 1; path = parentPath(path))
     {
-        const std::string purpose = read_text(stage, ordinal, path, "purpose");
+        const std::string purpose = readText(stage, ordinal, path, "purpose");
         if (purpose == "default" || purpose == "render")
             return true;
         if (purpose == "guide" || purpose == "proxy")
@@ -582,22 +582,22 @@ bool included_purpose(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, cons
     return true;
 }
 
-bool included_visibility(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& prim)
+bool includedVisibility(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& prim)
 {
-    for (std::string path = prim; path.size() > 1; path = parent_path(path))
+    for (std::string path = prim; path.size() > 1; path = parentPath(path))
     {
-        if (read_text(stage, ordinal, path, "visibility") == "invisible")
+        if (readText(stage, ordinal, path, "visibility") == "invisible")
             return false;
     }
     return true;
 }
 
-ReadStatus read_bool(
+ReadStatus readBool(
     ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& path, const char* name, bool& output)
 {
     output = false;
     HostAttribute value;
-    const ReadStatus status = read_attribute(stage, ordinal, path, name, value, sizeof(uint64_t));
+    const ReadStatus status = readAttribute(stage, ordinal, path, name, value, sizeof(uint64_t));
     if (status != ReadStatus::Valid)
         return status;
     if (value.is_array || value.dtype.code != kDLUInt || value.dtype.bits != 8 || value.dtype.lanes != 1 ||
@@ -610,7 +610,7 @@ ReadStatus read_bool(
     return ReadStatus::Valid;
 }
 
-float half_to_float(uint16_t half)
+float halfToFloat(uint16_t half)
 {
     const uint32_t sign = static_cast<uint32_t>(half & 0x8000u) << 16;
     uint32_t exponent = (half >> 10) & 0x1fu;
@@ -646,13 +646,13 @@ float half_to_float(uint16_t half)
     return output;
 }
 
-ReadStatus read_orientations(ovstage_instance_t* stage,
-                             ovstage_ordinal_t ordinal,
-                             const std::string& path,
-                             const char* name,
-                             size_t count,
-                             size_t maximum_count,
-                             std::vector<Orientation>& output)
+ReadStatus readOrientations(ovstage_instance_t* stage,
+                            ovstage_ordinal_t ordinal,
+                            const std::string& path,
+                            const char* name,
+                            size_t count,
+                            size_t maximum_count,
+                            std::vector<Orientation>& output)
 {
     HostAttribute value;
     output.clear();
@@ -661,7 +661,7 @@ ReadStatus read_orientations(ovstage_instance_t* stage,
         g_error = "PointInstancer " + path + "." + name + " input bound overflow";
         return ReadStatus::Invalid;
     }
-    const ReadStatus status = read_attribute(stage, ordinal, path, name, value, maximum_count * 4 * sizeof(float));
+    const ReadStatus status = readAttribute(stage, ordinal, path, name, value, maximum_count * 4 * sizeof(float));
     if (status != ReadStatus::Valid)
         return status;
     if (!value.is_array || value.dtype.code != kDLFloat || value.dtype.lanes != 4 ||
@@ -683,7 +683,7 @@ ReadStatus read_orientations(ovstage_instance_t* stage,
         {
             uint16_t q[4];
             std::memcpy(q, value.bytes.data() + index * sizeof(q), sizeof(q));
-            output[index] = { half_to_float(q[0]), half_to_float(q[1]), half_to_float(q[2]), half_to_float(q[3]) };
+            output[index] = { halfToFloat(q[0]), halfToFloat(q[1]), halfToFloat(q[2]), halfToFloat(q[3]) };
         }
         else
         {
@@ -695,7 +695,7 @@ ReadStatus read_orientations(ovstage_instance_t* stage,
     return ReadStatus::Valid;
 }
 
-bool instance_limit(size_t& output)
+bool instanceLimit(size_t& output)
 {
     const char* text = std::getenv("OVGL_MAX_CPU_POINT_INSTANCES");
     if (!text)
@@ -731,25 +731,22 @@ bool instance_limit(size_t& output)
     return true;
 }
 
-void initialize_instancer(ovstage_instance_t* stage,
-                          ovstage_ordinal_t ordinal,
-                          const std::string& path,
-                          PointInstancer& output)
+void initializeInstancer(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, const std::string& path, PointInstancer& output)
 {
     output = PointInstancer{};
     output.path = path;
     identity(output.world);
-    output.included = included_purpose(stage, ordinal, path) && included_visibility(stage, ordinal, path);
+    output.included = includedPurpose(stage, ordinal, path) && includedVisibility(stage, ordinal, path);
 }
 
-bool read_instancer_payload(ovstage_instance_t* stage,
-                            ovstage_ordinal_t ordinal,
-                            PointInstancer& output,
-                            size_t& remaining_instances)
+bool readInstancerPayload(ovstage_instance_t* stage,
+                          ovstage_ordinal_t ordinal,
+                          PointInstancer& output,
+                          size_t& remaining_instances)
 {
     const std::string& path = output.path;
 
-    const ReadStatus indices = read_array<int32_t>(
+    const ReadStatus indices = readArray<int32_t>(
         stage, ordinal, path, "protoIndices", kDLInt, 32, 1, output.proto_indices, remaining_instances);
     if (indices == ReadStatus::Invalid)
         return false;
@@ -770,31 +767,31 @@ bool read_instancer_payload(ovstage_instance_t* stage,
     /* Read the bounded cardinality column first. An over-limit instancer must
      * fail before relationship resolution, bulk value copies, or matrix
      * decoding can consume additional memory. */
-    const ReadStatus targets = read_prototypes(stage, ordinal, path, output.prototypes);
-    const ReadStatus positions = read_array<float>(
+    const ReadStatus targets = readPrototypes(stage, ordinal, path, output.prototypes);
+    const ReadStatus positions = readArray<float>(
         stage, ordinal, path, "positions", kDLFloat, 32, 3, output.positions, maximum_vector_components);
     const ReadStatus scales =
-        read_array<float>(stage, ordinal, path, "scales", kDLFloat, 32, 3, output.scales, maximum_vector_components);
+        readArray<float>(stage, ordinal, path, "scales", kDLFloat, 32, 3, output.scales, maximum_vector_components);
 
-    ReadStatus orientations = read_orientations(
-        stage, ordinal, path, "orientationsf", output.proto_indices.size(), count, output.orientations);
+    ReadStatus orientations =
+        readOrientations(stage, ordinal, path, "orientationsf", output.proto_indices.size(), count, output.orientations);
     if (orientations == ReadStatus::Missing || (orientations == ReadStatus::Valid && output.orientations.empty()))
     {
-        orientations = read_orientations(
+        orientations = readOrientations(
             stage, ordinal, path, "orientations", output.proto_indices.size(), count, output.orientations);
     }
 
-    const ReadStatus ids = read_array<int64_t>(stage, ordinal, path, "ids", kDLInt, 64, 1, output.ids, count);
+    const ReadStatus ids = readArray<int64_t>(stage, ordinal, path, "ids", kDLInt, 64, 1, output.ids, count);
     std::vector<int64_t> invisible;
     const ReadStatus invisible_status =
-        read_array<int64_t>(stage, ordinal, path, "invisibleIds", kDLInt, 64, 1, invisible, count);
+        readArray<int64_t>(stage, ordinal, path, "invisibleIds", kDLInt, 64, 1, invisible, count);
     std::vector<int64_t> inactive;
     const ReadStatus inactive_status =
-        read_array<int64_t>(stage, ordinal, path, "inactiveIds", kDLInt, 64, 1, inactive, count);
+        readArray<int64_t>(stage, ordinal, path, "inactiveIds", kDLInt, 64, 1, inactive, count);
     output.masked_ids.insert(invisible.begin(), invisible.end());
     output.masked_ids.insert(inactive.begin(), inactive.end());
 
-    if (!read_matrix(stage, ordinal, path, "worldMatrix", output.world))
+    if (!readMatrix(stage, ordinal, path, "worldMatrix", output.world))
         return false;
 
     const bool empty = count == 0;
@@ -832,7 +829,7 @@ bool read_instancer_payload(ovstage_instance_t* stage,
     return true;
 }
 
-bool collect_instancer_paths(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, std::vector<std::string>& output)
+bool collectInstancerPaths(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, std::vector<std::string>& output)
 {
     const char* schema = "PointInstancer";
     ovx_string_t schema_value{};
@@ -860,14 +857,14 @@ bool collect_instancer_paths(ovstage_instance_t* stage, ovstage_ordinal_t ordina
     const ovstage_api_status_t fetch = ovstage_fetch_query_result(stage, query, OVSTAGE_TIMEOUT_INFINITE, &result);
     if (fetch != OVSTAGE_OK)
     {
-        (void)finish_enqueue(stage, query_operation);
+        (void)finishEnqueue(stage, query_operation);
         g_error = "fetch_query_result(PointInstancer) failed";
         return false;
     }
     const auto paths = isaacsim::ovgl_viewport::debug::details::resolveQueryPrimPaths(
         stage, query, result.attributes, result.attribute_count, ordinal);
     const bool result_released = ovstage_release_query_result(stage, &result) == OVSTAGE_OK;
-    const bool query_finished = finish_enqueue(stage, query_operation);
+    const bool query_finished = finishEnqueue(stage, query_operation);
     if (!paths || !result_released || !query_finished)
     {
         g_error = "query lifecycle(PointInstancer) failed";
@@ -878,47 +875,47 @@ bool collect_instancer_paths(ovstage_instance_t* stage, ovstage_ordinal_t ordina
     return true;
 }
 
-bool prototype_relative_transform(ovstage_instance_t* stage,
-                                  ovstage_ordinal_t ordinal,
-                                  const std::string& root,
-                                  const std::string& source,
-                                  double output[16])
+bool prototypeRelativeTransform(ovstage_instance_t* stage,
+                                ovstage_ordinal_t ordinal,
+                                const std::string& root,
+                                const std::string& source,
+                                double output[16])
 {
-    if (!same_or_descendant(source, root))
+    if (!sameOrDescendant(source, root))
         return false;
     identity(output);
-    for (std::string path = source;; path = parent_path(path))
+    for (std::string path = source;; path = parentPath(path))
     {
         double local[16];
         double composed[16];
-        if (!read_matrix(stage, ordinal, path, "localMatrix", local))
+        if (!readMatrix(stage, ordinal, path, "localMatrix", local))
             return false;
         multiply(output, local, composed);
         std::memcpy(output, composed, sizeof(composed));
         bool reset_xform_stack = false;
-        const ReadStatus reset = read_bool(stage, ordinal, path, "resetXformStack", reset_xform_stack);
+        const ReadStatus reset = readBool(stage, ordinal, path, "resetXformStack", reset_xform_stack);
         if (reset == ReadStatus::Invalid)
             return false;
         if ((reset == ReadStatus::Valid && reset_xform_stack) || path == root)
         {
             return true;
         }
-        const std::string parent = parent_path(path);
-        if (parent == path || !same_or_descendant(parent, root))
+        const std::string parent = parentPath(path);
+        if (parent == path || !sameOrDescendant(parent, root))
             return false;
     }
 }
 
-bool instance_world_transform(ovstage_instance_t* stage,
-                              ovstage_ordinal_t ordinal,
-                              const PointInstancer& instancer,
-                              const std::string& prototype_root,
-                              const std::string& source_path,
-                              size_t index,
-                              double output[16])
+bool instanceWorldTransform(ovstage_instance_t* stage,
+                            ovstage_ordinal_t ordinal,
+                            const PointInstancer& instancer,
+                            const std::string& prototype_root,
+                            const std::string& source_path,
+                            size_t index,
+                            double output[16])
 {
     double relative[16];
-    if (!prototype_relative_transform(stage, ordinal, prototype_root, source_path, relative))
+    if (!prototypeRelativeTransform(stage, ordinal, prototype_root, source_path, relative))
     {
         return false;
     }
@@ -969,7 +966,7 @@ bool instance_world_transform(ovstage_instance_t* stage,
     return std::all_of(output, output + 16, [](double value) { return std::isfinite(value); });
 }
 
-void release_mesh(SceneMesh& mesh)
+void releaseMesh(SceneMesh& mesh)
 {
     std::free(mesh.positions);
     std::free(mesh.normals);
@@ -987,7 +984,7 @@ public:
     OwnedMesh() = default;
     ~OwnedMesh()
     {
-        release_mesh(value);
+        releaseMesh(value);
     }
 
     OwnedMesh(const OwnedMesh&) = delete;
@@ -1006,10 +1003,10 @@ class MeshAdditions
 public:
     ~MeshAdditions()
     {
-        if (owns_meshes)
+        if (m_ownsMeshes)
         {
             for (SceneMesh& mesh : values)
-                release_mesh(mesh);
+                releaseMesh(mesh);
         }
     }
 
@@ -1017,15 +1014,15 @@ public:
 
     void relinquish()
     {
-        owns_meshes = false;
+        m_ownsMeshes = false;
     }
 
 private:
-    bool owns_meshes = true;
+    bool m_ownsMeshes = true;
 };
 
 template <typename T>
-bool clone_array(const T* source, size_t count, T*& output)
+bool cloneArray(const T* source, size_t count, T*& output)
 {
     output = nullptr;
     if (!source || count == 0)
@@ -1039,7 +1036,7 @@ bool clone_array(const T* source, size_t count, T*& output)
     return true;
 }
 
-void update_mesh_bounds(SceneMesh& mesh)
+void updateMeshBounds(SceneMesh& mesh)
 {
     float local_min[3] = { 1e30f, 1e30f, 1e30f };
     float local_max[3] = { -1e30f, -1e30f, -1e30f };
@@ -1065,7 +1062,7 @@ void update_mesh_bounds(SceneMesh& mesh)
     std::memcpy(mesh.bounds_max, world_max, sizeof(world_max));
 }
 
-bool clone_mesh(const SceneMesh& source, const double world[16], bool visible, SceneMesh& output)
+bool cloneMesh(const SceneMesh& source, const double world[16], bool visible, SceneMesh& output)
 {
     output = source;
     output.positions = nullptr;
@@ -1075,16 +1072,16 @@ bool clone_mesh(const SceneMesh& source, const double world[16], bool visible, S
     output.indices = nullptr;
     output.ptex_tri_colors = nullptr;
     output.path = nullptr;
-    const bool copied = clone_array(source.positions, static_cast<size_t>(source.nvertices) * 3, output.positions) &&
-                        clone_array(source.normals, static_cast<size_t>(source.nvertices) * 3, output.normals) &&
-                        clone_array(source.colors, static_cast<size_t>(source.nvertices) * 3, output.colors) &&
-                        clone_array(source.texcoords, static_cast<size_t>(source.nvertices) * 2, output.texcoords) &&
-                        clone_array(source.indices, static_cast<size_t>(source.nindices), output.indices) &&
-                        clone_array(source.ptex_tri_colors, static_cast<size_t>(std::max(source.ptex_tri_color_count, 0)),
-                                    output.ptex_tri_colors);
+    const bool copied = cloneArray(source.positions, static_cast<size_t>(source.nvertices) * 3, output.positions) &&
+                        cloneArray(source.normals, static_cast<size_t>(source.nvertices) * 3, output.normals) &&
+                        cloneArray(source.colors, static_cast<size_t>(source.nvertices) * 3, output.colors) &&
+                        cloneArray(source.texcoords, static_cast<size_t>(source.nvertices) * 2, output.texcoords) &&
+                        cloneArray(source.indices, static_cast<size_t>(source.nindices), output.indices) &&
+                        cloneArray(source.ptex_tri_colors, static_cast<size_t>(std::max(source.ptex_tri_color_count, 0)),
+                                   output.ptex_tri_colors);
     if (!copied)
     {
-        release_mesh(output);
+        releaseMesh(output);
         return false;
     }
     if (source.path)
@@ -1093,7 +1090,7 @@ bool clone_mesh(const SceneMesh& source, const double world[16], bool visible, S
         output.path = static_cast<char*>(std::malloc(length));
         if (!output.path)
         {
-            release_mesh(output);
+            releaseMesh(output);
             return false;
         }
         std::memcpy(output.path, source.path, length);
@@ -1101,17 +1098,17 @@ bool clone_mesh(const SceneMesh& source, const double world[16], bool visible, S
     std::memcpy(output.world_xform, world, sizeof(output.world_xform));
     output.is_proto_only = 0;
     output.visible = visible ? 1 : 0;
-    update_mesh_bounds(output);
+    updateMeshBounds(output);
     return true;
 }
 
-bool instance_is_visible(const PointInstancer& instancer, size_t index)
+bool instanceIsVisible(const PointInstancer& instancer, size_t index)
 {
     const int64_t id = index < instancer.ids.size() ? instancer.ids[index] : static_cast<int64_t>(index);
     return instancer.masked_ids.find(id) == instancer.masked_ids.end();
 }
 
-void update_scene_bounds(Scene& scene)
+void updateSceneBounds(Scene& scene)
 {
     float lower[3] = { 1e30f, 1e30f, 1e30f };
     float upper[3] = { -1e30f, -1e30f, -1e30f };
@@ -1135,7 +1132,7 @@ void update_scene_bounds(Scene& scene)
     }
 }
 
-int expand_impl(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* scene)
+int expandPointInstancers(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* scene)
 {
     if (!stage || !scene || (scene->nmeshes > 0 && !scene->meshes))
     {
@@ -1143,7 +1140,7 @@ int expand_impl(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* sce
         return 0;
     }
     std::vector<std::string> paths;
-    if (!collect_instancer_paths(stage, ordinal, paths))
+    if (!collectInstancerPaths(stage, ordinal, paths))
         return 0;
     if (paths.empty())
         return 1;
@@ -1153,7 +1150,7 @@ int expand_impl(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* sce
     for (const std::string& path : paths)
     {
         PointInstancer instancer;
-        initialize_instancer(stage, ordinal, path, instancer);
+        initializeInstancer(stage, ordinal, path, instancer);
         instancers.push_back(std::move(instancer));
     }
 
@@ -1166,7 +1163,7 @@ int expand_impl(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* sce
     {
         for (size_t outer = 0; outer < paths.size(); ++outer)
         {
-            if (outer != inner && !instancers[outer].included && same_or_descendant(paths[inner], paths[outer]))
+            if (outer != inner && !instancers[outer].included && sameOrDescendant(paths[inner], paths[outer]))
             {
                 instancers[inner].included = false;
                 break;
@@ -1184,7 +1181,7 @@ int expand_impl(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* sce
         for (size_t inner = 0; inner < paths.size(); ++inner)
         {
             if (outer != inner && instancers[outer].included && instancers[inner].included &&
-                same_or_descendant(paths[inner], paths[outer]))
+                sameOrDescendant(paths[inner], paths[outer]))
             {
                 g_error = "nested PointInstancer is unsupported: " + paths[inner] + " below " + paths[outer];
                 return 0;
@@ -1200,13 +1197,13 @@ int expand_impl(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* sce
     const bool has_included_instancer = std::any_of(
         instancers.begin(), instancers.end(), [](const PointInstancer& instancer) { return instancer.included; });
     size_t maximum = OVGL_POINT_INSTANCER_DEFAULT_CPU_LIMIT;
-    if (has_included_instancer && !instance_limit(maximum))
+    if (has_included_instancer && !instanceLimit(maximum))
         return 0;
     size_t remaining_instances = maximum;
 
     for (PointInstancer& instancer : instancers)
     {
-        if (instancer.included && !read_instancer_payload(stage, ordinal, instancer, remaining_instances))
+        if (instancer.included && !readInstancerPayload(stage, ordinal, instancer, remaining_instances))
         {
             return 0;
         }
@@ -1220,7 +1217,7 @@ int expand_impl(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* sce
         {
             for (size_t candidate = 0; candidate < paths.size(); ++candidate)
             {
-                if (instancers[candidate].included && same_or_descendant(paths[candidate], root))
+                if (instancers[candidate].included && sameOrDescendant(paths[candidate], root))
                 {
                     g_error =
                         "PointInstancer prototype hierarchy contains a "
@@ -1245,7 +1242,7 @@ int expand_impl(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* sce
         for (int mesh_index = 0; mesh_index < base_count; ++mesh_index)
         {
             const SceneMesh& source = scene->meshes[mesh_index];
-            if (source.path && same_or_descendant(source.path, instancer.path))
+            if (source.path && sameOrDescendant(source.path, instancer.path))
             {
                 internal_prototypes.insert(mesh_index);
             }
@@ -1262,7 +1259,7 @@ int expand_impl(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* sce
             for (int mesh_index = 0; mesh_index < base_count; ++mesh_index)
             {
                 const SceneMesh& source = scene->meshes[mesh_index];
-                if (!source.path || !same_or_descendant(source.path, root))
+                if (!source.path || !sameOrDescendant(source.path, root))
                     continue;
                 for (size_t instance_index = 0; instance_index < instancer.proto_indices.size(); ++instance_index)
                 {
@@ -1276,7 +1273,7 @@ int expand_impl(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* sce
                         return 0;
                     }
                     double world[16];
-                    if (!instance_world_transform(stage, ordinal, instancer, root, source.path, instance_index, world))
+                    if (!instanceWorldTransform(stage, ordinal, instancer, root, source.path, instance_index, world))
                     {
                         if (g_error.empty())
                         {
@@ -1286,8 +1283,8 @@ int expand_impl(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* sce
                         return 0;
                     }
                     OwnedMesh clone;
-                    if (!clone_mesh(source, world, source.visible && instance_is_visible(instancer, instance_index),
-                                    clone.value))
+                    if (!cloneMesh(
+                            source, world, source.visible && instanceIsVisible(instancer, instance_index), clone.value))
                     {
                         g_error = "allocating PointInstancer mesh payload failed";
                         return 0;
@@ -1310,7 +1307,7 @@ int expand_impl(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* sce
             scene->meshes[index].is_proto_only = 1;
             scene->meshes[index].visible = 0;
         }
-        update_scene_bounds(*scene);
+        updateSceneBounds(*scene);
         return 1;
     }
     if (static_cast<size_t>(base_count) + additions.values.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
@@ -1339,7 +1336,7 @@ int expand_impl(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* sce
         scene->meshes[index].is_proto_only = 1;
         scene->meshes[index].visible = 0;
     }
-    update_scene_bounds(*scene);
+    updateSceneBounds(*scene);
     return 1;
 }
 
@@ -1350,7 +1347,7 @@ extern "C" int ovgl_expand_point_instancers(ovstage_instance_t* stage, ovstage_o
     g_error.clear();
     try
     {
-        return expand_impl(stage, ordinal, scene);
+        return expandPointInstancers(stage, ordinal, scene);
     }
     catch (const std::bad_alloc&)
     {

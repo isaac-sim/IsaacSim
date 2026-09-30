@@ -15,18 +15,18 @@
 
 """Exercise shared tensor-view mixins against the OvPhysX backend.
 
-Importing ``_physics_setup`` registers the OvPhysX ``SimulationView`` factory,
-so the tests use the public tensor registry directly.
+Importing ``_physics_setup`` registers the OvPhysX entity factories, so the
+tests use the public tensor registry directly.
 """
 
 from __future__ import annotations
 
 import _physics_setup  # noqa: F401  -- auto-registers ovphysx C++ factory
-from common.simulation_view_tests import SimulationViewBasicsMixin
+from common.tensor_registry_tests import TensorRegistryBasicsMixin
 
 
-class TestOvPhysxSimulationViewBasics(SimulationViewBasicsMixin):
-    """Run the shared simulation-view contract against OvPhysX and Warp."""
+class TestOvPhysxTensorRegistryBasics(TensorRegistryBasicsMixin):
+    """Run the shared tensor-registry contract against OvPhysX and Warp."""
 
     backend = "ovphysx"
     frontend = "warp"

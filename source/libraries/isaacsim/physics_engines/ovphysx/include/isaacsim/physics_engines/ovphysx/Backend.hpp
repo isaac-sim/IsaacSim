@@ -61,6 +61,24 @@ ISAACSIM_PHYSICS_ENGINES_OVPHYSX_API void shutdown();
  */
 ISAACSIM_PHYSICS_ENGINES_OVPHYSX_API void setSuppressReadback(bool enable);
 
+/**
+ * @brief Declares the device on which this backend's tensors reside.
+ *
+ * ovphysx exposes no query for the device its scene selected, so the caller that configured the tensor device
+ * states it here. Entity views report this value, and they read it on each access, so a caller that only learns
+ * the device once stepping has begun may set it after its views exist.
+ *
+ * @param[in] ordinal CUDA device ordinal, or `-1` for host memory.
+ */
+ISAACSIM_PHYSICS_ENGINES_OVPHYSX_API void setTensorDeviceOrdinal(int ordinal);
+
+/**
+ * @brief Gets the declared tensor-device ordinal.
+ *
+ * @return The ordinal passed to @ref setTensorDeviceOrdinal, or `-1` when none was declared.
+ */
+ISAACSIM_PHYSICS_ENGINES_OVPHYSX_API int getTensorDeviceOrdinal();
+
 } // namespace ovphysx
 } // namespace physics_engines
 } // namespace isaacsim

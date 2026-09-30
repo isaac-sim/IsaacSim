@@ -9,6 +9,7 @@
 .. _isaacsim-foundation-usd-ovstage:
 .. _isaacsim-foundation-usd-ovstage-overview:
 
+===============================
 isaacsim.foundation.usd.ovstage
 ===============================
 

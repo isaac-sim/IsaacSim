@@ -19,6 +19,7 @@ isaacsim_add_group(
         isaacsim.common.array
         isaacsim.common.exceptions
         isaacsim.common.logging
+        isaacsim.common.ovstage
         isaacsim.common.profiling
         isaacsim.common.string
 )
@@ -26,5 +27,6 @@ isaacsim_add_group(
 add_subdirectory(exceptions)
 add_subdirectory(array)
 add_subdirectory(logging)
+add_subdirectory(ovstage)
 add_subdirectory(profiling)
 add_subdirectory(string)

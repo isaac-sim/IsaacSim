@@ -40,7 +40,7 @@ Backend
 
 ``BackendGuard`` activates a named backend for the current thread within a
 scope and restores the previous context on destruction.  Declare it as a named
-local variable — a temporary is destroyed immediately:
+local variable --- a temporary is destroyed immediately:
 
 .. code-block:: cpp
 
@@ -69,7 +69,7 @@ Stage
 
 ``StageGuard`` temporarily overrides the thread-local active stage and
 restores the previous one on destruction.  Declare it as a named local
-variable — a temporary is destroyed immediately:
+variable --- a temporary is destroyed immediately:
 
 .. code-block:: cpp
 
@@ -86,6 +86,8 @@ variable — a temporary is destroyed immediately:
         objects::Stage activeStage = getActiveStage();  // throws if neither is set (default or active)
         findMatchingPrimPaths("/World/Robot", /*traverse=*/true);
     }
+
+.. _isaacsim-foundation-utils-api-cpp-prim:
 
 Prim
 ====

@@ -26,6 +26,12 @@ authoring = client.control.authoring
 simulation = client.control.simulation
 
 
+def test_make_grpc_client_from_dict() -> None:
+    """Test creating a gRPC client from a configuration dictionary."""
+    remote = make_client("grpc", {"endpoint": "127.0.0.1:1"})
+    assert remote.control is not None
+
+
 """
 Stage operations.
 """

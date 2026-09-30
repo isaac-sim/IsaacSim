@@ -13,9 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "details/UsdHelpers.hpp"
+
 #include <isaacsim/common/exceptions/Exceptions.hpp>
 #include <isaacsim/foundation/usd/ovstage/Usd.hpp>
-#include <isaacsim/foundation/usd/ovstage/details/UsdHelpers.hpp>
 #include <ovstage/ovstage_population.h>
 #include <ovx/path_dictionary/path_dictionary.h>
 #include <ovx/path_dictionary/path_dictionary_utils.h>
@@ -46,104 +47,106 @@ namespace ovstage
 namespace
 {
 
-static constexpr char kPrimTypeAttr[] = "usd-prim-type";
+static constexpr char g_kPrimTypeAttr[] = "usd-prim-type";
 // Sentinel written for prims defined with no type name; mapped back to "" on read.
-static constexpr char kUntypedSentinel[] = "__ovstage_population_untyped__";
-static constexpr char kSchemasAttr[] = "usd-schemas";
+static constexpr char g_kUntypedSentinel[] = "__ovstage_population_untyped__";
+static constexpr char g_kSchemasAttr[] = "usd-schemas";
 
 // Writes the full schema set for one prim at `ordinal` (no floor advance — caller seals).
 void writeSchemasToPath(ovstage_instance_t* instance,
-                        path_dictionary_instance_t* dict,
+                        path_dictionary_instance_t* dictionary,
                         const std::string& path,
                         const std::vector<std::string>& schemas,
                         ovstage_ordinal_t ordinal)
 {
-    const ovx_string_t pathStr{ path.c_str(), path.size() };
+    const ovx_string_t pathString{ path.c_str(), path.size() };
     ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
-    if (path_dictionary_create_path_list_from_strings(dict, &pathStr, 1, &pathList).status != OVX_API_SUCCESS)
+    if (path_dictionary_create_path_list_from_strings(dictionary, &pathString, 1, &pathList).status != OVX_API_SUCCESS)
         return;
 
     ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
     if (ovstage_query_from_path_list(instance, pathList, &query) != OVSTAGE_OK)
     {
-        path_dictionary_release_path_list_reference(dict, pathList);
+        path_dictionary_release_path_list_reference(dictionary, pathList);
         return;
     }
 
-    std::vector<uint64_t> ids;
+    std::vector<uint64_t> schemaIdentifiers;
     if (!schemas.empty())
     {
         std::vector<ovx_string_t> nameViews;
         nameViews.reserve(schemas.size());
-        for (const auto& s : schemas)
-            nameViews.push_back({ s.c_str(), s.size() });
+        for (const auto& schema : schemas)
+            nameViews.push_back({ schema.c_str(), schema.size() });
 
         std::vector<ovx_token_t> tokens(schemas.size(), OVX_INVALID_TOKEN);
-        if (path_dictionary_create_tokens_from_strings(dict, nameViews.data(), schemas.size(), tokens.data()).status ==
+        if (path_dictionary_create_tokens_from_strings(dictionary, nameViews.data(), schemas.size(), tokens.data()).status ==
             OVX_API_SUCCESS)
         {
-            ids.reserve(schemas.size());
-            for (auto tok : tokens)
-                ids.push_back(static_cast<uint64_t>(tok));
+            schemaIdentifiers.reserve(schemas.size());
+            for (auto token : tokens)
+                schemaIdentifiers.push_back(static_cast<uint64_t>(token));
         }
     }
 
-    const int64_t shape[1] = { static_cast<int64_t>(ids.size()) };
+    const int64_t shape[1] = { static_cast<int64_t>(schemaIdentifiers.size()) };
     const int64_t strides[1] = { 1 };
     DLTensor tensor{};
-    tensor.data = ids.empty() ? nullptr : ids.data();
+    tensor.data = schemaIdentifiers.empty() ? nullptr : schemaIdentifiers.data();
     tensor.device = { kDLCPU, 0 };
     tensor.ndim = 1;
     tensor.dtype = { kDLUInt, 64, 1 };
     tensor.shape = const_cast<int64_t*>(shape);
     tensor.strides = const_cast<int64_t*>(strides);
 
-    ovstage_write_data_t writeDesc{};
-    writeDesc.tensors = &tensor;
-    writeDesc.tensor_count = 1;
-    writeDesc.semantic = OVSTAGE_SEMANTIC_NONE;
-    writeDesc.is_array = true;
+    ovstage_write_data_t writeDescription{};
+    writeDescription.tensors = &tensor;
+    writeDescription.tensor_count = 1;
+    writeDescription.semantic = OVSTAGE_SEMANTIC_NONE;
+    writeDescription.is_array = true;
 
-    const ovx_string_or_token_t attrSpec{ OVX_INVALID_TOKEN, ovx_string_t{ kSchemasAttr, sizeof(kSchemasAttr) - 1 } };
-    details::waitAndRelease(
-        instance, ovstage_write_attribute(instance, query, attrSpec, ordinal, writeDesc, OVSTAGE_PRIM_MODE_UPSERT));
+    const ovx_string_or_token_t attributeSpecification{ OVX_INVALID_TOKEN,
+                                                        ovx_string_t{ g_kSchemasAttr, sizeof(g_kSchemasAttr) - 1 } };
+    details::waitAndRelease(instance, ovstage_write_attribute(instance, query, attributeSpecification, ordinal,
+                                                              writeDescription, OVSTAGE_PRIM_MODE_UPSERT));
 
     details::waitAndRelease(instance, ovstage_release_query(instance, query));
-    path_dictionary_release_path_list_reference(dict, pathList);
+    path_dictionary_release_path_list_reference(dictionary, pathList);
 }
 
 // Returns the usd-prim-type string for the prim at `path`, or std::nullopt if the
 // prim does not exist. Returns "" when the prim exists but was defined with an
 // empty type. Does NOT throw.
 std::optional<std::string> readPrimType(ovstage_instance_t* instance,
-                                        path_dictionary_instance_t* dict,
+                                        path_dictionary_instance_t* dictionary,
                                         const std::string& path)
 {
-    const ovx_string_t pathStr{ path.c_str(), path.size() };
+    const ovx_string_t pathString{ path.c_str(), path.size() };
     ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
-    if (path_dictionary_create_path_list_from_strings(dict, &pathStr, 1, &pathList).status != OVX_API_SUCCESS)
+    if (path_dictionary_create_path_list_from_strings(dictionary, &pathString, 1, &pathList).status != OVX_API_SUCCESS)
         return std::nullopt;
 
     ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
     if (ovstage_query_from_path_list(instance, pathList, &query) != OVSTAGE_OK)
     {
-        path_dictionary_release_path_list_reference(dict, pathList);
+        path_dictionary_release_path_list_reference(dictionary, pathList);
         return std::nullopt;
     }
 
-    const ovx_string_t attrStr{ kPrimTypeAttr, sizeof(kPrimTypeAttr) - 1 };
-    ovx_token_t attrToken = OVX_INVALID_TOKEN;
-    path_dictionary_create_tokens_from_strings(dict, &attrStr, 1, &attrToken);
+    const ovx_string_t attributeString{ g_kPrimTypeAttr, sizeof(g_kPrimTypeAttr) - 1 };
+    ovx_token_t attributeToken = OVX_INVALID_TOKEN;
+    path_dictionary_create_tokens_from_strings(dictionary, &attributeString, 1, &attributeToken);
 
     std::optional<std::string> result;
-    if (attrToken != OVX_INVALID_TOKEN)
+    if (attributeToken != OVX_INVALID_TOKEN)
     {
         ovstage_ordinal_range_t range{};
         range.end_ordinal = UINT64_MAX;
         range.has_start_ordinal = false;
 
         ovstage_read_handle_t read = OVSTAGE_INVALID_READ_HANDLE;
-        ovstage_enqueue_result_t enqueueResult = ovstage_read_attributes(instance, query, &attrToken, 1, range, &read);
+        ovstage_enqueue_result_t enqueueResult =
+            ovstage_read_attributes(instance, query, &attributeToken, 1, range, &read);
         if (enqueueResult.status == OVSTAGE_OK)
         {
             details::waitAndRelease(instance, enqueueResult);
@@ -164,11 +167,12 @@ std::optional<std::string> readPrimType(ovstage_instance_t* instance,
                     const uint64_t typeId = *static_cast<const uint64_t*>(group.data.tensors[0].data);
                     const ovx_token_t typeToken = static_cast<ovx_token_t>(typeId);
                     ovx_string_t name{};
-                    if (path_dictionary_get_strings_from_tokens(dict, &typeToken, 1, &name).status == OVX_API_SUCCESS &&
+                    if (path_dictionary_get_strings_from_tokens(dictionary, &typeToken, 1, &name).status ==
+                            OVX_API_SUCCESS &&
                         name.ptr)
                     {
                         std::string resolved(name.ptr, name.length);
-                        result.emplace(resolved == kUntypedSentinel ? "" : resolved);
+                        result.emplace(resolved == g_kUntypedSentinel ? "" : resolved);
                     }
                     else
                         result.emplace();
@@ -180,31 +184,31 @@ std::optional<std::string> readPrimType(ovstage_instance_t* instance,
     }
 
     details::waitAndRelease(instance, ovstage_release_query(instance, query));
-    path_dictionary_release_path_list_reference(dict, pathList);
+    path_dictionary_release_path_list_reference(dictionary, pathList);
     return result;
 }
 
 // Writes usd-prim-type for one path at `ordinal` (no floor advance — caller seals).
 void writePrimTypeToPath(ovstage_instance_t* instance,
-                         path_dictionary_instance_t* dict,
+                         path_dictionary_instance_t* dictionary,
                          const std::string& path,
                          const std::string& typeName,
                          ovstage_ordinal_t ordinal)
 {
-    const ovx_string_t typeStr{ typeName.c_str(), typeName.size() };
+    const ovx_string_t typeString{ typeName.c_str(), typeName.size() };
     ovx_token_t typeToken = OVX_INVALID_TOKEN;
-    if (path_dictionary_create_tokens_from_strings(dict, &typeStr, 1, &typeToken).status != OVX_API_SUCCESS)
+    if (path_dictionary_create_tokens_from_strings(dictionary, &typeString, 1, &typeToken).status != OVX_API_SUCCESS)
         return;
 
-    const ovx_string_t pathStr{ path.c_str(), path.size() };
+    const ovx_string_t pathString{ path.c_str(), path.size() };
     ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
-    if (path_dictionary_create_path_list_from_strings(dict, &pathStr, 1, &pathList).status != OVX_API_SUCCESS)
+    if (path_dictionary_create_path_list_from_strings(dictionary, &pathString, 1, &pathList).status != OVX_API_SUCCESS)
         return;
 
     ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
     if (ovstage_query_from_path_list(instance, pathList, &query) != OVSTAGE_OK)
     {
-        path_dictionary_release_path_list_reference(dict, pathList);
+        path_dictionary_release_path_list_reference(dictionary, pathList);
         return;
     }
 
@@ -219,18 +223,19 @@ void writePrimTypeToPath(ovstage_instance_t* instance,
     tensor.shape = const_cast<int64_t*>(shape);
     tensor.strides = const_cast<int64_t*>(strides);
 
-    ovstage_write_data_t writeDesc{};
-    writeDesc.tensors = &tensor;
-    writeDesc.tensor_count = 1;
-    writeDesc.semantic = OVSTAGE_SEMANTIC_NONE;
-    writeDesc.is_array = false;
+    ovstage_write_data_t writeDescription{};
+    writeDescription.tensors = &tensor;
+    writeDescription.tensor_count = 1;
+    writeDescription.semantic = OVSTAGE_SEMANTIC_NONE;
+    writeDescription.is_array = false;
 
-    const ovx_string_or_token_t attrSpec{ OVX_INVALID_TOKEN, ovx_string_t{ kPrimTypeAttr, sizeof(kPrimTypeAttr) - 1 } };
-    details::waitAndRelease(
-        instance, ovstage_write_attribute(instance, query, attrSpec, ordinal, writeDesc, OVSTAGE_PRIM_MODE_UPSERT));
+    const ovx_string_or_token_t attributeSpecification{ OVX_INVALID_TOKEN,
+                                                        ovx_string_t{ g_kPrimTypeAttr, sizeof(g_kPrimTypeAttr) - 1 } };
+    details::waitAndRelease(instance, ovstage_write_attribute(instance, query, attributeSpecification, ordinal,
+                                                              writeDescription, OVSTAGE_PRIM_MODE_UPSERT));
 
     details::waitAndRelease(instance, ovstage_release_query(instance, query));
-    path_dictionary_release_path_list_reference(dict, pathList);
+    path_dictionary_release_path_list_reference(dictionary, pathList);
 }
 
 struct UsdTypeDescriptor
@@ -242,7 +247,7 @@ struct UsdTypeDescriptor
 
 static std::optional<UsdTypeDescriptor> parseUsdTypeName(const std::string& name)
 {
-    static const std::unordered_map<std::string, UsdTypeDescriptor> kMap = {
+    static const std::unordered_map<std::string, UsdTypeDescriptor> s_kMap = {
         { "bool", { { kDLUInt, 8, 1 }, OVSTAGE_SEMANTIC_NONE, false } },
         { "uchar", { { kDLUInt, 8, 1 }, OVSTAGE_SEMANTIC_NONE, false } },
         { "int", { { kDLInt, 32, 1 }, OVSTAGE_SEMANTIC_NONE, false } },
@@ -338,11 +343,11 @@ static std::optional<UsdTypeDescriptor> parseUsdTypeName(const std::string& name
         { "matrix3d[]", { { kDLFloat, 64, 9 }, OVSTAGE_SEMANTIC_MATRIX, true } },
         { "matrix4d[]", { { kDLFloat, 64, 16 }, OVSTAGE_SEMANTIC_MATRIX, true } },
     };
-    const auto it = kMap.find(name);
-    return it == kMap.end() ? std::nullopt : std::optional<UsdTypeDescriptor>(it->second);
+    const auto it = s_kMap.find(name);
+    return it == s_kMap.end() ? std::nullopt : std::optional<UsdTypeDescriptor>(it->second);
 }
 
-struct AttrTypeInfo
+struct AttributeTypeInformation
 {
     DLDataType dtype{};
     ovstage_attribute_semantic_t semantic{ OVSTAGE_SEMANTIC_NONE };
@@ -350,40 +355,41 @@ struct AttrTypeInfo
     bool found{ false };
 };
 
-static AttrTypeInfo readAttrTypeInfo(ovstage_instance_t* instance,
-                                     path_dictionary_instance_t* dict,
-                                     const std::string& path,
-                                     const std::string& attributeName)
+static AttributeTypeInformation readAttributeTypeInformation(ovstage_instance_t* instance,
+                                                             path_dictionary_instance_t* dictionary,
+                                                             const std::string& path,
+                                                             const std::string& attributeName)
 {
-    AttrTypeInfo info{};
+    AttributeTypeInformation information{};
 
-    const ovx_string_t pathStr{ path.c_str(), path.size() };
+    const ovx_string_t pathString{ path.c_str(), path.size() };
     ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
-    if (path_dictionary_create_path_list_from_strings(dict, &pathStr, 1, &pathList).status != OVX_API_SUCCESS)
-        return info;
+    if (path_dictionary_create_path_list_from_strings(dictionary, &pathString, 1, &pathList).status != OVX_API_SUCCESS)
+        return information;
 
     ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
     if (ovstage_query_from_path_list(instance, pathList, &query) != OVSTAGE_OK)
     {
-        path_dictionary_release_path_list_reference(dict, pathList);
-        return info;
+        path_dictionary_release_path_list_reference(dictionary, pathList);
+        return information;
     }
 
-    const ovx_string_t attrStr{ attributeName.c_str(), attributeName.size() };
-    ovx_token_t attrToken = OVX_INVALID_TOKEN;
-    path_dictionary_create_tokens_from_strings(dict, &attrStr, 1, &attrToken);
+    const ovx_string_t attributeString{ attributeName.c_str(), attributeName.size() };
+    ovx_token_t attributeToken = OVX_INVALID_TOKEN;
+    path_dictionary_create_tokens_from_strings(dictionary, &attributeString, 1, &attributeToken);
 
-    if (attrToken != OVX_INVALID_TOKEN)
+    if (attributeToken != OVX_INVALID_TOKEN)
     {
         ovstage_ordinal_range_t range{};
         range.has_start_ordinal = false;
         range.end_ordinal = UINT64_MAX;
 
         ovstage_read_handle_t read = OVSTAGE_INVALID_READ_HANDLE;
-        ovstage_enqueue_result_t enq = ovstage_read_attributes(instance, query, &attrToken, 1, range, &read);
-        if (enq.status == OVSTAGE_OK)
+        ovstage_enqueue_result_t enqueueResult =
+            ovstage_read_attributes(instance, query, &attributeToken, 1, range, &read);
+        if (enqueueResult.status == OVSTAGE_OK)
         {
-            details::waitAndRelease(instance, enq);
+            details::waitAndRelease(instance, enqueueResult);
             for (;;)
             {
                 ovstage_read_group_t group{};
@@ -395,10 +401,10 @@ static AttrTypeInfo readAttrTypeInfo(ovstage_instance_t* instance,
                     break;
                 if (!group.is_delete && group.data.tensors && group.data.tensor_count > 0)
                 {
-                    info.dtype = group.data.tensors[0].dtype;
-                    info.semantic = group.semantic;
-                    info.is_array = group.is_array;
-                    info.found = true;
+                    information.dtype = group.data.tensors[0].dtype;
+                    information.semantic = group.semantic;
+                    information.is_array = group.is_array;
+                    information.found = true;
                 }
                 ovstage_release_group(instance, &group);
             }
@@ -407,11 +413,11 @@ static AttrTypeInfo readAttrTypeInfo(ovstage_instance_t* instance,
     }
 
     details::waitAndRelease(instance, ovstage_release_query(instance, query));
-    path_dictionary_release_path_list_reference(dict, pathList);
-    return info;
+    path_dictionary_release_path_list_reference(dictionary, pathList);
+    return information;
 }
 
-static array::DType dlTypeToDType(DLDataType dt)
+static array::Dtype dlTypeToDtype(DLDataType dt)
 {
     switch (dt.code)
     {
@@ -419,35 +425,35 @@ static array::DType dlTypeToDType(DLDataType dt)
         switch (dt.bits)
         {
         case 8:
-            return array::DType::Int8();
+            return array::Dtype::Int8();
         case 16:
-            return array::DType::Int16();
+            return array::Dtype::Int16();
         case 32:
-            return array::DType::Int32();
+            return array::Dtype::Int32();
         case 64:
-            return array::DType::Int64();
+            return array::Dtype::Int64();
         }
         break;
     case kDLUInt:
         switch (dt.bits)
         {
         case 8:
-            return array::DType::UInt8();
+            return array::Dtype::UInt8();
         case 16:
-            return array::DType::UInt16();
+            return array::Dtype::UInt16();
         case 32:
-            return array::DType::UInt32();
+            return array::Dtype::UInt32();
         case 64:
-            return array::DType::UInt64();
+            return array::Dtype::UInt64();
         }
         break;
     case kDLFloat:
         switch (dt.bits)
         {
         case 32:
-            return array::DType::Float32();
+            return array::Dtype::Float32();
         case 64:
-            return array::DType::Float64();
+            return array::Dtype::Float64();
         }
         break;
     }
@@ -456,18 +462,18 @@ static array::DType dlTypeToDType(DLDataType dt)
 
 // ---- Xform helpers ----
 
-static const char kLocalMatrixAttr[] = "omni:xform";
-static constexpr DLDataType kMatrix4dDType{ kDLFloat, 64, 16 };
+static const char g_kLocalMatrixAttr[] = "omni:xform";
+static constexpr DLDataType g_kMatrix4dDType{ kDLFloat, 64, 16 };
 
 static const std::unordered_set<std::string>& xformableTypes()
 {
-    static const std::unordered_set<std::string> s = {
+    static const std::unordered_set<std::string> s_kXformableTypes = {
         "Xform",     "Mesh",          "BasisCurves",  "NurbsCurves", "NurbsPatch",  "Points",        "PointInstancer",
         "Camera",    "Sphere",        "Cube",         "Cylinder",    "Cone",        "Capsule",       "Plane",
         "SkelRoot",  "Skeleton",      "DistantLight", "DomeLight",   "SphereLight", "CylinderLight", "DiskLight",
         "RectLight", "GeometryLight", "PortalLight",  "MeshLight",   "PluginLight", "Volume",
     };
-    return s;
+    return s_kXformableTypes;
 }
 
 static void identityMat(double m[16])
@@ -500,7 +506,7 @@ static bool invertTRS(const double m[16], double inv[16])
         return false;
     double isx2 = 1.0 / sx2, isy2 = 1.0 / sy2, isz2 = 1.0 / sz2;
 
-    // (S*R)^-1 = R^T * S^-1; in row-vector: (R^T*S^-1)[i][j] = M[j][i]/sj^2
+    // (S*R)^-1 = R^T * S^-1; in row-vector: (R^T*S^-1)[i][j] = matrix[j][i]/sj^2
     double i00 = m[0] * isx2, i01 = m[4] * isy2, i02 = m[8] * isz2;
     double i10 = m[1] * isx2, i11 = m[5] * isy2, i12 = m[9] * isz2;
     double i20 = m[2] * isx2, i21 = m[6] * isy2, i22 = m[10] * isz2;
@@ -532,43 +538,43 @@ static void extractScale(const double m[16], double s[3])
     s[2] = std::sqrt(m[8] * m[8] + m[9] * m[9] + m[10] * m[10]);
 }
 
-// Rotation matrix (row-vector convention) → quaternion [w, ix, iy, iz].
+// Rotation matrix (row-vector convention) → quaternion xyzw.
 // r{i}{j} = R_row[i][j] = R_col[j][i].
-static void rotToQuat(
+static void convertRotationToQuaternion(
     double r00, double r01, double r02, double r10, double r11, double r12, double r20, double r21, double r22, double q[4])
 {
     double trace = r00 + r11 + r22;
     if (trace > 0.0)
     {
         double s = 0.5 / std::sqrt(trace + 1.0);
-        q[0] = 0.25 / s;
-        q[1] = (r12 - r21) * s;
-        q[2] = (r20 - r02) * s;
-        q[3] = (r01 - r10) * s;
+        q[0] = (r12 - r21) * s;
+        q[1] = (r20 - r02) * s;
+        q[2] = (r01 - r10) * s;
+        q[3] = 0.25 / s;
     }
     else if (r00 > r11 && r00 > r22)
     {
         double s = 2.0 * std::sqrt(1.0 + r00 - r11 - r22);
-        q[0] = (r12 - r21) / s;
-        q[1] = 0.25 * s;
-        q[2] = (r10 + r01) / s;
-        q[3] = (r20 + r02) / s;
+        q[0] = 0.25 * s;
+        q[1] = (r10 + r01) / s;
+        q[2] = (r20 + r02) / s;
+        q[3] = (r12 - r21) / s;
     }
     else if (r11 > r22)
     {
         double s = 2.0 * std::sqrt(1.0 + r11 - r00 - r22);
-        q[0] = (r20 - r02) / s;
-        q[1] = (r10 + r01) / s;
-        q[2] = 0.25 * s;
-        q[3] = (r21 + r12) / s;
+        q[0] = (r10 + r01) / s;
+        q[1] = 0.25 * s;
+        q[2] = (r21 + r12) / s;
+        q[3] = (r20 - r02) / s;
     }
     else
     {
         double s = 2.0 * std::sqrt(1.0 + r22 - r00 - r11);
-        q[0] = (r01 - r10) / s;
-        q[1] = (r20 + r02) / s;
-        q[2] = (r21 + r12) / s;
-        q[3] = 0.25 * s;
+        q[0] = (r20 + r02) / s;
+        q[1] = (r21 + r12) / s;
+        q[2] = 0.25 * s;
+        q[3] = (r01 - r10) / s;
     }
     double len = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
     if (len > 1e-15)
@@ -594,13 +600,13 @@ static void extractPose(const double m[16], const double s[3], double t[3], doub
     double r20 = (s[2] > 1e-15) ? m[8] / s[2] : 0.0;
     double r21 = (s[2] > 1e-15) ? m[9] / s[2] : 0.0;
     double r22 = (s[2] > 1e-15) ? m[10] / s[2] : 1.0;
-    rotToQuat(r00, r01, r02, r10, r11, r12, r20, r21, r22, q);
+    convertRotationToQuaternion(r00, r01, r02, r10, r11, r12, r20, r21, r22, q);
 }
 
-// Build TRS matrix from translation, quaternion [w, ix, iy, iz], and scale.
+// Build TRS matrix from translation, quaternion xyzw, and scale.
 static void buildMatrix(const double t[3], const double q[4], const double s[3], double m[16])
 {
-    double w = q[0], x = q[1], y = q[2], z = q[3];
+    double x = q[0], y = q[1], z = q[2], w = q[3];
     // Row-vector convention: R_row = R_col^T
     double r00 = 1 - 2 * (y * y + z * z), r01 = 2 * (x * y + w * z), r02 = 2 * (x * z - w * y);
     double r10 = 2 * (x * y - w * z), r11 = 1 - 2 * (x * x + z * z), r12 = 2 * (y * z + w * x);
@@ -625,34 +631,34 @@ static void buildMatrix(const double t[3], const double q[4], const double s[3],
 
 // Read omni:xform for one path; fills mat with identity if not set.
 static void readLocalMatrix(ovstage_instance_t* instance,
-                            path_dictionary_instance_t* dict,
+                            path_dictionary_instance_t* dictionary,
                             const std::string& path,
                             double mat[16])
 {
     identityMat(mat);
-    const ovx_string_t pathStr{ path.c_str(), path.size() };
+    const ovx_string_t pathString{ path.c_str(), path.size() };
     ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
-    if (path_dictionary_create_path_list_from_strings(dict, &pathStr, 1, &pathList).status != OVX_API_SUCCESS)
+    if (path_dictionary_create_path_list_from_strings(dictionary, &pathString, 1, &pathList).status != OVX_API_SUCCESS)
         return;
     ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
     if (ovstage_query_from_path_list(instance, pathList, &query) != OVSTAGE_OK)
     {
-        path_dictionary_release_path_list_reference(dict, pathList);
+        path_dictionary_release_path_list_reference(dictionary, pathList);
         return;
     }
-    const ovx_string_t attrStr{ kLocalMatrixAttr, sizeof(kLocalMatrixAttr) - 1 };
+    const ovx_string_t attributeString{ g_kLocalMatrixAttr, sizeof(g_kLocalMatrixAttr) - 1 };
     ovx_token_t token = OVX_INVALID_TOKEN;
-    path_dictionary_create_tokens_from_strings(dict, &attrStr, 1, &token);
+    path_dictionary_create_tokens_from_strings(dictionary, &attributeString, 1, &token);
     if (token != OVX_INVALID_TOKEN)
     {
         ovstage_ordinal_range_t range{};
         range.has_start_ordinal = false;
         range.end_ordinal = UINT64_MAX;
         ovstage_read_handle_t read = OVSTAGE_INVALID_READ_HANDLE;
-        ovstage_enqueue_result_t enq = ovstage_read_attributes(instance, query, &token, 1, range, &read);
-        if (enq.status == OVSTAGE_OK)
+        ovstage_enqueue_result_t enqueueResult = ovstage_read_attributes(instance, query, &token, 1, range, &read);
+        if (enqueueResult.status == OVSTAGE_OK)
         {
-            details::waitAndRelease(instance, enq);
+            details::waitAndRelease(instance, enqueueResult);
             for (;;)
             {
                 ovstage_read_group_t group{};
@@ -671,44 +677,45 @@ static void readLocalMatrix(ovstage_instance_t* instance,
         }
     }
     details::waitAndRelease(instance, ovstage_release_query(instance, query));
-    path_dictionary_release_path_list_reference(dict, pathList);
+    path_dictionary_release_path_list_reference(dictionary, pathList);
 }
 
-// Read omni:xform for N paths; returns N matrices (identity for missing ones).
+// Read omni:xform for pathCount paths; returns pathCount matrices (identity for missing ones).
 static std::vector<std::array<double, 16>> readLocalMatrices(ovstage_instance_t* instance,
-                                                             path_dictionary_instance_t* dict,
+                                                             path_dictionary_instance_t* dictionary,
                                                              const std::vector<std::string>& paths)
 {
-    const size_t N = paths.size();
-    std::vector<std::array<double, 16>> result(N);
+    const size_t pathCount = paths.size();
+    std::vector<std::array<double, 16>> result(pathCount);
     for (auto& m : result)
         identityMat(m.data());
 
-    std::vector<ovx_string_t> pathStrs(N);
-    for (size_t i = 0; i < N; ++i)
-        pathStrs[i] = { paths[i].c_str(), paths[i].size() };
+    std::vector<ovx_string_t> pathStrings(pathCount);
+    for (size_t i = 0; i < pathCount; ++i)
+        pathStrings[i] = { paths[i].c_str(), paths[i].size() };
     ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
-    if (path_dictionary_create_path_list_from_strings(dict, pathStrs.data(), N, &pathList).status != OVX_API_SUCCESS)
+    if (path_dictionary_create_path_list_from_strings(dictionary, pathStrings.data(), pathCount, &pathList).status !=
+        OVX_API_SUCCESS)
         return result;
     ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
     if (ovstage_query_from_path_list(instance, pathList, &query) != OVSTAGE_OK)
     {
-        path_dictionary_release_path_list_reference(dict, pathList);
+        path_dictionary_release_path_list_reference(dictionary, pathList);
         return result;
     }
-    const ovx_string_t attrStr{ kLocalMatrixAttr, sizeof(kLocalMatrixAttr) - 1 };
+    const ovx_string_t attributeString{ g_kLocalMatrixAttr, sizeof(g_kLocalMatrixAttr) - 1 };
     ovx_token_t token = OVX_INVALID_TOKEN;
-    path_dictionary_create_tokens_from_strings(dict, &attrStr, 1, &token);
+    path_dictionary_create_tokens_from_strings(dictionary, &attributeString, 1, &token);
     if (token != OVX_INVALID_TOKEN)
     {
         ovstage_ordinal_range_t range{};
         range.has_start_ordinal = false;
         range.end_ordinal = UINT64_MAX;
         ovstage_read_handle_t read = OVSTAGE_INVALID_READ_HANDLE;
-        ovstage_enqueue_result_t enq = ovstage_read_attributes(instance, query, &token, 1, range, &read);
-        if (enq.status == OVSTAGE_OK)
+        ovstage_enqueue_result_t enqueueResult = ovstage_read_attributes(instance, query, &token, 1, range, &read);
+        if (enqueueResult.status == OVSTAGE_OK)
         {
-            details::waitAndRelease(instance, enq);
+            details::waitAndRelease(instance, enqueueResult);
             for (;;)
             {
                 ovstage_read_group_t group{};
@@ -721,14 +728,14 @@ static std::vector<std::array<double, 16>> readLocalMatrices(ovstage_instance_t*
                     if (t.data && t.shape && t.ndim == 1 && t.dtype.code == kDLFloat && t.dtype.bits == 64 &&
                         t.dtype.lanes == 16)
                     {
-                        const double* src = static_cast<const double*>(t.data);
+                        const double* source = static_cast<const double*>(t.data);
                         for (size_t k = 0; k < group.prims.count; ++k)
                         {
-                            size_t outIdx = group.prims.index_map ? static_cast<size_t>(group.prims.index_map[k]) :
-                                                                    (group.prims.offset + k);
-                            size_t dataIdx = group.data.index_map ? static_cast<size_t>(group.data.index_map[k]) : k;
-                            if (outIdx < N && static_cast<int64_t>(dataIdx) < t.shape[0])
-                                std::memcpy(result[outIdx].data(), src + dataIdx * 16, 16 * sizeof(double));
+                            size_t outputIndex = group.prims.index_map ? static_cast<size_t>(group.prims.index_map[k]) :
+                                                                         (group.prims.offset + k);
+                            size_t dataIndex = group.data.index_map ? static_cast<size_t>(group.data.index_map[k]) : k;
+                            if (outputIndex < pathCount && static_cast<int64_t>(dataIndex) < t.shape[0])
+                                std::memcpy(result[outputIndex].data(), source + dataIndex * 16, 16 * sizeof(double));
                         }
                     }
                 }
@@ -738,50 +745,52 @@ static std::vector<std::array<double, 16>> readLocalMatrices(ovstage_instance_t*
         }
     }
     details::waitAndRelease(instance, ovstage_release_query(instance, query));
-    path_dictionary_release_path_list_reference(dict, pathList);
+    path_dictionary_release_path_list_reference(dictionary, pathList);
     return result;
 }
 
-// Write omni:xform matrices for N paths at ordinal (does NOT advance write floor).
+// Write omni:xform matrices for pathCount paths at ordinal (does NOT advance write floor).
 static void writeLocalMatrices(ovstage_instance_t* instance,
-                               path_dictionary_instance_t* dict,
+                               path_dictionary_instance_t* dictionary,
                                ovstage_ordinal_t ordinal,
                                const std::vector<std::string>& paths,
-                               const std::vector<std::array<double, 16>>& mats)
+                               const std::vector<std::array<double, 16>>& matrices)
 {
-    const size_t N = paths.size();
-    std::vector<ovx_string_t> pathStrs(N);
-    for (size_t i = 0; i < N; ++i)
-        pathStrs[i] = { paths[i].c_str(), paths[i].size() };
+    const size_t pathCount = paths.size();
+    std::vector<ovx_string_t> pathStrings(pathCount);
+    for (size_t i = 0; i < pathCount; ++i)
+        pathStrings[i] = { paths[i].c_str(), paths[i].size() };
     ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
-    if (path_dictionary_create_path_list_from_strings(dict, pathStrs.data(), N, &pathList).status != OVX_API_SUCCESS)
+    if (path_dictionary_create_path_list_from_strings(dictionary, pathStrings.data(), pathCount, &pathList).status !=
+        OVX_API_SUCCESS)
         return;
     ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
     if (ovstage_query_from_path_list(instance, pathList, &query) != OVSTAGE_OK)
     {
-        path_dictionary_release_path_list_reference(dict, pathList);
+        path_dictionary_release_path_list_reference(dictionary, pathList);
         return;
     }
-    std::vector<double> flat(N * 16);
-    for (size_t i = 0; i < N; ++i)
-        std::memcpy(flat.data() + i * 16, mats[i].data(), 16 * sizeof(double));
-    int64_t shape = static_cast<int64_t>(N);
+    std::vector<double> flat(pathCount * 16);
+    for (size_t i = 0; i < pathCount; ++i)
+        std::memcpy(flat.data() + i * 16, matrices[i].data(), 16 * sizeof(double));
+    int64_t shape = static_cast<int64_t>(pathCount);
     DLTensor tensor{};
     tensor.data = flat.data();
     tensor.device = { kDLCPU, 0 };
     tensor.ndim = 1;
-    tensor.dtype = kMatrix4dDType;
+    tensor.dtype = g_kMatrix4dDType;
     tensor.shape = &shape;
     ovstage_write_data_t write{};
     write.tensors = &tensor;
     write.tensor_count = 1;
     write.semantic = OVSTAGE_SEMANTIC_MATRIX;
     write.is_array = false;
-    const ovx_string_or_token_t attrArg{ OVX_INVALID_TOKEN, { kLocalMatrixAttr, sizeof(kLocalMatrixAttr) - 1 } };
+    const ovx_string_or_token_t attributeArgument{ OVX_INVALID_TOKEN,
+                                                   { g_kLocalMatrixAttr, sizeof(g_kLocalMatrixAttr) - 1 } };
     details::waitAndRelease(
-        instance, ovstage_write_attribute(instance, query, attrArg, ordinal, write, OVSTAGE_PRIM_MODE_UPSERT));
+        instance, ovstage_write_attribute(instance, query, attributeArgument, ordinal, write, OVSTAGE_PRIM_MODE_UPSERT));
     details::waitAndRelease(instance, ovstage_release_query(instance, query));
-    path_dictionary_release_path_list_reference(dict, pathList);
+    path_dictionary_release_path_list_reference(dictionary, pathList);
 }
 
 // Build ancestor chain [root_child, ..., parent, path], excluding "/".
@@ -803,7 +812,7 @@ static std::vector<std::string> ancestorChain(const std::string& path)
 
 // W = L_self * L_parent * ...  (row-vector convention; accumulate by prepending each level).
 static std::array<double, 16> computeWorldMatrix(ovstage_instance_t* instance,
-                                                 path_dictionary_instance_t* dict,
+                                                 path_dictionary_instance_t* dictionary,
                                                  const std::string& path)
 {
     const auto chain = ancestorChain(path);
@@ -812,7 +821,7 @@ static std::array<double, 16> computeWorldMatrix(ovstage_instance_t* instance,
     for (const auto& p : chain)
     {
         double local[16];
-        readLocalMatrix(instance, dict, p, local);
+        readLocalMatrix(instance, dictionary, p, local);
         double temp[16];
         mulMat(local, world.data(), temp);
         std::memcpy(world.data(), temp, 16 * sizeof(double));
@@ -840,10 +849,10 @@ static void validateXformable(int64_t stageId, const std::string& path)
 
 static void sealOrdinal(ovstage_instance_t* instance, ovstage_ordinal_t ordinal)
 {
-    ovstage_write_floor_desc_t floorDesc{};
-    floorDesc.ordinal = ordinal;
-    floorDesc.scope = OVSTAGE_SCOPE_ALL;
-    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDesc));
+    ovstage_write_floor_desc_t floorDescription{};
+    floorDescription.ordinal = ordinal;
+    floorDescription.scope = OVSTAGE_SCOPE_ALL;
+    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDescription));
 }
 
 } // namespace
@@ -948,12 +957,12 @@ void definePrim(int64_t stageId, const std::string& path, const std::string& typ
     if (!instance)
         return;
 
-    path_dictionary_instance_t* dict = ovstage_get_path_dictionary(instance);
-    if (!dict)
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(instance);
+    if (!dictionary)
         return;
 
     // Throw if prim already exists with a different type
-    const std::optional<std::string> existing = readPrimType(instance, dict, path);
+    const std::optional<std::string> existing = readPrimType(instance, dictionary, path);
     if (existing.has_value() && *existing != typeName)
         throw std::runtime_error("Prim at path (" + path + ") already exists with type '" + *existing + "'");
 
@@ -966,19 +975,19 @@ void definePrim(int64_t stageId, const std::string& path, const std::string& typ
     for (size_t pos = 1; (pos = path.find('/', pos)) != std::string::npos; ++pos)
     {
         const std::string ancestor = path.substr(0, pos);
-        if (!readPrimType(instance, dict, ancestor).has_value())
-            writePrimTypeToPath(instance, dict, ancestor, kUntypedSentinel, ordinal);
+        if (!readPrimType(instance, dictionary, ancestor).has_value())
+            writePrimTypeToPath(instance, dictionary, ancestor, g_kUntypedSentinel, ordinal);
     }
 
     // Write the target prim.
-    const std::string effectiveTypeName = typeName.empty() ? kUntypedSentinel : typeName;
-    writePrimTypeToPath(instance, dict, path, effectiveTypeName, ordinal);
+    const std::string effectiveTypeName = typeName.empty() ? g_kUntypedSentinel : typeName;
+    writePrimTypeToPath(instance, dictionary, path, effectiveTypeName, ordinal);
 
     // Seal the ordinal so all new prims are immediately visible to readers.
-    ovstage_write_floor_desc_t floorDesc{};
-    floorDesc.ordinal = ordinal;
-    floorDesc.scope = OVSTAGE_SCOPE_ALL;
-    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDesc));
+    ovstage_write_floor_desc_t floorDescription{};
+    floorDescription.ordinal = ordinal;
+    floorDescription.scope = OVSTAGE_SCOPE_ALL;
+    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDescription));
 }
 
 std::tuple<bool, std::string> movePrim(int64_t stageId, const std::string& targetPath, const std::string& destinationPath)
@@ -994,31 +1003,31 @@ bool removePrim(int64_t stageId, const std::string& path)
     details::validatePrimAtPath(stageId, path, true);
 
     ovstage_instance_t* instance = details::getInstance(stageId, false);
-    path_dictionary_instance_t* dict = ovstage_get_path_dictionary(instance);
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(instance);
     const ovstage_ordinal_t ordinal = details::consumeOrdinal(stageId);
 
-    const ovx_string_t pathStr{ path.c_str(), path.size() };
+    const ovx_string_t pathString{ path.c_str(), path.size() };
     ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
-    path_dictionary_create_path_list_from_strings(dict, &pathStr, 1, &pathList);
+    path_dictionary_create_path_list_from_strings(dictionary, &pathString, 1, &pathList);
 
     ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
     ovstage_query_from_path_list(instance, pathList, &query);
 
     // Passing nullptr + count 0 tombstones the entire prim (all its attributes).
-    const ovstage_enqueue_result_t delEnq = ovstage_delete_attributes(instance, query, nullptr, 0, ordinal);
-    const bool ok = delEnq.status == OVSTAGE_OK;
-    details::waitAndRelease(instance, delEnq);
+    const ovstage_enqueue_result_t deleteEnqueueResult = ovstage_delete_attributes(instance, query, nullptr, 0, ordinal);
+    const bool ok = deleteEnqueueResult.status == OVSTAGE_OK;
+    details::waitAndRelease(instance, deleteEnqueueResult);
 
     details::waitAndRelease(instance, ovstage_release_query(instance, query));
-    path_dictionary_release_path_list_reference(dict, pathList);
+    path_dictionary_release_path_list_reference(dictionary, pathList);
 
     if (!ok)
         return false;
 
-    ovstage_write_floor_desc_t floorDesc{};
-    floorDesc.ordinal = ordinal;
-    floorDesc.scope = OVSTAGE_SCOPE_ALL;
-    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDesc));
+    ovstage_write_floor_desc_t floorDescription{};
+    floorDescription.ordinal = ordinal;
+    floorDescription.scope = OVSTAGE_SCOPE_ALL;
+    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDescription));
     return true;
 }
 
@@ -1167,12 +1176,12 @@ std::string getTypeName(int64_t stageId, const std::string& path)
 {
     auto instance = details::getInstance(stageId, true);
     details::validatePrimAtPath(instance, path, true);
-    path_dictionary_instance_t* dict = ovstage_get_path_dictionary(instance);
-    if (!dict)
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(instance);
+    if (!dictionary)
     {
         return {};
     }
-    return readPrimType(instance, dict, path).value_or("");
+    return readPrimType(instance, dictionary, path).value_or("");
 }
 
 std::string getParent(int64_t stageId, const std::string& path)
@@ -1191,16 +1200,16 @@ std::vector<std::string> getChildren(int64_t stageId, const std::string& path)
     ovstage_instance_t* instance = details::getInstance(stageId, true);
     details::validatePrimAtPath(instance, path, true);
 
-    path_dictionary_instance_t* dict = ovstage_get_path_dictionary(instance);
-    if (!dict)
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(instance);
+    if (!dictionary)
         return {};
 
     if (path == "/")
     {
-        static constexpr char kUsdPathAttr[] = "usd-path";
+        static constexpr char s_kUsdPathAttr[] = "usd-path";
         const ovx_string_t prefixValue{ "/", 1 };
         ovstage_predicate_t pred{};
-        pred.attribute = { OVX_INVALID_TOKEN, ovx_string_t{ kUsdPathAttr, sizeof(kUsdPathAttr) - 1 } };
+        pred.attribute = { OVX_INVALID_TOKEN, ovx_string_t{ s_kUsdPathAttr, sizeof(s_kUsdPathAttr) - 1 } };
         pred.op = OVSTAGE_FILTER_OP_PREFIX;
         pred.values = &prefixValue;
         pred.value_count = 1;
@@ -1208,27 +1217,27 @@ std::vector<std::string> getChildren(int64_t stageId, const std::string& path)
         filter.predicates = &pred;
         filter.count = 1;
 
-        const ovx_string_t primTypeStr{ kPrimTypeAttr, sizeof(kPrimTypeAttr) - 1 };
+        const ovx_string_t primTypeString{ g_kPrimTypeAttr, sizeof(g_kPrimTypeAttr) - 1 };
         ovx_token_t primTypeToken = OVX_INVALID_TOKEN;
-        path_dictionary_create_tokens_from_strings(dict, &primTypeStr, 1, &primTypeToken);
+        path_dictionary_create_tokens_from_strings(dictionary, &primTypeString, 1, &primTypeToken);
 
         ovstage_query_handle_t filterQuery = OVSTAGE_INVALID_QUERY_HANDLE;
-        ovstage_enqueue_result_t enq = ovstage_query(instance, &filter, nullptr, 0, &filterQuery);
-        if (enq.status != OVSTAGE_OK || primTypeToken == OVX_INVALID_TOKEN)
+        ovstage_enqueue_result_t enqueueResult = ovstage_query(instance, &filter, nullptr, 0, &filterQuery);
+        if (enqueueResult.status != OVSTAGE_OK || primTypeToken == OVX_INVALID_TOKEN)
             return {};
-        details::waitAndRelease(instance, enq);
+        details::waitAndRelease(instance, enqueueResult);
 
         ovstage_ordinal_range_t range{};
         range.end_ordinal = UINT64_MAX;
         range.has_start_ordinal = false;
         ovstage_read_handle_t read = OVSTAGE_INVALID_READ_HANDLE;
-        enq = ovstage_read_attributes(instance, filterQuery, &primTypeToken, 1, range, &read);
-        if (enq.status != OVSTAGE_OK)
+        enqueueResult = ovstage_read_attributes(instance, filterQuery, &primTypeToken, 1, range, &read);
+        if (enqueueResult.status != OVSTAGE_OK)
         {
             details::waitAndRelease(instance, ovstage_release_query(instance, filterQuery));
             return {};
         }
-        details::waitAndRelease(instance, enq);
+        details::waitAndRelease(instance, enqueueResult);
 
         std::vector<std::string> children;
         for (;;)
@@ -1243,17 +1252,17 @@ std::vector<std::string> getChildren(int64_t stageId, const std::string& path)
             if (!group.is_delete && group.prims.index_map == nullptr)
             {
                 std::vector<ovx_primpath_t> primPaths(group.prims.count);
-                size_t numGot = 0;
-                if (path_dictionary_get_paths_from_path_list(
-                        dict, group.prims.list, group.prims.offset, group.prims.count, primPaths.data(), &numGot)
+                size_t retrievedCount = 0;
+                if (path_dictionary_get_paths_from_path_list(dictionary, group.prims.list, group.prims.offset,
+                                                             group.prims.count, primPaths.data(), &retrievedCount)
                         .status == OVX_API_SUCCESS)
                 {
-                    for (size_t i = 0; i < numGot; ++i)
+                    for (size_t i = 0; i < retrievedCount; ++i)
                     {
-                        std::string s = details::primPathToString(dict, primPaths[i]);
+                        std::string pathString = details::primPathToString(dictionary, primPaths[i]);
                         // Keep only depth-1 paths (no "/" after position 0).
-                        if (!s.empty() && s.find('/', 1) == std::string::npos)
-                            children.push_back(std::move(s));
+                        if (!pathString.empty() && pathString.find('/', 1) == std::string::npos)
+                            children.push_back(std::move(pathString));
                     }
                 }
             }
@@ -1264,9 +1273,9 @@ std::vector<std::string> getChildren(int64_t stageId, const std::string& path)
         return children;
     }
 
-    const ovx_string_t pathStr{ path.c_str(), path.size() };
+    const ovx_string_t pathString{ path.c_str(), path.size() };
     ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
-    if (path_dictionary_create_path_list_from_strings(dict, &pathStr, 1, &pathList).status != OVX_API_SUCCESS)
+    if (path_dictionary_create_path_list_from_strings(dictionary, &pathString, 1, &pathList).status != OVX_API_SUCCESS)
     {
         return {};
     }
@@ -1300,7 +1309,7 @@ std::vector<std::string> getChildren(int64_t stageId, const std::string& path)
         details::waitAndRelease(instance, ovstage_release_hierarchy(instance, handle));
     }
 
-    path_dictionary_release_path_list_reference(dict, pathList);
+    path_dictionary_release_path_list_reference(dictionary, pathList);
     return children;
 }
 
@@ -1334,20 +1343,20 @@ bool applyApi(int64_t stageId,
         return true;
     current.push_back(schemaId);
 
-    path_dictionary_instance_t* dict = ovstage_get_path_dictionary(instance);
-    if (!dict)
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(instance);
+    if (!dictionary)
         return false;
 
     const ovstage_ordinal_t ordinal = details::consumeOrdinal(stageId);
     if (ordinal == 0)
         return false;
 
-    writeSchemasToPath(instance, dict, path, current, ordinal);
+    writeSchemasToPath(instance, dictionary, path, current, ordinal);
 
-    ovstage_write_floor_desc_t floorDesc{};
-    floorDesc.ordinal = ordinal;
-    floorDesc.scope = OVSTAGE_SCOPE_ALL;
-    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDesc));
+    ovstage_write_floor_desc_t floorDescription{};
+    floorDescription.ordinal = ordinal;
+    floorDescription.scope = OVSTAGE_SCOPE_ALL;
+    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDescription));
     return true;
 }
 
@@ -1366,20 +1375,20 @@ bool removeApi(int64_t stageId,
         return false;
     current.erase(it);
 
-    path_dictionary_instance_t* dict = ovstage_get_path_dictionary(instance);
-    if (!dict)
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(instance);
+    if (!dictionary)
         return false;
 
     const ovstage_ordinal_t ordinal = details::consumeOrdinal(stageId);
     if (ordinal == 0)
         return false;
 
-    writeSchemasToPath(instance, dict, path, current, ordinal);
+    writeSchemasToPath(instance, dictionary, path, current, ordinal);
 
-    ovstage_write_floor_desc_t floorDesc{};
-    floorDesc.ordinal = ordinal;
-    floorDesc.scope = OVSTAGE_SCOPE_ALL;
-    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDesc));
+    ovstage_write_floor_desc_t floorDescription{};
+    floorDescription.ordinal = ordinal;
+    floorDescription.scope = OVSTAGE_SCOPE_ALL;
+    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDescription));
     return true;
 }
 
@@ -1388,37 +1397,38 @@ std::vector<std::string> getAppliedSchemas(int64_t stageId, const std::string& p
     ovstage_instance_t* instance = details::getInstance(stageId, true);
     details::validatePrimAtPath(instance, path, true);
 
-    path_dictionary_instance_t* dict = ovstage_get_path_dictionary(instance);
-    if (!dict)
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(instance);
+    if (!dictionary)
         return {};
 
-    const ovx_string_t pathStr{ path.c_str(), path.size() };
+    const ovx_string_t pathString{ path.c_str(), path.size() };
     ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
-    if (path_dictionary_create_path_list_from_strings(dict, &pathStr, 1, &pathList).status != OVX_API_SUCCESS)
+    if (path_dictionary_create_path_list_from_strings(dictionary, &pathString, 1, &pathList).status != OVX_API_SUCCESS)
         return {};
 
     ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
     if (ovstage_query_from_path_list(instance, pathList, &query) != OVSTAGE_OK)
     {
-        path_dictionary_release_path_list_reference(dict, pathList);
+        path_dictionary_release_path_list_reference(dictionary, pathList);
         return {};
     }
 
-    const ovx_string_t attrStr{ kSchemasAttr, sizeof(kSchemasAttr) - 1 };
-    ovx_token_t attrToken = OVX_INVALID_TOKEN;
-    path_dictionary_create_tokens_from_strings(dict, &attrStr, 1, &attrToken);
+    const ovx_string_t attributeString{ g_kSchemasAttr, sizeof(g_kSchemasAttr) - 1 };
+    ovx_token_t attributeToken = OVX_INVALID_TOKEN;
+    path_dictionary_create_tokens_from_strings(dictionary, &attributeString, 1, &attributeToken);
 
     // Each write of usd-schemas is a whole-set replacement; keep only the last
     // non-delete group so successive ordinal writes don't accumulate duplicates.
     std::vector<std::string> schemas;
-    if (attrToken != OVX_INVALID_TOKEN)
+    if (attributeToken != OVX_INVALID_TOKEN)
     {
         ovstage_ordinal_range_t range{};
         range.end_ordinal = UINT64_MAX;
         range.has_start_ordinal = false;
 
         ovstage_read_handle_t read = OVSTAGE_INVALID_READ_HANDLE;
-        ovstage_enqueue_result_t enqueueResult = ovstage_read_attributes(instance, query, &attrToken, 1, range, &read);
+        ovstage_enqueue_result_t enqueueResult =
+            ovstage_read_attributes(instance, query, &attributeToken, 1, range, &read);
         if (enqueueResult.status == OVSTAGE_OK)
         {
             details::waitAndRelease(instance, enqueueResult);
@@ -1448,7 +1458,7 @@ std::vector<std::string> getAppliedSchemas(int64_t stageId, const std::string& p
                             {
                                 const ovx_token_t token = static_cast<ovx_token_t>(ids[i]);
                                 ovx_string_t name{};
-                                if (path_dictionary_get_strings_from_tokens(dict, &token, 1, &name).status ==
+                                if (path_dictionary_get_strings_from_tokens(dictionary, &token, 1, &name).status ==
                                         OVX_API_SUCCESS &&
                                     name.ptr)
                                 {
@@ -1469,7 +1479,7 @@ std::vector<std::string> getAppliedSchemas(int64_t stageId, const std::string& p
     }
 
     details::waitAndRelease(instance, ovstage_release_query(instance, query));
-    path_dictionary_release_path_list_reference(dict, pathList);
+    path_dictionary_release_path_list_reference(dictionary, pathList);
     return schemas;
 }
 
@@ -1504,9 +1514,9 @@ bool createPrimAttribute(int64_t stageId,
         throw std::invalid_argument("Unknown USD type name: '" + typeName + "'");
 
     ovstage_instance_t* instance = details::getInstance(stageId, false);
-    path_dictionary_instance_t* dict = ovstage_get_path_dictionary(instance);
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(instance);
 
-    const AttrTypeInfo existing = readAttrTypeInfo(instance, dict, path, attributeName);
+    const AttributeTypeInformation existing = readAttributeTypeInformation(instance, dictionary, path, attributeName);
     if (existing.found)
     {
         if (existing.dtype.code != desc->dtype.code || existing.dtype.bits != desc->dtype.bits ||
@@ -1520,21 +1530,21 @@ bool createPrimAttribute(int64_t stageId,
     if (ordinal == 0)
         return false;
 
-    const ovx_string_t pathStr{ path.c_str(), path.size() };
+    const ovx_string_t pathString{ path.c_str(), path.size() };
     ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
-    if (path_dictionary_create_path_list_from_strings(dict, &pathStr, 1, &pathList).status != OVX_API_SUCCESS)
+    if (path_dictionary_create_path_list_from_strings(dictionary, &pathString, 1, &pathList).status != OVX_API_SUCCESS)
         return false;
 
     ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
     if (ovstage_query_from_path_list(instance, pathList, &query) != OVSTAGE_OK)
     {
-        path_dictionary_release_path_list_reference(dict, pathList);
+        path_dictionary_release_path_list_reference(dictionary, pathList);
         return false;
     }
 
-    // Write a zero-initialised element to create the column with the correct dtype/semantic.
-    const size_t elemBytes = static_cast<size_t>(desc->dtype.bits / 8) * desc->dtype.lanes;
-    std::vector<std::byte> zeroData(elemBytes, std::byte{ 0 });
+    // Write a zero-initialized element to create the column with the correct dtype/semantic.
+    const size_t elementByteCount = static_cast<size_t>(desc->dtype.bits / 8) * desc->dtype.lanes;
+    std::vector<std::byte> zeroData(elementByteCount, std::byte{ 0 });
     int64_t oneShape = 1;
     int64_t zeroShape = 0;
 
@@ -1559,19 +1569,19 @@ bool createPrimAttribute(int64_t stageId,
     write.semantic = desc->semantic;
     write.is_array = desc->is_array;
 
-    const ovx_string_or_token_t attrArg{ OVX_INVALID_TOKEN, { attributeName.c_str(), attributeName.size() } };
-    const ovstage_enqueue_result_t writeEnq =
-        ovstage_write_attribute(instance, query, attrArg, ordinal, write, OVSTAGE_PRIM_MODE_UPSERT);
-    const bool ok = writeEnq.status == OVSTAGE_OK;
-    details::waitAndRelease(instance, writeEnq);
+    const ovx_string_or_token_t attributeArgument{ OVX_INVALID_TOKEN, { attributeName.c_str(), attributeName.size() } };
+    const ovstage_enqueue_result_t writeEnqueueResult =
+        ovstage_write_attribute(instance, query, attributeArgument, ordinal, write, OVSTAGE_PRIM_MODE_UPSERT);
+    const bool ok = writeEnqueueResult.status == OVSTAGE_OK;
+    details::waitAndRelease(instance, writeEnqueueResult);
 
     details::waitAndRelease(instance, ovstage_release_query(instance, query));
-    path_dictionary_release_path_list_reference(dict, pathList);
+    path_dictionary_release_path_list_reference(dictionary, pathList);
 
-    ovstage_write_floor_desc_t floorDesc{};
-    floorDesc.ordinal = ordinal;
-    floorDesc.scope = OVSTAGE_SCOPE_ALL;
-    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDesc));
+    ovstage_write_floor_desc_t floorDescription{};
+    floorDescription.ordinal = ordinal;
+    floorDescription.scope = OVSTAGE_SCOPE_ALL;
+    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDescription));
     return ok;
 }
 
@@ -1580,9 +1590,9 @@ bool removePrimAttribute(int64_t stageId, const std::string& path, const std::st
     details::validatePrimAtPath(stageId, path, true);
 
     ovstage_instance_t* instance = details::getInstance(stageId, false);
-    path_dictionary_instance_t* dict = ovstage_get_path_dictionary(instance);
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(instance);
 
-    const AttrTypeInfo existing = readAttrTypeInfo(instance, dict, path, attributeName);
+    const AttributeTypeInformation existing = readAttributeTypeInformation(instance, dictionary, path, attributeName);
     if (!existing.found)
         throw isaacsim::common::exceptions::AttributeNameError(attributeName);
 
@@ -1590,30 +1600,31 @@ bool removePrimAttribute(int64_t stageId, const std::string& path, const std::st
     if (ordinal == 0)
         return false;
 
-    const ovx_string_t pathStr{ path.c_str(), path.size() };
+    const ovx_string_t pathString{ path.c_str(), path.size() };
     ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
-    if (path_dictionary_create_path_list_from_strings(dict, &pathStr, 1, &pathList).status != OVX_API_SUCCESS)
+    if (path_dictionary_create_path_list_from_strings(dictionary, &pathString, 1, &pathList).status != OVX_API_SUCCESS)
         return false;
 
     ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
     if (ovstage_query_from_path_list(instance, pathList, &query) != OVSTAGE_OK)
     {
-        path_dictionary_release_path_list_reference(dict, pathList);
+        path_dictionary_release_path_list_reference(dictionary, pathList);
         return false;
     }
 
-    const ovx_string_or_token_t attrArg{ OVX_INVALID_TOKEN, { attributeName.c_str(), attributeName.size() } };
-    const ovstage_enqueue_result_t delEnq = ovstage_delete_attributes(instance, query, &attrArg, 1, ordinal);
-    const bool ok = delEnq.status == OVSTAGE_OK;
-    details::waitAndRelease(instance, delEnq);
+    const ovx_string_or_token_t attributeArgument{ OVX_INVALID_TOKEN, { attributeName.c_str(), attributeName.size() } };
+    const ovstage_enqueue_result_t deleteEnqueueResult =
+        ovstage_delete_attributes(instance, query, &attributeArgument, 1, ordinal);
+    const bool ok = deleteEnqueueResult.status == OVSTAGE_OK;
+    details::waitAndRelease(instance, deleteEnqueueResult);
 
     details::waitAndRelease(instance, ovstage_release_query(instance, query));
-    path_dictionary_release_path_list_reference(dict, pathList);
+    path_dictionary_release_path_list_reference(dictionary, pathList);
 
-    ovstage_write_floor_desc_t floorDesc{};
-    floorDesc.ordinal = ordinal;
-    floorDesc.scope = OVSTAGE_SCOPE_ALL;
-    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDesc));
+    ovstage_write_floor_desc_t floorDescription{};
+    floorDescription.ordinal = ordinal;
+    floorDescription.scope = OVSTAGE_SCOPE_ALL;
+    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDescription));
     return ok;
 }
 
@@ -1641,44 +1652,45 @@ AttributeValues getPrimAttributeValues(int64_t stageId,
     if (paths.empty())
         throw std::invalid_argument("The `paths` parameter must not be empty");
 
-    const size_t N = paths.size();
+    const size_t pathCount = paths.size();
     ovstage_instance_t* instance = details::getInstance(stageId, true);
-    path_dictionary_instance_t* dict = ovstage_get_path_dictionary(instance);
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(instance);
 
-    std::vector<ovx_string_t> pathStrs(N);
-    for (size_t i = 0; i < N; ++i)
-        pathStrs[i] = { paths[i].c_str(), paths[i].size() };
+    std::vector<ovx_string_t> pathStrings(pathCount);
+    for (size_t i = 0; i < pathCount; ++i)
+        pathStrings[i] = { paths[i].c_str(), paths[i].size() };
 
     ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
-    path_dictionary_create_path_list_from_strings(dict, pathStrs.data(), N, &pathList);
+    path_dictionary_create_path_list_from_strings(dictionary, pathStrings.data(), pathCount, &pathList);
     ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
     ovstage_query_from_path_list(instance, pathList, &query);
 
-    const ovx_string_t attrStr{ attributeName.c_str(), attributeName.size() };
-    ovx_token_t attrToken = OVX_INVALID_TOKEN;
-    path_dictionary_create_tokens_from_strings(dict, &attrStr, 1, &attrToken);
+    const ovx_string_t attributeString{ attributeName.c_str(), attributeName.size() };
+    ovx_token_t attributeToken = OVX_INVALID_TOKEN;
+    path_dictionary_create_tokens_from_strings(dictionary, &attributeString, 1, &attributeToken);
 
     ovstage_ordinal_range_t range{};
     range.has_start_ordinal = false;
     range.end_ordinal = UINT64_MAX;
 
     ovstage_read_handle_t read = OVSTAGE_INVALID_READ_HANDLE;
-    ovstage_enqueue_result_t readEnq = ovstage_read_attributes(instance, query, &attrToken, 1, range, &read);
-    if (readEnq.status != OVSTAGE_OK)
+    ovstage_enqueue_result_t readEnqueueResult =
+        ovstage_read_attributes(instance, query, &attributeToken, 1, range, &read);
+    if (readEnqueueResult.status != OVSTAGE_OK)
     {
         details::waitAndRelease(instance, ovstage_release_query(instance, query));
-        path_dictionary_release_path_list_reference(dict, pathList);
+        path_dictionary_release_path_list_reference(dictionary, pathList);
         return {};
     }
-    details::waitAndRelease(instance, readEnq);
+    details::waitAndRelease(instance, readEnqueueResult);
 
-    std::vector<std::string> strOut(N);
-    std::vector<std::byte> fixedBuf;
-    std::vector<std::vector<std::byte>> raggedBufs(N);
-    DLDataType colDtype{};
-    bool colIsArray = false;
-    bool colIsString = false;
-    bool gotMeta = false;
+    std::vector<std::string> stringOutput(pathCount);
+    std::vector<std::byte> fixedBuffer;
+    std::vector<std::vector<std::byte>> raggedBuffers(pathCount);
+    DLDataType columnDataType{};
+    bool columnIsArray = false;
+    bool columnIsString = false;
+    bool receivedMetadata = false;
 
     for (;;)
     {
@@ -1691,53 +1703,54 @@ AttributeValues getPrimAttributeValues(int64_t stageId,
 
         if (!group.is_delete && group.data.tensors && group.data.tensor_count > 0)
         {
-            if (!gotMeta)
+            if (!receivedMetadata)
             {
-                colDtype = group.data.tensors[0].dtype;
-                colIsArray = group.is_array;
-                colIsString =
+                columnDataType = group.data.tensors[0].dtype;
+                columnIsArray = group.is_array;
+                columnIsString =
                     (group.semantic == OVSTAGE_SEMANTIC_STRING || group.semantic == OVSTAGE_SEMANTIC_ASSET_STRING);
-                if (!colIsArray)
+                if (!columnIsArray)
                 {
-                    const size_t elemBytes = static_cast<size_t>(colDtype.bits / 8) * colDtype.lanes;
-                    fixedBuf.assign(N * elemBytes, std::byte{ 0 });
+                    const size_t elementByteCount = static_cast<size_t>(columnDataType.bits / 8) * columnDataType.lanes;
+                    fixedBuffer.assign(pathCount * elementByteCount, std::byte{ 0 });
                 }
-                gotMeta = true;
+                receivedMetadata = true;
             }
 
-            const size_t elemBytes = static_cast<size_t>(colDtype.bits / 8) * colDtype.lanes;
+            const size_t elementByteCount = static_cast<size_t>(columnDataType.bits / 8) * columnDataType.lanes;
 
             for (size_t k = 0; k < group.prims.count; ++k)
             {
-                const size_t outIdx =
+                const size_t outputIndex =
                     group.prims.index_map ? static_cast<size_t>(group.prims.index_map[k]) : (group.prims.offset + k);
-                const size_t dataSlot = group.data.index_map ? static_cast<size_t>(group.data.index_map[k]) : k;
+                const size_t dataIndex = group.data.index_map ? static_cast<size_t>(group.data.index_map[k]) : k;
 
-                if (outIdx >= N)
+                if (outputIndex >= pathCount)
                     continue;
 
-                const DLTensor& t = group.data.tensors[colIsArray ? dataSlot : 0];
+                const DLTensor& t = group.data.tensors[columnIsArray ? dataIndex : 0];
 
-                if (colIsString)
+                if (columnIsString)
                 {
                     if (t.data && t.shape && t.shape[0] > 0)
-                        strOut[outIdx] =
+                        stringOutput[outputIndex] =
                             std::string(reinterpret_cast<const char*>(t.data), static_cast<size_t>(t.shape[0]));
                 }
-                else if (colIsArray)
+                else if (columnIsArray)
                 {
                     if (t.data && t.shape && t.shape[0] > 0)
                     {
-                        const size_t numBytes = static_cast<size_t>(t.shape[0]) * elemBytes;
-                        raggedBufs[outIdx].resize(numBytes);
-                        std::memcpy(raggedBufs[outIdx].data(), t.data, numBytes);
+                        const size_t byteCount = static_cast<size_t>(t.shape[0]) * elementByteCount;
+                        raggedBuffers[outputIndex].resize(byteCount);
+                        std::memcpy(raggedBuffers[outputIndex].data(), t.data, byteCount);
                     }
                 }
                 else
                 {
                     if (t.data)
-                        std::memcpy(fixedBuf.data() + outIdx * elemBytes,
-                                    static_cast<const std::byte*>(t.data) + dataSlot * elemBytes, elemBytes);
+                        std::memcpy(fixedBuffer.data() + outputIndex * elementByteCount,
+                                    static_cast<const std::byte*>(t.data) + dataIndex * elementByteCount,
+                                    elementByteCount);
                 }
             }
         }
@@ -1746,39 +1759,42 @@ AttributeValues getPrimAttributeValues(int64_t stageId,
 
     details::waitAndRelease(instance, ovstage_release_read(instance, read));
     details::waitAndRelease(instance, ovstage_release_query(instance, query));
-    path_dictionary_release_path_list_reference(dict, pathList);
+    path_dictionary_release_path_list_reference(dictionary, pathList);
 
-    if (!gotMeta)
+    if (!receivedMetadata)
         return {};
 
-    if (colIsString)
-        return strOut;
+    if (columnIsString)
+        return stringOutput;
 
-    const array::DType dtype = dlTypeToDType(colDtype);
-    const int64_t lanes = static_cast<int64_t>(colDtype.lanes);
+    const array::Dtype dtype = dlTypeToDtype(columnDataType);
+    const int64_t lanes = static_cast<int64_t>(columnDataType.lanes);
 
-    if (!colIsArray)
+    if (!columnIsArray)
     {
-        auto buf = std::shared_ptr<std::byte[]>(new std::byte[fixedBuf.size()]());
-        std::memcpy(buf.get(), fixedBuf.data(), fixedBuf.size());
-        return array::Array::fromBuffer(buf, array::Shape{ static_cast<int64_t>(N), lanes }, dtype);
+        auto buffer = std::shared_ptr<std::byte[]>(new std::byte[fixedBuffer.size()]());
+        std::memcpy(buffer.get(), fixedBuffer.data(), fixedBuffer.size());
+        return array::Array::fromBuffer(buffer, array::Shape{ static_cast<int64_t>(pathCount), lanes }, dtype);
     }
 
-    // Ragged: pack into {N, M, lanes}
-    const size_t elemBytes = static_cast<size_t>(colDtype.bits / 8) * colDtype.lanes;
-    size_t M = 0;
-    for (size_t i = 0; i < N; ++i)
-        M = std::max(M, raggedBufs[i].empty() ? size_t{ 0 } : raggedBufs[i].size() / elemBytes);
+    // Ragged: pack into {pathCount, maximumElementCount, lanes}
+    const size_t elementByteCount = static_cast<size_t>(columnDataType.bits / 8) * columnDataType.lanes;
+    size_t maximumElementCount = 0;
+    for (size_t i = 0; i < pathCount; ++i)
+        maximumElementCount = std::max(
+            maximumElementCount, raggedBuffers[i].empty() ? size_t{ 0 } : raggedBuffers[i].size() / elementByteCount);
 
-    const size_t totalBytes = N * M * elemBytes;
-    auto buf = std::shared_ptr<std::byte[]>(new std::byte[totalBytes + 1]());
-    std::memset(buf.get(), 0, totalBytes);
-    for (size_t i = 0; i < N; ++i)
+    const size_t totalBytes = pathCount * maximumElementCount * elementByteCount;
+    auto buffer = std::shared_ptr<std::byte[]>(new std::byte[totalBytes + 1]());
+    std::memset(buffer.get(), 0, totalBytes);
+    for (size_t i = 0; i < pathCount; ++i)
     {
-        if (!raggedBufs[i].empty())
-            std::memcpy(buf.get() + i * M * elemBytes, raggedBufs[i].data(), raggedBufs[i].size());
+        if (!raggedBuffers[i].empty())
+            std::memcpy(buffer.get() + i * maximumElementCount * elementByteCount, raggedBuffers[i].data(),
+                        raggedBuffers[i].size());
     }
-    return array::Array::fromBuffer(buf, array::Shape{ static_cast<int64_t>(N), static_cast<int64_t>(M), lanes }, dtype);
+    return array::Array::fromBuffer(
+        buffer, array::Shape{ static_cast<int64_t>(pathCount), static_cast<int64_t>(maximumElementCount), lanes }, dtype);
 }
 
 std::vector<bool> setPrimAttributeValues(int64_t stageId,
@@ -1789,37 +1805,37 @@ std::vector<bool> setPrimAttributeValues(int64_t stageId,
     if (paths.empty())
         throw std::invalid_argument("The `paths` parameter must not be empty");
 
-    const size_t N = paths.size();
+    const size_t pathCount = paths.size();
     ovstage_instance_t* instance = details::getInstance(stageId, true);
-    path_dictionary_instance_t* dict = ovstage_get_path_dictionary(instance);
+    path_dictionary_instance_t* dictionary = ovstage_get_path_dictionary(instance);
 
-    std::vector<ovx_string_t> pathStrs(N);
-    for (size_t i = 0; i < N; ++i)
-        pathStrs[i] = { paths[i].c_str(), paths[i].size() };
+    std::vector<ovx_string_t> pathStrings(pathCount);
+    for (size_t i = 0; i < pathCount; ++i)
+        pathStrings[i] = { paths[i].c_str(), paths[i].size() };
 
     ovx_primpath_list_t pathList = OVX_INVALID_PRIMPATH_LIST;
-    path_dictionary_create_path_list_from_strings(dict, pathStrs.data(), N, &pathList);
+    path_dictionary_create_path_list_from_strings(dictionary, pathStrings.data(), pathCount, &pathList);
     ovstage_query_handle_t query = OVSTAGE_INVALID_QUERY_HANDLE;
     ovstage_query_from_path_list(instance, pathList, &query);
 
     const ovstage_ordinal_t ordinal = details::consumeOrdinal(stageId);
-    const ovx_string_or_token_t attrArg{ OVX_INVALID_TOKEN, { attributeName.c_str(), attributeName.size() } };
+    const ovx_string_or_token_t attributeArgument{ OVX_INVALID_TOKEN, { attributeName.c_str(), attributeName.size() } };
 
     bool ok = false;
 
     if (std::holds_alternative<std::vector<std::string>>(values))
     {
-        const auto& strs = std::get<std::vector<std::string>>(values);
-        if (strs.size() != N)
-            throw std::invalid_argument("String values count (" + std::to_string(strs.size()) +
-                                        ") does not match paths count (" + std::to_string(N) + ")");
+        const auto& strings = std::get<std::vector<std::string>>(values);
+        if (strings.size() != pathCount)
+            throw std::invalid_argument("String values count (" + std::to_string(strings.size()) +
+                                        ") does not match paths count (" + std::to_string(pathCount) + ")");
 
-        std::vector<DLTensor> tensors(N);
-        std::vector<int64_t> shapes(N);
-        for (size_t i = 0; i < N; ++i)
+        std::vector<DLTensor> tensors(pathCount);
+        std::vector<int64_t> shapes(pathCount);
+        for (size_t i = 0; i < pathCount; ++i)
         {
-            shapes[i] = static_cast<int64_t>(strs[i].size());
-            tensors[i].data = const_cast<char*>(strs[i].data());
+            shapes[i] = static_cast<int64_t>(strings[i].size());
+            tensors[i].data = const_cast<char*>(strings[i].data());
             tensors[i].device = { kDLCPU, 0 };
             tensors[i].ndim = 1;
             tensors[i].dtype = { kDLUInt, 8, 1 };
@@ -1827,83 +1843,85 @@ std::vector<bool> setPrimAttributeValues(int64_t stageId,
         }
         ovstage_write_data_t write{};
         write.tensors = tensors.data();
-        write.tensor_count = static_cast<uint32_t>(N);
+        write.tensor_count = static_cast<uint32_t>(pathCount);
         write.is_array = true;
         write.semantic = OVSTAGE_SEMANTIC_STRING;
-        const ovstage_enqueue_result_t enq =
-            ovstage_write_attribute(instance, query, attrArg, ordinal, write, OVSTAGE_PRIM_MODE_UPSERT);
-        ok = enq.status == OVSTAGE_OK;
-        details::waitAndRelease(instance, enq);
+        const ovstage_enqueue_result_t enqueueResult =
+            ovstage_write_attribute(instance, query, attributeArgument, ordinal, write, OVSTAGE_PRIM_MODE_UPSERT);
+        ok = enqueueResult.status == OVSTAGE_OK;
+        details::waitAndRelease(instance, enqueueResult);
     }
     else if (std::holds_alternative<array::Array>(values))
     {
-        const auto& arr = std::get<array::Array>(values);
-        const AttrTypeInfo colInfo = readAttrTypeInfo(instance, dict, paths[0], attributeName);
-        if (!colInfo.found)
+        const auto& arrayValue = std::get<array::Array>(values);
+        const AttributeTypeInformation columnInformation =
+            readAttributeTypeInformation(instance, dictionary, paths[0], attributeName);
+        if (!columnInformation.found)
             throw isaacsim::common::exceptions::AttributeNameError(attributeName);
 
-        const DLDataType colDtype = colInfo.dtype;
-        const size_t elemBytes = static_cast<size_t>(colDtype.bits / 8) * colDtype.lanes;
+        const DLDataType columnDataType = columnInformation.dtype;
+        const size_t elementByteCount = static_cast<size_t>(columnDataType.bits / 8) * columnDataType.lanes;
 
-        if (!colInfo.is_array)
+        if (!columnInformation.is_array)
         {
-            // Fixed scalar: one element per prim, single tensor of shape {N}
-            int64_t fixedShape = static_cast<int64_t>(N);
+            // Fixed scalar: one element per prim, single tensor of shape {pathCount}
+            int64_t fixedShape = static_cast<int64_t>(pathCount);
             DLTensor tensor{};
-            tensor.data = const_cast<void*>(arr.data());
+            tensor.data = const_cast<void*>(arrayValue.data());
             tensor.device = { kDLCPU, 0 };
             tensor.ndim = 1;
-            tensor.dtype = colDtype;
+            tensor.dtype = columnDataType;
             tensor.shape = &fixedShape;
 
             ovstage_write_data_t write{};
             write.tensors = &tensor;
             write.tensor_count = 1;
             write.is_array = false;
-            write.semantic = colInfo.semantic;
-            const ovstage_enqueue_result_t enq =
-                ovstage_write_attribute(instance, query, attrArg, ordinal, write, OVSTAGE_PRIM_MODE_UPSERT);
-            ok = enq.status == OVSTAGE_OK;
-            details::waitAndRelease(instance, enq);
+            write.semantic = columnInformation.semantic;
+            const ovstage_enqueue_result_t enqueueResult =
+                ovstage_write_attribute(instance, query, attributeArgument, ordinal, write, OVSTAGE_PRIM_MODE_UPSERT);
+            ok = enqueueResult.status == OVSTAGE_OK;
+            details::waitAndRelease(instance, enqueueResult);
         }
         else
         {
-            // Ragged: one tensor per prim, each of shape {M}
-            const size_t totalBytes = arr.size() * arr.dtype().size();
-            const size_t M = (N > 0 && elemBytes > 0) ? totalBytes / (N * elemBytes) : 0;
-            const auto* src = static_cast<const std::byte*>(arr.data());
+            // Ragged: one tensor per prim, each of shape {maximumElementCount}
+            const size_t totalBytes = arrayValue.size() * arrayValue.dtype().size();
+            const size_t maximumElementCount =
+                (pathCount > 0 && elementByteCount > 0) ? totalBytes / (pathCount * elementByteCount) : 0;
+            const auto* source = static_cast<const std::byte*>(arrayValue.data());
 
-            std::vector<DLTensor> tensors(N);
-            std::vector<int64_t> shapes(N, static_cast<int64_t>(M));
-            for (size_t i = 0; i < N; ++i)
+            std::vector<DLTensor> tensors(pathCount);
+            std::vector<int64_t> shapes(pathCount, static_cast<int64_t>(maximumElementCount));
+            for (size_t i = 0; i < pathCount; ++i)
             {
-                tensors[i].data = const_cast<std::byte*>(src + i * M * elemBytes);
+                tensors[i].data = const_cast<std::byte*>(source + i * maximumElementCount * elementByteCount);
                 tensors[i].device = { kDLCPU, 0 };
                 tensors[i].ndim = 1;
-                tensors[i].dtype = colDtype;
+                tensors[i].dtype = columnDataType;
                 tensors[i].shape = &shapes[i];
             }
             ovstage_write_data_t write{};
             write.tensors = tensors.data();
-            write.tensor_count = static_cast<uint32_t>(N);
+            write.tensor_count = static_cast<uint32_t>(pathCount);
             write.is_array = true;
-            write.semantic = colInfo.semantic;
-            const ovstage_enqueue_result_t enq =
-                ovstage_write_attribute(instance, query, attrArg, ordinal, write, OVSTAGE_PRIM_MODE_UPSERT);
-            ok = enq.status == OVSTAGE_OK;
-            details::waitAndRelease(instance, enq);
+            write.semantic = columnInformation.semantic;
+            const ovstage_enqueue_result_t enqueueResult =
+                ovstage_write_attribute(instance, query, attributeArgument, ordinal, write, OVSTAGE_PRIM_MODE_UPSERT);
+            ok = enqueueResult.status == OVSTAGE_OK;
+            details::waitAndRelease(instance, enqueueResult);
         }
     }
 
     details::waitAndRelease(instance, ovstage_release_query(instance, query));
-    path_dictionary_release_path_list_reference(dict, pathList);
+    path_dictionary_release_path_list_reference(dictionary, pathList);
 
-    ovstage_write_floor_desc_t floorDesc{};
-    floorDesc.ordinal = ordinal;
-    floorDesc.scope = OVSTAGE_SCOPE_ALL;
-    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDesc));
+    ovstage_write_floor_desc_t floorDescription{};
+    floorDescription.ordinal = ordinal;
+    floorDescription.scope = OVSTAGE_SCOPE_ALL;
+    details::waitAndRelease(instance, ovstage_advance_write_floor(instance, &floorDescription));
 
-    return std::vector<bool>(N, ok);
+    return std::vector<bool>(pathCount, ok);
 }
 
 std::vector<std::string> findMatchingPrimPaths(int64_t stageId, const std::string& path, bool traverse)
@@ -2007,14 +2025,14 @@ array::Array getXformLocalScales(int64_t stageId, const std::vector<std::string>
     for (const auto& p : paths)
         validateXformable(stageId, p);
     auto* instance = details::getInstance(stageId, true);
-    auto* dict = ovstage_get_path_dictionary(instance);
-    auto mats = readLocalMatrices(instance, dict, paths);
+    auto* dictionary = ovstage_get_path_dictionary(instance);
+    auto matrices = readLocalMatrices(instance, dictionary, paths);
 
     std::vector<std::vector<double>> result(paths.size(), std::vector<double>(3));
     for (size_t i = 0; i < paths.size(); ++i)
     {
         double s[3];
-        extractScale(mats[i].data(), s);
+        extractScale(matrices[i].data(), s);
         result[i] = { s[0], s[1], s[2] };
     }
     return array::Array(result);
@@ -2022,37 +2040,37 @@ array::Array getXformLocalScales(int64_t stageId, const std::vector<std::string>
 
 void setXformLocalScales(int64_t stageId, const std::vector<std::string>& paths, const array::Array& scales)
 {
-    const size_t N = paths.size();
+    const size_t pathCount = paths.size();
     for (const auto& p : paths)
         validateXformable(stageId, p);
 
-    auto scalesVec = scales.get<std::vector<std::vector<double>>>();
-    if (scalesVec.size() != N)
-        throw std::invalid_argument("scales row count (" + std::to_string(scalesVec.size()) +
-                                    ") does not match paths count (" + std::to_string(N) + ")");
-    for (const auto& row : scalesVec)
+    auto scaleRows = scales.get<std::vector<std::vector<double>>>();
+    if (scaleRows.size() != pathCount)
+        throw std::invalid_argument("scales row count (" + std::to_string(scaleRows.size()) +
+                                    ") does not match paths count (" + std::to_string(pathCount) + ")");
+    for (const auto& row : scaleRows)
         if (row.size() != 3)
             throw std::invalid_argument("each scale must have 3 components");
 
     auto* instance = details::getInstance(stageId, true);
-    auto* dict = ovstage_get_path_dictionary(instance);
-    auto mats = readLocalMatrices(instance, dict, paths);
+    auto* dictionary = ovstage_get_path_dictionary(instance);
+    auto matrices = readLocalMatrices(instance, dictionary, paths);
 
-    for (size_t i = 0; i < N; ++i)
+    for (size_t i = 0; i < pathCount; ++i)
     {
         double oldS[3];
-        extractScale(mats[i].data(), oldS);
+        extractScale(matrices[i].data(), oldS);
         double t[3], q[4];
-        extractPose(mats[i].data(), oldS, t, q);
-        const double newS[3] = { scalesVec[i][0], scalesVec[i][1], scalesVec[i][2] };
-        buildMatrix(t, q, newS, mats[i].data());
+        extractPose(matrices[i].data(), oldS, t, q);
+        const double newS[3] = { scaleRows[i][0], scaleRows[i][1], scaleRows[i][2] };
+        buildMatrix(t, q, newS, matrices[i].data());
     }
 
-    const ovstage_ordinal_t ord = details::consumeOrdinal(stageId);
-    if (ord == 0)
+    const ovstage_ordinal_t ordinal = details::consumeOrdinal(stageId);
+    if (ordinal == 0)
         return;
-    writeLocalMatrices(instance, dict, ord, paths, mats);
-    sealOrdinal(instance, ord);
+    writeLocalMatrices(instance, dictionary, ordinal, paths, matrices);
+    sealOrdinal(instance, ordinal);
 }
 
 std::tuple<array::Array, array::Array> getXformLocalPoses(int64_t stageId, const std::vector<std::string>& paths)
@@ -2060,17 +2078,17 @@ std::tuple<array::Array, array::Array> getXformLocalPoses(int64_t stageId, const
     for (const auto& p : paths)
         validateXformable(stageId, p);
     auto* instance = details::getInstance(stageId, true);
-    auto* dict = ovstage_get_path_dictionary(instance);
-    auto mats = readLocalMatrices(instance, dict, paths);
+    auto* dictionary = ovstage_get_path_dictionary(instance);
+    auto matrices = readLocalMatrices(instance, dictionary, paths);
 
     std::vector<std::vector<double>> translations(paths.size(), std::vector<double>(3));
     std::vector<std::vector<double>> orientations(paths.size(), std::vector<double>(4));
     for (size_t i = 0; i < paths.size(); ++i)
     {
         double s[3];
-        extractScale(mats[i].data(), s);
+        extractScale(matrices[i].data(), s);
         double t[3], q[4];
-        extractPose(mats[i].data(), s, t, q);
+        extractPose(matrices[i].data(), s, t, q);
         translations[i] = { t[0], t[1], t[2] };
         orientations[i] = { q[0], q[1], q[2], q[3] };
     }
@@ -2084,63 +2102,63 @@ void setXformLocalPoses(int64_t stageId,
 {
     if (!translations && !orientations)
         return;
-    const size_t N = paths.size();
+    const size_t pathCount = paths.size();
     for (const auto& p : paths)
         validateXformable(stageId, p);
 
-    std::vector<std::vector<double>> tVec, oVec;
+    std::vector<std::vector<double>> translationRows, orientationRows;
     if (translations)
     {
-        tVec = translations->get<std::vector<std::vector<double>>>();
-        if (tVec.size() != N)
-            throw std::invalid_argument("translations row count (" + std::to_string(tVec.size()) +
-                                        ") does not match paths count (" + std::to_string(N) + ")");
-        for (const auto& r : tVec)
+        translationRows = translations->get<std::vector<std::vector<double>>>();
+        if (translationRows.size() != pathCount)
+            throw std::invalid_argument("translations row count (" + std::to_string(translationRows.size()) +
+                                        ") does not match paths count (" + std::to_string(pathCount) + ")");
+        for (const auto& r : translationRows)
             if (r.size() != 3)
                 throw std::invalid_argument("each translation must have 3 components");
     }
     if (orientations)
     {
-        oVec = orientations->get<std::vector<std::vector<double>>>();
-        if (oVec.size() != N)
-            throw std::invalid_argument("orientations row count (" + std::to_string(oVec.size()) +
-                                        ") does not match paths count (" + std::to_string(N) + ")");
-        for (const auto& r : oVec)
+        orientationRows = orientations->get<std::vector<std::vector<double>>>();
+        if (orientationRows.size() != pathCount)
+            throw std::invalid_argument("orientations row count (" + std::to_string(orientationRows.size()) +
+                                        ") does not match paths count (" + std::to_string(pathCount) + ")");
+        for (const auto& r : orientationRows)
             if (r.size() != 4)
                 throw std::invalid_argument("each orientation must have 4 components");
     }
 
     auto* instance = details::getInstance(stageId, true);
-    auto* dict = ovstage_get_path_dictionary(instance);
-    auto mats = readLocalMatrices(instance, dict, paths);
+    auto* dictionary = ovstage_get_path_dictionary(instance);
+    auto matrices = readLocalMatrices(instance, dictionary, paths);
 
-    for (size_t i = 0; i < N; ++i)
+    for (size_t i = 0; i < pathCount; ++i)
     {
         double s[3];
-        extractScale(mats[i].data(), s);
+        extractScale(matrices[i].data(), s);
         double t[3], q[4];
-        extractPose(mats[i].data(), s, t, q);
+        extractPose(matrices[i].data(), s, t, q);
         if (translations)
         {
-            t[0] = tVec[i][0];
-            t[1] = tVec[i][1];
-            t[2] = tVec[i][2];
+            t[0] = translationRows[i][0];
+            t[1] = translationRows[i][1];
+            t[2] = translationRows[i][2];
         }
         if (orientations)
         {
-            q[0] = oVec[i][0];
-            q[1] = oVec[i][1];
-            q[2] = oVec[i][2];
-            q[3] = oVec[i][3];
+            q[0] = orientationRows[i][0];
+            q[1] = orientationRows[i][1];
+            q[2] = orientationRows[i][2];
+            q[3] = orientationRows[i][3];
         }
-        buildMatrix(t, q, s, mats[i].data());
+        buildMatrix(t, q, s, matrices[i].data());
     }
 
-    const ovstage_ordinal_t ord = details::consumeOrdinal(stageId);
-    if (ord == 0)
+    const ovstage_ordinal_t ordinal = details::consumeOrdinal(stageId);
+    if (ordinal == 0)
         return;
-    writeLocalMatrices(instance, dict, ord, paths, mats);
-    sealOrdinal(instance, ord);
+    writeLocalMatrices(instance, dictionary, ordinal, paths, matrices);
+    sealOrdinal(instance, ordinal);
 }
 
 std::tuple<array::Array, array::Array> getXformWorldPoses(int64_t stageId, const std::vector<std::string>& paths)
@@ -2148,17 +2166,17 @@ std::tuple<array::Array, array::Array> getXformWorldPoses(int64_t stageId, const
     for (const auto& p : paths)
         validateXformable(stageId, p);
     auto* instance = details::getInstance(stageId, true);
-    auto* dict = ovstage_get_path_dictionary(instance);
+    auto* dictionary = ovstage_get_path_dictionary(instance);
 
     std::vector<std::vector<double>> positions(paths.size(), std::vector<double>(3));
     std::vector<std::vector<double>> orientations(paths.size(), std::vector<double>(4));
     for (size_t i = 0; i < paths.size(); ++i)
     {
-        auto wm = computeWorldMatrix(instance, dict, paths[i]);
+        auto worldMatrix = computeWorldMatrix(instance, dictionary, paths[i]);
         double s[3];
-        extractScale(wm.data(), s);
+        extractScale(worldMatrix.data(), s);
         double t[3], q[4];
-        extractPose(wm.data(), s, t, q);
+        extractPose(worldMatrix.data(), s, t, q);
         positions[i] = { t[0], t[1], t[2] };
         orientations[i] = { q[0], q[1], q[2], q[3] };
     }
@@ -2172,58 +2190,58 @@ void setXformWorldPoses(int64_t stageId,
 {
     if (!positions && !orientations)
         return;
-    const size_t N = paths.size();
+    const size_t pathCount = paths.size();
     for (const auto& p : paths)
         validateXformable(stageId, p);
 
-    std::vector<std::vector<double>> pVec, oVec;
+    std::vector<std::vector<double>> positionRows, orientationRows;
     if (positions)
     {
-        pVec = positions->get<std::vector<std::vector<double>>>();
-        if (pVec.size() != N)
-            throw std::invalid_argument("positions row count (" + std::to_string(pVec.size()) +
-                                        ") does not match paths count (" + std::to_string(N) + ")");
-        for (const auto& r : pVec)
+        positionRows = positions->get<std::vector<std::vector<double>>>();
+        if (positionRows.size() != pathCount)
+            throw std::invalid_argument("positions row count (" + std::to_string(positionRows.size()) +
+                                        ") does not match paths count (" + std::to_string(pathCount) + ")");
+        for (const auto& r : positionRows)
             if (r.size() != 3)
                 throw std::invalid_argument("each position must have 3 components");
     }
     if (orientations)
     {
-        oVec = orientations->get<std::vector<std::vector<double>>>();
-        if (oVec.size() != N)
-            throw std::invalid_argument("orientations row count (" + std::to_string(oVec.size()) +
-                                        ") does not match paths count (" + std::to_string(N) + ")");
-        for (const auto& r : oVec)
+        orientationRows = orientations->get<std::vector<std::vector<double>>>();
+        if (orientationRows.size() != pathCount)
+            throw std::invalid_argument("orientations row count (" + std::to_string(orientationRows.size()) +
+                                        ") does not match paths count (" + std::to_string(pathCount) + ")");
+        for (const auto& r : orientationRows)
             if (r.size() != 4)
                 throw std::invalid_argument("each orientation must have 4 components");
     }
 
     auto* instance = details::getInstance(stageId, true);
-    auto* dict = ovstage_get_path_dictionary(instance);
-    auto mats = readLocalMatrices(instance, dict, paths);
+    auto* dictionary = ovstage_get_path_dictionary(instance);
+    auto matrices = readLocalMatrices(instance, dictionary, paths);
 
-    for (size_t i = 0; i < N; ++i)
+    for (size_t i = 0; i < pathCount; ++i)
     {
         // Current world TRS
-        auto wm = computeWorldMatrix(instance, dict, paths[i]);
+        auto worldMatrix = computeWorldMatrix(instance, dictionary, paths[i]);
         double ws[3];
-        extractScale(wm.data(), ws);
+        extractScale(worldMatrix.data(), ws);
         double wt[3], wq[4];
-        extractPose(wm.data(), ws, wt, wq);
+        extractPose(worldMatrix.data(), ws, wt, wq);
 
         // Apply requested overrides
         if (positions)
         {
-            wt[0] = pVec[i][0];
-            wt[1] = pVec[i][1];
-            wt[2] = pVec[i][2];
+            wt[0] = positionRows[i][0];
+            wt[1] = positionRows[i][1];
+            wt[2] = positionRows[i][2];
         }
         if (orientations)
         {
-            wq[0] = oVec[i][0];
-            wq[1] = oVec[i][1];
-            wq[2] = oVec[i][2];
-            wq[3] = oVec[i][3];
+            wq[0] = orientationRows[i][0];
+            wq[1] = orientationRows[i][1];
+            wq[2] = orientationRows[i][2];
+            wq[3] = orientationRows[i][3];
         }
 
         // Build desired world matrix (use world scale as-is)
@@ -2232,33 +2250,33 @@ void setXformWorldPoses(int64_t stageId,
 
         // Parent world matrix
         const std::string parent = parentPath(paths[i]);
-        std::array<double, 16> parentW;
-        identityMat(parentW.data());
+        std::array<double, 16> parentWorldMatrix;
+        identityMat(parentWorldMatrix.data());
         if (!parent.empty() && parent != "/")
-            parentW = computeWorldMatrix(instance, dict, parent);
+            parentWorldMatrix = computeWorldMatrix(instance, dictionary, parent);
 
         // L_new = W_desired * inv(W_parent)
         double invParent[16];
-        if (!invertTRS(parentW.data(), invParent))
+        if (!invertTRS(parentWorldMatrix.data(), invParent))
             identityMat(invParent);
         double lNew[16];
         mulMat(wDesired, invParent, lNew);
 
         // Preserve the original local scale
         double ls[3];
-        extractScale(mats[i].data(), ls);
+        extractScale(matrices[i].data(), ls);
         double lt[3], lq[4];
         double lNewS[3];
         extractScale(lNew, lNewS);
         extractPose(lNew, lNewS, lt, lq);
-        buildMatrix(lt, lq, ls, mats[i].data());
+        buildMatrix(lt, lq, ls, matrices[i].data());
     }
 
-    const ovstage_ordinal_t ord = details::consumeOrdinal(stageId);
-    if (ord == 0)
+    const ovstage_ordinal_t ordinal = details::consumeOrdinal(stageId);
+    if (ordinal == 0)
         return;
-    writeLocalMatrices(instance, dict, ord, paths, mats);
-    sealOrdinal(instance, ord);
+    writeLocalMatrices(instance, dictionary, ordinal, paths, matrices);
+    sealOrdinal(instance, ordinal);
 }
 
 } // namespace ovstage

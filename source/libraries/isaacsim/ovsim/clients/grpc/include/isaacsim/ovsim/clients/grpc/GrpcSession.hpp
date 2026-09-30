@@ -20,8 +20,10 @@
 #include <ovsim/interfaces/control/simulation/Simulation.hpp>
 #include <ovsim/interfaces/data/Data.hpp>
 
+#include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 namespace isaacsim
 {
@@ -38,22 +40,37 @@ using OutputValueType = ::ovsim::interfaces::data::OutputValueType;
 using InputParameterType = ::ovsim::interfaces::control::authoring::InputParameterType;
 using OutputParameterType = ::ovsim::interfaces::control::authoring::OutputParameterType;
 
-/** @brief Remote OV SIM client session.
- * @warning Remote operations are not implemented and currently throw `std::logic_error`.
- */
+/** @brief Minimal remote OV SIM client session using insecure gRPC. */
 class ISAACSIM_OVSIM_CLIENTS_GRPC_API GrpcSession
 {
 public:
-    /** @brief Create a remote OV SIM session.
-     * @param[in] configuration Non-empty implementation-specific connection configuration.
-     * @throws std::invalid_argument If `configuration` is absent or empty.
+    /** @brief Create a remote OV SIM session using insecure gRPC.
+     * @param[in] configuration Configuration containing a non-empty `endpoint` entry. The endpoint uses the standard
+     * gRPC channel-target syntax, such as `127.0.0.1:50051`.
+     * @throws std::invalid_argument If `configuration` or its `endpoint` entry is absent or empty.
      */
     explicit GrpcSession(const std::optional<std::unordered_map<std::string, std::string>>& configuration = std::nullopt);
 
+    /** @brief Destroy the session and release its gRPC resources. */
+    ~GrpcSession();
+
+    GrpcSession(const GrpcSession&) = delete;
+    GrpcSession& operator=(const GrpcSession&) = delete;
+
+    /** @brief Move-construct a session by transferring its remote connection and lifecycle state. */
+    GrpcSession(GrpcSession&&) noexcept;
+
+    /**
+     * @brief Move-assign a session by transferring its remote connection and lifecycle state.
+     * @return Reference to this session.
+     */
+    GrpcSession& operator=(GrpcSession&&) noexcept;
+
     /** @brief Get the connection configuration supplied at construction.
      * @return Session connection configuration.
+     * @note The returned reference remains valid until this session is destroyed or moved from.
      */
-    const std::unordered_map<std::string, std::string>& configuration() const;
+    const std::unordered_map<std::string, std::string>& getConfiguration() const;
 
     // authoring
     /** @copydoc isaacsim::physics::ovsim::control::authoring::createStage
@@ -72,7 +89,9 @@ public:
     bool saveStage(const std::string& usdPath);
 
     /** @copydoc isaacsim::physics::ovsim::control::authoring::importStageFromString
-     * @throws std::logic_error Always, because the remote operation is not implemented.
+     * @return `true` if asynchronous remote simulation creation is accepted; otherwise `false`.
+     * @note A new internal simulation UUID is generated for each lifecycle. A session cannot create another
+     * simulation until the current lifecycle has been deleted.
      */
     bool importStageFromString(const std::string& usdString);
 
@@ -82,7 +101,8 @@ public:
     std::string exportStageToString();
 
     /** @copydoc isaacsim::physics::ovsim::control::authoring::closeStage
-     * @throws std::logic_error Always, because the remote operation is not implemented.
+     * @return `true` if asynchronous remote deletion is accepted or the simulation is already absent; otherwise
+     * `false`.
      */
     bool closeStage();
 
@@ -119,14 +139,14 @@ public:
     /** @copydoc isaacsim::physics::ovsim::control::authoring::setParameter
      * @throws std::logic_error Always, because the remote operation is not implemented.
      */
-    void authoringSetParameter(const std::string& provider,
+    void setAuthoringParameter(const std::string& provider,
                                const std::string& parameterName,
                                const InputParameterType& value);
 
     /** @copydoc isaacsim::physics::ovsim::control::authoring::getParameter
      * @throws std::logic_error Always, because the remote operation is not implemented.
      */
-    OutputParameterType authoringGetParameter(const std::string& provider, const std::string& parameterName);
+    OutputParameterType getAuthoringParameter(const std::string& provider, const std::string& parameterName);
 
     // simulation
     /** @copydoc isaacsim::physics::ovsim::control::simulation::play
@@ -145,7 +165,8 @@ public:
     void stop();
 
     /** @copydoc isaacsim::physics::ovsim::control::simulation::initialize
-     * @throws std::logic_error Always, because the remote operation is not implemented.
+     * @note Polls the remote lifecycle until it is ready, with a five-minute overall timeout.
+     * @throws std::runtime_error If the remote lifecycle fails, a transport error occurs, or the timeout expires.
      */
     void initialize();
 
@@ -155,38 +176,45 @@ public:
     void invalidate();
 
     /** @copydoc isaacsim::physics::ovsim::control::simulation::step
-     * @throws std::logic_error Always, because the remote operation is not implemented.
+     * @note Advances the protocol timestamp by one drift-free 60 Hz interval. The first implementation keeps the
+     * server's existing fixed physics time step.
+     * @throws std::runtime_error If the remote operation fails.
      */
     void step();
 
     /** @copydoc isaacsim::physics::ovsim::control::simulation::setParameter
      * @throws std::logic_error Always, because the remote operation is not implemented.
      */
-    void simulationSetParameter(const std::string& provider,
+    void setSimulationParameter(const std::string& provider,
                                 const std::string& parameterName,
                                 const InputParameterType& value);
 
     /** @copydoc isaacsim::physics::ovsim::control::simulation::getParameter
      * @throws std::logic_error Always, because the remote operation is not implemented.
      */
-    OutputParameterType simulationGetParameter(const std::string& provider, const std::string& parameterName);
+    OutputParameterType getSimulationParameter(const std::string& provider, const std::string& parameterName);
 
     // data
     /** @copydoc isaacsim::physics::ovsim::data::read
-     * @throws std::logic_error Always, because the remote operation is not implemented.
+     * @note Supports latest-value reads for the minimal protocol codec set. Returned numeric arrays are CPU arrays.
+     * @throws std::invalid_argument If paths, the attribute name, or the timestamp is unsupported or malformed.
+     * @throws std::runtime_error If the remote operation or value decoding fails.
      */
-    OutputValueType read(const PathType& paths, const std::string& attributeName, std::optional<double> timeStamp);
+    OutputValueType read(const PathType& paths, const std::string& attributeName, std::optional<double> timestamp);
 
     /** @copydoc isaacsim::physics::ovsim::data::write
-     * @throws std::logic_error Always, because the remote operation is not implemented.
+     * @note Supports immediate CPU float32/float64 position arrays with shape `(path_count, 3)`.
+     * @throws std::invalid_argument If paths, values, the attribute name, or the timestamp is unsupported or malformed.
+     * @throws std::runtime_error If the remote operation or value encoding fails.
      */
     void write(const PathType& paths,
                const std::string& attributeName,
                const InputValueType& values,
-               std::optional<double> timeStamp);
+               std::optional<double> timestamp);
 
 private:
-    std::unordered_map<std::string, std::string> m_configuration;
+    class Implementation;
+    std::unique_ptr<Implementation> m_implementation;
 };
 
 } // namespace grpc

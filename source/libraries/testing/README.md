@@ -39,6 +39,10 @@ Files under `install_contract/` are generic input templates, not tests that modu
 with the registered package name, exported targets, public headers, Python imports, and dependency metadata. Adding a
 module normally requires no changes in this directory.
 
+Pure-Python and compatibility modules that require a native binding during module import declare
+`REQUIRES_BINDINGS`. Their imports are skipped only by binding-disabled install contracts; binding-enabled contracts
+still import the complete registered surface. The files and dependency closure remain installed in both profiles.
+
 ## Install-contract lifecycle
 
 For every complete distribution group, the test performs these steps:
@@ -115,8 +119,8 @@ tool profiles do not alter internal requirements or the external dependency rang
 
 ### `python/conftest.py`
 
-Provides the shared pytest session configuration for all module Python test suites. It initialises Warp before any
-test runs (to keep initialisation messages out of test output), registers the `isaacsim` Hypothesis settings profile
+Provides the shared pytest session configuration for all module Python test suites. It initializes Warp before any
+test runs (to keep initialization messages out of test output), registers the `isaacsim` Hypothesis settings profile
 (10 examples, suppressed function-scoped-fixture health check), and ensures the `python/` directory is on `sys.path`
 so helpers in `isaacsim_test.py` are importable without an explicit install step.
 
@@ -137,9 +141,10 @@ Provides small Python utilities shared by module pytest suites.
 ### `examples/run_examples_test.py`
 
 Provides the repository examples integration-test driver. It copies only authored example inputs into an isolated
-test tree, invokes the public examples runner to build and test the selected manifests, and supports separate build
-and test phases for CI artifact handoff. It removes successful scratch trees while preserving failed trees for
-diagnosis.
+test tree and invokes the public examples runner to build and test the selected manifests. It removes successful
+scratch trees while preserving failed trees for diagnosis. On POSIX hosts, the installed-example runtime keeps the
+invoking Python environment's native libraries ahead of the installed SDK libraries. This preserves one coherent
+native dependency family when the interpreter's runtime path has already selected libraries such as GLVND.
 
 ## Implementation ownership
 
@@ -165,7 +170,7 @@ The normal `build.sh --test` or `build.bat --test` path runs the applicable suit
 Python executable in `.pixi/envs/build-driver` and expose only the site-packages directory from `.pixi/envs/test`.
 
 ```text
-<module-python> -m unittest discover -s tools/tests -v
+PYTHONPATH=<python-test-deps> <module-python> -m unittest discover -s tools/tests -v
 PYTHONPATH=<python-test-deps> <module-python> -m unittest discover -s packaging/tests -v
 ```
 

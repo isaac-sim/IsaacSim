@@ -13,6 +13,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from isaacsim.ovgl_viewport.debug.bindings._bindings import Camera, CameraPose, Frame, Viewport, ViewportConfig
+from .api import (
+    DEFAULT_CAMERA_PATH,
+    DEFAULT_RENDER_PRODUCT_PATH,
+    DEFAULT_RENDER_VAR_PATH,
+    Camera,
+    CameraPose,
+    Frame,
+    Viewport,
+    author_viewport,
+)
 
-__all__ = ["Camera", "CameraPose", "Frame", "Viewport", "ViewportConfig"]
+__all__ = [
+    "Camera",
+    "CameraPose",
+    "DEFAULT_CAMERA_PATH",
+    "DEFAULT_RENDER_PRODUCT_PATH",
+    "DEFAULT_RENDER_VAR_PATH",
+    "Frame",
+    "Viewport",
+    "author_viewport",
+]

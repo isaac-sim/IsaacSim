@@ -54,26 +54,21 @@ def _asarray(x: object, dtype: str | None = None) -> np.ndarray | None:
 def teardown_module() -> None:
     """Restore production tensor registry state after TensorsRegistryTestCase clears it.
 
-    ``TensorsRegistryTestCase`` calls ``clear_for_testing()``, which wipes every
-    entity and simulation-view factory; cycle each engine backend so later tests in
-    the process still find their factories registered.
+    ``TensorsRegistryTestCase`` calls ``clear_for_testing()``, which wipes every entity factory; cycle each
+    engine backend so later tests in the process still find their factories registered.
     """
-    # Cycle the ovphysx backend to re-register its simulation-view factory.
+    # Cycle the ovphysx backend to re-register its entity factories.
     import isaacsim.physics_engines.ovphysx as _ovphysx
 
     _ovphysx.shutdown()
     _ovphysx.activate()
 
-    # Re-register Newton's tensor factories (reset the _REGISTERED guard first).
-    try:
-        from isaacsim.physics_engines.ovnewton.impl.tensors import simulation_view as _sv
+    # Re-register Newton's tensor factories. `register_with_umbrella` is a no-op for a name it already
+    # registered, so clear the guard it keys on first -- the registry itself no longer holds those entries.
+    from isaacsim.physics_engines.ovnewton.impl.tensors import entity_factories as _newton_factories
 
-        _sv._REGISTERED = False
-        from isaacsim.physics_engines.ovnewton.impl.tensors import register_with_umbrella as _rwu
-
-        _rwu()
-    except Exception:
-        pass
+    _newton_factories._REGISTERED.clear()
+    _newton_factories.register_with_umbrella()
 
 
 class TensorsRegistryTestCase:
@@ -95,7 +90,7 @@ class TestRegistryRoundTrip(TensorsRegistryTestCase):
         """Verify registration and creation with preserved entity paths."""
 
         # Engine factory returns a plain EntityView with the requested paths.
-        def factory(paths: list[str]) -> t.EntityView:
+        def factory(paths: list[str], options: dict[str, object] | None = None) -> t.EntityView:
             return t.EntityView(paths)
 
         reg = t.get_registry()
@@ -109,15 +104,15 @@ class TestRegistryRoundTrip(TensorsRegistryTestCase):
     def test_register_replaces_existing(self) -> None:
         """Verify that a duplicate entity key replaces its factory."""
         reg = t.get_registry()
-        reg.register_entity("mock", "articulation", lambda paths: t.EntityView(paths))
+        reg.register_entity("mock", "articulation", lambda paths, options=None: t.EntityView(paths))
         # Re-registering returns False (replaced rather than added).
-        was_new = reg.register_entity("mock", "articulation", lambda paths: t.EntityView(paths))
+        was_new = reg.register_entity("mock", "articulation", lambda paths, options=None: t.EntityView(paths))
         assert not (was_new)
 
     def test_unregister_entity(self) -> None:
         """Verify entity-factory removal and idempotent missing removal."""
         reg = t.get_registry()
-        reg.register_entity("mock", "articulation", lambda paths: t.EntityView(paths))
+        reg.register_entity("mock", "articulation", lambda paths, options=None: t.EntityView(paths))
         assert reg.has_entity("mock", "articulation")
         assert reg.unregister_entity("mock", "articulation")
         assert not (reg.has_entity("mock", "articulation"))
@@ -126,7 +121,7 @@ class TestRegistryRoundTrip(TensorsRegistryTestCase):
     def test_module_level_helpers(self) -> None:
         """Verify module-level registration and creation helpers."""
         # Module-level register_entity/create_entity mirror the registry.
-        t.register_entity("mock", "rigid_body", lambda paths: t.EntityView(paths))
+        t.register_entity("mock", "rigid_body", lambda paths, options=None: t.EntityView(paths))
         view = t.create_entity("mock", "rigid_body", ["/World/Cube"])
         assert list(view.paths) == ["/World/Cube"]
 
@@ -138,12 +133,12 @@ class TestPerEngineIsolation(TensorsRegistryTestCase):
         """Verify independent factories, views, enumeration, and removal."""
         reg = t.get_registry()
 
-        def newton_factory(paths: list[str]) -> t.EntityView:
+        def newton_factory(paths: list[str], options: dict[str, object] | None = None) -> t.EntityView:
             v = t.EntityView(paths)
             v.count = 7
             return v
 
-        def ovphysx_factory(paths: list[str]) -> t.EntityView:
+        def ovphysx_factory(paths: list[str], options: dict[str, object] | None = None) -> t.EntityView:
             v = t.EntityView(paths)
             v.count = 11
             return v
@@ -584,9 +579,13 @@ class TestErrorPaths(TensorsRegistryTestCase):
             view.set_data("does-not-exist", wp.zeros((1,), dtype=wp.float32, device="cpu"))
 
     def test_create_unknown_engine_raises(self) -> None:
-        """Verify that entity creation for an unknown engine raises."""
-        with pytest.raises(Exception):
-            t.create_entity("nonexistent", "articulation", [])
+        """Verify that entity creation for an unknown engine raises.
+
+        The paths are non-empty so the engine lookup is what fails; an empty list is rejected earlier and
+        would let this pass without ever reaching the registry.
+        """
+        with pytest.raises(IndexError):
+            t.create_entity("nonexistent", "articulation", ["/World/X"])
 
     def test_supports_false_raises_on_call(self) -> None:
         """Verify that calling an explicitly unsupported implementation raises."""
@@ -598,7 +597,7 @@ class TestErrorPaths(TensorsRegistryTestCase):
             t.TensorSpec(supports=False),
         )
         with pytest.raises(
-            RuntimeError, match="EntityView::getData: impl 'no-go' is registered but reports supports=false"
+            RuntimeError, match="EntityView::getData: implementation 'no-go' is registered but reports supports=false"
         ):
             view.get_data("no-go")
 
@@ -615,7 +614,7 @@ class TestErrorPaths(TensorsRegistryTestCase):
         t._attach_warp_dispatch(view)
 
         with pytest.raises(
-            RuntimeError, match="EntityView::getData: impl 'no-go' is registered but reports supports=false"
+            RuntimeError, match="EntityView::getData: implementation 'no-go' is registered but reports supports=false"
         ):
             view.get_data("no-go")
         assert calls == []
@@ -636,7 +635,7 @@ class TestErrorPaths(TensorsRegistryTestCase):
 
         assert not (view.has_impl("no-go", t.ImplKind.Get))
         with pytest.raises(
-            RuntimeError, match="EntityView::getData: impl 'no-go' is registered but reports supports=false"
+            RuntimeError, match="EntityView::getData: implementation 'no-go' is registered but reports supports=false"
         ):
             view.get_data("no-go")
         assert calls == []
@@ -653,7 +652,9 @@ class TestErrorPaths(TensorsRegistryTestCase):
         )
         t._attach_warp_dispatch(view)
 
-        with pytest.raises(ValueError, match="EntityView::setData: impl 'plain-set' does not support indexed writes"):
+        with pytest.raises(
+            ValueError, match="EntityView::setData: implementation 'plain-set' does not support indexed writes"
+        ):
             view.set_data(
                 "plain-set",
                 wp.zeros((1,), dtype=wp.float32, device="cpu"),
@@ -674,7 +675,8 @@ class TestErrorPaths(TensorsRegistryTestCase):
         t._attach_warp_dispatch(view)
 
         with pytest.raises(
-            RuntimeError, match="EntityView::setDataMulti: impl 'no-go-multi' is registered but reports supports=false"
+            RuntimeError,
+            match="EntityView::setDataMulti: implementation 'no-go-multi' is registered but reports supports=false",
         ):
             view.set_data_multi(
                 "no-go-multi",
@@ -695,7 +697,8 @@ class TestErrorPaths(TensorsRegistryTestCase):
         t._attach_warp_dispatch(view)
 
         with pytest.raises(
-            ValueError, match="EntityView::getDataMulti: impl 'plain-multi-get' does not support indexed reads"
+            ValueError,
+            match="EntityView::getDataMulti: implementation 'plain-multi-get' does not support indexed reads",
         ):
             view.get_data_multi(
                 "plain-multi-get",
@@ -768,41 +771,95 @@ class TestErrorPaths(TensorsRegistryTestCase):
             )
 
 
-class TestSimulationViewRegistry(TensorsRegistryTestCase):
-    """Verify simulation-view factories and Python subclass overrides."""
+class TestEntityOptions(TensorsRegistryTestCase):
+    """Verify the construction arguments that paths alone cannot express."""
 
-    def test_simulation_view_factory(self) -> None:
-        """Verify simulation-view factory registration, creation, and removal."""
+    def test_options_reach_the_factory(self) -> None:
+        """Verify that an options mapping arrives at the registered factory unchanged."""
+        seen: list[object] = []
 
-        def factory(frontend_name: str, stage_id: int) -> t.SimulationView:
-            return t.SimulationView("mock", frontend_name, stage_id)
+        def factory(paths: list[str], options: dict[str, object] | None = None) -> t.EntityView:
+            seen.append(options)
+            return t.EntityView(paths)
 
-        reg = t.get_registry()
-        reg.register_simulation_view("mock", factory)
+        t.register_entity("mock", "rigid-contact", factory)
+        t.create_entity(
+            "mock",
+            "rigid-contact",
+            ["/World/Sensor"],
+            {"filter-patterns": ["/World/Ground"], "max-contact-data-count": 64},
+        )
 
-        view = t.create_simulation_view("mock", 42, "warp")
-        assert view.engine == "mock"
-        assert view.frontend_name == "warp"
-        assert view.stage_id == 42
+        assert seen == [{"filter-patterns": ["/World/Ground"], "max-contact-data-count": 64}]
 
-        # Unregistering removes the factory.
-        assert reg.unregister_simulation_view("mock")
-        with pytest.raises(Exception):
-            t.create_simulation_view("mock", 42, "warp")
+    def test_options_default_to_none(self) -> None:
+        """Verify that omitting options hands the factory None rather than an empty mapping.
 
-    def test_python_subclass_overrides_view_factories(self) -> None:
-        """Verify that Python simulation-view subclasses can override view creation."""
+        The two are not interchangeable: an engine distinguishes "use your defaults" from "the caller
+        asked for nothing", and only the first may substitute its own capacities.
+        """
+        seen: list[object] = []
 
-        class MockSim(t.SimulationView):
-            def __init__(self, engine: str, frontend: str, stage_id: int) -> None:
-                super().__init__(engine, frontend, stage_id)
+        def factory(paths: list[str], options: dict[str, object] | None = None) -> t.EntityView:
+            seen.append(options)
+            return t.EntityView(paths)
 
-            def create_articulation_view(self, pattern: str) -> t.EntityView:
-                v = t.EntityView([pattern])
-                v.count = 99
-                return v
+        t.register_entity("mock", "articulation", factory)
+        t.create_entity("mock", "articulation", ["/World/Robot"])
 
-        sim = MockSim("mock", "warp", 7)
-        view = sim.create_articulation_view("/World/Robot")
-        assert view.count == 99
-        assert list(view.paths) == ["/World/Robot"]
+        assert seen == [None]
+
+    def test_single_pattern_string_is_one_path(self) -> None:
+        """Verify that a bare pattern is one path rather than a sequence of characters.
+
+        ``str`` satisfies ``Sequence[str]``, so a naive ``list(paths)`` would split a pattern into
+        per-character entries that match nothing.
+        """
+        seen: list[list[str]] = []
+
+        def factory(paths: list[str], options: dict[str, object] | None = None) -> t.EntityView:
+            seen.append(list(paths))
+            return t.EntityView(paths)
+
+        t.register_entity("mock", "articulation", factory)
+        t.create_entity("mock", "articulation", "/World/envs/*/Cube")
+
+        assert seen == [["/World/envs/*/Cube"]]
+
+    def test_empty_string_rejected(self) -> None:
+        """Verify that an empty pattern string is refused rather than treated as a path."""
+        t.register_entity("mock", "articulation", lambda paths, options=None: t.EntityView(paths))
+        with pytest.raises(ValueError):
+            t.create_entity("mock", "articulation", "")
+
+    def test_empty_paths_rejected(self) -> None:
+        """Verify that an empty pattern list is refused before it reaches the factory."""
+        called: list[object] = []
+
+        def factory(paths: list[str], options: dict[str, object] | None = None) -> t.EntityView:
+            called.append(paths)
+            return t.EntityView(paths)
+
+        t.register_entity("mock", "articulation", factory)
+        with pytest.raises(ValueError):
+            t.create_entity("mock", "articulation", [])
+        assert not called
+
+    def test_device_ordinal_applied_to_view(self) -> None:
+        """Verify that a caller-supplied device ordinal lands on the created view."""
+        t.register_entity("mock", "articulation", lambda paths, options=None: t.EntityView(paths))
+
+        view = t.create_entity("mock", "articulation", ["/World/Robot"], device_ordinal=3)
+        assert view.device_ordinal == 3
+
+    def test_device_ordinal_left_alone_when_unset(self) -> None:
+        """Verify that omitting the device ordinal preserves what the engine reported."""
+
+        def factory(paths: list[str], options: dict[str, object] | None = None) -> t.EntityView:
+            view = t.EntityView(paths)
+            view.device_ordinal = 5
+            return view
+
+        t.register_entity("mock", "articulation", factory)
+        view = t.create_entity("mock", "articulation", ["/World/Robot"])
+        assert view.device_ordinal == 5

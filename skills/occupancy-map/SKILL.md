@@ -3,7 +3,7 @@ name: occupancy-map
 description: "Export ROS occupancy grids (map.yaml/png) from USD for Nav2. Not for footprints, A*, or kinematics (use navigation-primitives)."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Warehouse Occupancy Map Generation

@@ -326,7 +326,7 @@ class IsaacLightBeamSensor(IsaacBaseSensor):
         )
         super().__init__(prim)
 
-    # ── IsaacLightBeamSensor attributes ─────────────────────────────────
+    # IsaacLightBeamSensor attributes
 
     def GetNumRaysAttr(self) -> Usd.Attribute:
         """Return the `numRays` int attribute (number of rays cast per frame).
@@ -467,7 +467,7 @@ class IsaacRaycastSensor(IsaacBaseSensor):
     _TYPE_NAME = "IsaacRaycastSensor"
     _TF_TYPE_NAME = "IsaacSensorIsaacRaycastSensor"
 
-    # ── IsaacRaycastSensor attributes ───────────────────────────────────
+    # IsaacRaycastSensor attributes
 
     def GetNumRaysAttr(self) -> Usd.Attribute:
         """Return the `numRays` uint attribute (number of rays cast per frame).

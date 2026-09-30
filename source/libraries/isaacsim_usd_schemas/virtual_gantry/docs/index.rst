@@ -17,15 +17,18 @@
 .. _isaacsim-virtual-gantry-schema-library:
 
 ==============================
-isaacsim_virtual_gantry_schema
+isaacsim-virtual-gantry-schema
 ==============================
 
-``isaacsim_virtual_gantry_schema`` provides the Universal Scene Description
-(USD) schema for a virtual gantry. The ``IsaacVirtualGantry`` typed prim uses
-its world transform as the anchor for a one-sided spring-damper rope attached
-to an articulation link.
+The ``isaacsim-virtual-gantry-schema`` Python distribution provides the
+Universal Scene Description (USD) schema for a virtual gantry. The
+``IsaacVirtualGantry`` typed prim uses its world transform as the anchor for a
+one-sided spring-damper rope attached to an articulation link.
 
 Use this distribution to author and inspect virtual-gantry attributes and
 relationships without adding gantry-specific concepts to the general robot
-schema. The package supplies the schema resources and Python accessors for the
-supported OpenUSD versions.
+schema. The package supplies the schema resources and Python accessors through
+``isaacsim.robot_setup.virtual_gantry_schema`` for the supported OpenUSD versions
+on Python 3.12.
+
+The corresponding CMake package group is named ``isaacsim_virtual_gantry_schema``.

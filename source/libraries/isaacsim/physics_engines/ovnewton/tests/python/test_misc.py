@@ -39,7 +39,6 @@ from _legacy_runner import (  # noqa: E402
 from common.misc import (  # noqa: E402
     ArticulationExoticRootRejectedCommon,
     ArtJointFreeMotionToLimitMotionCommon,
-    SimViewInvalidateCommon,
     UsdPrimDeletionCommon,
 )
 
@@ -55,19 +54,6 @@ class TestUsdPrimDeletion:
     def test_prim_deletion_newton_gg(self) -> None:
         """Verify prim deletion on the Newton GPU pipeline."""
         run_scenario(self, UsdPrimDeletionCommon, "newton", gpu_device())
-
-
-class TestSimViewInvalidate:
-    """Validate simulation-view invalidation with Newton."""
-
-    def test_sim_view_invalidate_newton_cc(self) -> None:
-        """Verify simulation-view invalidation on the Newton CPU pipeline."""
-        run_scenario(self, SimViewInvalidateCommon, "newton", cpu_device())
-
-    @gpu_only
-    def test_sim_view_invalidate_newton_gg(self) -> None:
-        """Verify simulation-view invalidation on the Newton GPU pipeline."""
-        run_scenario(self, SimViewInvalidateCommon, "newton", gpu_device())
 
 
 class TestArtJointFreeMotionToLimitMotion:

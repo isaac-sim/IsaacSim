@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Verify that OvPhysX activation keeps OVStage's OpenUSD runtime private."""
+"""Verify that OvPhysX import keeps OVStage's OpenUSD runtime private."""
 
 from __future__ import annotations
 
@@ -30,34 +30,44 @@ def _run_isolation_script(script: str) -> None:
         text=True,
     )
     assert result.returncode == 0, f"Child process failed.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    dependency_error = "Dependency: [carb::dictionary::IDictionary v2.1] failed to be resolved."
+    assert (
+        dependency_error not in result.stdout + result.stderr
+    ), f"Child process reported a Carbonite teardown error.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
 
 
-def test_activate_does_not_import_pxr() -> None:
-    """Keep ``pxr`` unloaded when OvPhysX is activated before Foundation."""
+def test_import_registers_ovphysx_without_importing_pxr() -> None:
+    """Register OvPhysX on import without loading ``pxr``."""
     _run_isolation_script("""
         import sys
 
-        from isaacsim.physics_engines.ovphysx import activate, shutdown
+        from isaacsim.physics.manager import PhysicsManager
+        from isaacsim.physics.registration import get_simulation_ids, get_simulation_name
 
         assert "isaacsim.physics_engines.ovstage" not in sys.modules
         assert not any(name == "pxr" or name.startswith("pxr.") for name in sys.modules)
-        assert activate()
+        assert "ovphysx" not in {get_simulation_name(simulation_id) for simulation_id in get_simulation_ids()}
+
+        import isaacsim.physics_engines.ovphysx
+
+        manager = PhysicsManager.get_instance()
+        assert manager.switch_physics_engine("ovphysx")
+        assert "ovphysx" in {get_simulation_name(simulation_id) for simulation_id in get_simulation_ids()}
         assert not any(name == "pxr" or name.startswith("pxr.") for name in sys.modules)
 
         from isaacsim.foundation.objects import Stage
         from pxr import Usd
 
-        foundation_stage = Stage("openusd").create_stage()
+        stage = Stage("openusd").create_stage()
         try:
-            assert foundation_stage.get_stage_id() >= 0
+            assert stage.get_stage_id() >= 0
             assert Usd.Stage.CreateInMemory()
         finally:
-            foundation_stage.close_stage()
-            shutdown()
+            stage.close_stage()
         """)
 
 
-def test_activate_preserves_foundation_pxr_and_populates_ovstage() -> None:
+def test_import_preserves_foundation_pxr_and_populates_ovstage() -> None:
     """Preserve Foundation's ``pxr`` modules while populating private OVStage USD."""
     _run_isolation_script("""
         import sys
@@ -65,8 +75,8 @@ def test_activate_preserves_foundation_pxr_and_populates_ovstage() -> None:
         from isaacsim.foundation.objects import Stage
         from pxr import Usd, UsdGeom, UsdPhysics, UsdUtils
 
-        foundation_stage = Stage("openusd").create_stage()
-        stage_id = foundation_stage.get_stage_id()
+        stage = Stage("openusd").create_stage()
+        stage_id = stage.get_stage_id()
         usd_stage = UsdUtils.StageCache.Get().Find(Usd.StageCache.Id.FromLongInt(stage_id))
         assert usd_stage
         UsdGeom.Cube.Define(usd_stage, "/World/Cube")
@@ -78,9 +88,8 @@ def test_activate_preserves_foundation_pxr_and_populates_ovstage() -> None:
             if name == "pxr" or name.startswith("pxr.")
         }
 
-        from isaacsim.physics_engines.ovphysx import activate, shutdown
+        import isaacsim.physics_engines.ovphysx
 
-        assert activate()
         assert pxr_modules == {
             name: module
             for name, module in sys.modules.items()
@@ -100,12 +109,11 @@ def test_activate_preserves_foundation_pxr_and_populates_ovstage() -> None:
             )
         finally:
             ovstage_stage.destroy()
-            shutdown()
-            foundation_stage.close_stage()
+            stage.close_stage()
         """)
 
 
-def test_setup_before_activate_uses_the_backend_ovstage_instance() -> None:
+def test_setup_before_import_uses_the_backend_ovstage_instance() -> None:
     """Reconcile a setup-first loader hint before attaching an OVStage object."""
     _run_isolation_script("""
         import os
@@ -116,16 +124,14 @@ def test_setup_before_activate_uses_the_backend_ovstage_instance() -> None:
 
         setup()
 
-        from isaacsim.physics_engines.ovphysx import activate, set_suppress_readback, shutdown
+        import isaacsim.physics_engines.ovphysx
 
-        assert activate()
-
-        from isaacsim.physics.manager import PhysicsManager, close, initialize, simulate
+        from isaacsim.physics.manager import PhysicsManager
         from ovstage import PopulationDomain
         from ovstage import Stage as OvStage
         from ovstage import population
 
-        stage = OvStage("setup-before-activate-test")
+        stage = OvStage("setup-before-import-test")
         simulation_initialized = False
         try:
             population.open_usd(
@@ -136,10 +142,10 @@ def test_setup_before_activate_uses_the_backend_ovstage_instance() -> None:
             stage.advance_write_floor(1).wait()
             manager = PhysicsManager.get_instance()
             assert manager.switch_physics_engine("ovphysx")
-            set_suppress_readback(False)
-            assert initialize(get_native_handle(stage), "0", owner=stage)
+            manager.setup(1.0 / 60.0)
+            assert manager.initialize(get_native_handle(stage), 0)
             simulation_initialized = True
-            simulate(1.0 / 60.0, 0.0)
+            manager.step()
 
             if sys.platform == "linux":
                 mapped_libraries = {
@@ -150,7 +156,6 @@ def test_setup_before_activate_uses_the_backend_ovstage_instance() -> None:
                 assert len(mapped_libraries) == 1, mapped_libraries
         finally:
             if simulation_initialized:
-                close()
+                manager.invalidate()
             stage.destroy()
-            shutdown()
         """)

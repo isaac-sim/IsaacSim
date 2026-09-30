@@ -21,7 +21,7 @@ read). The shared check functions are reused as-is; this module only supplies th
 rigid-body scene and the impls to run them against:
 
 * runtime state -> ``velocities`` (6 components, all independently settable;
-  unlike ``transforms``, whose quaternion is re-normalised on write and so would
+  unlike ``transforms``, whose quaternion is re-normalized on write and so would
   not round-trip exactly).
 * parameter -> ``masses`` (1 component).
 
@@ -93,7 +93,7 @@ class _RigidBodyContractBase(_ContractMixin, GridTestBase):
         """Create the rigid-body view used by the contract.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.sim = sim
@@ -222,7 +222,7 @@ class ApplyMultiSetCommon(_RigidBodyContractBase):
         """Apply full force buffers and verify every body accelerates.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -245,7 +245,7 @@ class ApplyIndexedMultiSetCommon(_RigidBodyContractBase):
         """Apply indexed force buffers and verify only selected bodies accelerate.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -280,5 +280,5 @@ class WriteOnlyRejectsGetCommon(_RigidBodyContractBase):
         assert not (self.view.has_impl("apply-forces", t.ImplKind.Get))
         data = wp.zeros((self.num_envs, 3), dtype=wp.float32, device=self.wp_device)
         self.view.set_data("apply-forces", data)
-        with pytest.raises(Exception, match="get-impl 'apply-forces' not registered"):
+        with pytest.raises(Exception, match="get-implementation 'apply-forces' not registered"):
             self.view.get_data("apply-forces")

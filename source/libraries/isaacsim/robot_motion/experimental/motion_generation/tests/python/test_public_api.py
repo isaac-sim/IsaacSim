@@ -15,10 +15,11 @@
 
 """Kit-free smoke test for the ``isaacsim.robot_motion.experimental.motion_generation`` library.
 
-This test intentionally imports **only** the public library and the standard library. It runs outside of Omniverse Kit
-(no ``omni.kit.app``, no ``SimulationApp``) to prove that the relocated motion generation package is importable in a
-pure Kit-free environment, that its frozen public API is unchanged, and that no ``carb`` / ``omni.*`` module is pulled in
-as a side effect of importing it. The heavier behavioural tests continue to run under the carrier extension in Kit.
+This test intentionally imports **only** the public library and the standard library. It runs outside of Omniverse
+Kit (no ``omni.kit.app``, no ``SimulationApp``) to prove that the relocated motion generation package is importable
+in a pure Kit-free environment, that its frozen public API is unchanged, and that no ``carb`` / ``omni.*`` module is
+pulled in as a side effect of importing it. The heavier behavioral tests continue to run under the carrier extension
+in Kit.
 """
 
 from __future__ import annotations

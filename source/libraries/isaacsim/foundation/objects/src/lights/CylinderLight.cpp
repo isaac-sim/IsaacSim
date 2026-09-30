@@ -27,12 +27,8 @@ namespace lights
 CylinderLight::CylinderLight(const std::variant<std::string, std::vector<std::string>>& paths,
                              const std::optional<array::Array>& radii,
                              const std::optional<array::Array>& lengths,
-                             const std::optional<array::Array>& positions,
-                             const std::optional<array::Array>& translations,
-                             const std::optional<array::Array>& orientations,
-                             const std::optional<array::Array>& scales,
                              bool resetXformOpProperties)
-    : Light(paths, /*lightType=*/"CylinderLight", positions, translations, orientations, scales, resetXformOpProperties)
+    : Light(paths, /*lightType=*/"CylinderLight", resetXformOpProperties)
 {
     // Initialize instance from arguments.
     if (radii.has_value())
@@ -76,6 +72,11 @@ void CylinderLight::setEnabledTreatAsLines(const array::Array& enabled, const st
 array::Array CylinderLight::getEnabledTreatAsLines(const std::optional<array::Array>& indices)
 {
     return std::get<array::Array>(this->getAttributeValues("treatAsLine", indices));
+}
+
+array::Array CylinderLight::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("CylinderLight");
 }
 
 } // namespace lights

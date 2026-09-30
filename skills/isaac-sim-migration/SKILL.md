@@ -3,7 +3,7 @@ name: isaac-sim-migration
 description: "Audit and validate Isaac Sim release migrations; currently covers 5.1 to 6.0. Do NOT use for new-project setup or unrelated runtime bugs."
 license: Apache-2.0
 metadata:
-  author: Hammad Mazhar
+  author: Hammad Mazhar <info@nvidia.com>
 ---
 
 # Isaac Sim Migration

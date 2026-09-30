@@ -62,9 +62,9 @@ exposes accessors for the structured data used to build its ``what()`` message:
     }
     catch (const ValueTypeError& error)
     {
-        // error.attributeName() == "scale"
-        // error.expectedType() == "float"
-        // error.actualType() == "str"
+        // error.getAttributeName() == "scale"
+        // error.getExpectedType() == "float"
+        // error.getActualType() == "str"
     }
 
 The declarations and Doxygen comments in ``Exceptions.hpp`` are the authoritative C++ reference.

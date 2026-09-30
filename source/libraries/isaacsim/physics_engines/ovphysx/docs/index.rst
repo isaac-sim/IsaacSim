@@ -20,6 +20,11 @@
 isaacsim.physics_engines.ovphysx
 ================================
 
+``isaacsim.physics_engines.ovphysx`` adapts the packaged OvPhysX and OVStage
+runtimes to the physics manager and tensor interfaces. Importing the module
+registers and activates the backend; normal applications do not need to call
+its lifecycle helpers directly.
+
 .. toctree::
     :maxdepth: 2
 

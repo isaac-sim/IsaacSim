@@ -3,7 +3,7 @@ name: vlm-scene-captioning
 description: "Generate image + caption pairs and structured scene graphs (IRC, isaacsim.replicator.caption.core) for VLM training. Use when captioning scenes or wiring IRC into an actor/object SDG run."
 license: Apache-2.0
 metadata:
-  author: NVIDIA Isaac Sim
+  author: NVIDIA Isaac Sim <isaac-sim@nvidia.com>
 ---
 
 # VLM Scene Captioning (IRC)

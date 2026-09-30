@@ -13,9 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "details/UsdHelpers.hpp"
+
 #include <isaacsim/common/exceptions/Exceptions.hpp>
 #include <isaacsim/foundation/usd/openusd/Usd.hpp>
-#include <isaacsim/foundation/usd/openusd/details/UsdHelpers.hpp>
 #include <pxr/base/gf/rotation.h>
 #include <pxr/base/gf/transform.h>
 #include <pxr/base/tf/errorMark.h>
@@ -853,14 +854,14 @@ void resetXformOpProperties(int64_t stageId, const std::string& path)
     // TODO: Capture world pose before touching ops so we can restore it after reordering.
 
     // Remove non-standard rotation and transform ops.
-    static const PXR_NS::TfToken kOpsToRemove[] = {
+    static const PXR_NS::TfToken s_kOpsToRemove[] = {
         PXR_NS::TfToken("xformOp:rotateX"),   PXR_NS::TfToken("xformOp:rotateXZY"),
         PXR_NS::TfToken("xformOp:rotateY"),   PXR_NS::TfToken("xformOp:rotateYXZ"),
         PXR_NS::TfToken("xformOp:rotateYZX"), PXR_NS::TfToken("xformOp:rotateZ"),
         PXR_NS::TfToken("xformOp:rotateZYX"), PXR_NS::TfToken("xformOp:rotateZXY"),
         PXR_NS::TfToken("xformOp:rotateXYZ"), PXR_NS::TfToken("xformOp:transform"),
     };
-    for (const auto& token : kOpsToRemove)
+    for (const auto& token : s_kOpsToRemove)
     {
         if (prim.GetAttribute(token))
         {
@@ -869,13 +870,13 @@ void resetXformOpProperties(int64_t stageId, const std::string& path)
     }
 
     // Collect stray `:unitsResolve` properties (skip :scale:unitsResolve - baked below).
-    static constexpr std::string_view kUnitsResolveSuffix = ":unitsResolve";
+    static constexpr std::string_view s_kUnitsResolveSuffix = ":unitsResolve";
     std::vector<PXR_NS::TfToken> unitsResolveToRemove;
     for (const auto& attribute : prim.GetAttributes())
     {
         const PXR_NS::TfToken token = attribute.GetName();
         const std::string_view name = token.GetString();
-        if (name.find(kUnitsResolveSuffix) != std::string_view::npos && name.find(":scale:") == std::string_view::npos)
+        if (name.find(s_kUnitsResolveSuffix) != std::string_view::npos && name.find(":scale:") == std::string_view::npos)
         {
             unitsResolveToRemove.push_back(token);
         }
@@ -973,7 +974,7 @@ std::tuple<array::Array, array::Array> getXformLocalPoses(int64_t stageId, const
             details::getXformLocalPose(details::getXformableAtPath(stageId, path, true, false));
         const auto& imaginary = orientation.GetImaginary();
         translations.push_back({ translation[0], translation[1], translation[2] });
-        orientations.push_back({ orientation.GetReal(), imaginary[0], imaginary[1], imaginary[2] });
+        orientations.push_back({ imaginary[0], imaginary[1], imaginary[2], orientation.GetReal() });
     }
     return { array::Array(translations), array::Array(orientations) };
 }
@@ -1014,7 +1015,7 @@ void setXformLocalPoses(int64_t stageId,
         {
             auto orientationValue = const_cast<array::Array&>(*orientations).at(i).get<std::vector<double>>();
             orientation = PXR_NS::GfQuatd(
-                orientationValue[0], PXR_NS::GfVec3d(orientationValue[1], orientationValue[2], orientationValue[3]));
+                orientationValue[3], PXR_NS::GfVec3d(orientationValue[0], orientationValue[1], orientationValue[2]));
         }
         details::setXformLocalPose(details::getXformableAtPath(stageId, paths[i], true, true), translation, orientation);
     }
@@ -1031,7 +1032,7 @@ std::tuple<array::Array, array::Array> getXformWorldPoses(int64_t stageId, const
             details::getXformWorldPose(details::getXformableAtPath(stageId, path, true, false));
         const auto& imaginary = orientation.GetImaginary();
         positions.push_back({ position[0], position[1], position[2] });
-        orientations.push_back({ orientation.GetReal(), imaginary[0], imaginary[1], imaginary[2] });
+        orientations.push_back({ imaginary[0], imaginary[1], imaginary[2], orientation.GetReal() });
     }
     return { array::Array(positions), array::Array(orientations) };
 }
@@ -1072,7 +1073,7 @@ void setXformWorldPoses(int64_t stageId,
         {
             auto orientationValue = const_cast<array::Array&>(*orientations).at(i).get<std::vector<double>>();
             orientation = PXR_NS::GfQuatd(
-                orientationValue[0], PXR_NS::GfVec3d(orientationValue[1], orientationValue[2], orientationValue[3]));
+                orientationValue[3], PXR_NS::GfVec3d(orientationValue[0], orientationValue[1], orientationValue[2]));
         }
         details::setXformWorldPose(details::getXformableAtPath(stageId, paths[i], true, true), position, orientation);
     }

@@ -15,6 +15,7 @@
 
 #include "isaacsim/common/array/Dtype.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace isaacsim
@@ -24,26 +25,48 @@ namespace common
 namespace array
 {
 
-DType::DType(const std::string& name) : m_kind(fromString(name).kind())
+namespace
+{
+
+// Signed integer dtype of the given width, in bytes. Widths that are not exact type sizes, and
+// widths above 8, are rounded up to the next signed type (int64 at most).
+Dtype signedDtypeOfSize(size_t size)
+{
+    switch (size)
+    {
+    case 1:
+        return Dtype::Int8();
+    case 2:
+        return Dtype::Int16();
+    case 4:
+        return Dtype::Int32();
+    default:
+        return Dtype::Int64();
+    }
+}
+
+} // namespace
+
+Dtype::Dtype(const std::string& name) : m_kind(fromString(name).kind())
 {
 }
 
-bool DType::operator==(const DType& other) const
+bool Dtype::operator==(const Dtype& other) const
 {
     return m_kind == other.m_kind;
 }
 
-bool DType::operator!=(const DType& other) const
+bool Dtype::operator!=(const Dtype& other) const
 {
     return m_kind != other.m_kind;
 }
 
-DType::Kind DType::kind() const
+Dtype::Kind Dtype::kind() const
 {
     return m_kind;
 }
 
-size_t DType::size() const
+size_t Dtype::size() const
 {
     switch (m_kind)
     {
@@ -73,17 +96,17 @@ size_t DType::size() const
     return 0;
 }
 
-bool DType::isFloating() const
+bool Dtype::isFloating() const
 {
     return m_kind == Kind::eFloat32 || m_kind == Kind::eFloat64;
 }
 
-bool DType::isIntegral() const
+bool Dtype::isIntegral() const
 {
     return !isFloating() && m_kind != Kind::eBool;
 }
 
-bool DType::isSigned() const
+bool Dtype::isSigned() const
 {
     switch (m_kind)
     {
@@ -99,7 +122,7 @@ bool DType::isSigned() const
     }
 }
 
-bool DType::isUnsigned() const
+bool Dtype::isUnsigned() const
 {
     switch (m_kind)
     {
@@ -113,7 +136,7 @@ bool DType::isUnsigned() const
     }
 }
 
-std::string DType::toString() const
+std::string Dtype::toString() const
 {
     switch (m_kind)
     {
@@ -143,86 +166,127 @@ std::string DType::toString() const
     return "";
 }
 
-DType DType::fromString(const std::string& name)
+Dtype Dtype::fromString(const std::string& name)
 {
     if (name == "bool")
-        return DType(Kind::eBool);
+        return Dtype(Kind::eBool);
     else if (name == "int8")
-        return DType(Kind::eInt8);
+        return Dtype(Kind::eInt8);
     else if (name == "int16")
-        return DType(Kind::eInt16);
+        return Dtype(Kind::eInt16);
     else if (name == "int32")
-        return DType(Kind::eInt32);
+        return Dtype(Kind::eInt32);
     else if (name == "int64")
-        return DType(Kind::eInt64);
+        return Dtype(Kind::eInt64);
     else if (name == "uint8")
-        return DType(Kind::eUInt8);
+        return Dtype(Kind::eUInt8);
     else if (name == "uint16")
-        return DType(Kind::eUInt16);
+        return Dtype(Kind::eUInt16);
     else if (name == "uint32")
-        return DType(Kind::eUInt32);
+        return Dtype(Kind::eUInt32);
     else if (name == "uint64")
-        return DType(Kind::eUInt64);
+        return Dtype(Kind::eUInt64);
     else if (name == "float32")
-        return DType(Kind::eFloat32);
+        return Dtype(Kind::eFloat32);
     else if (name == "float64")
-        return DType(Kind::eFloat64);
+        return Dtype(Kind::eFloat64);
     throw std::invalid_argument("Unknown dtype: '" + std::string(name) + "'");
 }
 
-DType DType::Bool()
+Dtype Dtype::promoteDtypes(Dtype a, Dtype b)
 {
-    return DType(Kind::eBool);
+    if (a == b)
+    {
+        return a;
+    }
+    // Boolean is the least-ranked kind: it always yields to the other operand.
+    else if (a == Bool())
+    {
+        return b;
+    }
+    else if (b == Bool())
+    {
+        return a;
+    }
+    // Two floating-point types: the wider one.
+    else if (a.isFloating() && b.isFloating())
+    {
+        return a.size() >= b.size() ? a : b;
+    }
+    // Floating-point and integer: the smallest float that holds every integer value exactly,
+    // which rules out float32 for integers wider than its 24-bit mantissa.
+    else if (a.isFloating() || b.isFloating())
+    {
+        const Dtype floating = a.isFloating() ? a : b;
+        const Dtype integral = a.isFloating() ? b : a;
+        return (floating.size() >= 8 || integral.size() >= 4) ? Float64() : floating;
+    }
+    // Two integers of the same signedness: the wider one.
+    else if (a.isSigned() == b.isSigned())
+    {
+        return a.size() >= b.size() ? a : b;
+    }
+    // Signed and unsigned integer: the smallest signed type holding both ranges, or float64 when
+    // no signed type is wide enough (as with int64 and uint64).
+    const Dtype signedType = a.isSigned() ? a : b;
+    const Dtype unsignedType = a.isSigned() ? b : a;
+    const size_t requiredSize = std::max(signedType.size(), 2 * unsignedType.size());
+    return requiredSize > 8 ? Float64() : signedDtypeOfSize(requiredSize);
 }
 
-DType DType::Int8()
+Dtype Dtype::Bool()
 {
-    return DType(Kind::eInt8);
+    return Dtype(Kind::eBool);
 }
 
-DType DType::Int16()
+Dtype Dtype::Int8()
 {
-    return DType(Kind::eInt16);
+    return Dtype(Kind::eInt8);
 }
 
-DType DType::Int32()
+Dtype Dtype::Int16()
 {
-    return DType(Kind::eInt32);
+    return Dtype(Kind::eInt16);
 }
 
-DType DType::Int64()
+Dtype Dtype::Int32()
 {
-    return DType(Kind::eInt64);
+    return Dtype(Kind::eInt32);
 }
 
-DType DType::UInt8()
+Dtype Dtype::Int64()
 {
-    return DType(Kind::eUInt8);
+    return Dtype(Kind::eInt64);
 }
 
-DType DType::UInt16()
+Dtype Dtype::UInt8()
 {
-    return DType(Kind::eUInt16);
+    return Dtype(Kind::eUInt8);
 }
 
-DType DType::UInt32()
+Dtype Dtype::UInt16()
 {
-    return DType(Kind::eUInt32);
+    return Dtype(Kind::eUInt16);
 }
 
-DType DType::UInt64()
+Dtype Dtype::UInt32()
 {
-    return DType(Kind::eUInt64);
+    return Dtype(Kind::eUInt32);
 }
 
-DType DType::Float32()
+Dtype Dtype::UInt64()
 {
-    return DType(Kind::eFloat32);
+    return Dtype(Kind::eUInt64);
 }
 
-DType DType::Float64()
+Dtype Dtype::Float32()
 {
-    return DType(Kind::eFloat64);
+    return Dtype(Kind::eFloat32);
+}
+
+Dtype Dtype::Float64()
+{
+    return Dtype(Kind::eFloat64);
 }
 
 } // namespace array

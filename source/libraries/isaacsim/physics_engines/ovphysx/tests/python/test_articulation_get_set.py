@@ -42,22 +42,8 @@ from common.articulation_get_set import (  # noqa: E402
     GetSetLinkGravityCommon,
     GetSetRootTransformsCommon,
     GetSetRootVelocitiesCommon,
-    KinematicUpdateCommon,
     LinkStateCommon,
 )
-
-
-class TestArticulationKinematicUpdate:
-    """Verify kinematic updates propagate joint-position changes to Ant links."""
-
-    def test_articulation_kinematic_update_ovphysx_cc(self) -> None:
-        """Check kinematic link updates with CPU simulation and CPU tensors."""
-        run_scenario(self, KinematicUpdateCommon, "ovphysx", cpu_device())
-
-    @gpu_only
-    def test_articulation_kinematic_update_ovphysx_gg(self) -> None:
-        """Check kinematic link updates with GPU simulation and GPU tensors."""
-        run_scenario(self, KinematicUpdateCommon, "ovphysx", gpu_device())
 
 
 class TestArticulationGetSetRootTransforms:

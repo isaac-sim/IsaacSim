@@ -39,11 +39,11 @@ namespace
 
 using Matrix4d = std::array<double, 16>;
 
-constexpr Matrix4d kIdentity = {
+constexpr Matrix4d g_kIdentity = {
     1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
 };
 
-void skinning_diagnostic(const std::string& mesh_path, const char* phase, size_t first = 0, size_t second = 0)
+void skinningDiagnostic(const std::string& mesh_path, const char* phase, size_t first = 0, size_t second = 0)
 {
     if (!std::getenv("OVGL_DEBUG_SKEL"))
         return;
@@ -52,7 +52,7 @@ void skinning_diagnostic(const std::string& mesh_path, const char* phase, size_t
     std::fprintf(stderr, "[ovgl-skel] %s: %s (%zu, %zu)\n", mesh_path.c_str(), phase, first, second);
 }
 
-std::string first_nul_string(const std::vector<uint8_t>& bytes)
+std::string firstNulString(const std::vector<uint8_t>& bytes)
 {
     if (bytes.empty())
         return {};
@@ -62,7 +62,7 @@ std::string first_nul_string(const std::vector<uint8_t>& bytes)
     return std::string(begin, length);
 }
 
-std::vector<std::string> split_nul_strings(const std::vector<uint8_t>& bytes)
+std::vector<std::string> splitNulStrings(const std::vector<uint8_t>& bytes)
 {
     std::vector<std::string> output;
     size_t begin = 0;
@@ -78,7 +78,7 @@ std::vector<std::string> split_nul_strings(const std::vector<uint8_t>& bytes)
 }
 
 template <class T>
-bool copy_trivial_array(const std::vector<uint8_t>& bytes, std::vector<T>& output)
+bool copyTrivialArray(const std::vector<uint8_t>& bytes, std::vector<T>& output)
 {
     if (bytes.empty() || bytes.size() % sizeof(T) != 0)
         return false;
@@ -87,12 +87,12 @@ bool copy_trivial_array(const std::vector<uint8_t>& bytes, std::vector<T>& outpu
     return true;
 }
 
-bool copy_matrix_array(const std::vector<uint8_t>& bytes, std::vector<Matrix4d>& output)
+bool copyMatrixArray(const std::vector<uint8_t>& bytes, std::vector<Matrix4d>& output)
 {
-    return copy_trivial_array(bytes, output);
+    return copyTrivialArray(bytes, output);
 }
 
-float half_to_float(uint16_t half)
+float halfToFloat(uint16_t half)
 {
     const uint32_t sign = static_cast<uint32_t>(half & 0x8000u) << 16;
     const uint32_t exponent = (half >> 10) & 0x1fu;
@@ -129,7 +129,7 @@ float half_to_float(uint16_t half)
     return output;
 }
 
-bool read_numeric_values(const std::vector<uint8_t>& bytes, size_t count, std::vector<float>& output)
+bool readNumericValues(const std::vector<uint8_t>& bytes, size_t count, std::vector<float>& output)
 {
     output.resize(count);
     if (bytes.size() == count * sizeof(float))
@@ -153,7 +153,7 @@ bool read_numeric_values(const std::vector<uint8_t>& bytes, size_t count, std::v
         {
             uint16_t value;
             std::memcpy(&value, bytes.data() + i * sizeof(value), sizeof(value));
-            output[i] = half_to_float(value);
+            output[i] = halfToFloat(value);
         }
         return true;
     }
@@ -175,7 +175,7 @@ void multiply(const Matrix4d& a, const Matrix4d& b, Matrix4d& output)
     output = result;
 }
 
-bool invert_affine(const Matrix4d& matrix, Matrix4d& output)
+bool invertAffine(const Matrix4d& matrix, Matrix4d& output)
 {
     const double a00 = matrix[0], a01 = matrix[1], a02 = matrix[2];
     const double a10 = matrix[4], a11 = matrix[5], a12 = matrix[6];
@@ -220,10 +220,10 @@ bool invert_affine(const Matrix4d& matrix, Matrix4d& output)
     return true;
 }
 
-Matrix4d normal_matrix(const Matrix4d& matrix)
+Matrix4d normalMatrix(const Matrix4d& matrix)
 {
     Matrix4d inverse;
-    if (!invert_affine(matrix, inverse))
+    if (!invertAffine(matrix, inverse))
         return matrix;
     Matrix4d output{};
     for (int row = 0; row < 4; ++row)
@@ -232,7 +232,7 @@ Matrix4d normal_matrix(const Matrix4d& matrix)
     return output;
 }
 
-void transform_point(const Matrix4d& matrix, const float point[3], float output[3])
+void transformPoint(const Matrix4d& matrix, const float point[3], float output[3])
 {
     const double x = point[0], y = point[1], z = point[2];
     output[0] = static_cast<float>(matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12]);
@@ -240,7 +240,7 @@ void transform_point(const Matrix4d& matrix, const float point[3], float output[
     output[2] = static_cast<float>(matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14]);
 }
 
-void transform_direction(const Matrix4d& matrix, const float direction[3], double output[3])
+void transformDirection(const Matrix4d& matrix, const float direction[3], double output[3])
 {
     const double x = direction[0], y = direction[1], z = direction[2];
     output[0] = matrix[0] * x + matrix[4] * y + matrix[8] * z;
@@ -259,7 +259,7 @@ void normalize(double direction[3])
     direction[2] /= length;
 }
 
-void quaternion_matrix(const float quaternion_xyzw[4], Matrix4d& output)
+void quaternionMatrix(const float quaternion_xyzw[4], Matrix4d& output)
 {
     double x = quaternion_xyzw[0], y = quaternion_xyzw[1];
     double z = quaternion_xyzw[2], w = quaternion_xyzw[3];
@@ -297,10 +297,10 @@ void quaternion_matrix(const float quaternion_xyzw[4], Matrix4d& output)
     };
 }
 
-Matrix4d make_trs(const float translation[3], const float rotation_xyzw[4], const float scale[3])
+Matrix4d makeTrs(const float translation[3], const float rotation_xyzw[4], const float scale[3])
 {
     Matrix4d output;
-    quaternion_matrix(rotation_xyzw, output);
+    quaternionMatrix(rotation_xyzw, output);
     for (int column = 0; column < 3; ++column)
     {
         output[column] *= scale[0];
@@ -313,9 +313,9 @@ Matrix4d make_trs(const float translation[3], const float rotation_xyzw[4], cons
     return output;
 }
 
-int joint_parent(const std::vector<std::string>& joints,
-                 size_t joint_index,
-                 const std::unordered_map<std::string, int>& indices)
+int jointParent(const std::vector<std::string>& joints,
+                size_t joint_index,
+                const std::unordered_map<std::string, int>& indices)
 {
     const std::string& joint = joints[joint_index];
     const size_t slash = joint.rfind('/');
@@ -334,26 +334,26 @@ struct UsdSkelDeformer::SkeletonPose
     std::unordered_map<std::string, int> joint_indices;
     std::vector<Matrix4d> skin_matrices;
     std::vector<Matrix4d> normal_matrices;
-    Matrix4d world = kIdentity;
+    Matrix4d world = g_kIdentity;
 };
 
 UsdSkelDeformer::UsdSkelDeformer(AttributeReader reader) : m_reader(std::move(reader))
 {
 }
 
-bool UsdSkelDeformer::readAttribute(const std::string& path, const std::string& name, std::vector<uint8_t>& output) const
+bool UsdSkelDeformer::_readAttribute(const std::string& path, const std::string& name, std::vector<uint8_t>& output) const
 {
     output.clear();
     return m_reader && m_reader(path, name, output) && !output.empty();
 }
 
-bool UsdSkelDeformer::readInheritedAttribute(const std::string& path,
-                                             const std::string& name,
-                                             std::vector<uint8_t>& output) const
+bool UsdSkelDeformer::_readInheritedAttribute(const std::string& path,
+                                              const std::string& name,
+                                              std::vector<uint8_t>& output) const
 {
     for (std::string current = path; !current.empty();)
     {
-        if (readAttribute(current, name, output))
+        if (_readAttribute(current, name, output))
             return true;
         const size_t slash = current.rfind('/');
         if (slash == std::string::npos || slash == 0)
@@ -364,19 +364,19 @@ bool UsdSkelDeformer::readInheritedAttribute(const std::string& path,
     return false;
 }
 
-std::string UsdSkelDeformer::readInheritedTarget(const std::string& path, const std::string& relationship) const
+std::string UsdSkelDeformer::_readInheritedTarget(const std::string& path, const std::string& relationship) const
 {
     std::vector<uint8_t> bytes;
-    if (!readInheritedAttribute(path, relationship, bytes))
+    if (!_readInheritedAttribute(path, relationship, bytes))
         return {};
-    std::string target = first_nul_string(bytes);
+    std::string target = firstNulString(bytes);
     const size_t dot = target.rfind('.');
     if (dot != std::string::npos)
         target.resize(dot);
     return !target.empty() && target.front() == '/' ? target : std::string();
 }
 
-const UsdSkelDeformer::SkeletonPose* UsdSkelDeformer::getPose(const std::string& skeletonPath)
+const UsdSkelDeformer::SkeletonPose* UsdSkelDeformer::_getPose(const std::string& skeletonPath)
 {
     const auto existing = m_poseCache.find(skeletonPath);
     if (existing != m_poseCache.end())
@@ -386,9 +386,9 @@ const UsdSkelDeformer::SkeletonPose* UsdSkelDeformer::getPose(const std::string&
     cached = std::make_shared<SkeletonPose>();
     SkeletonPose& pose = *cached;
     std::vector<uint8_t> bytes;
-    if (!readAttribute(skeletonPath, "joints", bytes))
+    if (!_readAttribute(skeletonPath, "joints", bytes))
         return nullptr;
-    pose.joints = split_nul_strings(bytes);
+    pose.joints = splitNulStrings(bytes);
     if (pose.joints.empty())
         return nullptr;
     for (size_t index = 0; index < pose.joints.size(); ++index)
@@ -396,29 +396,29 @@ const UsdSkelDeformer::SkeletonPose* UsdSkelDeformer::getPose(const std::string&
 
     std::vector<Matrix4d> bind_matrices;
     std::vector<Matrix4d> local_matrices;
-    if (!readAttribute(skeletonPath, "bindTransforms", bytes) || !copy_matrix_array(bytes, bind_matrices) ||
+    if (!_readAttribute(skeletonPath, "bindTransforms", bytes) || !copyMatrixArray(bytes, bind_matrices) ||
         bind_matrices.size() != pose.joints.size())
         return nullptr;
-    if (!readAttribute(skeletonPath, "restTransforms", bytes) || !copy_matrix_array(bytes, local_matrices) ||
+    if (!_readAttribute(skeletonPath, "restTransforms", bytes) || !copyMatrixArray(bytes, local_matrices) ||
         local_matrices.size() != pose.joints.size())
         return nullptr;
 
-    const std::string animation_path = readInheritedTarget(skeletonPath, "skel:animationSource");
-    if (!animation_path.empty() && readAttribute(animation_path, "joints", bytes))
+    const std::string animation_path = _readInheritedTarget(skeletonPath, "skel:animationSource");
+    if (!animation_path.empty() && _readAttribute(animation_path, "joints", bytes))
     {
-        const std::vector<std::string> animation_joints = split_nul_strings(bytes);
+        const std::vector<std::string> animation_joints = splitNulStrings(bytes);
         const size_t count = animation_joints.size();
         std::vector<float> translations, rotations, scales(count * 3, 1.0f);
         std::vector<uint8_t> translations_bytes, rotations_bytes, scales_bytes;
-        const bool have_translation = readAttribute(animation_path, "translations", translations_bytes) &&
-                                      read_numeric_values(translations_bytes, count * 3, translations);
-        const bool have_rotation = readAttribute(animation_path, "rotations", rotations_bytes) &&
-                                   read_numeric_values(rotations_bytes, count * 4, rotations);
+        const bool have_translation = _readAttribute(animation_path, "translations", translations_bytes) &&
+                                      readNumericValues(translations_bytes, count * 3, translations);
+        const bool have_rotation = _readAttribute(animation_path, "rotations", rotations_bytes) &&
+                                   readNumericValues(rotations_bytes, count * 4, rotations);
         /* UsdSkel scales default to one. OVPopulation versions predating
          * half-vector support omit Apple's half3[] array, so retain that
          * schema default when the portable column is absent. */
-        if (readAttribute(animation_path, "scales", scales_bytes))
-            read_numeric_values(scales_bytes, count * 3, scales);
+        if (_readAttribute(animation_path, "scales", scales_bytes))
+            readNumericValues(scales_bytes, count * 3, scales);
         if (have_translation && have_rotation)
         {
             for (size_t index = 0; index < count; ++index)
@@ -427,7 +427,7 @@ const UsdSkelDeformer::SkeletonPose* UsdSkelDeformer::getPose(const std::string&
                 if (found == pose.joint_indices.end())
                     continue;
                 local_matrices[static_cast<size_t>(found->second)] =
-                    make_trs(&translations[index * 3], &rotations[index * 4], &scales[index * 3]);
+                    makeTrs(&translations[index * 3], &rotations[index * 4], &scales[index * 3]);
             }
         }
     }
@@ -441,7 +441,7 @@ const UsdSkelDeformer::SkeletonPose* UsdSkelDeformer::getPose(const std::string&
         if (state[joint] == 1)
             return false;
         state[joint] = 1;
-        const int parent = joint_parent(pose.joints, joint, pose.joint_indices);
+        const int parent = jointParent(pose.joints, joint, pose.joint_indices);
         if (parent >= 0)
         {
             if (!compose(static_cast<size_t>(parent)))
@@ -463,13 +463,13 @@ const UsdSkelDeformer::SkeletonPose* UsdSkelDeformer::getPose(const std::string&
         if (!compose(joint))
             return nullptr;
         Matrix4d inverse_bind;
-        if (!invert_affine(bind_matrices[joint], inverse_bind))
+        if (!invertAffine(bind_matrices[joint], inverse_bind))
             return nullptr;
         multiply(inverse_bind, skeleton_matrices[joint], pose.skin_matrices[joint]);
-        pose.normal_matrices[joint] = normal_matrix(pose.skin_matrices[joint]);
+        pose.normal_matrices[joint] = normalMatrix(pose.skin_matrices[joint]);
     }
 
-    if (readAttribute(skeletonPath, "worldMatrix", bytes) && bytes.size() >= sizeof(Matrix4d))
+    if (_readAttribute(skeletonPath, "worldMatrix", bytes) && bytes.size() >= sizeof(Matrix4d))
         std::memcpy(pose.world.data(), bytes.data(), sizeof(Matrix4d));
     pose.valid = true;
     return &pose;
@@ -484,32 +484,32 @@ bool UsdSkelDeformer::deform(const std::string& mesh_path,
     if (points.empty() || points.size() % 3 != 0)
         return false;
     const size_t point_count = points.size() / 3;
-    const std::string skeleton_path = readInheritedTarget(mesh_path, "skel:skeleton");
+    const std::string skeleton_path = _readInheritedTarget(mesh_path, "skel:skeleton");
     if (skeleton_path.empty())
     {
-        skinning_diagnostic(mesh_path, "no inherited skeleton target");
+        skinningDiagnostic(mesh_path, "no inherited skeleton target");
         return false;
     }
-    const SkeletonPose* pose = getPose(skeleton_path);
+    const SkeletonPose* pose = _getPose(skeleton_path);
     if (!pose)
     {
-        skinning_diagnostic(mesh_path, "skeleton pose rejected");
+        skinningDiagnostic(mesh_path, "skeleton pose rejected");
         return false;
     }
 
     std::vector<uint8_t> index_bytes, weight_bytes;
-    if (!readInheritedAttribute(mesh_path, "primvars:skel:jointIndices", index_bytes) ||
-        !readInheritedAttribute(mesh_path, "primvars:skel:jointWeights", weight_bytes))
+    if (!_readInheritedAttribute(mesh_path, "primvars:skel:jointIndices", index_bytes) ||
+        !_readInheritedAttribute(mesh_path, "primvars:skel:jointWeights", weight_bytes))
     {
-        skinning_diagnostic(mesh_path, "joint influence columns absent");
+        skinningDiagnostic(mesh_path, "joint influence columns absent");
         return false;
     }
     std::vector<int> joint_indices;
     std::vector<float> joint_weights;
-    if (!copy_trivial_array(index_bytes, joint_indices) || !copy_trivial_array(weight_bytes, joint_weights) ||
+    if (!copyTrivialArray(index_bytes, joint_indices) || !copyTrivialArray(weight_bytes, joint_weights) ||
         joint_indices.empty() || joint_indices.size() != joint_weights.size())
     {
-        skinning_diagnostic(mesh_path, "joint influence arrays invalid", joint_indices.size(), joint_weights.size());
+        skinningDiagnostic(mesh_path, "joint influence arrays invalid", joint_indices.size(), joint_weights.size());
         return false;
     }
 
@@ -530,9 +530,9 @@ bool UsdSkelDeformer::deform(const std::string& mesh_path,
 
     std::vector<int> mesh_to_skeleton;
     std::vector<uint8_t> mesh_joint_bytes;
-    if (readInheritedAttribute(mesh_path, "skel:joints", mesh_joint_bytes))
+    if (_readInheritedAttribute(mesh_path, "skel:joints", mesh_joint_bytes))
     {
-        const std::vector<std::string> mesh_joints = split_nul_strings(mesh_joint_bytes);
+        const std::vector<std::string> mesh_joints = splitNulStrings(mesh_joint_bytes);
         mesh_to_skeleton.resize(mesh_joints.size(), -1);
         for (size_t index = 0; index < mesh_joints.size(); ++index)
         {
@@ -542,21 +542,21 @@ bool UsdSkelDeformer::deform(const std::string& mesh_path,
         }
     }
 
-    Matrix4d geometry_bind = kIdentity;
+    Matrix4d geometry_bind = g_kIdentity;
     std::vector<uint8_t> bytes;
-    if (readInheritedAttribute(mesh_path, "primvars:skel:geomBindTransform", bytes) && bytes.size() >= sizeof(Matrix4d))
+    if (_readInheritedAttribute(mesh_path, "primvars:skel:geomBindTransform", bytes) && bytes.size() >= sizeof(Matrix4d))
         std::memcpy(geometry_bind.data(), bytes.data(), sizeof(Matrix4d));
 
-    Matrix4d mesh_world = kIdentity;
-    if (readAttribute(mesh_path, "worldMatrix", bytes) && bytes.size() >= sizeof(Matrix4d))
+    Matrix4d mesh_world = g_kIdentity;
+    if (_readAttribute(mesh_path, "worldMatrix", bytes) && bytes.size() >= sizeof(Matrix4d))
         std::memcpy(mesh_world.data(), bytes.data(), sizeof(Matrix4d));
     Matrix4d inverse_mesh_world;
-    if (!invert_affine(mesh_world, inverse_mesh_world))
+    if (!invertAffine(mesh_world, inverse_mesh_world))
         return false;
     Matrix4d skeleton_to_mesh;
     multiply(pose->world, inverse_mesh_world, skeleton_to_mesh);
-    const Matrix4d geometry_bind_normal = normal_matrix(geometry_bind);
-    const Matrix4d skeleton_to_mesh_normal = normal_matrix(skeleton_to_mesh);
+    const Matrix4d geometry_bind_normal = normalMatrix(geometry_bind);
+    const Matrix4d skeleton_to_mesh_normal = normalMatrix(skeleton_to_mesh);
 
     const auto skeleton_joint = [&](size_t vertex, size_t influence)
     {
@@ -579,7 +579,7 @@ bool UsdSkelDeformer::deform(const std::string& mesh_path,
     for (size_t vertex = 0; vertex < point_count; ++vertex)
     {
         float skeleton_point[3];
-        transform_point(geometry_bind, &points[vertex * 3], skeleton_point);
+        transformPoint(geometry_bind, &points[vertex * 3], skeleton_point);
         double accumulated[3] = { 0, 0, 0 };
         double weight_sum = 0;
         for (size_t influence = 0; influence < influence_count; ++influence)
@@ -589,7 +589,7 @@ bool UsdSkelDeformer::deform(const std::string& mesh_path,
             if (joint < 0 || static_cast<size_t>(joint) >= pose->skin_matrices.size() || weight == 0.0f)
                 continue;
             float transformed[3];
-            transform_point(pose->skin_matrices[static_cast<size_t>(joint)], skeleton_point, transformed);
+            transformPoint(pose->skin_matrices[static_cast<size_t>(joint)], skeleton_point, transformed);
             for (int component = 0; component < 3; ++component)
                 accumulated[component] += weight * transformed[component];
             weight_sum += weight;
@@ -601,7 +601,7 @@ bool UsdSkelDeformer::deform(const std::string& mesh_path,
                 static_cast<float>(accumulated[1]),
                 static_cast<float>(accumulated[2]),
             };
-            transform_point(skeleton_to_mesh, accumulated_point, &points[vertex * 3]);
+            transformPoint(skeleton_to_mesh, accumulated_point, &points[vertex * 3]);
         }
     }
 
@@ -616,7 +616,7 @@ bool UsdSkelDeformer::deform(const std::string& mesh_path,
         if (vertex < 0 || static_cast<size_t>(vertex) >= point_count)
             continue;
         double skeleton_normal[3];
-        transform_direction(geometry_bind_normal, &normals[normal_index * 3], skeleton_normal);
+        transformDirection(geometry_bind_normal, &normals[normal_index * 3], skeleton_normal);
         const float source[3] = {
             static_cast<float>(skeleton_normal[0]),
             static_cast<float>(skeleton_normal[1]),
@@ -630,7 +630,7 @@ bool UsdSkelDeformer::deform(const std::string& mesh_path,
             if (joint < 0 || static_cast<size_t>(joint) >= pose->normal_matrices.size() || weight == 0.0f)
                 continue;
             double transformed[3];
-            transform_direction(pose->normal_matrices[static_cast<size_t>(joint)], source, transformed);
+            transformDirection(pose->normal_matrices[static_cast<size_t>(joint)], source, transformed);
             for (int component = 0; component < 3; ++component)
                 accumulated[component] += weight * transformed[component];
         }
@@ -640,12 +640,12 @@ bool UsdSkelDeformer::deform(const std::string& mesh_path,
             static_cast<float>(accumulated[2]),
         };
         double mesh_normal[3];
-        transform_direction(skeleton_to_mesh_normal, accumulated_normal, mesh_normal);
+        transformDirection(skeleton_to_mesh_normal, accumulated_normal, mesh_normal);
         normalize(mesh_normal);
         for (int component = 0; component < 3; ++component)
             normals[normal_index * 3 + component] = static_cast<float>(mesh_normal[component]);
     }
-    skinning_diagnostic(mesh_path, "deformed", point_count, normal_count);
+    skinningDiagnostic(mesh_path, "deformed", point_count, normal_count);
     return true;
 }
 

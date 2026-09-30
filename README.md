@@ -324,10 +324,16 @@ for broader dissemination of your work.
 
 Licensing terms can be found in the [License File](LICENSE).
 
+See the [vendored library source notices](source/libraries/README.md#vendored-source-notices) for third-party source
+included with the libraries. The [generated third-party inventory](THIRD_PARTY_NOTICE.md) covers the packaged
+dependencies listed there.
+
 ## Citation
 
 To cite Isaac Sim, click on "Cite this repository" in the right sidebar of the [Isaac Sim GitHub repository](https://github.com/isaac-sim/IsaacSim) landing page and select one of the listed citation entries.
 
 ## Contributing
 
-We do not support direct community contributions at the moment.
+Isaac Sim accepts a limited set of external code and documentation contributions. Before opening a pull request,
+read the [contribution guidelines](CONTRIBUTING.md) for the contribution terms, supported scope, validation
+requirements, and pull request process.

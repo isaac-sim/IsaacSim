@@ -16,9 +16,9 @@
 
 .. _isaacsim-foundation-ovsim-api-python:
 
-==========
-Python API
-==========
+==============================
+Python guide and API reference
+==============================
 
 .. _isaacsim-foundation-ovsim-api-python-authoring:
 

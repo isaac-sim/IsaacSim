@@ -3,7 +3,7 @@ name: isaac-sim-headless-deployment
 description: "Run a built Isaac Sim 6 headless with --no-window and the renderer disabled. Use for batch SDG jobs, physics-only CI, or unattended server runs."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Isaac Sim Headless Usage (`--no-window`)

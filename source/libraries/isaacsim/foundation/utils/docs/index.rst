@@ -17,12 +17,15 @@
 .. _isaacsim-foundation-utils:
 .. _isaacsim-foundation-utils-overview:
 
+=========================
 isaacsim.foundation.utils
 =========================
 
 ``isaacsim.foundation.utils`` provides shared utilities for stage management,
-prim authoring, semantics labelling, and backend selection used across Isaac Sim
+prim authoring, semantics labeling, and backend selection used across Isaac Sim
 foundation modules.
+
+.. _isaacsim-foundation-utils-backend-selection:
 
 Backend selection
 -----------------
@@ -32,11 +35,13 @@ A thread-local ``BackendGuard`` activates a named backend (e.g. ``"usd"``,
 the active backend, falling back to the first entry of a caller-supplied
 supported-backends list when none is set.
 
-Stage, prim, and semantics utilities
--------------------------------------
+.. _isaacsim-foundation-utils-stage-prim-semantics:
 
-Helper functions for common USD operations — managing default stage IDs,
-querying prim hierarchies, and reading or writing semantics attributes —
+Stage, prim, and semantics utilities
+------------------------------------
+
+Helper functions for common USD operations --- managing default stage IDs,
+querying prim hierarchies, and reading or writing semantics attributes ---
 are grouped into the ``stage``, ``prim``, and ``semantics`` sub-modules.
 All utilities that do not accept an explicit stage instance operate on the
 active stage for the calling thread, or the process-global default stage.

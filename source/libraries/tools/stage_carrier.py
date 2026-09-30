@@ -428,6 +428,32 @@ def _select_single(directory: Path, pattern: str, description: str) -> Path:
     return matches[0]
 
 
+def _select_wheel(directory: Path, distribution: str, version: str, wheel_variant: str | None) -> Path:
+    """Select the wheel built for this host or a platform-independent wheel.
+
+    Args:
+        directory: Directory containing wheel artifacts.
+        distribution: Distribution filename prefix.
+        version: Package version.
+        wheel_variant: Optional pure-Python wheel variant.
+
+    Returns:
+        The single matching wheel artifact.
+    """
+    if wheel_variant is not None:
+        patterns = (f"{distribution}-{version}-1{wheel_variant}-py3-none-any.whl",)
+    else:
+        patterns = (
+            f"{distribution}-{version}-*-{_platform_tag()}.whl",
+            f"{distribution}-{version}-py3-none-any.whl",
+        )
+    matches = sorted(path for pattern in patterns for path in directory.glob(pattern))
+    if len(matches) != 1:
+        expected = " or ".join(str(directory / pattern) for pattern in patterns)
+        raise RuntimeError(f"Expected one Python wheel matching {expected}, found {len(matches)}")
+    return matches[0]
+
+
 def _load_package_manifest(path: Path, distribution: str, version: str) -> dict[str, Any]:
     """Load and validate an installed module package manifest.
 
@@ -613,15 +639,7 @@ def _stage(arguments: _Arguments) -> Path:
     carrier_manifest = extension_root / "module-carrier.toml"
     wheel_variant = _read_carrier_wheel_variant(carrier_manifest)
     python_modules = _read_carrier_python_modules(carrier_manifest)
-    if wheel_variant is None:
-        wheel_pattern = f"{distribution}-{version}-*-{_platform_tag()}.whl"
-    else:
-        wheel_pattern = f"{distribution}-{version}-1{wheel_variant}-py3-none-any.whl"
-    wheel = _select_single(
-        arguments.artifacts_directory,
-        wheel_pattern,
-        "Python wheel",
-    )
+    wheel = _select_wheel(arguments.artifacts_directory, distribution, version, wheel_variant)
     destination = _carrier_stage_directory(arguments)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=f".{arguments.extension}-", dir=destination.parent) as temporary:

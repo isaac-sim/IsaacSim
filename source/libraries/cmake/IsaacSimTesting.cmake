@@ -272,8 +272,10 @@ function(isaacsim_add_python_tests)
         _isaacsim_get_module_names("${support_module}" _support_target _support_alias support_module_path _support_dir)
         string(APPEND support_test_paths "${CMAKE_BINARY_DIR}/python-tests/${support_module_path}/tests;")
     endforeach()
-    set(python_test_paths
-        "${python_stage_dir};${support_test_paths}${ISAACSIM_NATIVE_RUNTIME_DEPS_DIR};${ISAACSIM_PYTHON_RUNTIME_DEPS_DIR};${ISAACSIM_PYTHON_TEST_DEPS_DIR}"
+    string(CONCAT python_test_paths
+        "${python_stage_dir};${support_test_paths}"
+        "${ISAACSIM_NATIVE_RUNTIME_DEPS_DIR};${ISAACSIM_PYTHON_RUNTIME_DEPS_DIR};"
+        "${ISAACSIM_PYTHON_TEST_DEPS_DIR}"
     )
     set(python_test_environment_modifications)
     foreach(python_test_path IN LISTS python_test_paths)
@@ -326,6 +328,22 @@ function(_isaacsim_get_group_dependency_closure group_name output)
     list(APPEND closure "${group_name}")
     list(REMOVE_DUPLICATES closure)
     set(${output} "${closure}" PARENT_SCOPE)
+endfunction()
+
+function(_isaacsim_get_install_contract_python_imports package_group output)
+    get_property(python_imports GLOBAL PROPERTY "ISAACSIM_GROUP_${package_group}_PYTHON_IMPORTS")
+    list(REMOVE_DUPLICATES python_imports)
+    set(contract_python_imports)
+    foreach(python_import IN LISTS python_imports)
+        get_property(requires_bindings GLOBAL PROPERTY
+            "ISAACSIM_PYTHON_IMPORT_${python_import}_REQUIRES_BINDINGS"
+        )
+        if(requires_bindings AND NOT ISAACSIM_ENABLE_PYTHON_BINDINGS)
+            continue()
+        endif()
+        list(APPEND contract_python_imports "${python_import}")
+    endforeach()
+    set(${output} "${contract_python_imports}" PARENT_SCOPE)
 endfunction()
 
 function(_isaacsim_generate_install_contract output_dir package_group)
@@ -419,8 +437,7 @@ function(_isaacsim_generate_install_contract output_dir package_group)
     configure_file("${ISAACSIM_LIBRARIES_DIR}/testing/install_contract/main.c.in" "${output_dir}/main.c" @ONLY)
     configure_file("${ISAACSIM_LIBRARIES_DIR}/testing/install_contract/main.cpp.in" "${output_dir}/main.cpp" @ONLY)
 
-    get_property(python_imports GLOBAL PROPERTY "ISAACSIM_GROUP_${package_group}_PYTHON_IMPORTS")
-    list(REMOVE_DUPLICATES python_imports)
+    _isaacsim_get_install_contract_python_imports("${package_group}" python_imports)
     set(INSTALL_CONTRACT_PYTHON_MODULES "")
     foreach(python_import IN LISTS python_imports)
         string(APPEND INSTALL_CONTRACT_PYTHON_MODULES "    \"${python_import}\",\n")

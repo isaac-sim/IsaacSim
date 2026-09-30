@@ -131,8 +131,10 @@ class TestRigidContacts:
 
     @gpu_only
     def test_rigid_contacts_ovphysx_gc(self) -> None:
-        """Check resting-box contacts with the configured GPU simulation and GPU tensors."""
-        run_scenario(self, _RigidContactsScenario, "ovphysx", gpu_device())
+        """Check resting-box contacts with GPU simulation and CPU tensors."""
+        from _scenario import DeviceParams
+
+        run_scenario(self, _RigidContactsScenario, "ovphysx", DeviceParams(True, False))
 
     @gpu_only
     def test_rigid_contacts_ovphysx_gg(self) -> None:

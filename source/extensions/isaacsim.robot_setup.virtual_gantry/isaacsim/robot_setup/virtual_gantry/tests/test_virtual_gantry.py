@@ -23,9 +23,11 @@ The force law is pure Python, so no stage or simulation is required.
 """
 
 import math
+from unittest import mock
 
 import omni.kit.test
 from isaacsim.robot_setup.virtual_gantry import virtual_gantry as vg
+from isaacsim.robot_setup.virtual_gantry._runtime import VirtualGantryManager
 from isaacsim.robot_setup.virtual_gantry.virtual_gantry import (
     VirtualGantry,
     VirtualGantryConfig,
@@ -139,6 +141,15 @@ class TestVirtualGantryForceLaw(omni.kit.test.AsyncTestCase):
                 delattr(vg._import_warp, "_module")
         else:
             vg._import_warp._module = self._saved_warp
+
+    def test_empty_reset_does_not_touch_debug_draw(self) -> None:
+        """Resetting an empty manager must not touch debug draw during stage teardown."""
+        manager = VirtualGantryManager()
+        manager._clear_overlay = mock.Mock()
+
+        manager.reset()
+
+        manager._clear_overlay.assert_not_called()
 
     def test_quat_rotate_identity(self) -> None:
         """The identity quaternion must leave a vector unchanged."""

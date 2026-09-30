@@ -13,10 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Interface for defining continuous-time robot trajectories in Isaac Sim with abstract methods for duration and state retrieval."""
+"""Define continuous-time robot trajectories by duration and state lookup."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from .types import RobotState
 
@@ -37,7 +36,7 @@ class Trajectory(ABC):
         """
 
     @abstractmethod
-    def get_target_state(self, time: float) -> Optional[RobotState]:
+    def get_target_state(self, time: float) -> RobotState | None:
         """Return the target robot state at the given time.
 
         The Trajectory interface assumes trajectories to be represented continuously between

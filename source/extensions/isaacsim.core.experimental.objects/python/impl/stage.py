@@ -424,9 +424,9 @@ class Stage:
         The move operation follows the next rules:
 
         - If the destination exists, the target prim is moved (as a child) into the destination prim.
-        Moved prim keeps its name.
+          Moved prim keeps its name.
         - If the destination does not exist, the target prim is moved to the specified destination path,
-        provided that the parent exists (if not, an error is raised). Moved prim is renamed.
+          provided that the parent exists (if not, an error is raised). Moved prim is renamed.
 
         Args:
             target: Prim path to move.

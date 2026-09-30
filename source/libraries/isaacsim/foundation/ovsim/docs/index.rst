@@ -17,10 +17,11 @@
 .. _isaacsim-foundation-ovsim:
 .. _isaacsim-foundation-ovsim-overview:
 
+=========================
 isaacsim.foundation.ovsim
 =========================
 
-``isaacsim.foundation.ovsim`` is the OpenUSD-backed implementation of the OV Sim interface.
+``isaacsim.foundation.ovsim`` is the OpenUSD-backed implementation of the OV SIM interface.
 
 .. toctree::
     :maxdepth: 2

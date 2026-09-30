@@ -3,7 +3,7 @@ name: motion-generation
 description: "Motion-generation controllers for arms and mobile bases with obstacles. Use for SceneQuery-driven end-effector or drive motion."
 license: Apache-2.0
 metadata:
-  author: Aaron Young
+  author: Aaron Young <info@nvidia.com>
 ---
 
 # Motion Generation

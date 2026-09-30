@@ -38,27 +38,6 @@ void isaacsim::physics::manager::details::bindPhysicsSceneQuery(nb::module_& mod
     using namespace isaacsim::physics::manager;
     using namespace isaacsim::physics::registration;
 
-    nb::class_<SceneQueryHitObject>(module, "SceneQueryHitObject", "Identify the objects reported by a scene query.")
-        .def(nb::init<>())
-        .def_rw("collision", &SceneQueryHitObject::collision, "Path of the hit collision shape.")
-        .def_rw("rigid_body", &SceneQueryHitObject::rigidBody, "Path of the hit rigid body.")
-        .def_rw("proto_index", &SceneQueryHitObject::prototypeIndex, "Prototype index for an instanced hit.");
-
-    nb::class_<SceneQueryHitLocation, SceneQueryHitObject>(
-        module, "SceneQueryHitLocation", "Describe the location and material of a scene-query hit.")
-        .def(nb::init<>())
-        .def_rw("normal", &SceneQueryHitLocation::normal, "Surface normal at the hit.")
-        .def_rw("position", &SceneQueryHitLocation::position, "World-space hit position.")
-        .def_rw("distance", &SceneQueryHitLocation::distance, "Distance from the query origin.")
-        .def_rw("face_index", &SceneQueryHitLocation::faceIndex, "Index of the hit mesh face.")
-        .def_rw("material", &SceneQueryHitLocation::material, "Path of the hit physics material.");
-
-    nb::class_<OverlapHit, SceneQueryHitObject>(module, "OverlapHit", "Describe an overlap query result.").def(nb::init<>());
-    nb::class_<RaycastHit, SceneQueryHitLocation>(module, "RaycastHit", "Describe a raycast query result.")
-        .def(nb::init<>());
-    nb::class_<SweepHit, SceneQueryHitLocation>(module, "SweepHit", "Describe a shape-sweep query result.")
-        .def(nb::init<>());
-
     module.def(
         "raycast_closest",
         [](const Float3& origin, const Float3& unitDirection, float distance, bool bothSides)

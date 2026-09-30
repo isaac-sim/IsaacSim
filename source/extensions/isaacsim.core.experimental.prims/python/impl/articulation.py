@@ -4693,7 +4693,8 @@ class Articulation(XformPrim):
             drive_type = "linear"
         else:
             carb.log_warn(f"Invalid DOF type ({self.dof_types[dof_index]}) at index {dof_index}")
-            drive_type = ""
+            # we must have an none-empty instance name
+            drive_type = "invalid"
         dof_prim = stage_utils.get_current_stage(backend="usd").GetPrimAtPath(self.dof_paths[index][dof_index])
         return Articulation.ensure_api([dof_prim], UsdPhysics.DriveAPI, drive_type)[0], drive_type
 

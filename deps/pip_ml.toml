@@ -41,7 +41,6 @@
 
 # NOTE - For any new packages added to this list, please make sure that the license is compatible with Omniverse (i.e. avoid GPL/LGPL) and
 # that a SWIPAT bug report is filed for legal to validate if there is no existing ticket.
-# The SWIPAT template is here: http://nvbugs/2732212
 # Dependencies for aiohttp should not be installed by default as we do not want to pull in chardet due to its license. Use cchardet instead
 
 # Target kit 109.x 

@@ -17,7 +17,38 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-PlayFn = Callable[[], None]
-PauseFn = Callable[[], None]
-StopFn = Callable[[], None]
-StepFn = Callable[[], None]
+__all__ = [
+    "GetParameterFunction",
+    "InitializeFunction",
+    "InputParameterType",
+    "InvalidateFunction",
+    "OutputParameterType",
+    "PauseFunction",
+    "PlayFunction",
+    "SetParameterFunction",
+    "StepFunction",
+    "StopFunction",
+]
+
+#: Values accepted by provider parameter setters.
+InputParameterType = bool | int | float | str
+#: Values returned by provider parameter getters.
+OutputParameterType = bool | int | float | str
+
+#: Start or resume simulation.
+PlayFunction = Callable[[], None]
+#: Pause simulation.
+PauseFunction = Callable[[], None]
+#: Stop simulation.
+StopFunction = Callable[[], None]
+#: Initialize simulation resources.
+InitializeFunction = Callable[[], None]
+#: Invalidate simulation resources.
+InvalidateFunction = Callable[[], None]
+#: Advance simulation by one step.
+StepFunction = Callable[[], None]
+
+#: Set a named provider parameter.
+SetParameterFunction = Callable[[str, str, InputParameterType], None]
+#: Get a named provider parameter.
+GetParameterFunction = Callable[[str, str], OutputParameterType]

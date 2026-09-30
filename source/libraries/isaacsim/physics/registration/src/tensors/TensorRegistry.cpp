@@ -34,8 +34,6 @@ struct TensorRegistry::Implementation
     mutable std::mutex mutex;
     // (engine, entityName) -> factory
     std::unordered_map<std::string, std::unordered_map<std::string, EntityFactory>> entityFactories;
-    // engine -> simulation-view factory
-    std::unordered_map<std::string, SimulationViewFactory> simulationFactories;
     // Declared engine names. An engine is a kind of simulator; the maps above are keyed by simulation name,
     // of which one engine may have several. Keeping them apart is what stops a live simulation from reading
     // as an engine, and an engine from implying a simulation exists.
@@ -137,19 +135,6 @@ bool TensorRegistry::registerEntity(const std::string& engine, const std::string
     return isNew;
 }
 
-bool TensorRegistry::registerSimulationView(const std::string& engine, SimulationViewFactory factory)
-{
-    if (!factory)
-    {
-        throw std::invalid_argument("registerSimulationView: factory must not be null (engine='" + engine + "')");
-    }
-    Implementation& implementation = _getImplementation();
-    std::lock_guard<std::mutex> lockGuard(implementation.mutex);
-    const bool isNew = implementation.simulationFactories.find(engine) == implementation.simulationFactories.end();
-    implementation.simulationFactories[engine] = std::move(factory);
-    return isNew;
-}
-
 bool TensorRegistry::unregisterEntity(const std::string& engine, const std::string& entityName)
 {
     Implementation& implementation = _getImplementation();
@@ -172,19 +157,6 @@ bool TensorRegistry::unregisterEntity(const std::string& engine, const std::stri
     return true;
 }
 
-bool TensorRegistry::unregisterSimulationView(const std::string& engine)
-{
-    Implementation& implementation = _getImplementation();
-    std::lock_guard<std::mutex> lockGuard(implementation.mutex);
-    auto factoryIterator = implementation.simulationFactories.find(engine);
-    if (factoryIterator == implementation.simulationFactories.end())
-    {
-        return false;
-    }
-    implementation.simulationFactories.erase(factoryIterator);
-    return true;
-}
-
 bool TensorRegistry::hasEntity(const std::string& engine, const std::string& entityName) const
 {
     const Implementation& implementation = _getImplementation();
@@ -199,7 +171,8 @@ bool TensorRegistry::hasEntity(const std::string& engine, const std::string& ent
 
 std::shared_ptr<IEntityView> TensorRegistry::createEntity(const std::string& engine,
                                                           const std::string& entityName,
-                                                          const std::vector<std::string>& paths) const
+                                                          const std::vector<std::string>& paths,
+                                                          const std::optional<EntityOptions>& options) const
 {
     EntityFactory factory;
     {
@@ -218,26 +191,7 @@ std::shared_ptr<IEntityView> TensorRegistry::createEntity(const std::string& eng
         }
         factory = factoryIterator->second;
     }
-    return factory(paths);
-}
-
-std::shared_ptr<ISimulationView> TensorRegistry::createSimulationView(const std::string& engine,
-                                                                      const std::string& frontendName,
-                                                                      int64_t stageId) const
-{
-    SimulationViewFactory factory;
-    {
-        const Implementation& implementation = _getImplementation();
-        std::lock_guard<std::mutex> lockGuard(implementation.mutex);
-        const auto factoryIterator = implementation.simulationFactories.find(engine);
-        if (factoryIterator == implementation.simulationFactories.end())
-        {
-            throw std::out_of_range("createSimulationView: no SimulationView factory registered for engine '" + engine +
-                                    "'");
-        }
-        factory = factoryIterator->second;
-    }
-    return factory(frontendName, stageId);
+    return factory(paths, options);
 }
 
 bool TensorRegistry::registerEngine(const std::string& engine)
@@ -258,14 +212,10 @@ std::vector<std::string> TensorRegistry::listSimulations() const
 {
     const Implementation& implementation = _getImplementation();
     std::lock_guard<std::mutex> lockGuard(implementation.mutex);
-    // A simulation counts as addressable if it offers either entity views or a simulation view; reading only
-    // one map would hide a simulation that registered just the other.
+    // Sorted so the order is stable across calls; the entity map alone is authoritative now that entity
+    // factories are the only way to address a simulation.
     std::set<std::string> uniqueSimulationNames;
     for (const auto& simulationEntry : implementation.entityFactories)
-    {
-        uniqueSimulationNames.insert(simulationEntry.first);
-    }
-    for (const auto& simulationEntry : implementation.simulationFactories)
     {
         uniqueSimulationNames.insert(simulationEntry.first);
     }
@@ -295,7 +245,6 @@ void TensorRegistry::clearForTesting()
     Implementation& implementation = _getImplementation();
     std::lock_guard<std::mutex> lockGuard(implementation.mutex);
     implementation.entityFactories.clear();
-    implementation.simulationFactories.clear();
     implementation.engines.clear();
 }
 

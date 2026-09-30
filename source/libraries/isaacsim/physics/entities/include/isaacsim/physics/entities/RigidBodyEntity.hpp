@@ -63,7 +63,7 @@ public:
      * @brief Get the world-frame poses of the selected rigid bodies.
      * @param[in] indices Indices of prims to process (shape @c (N,)). If omitted, all wrapped prims are processed.
      * @return A pair of (positions, orientations). Positions have shape @c (N,3);
-     *         orientations are quaternions @c wxyz with shape @c (N,4).
+     *         orientations are quaternions @c xyzw with shape @c (N,4).
      */
     std::tuple<array::Array, array::Array> getWorldPoses(const std::optional<array::Array>& indices = std::nullopt);
 
@@ -72,7 +72,7 @@ public:
      * @details At least one of @p positions or @p orientations must be provided.
      *          This method teleports the bodies to the specified poses.
      * @param[in] positions    World-frame positions (shape @c (N,3)). Optional.
-     * @param[in] orientations Orientations as quaternions @c wxyz (shape @c (N,4)). Optional.
+     * @param[in] orientations Orientations as quaternions @c xyzw (shape @c (N,4)). Optional.
      * @param[in] indices      Indices of prims to process (shape @c (N,)). If omitted, all wrapped prims are processed.
      * @throws std::invalid_argument if both @p positions and @p orientations are undefined.
      */
@@ -160,7 +160,7 @@ public:
      * @brief Get the centers of mass of the selected rigid bodies, expressed in their local frames.
      * @param[in] indices Indices of prims to process (shape @c (N,)). If omitted, all wrapped prims are processed.
      * @return A pair of (positions, orientations). Positions have shape @c (N,3);
-     *         orientations are quaternions @c wxyz with shape @c (N,4).
+     *         orientations are quaternions @c xyzw with shape @c (N,4).
      */
     std::tuple<array::Array, array::Array> getComs(const std::optional<array::Array>& indices = std::nullopt);
 
@@ -168,7 +168,7 @@ public:
      * @brief Set the centers of mass of the selected rigid bodies, expressed in their local frames.
      * @details At least one of @p positions or @p orientations must be provided.
      * @param[in] positions    Center of mass positions (shape @c (N,3)). Optional.
-     * @param[in] orientations Center of mass orientations as quaternions @c wxyz (shape @c (N,4)). Optional.
+     * @param[in] orientations Center of mass orientations as quaternions @c xyzw (shape @c (N,4)). Optional.
      * @param[in] indices      Indices of prims to process (shape @c (N,)). If omitted, all wrapped prims are processed.
      * @throws std::invalid_argument if both @p positions and @p orientations are undefined.
      */

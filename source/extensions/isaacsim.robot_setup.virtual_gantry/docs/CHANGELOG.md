@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.1] - 2026-09-03
+### Fixed
+- Avoid touching the global debug-draw interface when an empty manager resets during timeline or stage teardown.
+
 ## [0.3.0] - 2026-07-28
 ### Changed
 - Moved the Create menu, property panel and `G` / `[` / `]` hotkeys into a new `isaacsim.robot_setup.virtual_gantry.ui` extension. This extension no longer depends on `isaacsim.gui.menu`, `omni.kit.menu.utils`, `omni.kit.property.usd` or `omni.kit.window.property`, so the rope runtime can be enabled without any UI stack. No behaviour change.

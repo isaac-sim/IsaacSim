@@ -3,7 +3,7 @@ name: place-camera-max-coverage
 description: "Greedy CameraPlacementManager that fills a navmesh or XY scope until a patch-coverage ratio is met. Use for facility surveillance layouts that minimize camera count."
 license: Apache-2.0
 metadata:
-  author: NVIDIA Isaac Sim
+  author: NVIDIA Isaac Sim <isaac-sim@nvidia.com>
 ---
 
 # Place Cameras for Maximum Coverage

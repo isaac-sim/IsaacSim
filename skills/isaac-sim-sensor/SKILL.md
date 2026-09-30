@@ -3,7 +3,7 @@ name: isaac-sim-sensor
 description: "RTX and physics sensor simulation (camera, LiDAR, IMU, contact). Use when adding, tuning, or validating sensors."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Omniverse Sensor Simulation

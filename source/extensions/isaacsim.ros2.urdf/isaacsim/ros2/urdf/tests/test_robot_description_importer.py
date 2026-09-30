@@ -15,17 +15,42 @@
 
 """UI tests for importing URDF from a ROS 2 node."""
 
+import asyncio
 import os
 import shutil
 import tempfile
 import threading
+import time
 
 import omni.kit.ui_test as ui_test
 import omni.usd
 from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
-from isaacsim.test.utils import find_widget_with_retry, menu_click_with_retry, wait_for_widget_enabled
+from isaacsim.test.utils import find_widget_with_retry, get_widget_screen_center, menu_click_with_retry
 from pxr import Sdf
+
+
+async def _wait_for_widget_layout(widget_ref: object, timeout: float = 10.0) -> None:
+    """Wait until a UI-test widget has usable on-screen click geometry."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        widget = widget_ref.widget
+        center_x, center_y = get_widget_screen_center(widget)
+        if (
+            widget.visible
+            and widget.computed_width > 0
+            and widget.computed_height > 0
+            and center_x > 0
+            and center_y > 0
+        ):
+            return
+        await omni.kit.app.get_app().next_update_async()
+
+    raise TimeoutError(
+        f"Widget did not receive usable click geometry within {timeout:.1f} seconds: "
+        f"position=({widget.screen_position_x}, {widget.screen_position_y}), "
+        f"size=({widget.computed_width}, {widget.computed_height}), visible={widget.visible}"
+    )
 
 
 class TestRos2UrdfNodeImporter(ROS2TestCase):
@@ -109,7 +134,7 @@ class TestRos2UrdfNodeImporter(ROS2TestCase):
         self._server_thread = threading.Thread(target=_run_service, daemon=True)
         self._server_thread.start()
 
-        server_started = self._server_ready_event.wait(timeout=5.0)
+        server_started = await asyncio.to_thread(self._server_ready_event.wait, 5.0)
         self.assertTrue(server_started, f"ROS 2 node '{self._node_name}' failed to start within 5 seconds")
 
         await omni.kit.app.get_app().next_update_async()
@@ -120,25 +145,25 @@ class TestRos2UrdfNodeImporter(ROS2TestCase):
         string_field = await find_widget_with_retry(
             "Import from ROS2 URDF Node//Frame/**/StringField[*].identifier=='ros2_urdf_node_name'"
         )
+        # The initial lookup is triggered by the field's end-edit callback. Wait
+        # for usable geometry before input so UI automation cannot click at (0, 0).
+        await _wait_for_widget_layout(string_field)
         await string_field.input(self._node_name)
-        await ui_test.human_delay()
-        await omni.kit.app.get_app().next_update_async()
-
-        find_button = await find_widget_with_retry(
-            "Import from ROS2 URDF Node//Frame/**/Button[*].identifier=='ros2_urdf_find_node'"
-        )
-        await find_button.click()
-        await ui_test.human_delay()
+        self.assertEqual(string_field.model.get_value_as_string(), self._node_name)
 
         import_button = await find_widget_with_retry(
             "Import from ROS2 URDF Node//Frame/**/Button[*].identifier=='ros2_urdf_import'",
             max_frames=300,
         )
+        deadline = time.monotonic() + 10.0
+        while not import_button.widget.enabled and time.monotonic() < deadline:
+            await omni.kit.app.get_app().next_update_async()
         self.assertTrue(
-            await wait_for_widget_enabled(import_button, max_frames=300),
+            import_button.widget.enabled,
             "Import button was found but did not become enabled after fetching the ROS 2 robot_description.",
         )
 
+        await _wait_for_widget_layout(import_button)
         await import_button.click()
         await ui_test.human_delay()
 

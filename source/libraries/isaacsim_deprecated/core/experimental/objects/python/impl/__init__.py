@@ -18,19 +18,54 @@
 .. deprecated::
     This module preserves the ``isaacsim.core.experimental.objects`` import path for existing code.
     New code should import the object primitives from :mod:`isaacsim.foundation.objects` instead.
+
+The exported classes are thin compatibility subclasses that keep the experimental ``wxyz`` quaternion order on
+their pose methods; the foundation classes they derive from order quaternions ``xyzw``.
 """
 
 # Bind the bundled Kit-free OpenUSD into the process before importing anything that uses ``pxr``.
 import isaacsim.foundation.usd.openusd  # noqa: F401
-from isaacsim.foundation.objects import Capsule, Cone, Cube, Cylinder, Mesh, Plane, Shape, Sphere
+
+# ``Stage`` is not transformable, so it has no pose methods to pin and is aliased unchanged.
+from isaacsim.foundation.objects import Stage
+
+from .wrappers import (
+    Camera,
+    Capsule,
+    Cone,
+    Cube,
+    Cylinder,
+    CylinderLight,
+    DiskLight,
+    DistantLight,
+    DomeLight,
+    GroundPlane,
+    Light,
+    Mesh,
+    Plane,
+    RectLight,
+    Shape,
+    Sphere,
+    SphereLight,
+)
 
 __all__ = [
+    "Camera",
     "Capsule",
     "Cone",
     "Cube",
     "Cylinder",
+    "CylinderLight",
+    "DiskLight",
+    "DistantLight",
+    "DomeLight",
+    "GroundPlane",
+    "Light",
     "Mesh",
     "Plane",
+    "RectLight",
     "Shape",
     "Sphere",
+    "SphereLight",
+    "Stage",
 ]

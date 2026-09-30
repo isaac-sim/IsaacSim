@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.11] - 2026-09-08
+### Fixed
+- Fix intermittent Windows UI test failures during ROS 2 robot description imports.
+
+## [2.3.10] - 2026-09-04
+### Fixed
+- Serialize robot description requests so rapid node changes cannot leave the replacement request pending.
+
 ## [2.3.9] - 2026-08-11
 ### Fixed
 - Cancel stale robot description requests when changing ROS 2 nodes.

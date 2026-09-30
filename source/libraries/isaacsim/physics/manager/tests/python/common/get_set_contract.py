@@ -237,7 +237,7 @@ def check_index_size_set(scn: _ContractMixin, impl: str, dim: int) -> None:
 class _ContractMixin:
     """Base class for every contract scenario: runs one access-shape check, once.
 
-    It carries the per-scenario behaviour (the warmup below) but not the scene.
+    It carries the per-scenario behavior (the warmup below) but not the scene.
     The per-entity fixtures subclass it together with ``GridTestBase`` to add the
     scene and ``self.view``: ``_ArticulationContractBase`` (this module),
     ``_RigidBodyContractBase`` and ``_ContactContractBase`` (the sibling modules).
@@ -259,7 +259,7 @@ class _ContractMixin:
         """Run the contract cell after backend buffer warmup.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -296,7 +296,7 @@ class _ArticulationContractBase(_ContractMixin, GridTestBase):
         """Create the articulation view used by the contract.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.sim = sim
@@ -427,7 +427,7 @@ class ReadOnlyRejectsSetCommon(_ArticulationContractBase):
         value = self.view.get_data("inv-masses")
         assert value is not None
         data = wp.zeros(value.shape, dtype=value.dtype, device=self.wp_device)
-        with pytest.raises(Exception, match="set-impl 'inv-masses' not registered"):
+        with pytest.raises(Exception, match="set-implementation 'inv-masses' not registered"):
             self.view.set_data("inv-masses", data)
 
 

@@ -121,19 +121,48 @@ TEST_SUITE("Prim")
         stage.definePrim("/World/Cube", "Cube");
 
         // Exact type
-        CHECK_EQ(Prim("/World/Xform").isA("Xform").get<std::vector<bool>>(), (std::vector<bool>{ true }));
-        CHECK_EQ(Prim("/World/Cube").isA("Cube").get<std::vector<bool>>(), (std::vector<bool>{ true }));
+        CHECK_EQ(Prim("/World/Xform").isA("Xform").flatten().get<std::vector<bool>>(), (std::vector<bool>{ true }));
+        CHECK_EQ(Prim("/World/Cube").isA("Cube").flatten().get<std::vector<bool>>(), (std::vector<bool>{ true }));
         // A Cube is not an Xform (both derive from Xformable, but Cube does not derive from Xform)
-        CHECK_EQ(Prim("/World/Cube").isA("Xform").get<std::vector<bool>>(), (std::vector<bool>{ false }));
+        CHECK_EQ(Prim("/World/Cube").isA("Xform").flatten().get<std::vector<bool>>(), (std::vector<bool>{ false }));
         // Base schema: both are Xformable (demonstrates IsA inheritance vs exact type name)
-        CHECK_EQ(
-            Prim(std::vector<std::string>{ "/World/Xform", "/World/Cube" }).isA("Xformable").get<std::vector<bool>>(),
-            (std::vector<bool>{ true, true }));
+        CHECK_EQ(Prim(std::vector<std::string>{ "/World/Xform", "/World/Cube" })
+                     .isA("Xformable")
+                     .flatten()
+                     .get<std::vector<bool>>(),
+                 (std::vector<bool>{ true, true }));
         // Multiple prims
-        CHECK_EQ(Prim(std::vector<std::string>{ "/World/Xform", "/World/Cube" }).isA("Xform").get<std::vector<bool>>(),
-                 (std::vector<bool>{ true, false }));
+        CHECK_EQ(
+            Prim(std::vector<std::string>{ "/World/Xform", "/World/Cube" }).isA("Xform").flatten().get<std::vector<bool>>(),
+            (std::vector<bool>{ true, false }));
         // Unknown schema type
         CHECK_THROWS_AS(Prim("/World/Xform").isA("NonExistentType"), std::invalid_argument);
+        // Flags are reported one row per prim
+        CHECK_EQ(Prim(std::vector<std::string>{ "/World/Xform", "/World/Cube" }).isA("Xform").shape(),
+                 array::Shape({ 2, 1 }));
+
+        REQUIRE_UNARY(stage.closeStage());
+    }
+
+    TEST_CASE("Prim::createAttribute/Prim::removeAttribute")
+    {
+        Stage stage = Stage("openusd").createStage();
+        REQUIRE_UNARY(stage.isValid());
+
+        stage.definePrim("/World/Xform", "Xform");
+        stage.definePrim("/World/Cube", "Cube");
+        Prim prims(std::vector<std::string>{ "/World/Xform", "/World/Cube" });
+
+        // Create
+        const array::Array created = prims.createAttribute("custom:value", "float");
+        CHECK_EQ(created.shape(), array::Shape({ 2, 1 }));
+        CHECK_EQ(created.flatten().get<std::vector<bool>>(), (std::vector<bool>{ true, true }));
+        // Remove
+        const array::Array removed = prims.removeAttribute("custom:value");
+        CHECK_EQ(removed.shape(), array::Shape({ 2, 1 }));
+        CHECK_EQ(removed.flatten().get<std::vector<bool>>(), (std::vector<bool>{ true, true }));
+        // Removing an attribute that is no longer authored is an error
+        CHECK_THROWS(prims.removeAttribute("custom:value"));
 
         REQUIRE_UNARY(stage.closeStage());
     }
@@ -339,42 +368,55 @@ TEST_SUITE("Prim")
         SUBCASE("Single-apply API: PhysicsRigidBodyAPI")
         {
             Prim prim("/World/Cube");
-            CHECK_EQ(prim.hasApi("PhysicsRigidBodyAPI").get<std::vector<bool>>(), (std::vector<bool>{ false }));
-            CHECK_EQ(prim.applyApi("PhysicsRigidBodyAPI").get<std::vector<bool>>(), (std::vector<bool>{ true }));
-            CHECK_EQ(prim.hasApi("PhysicsRigidBodyAPI").get<std::vector<bool>>(), (std::vector<bool>{ true }));
-            CHECK_EQ(prim.removeApi("PhysicsRigidBodyAPI").get<std::vector<bool>>(), (std::vector<bool>{ true }));
-            CHECK_EQ(prim.hasApi("PhysicsRigidBodyAPI").get<std::vector<bool>>(), (std::vector<bool>{ false }));
+            CHECK_EQ(prim.hasApi("PhysicsRigidBodyAPI").flatten().get<std::vector<bool>>(), (std::vector<bool>{ false }));
+            CHECK_EQ(
+                prim.applyApi("PhysicsRigidBodyAPI").flatten().get<std::vector<bool>>(), (std::vector<bool>{ true }));
+            CHECK_EQ(prim.hasApi("PhysicsRigidBodyAPI").flatten().get<std::vector<bool>>(), (std::vector<bool>{ true }));
+            CHECK_EQ(
+                prim.removeApi("PhysicsRigidBodyAPI").flatten().get<std::vector<bool>>(), (std::vector<bool>{ true }));
+            CHECK_EQ(prim.hasApi("PhysicsRigidBodyAPI").flatten().get<std::vector<bool>>(), (std::vector<bool>{ false }));
 
             Prim prims(std::vector<std::string>{ "/World/Cube", "/World/Sphere" });
-            CHECK_EQ(prims.hasApi("PhysicsRigidBodyAPI").get<std::vector<bool>>(), (std::vector<bool>{ false, false }));
-            CHECK_EQ(prims.applyApi("PhysicsRigidBodyAPI").get<std::vector<bool>>(), (std::vector<bool>{ true, true }));
-            CHECK_EQ(prims.hasApi("PhysicsRigidBodyAPI").get<std::vector<bool>>(), (std::vector<bool>{ true, true }));
-            CHECK_EQ(prims.removeApi("PhysicsRigidBodyAPI").get<std::vector<bool>>(), (std::vector<bool>{ true, true }));
-            CHECK_EQ(prims.hasApi("PhysicsRigidBodyAPI").get<std::vector<bool>>(), (std::vector<bool>{ false, false }));
+            CHECK_EQ(prims.hasApi("PhysicsRigidBodyAPI").flatten().get<std::vector<bool>>(),
+                     (std::vector<bool>{ false, false }));
+            CHECK_EQ(prims.applyApi("PhysicsRigidBodyAPI").flatten().get<std::vector<bool>>(),
+                     (std::vector<bool>{ true, true }));
+            CHECK_EQ(prims.hasApi("PhysicsRigidBodyAPI").flatten().get<std::vector<bool>>(),
+                     (std::vector<bool>{ true, true }));
+            CHECK_EQ(prims.removeApi("PhysicsRigidBodyAPI").flatten().get<std::vector<bool>>(),
+                     (std::vector<bool>{ true, true }));
+            CHECK_EQ(prims.hasApi("PhysicsRigidBodyAPI").flatten().get<std::vector<bool>>(),
+                     (std::vector<bool>{ false, false }));
         }
 
         SUBCASE("Multi-apply API: PhysicsDriveAPI")
         {
             Prim prim("/World/Cube");
-            CHECK_EQ(prim.hasApi("PhysicsDriveAPI", "linear").get<std::vector<bool>>(), (std::vector<bool>{ false }));
-            CHECK_EQ(prim.applyApi("PhysicsDriveAPI", "linear").get<std::vector<bool>>(), (std::vector<bool>{ true }));
-            CHECK_EQ(prim.hasApi("PhysicsDriveAPI", "linear").get<std::vector<bool>>(), (std::vector<bool>{ true }));
-            CHECK_EQ(prim.hasApi("PhysicsDriveAPI", "angular").get<std::vector<bool>>(), (std::vector<bool>{ false }));
-            CHECK_EQ(prim.removeApi("PhysicsDriveAPI", "linear").get<std::vector<bool>>(), (std::vector<bool>{ true }));
-            CHECK_EQ(prim.hasApi("PhysicsDriveAPI", "linear").get<std::vector<bool>>(), (std::vector<bool>{ false }));
+            CHECK_EQ(prim.hasApi("PhysicsDriveAPI", "linear").flatten().get<std::vector<bool>>(),
+                     (std::vector<bool>{ false }));
+            CHECK_EQ(prim.applyApi("PhysicsDriveAPI", "linear").flatten().get<std::vector<bool>>(),
+                     (std::vector<bool>{ true }));
+            CHECK_EQ(prim.hasApi("PhysicsDriveAPI", "linear").flatten().get<std::vector<bool>>(),
+                     (std::vector<bool>{ true }));
+            CHECK_EQ(prim.hasApi("PhysicsDriveAPI", "angular").flatten().get<std::vector<bool>>(),
+                     (std::vector<bool>{ false }));
+            CHECK_EQ(prim.removeApi("PhysicsDriveAPI", "linear").flatten().get<std::vector<bool>>(),
+                     (std::vector<bool>{ true }));
+            CHECK_EQ(prim.hasApi("PhysicsDriveAPI", "linear").flatten().get<std::vector<bool>>(),
+                     (std::vector<bool>{ false }));
 
             Prim prims(std::vector<std::string>{ "/World/Cube", "/World/Sphere" });
-            CHECK_EQ(prims.hasApi("PhysicsDriveAPI", "linear").get<std::vector<bool>>(),
+            CHECK_EQ(prims.hasApi("PhysicsDriveAPI", "linear").flatten().get<std::vector<bool>>(),
                      (std::vector<bool>{ false, false }));
-            CHECK_EQ(prims.applyApi("PhysicsDriveAPI", "linear").get<std::vector<bool>>(),
+            CHECK_EQ(prims.applyApi("PhysicsDriveAPI", "linear").flatten().get<std::vector<bool>>(),
                      (std::vector<bool>{ true, true }));
-            CHECK_EQ(
-                prims.hasApi("PhysicsDriveAPI", "linear").get<std::vector<bool>>(), (std::vector<bool>{ true, true }));
-            CHECK_EQ(prims.hasApi("PhysicsDriveAPI", "angular").get<std::vector<bool>>(),
+            CHECK_EQ(prims.hasApi("PhysicsDriveAPI", "linear").flatten().get<std::vector<bool>>(),
+                     (std::vector<bool>{ true, true }));
+            CHECK_EQ(prims.hasApi("PhysicsDriveAPI", "angular").flatten().get<std::vector<bool>>(),
                      (std::vector<bool>{ false, false }));
-            CHECK_EQ(prims.removeApi("PhysicsDriveAPI", "linear").get<std::vector<bool>>(),
+            CHECK_EQ(prims.removeApi("PhysicsDriveAPI", "linear").flatten().get<std::vector<bool>>(),
                      (std::vector<bool>{ true, true }));
-            CHECK_EQ(prims.hasApi("PhysicsDriveAPI", "linear").get<std::vector<bool>>(),
+            CHECK_EQ(prims.hasApi("PhysicsDriveAPI", "linear").flatten().get<std::vector<bool>>(),
                      (std::vector<bool>{ false, false }));
         }
 

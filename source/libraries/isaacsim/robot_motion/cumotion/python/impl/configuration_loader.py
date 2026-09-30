@@ -103,7 +103,7 @@ def load_cumotion_robot(
     xrdf_text = full_xrdf_path.read_text(encoding="utf-8")
     urdf_text = normalize_urdf_for_urdfdom(full_urdf_path.read_text(encoding="utf-8"))
 
-    # if doesn't succeed, will throw. That is the desired behaviour.
+    # if it does not succeed, it will throw. That is the desired behavior.
     robot_description: cumotion.RobotDescription = cumotion.load_robot_from_memory(xrdf_text, urdf_text)
     kinematics: cumotion.Kinematics = robot_description.kinematics()
 

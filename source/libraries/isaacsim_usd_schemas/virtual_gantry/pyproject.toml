@@ -17,15 +17,20 @@
 name = "isaacsim-virtual-gantry-schema"
 dynamic = ["version"]
 description = "Isaac Sim USD virtual gantry schema helpers"
-requires-python = ">=3.12"
+requires-python = "==3.12.*"
 dependencies = [
-    "usd-exchange>=2.2.2",
+    "usd-exchange==2.3.0",
 ]
 readme = {text = "Isaac Sim USD virtual gantry schema helpers.", content-type = "text/plain"}
 license = "Apache-2.0"
 keywords = ["nvidia", "isaac", "sim", "usd", "robot", "gantry", "schema"]
 authors = [
     {name = "NVIDIA Corporation"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
 ]
 
 [build-system]

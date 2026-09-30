@@ -34,7 +34,7 @@ namespace openusd = isaacsim::foundation::usd::openusd;
 namespace
 {
 
-constexpr std::string_view kLabelsApiPrefix = "SemanticsLabelsAPI:";
+constexpr std::string_view g_kLabelsApiPrefix = "SemanticsLabelsAPI:";
 
 std::vector<std::string> toVectorString(const std::variant<std::string, std::vector<std::string>>& labels)
 {
@@ -110,9 +110,9 @@ std::unordered_map<std::string, std::vector<std::string>> getLabels(const std::s
                {
                    for (const auto& schema : openusd::getAppliedSchemas(stageId, _path))
                    {
-                       if (!schema.rfind(kLabelsApiPrefix, 0))
+                       if (!schema.rfind(g_kLabelsApiPrefix, 0))
                        {
-                           const std::string taxonomy = schema.substr(kLabelsApiPrefix.size());
+                           const std::string taxonomy = schema.substr(g_kLabelsApiPrefix.size());
                            auto& destination = result[taxonomy];
                            auto currentLabels = getLabelsAttribute(stageId, _path, taxonomy);
                            destination.insert(destination.end(), currentLabels.begin(), currentLabels.end());
@@ -137,9 +137,9 @@ void removeLabels(const std::string& path,
                {
                    for (const auto& schema : openusd::getAppliedSchemas(stageId, primPath))
                    {
-                       if (!schema.rfind(kLabelsApiPrefix, 0))
+                       if (!schema.rfind(g_kLabelsApiPrefix, 0))
                        {
-                           const std::string currentTaxonomy = schema.substr(kLabelsApiPrefix.size());
+                           const std::string currentTaxonomy = schema.substr(g_kLabelsApiPrefix.size());
                            if (!taxonomy.has_value() || currentTaxonomy == *taxonomy)
                            {
                                auto currentLabels = getLabelsAttribute(stageId, primPath, currentTaxonomy);
@@ -164,9 +164,9 @@ void removeAllLabels(const std::string& path, bool removeTaxonomies, bool includ
                    const auto schemas = openusd::getAppliedSchemas(stageId, primPath);
                    for (const auto& schema : schemas)
                    {
-                       if (!schema.rfind(kLabelsApiPrefix, 0))
+                       if (!schema.rfind(g_kLabelsApiPrefix, 0))
                        {
-                           const std::string currentTaxonomy = schema.substr(kLabelsApiPrefix.size());
+                           const std::string currentTaxonomy = schema.substr(g_kLabelsApiPrefix.size());
                            if (removeTaxonomies)
                            {
                                openusd::removeApi(stageId, primPath, "SemanticsLabelsAPI", currentTaxonomy);

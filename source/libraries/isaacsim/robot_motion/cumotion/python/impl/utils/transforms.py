@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Provides utilities for transforming poses, positions, and orientations between Isaac Sim world frame and cuMotion robot base frame."""
+"""Transform poses between the Isaac Sim world and cuMotion robot base frames."""
 
 from __future__ import annotations
 

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Implementation of RMPflow-based reactive motion controller using cuMotion for collision-free robot motion generation."""
+"""Implement collision-free RMPflow control with cuMotion."""
 
 from __future__ import annotations
 
@@ -50,7 +50,8 @@ class RmpFlowController(mg.BaseController):
         cumotion_robot: Robot containing kinematics and joint information.
         cumotion_world_interface: World interface providing collision geometry.
         robot_joint_space: The full ordered joint-space of the controlled robot.
-        robot_site_space: The full ordered site-space of the controlled robot (used for validation of tool-frame name only).
+        robot_site_space: The full ordered site-space of the controlled robot. Used only to validate the tool-frame
+            name.
         rmp_flow_configuration_filename: Path to the RMPflow YAML configuration file.
             If a relative path is provided, it is resolved relative to
             cumotion_robot.directory. If an absolute path is provided,
@@ -93,7 +94,8 @@ class RmpFlowController(mg.BaseController):
 
         if not set(cumotion_robot.controlled_joint_names).issubset(set(robot_joint_space)):
             raise ValueError(
-                f"Cumotion controlled joints {cumotion_robot.controlled_joint_names} are not a subset of the robot_joint_space {robot_joint_space}."
+                f"Cumotion controlled joints {cumotion_robot.controlled_joint_names} are not a subset of the "
+                f"robot_joint_space {robot_joint_space}."
             )
 
         self._robot_joint_space = robot_joint_space

@@ -2,28 +2,30 @@
 
 ## [Unreleased]
 
+## [7.0.0a1] - 2026-09-16
+
 ### Added
 
-- Add an `H`-key debug HUD showing the visible viewport's frame rate.
+- An `H`-key debug HUD shows the visible viewport's frame rate.
+- A Foundation-integrated Python `Viewport` provides declarative camera configuration, automatic camera-pose
+  publication in Foundation's native xyzw quaternion order, deterministic `close()`, and context-manager support.
+- `author_viewport()` authors the standard camera, low dynamic range (LDR) RenderVar, and RenderProduct for Python
+  applications.
+- The keyword-based Python interface accepts and retains a Foundation OVStage directly.
+- The viewport supports Windows and aarch64 systems, with SDL3 providing window, input, presentation, and HUD support.
+- The viewport provides continuous keyboard movement, FPS-style mouse look, absolute drag input, and display-scale-aware
+  rendering.
+- Visible viewports present directly through OpenGL without GPU readback, CPU frame copies, or SDL texture uploads.
+- Remote material images and dome-light HDRs are cached through the OmniClient runtime bundled with OVStage.
+- The OVStage scene mirror supports authored and resolved asset tokens, populated hierarchies, scene-graph instances,
+  and live local or Fabric world-transform updates.
+- Eligible transform-only updates apply directly to OVGL's resident meshes, bypassing private mirror writes, seals, and
+  hierarchy recomputation while retaining full synchronization as a correctness fallback.
+- Optional versioned OVStage transform journals avoid match-all scene queries for physics-driven frames while retaining
+  full synchronization for missing, incompatible, or discontinuous journals.
 
 ### Changed
 
-- Replace the X11-specific window, input, presentation, and HUD code with a privately linked, pinned SDL3 dependency.
-- Fetch the pinned `stb_image` source during module dependency preparation instead of storing a copy in the module.
-- Cache remote material images and dome-light HDRs through the OmniClient runtime bundled with OVStage.
-
-### Fixed
-
-- Build and run the OVGL debug viewport on Windows with an SDL-managed desktop OpenGL context and Windows runtime
-  dependency staging.
-- Use FPS-style mouse-look direction and absolute drag input without relative-mode cursor jumps.
-- Keep visible rendering at the configured viewport resolution on scaled desktop displays.
-- Make debug viewport movement continuous while movement keys are held.
-- Decode official OVStage asset attributes as authored/resolved token pairs.
-- Preserve populated hierarchy and scene-graph instance transforms in the OVGL viewport mirror.
-
-## [6.1.0]
-
-### Added
-
-- Add the concrete OVGL debug viewport for populated OVStage scenes.
+- The public C++ viewport configuration type is `ViewportConfiguration`; Python exposes it as `ViewportConfig`.
+- The `isaacsim-ovgl-viewport` distribution declares `isaacsim-common` and `isaacsim-foundation` runtime dependencies
+  and uses `scikit-build-core>=1.0.3` for source builds.

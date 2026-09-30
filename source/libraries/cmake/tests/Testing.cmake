@@ -48,3 +48,50 @@ endfunction()
 
 expect_main_rejected(c)
 expect_main_rejected(cpp)
+
+set(runtime_project_source "${CMAKE_CURRENT_BINARY_DIR}/imported-runtime-source")
+set(runtime_project_build "${CMAKE_CURRENT_BINARY_DIR}/imported-runtime-build")
+file(REMOVE_RECURSE "${runtime_project_source}" "${runtime_project_build}")
+file(MAKE_DIRECTORY "${runtime_project_source}")
+set(module_core "${CMAKE_CURRENT_LIST_DIR}/../IsaacSimModuleCore.cmake")
+file(CONFIGURE
+    OUTPUT "${runtime_project_source}/CMakeLists.txt"
+    CONTENT [=[
+cmake_minimum_required(VERSION 3.26...4.3)
+project(imported_runtime NONE)
+set(ISAACSIM_MODULES_DIR "@ISAACSIM_MODULES_DIR@")
+include("@module_core@")
+add_library(imported_root SHARED IMPORTED GLOBAL)
+add_library(imported_dependency SHARED IMPORTED GLOBAL)
+add_library(imported_leaf SHARED IMPORTED GLOBAL)
+add_library(imported_interface INTERFACE IMPORTED GLOBAL)
+add_library(non_imported INTERFACE)
+set_target_properties(imported_root PROPERTIES
+    INTERFACE_LINK_LIBRARIES
+        "$<LINK_ONLY:imported_dependency>;$<TARGET_NAME_IF_EXISTS:imported_interface>;non_imported"
+)
+set_target_properties(imported_dependency PROPERTIES
+    INTERFACE_LINK_LIBRARIES imported_leaf
+)
+set_target_properties(imported_interface PROPERTIES
+    INTERFACE_LINK_LIBRARIES imported_leaf
+)
+_isaacsim_collect_imported_runtime_targets(imported_runtime_targets imported_root)
+if(NOT imported_runtime_targets STREQUAL "imported_root;imported_dependency;imported_leaf")
+    message(FATAL_ERROR "Unexpected imported runtime target closure: ${imported_runtime_targets}")
+endif()
+]=]
+    @ONLY
+)
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -S "${runtime_project_source}" -B "${runtime_project_build}"
+    RESULT_VARIABLE runtime_project_result
+    OUTPUT_VARIABLE runtime_project_output
+    ERROR_VARIABLE runtime_project_error
+)
+if(NOT runtime_project_result EQUAL 0)
+    message(FATAL_ERROR
+        "Imported runtime target configuration failed:\n${runtime_project_output}\n${runtime_project_error}"
+    )
+endif()
+file(REMOVE_RECURSE "${runtime_project_source}" "${runtime_project_build}")

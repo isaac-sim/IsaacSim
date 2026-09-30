@@ -3,7 +3,7 @@ name: meta-skills
 description: "Patterns for authoring/composing skills (MSF). May propose skill-file edits (confirm before write) and optional localhost $IMAGE_SERVER_URL review uploads."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Meta-Skills — Patterns for Authoring Agent Skills

@@ -28,12 +28,8 @@ DomeLight::DomeLight(const std::variant<std::string, std::vector<std::string>>& 
                      const std::optional<array::Array>& radii,
                      const std::optional<std::variant<std::string, std::vector<std::string>>>& textureFiles,
                      const std::optional<std::variant<std::string, std::vector<std::string>>>& textureFormats,
-                     const std::optional<array::Array>& positions,
-                     const std::optional<array::Array>& translations,
-                     const std::optional<array::Array>& orientations,
-                     const std::optional<array::Array>& scales,
                      bool resetXformOpProperties)
-    : Light(paths, /*lightType=*/"DomeLight", positions, translations, orientations, scales, resetXformOpProperties)
+    : Light(paths, /*lightType=*/"DomeLight", resetXformOpProperties)
 {
     // Initialize instance from arguments.
     if (radii.has_value())
@@ -81,6 +77,11 @@ void DomeLight::setTextureFormats(const std::variant<std::string, std::vector<st
 std::vector<std::string> DomeLight::getTextureFormats(const std::optional<array::Array>& indices)
 {
     return std::get<std::vector<std::string>>(this->getAttributeValues("inputs:texture:format", indices));
+}
+
+array::Array DomeLight::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("DomeLight");
 }
 
 } // namespace lights

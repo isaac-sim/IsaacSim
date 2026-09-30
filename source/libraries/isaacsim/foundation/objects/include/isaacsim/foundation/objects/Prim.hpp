@@ -150,7 +150,7 @@ public:
      * @brief Check whether each selected prim is typed as the given USD schema type.
      * @param[in] schemaType USD schema type name to test (e.g. @c "UsdGeomMesh").
      * @param[in] indices    Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Boolean flags (dtype bool, shape @c (N,)), one per selected prim.
+     * @return Boolean flags (dtype bool, shape @c (N,1)), one per selected prim.
      */
     array::Array isA(const std::string& schemaType, const std::optional<array::Array>& indices = std::nullopt) const;
 
@@ -160,7 +160,7 @@ public:
      * @param[in] instanceName For multi-apply schemas, the instance name to check. Single-apply schemas leave this
      * empty.
      * @param[in] indices      Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Boolean flags (dtype bool, shape @c (N,)), one per selected prim.
+     * @return Boolean flags (dtype bool, shape @c (N,1)), one per selected prim.
      */
     array::Array hasApi(const std::string& schemaType,
                         const std::optional<std::string>& instanceName = std::nullopt,
@@ -171,7 +171,7 @@ public:
      * @param[in] schemaType   USD API schema type name.
      * @param[in] instanceName For multi-apply schemas, the instance name to use.
      * @param[in] indices      Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Boolean flags indicating success (dtype bool, shape @c (N,)), one per selected prim.
+     * @return Boolean flags indicating success (dtype bool, shape @c (N,1)), one per selected prim.
      */
     array::Array applyApi(const std::string& schemaType,
                           const std::optional<std::string>& instanceName = std::nullopt,
@@ -182,7 +182,7 @@ public:
      * @param[in] schemaType   USD API schema type name.
      * @param[in] instanceName For multi-apply schemas, the instance name to remove.
      * @param[in] indices      Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Boolean flags indicating success (dtype bool, shape @c (N,)), one per selected prim.
+     * @return Boolean flags indicating success (dtype bool, shape @c (N,1)), one per selected prim.
      */
     array::Array removeApi(const std::string& schemaType,
                            const std::optional<std::string>& instanceName = std::nullopt,
@@ -200,7 +200,7 @@ public:
      * @param[in] attributeName Name of the attribute to create.
      * @param[in] typeName      USD value type name (e.g. @c "float", @c "double3").
      * @param[in] indices       Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Boolean flags indicating whether the attribute was created (dtype bool, shape @c (N,)), one per selected
+     * @return Boolean flags indicating whether the attribute was created (dtype bool, shape @c (N,1)), one per selected
      * prim.
      */
     array::Array createAttribute(const std::string& attributeName,
@@ -211,7 +211,7 @@ public:
      * @brief Remove a custom attribute from each selected prim.
      * @param[in] attributeName Name of the attribute to remove.
      * @param[in] indices       Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Boolean flags indicating whether the attribute was removed (dtype bool, shape @c (N,)), one per selected
+     * @return Boolean flags indicating whether the attribute was removed (dtype bool, shape @c (N,1)), one per selected
      * prim.
      */
     array::Array removeAttribute(const std::string& attributeName,

@@ -33,7 +33,7 @@
 namespace
 {
 
-ovx_string_t ovx(const std::string& string)
+ovx_string_t createOvxString(const std::string& string)
 {
     ovx_string_t value;
     value.ptr = string.c_str();
@@ -55,7 +55,7 @@ ovstage_instance_t* attach(ovphysx_handle_t handle, const std::string& path)
     }
 
     ovstage_population_enqueue_result_t enqueueResult =
-        ovstage_population_open_usd_from_file(stage, ovx(path), 1, 0.0, OVSTAGE_POPULATION_DOMAIN_PHYSICS);
+        ovstage_population_open_usd_from_file(stage, createOvxString(path), 1, 0.0, OVSTAGE_POPULATION_DOMAIN_PHYSICS);
     if (enqueueResult.status != OVSTAGE_OK)
     {
         ovx_string_t errorString = ovstage_population_get_last_error();

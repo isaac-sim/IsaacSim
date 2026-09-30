@@ -37,8 +37,8 @@ namespace physics
 namespace
 {
 
-constexpr float kRadiansToDegrees = 57.29577951308f;
-constexpr float kDegreesToRadians = 0.01745329252f;
+constexpr float g_kRadiansToDegrees = 57.29577951308f;
+constexpr float g_kDegreesToRadians = 0.01745329252f;
 
 std::string joinPaths(const std::vector<std::string>& v)
 {
@@ -133,7 +133,7 @@ std::vector<int64_t> resolveIndices(const std::optional<array::Array>& indices, 
         std::iota(allIndices.begin(), allIndices.end(), int64_t{ 0 });
         return allIndices;
     }
-    std::vector<int64_t> resolved = indices->reshape(array::Shape({ int64_t{ -1 } })).get<std::vector<int64_t>>();
+    std::vector<int64_t> resolved = indices->flatten().get<std::vector<int64_t>>();
     for (int64_t& index : resolved)
     {
         const int64_t original = index;
@@ -167,9 +167,7 @@ isaacsim::foundation::objects::Prim elementColumn(const std::vector<std::vector<
 
 std::vector<float> readColumn(const isaacsim::foundation::objects::Prim& column, const std::string& attributeName)
 {
-    return std::get<array::Array>(column.getAttributeValues(attributeName))
-        .reshape(array::Shape({ int64_t{ -1 } }))
-        .get<std::vector<float>>();
+    return std::get<array::Array>(column.getAttributeValues(attributeName)).flatten().get<std::vector<float>>();
 }
 
 void writeColumn(const isaacsim::foundation::objects::Prim& column,
@@ -199,9 +197,7 @@ array::Array gatherColumns(int64_t rowCount, int64_t columnCount, ReadColumn rea
 // Broadcast an input to a dense row-major (rowCount, columnCount) float buffer, following NumPy broadcast rules.
 std::vector<float> broadcastMatrix(const array::Array& values, int64_t rowCount, int64_t columnCount)
 {
-    return values.broadcastTo(array::Shape({ rowCount, columnCount }))
-        .reshape(array::Shape({ int64_t{ -1 } }))
-        .get<std::vector<float>>();
+    return values.broadcastTo(array::Shape({ rowCount, columnCount })).flatten().get<std::vector<float>>();
 }
 
 std::vector<float> matrixColumn(const std::vector<float>& values, int64_t rowCount, int64_t columnCount, int64_t j)
@@ -216,12 +212,7 @@ std::vector<float> matrixColumn(const std::vector<float>& values, int64_t rowCou
 
 } // namespace
 
-Articulation::Articulation(const std::variant<std::string, std::vector<std::string>>& paths,
-                           const std::optional<array::Array>& positions,
-                           const std::optional<array::Array>& translations,
-                           const std::optional<array::Array>& orientations,
-                           const std::optional<array::Array>& scales,
-                           bool resetXformOpProperties)
+Articulation::Articulation(const std::variant<std::string, std::vector<std::string>>& paths, bool resetXformOpProperties)
     : isaacsim::foundation::objects::Xform()
 {
     // Get prims.
@@ -232,7 +223,7 @@ Articulation::Articulation(const std::variant<std::string, std::vector<std::stri
     }
     m_paths = std::move(existentPaths);
     // Initialize instance from arguments.
-    _initialize(positions, translations, orientations, scales, resetXformOpProperties);
+    _initialize(resetXformOpProperties);
     _fetchRootPaths();
     _parseMetadata();
 }
@@ -248,7 +239,7 @@ void Articulation::_fetchRootPaths()
             [](const std::string& candidatePath) -> bool
             {
                 isaacsim::foundation::objects::Prim prim(candidatePath, /*resolvePaths=*/false);
-                return prim.hasApi("PhysicsArticulationRootAPI").get<std::vector<bool>>().at(0);
+                return prim.hasApi("PhysicsArticulationRootAPI").item<bool>();
             },
             /*includeSelf=*/true);
         if (!result.has_value())
@@ -278,8 +269,8 @@ void Articulation::_parseMetadata()
         std::vector<std::string> paths = isaacsim::foundation::utils::getAllMatchingChildPrims(
             m_paths[i], [](const std::string&) { return true; }, /*includeSelf=*/true);
         isaacsim::foundation::objects::Prim prims(paths, /*resolvePaths=*/false);
-        std::vector<bool> areLinks = prims.hasApi("PhysicsRigidBodyAPI").get<std::vector<bool>>();
-        std::vector<bool> areJoints = prims.isA("PhysicsJoint").get<std::vector<bool>>();
+        std::vector<bool> areLinks = prims.hasApi("PhysicsRigidBodyAPI").flatten().get<std::vector<bool>>();
+        std::vector<bool> areJoints = prims.isA("PhysicsJoint").flatten().get<std::vector<bool>>();
         std::vector<std::string> names = prims.getName();
         std::vector<std::string> typeNames = prims.getTypeName();
 
@@ -446,7 +437,7 @@ std::tuple<array::Array, array::Array> Articulation::getDofLimits(const std::opt
                                  {
                                      for (float& value : column)
                                      {
-                                         value *= kDegreesToRadians;
+                                         value *= g_kDegreesToRadians;
                                      }
                                  }
                                  return column;
@@ -490,7 +481,7 @@ void Articulation::setDofLimits(const std::optional<array::Array>& lower,
             {
                 for (float& value : values)
                 {
-                    value *= kRadiansToDegrees;
+                    value *= g_kRadiansToDegrees;
                 }
             }
             writeColumn(column, attributeName, values);
@@ -529,7 +520,7 @@ std::tuple<array::Array, array::Array, array::Array> Articulation::getDofFrictio
                                  {
                                      for (float& value : values)
                                      {
-                                         value *= kRadiansToDegrees;
+                                         value *= g_kRadiansToDegrees;
                                      }
                                  }
                                  return values;
@@ -592,7 +583,7 @@ void Articulation::setDofFrictionProperties(const std::optional<array::Array>& s
             {
                 for (float& value : values)
                 {
-                    value *= kDegreesToRadians;
+                    value *= g_kDegreesToRadians;
                 }
             }
             writeColumn(column, "physxJointAxis:" + axis + ":viscousFrictionCoefficient", values);
@@ -620,7 +611,7 @@ std::tuple<array::Array, array::Array, array::Array> Articulation::getDofDriveMo
                 // DOFs without the performance envelope applied report zero rather than having the API forced onto
                 // them, so that querying properties never mutates the stage.
                 const std::vector<bool> applied =
-                    column.hasApi("PhysxDrivePerformanceEnvelopeAPI", axis).get<std::vector<bool>>();
+                    column.hasApi("PhysxDrivePerformanceEnvelopeAPI", axis).flatten().get<std::vector<bool>>();
                 if (std::none_of(applied.begin(), applied.end(), [](bool value) { return value; }))
                 {
                     return {};
@@ -633,9 +624,9 @@ std::tuple<array::Array, array::Array, array::Array> Articulation::getDofDriveMo
                 return values;
             });
     };
-    return { readEnvelope("speedEffortGradient", kDegreesToRadians),
-             readEnvelope("maxActuatorVelocity", kDegreesToRadians),
-             readEnvelope("velocityDependentResistance", kRadiansToDegrees) };
+    return { readEnvelope("speedEffortGradient", g_kDegreesToRadians),
+             readEnvelope("maxActuatorVelocity", g_kDegreesToRadians),
+             readEnvelope("velocityDependentResistance", g_kRadiansToDegrees) };
 }
 
 void Articulation::setDofDriveModelProperties(const std::optional<array::Array>& speedEffortGradients,
@@ -689,15 +680,15 @@ void Articulation::setDofDriveModelProperties(const std::optional<array::Array>&
         };
         if (speedEffortGradients.has_value())
         {
-            writeEnvelope("speedEffortGradient", gradientValues, kRadiansToDegrees);
+            writeEnvelope("speedEffortGradient", gradientValues, g_kRadiansToDegrees);
         }
         if (maximumActuatorVelocities.has_value())
         {
-            writeEnvelope("maxActuatorVelocity", velocityValues, kRadiansToDegrees);
+            writeEnvelope("maxActuatorVelocity", velocityValues, g_kRadiansToDegrees);
         }
         if (velocityDependentResistances.has_value())
         {
-            writeEnvelope("velocityDependentResistance", resistanceValues, kDegreesToRadians);
+            writeEnvelope("velocityDependentResistance", resistanceValues, g_kDegreesToRadians);
         }
     }
 }
@@ -828,7 +819,7 @@ array::Array Articulation::getDofMaxVelocities(const std::optional<array::Array>
                              {
                                  for (float& value : values)
                                  {
-                                     value *= kDegreesToRadians;
+                                     value *= g_kDegreesToRadians;
                                  }
                              }
                              return values;
@@ -854,7 +845,7 @@ void Articulation::setDofMaxVelocities(const array::Array& maxVelocities,
         {
             for (float& value : values)
             {
-                value *= kRadiansToDegrees;
+                value *= g_kRadiansToDegrees;
             }
         }
         writeColumn(column, "physxJoint:maxJointVelocity", values);
@@ -920,7 +911,7 @@ std::tuple<array::Array, array::Array> Articulation::getDofGains(const std::opti
                                  {
                                      for (float& value : values)
                                      {
-                                         value *= kRadiansToDegrees;
+                                         value *= g_kRadiansToDegrees;
                                      }
                                  }
                                  return values;
@@ -966,7 +957,7 @@ void Articulation::setDofGains(const std::optional<array::Array>& stiffnesses,
             {
                 for (float& value : values)
                 {
-                    value *= kDegreesToRadians;
+                    value *= g_kDegreesToRadians;
                 }
             }
             writeColumn(column, "drive:" + axis + ":physics:" + property, values);
@@ -1017,7 +1008,7 @@ void Articulation::switchDofControlMode(const std::string& mode,
 
     auto selectDefaults = [&](const array::Array& defaults)
     {
-        const std::vector<float> all = defaults.reshape(array::Shape({ int64_t{ -1 } })).get<std::vector<float>>();
+        const std::vector<float> all = defaults.flatten().get<std::vector<float>>();
         std::vector<float> selected(static_cast<std::size_t>(rowCount * columnCount));
         for (int64_t i = 0; i < rowCount; ++i)
         {
@@ -1084,7 +1075,7 @@ array::Array Articulation::_getDofDriveTargets(const std::string& property,
                              {
                                  for (float& value : values)
                                  {
-                                     value *= kDegreesToRadians;
+                                     value *= g_kDegreesToRadians;
                                  }
                              }
                              return values;
@@ -1112,7 +1103,7 @@ void Articulation::_setDofDriveTargets(const std::string& property,
         {
             for (float& value : values)
             {
-                value *= kRadiansToDegrees;
+                value *= g_kRadiansToDegrees;
             }
         }
         writeColumn(column, "drive:" + axis + ":physics:" + property, values);
@@ -1178,7 +1169,7 @@ array::Array Articulation::getLinkEnabledGravities(const std::optional<array::Ar
             elementColumn(m_linkPaths, resolvedPrimIndices, resolvedLinkIndices[static_cast<std::size_t>(j)]);
         column.applyApi("PhysxRigidBodyAPI");
         const auto disabled = std::get<array::Array>(column.getAttributeValues("physxRigidBody:disableGravity"))
-                                  .reshape(array::Shape({ int64_t{ -1 } }))
+                                  .flatten()
                                   .get<std::vector<bool>>();
         for (int64_t i = 0; i < rowCount; ++i)
         {
@@ -1196,9 +1187,7 @@ void Articulation::setLinkEnabledGravities(const array::Array& enabled,
     const std::vector<int64_t> resolvedLinkIndices = resolveIndices(linkIndices, m_numLinks, "Link");
     const auto rowCount = static_cast<int64_t>(resolvedPrimIndices.size());
     const auto columnCount = static_cast<int64_t>(resolvedLinkIndices.size());
-    const auto source = enabled.broadcastTo(array::Shape({ rowCount, columnCount }))
-                            .reshape(array::Shape({ int64_t{ -1 } }))
-                            .get<std::vector<bool>>();
+    const auto source = enabled.broadcastTo(array::Shape({ rowCount, columnCount })).flatten().get<std::vector<bool>>();
     for (int64_t j = 0; j < columnCount; ++j)
     {
         const auto column =
@@ -1276,6 +1265,30 @@ array::Array Articulation::getSleepThresholds(const std::optional<array::Array>&
 void Articulation::setSleepThresholds(const array::Array& thresholds, const std::optional<array::Array>& indices)
 {
     Prim(m_rootPaths, /*resolvePaths=*/false).setAttributeValues("physxArticulation:sleepThreshold", thresholds, indices);
+}
+
+array::Array Articulation::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    const isaacsim::foundation::objects::Prim prims(paths);
+    const std::vector<bool> areXformable = prims.isA("Xformable").flatten().get<std::vector<bool>>();
+    const std::vector<std::string>& primPaths = prims.paths();
+    std::vector<bool> result(primPaths.size());
+    for (std::size_t i = 0; i < primPaths.size(); ++i)
+    {
+        // Same search the constructor performs to locate the articulation root, but bounded to the prim itself
+        // and its direct children so classification stays cheap for large hierarchies.
+        result[i] =
+            areXformable[i] && isaacsim::foundation::utils::getFirstMatchingChildPrim(
+                                   primPaths[i],
+                                   [](const std::string& candidatePath) -> bool
+                                   {
+                                       isaacsim::foundation::objects::Prim prim(candidatePath, /*resolvePaths=*/false);
+                                       return prim.hasApi("PhysicsArticulationRootAPI").item<bool>();
+                                   },
+                                   /*includeSelf=*/true, /*maxDepth=*/1)
+                                   .has_value();
+    }
+    return array::Array(result).reshape(array::Shape({ -1, 1 }));
 }
 
 } // namespace physics

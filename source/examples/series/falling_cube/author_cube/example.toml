@@ -5,7 +5,7 @@ id = "falling_cube.author_cube"
 title = "Author a Cube"
 summary = "Create a stage and author a cube."
 owners = ["isaacsim.foundation.objects"]
-topics = ["python", "usd"]
+topics = ["usd"]
 
 [build]
 adapter = "none"
@@ -23,4 +23,5 @@ surfaces = ["python"]
 
 [[test]]
 name = "default"
-stdout_contains = ["Authored /World/Cube at (0.0, 0.0, 2.0)."]
+path = "test.py"
+stdout_contains = ["Cube authoring test passed."]

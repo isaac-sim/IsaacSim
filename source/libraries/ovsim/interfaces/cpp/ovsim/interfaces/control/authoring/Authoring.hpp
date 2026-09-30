@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <variant>
@@ -27,30 +28,46 @@ namespace control
 {
 namespace authoring
 {
+/** @brief Values accepted by provider parameter setters. */
+using InputParameterType = std::variant<bool, std::uintptr_t, std::int64_t, double, std::string>;
+/** @brief Values returned by provider parameter getters. */
+using OutputParameterType = std::variant<bool, std::uintptr_t, std::int64_t, double, std::string>;
 
-using InputParameterType = std::variant<bool, uintptr_t, int64_t, double, std::string>;
-using OutputParameterType = std::variant<bool, uintptr_t, int64_t, double, std::string>;
-
-using CreateStageFn = std::function<bool()>;
-using OpenStageFn = std::function<bool(const std::string& /*usdPath*/)>;
-using SaveStageFn = std::function<bool(const std::string& /*usdPath*/)>;
-using ImportStageFromStringFn = std::function<bool(const std::string& /*usdString*/)>;
-using ExportStageToStringFn = std::function<std::string()>;
-using CloseStageFn = std::function<bool()>;
-using AddReferenceToStageFn =
+/** @brief Callable signature for creating an empty stage. */
+using CreateStageFunction = std::function<bool()>;
+/** @brief Callable signature for opening a stage from a USD path. */
+using OpenStageFunction = std::function<bool(const std::string& /*usdPath*/)>;
+/** @brief Callable signature for saving a stage to a USD path. */
+using SaveStageFunction = std::function<bool(const std::string& /*usdPath*/)>;
+/** @brief Callable signature for importing a stage from a USD string. */
+using ImportStageFromStringFunction = std::function<bool(const std::string& /*usdString*/)>;
+/** @brief Callable signature for exporting a stage to a USD string. */
+using ExportStageToStringFunction = std::function<std::string()>;
+/** @brief Callable signature for closing the current stage. */
+using CloseStageFunction = std::function<bool()>;
+/** @brief Callable signature for adding a referenced USD asset to the stage. */
+using AddReferenceToStageFunction =
     std::function<bool(const std::string& /*usdPath*/, const std::string& /*path*/, const std::string& /*typeName*/)>;
 
-using DefinePrimFn = std::function<bool(const std::string& /*path*/, const std::string& /*typeName*/)>;
-using MovePrimFn = std::function<bool(const std::string& /*targetPath*/, const std::string& /*destinationPath*/)>;
-using RemovePrimFn = std::function<bool(const std::string& /*path*/)>;
+/** @brief Callable signature for defining a prim. */
+using DefinePrimFunction = std::function<bool(const std::string& /*path*/, const std::string& /*typeName*/)>;
+/** @brief Callable signature for moving a prim. */
+using MovePrimFunction = std::function<bool(const std::string& /*targetPath*/, const std::string& /*destinationPath*/)>;
+/** @brief Callable signature for removing a prim. */
+using RemovePrimFunction = std::function<bool(const std::string& /*path*/)>;
 
-using CreatePrimAttributeFn =
+/** @brief Callable signature for creating a prim attribute. */
+using CreatePrimAttributeFunction =
     std::function<bool(const std::string& /*path*/, const std::string& /*attributeName*/, const std::string& /*typeName*/)>;
-using RemovePrimAttributeFn = std::function<bool(const std::string& /*path*/, const std::string& /*attributeName*/)>;
+/** @brief Callable signature for removing a prim attribute. */
+using RemovePrimAttributeFunction =
+    std::function<bool(const std::string& /*path*/, const std::string& /*attributeName*/)>;
 
-using SetParameterFn = std::function<void(
+/** @brief Callable signature for setting a named provider parameter. */
+using SetParameterFunction = std::function<void(
     const std::string& /*provider*/, const std::string& /*parameterName*/, const InputParameterType& /*value*/)>;
-using GetParameterFn =
+/** @brief Callable signature for getting a named provider parameter. */
+using GetParameterFunction =
     std::function<OutputParameterType(const std::string& /*provider*/, const std::string& /*parameterName*/)>;
 
 } // namespace authoring

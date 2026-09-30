@@ -23,7 +23,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-RUNTIME_INITIALIZER_PATH = Path(__file__).parents[2] / "cmake" / "InitializeNanobindRuntime.py"
+RUNTIME_INITIALIZER_PATH = Path(__file__).parents[2] / "cmake" / "initialize_nanobind_runtime.py"
 RUNTIME_INITIALIZER_SPEC = importlib.util.spec_from_file_location(
     "initialize_nanobind_runtime",
     RUNTIME_INITIALIZER_PATH,

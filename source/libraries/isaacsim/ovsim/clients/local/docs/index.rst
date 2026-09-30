@@ -15,12 +15,15 @@
    limitations under the License.
 
 .. _isaacsim-ovsim-clients-local:
+.. _isaacsim-ovsim-clients-local-overview:
 
 =============================
-Isaac Sim OV Sim local client
+Isaac Sim OV SIM local client
 =============================
+
+``isaacsim.ovsim.clients.local`` provides an in-process C++ client for interacting with the Isaac Sim OV SIM service.
 
 .. toctree::
     :maxdepth: 2
 
-    overview
+    api_cpp

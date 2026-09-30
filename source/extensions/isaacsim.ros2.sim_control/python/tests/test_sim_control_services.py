@@ -1271,19 +1271,23 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         # Check ROS topics for namespace directly
         unique_id = f"{int(time.time() * 1000)}"
         node = rclpy.create_node(f"namespace_test_node_{unique_id}")
+        namespace_topics = []
+        discovery_deadline = time.monotonic() + 10.0
+        try:
+            # DDS graph discovery is asynchronous and can take more than one Kit frame,
+            # especially on Windows after the referenced robot finishes loading.
+            while time.monotonic() < discovery_deadline and not namespace_topics:
+                await omni.kit.app.get_app().next_update_async()
+                rclpy.spin_once(node, timeout_sec=0.01)
+                topic_names = [name for name, _ in node.get_topic_names_and_types()]
+                namespace_topics = [topic for topic in topic_names if "/robot1/" in topic]
+        finally:
+            node.destroy_node()
 
-        topic_names_and_types = node.get_topic_names_and_types()
-        topic_names = [name for name, _ in topic_names_and_types]
-
-        # Look for topics containing the namespace
-        namespace_topics = [topic for topic in topic_names if "/robot1/" in topic]
-        has_namespace_topics = len(namespace_topics) > 0
-
-        node.destroy_node()
-
-        self.assertTrue(
-            has_namespace_topics,
-            f"Should find at least one topic with namespace '/robot1/'. Found topics: {namespace_topics}",
+        self.assertGreater(
+            len(namespace_topics),
+            0,
+            "Should find at least one topic with namespace '/robot1/' after waiting for DDS discovery",
         )
 
         self._timeline.stop()

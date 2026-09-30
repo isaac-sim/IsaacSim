@@ -55,6 +55,7 @@ def test_dropped_row_marker(dtype: object, expected: object) -> None:
     Args:
         dtype: Warp data type of the output buffer.
         expected: Value a dropped row must carry, or ``"nan"``.
+
     """
     value = _invalid_fill_value(dtype)
     if expected == "nan":

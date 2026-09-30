@@ -2,22 +2,22 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [build-system]
-requires = ["scikit-build-core==1.0.3"]
+requires = ["scikit-build-core>=1.0.3"]
 build-backend = "scikit_build_core.build"
 
 [project]
 name = "isaacsim-deprecated"
 dynamic = ["version", "dependencies"]
-description = "Deprecated Isaac Sim compatibility APIs; install this distribution to use legacy isaacsim.core imports"
+description = "Temporary compatibility APIs for applications that still use legacy isaacsim.core imports"
 requires-python = "==3.12.*"
 license = "Apache-2.0"
 authors = [{ name = "NVIDIA Corporation" }]
 dependencies = [
-    "warp-lang>=1.15.0",
+    "warp-lang>=1.16.0",
     "numpy>=1.26.0",
 ]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]
@@ -38,6 +38,5 @@ minimum-version = "build-system.requires"
 cmake.version = ">=3.26"
 wheel.cmake = false
 wheel.packages = []
-wheel.platlib = true
-wheel.py-api = "cp312"
+wheel.platlib = false
 wheel.reproducible = true

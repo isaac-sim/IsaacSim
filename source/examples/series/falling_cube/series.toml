@@ -3,7 +3,8 @@
 
 id = "falling_cube"
 title = "Falling Cube"
-summary = "Learn how to author a cube and simulate it falling."
+summary = "Author a cube, simulate it falling, and visualize the result."
+kind = "sequence"
 
 [[step]]
 example = "falling_cube.author_cube"

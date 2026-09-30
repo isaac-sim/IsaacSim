@@ -23,6 +23,7 @@ import physx_usd_schemas  # noqa: F401 - register PhysX schemas
 from .camera import Camera
 from .lights import CylinderLight, DiskLight, DistantLight, DomeLight, Light, RectLight, SphereLight
 from .mesh import Mesh
+from .physics_scenes import NewtonMjcScene, PhysicsScene, PhysxGpuCfg, PhysxScene
 from .prim import Prim
 from .shapes import Capsule, Cone, Cube, Cylinder, Plane, Shape, Sphere
 from .stage import Stage
@@ -40,6 +41,10 @@ __all__ = [
     "DomeLight",
     "Light",
     "Mesh",
+    "NewtonMjcScene",
+    "PhysicsScene",
+    "PhysxGpuCfg",
+    "PhysxScene",
     "Plane",
     "Prim",
     "RectLight",

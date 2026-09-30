@@ -39,6 +39,7 @@ class NewtonConfig:
         default_steps_per_second: Simulation frequency reported through the registration callbacks.
         solver: Requested solver settings, or None to create the default settings.
         device: Warp device used while ``ovnewton`` finalizes the Newton model, or None to use Newton's process default.
+
     """
 
     use_cuda_graph: bool = True

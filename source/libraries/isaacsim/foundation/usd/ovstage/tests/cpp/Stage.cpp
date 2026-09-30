@@ -16,6 +16,7 @@
 #include <doctest/doctest.h>
 #include <isaacsim/common/exceptions/Exceptions.hpp>
 #include <isaacsim/foundation/usd/ovstage/Usd.hpp>
+#include <ovstage/ovstage.h>
 
 #include <IsaacSimTest.hpp>
 #include <algorithm>
@@ -98,7 +99,17 @@ TEST_SUITE("Stage")
         SUBCASE("Round-trip stage content")
         {
             // std::string usdaString = exportStageToString(stageId);
-            std::string usdaString = "#usda 1.0\n(\nupAxis = \"Z\"\n)\n\ndef \"World\"\n{\ndef Cube \"Cube\"\n{\n}\n}\n";
+            std::string usdaString =
+                "#usda 1.0\n"
+                "(\n"
+                "upAxis = \"Z\"\n"
+                ")\n\n"
+                "def \"World\"\n"
+                "{\n"
+                "def Cube \"Cube\"\n"
+                "{\n"
+                "}\n"
+                "}\n";
             int64_t newStageId = importStageFromString(usdaString);
             REQUIRE_NE(newStageId, -1);
             CHECK_UNARY(isStageValid(newStageId));
@@ -157,6 +168,26 @@ TEST_SUITE("Stage")
         // - Prim already exists with a different type
         CHECK_THROWS_AS(definePrim(stageId, "/Sphere", "Cube"), std::runtime_error);
 
+        closeStage(stageId);
+    }
+
+    TEST_CASE("Foundation writes continue after an external writer advances the OVStage floor")
+    {
+        const int64_t stageId = createStage();
+        definePrim(stageId, "/Before", "Xform");
+
+        auto* stage = static_cast<ovstage_instance_t*>(getStagePtr(stageId));
+        REQUIRE(stage != nullptr);
+        ovstage_write_floor_desc_t description{};
+        description.ordinal = 50;
+        description.scope = OVSTAGE_SCOPE_ALL;
+        const ovstage_enqueue_result_t enqueue = ovstage_advance_write_floor(stage, &description);
+        REQUIRE(enqueue.status == OVSTAGE_OK);
+        REQUIRE(ovstage_wait_op(stage, enqueue.op_index, OVSTAGE_TIMEOUT_INFINITE, nullptr) == OVSTAGE_OK);
+        ovstage_release_op(stage, enqueue.op_index);
+
+        definePrim(stageId, "/After", "Xform");
+        CHECK_UNARY(isPrimValid(stageId, "/After"));
         closeStage(stageId);
     }
 

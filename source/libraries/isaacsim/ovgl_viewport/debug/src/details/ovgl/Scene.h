@@ -16,8 +16,7 @@
 /* Build the GL renderer's in-memory Scene from an OVStage instance.
  * The loader reads supported geometry, transforms, and display attributes through
  * the public OVStage API and fills the internal GL Scene representation. */
-#ifndef OVGL_SCENE_H
-#define OVGL_SCENE_H
+#pragma once
 
 #include "gl/Gpu.h" /* GpuMaterialParams */
 #include "gl/Scene.h" /* Scene (the GL draw input) */
@@ -40,6 +39,11 @@ extern "C"
      * no reallocation. Returns 1 on success. Topology is assumed unchanged since the
      * last ovgl_scene_build (re-attach the stage / rebuild on add/remove). */
     int ovgl_scene_refresh_xforms(ovstage_instance_t* stage, ovstage_ordinal_t ordinal, Scene* s);
+
+    /* Atomically replace every resident mesh world transform from a dense array in mesh order and re-derive per-mesh
+     * and scene bounds. The caller validates hierarchy and instance dependencies before supplying the already-composed
+     * matrices. Returns 1 on success and leaves the prior scene untouched on failure. */
+    int ovgl_scene_apply_xforms(Scene* s, const double* world_matrices, size_t mesh_count);
 
     /* Companion to ovgl_scene_refresh_xforms for the transform-only fast path:
      * re-derive the authored USD lights at `ordinal` into the scratch read by
@@ -125,5 +129,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* OVGL_SCENE_H */

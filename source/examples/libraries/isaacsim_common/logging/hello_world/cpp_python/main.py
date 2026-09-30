@@ -6,15 +6,13 @@
 import _hello_world_cpp
 
 
-def main() -> int:
-    """Call the example-local C++ binding.
-
-    Returns:
-        Process exit code.
-    """
+def main() -> None:
+    """Call the example-local C++ binding."""
     _hello_world_cpp.say_hello()
-    return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "isaacsim/common/string/details/ColorParser.hpp"
+#include "ColorParser.hpp"
 
 #include <cctype>
 #include <stdexcept>

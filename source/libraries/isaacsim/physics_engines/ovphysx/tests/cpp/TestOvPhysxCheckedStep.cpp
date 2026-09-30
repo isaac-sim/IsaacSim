@@ -47,12 +47,12 @@ TEST_CASE("ovphysx synchronous step preserves manager accounting on failure")
     BackendGuard guard;
 
     auto& manager = PhysicsManager::getInstance();
-    manager.setup(1.0f / 60.0f);
+    manager.configure(1.0f / 60.0f);
     // A null Stage initializes an empty simulation, but OvPhysX rejects
     // stepping it because there is no attached Stage.
     REQUIRE(manager.initialize(nullptr, 0));
 
     CHECK_THROWS_AS(manager.step(), std::runtime_error);
-    CHECK(manager.getSimulatedPhysicsSteps() == 0);
+    CHECK(manager.getSimulatedPhysicsStepCount() == 0);
     CHECK(manager.getSimulatedTime() == doctest::Approx(0.0f));
 }

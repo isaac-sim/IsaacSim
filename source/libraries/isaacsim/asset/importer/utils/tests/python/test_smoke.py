@@ -13,7 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Verifies standalone importability and public API surface for isaacsim.asset.importer.utils without Omni modules. Covers PhysX helper reexports, submodule access, schema value formatting, mimic attribute naming, and authoring helper attributes on a USD stage."""
+"""Verify standalone importability and the public importer-utils API.
+
+The tests cover operation without Omni modules, PhysX helper reexports, submodule access, schema value formatting,
+mimic attribute naming, and authoring helper attributes on a USD stage.
+"""
 
 from __future__ import annotations
 

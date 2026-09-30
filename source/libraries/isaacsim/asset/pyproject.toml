@@ -19,7 +19,7 @@ license = "Apache-2.0"
 keywords = ["nvidia", "isaac", "sim", "usd", "asset", "transformer", "importer"]
 authors = [{ name = "NVIDIA Corporation" }]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]
@@ -35,6 +35,5 @@ minimum-version = "build-system.requires"
 cmake.version = ">=3.26"
 wheel.cmake = false
 wheel.packages = []
-wheel.platlib = true
-wheel.py-api = "cp312"
+wheel.platlib = false
 wheel.reproducible = true

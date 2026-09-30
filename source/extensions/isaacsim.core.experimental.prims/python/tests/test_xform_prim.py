@@ -101,6 +101,7 @@ class TestXformPrim(omni.kit.test.AsyncTestCase):
     async def setUp(self) -> None:
         """Method called to prepare the test fixture."""
         super().setUp()
+        await omni.kit.app.get_app().next_update_async()
 
     async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
@@ -309,6 +310,7 @@ class TestXformPrim(omni.kit.test.AsyncTestCase):
                     prim.set_default_state(v0, v1, indices=indices)
                     output = prim.get_default_state(indices=indices)
                     prim.reset_to_default_state()
+                await omni.kit.app.get_app().next_update_async()
                 check_array(output[0], shape=(expected_count, 3), dtype=wp.float32, device=device)
                 check_array(output[1], shape=(expected_count, 4), dtype=wp.float32, device=device)
                 check_allclose((expected_v0, expected_v1), output, given=(v0, v1))

@@ -202,7 +202,9 @@ def resolve_indices(
     dtype: type | None = wp.int32,
     device: str | wp.Device | None = None,
 ) -> wp.array:
-    """Create a flattened (1D) Warp array to be used as indices from a Python primitive or list, a NumPy array, or a Warp array.
+    """Create a flattened one-dimensional Warp array for use as indices.
+
+    Accept a Python primitive or list, a NumPy array, or a Warp array.
 
     Args:
         x: Python primitive or list, NumPy array, or Warp array.
@@ -351,7 +353,9 @@ def broadcast_to(
          [1 2 3]]
         >>>
         >>> # Warp array (with different device)
-        >>> array = ops_utils.broadcast_to(wp.array([1, 2, 3], device="cpu"), shape=(3, 3), device="cuda")  # doctest: +NO_CHECK
+        >>> array = ops_utils.broadcast_to(
+        ...     wp.array([1, 2, 3], device="cpu"), shape=(3, 3), device="cuda"
+        ... )  # doctest: +NO_CHECK
         >>> print(array)
         [[1 2 3]
          [1 2 3]

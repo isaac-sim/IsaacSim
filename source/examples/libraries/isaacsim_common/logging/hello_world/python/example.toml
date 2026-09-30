@@ -5,7 +5,7 @@ id = "hello_world.python"
 title = "Python Hello World"
 summary = "Report a message through the public Python logging API."
 owners = ["isaacsim.common.logging"]
-topics = ["logging", "python"]
+topics = ["logging"]
 
 [build]
 adapter = "none"

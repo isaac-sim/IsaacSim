@@ -16,4 +16,5 @@
 isaacsim_add_compat_python_module(
     NAME isaacsim.deprecated.core.experimental.objects
     IMPORT_NAME isaacsim.core.experimental.objects
+    REQUIRES_BINDINGS
 )

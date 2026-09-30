@@ -13,8 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "details/EntityUtils.hpp"
+
 #include <isaacsim/physics/entities/PhysicsEntity.hpp>
-#include <isaacsim/physics/entities/details/EntityUtils.hpp>
 #include <isaacsim/physics/manager/PhysicsManager.hpp>
 
 namespace isaacsim
@@ -38,32 +39,35 @@ PhysicsEntity::PhysicsEntity(const std::string& engine,
 
 size_t PhysicsEntity::numPrims() const noexcept
 {
-    return m_entityView->getCount();
+    return m_entityView->getEntityCount();
 }
 
 array::Array PhysicsEntity::getData(const std::string& name, const std::optional<array::Array>& indices)
 {
-    tensors::TensorDesc indicesDesc = indices.has_value() ? details::arrayToTensorDesc(*indices) : tensors::TensorDesc{};
-    tensors::TensorDesc dataDesc = m_entityView->getData(name, indicesDesc, {});
-    return details::tensorDescToArray(dataDesc);
+    tensors::TensorDescription indicesDescription =
+        indices.has_value() ? details::convertArrayToTensorDescription(*indices) : tensors::TensorDescription{};
+    tensors::TensorDescription dataDescription = m_entityView->getData(name, indicesDescription, {});
+    return details::convertTensorDescriptionToArray(dataDescription);
 }
 
 void PhysicsEntity::setData(const std::string& name, const array::Array& data, const std::optional<array::Array>& indices)
 {
-    tensors::TensorDesc indicesDesc = indices.has_value() ? details::arrayToTensorDesc(*indices) : tensors::TensorDesc{};
-    tensors::TensorDesc dataDesc = details::arrayToTensorDesc(data);
-    m_entityView->setData(name, dataDesc, indicesDesc);
+    tensors::TensorDescription indicesDescription =
+        indices.has_value() ? details::convertArrayToTensorDescription(*indices) : tensors::TensorDescription{};
+    tensors::TensorDescription dataDescription = details::convertArrayToTensorDescription(data);
+    m_entityView->setData(name, dataDescription, indicesDescription);
 }
 
 std::vector<array::Array> PhysicsEntity::getMultiData(const std::string& name, const std::optional<array::Array>& indices)
 {
-    tensors::TensorDesc indicesDesc = indices.has_value() ? details::arrayToTensorDesc(*indices) : tensors::TensorDesc{};
-    std::vector<tensors::TensorDesc> dataDescs = m_entityView->getDataMulti(name, indicesDesc, {});
+    tensors::TensorDescription indicesDescription =
+        indices.has_value() ? details::convertArrayToTensorDescription(*indices) : tensors::TensorDescription{};
+    std::vector<tensors::TensorDescription> dataDescriptions = m_entityView->getDataMulti(name, indicesDescription, {});
     std::vector<array::Array> result;
-    result.reserve(dataDescs.size());
-    for (const auto& dataDesc : dataDescs)
+    result.reserve(dataDescriptions.size());
+    for (const auto& dataDescription : dataDescriptions)
     {
-        result.push_back(details::tensorDescToArray(dataDesc));
+        result.push_back(details::convertTensorDescriptionToArray(dataDescription));
     }
     return result;
 }
@@ -72,14 +76,15 @@ void PhysicsEntity::setMultiData(const std::string& name,
                                  const std::vector<array::Array>& data,
                                  const std::optional<array::Array>& indices)
 {
-    tensors::TensorDesc indicesDesc = indices.has_value() ? details::arrayToTensorDesc(*indices) : tensors::TensorDesc{};
-    std::vector<tensors::TensorDesc> dataDescs;
-    dataDescs.reserve(data.size());
+    tensors::TensorDescription indicesDescription =
+        indices.has_value() ? details::convertArrayToTensorDescription(*indices) : tensors::TensorDescription{};
+    std::vector<tensors::TensorDescription> dataDescriptions;
+    dataDescriptions.reserve(data.size());
     for (const auto& array : data)
     {
-        dataDescs.push_back(details::arrayToTensorDesc(array));
+        dataDescriptions.push_back(details::convertArrayToTensorDescription(array));
     }
-    m_entityView->setDataMulti(name, dataDescs, indicesDesc);
+    m_entityView->setDataMulti(name, dataDescriptions, indicesDescription);
 }
 
 } // namespace entities

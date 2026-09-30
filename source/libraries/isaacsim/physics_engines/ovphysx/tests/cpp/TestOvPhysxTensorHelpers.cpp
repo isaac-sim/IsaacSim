@@ -26,7 +26,7 @@
 using namespace isaacsim::physics_engines::ovphysx;
 using isaacsim::physics::tensors::DeviceKind;
 using isaacsim::physics::tensors::DType;
-using isaacsim::physics::tensors::TensorDesc;
+using isaacsim::physics::tensors::TensorDescription;
 
 namespace
 {
@@ -53,9 +53,9 @@ bool contains(const std::string& text, const char* substring)
 }
 
 // Contiguous CPU float32 out buffer of the given shape (empty strides == C-contiguous).
-TensorDesc makeCpuOutput(std::vector<int64_t> shape, DType dtype = DType::eFloat32)
+TensorDescription makeCpuOutput(std::vector<int64_t> shape, DType dtype = DType::eFloat32)
 {
-    TensorDesc descriptor;
+    TensorDescription descriptor;
     descriptor.dtype = dtype;
     descriptor.shape = std::move(shape);
     descriptor.device = DeviceKind::eCpu;
@@ -130,26 +130,26 @@ TEST_CASE("requireMatchingOutput branch matrix")
 
     SUBCASE("matching CPU out passes")
     {
-        TensorDesc output = makeCpuOutput({ 2, 5, 4 });
+        TensorDescription output = makeCpuOutput({ 2, 5, 4 });
         REQUIRE_NOTHROW(requireMatchingOutput(output, sdfShape, DType::eFloat32, "sdf"));
     }
 
     SUBCASE("matching int32 out passes")
     {
-        TensorDesc output = makeCpuOutput({ 4 }, DType::eInt32);
+        TensorDescription output = makeCpuOutput({ 4 }, DType::eInt32);
         REQUIRE_NOTHROW(requireMatchingOutput(output, { 4 }, DType::eInt32, "idx"));
     }
 
     SUBCASE("dtype mismatch throws")
     {
-        TensorDesc output = makeCpuOutput({ 2, 5, 4 }, DType::eFloat64);
+        TensorDescription output = makeCpuOutput({ 2, 5, 4 }, DType::eFloat64);
         CHECK(contains(getThrownMessage([&] { requireMatchingOutput(output, sdfShape, DType::eFloat32, "sdf"); }),
                        "dtype mismatch"));
     }
 
     SUBCASE("element-count mismatch throws")
     {
-        TensorDesc output = makeCpuOutput({ 2, 5, 3 }); // 30 vs binding 40
+        TensorDescription output = makeCpuOutput({ 2, 5, 3 }); // 30 vs binding 40
         CHECK(contains(getThrownMessage([&] { requireMatchingOutput(output, sdfShape, DType::eFloat32, "sdf"); }),
                        "element count mismatch"));
     }
@@ -157,13 +157,13 @@ TEST_CASE("requireMatchingOutput branch matrix")
     SUBCASE("1-D binding vs 2-D out with same capacity is allowed")
     {
         // masses reported [N] by the binding; caller legitimately supplies [N, 1].
-        TensorDesc output = makeCpuOutput({ 5, 1 });
+        TensorDescription output = makeCpuOutput({ 5, 1 });
         REQUIRE_NOTHROW(requireMatchingOutput(output, { 5 }, DType::eFloat32, "masses"));
     }
 
     SUBCASE("non-contiguous out throws")
     {
-        TensorDesc output = makeCpuOutput({ 2, 5, 4 });
+        TensorDescription output = makeCpuOutput({ 2, 5, 4 });
         // Row-major strides would be {20, 4, 1}; a wrong leading stride makes it strided.
         output.strides = { 21, 4, 1 };
         CHECK(contains(getThrownMessage([&] { requireMatchingOutput(output, sdfShape, DType::eFloat32, "sdf"); }),
@@ -172,7 +172,7 @@ TEST_CASE("requireMatchingOutput branch matrix")
 
     SUBCASE("GPU out with negative ordinal throws")
     {
-        TensorDesc output = makeCpuOutput({ 2, 5, 4 });
+        TensorDescription output = makeCpuOutput({ 2, 5, 4 });
         output.device = DeviceKind::eGpu;
         output.deviceOrdinal = -1;
         CHECK(contains(getThrownMessage([&] { requireMatchingOutput(output, sdfShape, DType::eFloat32, "sdf"); }),
@@ -181,7 +181,7 @@ TEST_CASE("requireMatchingOutput branch matrix")
 
     SUBCASE("GPU out with valid ordinal passes")
     {
-        TensorDesc output = makeCpuOutput({ 2, 5, 4 });
+        TensorDescription output = makeCpuOutput({ 2, 5, 4 });
         output.device = DeviceKind::eGpu;
         output.deviceOrdinal = 0;
         REQUIRE_NOTHROW(requireMatchingOutput(output, sdfShape, DType::eFloat32, "sdf"));
@@ -190,13 +190,13 @@ TEST_CASE("requireMatchingOutput branch matrix")
     SUBCASE("zero-element out matches a zero-element binding")
     {
         // A 0-row selection is a legitimate no-op read, not a mismatch.
-        TensorDesc output = makeCpuOutput({ 0 });
+        TensorDescription output = makeCpuOutput({ 0 });
         REQUIRE_NOTHROW(requireMatchingOutput(output, { 0 }, DType::eFloat32, "empty"));
     }
 
     SUBCASE("overcount out throws (too large, not just too small)")
     {
-        TensorDesc output = makeCpuOutput({ 2, 5, 5 }); // 50 vs binding 40
+        TensorDescription output = makeCpuOutput({ 2, 5, 5 }); // 50 vs binding 40
         CHECK(contains(getThrownMessage([&] { requireMatchingOutput(output, sdfShape, DType::eFloat32, "sdf"); }),
                        "element count mismatch"));
     }
@@ -205,7 +205,7 @@ TEST_CASE("requireMatchingOutput branch matrix")
     {
         // The ordinal check is GPU-only; a CPU buffer's device_id is ignored, so a
         // leftover ordinal must not be treated as an error.
-        TensorDesc output = makeCpuOutput({ 2, 5, 4 });
+        TensorDescription output = makeCpuOutput({ 2, 5, 4 });
         output.deviceOrdinal = 3; // CPU device, stray ordinal
         REQUIRE_NOTHROW(requireMatchingOutput(output, sdfShape, DType::eFloat32, "sdf"));
     }
@@ -214,21 +214,21 @@ TEST_CASE("requireMatchingOutput branch matrix")
     {
         // Both wrong: dtype AND count. dtype is validated first, so its message wins --
         // pins the guard order so a reorder that reports the wrong cause is caught.
-        TensorDesc output = makeCpuOutput({ 2, 5, 3 }, DType::eFloat64);
+        TensorDescription output = makeCpuOutput({ 2, 5, 3 }, DType::eFloat64);
         CHECK(contains(getThrownMessage([&] { requireMatchingOutput(output, sdfShape, DType::eFloat32, "sdf"); }),
                        "dtype mismatch"));
     }
 
     SUBCASE("negative output dimensions are rejected before comparing capacity")
     {
-        TensorDesc output = makeCpuOutput({ 2, -5, 4 });
+        TensorDescription output = makeCpuOutput({ 2, -5, 4 });
         CHECK(contains(getThrownMessage([&] { requireMatchingOutput(output, sdfShape, DType::eFloat32, "sdf"); }),
                        "negative tensor dimension"));
     }
 
     SUBCASE("overflowing output dimensions are rejected before comparing capacity")
     {
-        TensorDesc output = makeCpuOutput({ std::numeric_limits<int64_t>::max(), 3 });
+        TensorDescription output = makeCpuOutput({ std::numeric_limits<int64_t>::max(), 3 });
         CHECK_FALSE(getThrownMessage([&] { requireMatchingOutput(output, sdfShape, DType::eFloat32, "sdf"); }).empty());
     }
 }
@@ -241,48 +241,48 @@ TEST_CASE("isContiguousRowMajor")
 {
     SUBCASE("empty strides count as contiguous")
     {
-        TensorDesc descriptor = makeCpuOutput({ 3, 4 });
+        TensorDescription descriptor = makeCpuOutput({ 3, 4 });
         CHECK(isContiguousRowMajor(descriptor));
     }
 
     SUBCASE("correct row-major strides are contiguous")
     {
-        TensorDesc descriptor = makeCpuOutput({ 2, 3, 4 });
+        TensorDescription descriptor = makeCpuOutput({ 2, 3, 4 });
         descriptor.strides = { 12, 4, 1 };
         CHECK(isContiguousRowMajor(descriptor));
     }
 
     SUBCASE("wrong strides are not contiguous")
     {
-        TensorDesc descriptor = makeCpuOutput({ 2, 3 });
+        TensorDescription descriptor = makeCpuOutput({ 2, 3 });
         descriptor.strides = { 1, 2 }; // column-major-ish
         CHECK_FALSE(isContiguousRowMajor(descriptor));
     }
 
     SUBCASE("strides size mismatch is not contiguous")
     {
-        TensorDesc descriptor = makeCpuOutput({ 2, 3 });
+        TensorDescription descriptor = makeCpuOutput({ 2, 3 });
         descriptor.strides = { 3 }; // rank 2 shape, rank 1 strides
         CHECK_FALSE(isContiguousRowMajor(descriptor));
     }
 
     SUBCASE("unit-dim stride is irrelevant to contiguity")
     {
-        TensorDesc descriptor = makeCpuOutput({ 4, 1 });
+        TensorDescription descriptor = makeCpuOutput({ 4, 1 });
         descriptor.strides = { 1, 999 }; // the size-1 dim's stride never matters
         CHECK(isContiguousRowMajor(descriptor));
     }
 
     SUBCASE("negative dimensions are not contiguous")
     {
-        TensorDesc descriptor = makeCpuOutput({ 2, -3 });
+        TensorDescription descriptor = makeCpuOutput({ 2, -3 });
         descriptor.strides = { 3, 1 };
         CHECK_FALSE(isContiguousRowMajor(descriptor));
     }
 
     SUBCASE("overflowing row-major strides are not contiguous")
     {
-        TensorDesc descriptor = makeCpuOutput({ 3, std::numeric_limits<int64_t>::max() });
+        TensorDescription descriptor = makeCpuOutput({ 3, std::numeric_limits<int64_t>::max() });
         descriptor.strides = { std::numeric_limits<int64_t>::max(), 1 };
         CHECK_FALSE(isContiguousRowMajor(descriptor));
     }
@@ -298,45 +298,45 @@ TEST_CASE("requireInt32Indices")
 
     SUBCASE("omitted index (empty shape) is skipped")
     {
-        TensorDesc indices; // default: no shape
+        TensorDescription indices; // default: no shape
         REQUIRE_NOTHROW(requireInt32Indices(indices, "idx"));
     }
 
     SUBCASE("1-D contiguous int32 passes")
     {
-        TensorDesc indices = makeCpuOutput({ 3 }, DType::eInt32);
+        TensorDescription indices = makeCpuOutput({ 3 }, DType::eInt32);
         indices.data = indexData;
         REQUIRE_NOTHROW(requireInt32Indices(indices, "idx"));
     }
 
     SUBCASE("well-formed zero-size int32 passes but is still validated")
     {
-        TensorDesc indices = makeCpuOutput({ 0 }, DType::eInt32);
+        TensorDescription indices = makeCpuOutput({ 0 }, DType::eInt32);
         REQUIRE_NOTHROW(requireInt32Indices(indices, "idx"));
     }
 
     SUBCASE("non-int32 dtype throws")
     {
-        TensorDesc indices = makeCpuOutput({ 3 }, DType::eInt64);
+        TensorDescription indices = makeCpuOutput({ 3 }, DType::eInt64);
         CHECK(contains(getThrownMessage([&] { requireInt32Indices(indices, "idx"); }), "int32"));
     }
 
     SUBCASE("zero-size non-int32 is still rejected")
     {
         // Confirms the supplied-but-empty tensor's dtype cannot slip past the guard.
-        TensorDesc indices = makeCpuOutput({ 0 }, DType::eInt64);
+        TensorDescription indices = makeCpuOutput({ 0 }, DType::eInt64);
         CHECK(contains(getThrownMessage([&] { requireInt32Indices(indices, "idx"); }), "int32"));
     }
 
     SUBCASE("multi-dim index throws")
     {
-        TensorDesc indices = makeCpuOutput({ 2, 3 }, DType::eInt32);
+        TensorDescription indices = makeCpuOutput({ 2, 3 }, DType::eInt32);
         CHECK(contains(getThrownMessage([&] { requireInt32Indices(indices, "idx"); }), "1-D"));
     }
 
     SUBCASE("strided index throws")
     {
-        TensorDesc indices = makeCpuOutput({ 3 }, DType::eInt32);
+        TensorDescription indices = makeCpuOutput({ 3 }, DType::eInt32);
         indices.data = indexData;
         indices.strides = { 2 };
         CHECK(contains(getThrownMessage([&] { requireInt32Indices(indices, "idx"); }), "C-contiguous"));
@@ -344,19 +344,19 @@ TEST_CASE("requireInt32Indices")
 
     SUBCASE("non-empty index without storage throws")
     {
-        TensorDesc indices = makeCpuOutput({ 3 }, DType::eInt32);
+        TensorDescription indices = makeCpuOutput({ 3 }, DType::eInt32);
         CHECK(contains(getThrownMessage([&] { requireInt32Indices(indices, "idx"); }), "no data"));
     }
 }
 
 //=============================================================================
-// toDLDataType -- umbrella DType -> DLPack dtype mapping.
+// convertToDLDataType -- umbrella DType -> DLPack dtype mapping.
 //=============================================================================
-TEST_CASE("toDLDataType mapping")
+TEST_CASE("convertToDLDataType mapping")
 {
     auto check = [](DType dataType, uint8_t code, uint8_t bits)
     {
-        DLDataType actualDataType = toDLDataType(dataType);
+        DLDataType actualDataType = convertToDLDataType(dataType);
         CHECK(actualDataType.code == code);
         CHECK(actualDataType.bits == bits);
         CHECK(actualDataType.lanes == 1);
@@ -385,19 +385,19 @@ TEST_CASE("toDLDataType mapping")
 }
 
 //=============================================================================
-// toDLTensor -- umbrella TensorDesc -> borrowed DLTensor. Covers the device,
+// convertToDLTensor -- umbrella TensorDescription -> borrowed DLTensor. Covers the device,
 // dtype, and stride-normalization plumbing the SDF (and every read/write) path
-// depends on: qDL = toDLTensor(queryPoints).
+// depends on: qDL = convertToDLTensor(queryPoints).
 //=============================================================================
-TEST_CASE("toDLTensor device / dtype / strides")
+TEST_CASE("convertToDLTensor device / dtype / strides")
 {
     int dummy = 0;
 
     SUBCASE("CPU contiguous float32 -> {kDLCPU, 0}, null strides, data preserved")
     {
-        TensorDesc descriptor = makeCpuOutput({ 2, 3 });
+        TensorDescription descriptor = makeCpuOutput({ 2, 3 });
         descriptor.data = &dummy;
-        DLTensor tensor = toDLTensor(descriptor);
+        DLTensor tensor = convertToDLTensor(descriptor);
         CHECK(tensor.data == &dummy);
         CHECK(tensor.device.device_type == kDLCPU);
         CHECK(tensor.device.device_id == 0);
@@ -411,57 +411,57 @@ TEST_CASE("toDLTensor device / dtype / strides")
 
     SUBCASE("GPU out carries its device ordinal")
     {
-        TensorDesc descriptor = makeCpuOutput({ 2, 5, 4 });
+        TensorDescription descriptor = makeCpuOutput({ 2, 5, 4 });
         descriptor.device = DeviceKind::eGpu;
         descriptor.deviceOrdinal = 3;
-        DLTensor tensor = toDLTensor(descriptor);
+        DLTensor tensor = convertToDLTensor(descriptor);
         CHECK(tensor.device.device_type == kDLCUDA);
         CHECK(tensor.device.device_id == 3);
     }
 
     SUBCASE("GPU tensor with no ordinal throws")
     {
-        TensorDesc descriptor = makeCpuOutput({ 2, 5, 4 });
+        TensorDescription descriptor = makeCpuOutput({ 2, 5, 4 });
         descriptor.device = DeviceKind::eGpu;
         descriptor.deviceOrdinal = -1;
-        CHECK(contains(getThrownMessage([&] { toDLTensor(descriptor); }), "device ordinal"));
+        CHECK(contains(getThrownMessage([&] { convertToDLTensor(descriptor); }), "device ordinal"));
     }
 
     SUBCASE("CPU tensor with a negative ordinal fills device_id 0")
     {
-        TensorDesc descriptor = makeCpuOutput({ 4 }); // CPU, deviceOrdinal -1 by default
-        DLTensor tensor = toDLTensor(descriptor);
+        TensorDescription descriptor = makeCpuOutput({ 4 }); // CPU, deviceOrdinal -1 by default
+        DLTensor tensor = convertToDLTensor(descriptor);
         CHECK(tensor.device.device_type == kDLCPU);
         CHECK(tensor.device.device_id == 0);
     }
 
     SUBCASE("explicit C-contiguous strides normalize to null")
     {
-        TensorDesc descriptor = makeCpuOutput({ 2, 3, 4 });
+        TensorDescription descriptor = makeCpuOutput({ 2, 3, 4 });
         descriptor.strides = { 12, 4, 1 };
-        DLTensor tensor = toDLTensor(descriptor);
+        DLTensor tensor = convertToDLTensor(descriptor);
         CHECK(tensor.strides == nullptr);
     }
 
     SUBCASE("genuine strides pass through so ovphysx can reject them")
     {
-        TensorDesc descriptor = makeCpuOutput({ 2, 3 });
+        TensorDescription descriptor = makeCpuOutput({ 2, 3 });
         descriptor.strides = { 1, 2 }; // column-major-ish, non-contiguous
-        DLTensor tensor = toDLTensor(descriptor);
+        DLTensor tensor = convertToDLTensor(descriptor);
         REQUIRE(tensor.strides != nullptr);
         CHECK(tensor.strides == descriptor.strides.data());
     }
 
     SUBCASE("negative dimensions are rejected")
     {
-        TensorDesc descriptor = makeCpuOutput({ 2, -3 });
-        CHECK(contains(getThrownMessage([&] { toDLTensor(descriptor); }), "negative tensor dimension"));
+        TensorDescription descriptor = makeCpuOutput({ 2, -3 });
+        CHECK(contains(getThrownMessage([&] { convertToDLTensor(descriptor); }), "negative tensor dimension"));
     }
 
     SUBCASE("stride rank mismatch is rejected")
     {
-        TensorDesc descriptor = makeCpuOutput({ 2, 3 });
+        TensorDescription descriptor = makeCpuOutput({ 2, 3 });
         descriptor.strides = { 3 };
-        CHECK(contains(getThrownMessage([&] { toDLTensor(descriptor); }), "strides must match"));
+        CHECK(contains(getThrownMessage([&] { convertToDLTensor(descriptor); }), "strides must match"));
     }
 }

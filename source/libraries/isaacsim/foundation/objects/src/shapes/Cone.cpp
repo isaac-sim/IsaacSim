@@ -29,12 +29,8 @@ Cone::Cone(const std::variant<std::string, std::vector<std::string>>& paths,
            const std::optional<array::Array>& heights,
            const std::optional<std::variant<std::string, std::vector<std::string>>>& axes,
            const std::optional<ColorType>& colors,
-           const std::optional<array::Array>& positions,
-           const std::optional<array::Array>& translations,
-           const std::optional<array::Array>& orientations,
-           const std::optional<array::Array>& scales,
            bool resetXformOpProperties)
-    : Shape(paths, /*shapeType=*/"Cone", colors, positions, translations, orientations, scales, resetXformOpProperties)
+    : Shape(paths, /*shapeType=*/"Cone", colors, resetXformOpProperties)
 {
     // Initialize instance from arguments.
     if (radii.has_value())
@@ -87,6 +83,11 @@ std::vector<std::string> Cone::getAxes(const std::optional<array::Array>& indice
 void Cone::updateExtents()
 {
     // TODO: Implement and call it when setting values.
+}
+
+array::Array Cone::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("Cone");
 }
 
 } // namespace shapes

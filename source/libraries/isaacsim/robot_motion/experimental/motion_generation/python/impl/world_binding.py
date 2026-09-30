@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Provides world binding functionality to synchronize USD prims with planning world interfaces for motion generation."""
+"""Synchronize USD prims with motion-generation planning world interfaces."""
 
 from __future__ import annotations
 
@@ -440,7 +440,8 @@ class WorldBinding(Generic[TWorldInterface]):
     ) -> None:
         if tracked_collision_api not in _SUPPORTED_COLLISION_APIS:
             raise ValueError(
-                f"Unsupported collision API: {tracked_collision_api}. Supported APIs: {sorted(_SUPPORTED_COLLISION_APIS)}"
+                f"Unsupported collision API: {tracked_collision_api}. "
+                f"Supported APIs: {sorted(_SUPPORTED_COLLISION_APIS)}"
             )
 
         self._tracked_collision_api = tracked_collision_api
@@ -523,7 +524,8 @@ class WorldBinding(Generic[TWorldInterface]):
             ]
             if prims_without_attr:
                 raise RuntimeError(
-                    f"The following prims have {MOTION_PLANNING_API_NAME} applied but are missing the {MOTION_PLANNING_ENABLED_ATTR} attribute: {prims_without_attr}"
+                    f"The following prims have {MOTION_PLANNING_API_NAME} applied but are missing the "
+                    f"{MOTION_PLANNING_ENABLED_ATTR} attribute: {prims_without_attr}"
                 )
 
         for prim_path in self._tracked_prims:

@@ -13,8 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef NUSD_FONT8X16_H
-#define NUSD_FONT8X16_H
+#pragma once
 
 /* Auto-generated 8x16 bitmap font for ASCII 32-127 */
 /* 96 characters, 16 bytes each, MSB = leftmost pixel */
@@ -124,5 +123,3 @@ static const unsigned char font8x16_data[96][16] = {
     { 0x00, 0xFE, 0xC2, 0xC2, 0xC2, 0xC2, 0xC2, 0xC2, 0xC2, 0xC2, 0xC2, 0xFE, 0x00, 0x00, 0x00, 0x00 }, /* '\x7f' (127)
                                                                                                          */
 };
-
-#endif /* NUSD_FONT8X16_H */

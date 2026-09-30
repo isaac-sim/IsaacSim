@@ -37,6 +37,9 @@ isaacsim_add_module(
         isaacsim/foundation/objects/lights/Light.hpp
         isaacsim/foundation/objects/lights/RectLight.hpp
         isaacsim/foundation/objects/lights/SphereLight.hpp
+        isaacsim/foundation/objects/physics_scenes/NewtonMjcScene.hpp
+        isaacsim/foundation/objects/physics_scenes/PhysicsScene.hpp
+        isaacsim/foundation/objects/physics_scenes/PhysxScene.hpp
         isaacsim/foundation/objects/shapes/Capsule.hpp
         isaacsim/foundation/objects/shapes/Cone.hpp
         isaacsim/foundation/objects/shapes/Cube.hpp
@@ -57,6 +60,10 @@ isaacsim_add_module(
         src/lights/Light.cpp
         src/lights/RectLight.cpp
         src/lights/SphereLight.cpp
+        src/physics_scenes/NewtonMjcScene.cpp
+        src/physics_scenes/PhysicsScene.cpp
+        src/physics_scenes/PhysicsSceneUtils.hpp
+        src/physics_scenes/PhysxScene.cpp
         src/shapes/Capsule.cpp
         src/shapes/Cone.cpp
         src/shapes/Cube.cpp

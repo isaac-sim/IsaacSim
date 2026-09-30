@@ -88,11 +88,10 @@ from isaacsim.physics.registration.bindings._bindings import (
     TensorSpec,
     get_registry,
     register_entity,
-    register_simulation_view,
 )
 
-from ...bindings._bindings import EntityView, SimulationView, create_entity
-from ...bindings._bindings import create_simulation_view as _create_simulation_view_raw
+from ...bindings._bindings import EntityView
+from ...bindings._bindings import create_entity as _create_entity_raw
 from . import frontends
 
 # ---------------------------------------------------------------------------
@@ -123,6 +122,7 @@ def _wrap_warp(
     Returns:
         A Warp array for a single-buffer result, a list preserving the
         multi-buffer structure, or ``None`` for an empty result.
+
     """
     if result is None:
         return result
@@ -147,6 +147,7 @@ def _alloc_gpu_out(view: EntityView, impl: str, device_ordinal: int) -> wp.array
     Returns:
         Device-resident output buffer, or ``None`` when no valid buffer can be
         allocated.
+
     """
     try:
         spec = view.get_impl_spec(impl, ImplKind.Get)
@@ -180,6 +181,7 @@ def _alloc_gpu_out_multi(view: EntityView, impl: str, device_ordinal: int) -> li
     Returns:
         Device-resident output buffers, or ``None`` when the implementation
         specifications cannot determine valid allocations.
+
     """
     try:
         specs = view.get_impl_spec_multi(impl, ImplKind.Get)
@@ -211,6 +213,7 @@ def _spec_requires_host(view: EntityView, impl: str, kind: ImplKind) -> bool:
     Returns:
         ``True`` when the implementation specification requires host data;
         ``False`` when it does not or its specification cannot be read.
+
     """
     try:
         return bool(getattr(view.get_impl_spec(impl, kind), "requires_host_data", False))
@@ -227,6 +230,7 @@ def _to_host(x: object | None) -> object | None:
     Returns:
         A NumPy copy when ``x`` is a CUDA Warp array; otherwise, the original
         value.
+
     """
     try:
         if x is not None and hasattr(x, "device") and getattr(x.device, "is_cuda", False):
@@ -258,6 +262,7 @@ def _invalid_fill_value(dtype: object) -> object:
 
     Returns:
         Scalar to fill dropped rows with.
+
     """
     import numpy as _np
 
@@ -287,6 +292,7 @@ def _gather_rows_kernel(
         n: Number of valid rows in ``full``.
         dropped: Value marking a row no valid index produced.
         out: Destination matrix.
+
     """
     k, j = wp.tid()
     idx = indices[k]
@@ -327,6 +333,7 @@ def _gpu_gather_rows(
         ValueError: If ``indices`` is not GPU-resident int32, or ``out`` is
             provided but does not have the required device, size, data type, or
             contiguous layout.
+
     """
     device = frontends.parse_device(device_ordinal)
 
@@ -397,6 +404,7 @@ def _scatter_rows_kernel(
         indices: Destination row index for each source row.
         n: Number of valid rows in ``full``.
         full: Full destination matrix initialized to zero.
+
     """
     k, j = wp.tid()
     idx = indices[k]
@@ -433,6 +441,7 @@ def _scatter_compact_to_full(data: object, indices: wp.array, n: int) -> wp.arra
     Raises:
         ValueError: If ``indices`` is not a one-dimensional, contiguous Warp
             ``int32`` array on the data device.
+
     """
     # `data` may be a plain numpy ndarray (a valid set_data input), not a warp array:
     # numpy has no `.device`, its dtype isn't a warp dtype, and it can't feed the kernel.
@@ -488,6 +497,7 @@ def _require_int32_indices(indices: object | None, op: str) -> None:
     Raises:
         ValueError: If ``indices`` is an integer array whose data type is not
             ``int32``.
+
     """
     if indices is None:
         return
@@ -524,6 +534,7 @@ def _ensure_py_impl_mirror(view: EntityView) -> None:
 
     Args:
         view: Entity view on which to initialize the callback dictionaries.
+
     """
     if not hasattr(view, "_py_get_impls"):
         view._py_get_impls = {}
@@ -558,6 +569,7 @@ def _snapshot_python_dispatch_spec(spec: TensorSpec | None) -> _PythonDispatchSp
 
     Returns:
         Immutable snapshot of the dispatch capabilities.
+
     """
     if spec is None:
         return _PythonDispatchSpec(True, False, False, False)
@@ -595,6 +607,7 @@ def _validate_python_dispatch(
         RuntimeError: If the implementation reports that it is unsupported.
         ValueError: If indices are provided for an implementation that does
             not support the corresponding indexed operation.
+
     """
     # The C++ registry stores TensorSpec by value. Mirror an immutable snapshot
     # keyed by dispatch mode so later mutation of the caller's Python spec
@@ -604,16 +617,16 @@ def _validate_python_dispatch(
 
     if not spec.supports:
         raise RuntimeError(
-            f"EntityView::{operation}: impl '{impl}' is registered but reports supports=false "
+            f"EntityView::{operation}: implementation '{impl}' is registered but reports supports=false "
             "(operation not implemented for this engine)"
         )
     if indices is None:
         return
 
     if kind == ImplKind.Get and not spec.supports_indexed_read:
-        raise ValueError(f"EntityView::{operation}: impl '{impl}' does not support indexed reads")
+        raise ValueError(f"EntityView::{operation}: implementation '{impl}' does not support indexed reads")
     if kind == ImplKind.Set and not spec.supports_indexed_write:
-        raise ValueError(f"EntityView::{operation}: impl '{impl}' does not support indexed writes")
+        raise ValueError(f"EntityView::{operation}: implementation '{impl}' does not support indexed writes")
 
 
 def _install_register_impl_mirror() -> None:
@@ -676,14 +689,13 @@ _install_register_impl_mirror()
 
 def _attach_warp_dispatch(
     view: EntityView | None,
-    sim_view: SimulationView | None = None,
     view_kind: str | None = None,
 ) -> EntityView | None:
     """Attach Warp dispatch for single- and multi-buffer EntityView methods.
 
-    ``view_kind`` is the simulation-view factory name, such as
-    ``create_rigid_contact_view``, and selects view-specific metadata behavior
-    even when a no-match view registers no operations.
+    ``view_kind`` is the registered entity name, such as ``rigid-contact``, and
+    selects view-specific metadata behavior even when a no-match view registers
+    no operations.
 
     Dynamic instance methods invoke mirrored Python callbacks directly with
     Warp values. When no Python callback is mirrored, they call the native
@@ -691,22 +703,20 @@ def _attach_warp_dispatch(
 
     Single-buffer results are returned as ``wp.array``. Multi-buffer results
     retain their list structure and each element is returned as ``wp.array``.
-    Each native ``get_data`` call resolves the owning simulation view's device
-    ordinal. This supports engines that select their device during stepping,
-    even when the entity view was created earlier. Eligible native GPU reads
-    receive device output buffers so returned arrays reside on the simulation
-    device.
+    Each native ``get_data`` call re-reads ``view.device_ordinal`` rather than
+    caching it, which supports engines that select their device during stepping,
+    after the entity view was created. Eligible native GPU reads receive device
+    output buffers so returned arrays reside on the simulation device.
 
     Args:
         view: Entity view to augment, or ``None`` when the native factory
             returned no view.
-        sim_view: Simulation view that owns ``view``. Its device is resolved
-            lazily for each read.
-        view_kind: Simulation-view factory name used to identify
-            view-specific metadata behavior.
+        view_kind: Registered entity name used to identify view-specific
+            metadata behavior.
 
     Returns:
         The augmented entity view, or ``None`` when ``view`` is ``None``.
+
     """
     if view is None:
         return view
@@ -724,7 +734,6 @@ def _attach_warp_dispatch(
         out: object | None = None,
         _self: EntityView = view,
         _raw: Callable[..., object] = raw_get,
-        _sim: SimulationView | None = sim_view,
     ) -> wp.array | None:
         """Read one tensor from a registered implementation.
 
@@ -740,7 +749,6 @@ def _attach_warp_dispatch(
                 storage.
             _self: Entity view captured by the dispatch closure.
             _raw: Native getter captured by the dispatch closure.
-            _sim: Owning simulation view captured by the dispatch closure.
 
         Returns:
             A Warp array containing the requested data, or ``None`` when the
@@ -753,16 +761,17 @@ def _attach_warp_dispatch(
                 type.
             ValueError: If the indices or output buffer violate the
                 implementation contract.
+
         """
         _require_int32_indices(indices, "indexed get")
         py_fn = _self._py_get_impls.get(impl)
         if py_fn is not None:
             _validate_python_dispatch(_self, impl, ImplKind.Get, indices, "getData", False)
             return _wrap_warp(py_fn(indices, out))
-        # Read the owning sim's device at CALL time: ovphysx resolves it on the
-        # first simulate(), so it is only authoritative once stepping has begun.
+        # Read the view's device at CALL time: ovphysx resolves it on the first
+        # simulate(), so it is only authoritative once stepping has begun.
         try:
-            _devord = int(_sim.get_device_ordinal()) if _sim is not None else -1
+            _devord = int(_self.device_ordinal)
         except Exception:
             _devord = -1
         # GPU sim: read into a device buffer so results land on the consumer's
@@ -827,6 +836,7 @@ def _attach_warp_dispatch(
             RuntimeError: If the registered implementation is unsupported.
             TypeError: If an input buffer has an unsupported data type.
             ValueError: If the indices violate the implementation contract.
+
         """
         _require_int32_indices(indices, "indexed set")
         py_fn = _self._py_set_impls.get(impl)
@@ -875,7 +885,6 @@ def _attach_warp_dispatch(
             out: Sequence[object | None] = (),
             _self: EntityView = view,
             _raw: Callable[..., object] = raw_get_multi,
-            _sim: SimulationView | None = sim_view,
         ) -> list[wp.array | None]:
             """Read multiple tensors from a registered implementation.
 
@@ -890,7 +899,6 @@ def _attach_warp_dispatch(
                     alias entries that the implementation uses as outputs.
                 _self: Entity view captured by the dispatch closure.
                 _raw: Native multi-getter captured by the dispatch closure.
-                _sim: Owning simulation view captured by the dispatch closure.
 
             Returns:
                 Warp arrays preserving the implementation's output order.
@@ -904,6 +912,7 @@ def _attach_warp_dispatch(
                     data type.
                 ValueError: If the indices or output buffers violate the
                     implementation contract.
+
             """
             _require_int32_indices(indices, "indexed get")
             py_fn = _self._py_get_multi_impls.get(impl)
@@ -917,7 +926,7 @@ def _attach_warp_dispatch(
             # get_data; impls that expose no per-output specs also fall back (the alloc returns None).
             if not buffers:
                 try:
-                    _devord = int(_sim.get_device_ordinal()) if _sim is not None else -1
+                    _devord = int(_self.device_ordinal)
                 except Exception:
                     _devord = -1
                 if _devord >= 0 and not _spec_requires_host(_self, impl, ImplKind.Get):
@@ -953,6 +962,7 @@ def _attach_warp_dispatch(
                 TypeError: If an input buffer has an unsupported data type.
                 ValueError: If the indices violate the implementation
                     contract.
+
             """
             _require_int32_indices(indices, "indexed set")
             py_fn = _self._py_set_multi_impls.get(impl)
@@ -977,6 +987,7 @@ def _attach_warp_dispatch(
             Requested dimension, or ``0`` when the implementation is
             unregistered, reports no support, or has no matching shape
             dimension.
+
         """
         if _v.has_impl(impl_name, ImplKind.Get):
             spec = _v.get_impl_spec(impl_name, ImplKind.Get)
@@ -1009,7 +1020,7 @@ def _attach_warp_dispatch(
     _sensor_meta = view.get_metadata("sensor-names")
     if _sensor_meta is not None:
         view.sensor_names = list(_sensor_meta)
-    elif view_kind == "create_rigid_contact_view":
+    elif view_kind == "rigid-contact":
         view.sensor_names = []
     else:
         view.sensor_names = list(view.resolved_prim_paths)
@@ -1049,6 +1060,7 @@ def _attach_warp_dispatch(
             indices: Optional ``int32`` entity-index buffer. Use ``None`` to
                 address every entity in the view.
             _v: Entity view captured by the dispatch closure.
+
         """
         import numpy as _np
 
@@ -1162,6 +1174,7 @@ def _attach_warp_dispatch(
                 points, contact normals, separations, per-sensor contact
                 counts, per-sensor start indices, and other-actor identifiers,
                 in that order.
+
             """
             return _v.get_data_multi("raw-contact-data")
 
@@ -1185,6 +1198,7 @@ def _attach_warp_dispatch(
                 points, contact normals, separations, per-sensor/filter
                 contact counts, and per-sensor/filter start indices, in that
                 order.
+
             """
             return _v.get_data_multi("contact-data")
 
@@ -1211,6 +1225,7 @@ def _attach_warp_dispatch(
             Raises:
                 IndexError: If the requested local- or world-frame operation
                     is not registered.
+
             """
             key = "articulation-mass-center-local" if local_frame else "articulation-mass-center"
             return _v.get_data(key)
@@ -1240,6 +1255,7 @@ def _attach_warp_dispatch(
                 An object with ``link_names`` and ``joint_names`` lists, or
                 ``None`` when the USD stage identifier, articulation root, or
                 requested index cannot be resolved.
+
             """
             try:
                 from pxr import Usd, UsdPhysics, UsdUtils
@@ -1322,6 +1338,7 @@ def _attach_warp_dispatch(
                 indices: Optional entity index buffer. Use ``None`` to wake
                     every entity in the view.
                 _v: Entity view captured by the dispatch closure.
+
             """
             _v.set_data("wake-up", wp.zeros(0, dtype=wp.int32), indices)
 
@@ -1335,6 +1352,7 @@ def _attach_warp_dispatch(
                 indices: Optional entity index buffer. Use ``None`` to affect
                     every entity in the view.
                 _v: Entity view captured by the dispatch closure.
+
             """
             _v.set_data("put-to-sleep", wp.zeros(1, dtype=wp.float32), indices)
 
@@ -1384,92 +1402,54 @@ def _attach_warp_dispatch(
     return view
 
 
-def _wrap_view_factory(sim_view: SimulationView, attr_name: str) -> None:
-    raw = getattr(sim_view.__class__, attr_name, None)
-    if raw is None:
-        return
-
-    def factory(
-        *args: object,
-        _sim: SimulationView = sim_view,
-        _raw: Callable[..., EntityView | None] = raw,
-        **kwargs: object,
-    ) -> EntityView | None:
-        """Create an entity view and attach Warp dispatch.
-
-        Args:
-            *args: Positional arguments accepted by the native view factory.
-            _sim: Simulation view captured by the factory closure.
-            _raw: Native view factory captured by the factory closure.
-            **kwargs: Keyword arguments accepted by the native view factory.
-
-        Returns:
-            Entity view augmented with Warp dispatch, or ``None`` when the
-            registered native factory returns no view. A valid empty view is
-            returned unchanged rather than converted to ``None``.
-
-        Raises:
-            ValueError: If the first positional argument is an empty sequence
-                of patterns.
-        """
-        # A str routes to the single-pattern overload; a list/tuple of patterns to the
-        # C++ vector<string> overload (nanobind dispatch), which resolves each element
-        # in caller order with first-wins dedup (an all-miss list -> a 0-entity view).
-        # Reject an empty list: it has no pattern to resolve and would otherwise fall
-        # back to an ambiguous empty-string pattern in C++. List elements are passed to
-        # ovphysx verbatim as globs -- the former shim that rewrote regex-style ".*" ->
-        # "*" for list inputs was removed; single-string callers were never affected,
-        # and list callers are assumed to pass globs or explicit prim paths.
-        if args and isinstance(args[0], (list, tuple)) and len(args[0]) == 0:
-            raise ValueError(f"{attr_name}: pattern list must be non-empty")
-        view = _raw(_sim, *args, **kwargs)
-        # Pass the sim (not a baked ordinal) so get_data reads the device lazily;
-        # ovphysx resolves it on the first simulate(), after this view is created.
-        return _attach_warp_dispatch(view, _sim, attr_name)
-
-    setattr(sim_view, attr_name, factory)
-
-
-def create_simulation_view(
+def create_entity(
     engine: str,
-    stage_id: int,
-    frontend_name: str | None = "warp",
-) -> SimulationView | None:
-    """Create a Warp-backed simulation view.
+    entity_name: str,
+    paths: str | Sequence[str],
+    options: dict[str, object] | None = None,
+    device_ordinal: int | None = None,
+) -> EntityView | None:
+    """Create a Warp-backed entity view from a registered engine factory.
 
     Args:
-        engine: Exact, case-sensitive name of a registered physics engine.
-        stage_id: Numeric USD stage identifier understood by the engine
-            adapter.
-        frontend_name: Tensor frontend name. Use ``"warp"`` or ``None`` to
-            select the Warp frontend.
+        engine: Exact, case-sensitive name of a registered simulation.
+        entity_name: Registered entity type, such as ``"articulation"`` or
+            ``"rigid-contact"``.
+        paths: One prim-path pattern, or a sequence of patterns and explicit
+            prim paths, selecting the entities. Elements are passed to the
+            engine verbatim as globs. A single pattern is expanded by the
+            engine; several are resolved and concatenated in the given order.
+        options: Engine-defined construction arguments that paths alone cannot
+            express, such as a contact view's ``"filter-patterns"`` and
+            ``"max-contact-data-count"`` or an SDF view's ``"num-points"``. An
+            engine ignores the option names it does not read.
+        device_ordinal: Ordinal of the device holding the view's tensors, or
+            ``None`` to leave the engine's own value in place. Only engines
+            that cannot report their device need this; the value may also be
+            assigned later through the view's ``device_ordinal`` attribute,
+            since each read re-reads it.
 
     Returns:
-        Simulation view returned by the registered engine factory, or ``None``
-        when that factory elects not to create a view.
+        Entity view augmented with Warp dispatch, or ``None`` when the
+        registered factory elects not to create one. A valid empty view is
+        returned unchanged rather than converted to ``None``.
 
     Raises:
-        ValueError: If ``frontend_name`` selects an unsupported frontend.
-        IndexError: If ``engine`` has no registered simulation-view factory.
+        ValueError: If ``paths`` is empty or contains an empty pattern.
+        IndexError: If ``engine`` has no factory for ``entity_name``.
 
     """
-    if frontend_name not in (None, "warp"):
-        raise ValueError(f"isaacsim.physics.manager supports only Warp; received frontend_name={frontend_name!r}")
-    sim = _create_simulation_view_raw(engine, "warp", stage_id)
-    if sim is None:
-        return sim
-    for attr in (
-        "create_articulation_view",
-        "create_rigid_body_view",
-        "create_rigid_contact_view",
-        "create_volume_deformable_body_view",
-        "create_surface_deformable_body_view",
-        "create_deformable_material_view",
-        "create_sdf_shape_view",
-    ):
-        _wrap_view_factory(sim, attr)
-
-    return sim
+    # A bare pattern is one path, not a sequence of characters. `str` satisfies `Sequence[str]`, so
+    # list() would otherwise split it silently into a per-character path list that matches nothing.
+    path_list = [paths] if isinstance(paths, str) else list(paths)
+    # Reject an empty selection, whether written as an empty list or an empty pattern: neither has
+    # anything to resolve, and an empty pattern is the ambiguous match-nothing/match-all case in C++.
+    if not path_list or any(not path for path in path_list):
+        raise ValueError(f"create_entity: {entity_name!r} requires non-empty prim-path patterns")
+    view = _create_entity_raw(engine, entity_name, path_list, options)
+    if view is not None and device_ordinal is not None:
+        view.device_ordinal = int(device_ordinal)
+    return _attach_warp_dispatch(view, entity_name)
 
 
 __all__ = [
@@ -1483,14 +1463,11 @@ __all__ = [
     "ImplKind",
     "JointType",
     "ObjectType",
-    "SimulationView",
     "TensorDesc",
     "TensorRegistry",
     "TensorSpec",
     "create_entity",
-    "create_simulation_view",
     "frontends",
     "get_registry",
     "register_entity",
-    "register_simulation_view",
 ]

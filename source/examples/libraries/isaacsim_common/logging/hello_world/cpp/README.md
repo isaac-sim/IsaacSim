@@ -5,10 +5,4 @@ SPDX-License-Identifier: Apache-2.0
 
 # C++ Hello World
 
-This example builds a C++ executable that reports through the public `isaacsim.common.logging` C++ API.
-
-The executable exits with status zero and prints:
-
-```text
-[isaacsim.examples.hello_world.cpp] Hello World from C++.
-```
+`Main.cpp` reports a message through the public `isaacsim.common.logging` C++ API.

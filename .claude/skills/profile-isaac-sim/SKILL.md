@@ -3,7 +3,7 @@ name: profile-isaac-sim
 description: "Profile Isaac Sim with benchmark scripts and Tracy captures. Use when measuring or optimizing frame times."
 license: Apache-2.0
 metadata:
-  author: Chris Dodd
+  author: Chris Dodd <info@nvidia.com>
 ---
 
 # Profile Isaac Sim Performance

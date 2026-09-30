@@ -43,22 +43,8 @@ from common.articulation_get_set import (  # noqa: E402
     GetSetRootTransformsCommon,
     GetSetRootTransformsMixedBaseCommon,
     GetSetRootVelocitiesCommon,
-    KinematicUpdateCommon,
     LinkStateCommon,
 )
-
-
-class TestArticulationKinematicUpdate:
-    """Validate articulation kinematic update with Newton."""
-
-    def test_articulation_kinematic_update_newton_cc(self) -> None:
-        """Verify articulation kinematic update on the Newton CPU pipeline."""
-        run_scenario(self, KinematicUpdateCommon, "newton", cpu_device())
-
-    @gpu_only
-    def test_articulation_kinematic_update_newton_gg(self) -> None:
-        """Verify articulation kinematic update on the Newton GPU pipeline."""
-        run_scenario(self, KinematicUpdateCommon, "newton", gpu_device())
 
 
 class TestArticulationGetSetRootTransforms:

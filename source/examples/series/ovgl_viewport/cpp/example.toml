@@ -3,12 +3,12 @@
 
 id = "ovgl_viewport.cpp"
 title = "OVGL Viewport"
-summary = "Load a USD stage into OVStage and inspect it interactively with the OVGL renderer."
+summary = "Load a USD stage into OVStage and inspect it with the interactive OVGL debug viewport."
 owners = [
     "isaacsim.foundation.objects",
     "isaacsim.ovgl_viewport.debug",
 ]
-topics = ["cpp", "rendering", "usd", "viewport"]
+topics = ["rendering", "usd", "viewport"]
 
 [build]
 adapter = "cmake"

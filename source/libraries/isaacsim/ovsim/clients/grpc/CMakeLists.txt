@@ -19,6 +19,9 @@ isaacsim_add_module(
     EXPORT_MACRO ISAACSIM_OVSIM_CLIENTS_GRPC_API
     PUBLIC_DEPENDENCIES
         isaacsim::common-array
+    PRIVATE_DEPENDENCIES
+        isaacsim::ovsim-protos-grpc
+        gRPC::grpc++
     PUBLIC_CPP_HEADERS
         isaacsim/ovsim/clients/grpc/GrpcSession.hpp
     SOURCES
@@ -28,23 +31,20 @@ isaacsim_add_module(
 target_include_directories(isaacsim-ovsim-clients-grpc PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/ovsim/interfaces/cpp>
 )
-
-# The public wrapper includes the canonical OV Sim interface headers,
-# so ship those headers with the same development component.
-get_target_property(isaacsim_ovsim_clients_grpc_group isaacsim-ovsim-clients-grpc ISAACSIM_GROUP_NAME)
-_isaacsim_get_group_component(
-    "${isaacsim_ovsim_clients_grpc_group}" development isaacsim_ovsim_clients_grpc_development_component
-)
-install(DIRECTORY "${CMAKE_SOURCE_DIR}/ovsim/interfaces/cpp/ovsim"
-    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-    COMPONENT "${isaacsim_ovsim_clients_grpc_development_component}"
-    FILES_MATCHING PATTERN "*.hpp"
-)
+if(UNIX AND NOT APPLE)
+    target_link_libraries(isaacsim-ovsim-clients-grpc PUBLIC
+        "$<BUILD_INTERFACE:${ISAACSIM_PUBLIC_DEPS_ROOT}/lib/libstdc++.so.6>"
+        "$<INSTALL_INTERFACE:$<INSTALL_PREFIX>/${CMAKE_INSTALL_LIBDIR}/libstdc++.so.6>"
+    )
+endif()
 
 isaacsim_add_cpp_tests(
     MODULE isaacsim.ovsim.clients.grpc
     SOURCES
         tests/cpp/GrpcSession.cpp
+    DEPENDENCIES
+        isaacsim::ovsim-protos-grpc
+        gRPC::grpc++
     LABELS
         unit
 )

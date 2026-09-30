@@ -144,6 +144,19 @@ ISAACSIM_PHYSICS_MANAGER_API void fetchResults();
 ISAACSIM_PHYSICS_MANAGER_API bool checkResults();
 
 /**
+ * @brief Publishes the latest simulated transforms to the stages attached to active physics backends.
+ *
+ * @return `true` if at least one active backend participated and every active backend published successfully;
+ *         `false` if no backend participated, a backend does not support publication, or a backend reported failure.
+ *
+ * @note This operation does not advance simulation.
+ * @note If several backends are active, an earlier backend may have published before a later backend reports failure.
+ * @note Exceptions raised by a backend publication callback propagate to the caller and prevent dispatch to later
+ *       backends.
+ */
+ISAACSIM_PHYSICS_MANAGER_API bool publishTransformsToStage();
+
+/**
  * @brief Forces every active physics backend to process buffered scene changes.
  *
  * Use this function when a later edit depends on an earlier buffered edit. For example, flush after adding a prim and

@@ -13,20 +13,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Compile-time signature verification for isaacsim::ovsim::physics.
+// Compile-time signature verification for isaacsim::ovsim::clients::local.
 //
 // Each assignment below checks that the concrete free function in the
-// physics namespace is assignable to the canonical iface type alias (a
+// local client namespace is assignable to the canonical interface type alias (a
 // std::function). This catches gross mismatches (wrong parameter count,
 // unrelated types) at compile time, but — unlike a raw function-pointer
 // alias — std::function also accepts any callable whose return type and
 // parameters are merely convertible, so a same-shaped-but-not-identical
 // signature can still compile. Nothing here runs at runtime.
 //
-// New packages (isaacsim_physics, …) must provide an equivalent Verify.cpp
-// that checks their own implementations against the same iface aliases.
+// New packages must provide an equivalent VerifyInterfaces.cpp that checks their
+// own implementations against the same interface aliases.
 //
-// Note: iface aliases do not carry default argument values (defaults are not
+// Note: interface aliases do not carry default argument values (defaults are not
 // part of a std::function's type).  Callers invoking through an alias must
 // always pass every parameter explicitly, even those that have defaults in
 // the concrete declaration.
@@ -41,51 +41,55 @@
 namespace
 {
 
-namespace iface_authoring = ovsim::interfaces::control::authoring;
-namespace iface_simulation = ovsim::interfaces::control::simulation;
-namespace iface_data = ovsim::interfaces::data;
-namespace ns_control = isaacsim::ovsim::clients::local::control;
-namespace ns_data = isaacsim::ovsim::clients::local::data;
+namespace authoringInterface = ovsim::interfaces::control::authoring;
+namespace simulationInterface = ovsim::interfaces::control::simulation;
+namespace dataInterface = ovsim::interfaces::data;
+namespace localControl = isaacsim::ovsim::clients::local::control;
+namespace localData = isaacsim::ovsim::clients::local::data;
 
 // Data
-[[maybe_unused]] iface_data::ReadFn _read = &ns_data::read;
-[[maybe_unused]] iface_data::WriteFn _write = &ns_data::write;
+[[maybe_unused]] const dataInterface::ReadFunction g_kRead = &localData::read;
+[[maybe_unused]] const dataInterface::WriteFunction g_kWrite = &localData::write;
 
 // Control
 // - Authoring
 // -- Stage operations
-[[maybe_unused]] iface_authoring::CreateStageFn _createStage = &ns_control::authoring::createStage;
-[[maybe_unused]] iface_authoring::OpenStageFn _openStage = &ns_control::authoring::openStage;
-[[maybe_unused]] iface_authoring::SaveStageFn _saveStage = &ns_control::authoring::saveStage;
-[[maybe_unused]] iface_authoring::ImportStageFromStringFn _importStageFromString =
-    &ns_control::authoring::importStageFromString;
-[[maybe_unused]] iface_authoring::ExportStageToStringFn _exportStageToString =
-    &ns_control::authoring::exportStageToString;
-[[maybe_unused]] iface_authoring::CloseStageFn _closeStage = &ns_control::authoring::closeStage;
-[[maybe_unused]] iface_authoring::AddReferenceToStageFn _addReferenceToStage =
-    &ns_control::authoring::addReferenceToStage;
+[[maybe_unused]] const authoringInterface::CreateStageFunction g_kCreateStage = &localControl::authoring::createStage;
+[[maybe_unused]] const authoringInterface::OpenStageFunction g_kOpenStage = &localControl::authoring::openStage;
+[[maybe_unused]] const authoringInterface::SaveStageFunction g_kSaveStage = &localControl::authoring::saveStage;
+[[maybe_unused]] const authoringInterface::ImportStageFromStringFunction g_kImportStageFromString =
+    &localControl::authoring::importStageFromString;
+[[maybe_unused]] const authoringInterface::ExportStageToStringFunction g_kExportStageToString =
+    &localControl::authoring::exportStageToString;
+[[maybe_unused]] const authoringInterface::CloseStageFunction g_kCloseStage = &localControl::authoring::closeStage;
+[[maybe_unused]] const authoringInterface::AddReferenceToStageFunction g_kAddReferenceToStage =
+    &localControl::authoring::addReferenceToStage;
 // -- Prim operations
-[[maybe_unused]] iface_authoring::DefinePrimFn _definePrim = &ns_control::authoring::definePrim;
-[[maybe_unused]] iface_authoring::MovePrimFn _movePrim = &ns_control::authoring::movePrim;
-[[maybe_unused]] iface_authoring::RemovePrimFn _removePrim = &ns_control::authoring::removePrim;
+[[maybe_unused]] const authoringInterface::DefinePrimFunction g_kDefinePrim = &localControl::authoring::definePrim;
+[[maybe_unused]] const authoringInterface::MovePrimFunction g_kMovePrim = &localControl::authoring::movePrim;
+[[maybe_unused]] const authoringInterface::RemovePrimFunction g_kRemovePrim = &localControl::authoring::removePrim;
 // -- Attribute operations
-[[maybe_unused]] iface_authoring::CreatePrimAttributeFn _createPrimAttribute =
-    &ns_control::authoring::createPrimAttribute;
-[[maybe_unused]] iface_authoring::RemovePrimAttributeFn _removePrimAttribute =
-    &ns_control::authoring::removePrimAttribute;
+[[maybe_unused]] const authoringInterface::CreatePrimAttributeFunction g_kCreatePrimAttribute =
+    &localControl::authoring::createPrimAttribute;
+[[maybe_unused]] const authoringInterface::RemovePrimAttributeFunction g_kRemovePrimAttribute =
+    &localControl::authoring::removePrimAttribute;
 // -- Parameters
-[[maybe_unused]] iface_authoring::SetParameterFn _authoring_setParameter = &ns_control::authoring::setParameter;
-[[maybe_unused]] iface_authoring::GetParameterFn _authoring_getParameter = &ns_control::authoring::getParameter;
+[[maybe_unused]] const authoringInterface::SetParameterFunction g_kSetAuthoringParameter =
+    &localControl::authoring::setParameter;
+[[maybe_unused]] const authoringInterface::GetParameterFunction g_kGetAuthoringParameter =
+    &localControl::authoring::getParameter;
 // - Simulation
 // -- Lifecycle operations
-[[maybe_unused]] iface_simulation::PlayFn _play = &ns_control::simulation::play;
-[[maybe_unused]] iface_simulation::PauseFn _pause = &ns_control::simulation::pause;
-[[maybe_unused]] iface_simulation::StopFn _stop = &ns_control::simulation::stop;
-[[maybe_unused]] iface_simulation::InitializeFn _initialize = &ns_control::simulation::initialize;
-[[maybe_unused]] iface_simulation::InvalidateFn _invalidate = &ns_control::simulation::invalidate;
-[[maybe_unused]] iface_simulation::StepFn _step = &ns_control::simulation::step;
+[[maybe_unused]] const simulationInterface::PlayFunction g_kPlay = &localControl::simulation::play;
+[[maybe_unused]] const simulationInterface::PauseFunction g_kPause = &localControl::simulation::pause;
+[[maybe_unused]] const simulationInterface::StopFunction g_kStop = &localControl::simulation::stop;
+[[maybe_unused]] const simulationInterface::InitializeFunction g_kInitialize = &localControl::simulation::initialize;
+[[maybe_unused]] const simulationInterface::InvalidateFunction g_kInvalidate = &localControl::simulation::invalidate;
+[[maybe_unused]] const simulationInterface::StepFunction g_kStep = &localControl::simulation::step;
 // -- Parameters
-[[maybe_unused]] iface_simulation::SetParameterFn _simulation_setParameter = &ns_control::simulation::setParameter;
-[[maybe_unused]] iface_simulation::GetParameterFn _simulation_getParameter = &ns_control::simulation::getParameter;
+[[maybe_unused]] const simulationInterface::SetParameterFunction g_kSetSimulationParameter =
+    &localControl::simulation::setParameter;
+[[maybe_unused]] const simulationInterface::GetParameterFunction g_kGetSimulationParameter =
+    &localControl::simulation::getParameter;
 
 } // namespace

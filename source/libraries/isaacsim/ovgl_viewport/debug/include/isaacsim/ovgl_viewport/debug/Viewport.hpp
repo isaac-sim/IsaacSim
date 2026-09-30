@@ -52,15 +52,15 @@ struct CameraPose
 {
     /** @brief Camera position in stage coordinates. */
     std::array<double, 3> position{ 0.0, 0.0, 0.0 };
-    /** @brief Camera orientation as a scalar-first quaternion. */
-    std::array<double, 4> orientation{ 1.0, 0.0, 0.0, 0.0 };
+    /** @brief Camera orientation as an xyzw-ordered quaternion. */
+    std::array<double, 4> orientation{ 0.0, 0.0, 0.0, 1.0 };
 };
 
 /** @brief Application callback that authors a debug camera pose on its stage. */
 using CameraPoseWriter = std::function<void(const CameraPose&)>;
 
 /** @brief Configuration for one concrete OVGL debug viewport. */
-struct ViewportConfig
+struct ViewportConfiguration
 {
     /** @brief Absolute path of the authored RenderProduct to display. */
     std::string renderProductPath;
@@ -78,7 +78,7 @@ struct ViewportConfig
     Camera camera;
 };
 
-/** @brief One OVGL-rendered, top-down RGBA8 frame. */
+/** @brief Metadata and optional pixels for one OVGL-rendered frame. */
 struct Frame
 {
     /** @brief Monotonic number assigned by this viewport. */
@@ -89,7 +89,7 @@ struct Frame
     uint32_t width{ 0 };
     /** @brief Image height in pixels. */
     uint32_t height{ 0 };
-    /** @brief Tightly packed, top-down RGBA8 pixels. */
+    /** @brief Tightly packed, top-down RGBA8 pixels, populated only for an invisible viewport. */
     std::vector<std::byte> rgba;
 };
 
@@ -112,24 +112,36 @@ public:
      * @brief Create and attach an OVGL viewport to an OVStage.
      * @param[in] stage Borrowed OVStage instance that outlives the viewport.
      * @param[in] cameraPoseWriter Callback used to author poses on the configured camera prim.
-     * @param[in] config RenderProduct, window, and debug navigation configuration.
+     * @param[in] configuration RenderProduct, window, and debug navigation configuration.
      * @throws std::invalid_argument If an argument or configuration value is invalid.
      * @throws std::runtime_error If OVGL, SDL video, OpenGL context, or presentation-window initialization fails.
      */
-    Viewport(ovstage_instance_t* stage, CameraPoseWriter cameraPoseWriter, ViewportConfig config);
+    Viewport(ovstage_instance_t* stage, CameraPoseWriter cameraPoseWriter, ViewportConfiguration configuration);
+
+    /** @brief Release rendering and window resources. */
     ~Viewport();
 
     Viewport(const Viewport&) = delete;
     Viewport& operator=(const Viewport&) = delete;
 
-    /** @brief Move-construct a viewport by transferring its attached renderer and window state. */
-    Viewport(Viewport&&) noexcept;
+    /**
+     * @brief Move-construct a viewport by transferring its attached renderer and window state.
+     * @param[in,out] other Viewport whose resources are transferred.
+     */
+    Viewport(Viewport&& other) noexcept;
 
     /**
      * @brief Move-assign a viewport by transferring its attached renderer and window state.
+     * @param[in,out] other Viewport whose resources are transferred.
      * @return Reference to this viewport.
      */
-    Viewport& operator=(Viewport&&) noexcept;
+    Viewport& operator=(Viewport&& other) noexcept;
+
+    /** @brief Release rendering and window resources. Calling this method more than once is safe. */
+    void close() noexcept;
+
+    /** @brief Return whether the viewport has released its rendering resources. */
+    bool isClosed() const noexcept;
 
     /**
      * @brief Process pending input and publish a changed debug camera pose.
@@ -139,14 +151,18 @@ public:
 
     /**
      * @brief Render the latest sealed OVStage ordinal and present it when visible.
+     *
+     * Visible rendering remains entirely on the GPU and returns frame metadata with an empty RGBA payload. Invisible
+     * rendering reads back and returns the captured RGBA pixels.
+     *
      * @return Borrowed frame data valid until the next render or viewport destruction.
      * @throws std::runtime_error If OVGL cannot render the configured RenderProduct.
      */
     const Frame& render();
 
 private:
-    class Impl;
-    std::unique_ptr<Impl> m_impl;
+    class Implementation;
+    std::unique_ptr<Implementation> m_implementation;
 };
 
 } // namespace debug

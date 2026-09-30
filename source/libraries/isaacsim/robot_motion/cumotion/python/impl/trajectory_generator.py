@@ -57,7 +57,8 @@ class TrajectoryGenerator:
     ) -> None:
         if not set(cumotion_robot.controlled_joint_names).issubset(set(robot_joint_space)):
             raise ValueError(
-                f"Cumotion controlled joints {cumotion_robot.controlled_joint_names} are not a subset of the robot_joint_space {robot_joint_space}."
+                f"Cumotion controlled joints {cumotion_robot.controlled_joint_names} are not a subset of the "
+                f"robot_joint_space {robot_joint_space}."
             )
 
         self._cumotion_robot = cumotion_robot

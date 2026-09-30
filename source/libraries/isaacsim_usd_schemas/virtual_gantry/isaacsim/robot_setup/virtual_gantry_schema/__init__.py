@@ -21,7 +21,7 @@ world transform is the anchor of a one-sided spring-damper rope. Kept out of
 
 The owning extension loads at ``order = -100`` (the schema tier) so the prim
 type is registered before anything that depends on it starts. USD builds its
-concrete prim-type catalogue once, at startup: a schema plugin registered later
+concrete prim-type catalog once, at startup: a schema plugin registered later
 gets a TfType but no prim definition, and the type then fails ``IsA(Xformable)``
 with no error reported.
 """

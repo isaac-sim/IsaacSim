@@ -26,12 +26,8 @@ namespace lights
 
 DistantLight::DistantLight(const std::variant<std::string, std::vector<std::string>>& paths,
                            const std::optional<array::Array>& angles,
-                           const std::optional<array::Array>& positions,
-                           const std::optional<array::Array>& translations,
-                           const std::optional<array::Array>& orientations,
-                           const std::optional<array::Array>& scales,
                            bool resetXformOpProperties)
-    : Light(paths, /*lightType=*/"DistantLight", positions, translations, orientations, scales, resetXformOpProperties)
+    : Light(paths, /*lightType=*/"DistantLight", resetXformOpProperties)
 {
     // Initialize instance from arguments.
     if (angles.has_value())
@@ -49,6 +45,11 @@ void DistantLight::setAngles(const array::Array& angles, const std::optional<arr
 array::Array DistantLight::getAngles(const std::optional<array::Array>& indices)
 {
     return std::get<array::Array>(this->getAttributeValues("inputs:angle", indices));
+}
+
+array::Array DistantLight::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("DistantLight");
 }
 
 } // namespace lights

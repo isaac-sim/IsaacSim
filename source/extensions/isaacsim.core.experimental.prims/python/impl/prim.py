@@ -182,6 +182,7 @@ class Prim(ABC):
 
         If a prim doesn't have the API schema, it will be applied.
         If it already has it, the existing API schema will be returned.
+        For the api is multi-apply, instance name must be provided as the first argument in *args.
 
         Args:
             prims: List of USD Prims to ensure API schema on.
@@ -191,6 +192,9 @@ class Prim(ABC):
 
         Returns:
             List of API schema objects, one for each input prim.
+
+        Raises:
+            ValueError: If the API schema is multi-apply, but no instance name is provided.
 
         Example:
 
@@ -205,7 +209,19 @@ class Prim(ABC):
             >>> usd_prims = [prim_utils.get_prim_at_path(f"/World/prim_{i}") for i in range(3)]
             >>> physics_apis = Prim.ensure_api(usd_prims, UsdPhysics.RigidBodyAPI)
         """
-        return [api(prim, *args, **kwargs) if prim.HasAPI(api) else api.Apply(prim, *args, **kwargs) for prim in prims]
+        if Usd.SchemaRegistry().IsMultipleApplyAPISchema(api):
+            # Multi-apply API schema does not support HasAPI check, we will have to check the instances.
+            # Instance name should be passed in as the first argument in *args.
+            if len(args) == 0:
+                raise ValueError("Can not ensure api:\n" "No instance name provided for multi-apply API schema")
+            return [
+                api(prim, *args, **kwargs) if args[0] in api.GetAll(prim) else api.Apply(prim, *args, **kwargs)
+                for prim in prims
+            ]
+        else:
+            return [
+                api(prim, *args, **kwargs) if prim.HasAPI(api) else api.Apply(prim, *args, **kwargs) for prim in prims
+            ]
 
     @staticmethod
     def resolve_paths(paths: str | list[str], raise_on_mixed_paths: bool = True) -> tuple[list[str], list[str]]:

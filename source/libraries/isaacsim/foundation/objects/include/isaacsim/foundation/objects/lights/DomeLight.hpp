@@ -38,18 +38,13 @@ class ISAACSIM_FOUNDATION_OBJECTS_API DomeLight : public Light
 {
 public:
     /**
-     * @brief Construct a DomeLight wrapper and optionally configure the initial environment map and transform.
+     * @brief Construct a DomeLight wrapper and optionally configure the initial environment map.
      * @param[in] paths                  Single path or list of paths to USD dome light prims.
      * @param[in] radii                  Initial guide sphere radii in scene units (shape @c (N,)). Optional.
      * @param[in] textureFiles           Paths to HDR environment map files. Single value or list. Optional.
      * @param[in] textureFormats         Texture mapping format tokens (e.g. @c "latlong", @c "mirroredBall",
      *                                   @c "angular"). Single value or list. Optional.
-     * @param[in] positions              Initial world-frame positions (shape @c (N,3)). Optional.
-     * @param[in] translations           Initial local-frame translations (shape @c (N,3)). Optional.
-     * @param[in] orientations           Initial orientations as quaternions @c wxyz (shape @c (N,4)). Optional.
-     * @param[in] scales                 Initial local scales (shape @c (N,3)). Optional.
-     * @param[in] resetXformOpProperties Whether to normalize the xformOp stack before applying the
-     *                                   initial transform.
+     * @param[in] resetXformOpProperties Whether to normalize the xformOp stack to translate/orient/scale.
      */
     DomeLight(const std::variant<std::string, std::vector<std::string>>& paths,
               // DomeLight
@@ -57,12 +52,19 @@ public:
               const std::optional<std::variant<std::string, std::vector<std::string>>>& textureFiles = std::nullopt,
               const std::optional<std::variant<std::string, std::vector<std::string>>>& textureFormats = std::nullopt,
               // Xform
-              const std::optional<array::Array>& positions = std::nullopt,
-              const std::optional<array::Array>& translations = std::nullopt,
-              const std::optional<array::Array>& orientations = std::nullopt,
-              const std::optional<array::Array>& scales = std::nullopt,
               bool resetXformOpProperties = true);
     ~DomeLight() = default;
+
+    /**
+     * @brief Check whether the prims at the given paths are of the type handled by this class.
+     * @details The paths are resolved against the active stage before being checked.
+     *          Since this method is static, the returned array is always allocated on the CPU.
+     * @param[in] paths Single path string or list of path strings. May include regular
+     *                  expressions that are expanded against the active stage.
+     * @return Boolean flags (dtype bool, shape @c (N,1)), one per resolved prim.
+     * @throws std::runtime_error if the given paths do not correspond to existing prims.
+     */
+    static array::Array areOfType(const std::variant<std::string, std::vector<std::string>>& paths);
 
     /**
      * @brief Set the guide sphere radii (in scene units) of the selected dome light prims.

@@ -47,7 +47,7 @@ public:
     }
 
 private:
-    bool loadArchive(const std::string& archive, const std::vector<uint8_t>*& bytes, std::string& error);
+    bool _loadArchive(const std::string& archive, const std::vector<uint8_t>*& bytes, std::string& error);
 
     std::unordered_map<std::string, std::vector<uint8_t>> m_archives;
     size_t m_archiveLoadCount = 0;

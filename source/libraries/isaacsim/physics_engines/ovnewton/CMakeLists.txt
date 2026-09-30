@@ -15,6 +15,7 @@
 
 isaacsim_add_python_module(
     NAME isaacsim.physics_engines.ovnewton
+    REQUIRES_BINDINGS
 )
 
 isaacsim_add_python_tests(

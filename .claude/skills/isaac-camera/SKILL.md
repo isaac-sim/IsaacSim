@@ -3,7 +3,7 @@ name: isaac-camera
 description: "USD camera setup, render products, intrinsics, and lens distortion. Use when configuring Isaac Sim cameras."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Camera (Isaac Sim 6 / Kit 110)

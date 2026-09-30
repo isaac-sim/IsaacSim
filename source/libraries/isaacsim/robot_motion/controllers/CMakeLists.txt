@@ -15,11 +15,10 @@
 
 isaacsim_add_python_module(
     NAME isaacsim.robot_motion.controllers
+    REQUIRES_BINDINGS
 )
 
-if(BUILD_TESTING AND ISAACSIM_ENABLE_PYTHON)
-    isaacsim_add_python_tests(
-        MODULE isaacsim.robot_motion.controllers
-        REQUIRES_BINDINGS
-    )
-endif()
+isaacsim_add_python_tests(
+    MODULE isaacsim.robot_motion.controllers
+    REQUIRES_BINDINGS
+)

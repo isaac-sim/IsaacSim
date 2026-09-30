@@ -165,7 +165,7 @@ class SdfDistancesAndGradientsCommon(GridTestBase):
         """Create the SDF shape view for all replicated cubes.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.view = sim.create_sdf_shape_view("/envs/*/cube", self.max_q)
@@ -174,7 +174,7 @@ class SdfDistancesAndGradientsCommon(GridTestBase):
         """Evaluate SDF queries after collision cooking completes.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 
@@ -297,7 +297,7 @@ class SdfQueryCapacityResizeCommon(SdfDistancesAndGradientsCommon):
         """Create the SDF view at the initial single-point extent.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.view = sim.create_sdf_shape_view("/envs/*/cube", self.initial_max_q)
@@ -307,6 +307,7 @@ class SdfQueryCapacityResizeCommon(SdfDistancesAndGradientsCommon):
 
         Returns:
             Second axis of the declared ``[N, maxQ, 4]`` output shape.
+
         """
         spec = self.view.get_impl_spec("distances-and-gradients", t.ImplKind.Get)
         return int(spec.shape_hint[1])
@@ -319,6 +320,7 @@ class SdfQueryCapacityResizeCommon(SdfDistancesAndGradientsCommon):
 
         Returns:
             Result reshaped to ``[N, Q, 4]``.
+
         """
         import warp as wp
 
@@ -337,6 +339,7 @@ class SdfQueryCapacityResizeCommon(SdfDistancesAndGradientsCommon):
             values: Evaluated ``[N, Q, 4]`` results.
             query_points: Query points the results correspond to.
             label: Phase name used in assertion messages.
+
         """
         expected_distances, expected_gradients = _analytic_box_sdf(query_points, self.half)
         for env in range(values.shape[0]):
@@ -351,7 +354,7 @@ class SdfQueryCapacityResizeCommon(SdfDistancesAndGradientsCommon):
         """Grow, then shrink, the query extent and verify the results stay correct.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based simulation step number.
             dt: Simulated time interval in seconds.
 

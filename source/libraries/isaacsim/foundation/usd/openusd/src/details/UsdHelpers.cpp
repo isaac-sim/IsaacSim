@@ -13,8 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "UsdHelpers.hpp"
+
 #include <isaacsim/common/exceptions/Exceptions.hpp>
-#include <isaacsim/foundation/usd/openusd/details/UsdHelpers.hpp>
 #include <pxr/base/gf/half.h>
 #include <pxr/base/gf/matrix2d.h>
 #include <pxr/base/gf/matrix3d.h>
@@ -199,7 +200,7 @@ AttributeValue readScalarArray(const PXR_NS::UsdAttribute& attribute)
 
 // GfVecNT -> std::vector<ScalarT>; static_cast handles GfHalf -> float
 template <typename GfVecT, typename ScalarT, int N>
-AttributeValue readGfVec(const PXR_NS::UsdAttribute& attribute)
+AttributeValue readGfVector(const PXR_NS::UsdAttribute& attribute)
 {
     GfVecT v{};
     attribute.Get(&v);
@@ -255,7 +256,7 @@ AttributeValue readGfMatrixArray(const PXR_NS::UsdAttribute& attribute)
 
 // GfQuat* -> std::vector<ScalarT> [ix, iy, iz, w]; static_cast handles GfHalf -> float
 template <typename GfQuatT, typename ScalarT>
-AttributeValue readGfQuat(const PXR_NS::UsdAttribute& attribute)
+AttributeValue readGfQuaternion(const PXR_NS::UsdAttribute& attribute)
 {
     GfQuatT q{};
     attribute.Get(&q);
@@ -322,18 +323,18 @@ std::unordered_map<std::string, std::function<AttributeValue(const PXR_NS::UsdAt
     { "timecode[]",     readTimeCodeArray },
 
     // GfVec2d
-    { "double2",        readGfVec<PXR_NS::GfVec2d, double, 2> },
-    { "texCoord2d",     readGfVec<PXR_NS::GfVec2d, double, 2> },
+    { "double2",        readGfVector<PXR_NS::GfVec2d, double, 2> },
+    { "texCoord2d",     readGfVector<PXR_NS::GfVec2d, double, 2> },
     { "double2[]",      readGfVecArray<PXR_NS::GfVec2d, double, 2> },
     { "texCoord2d[]",   readGfVecArray<PXR_NS::GfVec2d, double, 2> },
 
     // GfVec3d
-    { "double3",        readGfVec<PXR_NS::GfVec3d, double, 3> },
-    { "color3d",        readGfVec<PXR_NS::GfVec3d, double, 3> },
-    { "normal3d",       readGfVec<PXR_NS::GfVec3d, double, 3> },
-    { "point3d",        readGfVec<PXR_NS::GfVec3d, double, 3> },
-    { "vector3d",       readGfVec<PXR_NS::GfVec3d, double, 3> },
-    { "texCoord3d",     readGfVec<PXR_NS::GfVec3d, double, 3> },
+    { "double3",        readGfVector<PXR_NS::GfVec3d, double, 3> },
+    { "color3d",        readGfVector<PXR_NS::GfVec3d, double, 3> },
+    { "normal3d",       readGfVector<PXR_NS::GfVec3d, double, 3> },
+    { "point3d",        readGfVector<PXR_NS::GfVec3d, double, 3> },
+    { "vector3d",       readGfVector<PXR_NS::GfVec3d, double, 3> },
+    { "texCoord3d",     readGfVector<PXR_NS::GfVec3d, double, 3> },
     { "double3[]",      readGfVecArray<PXR_NS::GfVec3d, double, 3> },
     { "color3d[]",      readGfVecArray<PXR_NS::GfVec3d, double, 3> },
     { "normal3d[]",     readGfVecArray<PXR_NS::GfVec3d, double, 3> },
@@ -342,24 +343,24 @@ std::unordered_map<std::string, std::function<AttributeValue(const PXR_NS::UsdAt
     { "texCoord3d[]",   readGfVecArray<PXR_NS::GfVec3d, double, 3> },
 
     // GfVec4d
-    { "double4",        readGfVec<PXR_NS::GfVec4d, double, 4> },
-    { "color4d",        readGfVec<PXR_NS::GfVec4d, double, 4> },
+    { "double4",        readGfVector<PXR_NS::GfVec4d, double, 4> },
+    { "color4d",        readGfVector<PXR_NS::GfVec4d, double, 4> },
     { "double4[]",      readGfVecArray<PXR_NS::GfVec4d, double, 4> },
     { "color4d[]",      readGfVecArray<PXR_NS::GfVec4d, double, 4> },
 
     // GfVec2f
-    { "float2",         readGfVec<PXR_NS::GfVec2f, float, 2> },
-    { "texCoord2f",     readGfVec<PXR_NS::GfVec2f, float, 2> },
+    { "float2",         readGfVector<PXR_NS::GfVec2f, float, 2> },
+    { "texCoord2f",     readGfVector<PXR_NS::GfVec2f, float, 2> },
     { "float2[]",       readGfVecArray<PXR_NS::GfVec2f, float, 2> },
     { "texCoord2f[]",   readGfVecArray<PXR_NS::GfVec2f, float, 2> },
 
     // GfVec3f
-    { "float3",         readGfVec<PXR_NS::GfVec3f, float, 3> },
-    { "color3f",        readGfVec<PXR_NS::GfVec3f, float, 3> },
-    { "normal3f",       readGfVec<PXR_NS::GfVec3f, float, 3> },
-    { "point3f",        readGfVec<PXR_NS::GfVec3f, float, 3> },
-    { "vector3f",       readGfVec<PXR_NS::GfVec3f, float, 3> },
-    { "texCoord3f",     readGfVec<PXR_NS::GfVec3f, float, 3> },
+    { "float3",         readGfVector<PXR_NS::GfVec3f, float, 3> },
+    { "color3f",        readGfVector<PXR_NS::GfVec3f, float, 3> },
+    { "normal3f",       readGfVector<PXR_NS::GfVec3f, float, 3> },
+    { "point3f",        readGfVector<PXR_NS::GfVec3f, float, 3> },
+    { "vector3f",       readGfVector<PXR_NS::GfVec3f, float, 3> },
+    { "texCoord3f",     readGfVector<PXR_NS::GfVec3f, float, 3> },
     { "float3[]",       readGfVecArray<PXR_NS::GfVec3f, float, 3> },
     { "color3f[]",      readGfVecArray<PXR_NS::GfVec3f, float, 3> },
     { "normal3f[]",     readGfVecArray<PXR_NS::GfVec3f, float, 3> },
@@ -368,24 +369,24 @@ std::unordered_map<std::string, std::function<AttributeValue(const PXR_NS::UsdAt
     { "texCoord3f[]",   readGfVecArray<PXR_NS::GfVec3f, float, 3> },
 
     // GfVec4f
-    { "float4",         readGfVec<PXR_NS::GfVec4f, float, 4> },
-    { "color4f",        readGfVec<PXR_NS::GfVec4f, float, 4> },
+    { "float4",         readGfVector<PXR_NS::GfVec4f, float, 4> },
+    { "color4f",        readGfVector<PXR_NS::GfVec4f, float, 4> },
     { "float4[]",       readGfVecArray<PXR_NS::GfVec4f, float, 4> },
     { "color4f[]",      readGfVecArray<PXR_NS::GfVec4f, float, 4> },
 
     // GfVec2h
-    { "half2",          readGfVec<PXR_NS::GfVec2h, float, 2> },
-    { "texCoord2h",     readGfVec<PXR_NS::GfVec2h, float, 2> },
+    { "half2",          readGfVector<PXR_NS::GfVec2h, float, 2> },
+    { "texCoord2h",     readGfVector<PXR_NS::GfVec2h, float, 2> },
     { "half2[]",        readGfVecArray<PXR_NS::GfVec2h, float, 2> },
     { "texCoord2h[]",   readGfVecArray<PXR_NS::GfVec2h, float, 2> },
 
     // GfVec3h
-    { "half3",          readGfVec<PXR_NS::GfVec3h, float, 3> },
-    { "color3h",        readGfVec<PXR_NS::GfVec3h, float, 3> },
-    { "normal3h",       readGfVec<PXR_NS::GfVec3h, float, 3> },
-    { "point3h",        readGfVec<PXR_NS::GfVec3h, float, 3> },
-    { "vector3h",       readGfVec<PXR_NS::GfVec3h, float, 3> },
-    { "texCoord3h",     readGfVec<PXR_NS::GfVec3h, float, 3> },
+    { "half3",          readGfVector<PXR_NS::GfVec3h, float, 3> },
+    { "color3h",        readGfVector<PXR_NS::GfVec3h, float, 3> },
+    { "normal3h",       readGfVector<PXR_NS::GfVec3h, float, 3> },
+    { "point3h",        readGfVector<PXR_NS::GfVec3h, float, 3> },
+    { "vector3h",       readGfVector<PXR_NS::GfVec3h, float, 3> },
+    { "texCoord3h",     readGfVector<PXR_NS::GfVec3h, float, 3> },
     { "half3[]",        readGfVecArray<PXR_NS::GfVec3h, float, 3> },
     { "color3h[]",      readGfVecArray<PXR_NS::GfVec3h, float, 3> },
     { "normal3h[]",     readGfVecArray<PXR_NS::GfVec3h, float, 3> },
@@ -394,21 +395,21 @@ std::unordered_map<std::string, std::function<AttributeValue(const PXR_NS::UsdAt
     { "texCoord3h[]",   readGfVecArray<PXR_NS::GfVec3h, float, 3> },
 
     // GfVec4h
-    { "half4",          readGfVec<PXR_NS::GfVec4h, float, 4> },
-    { "color4h",        readGfVec<PXR_NS::GfVec4h, float, 4> },
+    { "half4",          readGfVector<PXR_NS::GfVec4h, float, 4> },
+    { "color4h",        readGfVector<PXR_NS::GfVec4h, float, 4> },
     { "half4[]",        readGfVecArray<PXR_NS::GfVec4h, float, 4> },
     { "color4h[]",      readGfVecArray<PXR_NS::GfVec4h, float, 4> },
 
     // GfVec2i
-    { "int2",           readGfVec<PXR_NS::GfVec2i, int, 2> },
+    { "int2",           readGfVector<PXR_NS::GfVec2i, int, 2> },
     { "int2[]",         readGfVecArray<PXR_NS::GfVec2i, int, 2> },
 
     // GfVec3i
-    { "int3",           readGfVec<PXR_NS::GfVec3i, int, 3> },
+    { "int3",           readGfVector<PXR_NS::GfVec3i, int, 3> },
     { "int3[]",         readGfVecArray<PXR_NS::GfVec3i, int, 3> },
 
     // GfVec4i
-    { "int4",           readGfVec<PXR_NS::GfVec4i, int, 4> },
+    { "int4",           readGfVector<PXR_NS::GfVec4i, int, 4> },
     { "int4[]",         readGfVecArray<PXR_NS::GfVec4i, int, 4> },
 
     // GfMatrix2d
@@ -426,15 +427,15 @@ std::unordered_map<std::string, std::function<AttributeValue(const PXR_NS::UsdAt
     { "frame4d[]",      readGfMatrixArray<PXR_NS::GfMatrix4d, 4> },
 
     // GfQuatd
-    { "quatd",          readGfQuat<PXR_NS::GfQuatd, double> },
+    { "quatd",          readGfQuaternion<PXR_NS::GfQuatd, double> },
     { "quatd[]",        readQuatArray<PXR_NS::GfQuatd, double> },
 
     // GfQuatf
-    { "quatf",          readGfQuat<PXR_NS::GfQuatf, float> },
+    { "quatf",          readGfQuaternion<PXR_NS::GfQuatf, float> },
     { "quatf[]",        readQuatArray<PXR_NS::GfQuatf, float> },
 
     // GfQuath
-    { "quath",          readGfQuat<PXR_NS::GfQuath, float> },
+    { "quath",          readGfQuaternion<PXR_NS::GfQuath, float> },
     { "quath[]",        readQuatArray<PXR_NS::GfQuath, float> },
 };
 // clang-format on
@@ -596,7 +597,7 @@ bool writeNumericScalarArray(PXR_NS::UsdAttribute& attribute, const AttributeVal
 
 // GfVecNT scalar; ComponentT defaults to ScalarT (pass GfHalf for Vec*h)
 template <typename GfVecT, typename ScalarT, int N, typename ComponentT = ScalarT>
-bool writeGfVec(PXR_NS::UsdAttribute& attribute, const AttributeValue& value, std::string_view typeName)
+bool writeGfVector(PXR_NS::UsdAttribute& attribute, const AttributeValue& value, std::string_view typeName)
 {
     const auto v = parseNumericVector<ScalarT>(value, typeName);
     if (static_cast<int>(v.size()) != N)
@@ -671,7 +672,7 @@ bool writeGfMatrixArray(PXR_NS::UsdAttribute& attribute, const AttributeValue& v
 
 // GfQuat scalar; input [ix, iy, iz, w], PXR ctor (real, imaginary)
 template <typename GfQuatT, typename GfVec3T, typename ScalarT, typename ComponentT = ScalarT>
-bool writeGfQuat(PXR_NS::UsdAttribute& attribute, const AttributeValue& value, std::string_view typeName)
+bool writeGfQuaternion(PXR_NS::UsdAttribute& attribute, const AttributeValue& value, std::string_view typeName)
 {
     const auto v = parseNumericVector<ScalarT>(value, typeName);
     if (v.size() != 4)
@@ -699,7 +700,9 @@ bool writeGfQuatArray(PXR_NS::UsdAttribute& attribute, const AttributeValue& val
 }
 
 // clang-format off
-std::unordered_map<std::string, std::function<bool(PXR_NS::UsdAttribute&, const AttributeValue&, std::string_view)>> attributeWriters = {
+std::unordered_map<
+    std::string,
+    std::function<bool(PXR_NS::UsdAttribute&, const AttributeValue&, std::string_view)>> attributeWriters = {
     { "asset",          writeAsset },
     { "asset[]",        writeAssetArray },
 
@@ -740,18 +743,18 @@ std::unordered_map<std::string, std::function<bool(PXR_NS::UsdAttribute&, const 
     { "timecode[]",     writeTimeCodeArray },
 
     // GfVec2d
-    { "double2",        writeGfVec<PXR_NS::GfVec2d, double, 2> },
-    { "texCoord2d",     writeGfVec<PXR_NS::GfVec2d, double, 2> },
+    { "double2",        writeGfVector<PXR_NS::GfVec2d, double, 2> },
+    { "texCoord2d",     writeGfVector<PXR_NS::GfVec2d, double, 2> },
     { "double2[]",      writeGfVecArray<PXR_NS::GfVec2d, double, 2> },
     { "texCoord2d[]",   writeGfVecArray<PXR_NS::GfVec2d, double, 2> },
 
     // GfVec3d
-    { "double3",        writeGfVec<PXR_NS::GfVec3d, double, 3> },
-    { "color3d",        writeGfVec<PXR_NS::GfVec3d, double, 3> },
-    { "normal3d",       writeGfVec<PXR_NS::GfVec3d, double, 3> },
-    { "point3d",        writeGfVec<PXR_NS::GfVec3d, double, 3> },
-    { "vector3d",       writeGfVec<PXR_NS::GfVec3d, double, 3> },
-    { "texCoord3d",     writeGfVec<PXR_NS::GfVec3d, double, 3> },
+    { "double3",        writeGfVector<PXR_NS::GfVec3d, double, 3> },
+    { "color3d",        writeGfVector<PXR_NS::GfVec3d, double, 3> },
+    { "normal3d",       writeGfVector<PXR_NS::GfVec3d, double, 3> },
+    { "point3d",        writeGfVector<PXR_NS::GfVec3d, double, 3> },
+    { "vector3d",       writeGfVector<PXR_NS::GfVec3d, double, 3> },
+    { "texCoord3d",     writeGfVector<PXR_NS::GfVec3d, double, 3> },
     { "double3[]",      writeGfVecArray<PXR_NS::GfVec3d, double, 3> },
     { "color3d[]",      writeGfVecArray<PXR_NS::GfVec3d, double, 3> },
     { "normal3d[]",     writeGfVecArray<PXR_NS::GfVec3d, double, 3> },
@@ -760,24 +763,24 @@ std::unordered_map<std::string, std::function<bool(PXR_NS::UsdAttribute&, const 
     { "texCoord3d[]",   writeGfVecArray<PXR_NS::GfVec3d, double, 3> },
 
     // GfVec4d
-    { "double4",        writeGfVec<PXR_NS::GfVec4d, double, 4> },
-    { "color4d",        writeGfVec<PXR_NS::GfVec4d, double, 4> },
+    { "double4",        writeGfVector<PXR_NS::GfVec4d, double, 4> },
+    { "color4d",        writeGfVector<PXR_NS::GfVec4d, double, 4> },
     { "double4[]",      writeGfVecArray<PXR_NS::GfVec4d, double, 4> },
     { "color4d[]",      writeGfVecArray<PXR_NS::GfVec4d, double, 4> },
 
     // GfVec2f
-    { "float2",         writeGfVec<PXR_NS::GfVec2f, float, 2> },
-    { "texCoord2f",     writeGfVec<PXR_NS::GfVec2f, float, 2> },
+    { "float2",         writeGfVector<PXR_NS::GfVec2f, float, 2> },
+    { "texCoord2f",     writeGfVector<PXR_NS::GfVec2f, float, 2> },
     { "float2[]",       writeGfVecArray<PXR_NS::GfVec2f, float, 2> },
     { "texCoord2f[]",   writeGfVecArray<PXR_NS::GfVec2f, float, 2> },
 
     // GfVec3f
-    { "float3",         writeGfVec<PXR_NS::GfVec3f, float, 3> },
-    { "color3f",        writeGfVec<PXR_NS::GfVec3f, float, 3> },
-    { "normal3f",       writeGfVec<PXR_NS::GfVec3f, float, 3> },
-    { "point3f",        writeGfVec<PXR_NS::GfVec3f, float, 3> },
-    { "vector3f",       writeGfVec<PXR_NS::GfVec3f, float, 3> },
-    { "texCoord3f",     writeGfVec<PXR_NS::GfVec3f, float, 3> },
+    { "float3",         writeGfVector<PXR_NS::GfVec3f, float, 3> },
+    { "color3f",        writeGfVector<PXR_NS::GfVec3f, float, 3> },
+    { "normal3f",       writeGfVector<PXR_NS::GfVec3f, float, 3> },
+    { "point3f",        writeGfVector<PXR_NS::GfVec3f, float, 3> },
+    { "vector3f",       writeGfVector<PXR_NS::GfVec3f, float, 3> },
+    { "texCoord3f",     writeGfVector<PXR_NS::GfVec3f, float, 3> },
     { "float3[]",       writeGfVecArray<PXR_NS::GfVec3f, float, 3> },
     { "color3f[]",      writeGfVecArray<PXR_NS::GfVec3f, float, 3> },
     { "normal3f[]",     writeGfVecArray<PXR_NS::GfVec3f, float, 3> },
@@ -786,24 +789,24 @@ std::unordered_map<std::string, std::function<bool(PXR_NS::UsdAttribute&, const 
     { "texCoord3f[]",   writeGfVecArray<PXR_NS::GfVec3f, float, 3> },
 
     // GfVec4f
-    { "float4",         writeGfVec<PXR_NS::GfVec4f, float, 4> },
-    { "color4f",        writeGfVec<PXR_NS::GfVec4f, float, 4> },
+    { "float4",         writeGfVector<PXR_NS::GfVec4f, float, 4> },
+    { "color4f",        writeGfVector<PXR_NS::GfVec4f, float, 4> },
     { "float4[]",       writeGfVecArray<PXR_NS::GfVec4f, float, 4> },
     { "color4f[]",      writeGfVecArray<PXR_NS::GfVec4f, float, 4> },
 
     // GfVec2h
-    { "half2",          writeGfVec<PXR_NS::GfVec2h, float, 2, PXR_NS::GfHalf> },
-    { "texCoord2h",     writeGfVec<PXR_NS::GfVec2h, float, 2, PXR_NS::GfHalf> },
+    { "half2",          writeGfVector<PXR_NS::GfVec2h, float, 2, PXR_NS::GfHalf> },
+    { "texCoord2h",     writeGfVector<PXR_NS::GfVec2h, float, 2, PXR_NS::GfHalf> },
     { "half2[]",        writeGfVecArray<PXR_NS::GfVec2h, float, 2, PXR_NS::GfHalf> },
     { "texCoord2h[]",   writeGfVecArray<PXR_NS::GfVec2h, float, 2, PXR_NS::GfHalf> },
 
     // GfVec3h
-    { "half3",          writeGfVec<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
-    { "color3h",        writeGfVec<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
-    { "normal3h",       writeGfVec<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
-    { "point3h",        writeGfVec<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
-    { "vector3h",       writeGfVec<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
-    { "texCoord3h",     writeGfVec<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
+    { "half3",          writeGfVector<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
+    { "color3h",        writeGfVector<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
+    { "normal3h",       writeGfVector<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
+    { "point3h",        writeGfVector<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
+    { "vector3h",       writeGfVector<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
+    { "texCoord3h",     writeGfVector<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
     { "half3[]",        writeGfVecArray<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
     { "color3h[]",      writeGfVecArray<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
     { "normal3h[]",     writeGfVecArray<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
@@ -812,21 +815,21 @@ std::unordered_map<std::string, std::function<bool(PXR_NS::UsdAttribute&, const 
     { "texCoord3h[]",   writeGfVecArray<PXR_NS::GfVec3h, float, 3, PXR_NS::GfHalf> },
 
     // GfVec4h
-    { "half4",          writeGfVec<PXR_NS::GfVec4h, float, 4, PXR_NS::GfHalf> },
-    { "color4h",        writeGfVec<PXR_NS::GfVec4h, float, 4, PXR_NS::GfHalf> },
+    { "half4",          writeGfVector<PXR_NS::GfVec4h, float, 4, PXR_NS::GfHalf> },
+    { "color4h",        writeGfVector<PXR_NS::GfVec4h, float, 4, PXR_NS::GfHalf> },
     { "half4[]",        writeGfVecArray<PXR_NS::GfVec4h, float, 4, PXR_NS::GfHalf> },
     { "color4h[]",      writeGfVecArray<PXR_NS::GfVec4h, float, 4, PXR_NS::GfHalf> },
 
     // GfVec2i
-    { "int2",           writeGfVec<PXR_NS::GfVec2i, int, 2> },
+    { "int2",           writeGfVector<PXR_NS::GfVec2i, int, 2> },
     { "int2[]",         writeGfVecArray<PXR_NS::GfVec2i, int, 2> },
 
     // GfVec3i
-    { "int3",           writeGfVec<PXR_NS::GfVec3i, int, 3> },
+    { "int3",           writeGfVector<PXR_NS::GfVec3i, int, 3> },
     { "int3[]",         writeGfVecArray<PXR_NS::GfVec3i, int, 3> },
 
     // GfVec4i
-    { "int4",           writeGfVec<PXR_NS::GfVec4i, int, 4> },
+    { "int4",           writeGfVector<PXR_NS::GfVec4i, int, 4> },
     { "int4[]",         writeGfVecArray<PXR_NS::GfVec4i, int, 4> },
 
     // GfMatrix2d
@@ -844,15 +847,15 @@ std::unordered_map<std::string, std::function<bool(PXR_NS::UsdAttribute&, const 
     { "frame4d[]",      writeGfMatrixArray<PXR_NS::GfMatrix4d, 4> },
 
     // GfQuatd
-    { "quatd",          writeGfQuat<PXR_NS::GfQuatd, PXR_NS::GfVec3d, double> },
+    { "quatd",          writeGfQuaternion<PXR_NS::GfQuatd, PXR_NS::GfVec3d, double> },
     { "quatd[]",        writeGfQuatArray<PXR_NS::GfQuatd, PXR_NS::GfVec3d, double> },
 
     // GfQuatf
-    { "quatf",          writeGfQuat<PXR_NS::GfQuatf, PXR_NS::GfVec3f, float> },
+    { "quatf",          writeGfQuaternion<PXR_NS::GfQuatf, PXR_NS::GfVec3f, float> },
     { "quatf[]",        writeGfQuatArray<PXR_NS::GfQuatf, PXR_NS::GfVec3f, float> },
 
     // GfQuath
-    { "quath",          writeGfQuat<PXR_NS::GfQuath, PXR_NS::GfVec3h, float, PXR_NS::GfHalf> },
+    { "quath",          writeGfQuaternion<PXR_NS::GfQuath, PXR_NS::GfVec3h, float, PXR_NS::GfHalf> },
     { "quath[]",        writeGfQuatArray<PXR_NS::GfQuath, PXR_NS::GfVec3h, float, PXR_NS::GfHalf> },
 };
 // clang-format on

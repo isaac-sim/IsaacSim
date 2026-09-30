@@ -30,8 +30,7 @@
  *
  * Levels use plain int in the ABI so cross-TU C prototypes stay exact.
  */
-#ifndef GL_LOG_H
-#define GL_LOG_H
+#pragma once
 
 #ifdef __cplusplus
 extern "C"
@@ -70,5 +69,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* GL_LOG_H */

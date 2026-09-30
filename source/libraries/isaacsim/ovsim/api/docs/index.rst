@@ -15,14 +15,18 @@
    limitations under the License.
 
 .. _isaacsim-ovsim-api:
+.. _isaacsim-ovsim-api-overview:
 
 =====================================
 Isaac Sim OV SIM API
 =====================================
 
+``isaacsim.ovsim.api`` builds an OV SIM client from a client name: ``"in-process"`` or ``"local"`` for the
+in-process implementation, or ``"grpc"`` for a remote session over gRPC. Both clients expose the same ``authoring``,
+``simulation``, and ``data`` interfaces, so calling code does not need to know which client it uses.
+
 .. toctree::
     :maxdepth: 2
 
-    overview
     api_cpp
     api_python

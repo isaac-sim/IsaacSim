@@ -28,10 +28,6 @@ namespace lights
 
 Light::Light(const std::variant<std::string, std::vector<std::string>>& paths,
              const std::string& lightType,
-             const std::optional<array::Array>& positions,
-             const std::optional<array::Array>& translations,
-             const std::optional<array::Array>& orientations,
-             const std::optional<array::Array>& scales,
              bool resetXformOpProperties)
     : Xform()
 {
@@ -41,7 +37,7 @@ Light::Light(const std::variant<std::string, std::vector<std::string>>& paths,
     if (!existentPaths.empty())
     {
         m_paths = std::move(existentPaths);
-        const std::vector<bool> isLight = this->isA(lightType).get<std::vector<bool>>();
+        const std::vector<bool> isLight = this->isA(lightType).flatten().get<std::vector<bool>>();
         for (std::size_t i = 0; i < m_paths.size(); ++i)
         {
             if (!isLight[i])
@@ -60,7 +56,7 @@ Light::Light(const std::variant<std::string, std::vector<std::string>>& paths,
         }
     }
     // Initialize instance from arguments.
-    _initialize(positions, translations, orientations, scales, resetXformOpProperties);
+    _initialize(resetXformOpProperties);
 }
 
 void Light::setIntensities(const array::Array& intensities, const std::optional<array::Array>& indices)
@@ -159,6 +155,11 @@ void Light::setColors(const array::Array& colors, const std::optional<array::Arr
 array::Array Light::getColors(const std::optional<array::Array>& indices)
 {
     return std::get<array::Array>(this->getAttributeValues("inputs:color", indices));
+}
+
+array::Array Light::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).hasApi("LightAPI");
 }
 
 } // namespace lights

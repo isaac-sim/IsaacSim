@@ -1228,9 +1228,8 @@ class Camera(BaseSensor):
 
             .. code-block:: python
 
-                np.array
-                shape: (width, height, 1) or (width, height, 4) if `colorize` is set to true
-                dtype: np.uint32 or np.uint8 if `colorize` is set to true, such as {"colorize": True}
+                np.array  # Shape: (width, height, 1), or (width, height, 4) when colorize=True.
+                          # Dtype: np.uint32, or np.uint8 when colorize=True.
 
             See more details:
             https://docs.omniverse.nvidia.com/extensions/latest/ext_replicator/annotators_details.html#semantic-segmentation
@@ -1259,9 +1258,8 @@ class Camera(BaseSensor):
 
             .. code-block:: python
 
-                np.array
-                shape: (width, height, 1) or (width, height, 4) if `colorize` is set to true
-                dtype: np.uint32 or np.uint8 if `colorize` is set to true, such as {"colorize": True}
+                np.array  # Shape: (width, height, 1), or (width, height, 4) when colorize=True.
+                          # Dtype: np.uint32, or np.uint8 when colorize=True.
 
             See more details:
             https://docs.omniverse.nvidia.com/extensions/latest/ext_replicator/annotators_details.html#instance-id-segmentation
@@ -1296,9 +1294,8 @@ class Camera(BaseSensor):
 
         .. code-block:: python
 
-            np.array
-            shape: (width, height, 1) or (width, height, 4) if `colorize` is set to true
-            dtype: np.uint32 or np.uint8 if `colorize` is set to true
+            np.array  # Shape: (width, height, 1), or (width, height, 4) when colorize=True.
+                      # Dtype: np.uint32, or np.uint8 when colorize=True.
 
         See more details: https://docs.omniverse.nvidia.com/extensions/latest/ext_replicator/annotators_details.html#instance-segmentation
         """

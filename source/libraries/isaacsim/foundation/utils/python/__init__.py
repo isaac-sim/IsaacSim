@@ -13,6 +13,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO: remove this once mock modules are supported in IsaacSimPython.cmake
 from .impl import *
 from .impl import __all__ as __all__

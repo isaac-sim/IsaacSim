@@ -175,7 +175,7 @@ callers no longer count ticks.
 
 Worked examples for each case -- shipped policies, non-shipped policies, exporting
 `IO_descriptors.yaml` from an Isaac Lab run, and the supported term vocabulary -- are in the
-[migration guide](../../../../docs/isaacsim/migration_guides/isaac_sim_6_1/robot_policy_examples.rst).
+{external+isaac-sim-user-guide:doc}`migration guide <migration_guides/isaac_sim_6_1/robot_policy_examples>`.
 
 ## Integration
 

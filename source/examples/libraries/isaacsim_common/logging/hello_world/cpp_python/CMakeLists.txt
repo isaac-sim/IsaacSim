@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 if(NOT DEFINED ISAACSIM_CMAKE_MINIMUM_VERSION OR NOT DEFINED ISAACSIM_CMAKE_POLICY_MAXIMUM_VERSION)
-    message(FATAL_ERROR "Configure this example through source/examples/example.sh or example.bat")
+    message(FATAL_ERROR "Configure this example through the examples runner")
 endif()
 cmake_minimum_required(VERSION ${ISAACSIM_CMAKE_MINIMUM_VERSION}...${ISAACSIM_CMAKE_POLICY_MAXIMUM_VERSION})
 project(IsaacSimHelloWorldCppPython LANGUAGES CXX)
 
 if(NOT DEFINED ISAACSIM_CXX_STANDARD OR NOT DEFINED ISAACSIM_PYTHON_VERSION)
-    message(FATAL_ERROR "Toolchain requirements were not provided by the example wrapper")
+    message(FATAL_ERROR "Toolchain requirements were not provided by the examples runner")
 endif()
 
 find_package(Python "${ISAACSIM_PYTHON_VERSION}" EXACT REQUIRED COMPONENTS Interpreter Development.Module)

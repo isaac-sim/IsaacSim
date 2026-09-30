@@ -16,14 +16,18 @@
 
 .. _isaacsim-physics-ovsim-api-python:
 
-==========
-Python API
-==========
+==============================
+Python guide and API reference
+==============================
 
 .. _isaacsim-physics-ovsim-api-python-authoring:
 
 Authoring
 =========
+
+The authoring names are present for OV SIM interface compatibility, but this
+physics-only adapter does not implement stage authoring. Every function in this
+section currently raises ``RuntimeError``.
 
 .. currentmodule:: isaacsim.physics.ovsim.control.authoring
 
@@ -64,6 +68,22 @@ Authoring
 Simulation
 ==========
 
+Manual simulation requires an OVStage native handle and a registered physics
+engine. Configure both before initialization:
+
+.. code-block:: python
+
+    from isaacsim.physics.ovsim.control import simulation
+
+    simulation.set_parameter("physics", "ovstage-stage-ptr", stage_handle)
+    simulation.set_parameter("physics", "physics-engine", "ovphysx")
+    simulation.initialize()
+    simulation.step()
+    simulation.invalidate()
+
+``play()``, ``pause()``, and ``stop()`` are compatibility no-ops; use
+``initialize()``, ``step()``, and ``invalidate()`` for manual control.
+
 .. currentmodule:: isaacsim.physics.ovsim.control.simulation
 
 .. autosummary::
@@ -90,6 +110,10 @@ Simulation
 
 Data
 ====
+
+Data operations resolve physics entity views using the active engine. The
+optional ``timestamp`` parameter is accepted for OV SIM compatibility, but
+time-sampled reads and writes are not yet applied.
 
 .. currentmodule:: isaacsim.physics.ovsim.data
 

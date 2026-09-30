@@ -1,15 +1,29 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "isaacsim/foundation/objects/Camera.hpp"
+#include "isaacsim/foundation/objects/Prim.hpp"
 #include "isaacsim/foundation/objects/Stage.hpp"
+#include "isaacsim/foundation/objects/lights/DistantLight.hpp"
+#include "isaacsim/foundation/objects/shapes/Cube.hpp"
 #include "isaacsim/ovgl_viewport/debug/Viewport.hpp"
 
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -25,6 +39,7 @@ namespace viewport = isaacsim::ovgl_viewport::debug;
 constexpr uint32_t g_kInitialWidth = 1280;
 constexpr uint32_t g_kInitialHeight = 720;
 constexpr const char* g_kCameraPath = "/IsaacSimViewportCamera";
+constexpr const char* g_kColorPath = "/IsaacSimViewportColor";
 constexpr const char* g_kRenderProductPath = "/IsaacSimViewportRenderProduct";
 
 struct CommandLine
@@ -40,7 +55,7 @@ void printUsage(const char* executable)
               << "Displays an optional USD scene, or a procedural cube when no source is provided,\n"
               << "using OVStage and isaacsim.ovgl_viewport.debug.\n\n"
               << "Controls:\n"
-              << "  Left drag       Mouse look\n"
+              << "  Drag with the left mouse button to look around\n"
               << "  Mouse wheel     Dolly\n"
               << "  Hold W/S        Move forward/backward\n"
               << "  Hold A/D        Strafe left/right\n"
@@ -50,6 +65,7 @@ void printUsage(const char* executable)
               << "  H               Toggle debug HUD\n"
               << "  Escape          Quit\n\n"
               << "Options:\n"
+              << "  --frames COUNT  Stop after rendering COUNT frames (zero means no limit)\n"
               << "  --headless      Render without creating a user-visible window\n";
 }
 
@@ -116,7 +132,9 @@ bool isRemoteStageSource(std::string_view source)
     for (const std::string_view scheme : schemes)
     {
         if (source.compare(0, scheme.size(), scheme) == 0)
+        {
             return true;
+        }
     }
     return false;
 }
@@ -133,99 +151,105 @@ std::string getStageLayerIdentifier(const std::string& stageSource)
     return identifier;
 }
 
-std::string getSourceFilename(const std::string& stageSource)
+void insertSublayer(std::string& stageText, const std::string& stageSource)
 {
-    const size_t suffix = stageSource.find_first_of("?#");
-    return std::filesystem::path(stageSource.substr(0, suffix)).filename().string();
+    const size_t metadataBody = stageText.find("(\n");
+    if (metadataBody == std::string::npos)
+    {
+        throw std::runtime_error("Foundation exported a layer without a metadata block");
+    }
+    stageText.insert(metadataBody + 2, "    subLayers = [@" + getStageLayerIdentifier(stageSource) + "@]\n");
+}
+
+void insertRenderProductRelationships(std::string& stageText)
+{
+    const std::string declaration =
+        "def RenderProduct \"" + std::filesystem::path(g_kRenderProductPath).filename().string() + "\"";
+    const size_t primStart = stageText.find(declaration);
+    const size_t primBody = stageText.find("{\n", primStart);
+    if (primStart == std::string::npos || primBody == std::string::npos)
+    {
+        throw std::runtime_error("Foundation did not export the viewport RenderProduct");
+    }
+
+    const std::string relationships = "    rel camera = <" + std::string(g_kCameraPath) + ">\n" +
+                                      "    rel orderedVars = [<" + std::string(g_kColorPath) + ">]\n";
+    stageText.insert(primBody + 2, relationships);
 }
 
 std::string buildStageText(const std::string& stageSource)
 {
-    std::ostringstream stage;
-    stage << "#usda 1.0\n";
-    stage << "(\n";
-    if (stageSource.empty())
+    foundation::Stage authoringStage("openusd");
+    try
     {
-        stage << "    defaultPrim = \"World\"\n    metersPerUnit = 1\n    upAxis = \"Z\"\n";
+        if (stageSource.empty())
+        {
+            authoringStage.createStage();
+            authoringStage.setUnits(/*metersPerUnit=*/1.0f);
+            authoringStage.setUpAxis("Z");
+        }
+        else
+        {
+            // Starting from an empty layer avoids overriding the sublayer's units and up-axis with createStage
+            // defaults.
+            authoringStage.importStageFromString("#usda 1.0\n");
+        }
+
+        foundation::Camera camera(g_kCameraPath);
+        camera.setFocalLengths(array::Array(1.8147562));
+        camera.setApertures(array::Array(2.0955));
+        camera.setClippingRanges(array::Array(1.0), array::Array(10000000.0));
+        camera.setWorldPoses(array::Array(std::vector<double>{ 0.0, 0.0, 6.0 }),
+                             array::Array(std::vector<double>{ 0.0, 0.0, 0.0, 1.0 }));
+
+        authoringStage.definePrim(g_kColorPath, "RenderVar");
+        foundation::Prim color(g_kColorPath);
+        color.createAttribute("dataType", "token");
+        color.createAttribute("sourceName", "string");
+        color.setAttributeValues("dataType", std::string("color4f"));
+        color.setAttributeValues("sourceName", std::string("LdrColor"));
+
+        authoringStage.definePrim(g_kRenderProductPath, "RenderProduct");
+        foundation::Prim renderProduct(g_kRenderProductPath);
+        renderProduct.createAttribute("resolution", "int2");
+        renderProduct.setAttributeValues(
+            "resolution", array::Array(std::vector<int32_t>{ static_cast<int32_t>(g_kInitialWidth),
+                                                             static_cast<int32_t>(g_kInitialHeight) }));
+
+        if (stageSource.empty())
+        {
+            foundation::shapes::Cube cube("/World/Cube", array::Array(1.0));
+            foundation::lights::DistantLight light("/World/KeyLight");
+            light.setIntensities(array::Array(3000.0f));
+            light.setColors(array::Array(std::vector<float>{ 1.0f, 0.92f, 0.78f }));
+        }
     }
-    else
+    catch (...)
     {
-        stage << "    subLayers = [@" << getStageLayerIdentifier(stageSource) << "@]\n";
+        if (authoringStage.isValid())
+        {
+            authoringStage.closeStage();
+        }
+        throw;
     }
-    stage << ")\n\n";
-    if (stageSource.empty())
+    std::string stageText = authoringStage.exportStageToString();
+    if (!authoringStage.closeStage())
     {
-        stage << R"usda(def Xform "World"
-{
-    def Cube "Cube"
+        throw std::runtime_error("Unable to close the Foundation authoring stage");
+    }
+    if (stageText.empty())
     {
-        double size = 1
-        matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
-        uniform token[] xformOpOrder = ["xformOp:transform"]
+        throw std::runtime_error("Foundation failed to export the viewport stage");
     }
 
-    def DistantLight "KeyLight"
+    // Foundation C++ does not yet expose sublayer or relationship-target authoring. Keep the USDA boundary adapter
+    // limited to those unsupported composition fields; all schema prims and attributes above use Foundation objects.
+    if (!stageSource.empty())
     {
-        color3f color = (1, 0.92, 0.78)
-        float intensity = 3000
-        matrix4d xformOp:transform = ( (0.9063, -0.2424, 0.3462, 0), (0, 0.8192, 0.5736, 0), (-0.4226, -0.5198, 0.7424, 0), (0, 0, 0, 1) )
-        uniform token[] xformOpOrder = ["xformOp:transform"]
+        insertSublayer(stageText, stageSource);
     }
-}
-
-)usda";
-    }
-    stage << R"usda(def Camera "IsaacSimViewportCamera"
-{
-    float2 clippingRange = (1, 10000000)
-    float focalLength = 18.147562
-    float horizontalAperture = 20.955
-    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 6, 1) )
-    uniform token[] xformOpOrder = ["xformOp:transform"]
-}
-
-def RenderVar "IsaacSimViewportColor"
-{
-    uniform token dataType = "color4f"
-    uniform string sourceName = "LdrColor"
-}
-
-def RenderProduct "IsaacSimViewportRenderProduct"
-{
-    rel camera = </IsaacSimViewportCamera>
-    rel orderedVars = [</IsaacSimViewportColor>]
-    uniform int2 resolution = (1280, 720)
-}
-)usda";
-    return stage.str();
-}
-
-viewport::Camera getInitialCamera(const std::string& stageSource)
-{
-    viewport::Camera camera;
-    camera.target = { -10.0, -4.0, 4.6 };
-    camera.distance = 88.0;
-
-    const std::string filename = getSourceFilename(stageSource);
-    if (stageSource.empty())
-    {
-        camera.target = { 0.0, 0.0, 0.0 };
-        camera.distance = 6.0;
-    }
-    else if (filename == "franka.usd")
-    {
-        camera.target = { 0.0, 0.0, 0.55 };
-        camera.pitchRadians = 0.25;
-        camera.distance = 3.0;
-    }
-    else if (filename == "robot-ovrtx.usda")
-    {
-        camera.target = { 0.0, -0.0116547517, 0.8218411361 };
-        camera.yawRadians = -1.3245;
-        camera.pitchRadians = 0.0489;
-        camera.distance = 3.56;
-    }
-    return camera;
+    insertRenderProductRelationships(stageText);
+    return stageText;
 }
 
 int runViewer(const CommandLine& commandLine)
@@ -256,23 +280,21 @@ int runViewer(const CommandLine& commandLine)
     stage.importStageFromString(buildStageText(commandLine.stageSource));
     if (!stage.isValid())
     {
-        throw std::runtime_error("OVStage failed to populate the USD file");
+        throw std::runtime_error("OVStage failed to populate the stage");
     }
 
     try
     {
         std::cout << "OVStage is ready." << std::endl;
-        foundation::Camera camera(g_kCameraPath, std::nullopt, std::nullopt, std::nullopt, std::nullopt,
-                                  /*resetXformOpProperties=*/false);
+        foundation::Camera camera(g_kCameraPath, /*resetXformOpProperties=*/false);
 
-        viewport::ViewportConfig viewportConfig;
-        viewportConfig.title = "Isaac Sim OVStage + OVGL Viewport";
-        viewportConfig.width = g_kInitialWidth;
-        viewportConfig.height = g_kInitialHeight;
-        viewportConfig.maximumFrames = commandLine.maximumFrames;
-        viewportConfig.visible = !commandLine.headless;
-        viewportConfig.camera = getInitialCamera(commandLine.stageSource);
-        viewportConfig.renderProductPath = g_kRenderProductPath;
+        viewport::ViewportConfiguration viewportConfiguration;
+        viewportConfiguration.title = "Isaac Sim OVStage + OVGL Viewport";
+        viewportConfiguration.width = g_kInitialWidth;
+        viewportConfiguration.height = g_kInitialHeight;
+        viewportConfiguration.maximumFrames = commandLine.maximumFrames;
+        viewportConfiguration.visible = !commandLine.headless;
+        viewportConfiguration.renderProductPath = g_kRenderProductPath;
         void* nativeStage = stage.getStagePtr();
         if (!nativeStage)
         {
@@ -286,7 +308,7 @@ int runViewer(const CommandLine& commandLine)
                 { pose.orientation[0], pose.orientation[1], pose.orientation[2], pose.orientation[3] } });
             camera.setWorldPoses(positions, orientations);
         };
-        viewport::Viewport viewer(static_cast<ovstage_instance_t*>(nativeStage), cameraPoseWriter, viewportConfig);
+        viewport::Viewport viewer(static_cast<ovstage_instance_t*>(nativeStage), cameraPoseWriter, viewportConfiguration);
         uint64_t renderedFrames = 0;
         while (viewer.pollEvents())
         {
@@ -316,7 +338,7 @@ int main(int argumentCount, char** arguments)
     }
     catch (const std::exception& exception)
     {
-        std::cerr << "OVGL viewer error: " << exception.what() << std::endl;
+        std::cerr << "OVGL viewport error: " << exception.what() << std::endl;
         return EXIT_FAILURE;
     }
 }

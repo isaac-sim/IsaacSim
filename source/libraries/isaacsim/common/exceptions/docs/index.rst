@@ -17,6 +17,7 @@
 .. _isaacsim-common-exceptions:
 .. _isaacsim-common-exceptions-overview:
 
+==========================
 isaacsim.common.exceptions
 ==========================
 
@@ -26,11 +27,11 @@ generically, or catch a specific subtype to inspect the structured data it carri
 
 Four concrete exceptions are provided:
 
-- ``PrimPathError`` -- a USD prim path does not refer to a usable prim. Carries the offending path.
-- ``PrimPathStringError`` -- a string does not parse as a valid USD prim path. Carries the offending string.
-- ``AttributeNameError`` -- a caller referenced an attribute name that does not exist or is not accepted. Carries the
+- ``PrimPathError`` --- a USD prim path does not refer to a usable prim. Carries the offending path.
+- ``PrimPathStringError`` --- a string does not parse as a valid USD prim path. Carries the offending string.
+- ``AttributeNameError`` --- a caller referenced an attribute name that does not exist or is not accepted. Carries the
   offending attribute name.
-- ``ValueTypeError`` -- a value's type does not match the type expected for an attribute. Carries the attribute name,
+- ``ValueTypeError`` --- a value's type does not match the type expected for an attribute. Carries the attribute name,
   the expected type, and the actual type.
 
 Each exception formats a human-readable message from its fields, available through ``what()`` in C++ and

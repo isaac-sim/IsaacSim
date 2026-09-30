@@ -189,7 +189,7 @@ class HolonomicController(BaseController):
     ``command_site_quaternion``, given in the same frame as ``wheel_positions`` and
     ``wheel_orientations``.  The wheel geometry is transformed into the site frame at
     construction, so the wheels may be measured in whatever frame is convenient (a
-    robot root, a USD centre-of-mass prim) and the site moved independently of them.
+    robot root, a USD center-of-mass prim) and the site moved independently of them.
     ``rotation_direction`` is then expressed in the command-site frame, so the default
     ``[0, 0, 1]`` means "the site frame's own +Z".
 

@@ -121,7 +121,7 @@ public:
      *
      * @return The encoded path value converted to @c size_t.
      */
-    size_t hash() const
+    size_t computeHash() const
     {
         return path;
     }
@@ -166,7 +166,7 @@ public:
      */
     size_t operator()(const PathToken& pathToken) const
     {
-        return pathToken.hash();
+        return pathToken.computeHash();
     }
 };
 

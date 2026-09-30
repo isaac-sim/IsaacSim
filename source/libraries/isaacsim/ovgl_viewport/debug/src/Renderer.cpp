@@ -41,10 +41,10 @@ namespace
 
 } // namespace
 
-class Renderer::Impl
+class Renderer::Implementation
 {
 public:
-    explicit Impl(ovstage_instance_t* stage)
+    explicit Implementation(ovstage_instance_t* stage)
     {
         if (!stage)
         {
@@ -65,7 +65,7 @@ public:
         }
     }
 
-    ~Impl()
+    ~Implementation()
     {
         if (m_backend)
         {
@@ -110,12 +110,51 @@ public:
         std::memcpy(frame.rgba.data(), pixels, byteCount);
     }
 
+    void present(const std::string& renderProductPath,
+                 uint32_t destinationWidth,
+                 uint32_t destinationHeight,
+                 const char* overlayText,
+                 Frame& frame)
+    {
+        if (destinationWidth == 0 || destinationHeight == 0 ||
+            destinationWidth > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
+            destinationHeight > static_cast<uint32_t>(std::numeric_limits<int>::max()))
+        {
+            throw std::invalid_argument("Presentation dimensions must be positive OpenGL-compatible pixel extents");
+        }
+        ovstage_ordinal_t ordinal = 0;
+        if (getStageWriteFloor(m_backend, &ordinal) != 0 || ordinal == 0)
+        {
+            throwBackendError("OVStage has no non-zero sealed write floor to render");
+        }
+
+        int width = 0;
+        int height = 0;
+        char error[1024]{};
+        if (presentStage(m_backend, ordinal, renderProductPath.c_str(), 0, static_cast<int>(destinationWidth),
+                         static_cast<int>(destinationHeight), overlayText, &width, &height, error, sizeof(error)) != 0)
+        {
+            throwBackendError("Unable to present OVGL frame", error);
+        }
+        if (width <= 0 || height <= 0 || static_cast<uint64_t>(width) > std::numeric_limits<uint32_t>::max() ||
+            static_cast<uint64_t>(height) > std::numeric_limits<uint32_t>::max())
+        {
+            throw std::runtime_error("OVGL returned invalid presented-frame dimensions");
+        }
+
+        frame = {};
+        frame.frameNumber = ++m_frameNumber;
+        frame.stageOrdinal = ordinal;
+        frame.width = static_cast<uint32_t>(width);
+        frame.height = static_cast<uint32_t>(height);
+    }
+
 private:
     OvglBackend* m_backend{ nullptr };
     uint64_t m_frameNumber{ 0 };
 };
 
-Renderer::Renderer(ovstage_instance_t* stage) : m_impl(std::make_unique<Impl>(stage))
+Renderer::Renderer(ovstage_instance_t* stage) : m_implementation(std::make_unique<Implementation>(stage))
 {
 }
 
@@ -125,7 +164,16 @@ Renderer& Renderer::operator=(Renderer&&) noexcept = default;
 
 void Renderer::render(const std::string& renderProductPath, Frame& frame)
 {
-    m_impl->render(renderProductPath, frame);
+    m_implementation->render(renderProductPath, frame);
+}
+
+void Renderer::present(const std::string& renderProductPath,
+                       uint32_t destinationWidth,
+                       uint32_t destinationHeight,
+                       const char* overlayText,
+                       Frame& frame)
+{
+    m_implementation->present(renderProductPath, destinationWidth, destinationHeight, overlayText, frame);
 }
 
 } // namespace details

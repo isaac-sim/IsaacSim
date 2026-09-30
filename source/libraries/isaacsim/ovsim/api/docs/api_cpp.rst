@@ -16,9 +16,9 @@
 
 .. _isaacsim-ovsim-api-api-cpp:
 
-=================
-C++ API reference
-=================
+=========
+C++ guide
+=========
 
 .. isaacsim-libraries-api-guide-start
 
@@ -27,6 +27,8 @@ Link against ``isaacsim::ovsim-api``.
 ``#include <isaacsim/ovsim/api/Factory.hpp>``
 
 Namespace: ``isaacsim::ovsim::api``
+
+.. _isaacsim-ovsim-api-cpp-client-factory:
 
 Client factory
 ==============
@@ -37,7 +39,9 @@ Client factory
     types::Implementation client = makeClient("in-process");
 
     // gRPC clients accept an optional configuration map (e.g. connection target).
-    types::Implementation remote = makeClient("grpc", { { "endpoint", "grpc://localhost:50051" } });
+    types::Implementation remote = makeClient("grpc", { { "endpoint", "127.0.0.1:50051" } });
+
+.. _isaacsim-ovsim-api-cpp-implementation:
 
 Implementation
 ==============

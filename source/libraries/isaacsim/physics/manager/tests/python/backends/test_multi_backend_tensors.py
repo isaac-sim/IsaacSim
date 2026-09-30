@@ -56,10 +56,11 @@ class TestMultiBackendRegistryIsolation:
             assert "rigid-body" not in set(t.get_registry().list_entities("newton"))
             assert "rigid-body" in set(t.get_registry().list_entities("ovphysx"))
         finally:
-            # Restore newton's entry so other tests don't see a partial registry.
-            from isaacsim.physics_engines.ovnewton.impl.tensors.simulation_view import _make_unregistered_view
+            # Restore newton's real factory so other tests see the registry they expect, not a stub that
+            # would answer every later create_entity call for this entity.
+            from isaacsim.physics_engines.ovnewton.impl.tensors.entity_factories import _make_rigid_body_factory
 
-            t.get_registry().register_entity("newton", "rigid-body", _make_unregistered_view)
+            t.get_registry().register_entity("newton", "rigid-body", _make_rigid_body_factory("newton"))
 
         # Sanity — both engines back to their pre-test entity sets.
         assert set(t.get_registry().list_entities("newton")) == before_newton

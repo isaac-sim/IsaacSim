@@ -33,54 +33,54 @@ namespace types
 struct Authoring
 {
     /** @brief Create an empty stage and make it active. */
-    ::ovsim::interfaces::control::authoring::CreateStageFn createStage;
+    ::ovsim::interfaces::control::authoring::CreateStageFunction createStage;
     /** @brief Open a USD stage and make it active. */
-    ::ovsim::interfaces::control::authoring::OpenStageFn openStage;
+    ::ovsim::interfaces::control::authoring::OpenStageFunction openStage;
     /** @brief Save the active stage to a USD file. */
-    ::ovsim::interfaces::control::authoring::SaveStageFn saveStage;
+    ::ovsim::interfaces::control::authoring::SaveStageFunction saveStage;
     /** @brief Replace the active stage contents with serialized USD text. */
-    ::ovsim::interfaces::control::authoring::ImportStageFromStringFn importStageFromString;
+    ::ovsim::interfaces::control::authoring::ImportStageFromStringFunction importStageFromString;
     /** @brief Export the active stage as serialized USD text. */
-    ::ovsim::interfaces::control::authoring::ExportStageToStringFn exportStageToString;
+    ::ovsim::interfaces::control::authoring::ExportStageToStringFunction exportStageToString;
     /** @brief Close the active stage. */
-    ::ovsim::interfaces::control::authoring::CloseStageFn closeStage;
+    ::ovsim::interfaces::control::authoring::CloseStageFunction closeStage;
     /** @brief Add a USD reference to a prim on the active stage. */
-    ::ovsim::interfaces::control::authoring::AddReferenceToStageFn addReferenceToStage;
+    ::ovsim::interfaces::control::authoring::AddReferenceToStageFunction addReferenceToStage;
     /** @brief Define a prim on the active stage. */
-    ::ovsim::interfaces::control::authoring::DefinePrimFn definePrim;
+    ::ovsim::interfaces::control::authoring::DefinePrimFunction definePrim;
     /** @brief Move a prim to another path on the active stage. */
-    ::ovsim::interfaces::control::authoring::MovePrimFn movePrim;
+    ::ovsim::interfaces::control::authoring::MovePrimFunction movePrim;
     /** @brief Remove a prim from the active stage. */
-    ::ovsim::interfaces::control::authoring::RemovePrimFn removePrim;
+    ::ovsim::interfaces::control::authoring::RemovePrimFunction removePrim;
     /** @brief Create an attribute on a prim. */
-    ::ovsim::interfaces::control::authoring::CreatePrimAttributeFn createPrimAttribute;
+    ::ovsim::interfaces::control::authoring::CreatePrimAttributeFunction createPrimAttribute;
     /** @brief Remove an attribute from a prim. */
-    ::ovsim::interfaces::control::authoring::RemovePrimAttributeFn removePrimAttribute;
+    ::ovsim::interfaces::control::authoring::RemovePrimAttributeFunction removePrimAttribute;
     /** @brief Set an authoring parameter exposed by a provider. */
-    ::ovsim::interfaces::control::authoring::SetParameterFn setParameter;
+    ::ovsim::interfaces::control::authoring::SetParameterFunction setParameter;
     /** @brief Get an authoring parameter exposed by a provider. */
-    ::ovsim::interfaces::control::authoring::GetParameterFn getParameter;
+    ::ovsim::interfaces::control::authoring::GetParameterFunction getParameter;
 };
 
 /** @brief Function interface for controlling simulation execution. */
 struct Simulation
 {
     /** @brief Start or resume automatic simulation stepping. */
-    ::ovsim::interfaces::control::simulation::PlayFn play;
+    ::ovsim::interfaces::control::simulation::PlayFunction play;
     /** @brief Pause automatic simulation stepping. */
-    ::ovsim::interfaces::control::simulation::PauseFn pause;
+    ::ovsim::interfaces::control::simulation::PauseFunction pause;
     /** @brief Stop automatic simulation stepping. */
-    ::ovsim::interfaces::control::simulation::StopFn stop;
+    ::ovsim::interfaces::control::simulation::StopFunction stop;
     /** @brief Initialize the simulation for manual stepping. */
-    ::ovsim::interfaces::control::simulation::InitializeFn initialize;
+    ::ovsim::interfaces::control::simulation::InitializeFunction initialize;
     /** @brief Invalidate the manually stepped simulation state. */
-    ::ovsim::interfaces::control::simulation::InvalidateFn invalidate;
+    ::ovsim::interfaces::control::simulation::InvalidateFunction invalidate;
     /** @brief Advance a manually controlled simulation by one step. */
-    ::ovsim::interfaces::control::simulation::StepFn step;
+    ::ovsim::interfaces::control::simulation::StepFunction step;
     /** @brief Set a simulation parameter exposed by a provider. */
-    ::ovsim::interfaces::control::simulation::SetParameterFn setParameter;
+    ::ovsim::interfaces::control::simulation::SetParameterFunction setParameter;
     /** @brief Get a simulation parameter exposed by a provider. */
-    ::ovsim::interfaces::control::simulation::GetParameterFn getParameter;
+    ::ovsim::interfaces::control::simulation::GetParameterFunction getParameter;
 };
 
 /** @brief Authoring and simulation-control interfaces for an OV SIM client. */
@@ -96,9 +96,9 @@ struct Control
 struct Data
 {
     /** @brief Read an attribute from one or more prims. */
-    ::ovsim::interfaces::data::ReadFn read;
+    ::ovsim::interfaces::data::ReadFunction read;
     /** @brief Write an attribute on one or more prims. */
-    ::ovsim::interfaces::data::WriteFn write;
+    ::ovsim::interfaces::data::WriteFunction write;
 };
 
 /** @brief Complete control and data interface returned by an OV SIM client factory. */

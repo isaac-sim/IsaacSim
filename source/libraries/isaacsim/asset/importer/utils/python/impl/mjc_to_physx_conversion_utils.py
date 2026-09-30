@@ -102,7 +102,8 @@ def convert_mjc_actuator_to_physics(mjc_actuator: Usd.Prim, stage: Usd.Stage) ->
             if math.fabs(force_range_min) != force_range_max:
                 _logger.warning(
                     "Magnitude of force range min is not equal to force range max for actuator "
-                    + f"{mjc_actuator.GetPath()} for joint {joint.GetPath()}: {abs(force_range_min)} != {force_range_max}"
+                    f"{mjc_actuator.GetPath()} for joint {joint.GetPath()}: "
+                    f"{abs(force_range_min)} != {force_range_max}"
                 )
 
     # Retrieve gainPrm and biasPrm arrays from MJCF actuator
@@ -124,14 +125,16 @@ def convert_mjc_actuator_to_physics(mjc_actuator: Usd.Prim, stage: Usd.Stage) ->
     if not bias_prm or len(bias_prm) < 3 or not gain_prm or len(gain_prm) < 3:
         _logger.warning(
             "Gain and bias prm arrays are not available or supported for actuator "
-            + f"{mjc_actuator.GetPath()} for joint {joint.GetPath()}, physics drive stiffness and damping will not be created"
+            f"{mjc_actuator.GetPath()} for joint {joint.GetPath()}, physics drive stiffness and damping will not be "
+            "created"
         )
         return
 
     if not gain_type or gain_type != "fixed" or not bias_type or bias_type != "affine":
         _logger.warning(
             "Gain type or bias type not available or supported for actuator "
-            + f"{mjc_actuator.GetPath()} for joint {joint.GetPath()}, physics drive stiffness and damping will not be created"
+            f"{mjc_actuator.GetPath()} for joint {joint.GetPath()}, physics drive stiffness and damping will not be "
+            "created"
         )
         return
 
@@ -178,7 +181,8 @@ def convert_mjc_actuator_to_physics(mjc_actuator: Usd.Prim, stage: Usd.Stage) ->
     else:
         _logger.warning(
             "Gain and bias prm arrays are not in the expected format for actuator "
-            + f"{mjc_actuator.GetPath()} for joint {joint.GetPath()}, physics drive stiffness and damping will not be created"
+            f"{mjc_actuator.GetPath()} for joint {joint.GetPath()}, physics drive stiffness and damping will not be "
+            "created"
         )
 
 

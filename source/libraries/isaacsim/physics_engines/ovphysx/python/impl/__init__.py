@@ -13,13 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Provide the OvPhysX simulation backend.
+"""Implement the OvPhysX simulation backend.
 
 The backend wraps the OvPhysX SDK behind the physics manager simulation and
-tensor APIs. This facade exposes process-level activation, shutdown, and
-readback configuration. Activation loads and registers the native backend,
-then points the OVStage Python data plane at that same private runtime.
+tensor APIs. Importing :mod:`isaacsim.physics_engines.ovphysx` activates and
+registers the native backend. This implementation module retains explicit
+lifecycle and readback helpers for compatibility and testing.
 """
+
+from __future__ import annotations
 
 from types import ModuleType
 
@@ -31,6 +33,7 @@ def _backend() -> ModuleType:
 
     Returns:
         Cached native bindings module.
+
     """
     global _bindings
     if _bindings is None:
@@ -50,10 +53,11 @@ def _backend() -> ModuleType:
 
 
 def activate() -> bool:
-    """Activate and register the OvPhysX backend.
+    """Activate and register the OvPhysX backend if needed.
 
     Returns:
         True when the native backend reports successful activation.
+
     """
     return _backend().activate()
 
@@ -69,12 +73,42 @@ def set_suppress_readback(enable: bool) -> None:
 
     Args:
         enable: True to suppress CPU readback for the DirectGPU workflow.
+
     """
     _backend().set_suppress_readback(enable)
+
+
+def set_tensor_device_ordinal(ordinal: int) -> None:
+    """Declare the device holding this backend's tensors.
+
+    OvPhysX exposes no query for the device its scene selected, so the caller that configured the tensor
+    device states it here. Every entity view reports this value and re-reads it on each access, so it may
+    be declared after those views exist.
+
+    Args:
+        ordinal: CUDA device ordinal, or -1 for host memory.
+
+    """
+    _backend().set_tensor_device_ordinal(ordinal)
+
+
+def get_tensor_device_ordinal() -> int:
+    """Get the declared tensor-device ordinal.
+
+    Returns:
+        The ordinal passed to :func:`set_tensor_device_ordinal`, or -1 when none was declared.
+
+    """
+    return _backend().get_tensor_device_ordinal()
 
 
 __all__ = [
     "activate",
     "shutdown",
     "set_suppress_readback",
+    "set_tensor_device_ordinal",
+    "get_tensor_device_ordinal",
 ]
+
+if not activate():
+    raise RuntimeError("OvPhysX backend activation failed.")

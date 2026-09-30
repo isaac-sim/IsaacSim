@@ -39,6 +39,7 @@ def test_metadata(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = RigidBodyEntity("engine", PATHS)
     assert prims.num_prims == len(PATHS)
@@ -51,6 +52,7 @@ def test_world_poses(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = RigidBodyEntity("engine", PATHS)
     positions, orientations = prims.get_world_poses()
@@ -72,6 +74,7 @@ def test_velocities(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = RigidBodyEntity("engine", PATHS)
     linear_velocities, angular_velocities = prims.get_velocities()
@@ -93,6 +96,7 @@ def test_apply_forces(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = RigidBodyEntity("engine", PATHS)
     prims.apply_forces(np.ones((N, 3), dtype=np.float32))
@@ -104,6 +108,7 @@ def test_apply_forces_and_torques_at_positions(capsys: Any, engine: Any) -> None
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = RigidBodyEntity("engine", PATHS)
     prims.apply_forces_and_torques_at_positions(
@@ -119,6 +124,7 @@ def test_masses(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = RigidBodyEntity("engine", PATHS)
     # get values
@@ -139,6 +145,7 @@ def test_inertias(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = RigidBodyEntity("engine", PATHS)
     output = prims.get_inertias()
@@ -158,6 +165,7 @@ def test_coms(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = RigidBodyEntity("engine", PATHS)
     positions, orientations = prims.get_coms()
@@ -179,6 +187,7 @@ def test_enabled_rigid_bodies(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = RigidBodyEntity("engine", PATHS)
     output = prims.get_enabled_rigid_bodies()
@@ -195,6 +204,7 @@ def test_enabled_gravities(capsys: Any, engine: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         engine: Physics engine supplied by the test fixture.
+
     """
     prims = RigidBodyEntity("engine", PATHS)
     output = prims.get_enabled_gravities()

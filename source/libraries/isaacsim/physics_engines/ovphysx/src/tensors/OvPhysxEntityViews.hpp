@@ -17,8 +17,8 @@
 
 #include <dlpack/dlpack.h>
 #include <isaacsim/physics/manager/tensors/EntityView.hpp>
-#include <isaacsim/physics/registration/tensors/TensorDesc.hpp>
-#include <isaacsim/physics/registration/tensors/TensorSpec.hpp>
+#include <isaacsim/physics/registration/tensors/TensorDescription.hpp>
+#include <isaacsim/physics/registration/tensors/TensorSpecification.hpp>
 #include <ovphysx/ovphysx_types.h>
 
 #include <cstdint>
@@ -36,14 +36,20 @@ namespace physics_engines
 namespace ovphysx
 {
 
-// Create a TensorSpec from an ovphysx binding spec (shape, dtype).
-isaacsim::physics::tensors::TensorSpec getTensorSpecFromOvphysx(ovphysx_handle_t handle,
-                                                                ovphysx_tensor_binding_handle_t binding,
-                                                                bool supportsIndexedRead,
-                                                                bool supportsIndexedWrite);
+// Create a TensorSpecification from an ovphysx binding specification (shape, dtype).
+isaacsim::physics::tensors::TensorSpecification getTensorSpecificationFromOvphysx(ovphysx_handle_t handle,
+                                                                                  ovphysx_tensor_binding_handle_t binding,
+                                                                                  bool supportsIndexedRead,
+                                                                                  bool supportsIndexedWrite);
 
-// Base class for OvPhysX tensor entity views. Holds the mapping from impl name
-// to tensor binding handle and registers C++ lambdas as impls.
+// Resolve the device an ovphysx view's tensors live on. A view keeps whatever ordinal a caller assigned to
+// it; otherwise it reports the backend-wide declaration, read on each access because ovphysx selects its
+// device when the scene is created, which may be after the view was built. `-1` means "unassigned" as well
+// as "host", so declaring the backend device is how a caller asks every view to follow it.
+int resolveOvPhysxDeviceOrdinal(const isaacsim::physics::tensors::EntityView& view);
+
+// Base class for OvPhysX tensor entity views. Holds the mapping from implementation name
+// to tensor binding handle and registers C++ lambdas as implementations.
 class OvPhysxEntityViewBase : public isaacsim::physics::tensors::EntityView
 {
 public:
@@ -56,20 +62,23 @@ public:
     }
 
 protected:
-    // Called from subclass constructor to register all impls. When `resolvedPaths`
+    // Called from subclass constructor to register all implementations. When `resolvedPaths`
     // has a value the bindings are created from those explicit prim paths
     // (multi-pattern views; an empty list means all patterns matched nothing -> a
     // 0-entity view); otherwise (nullopt) from the single `pattern`.
-    void _initBindings(const std::vector<std::pair<std::string, ovphysx_tensor_type_t>>& implMap,
-                       const std::string& pattern,
-                       const std::optional<std::vector<std::string>>& resolvedPaths = std::nullopt);
+    void _initializeBindings(const std::vector<std::pair<std::string, ovphysx_tensor_type_t>>& implementationMap,
+                             const std::string& pattern,
+                             const std::optional<std::vector<std::string>>& resolvedPaths = std::nullopt);
 
-    // Query entity count from the first successful binding's shape[0] and call setCount().
-    // Must be called after _initBindings() so m_bindings is populated.
-    void _setCountFromBindings();
+    // Query entity count from the first successful binding's `shape[0]` and call `setEntityCount()`.
+    // Must be called after _initializeBindings() so m_bindings is populated.
+    void _setEntityCountFromBindings();
 
     // Return the resolved prim paths from the first binding, or empty if unavailable.
     std::vector<std::string> getResolvedPrimPaths() const override;
+
+    // See resolveOvPhysxDeviceOrdinal.
+    int getDeviceOrdinal() const noexcept override;
 
     ovphysx_handle_t m_handle;
     std::unordered_map<std::string, ovphysx_tensor_binding_handle_t> m_bindings;
@@ -128,6 +137,9 @@ public:
     {
         return m_contactBinding;
     }
+
+    // See resolveOvPhysxDeviceOrdinal.
+    int getDeviceOrdinal() const noexcept override;
     int32_t getSensorCount() const noexcept
     {
         return m_sensorCount;
@@ -150,7 +162,7 @@ private:
 
     // Adopt a caller-requested contact-record capacity: recreate the binding, resize the host buffers and
     // rewrite the declared output shapes. A no-op when the capacity already matches. Capacity is one
-    // property of the view, so every read impl observes the change and none is left on a stale binding.
+    // property of the view, so every read implementation observes the change and none is left on a stale binding.
     void _ensureContactCapacity(int32_t requestedCapacity);
 
     ovphysx_handle_t m_handle;
@@ -211,8 +223,8 @@ private:
 // Uses the dedicated ovphysx_create_sdf_view / ovphysx_evaluate_sdf API rather than the
 // standard tensor binding path.
 //
-// The "distances-and-gradients" GET impl takes query points [N, Q, 3] via the indices
-// TensorDesc and returns [N, Q, 4] (distance, grad.x, grad.y, grad.z).
+// The "distances-and-gradients" GET implementation takes query points [N, Q, 3] via the indices
+// TensorDescription and returns [N, Q, 4] (distance, grad.x, grad.y, grad.z).
 class OvPhysxSdfShapeEntityView : public isaacsim::physics::tensors::EntityView
 {
 public:
@@ -224,10 +236,14 @@ public:
         return m_handle;
     }
 
+    // See resolveOvPhysxDeviceOrdinal.
+    int getDeviceOrdinal() const noexcept override;
+
 private:
     // Adopt a caller-requested query-point extent by recreating the SDF view, which takes the extent at
     // creation. A no-op when it already matches. Unlike contacts, nothing here is discovered from a failed
-    // read: maxQ is how many points the caller intends to submit, and it is present in the query they submit.
+    // read: the maximum query-point count is how many points the caller intends to submit, and it is present in the
+    // query they submit.
     void _ensureQueryPointCapacity(int32_t requestedQueryPointCount);
 
     ovphysx_handle_t m_handle;
@@ -238,7 +254,7 @@ private:
     std::string m_pattern;
 };
 
-// Unsupported stub view: all impls registered with supports=false.
+// Unsupported stub view: all implementations are registered with supports=false.
 std::shared_ptr<isaacsim::physics::tensors::EntityView> makeUnsupportedView(const std::string& pattern,
                                                                             const std::string& category);
 

@@ -47,46 +47,48 @@ namespace ns_control = isaacsim::foundation::ovsim::control;
 namespace ns_data = isaacsim::foundation::ovsim::data;
 
 // Data
-[[maybe_unused]] iface_data::ReadFn _read = &ns_data::read;
-[[maybe_unused]] iface_data::WriteFn _write = &ns_data::write;
+[[maybe_unused]] const iface_data::ReadFunction g_kRead = &ns_data::read;
+[[maybe_unused]] const iface_data::WriteFunction g_kWrite = &ns_data::write;
 
 // Control
 // - Authoring
 // -- Stage operations
-[[maybe_unused]] iface_control::authoring::CreateStageFn _createStage = &ns_control::authoring::createStage;
-[[maybe_unused]] iface_control::authoring::OpenStageFn _openStage = &ns_control::authoring::openStage;
-[[maybe_unused]] iface_control::authoring::SaveStageFn _saveStage = &ns_control::authoring::saveStage;
-[[maybe_unused]] iface_control::authoring::ImportStageFromStringFn _importStageFromString =
+[[maybe_unused]] const iface_control::authoring::CreateStageFunction g_kCreateStage = &ns_control::authoring::createStage;
+[[maybe_unused]] const iface_control::authoring::OpenStageFunction g_kOpenStage = &ns_control::authoring::openStage;
+[[maybe_unused]] const iface_control::authoring::SaveStageFunction g_kSaveStage = &ns_control::authoring::saveStage;
+[[maybe_unused]] const iface_control::authoring::ImportStageFromStringFunction g_kImportStageFromString =
     &ns_control::authoring::importStageFromString;
-[[maybe_unused]] iface_control::authoring::ExportStageToStringFn _exportStageToString =
+[[maybe_unused]] const iface_control::authoring::ExportStageToStringFunction g_kExportStageToString =
     &ns_control::authoring::exportStageToString;
-[[maybe_unused]] iface_control::authoring::CloseStageFn _closeStage = &ns_control::authoring::closeStage;
-[[maybe_unused]] iface_control::authoring::AddReferenceToStageFn _addReferenceToStage =
+[[maybe_unused]] const iface_control::authoring::CloseStageFunction g_kCloseStage = &ns_control::authoring::closeStage;
+[[maybe_unused]] const iface_control::authoring::AddReferenceToStageFunction g_kAddReferenceToStage =
     &ns_control::authoring::addReferenceToStage;
 // -- Prim operations
-[[maybe_unused]] iface_control::authoring::DefinePrimFn _definePrim = &ns_control::authoring::definePrim;
-[[maybe_unused]] iface_control::authoring::MovePrimFn _movePrim = &ns_control::authoring::movePrim;
-[[maybe_unused]] iface_control::authoring::RemovePrimFn _removePrim = &ns_control::authoring::removePrim;
+[[maybe_unused]] const iface_control::authoring::DefinePrimFunction g_kDefinePrim = &ns_control::authoring::definePrim;
+[[maybe_unused]] const iface_control::authoring::MovePrimFunction g_kMovePrim = &ns_control::authoring::movePrim;
+[[maybe_unused]] const iface_control::authoring::RemovePrimFunction g_kRemovePrim = &ns_control::authoring::removePrim;
 // -- Attribute operations
-[[maybe_unused]] iface_control::authoring::CreatePrimAttributeFn _createPrimAttribute =
+[[maybe_unused]] const iface_control::authoring::CreatePrimAttributeFunction g_kCreatePrimAttribute =
     &ns_control::authoring::createPrimAttribute;
-[[maybe_unused]] iface_control::authoring::RemovePrimAttributeFn _removePrimAttribute =
+[[maybe_unused]] const iface_control::authoring::RemovePrimAttributeFunction g_kRemovePrimAttribute =
     &ns_control::authoring::removePrimAttribute;
 // -- Parameters
-[[maybe_unused]] iface_control::authoring::SetParameterFn _authoring_setParameter = &ns_control::authoring::setParameter;
-[[maybe_unused]] iface_control::authoring::GetParameterFn _authoring_getParameter = &ns_control::authoring::getParameter;
+[[maybe_unused]] const iface_control::authoring::SetParameterFunction g_kAuthoringSetParameter =
+    &ns_control::authoring::setParameter;
+[[maybe_unused]] const iface_control::authoring::GetParameterFunction g_kAuthoringGetParameter =
+    &ns_control::authoring::getParameter;
 // - Simulation
 // -- Lifecycle operations
-[[maybe_unused]] iface_control::simulation::PlayFn _play = &ns_control::simulation::play;
-[[maybe_unused]] iface_control::simulation::PauseFn _pause = &ns_control::simulation::pause;
-[[maybe_unused]] iface_control::simulation::StopFn _stop = &ns_control::simulation::stop;
-[[maybe_unused]] iface_control::simulation::InitializeFn _initialize = &ns_control::simulation::initialize;
-[[maybe_unused]] iface_control::simulation::InvalidateFn _invalidate = &ns_control::simulation::invalidate;
-[[maybe_unused]] iface_control::simulation::StepFn _step = &ns_control::simulation::step;
+[[maybe_unused]] const iface_control::simulation::PlayFunction g_kPlay = &ns_control::simulation::play;
+[[maybe_unused]] const iface_control::simulation::PauseFunction g_kPause = &ns_control::simulation::pause;
+[[maybe_unused]] const iface_control::simulation::StopFunction g_kStop = &ns_control::simulation::stop;
+[[maybe_unused]] const iface_control::simulation::InitializeFunction g_kInitialize = &ns_control::simulation::initialize;
+[[maybe_unused]] const iface_control::simulation::InvalidateFunction g_kInvalidate = &ns_control::simulation::invalidate;
+[[maybe_unused]] const iface_control::simulation::StepFunction g_kStep = &ns_control::simulation::step;
 // -- Parameters
-[[maybe_unused]] iface_control::simulation::SetParameterFn _simulation_setParameter =
+[[maybe_unused]] const iface_control::simulation::SetParameterFunction g_kSimulationSetParameter =
     &ns_control::simulation::setParameter;
-[[maybe_unused]] iface_control::simulation::GetParameterFn _simulation_getParameter =
+[[maybe_unused]] const iface_control::simulation::GetParameterFunction g_kSimulationGetParameter =
     &ns_control::simulation::getParameter;
 
 } // namespace

@@ -67,7 +67,7 @@ public:
     /**
      * @brief Return the offending prim path.
      */
-    const std::string& primPath() const noexcept;
+    const std::string& getPrimPath() const noexcept;
 
 private:
     std::string m_primPath;
@@ -88,7 +88,7 @@ public:
     /**
      * @brief Return the offending prim path string.
      */
-    const std::string& primPath() const noexcept;
+    const std::string& getPrimPath() const noexcept;
 
 private:
     std::string m_primPath;
@@ -111,12 +111,12 @@ public:
     /**
      * @brief Return the offending attribute name.
      */
-    const std::string& attributeName() const noexcept;
+    const std::string& getAttributeName() const noexcept;
 
     /**
      * @brief Return the valid attribute names.
      */
-    const std::vector<std::string>& validAttributeNames() const noexcept;
+    const std::vector<std::string>& getValidAttributeNames() const noexcept;
 
 private:
     std::string m_attributeName;
@@ -140,17 +140,17 @@ public:
     /**
      * @brief Return the attribute the value was provided for.
      */
-    const std::string& attributeName() const noexcept;
+    const std::string& getAttributeName() const noexcept;
 
     /**
      * @brief Return a human-readable description of the expected type.
      */
-    const std::string& expectedType() const noexcept;
+    const std::string& getExpectedType() const noexcept;
 
     /**
      * @brief Return a human-readable description of the type that was provided.
      */
-    const std::string& actualType() const noexcept;
+    const std::string& getActualType() const noexcept;
 
 private:
     std::string m_attributeName;
@@ -177,12 +177,12 @@ public:
     /**
      * @brief Return the name of the caller that made the CUDA runtime call.
      */
-    const std::string& callerName() const noexcept;
+    const std::string& getCallerName() const noexcept;
 
     /**
      * @brief Return the CUDA error code returned by the call.
      */
-    std::optional<int> errorCode() const noexcept;
+    std::optional<int> getErrorCode() const noexcept;
 
 private:
     std::string m_callerName;

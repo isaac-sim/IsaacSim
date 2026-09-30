@@ -6,15 +6,15 @@ requires = ["scikit-build-core>=1.0.3"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "isaacsim_common"
+name = "isaacsim-common"
 dynamic = ["version"]
-description = "Common Isaac Sim library infrastructure"
+description = "Shared Isaac Sim arrays, exceptions, logging, OVStage contracts, profiling, and string utilities"
 requires-python = "==3.12.*"
 license = "Apache-2.0"
 authors = [{ name = "NVIDIA Corporation" }]
 dependencies = []
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]

@@ -7,4 +7,14 @@ isaacsim_add_group(
         isaacsim.ovgl_viewport.debug
 )
 
+isaacsim_add_group_dependency(
+    GROUP isaacsim_ovgl_viewport
+    DEPENDS_ON isaacsim_common
+)
+
+isaacsim_add_group_dependency(
+    GROUP isaacsim_ovgl_viewport
+    DEPENDS_ON isaacsim_foundation
+)
+
 add_subdirectory(debug)

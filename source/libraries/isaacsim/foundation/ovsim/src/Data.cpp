@@ -13,8 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "details/Registry.hpp"
+
 #include <isaacsim/foundation/ovsim/data/Data.hpp>
-#include <isaacsim/foundation/ovsim/details/Registry.hpp>
 
 namespace isaacsim
 {
@@ -25,20 +26,20 @@ namespace ovsim
 namespace data
 {
 
-OutputValueType read(const PathType& paths, const std::string& attributeName, std::optional<double> timeStamp)
+OutputValueType read(const PathType& paths, const std::string& attributeName, std::optional<double> timestamp)
 {
-    // TODO: timeStamp support.
-    (void)timeStamp;
+    // TODO: Add `timestamp` support.
+    (void)timestamp;
     return details::getAttributeValues(details::processPaths(paths), attributeName);
 }
 
 void write(const PathType& paths,
            const std::string& attributeName,
            const InputValueType& values,
-           std::optional<double> timeStamp)
+           std::optional<double> timestamp)
 {
-    // TODO: timeStamp support.
-    (void)timeStamp;
+    // TODO: Add `timestamp` support.
+    (void)timestamp;
     details::setAttributeValues(details::processPaths(paths), attributeName, values);
 }
 

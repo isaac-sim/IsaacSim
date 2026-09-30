@@ -95,7 +95,7 @@ ArticulationEntity
 ==================
 
 ``ArticulationEntity`` extends ``PhysicsEntity`` with articulation state and
-properties.  Topology accessors (``numDofs``, ``dofNames``, ``numLinks``,
+properties.  Topology properties (``numDofs``, ``dofNames``, ``numLinks``,
 ``linkNames``, ...) describe the kinematic tree, and the name-to-index helpers
 resolve DOF, joint, and link names into the ``dofIndices`` / ``linkIndices``
 arguments taken by the batched accessors:

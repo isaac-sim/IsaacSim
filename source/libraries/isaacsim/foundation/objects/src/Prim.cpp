@@ -34,19 +34,19 @@ namespace ovstage = isaacsim::foundation::usd::ovstage;
 namespace
 {
 
-std::string joinPaths(const std::vector<std::string>& v)
+std::string joinPaths(const std::vector<std::string>& paths)
 {
-    std::ostringstream ss;
-    for (std::size_t i = 0; i < v.size(); ++i)
+    std::ostringstream stream;
+    for (std::size_t index = 0; index < paths.size(); ++index)
     {
-        if (i)
-            ss << ", ";
-        ss << "'" << v[i] << "'";
+        if (index)
+            stream << ", ";
+        stream << "'" << paths[index] << "'";
     }
-    return ss.str();
+    return stream.str();
 }
 
-struct AttributeSpec
+struct AttributeSpecification
 {
     int64_t dimensions;
     bool isScalar;
@@ -54,7 +54,7 @@ struct AttributeSpec
 };
 
 // clang-format off
-const std::unordered_map<std::string, AttributeSpec> g_kAttributeSpecs = {
+const std::unordered_map<std::string, AttributeSpecification> g_kAttributeSpecifications = {
     { "asset",         {  0, false, false } },
     { "asset[]",       {  0, false,  true } },
 
@@ -303,7 +303,7 @@ std::vector<int64_t> Prim::_resolveIndexValues(const std::optional<array::Array>
     }
 
     const auto count = static_cast<int64_t>(m_paths.size());
-    std::vector<int64_t> indexValues = indices->reshape(array::Shape({ -1 })).get<std::vector<int64_t>>();
+    std::vector<int64_t> indexValues = indices->flatten().get<std::vector<int64_t>>();
     for (int64_t& index : indexValues)
     {
         const int64_t original = index;
@@ -593,7 +593,7 @@ array::Array Prim::isA(const std::string& schemaType, const std::optional<array:
     {
         result.push_back(m_primOps.isA(stageId, path, schemaType));
     }
-    return array::Array(result);
+    return array::Array(result).reshape(array::Shape({ static_cast<int64_t>(paths.size()), int64_t{ 1 } }));
 }
 
 array::Array Prim::hasApi(const std::string& schemaType,
@@ -609,7 +609,7 @@ array::Array Prim::hasApi(const std::string& schemaType,
     {
         result.push_back(m_primOps.hasApi(stageId, path, schemaType, instanceName));
     }
-    return array::Array(result);
+    return array::Array(result).reshape(array::Shape({ static_cast<int64_t>(paths.size()), int64_t{ 1 } }));
 }
 
 array::Array Prim::applyApi(const std::string& schemaType,
@@ -625,7 +625,7 @@ array::Array Prim::applyApi(const std::string& schemaType,
     {
         result.push_back(m_primOps.applyApi(stageId, path, schemaType, instanceName));
     }
-    return array::Array(result);
+    return array::Array(result).reshape(array::Shape({ static_cast<int64_t>(paths.size()), int64_t{ 1 } }));
 }
 
 array::Array Prim::removeApi(const std::string& schemaType,
@@ -641,7 +641,7 @@ array::Array Prim::removeApi(const std::string& schemaType,
     {
         result.push_back(m_primOps.removeApi(stageId, path, schemaType, instanceName));
     }
-    return array::Array(result);
+    return array::Array(result).reshape(array::Shape({ static_cast<int64_t>(paths.size()), int64_t{ 1 } }));
 }
 
 std::vector<std::vector<std::string>> Prim::getAppliedSchemas(const std::optional<array::Array>& indices) const
@@ -670,7 +670,7 @@ array::Array Prim::createAttribute(const std::string& attributeName,
     {
         result.push_back(m_primOps.createPrimAttribute(stageId, path, attributeName, typeName));
     }
-    return array::Array(result);
+    return array::Array(result).reshape(array::Shape({ static_cast<int64_t>(paths.size()), int64_t{ 1 } }));
 }
 
 array::Array Prim::removeAttribute(const std::string& attributeName, const std::optional<array::Array>& indices) const
@@ -683,7 +683,7 @@ array::Array Prim::removeAttribute(const std::string& attributeName, const std::
     {
         result.push_back(m_primOps.removePrimAttribute(stageId, path, attributeName));
     }
-    return array::Array(result);
+    return array::Array(result).reshape(array::Shape({ static_cast<int64_t>(paths.size()), int64_t{ 1 } }));
 }
 
 OutputValueType Prim::getAttributeValues(const std::string& attributeName, const std::optional<array::Array>& indices) const
@@ -703,8 +703,8 @@ void Prim::setAttributeValues(const std::string& attributeName,
     {
         // Get attribute specification.
         const std::string typeName = m_primOps.getPrimAttributeTypeName(stageId, paths.front(), attributeName);
-        const auto specification = g_kAttributeSpecs.find(typeName);
-        if (specification != g_kAttributeSpecs.end())
+        const auto specification = g_kAttributeSpecifications.find(typeName);
+        if (specification != g_kAttributeSpecifications.end())
         {
             // Reshape/broadcast Array values that are scalar but not array.
             if (specification->second.isScalar && !specification->second.isArray)

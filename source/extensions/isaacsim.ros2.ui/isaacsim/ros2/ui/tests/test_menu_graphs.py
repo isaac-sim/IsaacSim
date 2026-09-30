@@ -1737,59 +1737,43 @@ class TestMenuROS2ClockGraph(ROS2MenuTestBase):
         if tick_output_attr and clock_exec_in_attr:
             og.Controller.connect(tick_output_attr, clock_exec_in_attr)
 
-        # Clear any existing messages
-        self.clock_history.clear()
-
-        # Initialize simulation time tracking for verification
-        initial_sim_time = None
-
-        # Run the simulation in steps
-        self._timeline.play()
-
         def spin_ros() -> None:
             rclpy.spin_once(self.node, timeout_sec=0.01)
 
-        # Run simulation with more iterations and longer total time
-        simulation_duration = 1.0
-        step_size = 0.1
-        steps = int(simulation_duration / step_size)
+        def current_clock_span() -> float:
+            """Return the span after the most recent simulation-clock reset."""
+            if len(self.clock_history) < 2:
+                return 0.0
+            segment_start = 0
+            for index in range(1, len(self.clock_history)):
+                if self.clock_history[index] < self.clock_history[index - 1]:
+                    segment_start = index
+            return self.clock_history[-1] - self.clock_history[segment_start]
 
-        for i in range(steps):
-            # Run simulation for this step
-            for _ in range(int(step_size * 60)):
-                await omni.kit.app.get_app().next_update_async()
-                spin_ros()
-
-            # Check current simulation time directly from the timeline
-            current_sim_time = self._timeline.get_current_time()
-
-            if initial_sim_time is None:
-                initial_sim_time = current_sim_time
+        # Run only after the graph's publisher endpoint is visible. Discovery is
+        # asynchronous and fixed frame counts are too short on fast Windows runners.
+        self.clock_history.clear()
+        self._timeline.play()
+        await self.wait_for_publishers_on_topic(
+            self.node,
+            clock_topic,
+            timeout_sec=10.0,
+            per_frame_callback=spin_ros,
+        )
+        clock_advanced = await self.simulate_until_condition(
+            lambda: current_clock_span() > 0.5,
+            max_frames=600,
+            per_frame_callback=spin_ros,
+        )
 
         # Stop simulation
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-        # Validate data - first check that we actually received messages
-        self.assertGreater(
-            len(self.clock_history), 0, f"No clock messages received after {simulation_duration} seconds"
+        self.assertTrue(
+            clock_advanced,
+            f"Clock did not advance by 0.5 seconds after its most recent reset. History: {self.clock_history}",
         )
-
-        if len(self.clock_history) >= 2:
-            initial_time = self.clock_history[0]
-            final_time = self.clock_history[-1]
-
-            # Validate time progression - check for at least 3 seconds advancement
-            time_diff = final_time - initial_time
-            self.assertGreater(
-                time_diff, 0.5, f"Clock did not advance properly. Initial: {initial_time:.6f}, Final: {final_time:.6f}"
-            )
-
-        else:
-            # If we only received one message, at least verify it's not zero
-            if len(self.clock_history) == 1:
-                clock_time = self.clock_history[0]
-                self.assertGreater(clock_time, 0.0, "Clock time should not be zero")
 
 
 class TestMenuROS2GenericPublisherGraph(ROS2MenuTestBase):

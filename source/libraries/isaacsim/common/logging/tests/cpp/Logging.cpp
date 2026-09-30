@@ -118,13 +118,13 @@ TEST_SUITE("isaacsim.common.logging")
     TEST_CASE("Filtered formatted records do not format arguments")
     {
         const std::string channelName = "isaacsim.test.filtered_formatting";
-        ChannelLoggingConfig channel;
+        ChannelLoggingConfiguration channel;
         channel.channel = channelName;
         channel.minimumLevelBehavior = ChannelSettingBehavior::eOverride;
         channel.minimumLevel = LogLevel::eError;
-        GlobalLoggingConfig filterConfig;
-        filterConfig.channels.push_back(channel);
-        CHECK(configureGlobalLogging(filterConfig) == ConfigureResult::eSuccess);
+        GlobalLoggingConfiguration filterConfiguration;
+        filterConfiguration.channels.push_back(channel);
+        CHECK(configureGlobalLogging(filterConfiguration) == ConfigureResult::eSuccess);
 
         Logger logger(channelName);
         std::atomic<size_t> invocationCount{ 0 };
@@ -139,9 +139,9 @@ TEST_SUITE("isaacsim.common.logging")
         CHECK(invocationCount.load(std::memory_order_relaxed) == 1);
 
         channel.minimumLevelBehavior = ChannelSettingBehavior::eInherit;
-        GlobalLoggingConfig restoreConfig;
-        restoreConfig.channels.push_back(channel);
-        CHECK(configureGlobalLogging(restoreConfig) == ConfigureResult::eSuccess);
+        GlobalLoggingConfiguration restoreConfiguration;
+        restoreConfiguration.channels.push_back(channel);
+        CHECK(configureGlobalLogging(restoreConfiguration) == ConfigureResult::eSuccess);
     }
 
     TEST_CASE("Once macros submit one admitted record per call site under contention")
@@ -151,27 +151,27 @@ TEST_SUITE("isaacsim.common.logging")
             ("isaacsim-common-logging-once-" +
              std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".log");
 
-        GlobalLoggingConfig config;
-        config.minimumLevel = LogLevel::eVerbose;
-        config.standardStreamEnabled = false;
-        config.filePath = logPath.string();
-        config.fileAppend = false;
-        config.fileLevel = LogLevel::eVerbose;
-        config.fileFlushLevel = LogLevel::eVerbose;
-        config.colorIncluded = false;
-        ChannelLoggingConfig channel;
+        GlobalLoggingConfiguration configuration;
+        configuration.minimumLevel = LogLevel::eVerbose;
+        configuration.standardStreamEnabled = false;
+        configuration.filePath = logPath.string();
+        configuration.fileAppend = false;
+        configuration.fileLevel = LogLevel::eVerbose;
+        configuration.fileFlushLevel = LogLevel::eVerbose;
+        configuration.colorIncluded = false;
+        ChannelLoggingConfiguration channel;
         channel.channel = "isaacsim.test.warning_once";
         channel.minimumLevelBehavior = ChannelSettingBehavior::eOverride;
         channel.minimumLevel = LogLevel::eError;
-        config.channels.push_back(channel);
-        CHECK(configureGlobalLogging(config) == ConfigureResult::eSuccess);
+        configuration.channels.push_back(channel);
+        CHECK(configureGlobalLogging(configuration) == ConfigureResult::eSuccess);
 
         Logger logger(channel.channel);
         CHECK_FALSE(logger.isEnabled(LogLevel::eWarning));
         submitWarningOnce(logger, -1);
         submitDeprecationOnce(logger, -1);
 
-        GlobalLoggingConfig enableWarning;
+        GlobalLoggingConfiguration enableWarning;
         channel.minimumLevelBehavior = ChannelSettingBehavior::eInherit;
         enableWarning.channels.push_back(channel);
         CHECK(configureGlobalLogging(enableWarning) == ConfigureResult::eSuccess);
@@ -193,7 +193,7 @@ TEST_SUITE("isaacsim.common.logging")
         }
         flush();
 
-        GlobalLoggingConfig restore;
+        GlobalLoggingConfiguration restore;
         restore.minimumLevel = LogLevel::eWarning;
         restore.standardStreamEnabled = true;
         restore.filePath = "";
@@ -222,27 +222,27 @@ TEST_SUITE("isaacsim.common.logging")
             ("isaacsim-common-logging-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
              ".log");
 
-        GlobalLoggingConfig globalConfig;
-        globalConfig.minimumLevel = LogLevel::eVerbose;
-        globalConfig.asynchronous = true;
-        globalConfig.filePath = logPath.string();
-        globalConfig.fileAppend = false;
-        globalConfig.fileLevel = LogLevel::eVerbose;
-        globalConfig.fileFlushLevel = LogLevel::eVerbose;
-        globalConfig.colorIncluded = false;
+        GlobalLoggingConfiguration globalConfiguration;
+        globalConfiguration.minimumLevel = LogLevel::eVerbose;
+        globalConfiguration.asynchronous = true;
+        globalConfiguration.filePath = logPath.string();
+        globalConfiguration.fileAppend = false;
+        globalConfiguration.fileLevel = LogLevel::eVerbose;
+        globalConfiguration.fileFlushLevel = LogLevel::eVerbose;
+        globalConfiguration.colorIncluded = false;
 
-        ChannelLoggingConfig thresholdChannel;
+        ChannelLoggingConfiguration thresholdChannel;
         thresholdChannel.channel = "isaacsim.test.file.threshold";
         thresholdChannel.minimumLevelBehavior = ChannelSettingBehavior::eOverride;
         thresholdChannel.minimumLevel = LogLevel::eError;
-        globalConfig.channels.push_back(thresholdChannel);
+        globalConfiguration.channels.push_back(thresholdChannel);
 
-        ChannelLoggingConfig disabledChannel;
+        ChannelLoggingConfiguration disabledChannel;
         disabledChannel.channel = "isaacsim.test.file.disabled";
         disabledChannel.enabledBehavior = ChannelSettingBehavior::eOverride;
         disabledChannel.enabled = false;
-        globalConfig.channels.push_back(disabledChannel);
-        CHECK(configureGlobalLogging(globalConfig) == ConfigureResult::eSuccess);
+        globalConfiguration.channels.push_back(disabledChannel);
+        CHECK(configureGlobalLogging(globalConfiguration) == ConfigureResult::eSuccess);
 
         Logger thresholdLogger(thresholdChannel.channel);
         thresholdLogger.log(LogLevel::eWarning, "filtered-by-channel-threshold");
@@ -254,7 +254,7 @@ TEST_SUITE("isaacsim.common.logging")
         inheritedLogger.log(LogLevel::eInfo, "included-by-global-policy");
         flush();
 
-        GlobalLoggingConfig restoreChannels;
+        GlobalLoggingConfiguration restoreChannels;
         thresholdChannel.minimumLevelBehavior = ChannelSettingBehavior::eInherit;
         disabledChannel.enabledBehavior = ChannelSettingBehavior::eInherit;
         restoreChannels.channels = { thresholdChannel, disabledChannel };
@@ -263,7 +263,7 @@ TEST_SUITE("isaacsim.common.logging")
         disabledLogger.log(LogLevel::eError, "included-after-enabled-inherit");
         flush();
 
-        GlobalLoggingConfig disableFile;
+        GlobalLoggingConfiguration disableFile;
         disableFile.filePath = "";
         disableFile.minimumLevel = LogLevel::eWarning;
         disableFile.asynchronous = false;
@@ -283,29 +283,29 @@ TEST_SUITE("isaacsim.common.logging")
 
     TEST_CASE("Invalid channel configuration is rejected")
     {
-        GlobalLoggingConfig config;
-        ChannelLoggingConfig channel;
+        GlobalLoggingConfiguration configuration;
+        ChannelLoggingConfiguration channel;
         channel.enabledBehavior = ChannelSettingBehavior::eOverride;
         channel.enabled = false;
-        config.channels.push_back(channel);
-        CHECK(configureGlobalLogging(config) == ConfigureResult::eInvalidArgument);
+        configuration.channels.push_back(channel);
+        CHECK(configureGlobalLogging(configuration) == ConfigureResult::eInvalidArgument);
     }
 
     TEST_CASE("Logger submission is safe from multiple threads")
     {
         Logger logger("isaacsim.test.threading");
-        GlobalLoggingConfig config;
-        config.elapsedTime = ElapsedTimeUnit::eMilliseconds;
+        GlobalLoggingConfiguration configuration;
+        configuration.elapsedTime = ElapsedTimeUnit::eMilliseconds;
         std::atomic<bool> configurationSucceeded{ true };
         std::vector<std::thread> threads;
         for (int threadIndex = 0; threadIndex < 4; ++threadIndex)
         {
             threads.emplace_back(
-                [&logger, &config, &configurationSucceeded, threadIndex]
+                [&logger, &configuration, &configurationSucceeded, threadIndex]
                 {
                     for (int recordIndex = 0; recordIndex < 100; ++recordIndex)
                     {
-                        if (configureGlobalLogging(config) != ConfigureResult::eSuccess)
+                        if (configureGlobalLogging(configuration) != ConfigureResult::eSuccess)
                         {
                             configurationSucceeded.store(false);
                         }

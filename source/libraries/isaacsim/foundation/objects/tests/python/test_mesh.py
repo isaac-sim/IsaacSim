@@ -20,6 +20,7 @@ from typing import Any
 import isaacsim_test
 import numpy as np
 import pytest
+import warp as wp
 from isaacsim.foundation.objects import Mesh
 
 from .fixtures import stage  # noqa: F401 - imported so pytest can discover the fixture
@@ -186,3 +187,25 @@ def test_update_extents(capsys: Any, stage: Any, populate: Any) -> None:
     prims = Mesh(_get_paths(stage, populate))
     prims.set_points([TRIANGLE_POINTS])
     prims.update_extents()
+
+
+def test_are_of_type(capsys: Any, stage: Any) -> None:
+    """Test are of type.
+
+    Args:
+        capsys: Pytest output-capture fixture.
+        stage: Stage used by the test.
+    """
+    type_names = ["Mesh", "Cube", "Scope"]
+    for index, type_name in enumerate(type_names):
+        stage.define_prim(f"/World/Prim{index}", type_name)
+    paths = [f"/World/Prim{index}" for index in range(len(type_names))]
+    # boolean flags are reported per prim, in the order the paths were given
+    output = Mesh.are_of_type(paths)
+    isaacsim_test.check_array(output, shape=(len(type_names), 1), dtype=wp.bool)
+    isaacsim_test.check_equal(np.array([1, 0, 0], dtype=np.bool_).reshape(-1, 1), output)
+    # regular expressions are expanded against the active stage
+    isaacsim_test.check_array(Mesh.are_of_type("/World/Prim.*"), shape=(len(type_names), 1), dtype=wp.bool)
+    # non-existing prims
+    with pytest.raises(RuntimeError):
+        Mesh.are_of_type("/World/NonExistent")

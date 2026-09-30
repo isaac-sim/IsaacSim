@@ -3,7 +3,7 @@ name: isaac-sim-ros2-bridge
 description: "ROS 2 OmniGraph bridge, Nav2, and multi-robot namespacing in Isaac Sim 6. Use for ROS 2 integration and fleet topics."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Isaac Sim ROS 2 Bridge

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.4] - 2026-09-04
+### Fixed
+- `VisualCuesManager`: tolerate updates while the USD stage is temporarily unavailable during replacement.
+
 ## [0.4.3] - 2026-08-25
 ### Changed
 - Subscribe to timeline play/stop through Events 2.0 instead of the deprecated timeline event stream.

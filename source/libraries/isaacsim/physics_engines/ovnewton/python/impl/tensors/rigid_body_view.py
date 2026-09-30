@@ -33,6 +33,7 @@ def _no_profile(fn: Callable[..., Any]) -> Callable[..., Any]:
 
     Returns:
         The original callable.
+
     """
     return fn
 
@@ -68,6 +69,7 @@ class NewtonRigidBodyView:
     Args:
         backend: Backend selection containing rigid-body and model indices.
         frontend: Tensor frontend used to allocate and wrap returned values.
+
     """
 
     def __init__(self, backend: Any, frontend: Any) -> None:

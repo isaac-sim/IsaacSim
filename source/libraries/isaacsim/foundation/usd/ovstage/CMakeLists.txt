@@ -1,6 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 if(NOT TARGET ovstage::ovstage)
-    set(
-        ovstage_DIR
+    set(ovstage_DIR
         "${ISAACSIM_NATIVE_RUNTIME_DEPS_DIR}/ovstage/lib/cmake/ovstage"
         CACHE PATH
         "Directory containing the selected ovstage package configuration"
@@ -8,7 +10,8 @@ if(NOT TARGET ovstage::ovstage)
     )
     find_package(ovstage REQUIRED
         PATHS "${ovstage_DIR}"
-        NO_DEFAULT_PATH)
+        NO_DEFAULT_PATH
+    )
     set_property(TARGET ovstage::ovstage PROPERTY IMPORTED_GLOBAL TRUE)
 endif()
 
@@ -23,9 +26,9 @@ isaacsim_add_module(
         isaacsim::common-logging
         ovstage::ovstage
     PUBLIC_CPP_HEADERS
-        isaacsim/foundation/usd/ovstage/details/UsdHelpers.hpp
         isaacsim/foundation/usd/ovstage/Usd.hpp
     SOURCES
+        src/details/UsdHelpers.hpp
         src/details/UsdHelpers.cpp
         src/Usd.cpp
 )
@@ -52,13 +55,11 @@ isaacsim_add_runtime_directory(
     WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/ovstage_usd_schemas"
 )
 
-# if(NOT APPLE AND NOT WIN32)
-#     target_compile_options(isaacsim-foundation-usd-ovstage PRIVATE -Wno-changes-meaning -Wno-deprecated)
-# endif()
-
 isaacsim_add_cpp_tests(
     MODULE isaacsim.foundation.usd.ovstage
     REQUIRES_NO_BINDINGS
+    DEPENDENCIES
+        ovstage::ovstage
     RESOURCE_DIR resources/tests/isaacsim.foundation.usd.ovstage
     SOURCES
         tests/cpp/Attribute.cpp

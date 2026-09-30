@@ -21,7 +21,7 @@
 #include <nanobind/ndarray.h>
 
 #include <cstddef>
-#include <cstring>
+#include <exception>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -44,108 +44,6 @@ namespace array
 {
 namespace details
 {
-
-// Map an Array DType onto its DLPack descriptor.
-inline nanobind::dlpack::dtype toDLPackDType(const DType& dtype)
-{
-    using namespace nanobind::dlpack;
-    switch (dtype.kind())
-    {
-    case DType::Kind::eBool:
-        // warp.from_dlpack() has no boolean type code (it rejects DLPack's kDLBool), so expose a
-        // boolean Array to warp as 1-byte unsigned integers (values 0/1). Array stores bool in a
-        // single byte (sizeof(bool) == 1), so this aliases the same buffer without reinterpretation.
-        return { static_cast<uint8_t>(dtype_code::UInt), 8, 1 };
-    case DType::Kind::eInt8:
-        return { static_cast<uint8_t>(dtype_code::Int), 8, 1 };
-    case DType::Kind::eInt16:
-        return { static_cast<uint8_t>(dtype_code::Int), 16, 1 };
-    case DType::Kind::eInt32:
-        return { static_cast<uint8_t>(dtype_code::Int), 32, 1 };
-    case DType::Kind::eInt64:
-        return { static_cast<uint8_t>(dtype_code::Int), 64, 1 };
-    case DType::Kind::eUInt8:
-        return { static_cast<uint8_t>(dtype_code::UInt), 8, 1 };
-    case DType::Kind::eUInt16:
-        return { static_cast<uint8_t>(dtype_code::UInt), 16, 1 };
-    case DType::Kind::eUInt32:
-        return { static_cast<uint8_t>(dtype_code::UInt), 32, 1 };
-    case DType::Kind::eUInt64:
-        return { static_cast<uint8_t>(dtype_code::UInt), 64, 1 };
-    case DType::Kind::eFloat32:
-        return { static_cast<uint8_t>(dtype_code::Float), 32, 1 };
-    case DType::Kind::eFloat64:
-        return { static_cast<uint8_t>(dtype_code::Float), 64, 1 };
-    }
-    throw std::invalid_argument("toDLPackDType(): unsupported dtype");
-}
-
-// Map a DLPack descriptor onto an Array DType.
-inline DType fromDLPackDType(const nanobind::dlpack::dtype& dtype)
-{
-    using namespace nanobind::dlpack;
-    if (dtype.lanes != 1)
-    {
-        throw std::invalid_argument("fromDLPackDType(): vectorized dtypes (lanes != 1) are not supported");
-    }
-    switch (static_cast<dtype_code>(dtype.code))
-    {
-    case dtype_code::Bool:
-        if (dtype.bits == 8)
-            return DType::Bool();
-        break;
-    case dtype_code::Int:
-        if (dtype.bits == 8)
-            return DType::Int8();
-        if (dtype.bits == 16)
-            return DType::Int16();
-        if (dtype.bits == 32)
-            return DType::Int32();
-        if (dtype.bits == 64)
-            return DType::Int64();
-        break;
-    case dtype_code::UInt:
-        if (dtype.bits == 8)
-            return DType::UInt8();
-        if (dtype.bits == 16)
-            return DType::UInt16();
-        if (dtype.bits == 32)
-            return DType::UInt32();
-        if (dtype.bits == 64)
-            return DType::UInt64();
-        break;
-    case dtype_code::Float:
-        if (dtype.bits == 32)
-            return DType::Float32();
-        if (dtype.bits == 64)
-            return DType::Float64();
-        break;
-    default:
-        break;
-    }
-    throw std::invalid_argument("fromDLPackDType(): unsupported dtype " + std::to_string(dtype.code));
-}
-
-// Map an Array Device onto a DLPack device type.
-inline int32_t toDLPackDeviceType(const Device& device)
-{
-    return device.isCpu() ? nanobind::device::cpu::value : nanobind::device::cuda::value;
-}
-
-// Map a DLPack device onto an Array Device.
-inline Device fromDLPackDevice(int32_t deviceType, int32_t deviceId)
-{
-    switch (deviceType)
-    {
-    case nanobind::device::cpu::value:
-        return Device::Cpu();
-    case nanobind::device::cuda::value:
-        return Device::Cuda(deviceId);
-    default:
-        break;
-    }
-    throw std::invalid_argument("fromDLPackDevice(): unsupported device type " + std::to_string(deviceType));
-}
 
 // --- Native Python sequence support ------------------------------------------------------------
 // nb::ndarray inputs (warp.array / numpy / DLPack) already carry shape, dtype and a contiguous
@@ -236,15 +134,15 @@ struct type_caster<isaacsim::common::array::Array>
             {
                 if (PyBool_Check(src.ptr()))
                 {
-                    value = ica::Array(cast<bool>(src), ica::DType::Bool());
+                    value = ica::Array(cast<bool>(src), ica::Dtype::Bool());
                 }
                 else if (PyLong_Check(src.ptr()))
                 {
-                    value = ica::Array(cast<int64_t>(src), ica::DType::Int64());
+                    value = ica::Array(cast<int64_t>(src), ica::Dtype::Int64());
                 }
                 else // PyFloat
                 {
-                    value = ica::Array(cast<double>(src), ica::DType::Float64());
+                    value = ica::Array(cast<double>(src), ica::Dtype::Float64());
                 }
                 return true;
             }
@@ -270,7 +168,7 @@ struct type_caster<isaacsim::common::array::Array>
                 // or heterogeneous input (e.g. ["a", "b"] or [1, "b"]), and can also produce
                 // complex/datetime kinds; accept only boolean ('b'), signed ('i'), unsigned ('u')
                 // and floating ('f') kinds. The exact bit width is still validated downstream by
-                // fromNdarray() -> fromDLPackDType() (which rejects e.g. float16), so this guard only
+                // fromNdarray() -> fromDLPack() (which rejects e.g. float16), so this guard only
                 // needs to screen out non-numeric kinds that could otherwise slip through.
                 object kindObject = array.attr("dtype").attr("kind");
                 Py_ssize_t kindLength = 0;
@@ -303,7 +201,7 @@ struct type_caster<isaacsim::common::array::Array>
     // C-contiguous (row-major) input is accepted; non-contiguous/strided inputs are rejected (Array
     // has no stride support), surfacing as a clean conversion failure rather than a silent copy. The
     // resulting Array shares memory with the Python array (writes on either side are visible to the
-    // other, until the Array is copied/cloned).
+    // other, until copy() or clone() is called).
     bool fromNdarray(handle src, uint8_t flags, cleanup_list* cleanup) noexcept
     {
         namespace ica = isaacsim::common::array;
@@ -315,37 +213,21 @@ struct type_caster<isaacsim::common::array::Array>
         }
         ndarray<>& array = caster.value;
 
-        // Everything below runs inside the try: the DType/Device mapping helpers throw on
-        // unsupported inputs, and this function is noexcept.
+        // Everything below runs inside the try: fromDLPack() validates the imported metadata and
+        // throws on unsupported inputs, while this function is noexcept.
         try
         {
-            const ica::Device device = ica::details::fromDLPackDevice(array.device_type(), array.device_id());
-            const ica::DType dtype = ica::details::fromDLPackDType(array.dtype());
+            const nanobind::dlpack::dtype arrayDtype = array.dtype();
+            DLTensor tensor{};
+            tensor.data = array.data();
+            tensor.device = { static_cast<DLDeviceType>(array.device_type()), array.device_id() };
+            tensor.ndim = static_cast<int32_t>(array.ndim());
+            tensor.dtype = { arrayDtype.code, arrayDtype.bits, arrayDtype.lanes };
+            tensor.shape = const_cast<int64_t*>(array.shape_ptr());
+            tensor.strides = const_cast<int64_t*>(array.stride_ptr());
+            tensor.byte_offset = 0;
 
-            std::vector<int64_t> dimensions(array.ndim());
-            for (size_t i = 0; i < array.ndim(); ++i)
-            {
-                dimensions[i] = static_cast<int64_t>(array.shape(i));
-            }
-            const ica::Shape shape(dimensions);
-
-            // Array has no stride support, so only a C-contiguous (row-major) source can be aliased
-            // zero-copy; reject anything else (including negative/reversed strides). Strides on
-            // size-1 axes are ignored (producers report arbitrary values there while still being
-            // contiguous), and empty arrays are accepted (nothing to alias).
-            const size_t count = shape.size();
-            if (count != 0)
-            {
-                int64_t expectedStride = 1;
-                for (size_t axis = array.ndim(); axis-- > 0;)
-                {
-                    if (dimensions[axis] > 1 && array.stride(axis) != expectedStride)
-                    {
-                        return false;
-                    }
-                    expectedStride *= dimensions[axis];
-                }
-            }
+            const ica::Array borrowed = ica::fromDLPack(tensor);
 
             // Zero-copy alias of the source buffer (a device pointer for a CUDA source, which
             // fromBuffer() adopts as device storage). Keep both the original argument and nanobind's
@@ -372,7 +254,7 @@ struct type_caster<isaacsim::common::array::Array>
                                                      Py_DECREF(keepSource);
                                                  });
 
-            value = ica::Array::fromBuffer(std::move(aliased), shape, dtype, device);
+            value = ica::Array::fromBuffer(std::move(aliased), borrowed.shape(), borrowed.dtype(), borrowed.device());
             return true;
         }
         catch (...)
@@ -390,8 +272,14 @@ struct type_caster<isaacsim::common::array::Array>
 
         try
         {
-            const std::vector<int64_t> dimensions = value.shape().shape();
-            std::vector<size_t> shape(dimensions.begin(), dimensions.end());
+            const DLTensor tensor = ica::toDLPack(value);
+            std::vector<size_t> shape(static_cast<size_t>(tensor.ndim));
+            for (size_t axis = 0; axis < shape.size(); ++axis)
+            {
+                shape[axis] = static_cast<size_t>(tensor.shape[axis]);
+            }
+
+            nanobind::dlpack::dtype dtype{ tensor.dtype.code, tensor.dtype.bits, tensor.dtype.lanes };
 
             // Keep the underlying buffer alive for as long as the ndarray (and any warp.array
             // derived from it) references the memory. The unique_ptr guards against a leak if the
@@ -401,10 +289,8 @@ struct type_caster<isaacsim::common::array::Array>
                           [](void* pointer) noexcept { delete static_cast<std::shared_ptr<std::byte[]>*>(pointer); });
             holder.release();
 
-            ndarray<> array(const_cast<void*>(value.data()), shape.size(), shape.data(), owner,
-                            /* strides */ nullptr, ica::details::toDLPackDType(value.dtype()),
-                            ica::details::toDLPackDeviceType(value.device()),
-                            value.device().isCpu() ? 0 : value.device().ordinal());
+            ndarray<> array(tensor.data, shape.size(), shape.data(), owner, tensor.strides, dtype,
+                            static_cast<int>(tensor.device.device_type), tensor.device.device_id);
 
             object warp = module_::import_("warp");
             // warp.from_dlpack() requires the runtime to be initialized; init() is idempotent.

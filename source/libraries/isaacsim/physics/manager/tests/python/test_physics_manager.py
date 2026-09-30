@@ -34,6 +34,7 @@ def physics_engines(request: Any) -> Iterator[None]:
 
     Yields:
         Control while the physics engines are registered.
+
     """
 
     def _register_physics_engines(num_engines: Any) -> list:
@@ -72,6 +73,7 @@ def test_physics_event_enum(capsys: Any) -> None:
 
     Args:
         capsys: Pytest output-capture fixture.
+
     """
     items = [item for item in dir(PhysicsEvent) if not item.startswith("_")]
     assert len(items) == 5, "Number of physics events does not match the expected ones"
@@ -83,6 +85,7 @@ def test_physics_manager_singleton(capsys: Any) -> None:
 
     Args:
         capsys: Pytest output-capture fixture.
+
     """
     with pytest.raises(TypeError):
         PhysicsManager()
@@ -99,6 +102,7 @@ def test_physics_manager_step(capsys: Any, physics_engines: Any) -> None:
     Args:
         capsys: Pytest output-capture fixture.
         physics_engines: Physics engines supplied by the test fixture.
+
     """
 
     def callback(step: Any, steps: Any) -> Any:
@@ -146,6 +150,7 @@ def test_physics_manager_physics_engine_bindings(capsys: Any, physics_engines: A
     Args:
         capsys: Pytest output-capture fixture.
         physics_engines: Physics engines supplied by the test fixture.
+
     """
 
     def _check_active_engine(status: tuple[bool]) -> None:

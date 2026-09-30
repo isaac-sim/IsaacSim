@@ -28,6 +28,7 @@ All declarations live in the ``isaacsim::foundation::prims::physics`` namespace.
 
     #include <isaacsim/foundation/prims/physics/Articulation.hpp>
     #include <isaacsim/foundation/prims/physics/ColliderBody.hpp>
+    #include <isaacsim/foundation/prims/physics/GroundPlane.hpp>
     #include <isaacsim/foundation/prims/physics/RigidBody.hpp>
 
     using namespace isaacsim::foundation::prims::physics;
@@ -66,6 +67,21 @@ The collision mesh approximation can be set at construction or updated later:
     ColliderBody mesh("/World/Mesh", /*approximations=*/"convexHull");
     mesh.setCollisionApproximations("convexDecomposition");
     auto [contactOffsets, restOffsets] = mesh.getOffsets();
+
+.. _isaacsim-foundation-prims-api-cpp-groundplane:
+
+GroundPlane
+===========
+
+``GroundPlane`` extends ``Xform`` and wraps a composite prim made of a
+``Plane`` (collision) and a ``Mesh`` (rendering) child. It creates the prims
+if they do not exist, or wraps them if they do:
+
+.. code-block:: cpp
+
+    GroundPlane ground("/World/GroundPlane", /*sizes=*/Array{100.f});
+    ground.setOffsets(/*contactOffsets=*/Array{0.02f});
+    ground.setEnabledCollisions(Array{true});
 
 .. _isaacsim-foundation-prims-api-cpp-rigidbody:
 

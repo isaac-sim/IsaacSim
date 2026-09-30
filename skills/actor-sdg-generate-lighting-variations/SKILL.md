@@ -3,7 +3,7 @@ name: actor-sdg-generate-lighting-variations
 description: "Generate deterministic USD lighting override sublayers for Actor SDG. Use when randomizing lights, creating lighting variations, or preparing IRA prop_asset_paths."
 license: Apache-2.0
 metadata:
-  author: NVIDIA Isaac Sim
+  author: NVIDIA Isaac Sim <isaac-sim@nvidia.com>
 ---
 
 # Actor SDG Generate Lighting Variations

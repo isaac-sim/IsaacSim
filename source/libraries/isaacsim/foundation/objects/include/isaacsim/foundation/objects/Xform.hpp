@@ -38,29 +38,34 @@ class ISAACSIM_FOUNDATION_OBJECTS_API Xform : public Prim
 {
 public:
     /**
-     * @brief Construct an Xform wrapper and optionally set an initial transform.
+     * @brief Construct an Xform wrapper.
      * @param[in] paths                  Single path or list of paths to USD Xform prims.
      *                                   May include regular expressions.
-     * @param[in] positions              Initial world-frame positions (shape @c (N,3)).
-     *                                   Mutually exclusive with @p translations.
-     * @param[in] translations           Initial local-frame translations (shape @c (N,3)).
-     *                                   Mutually exclusive with @p positions.
-     * @param[in] orientations           Initial orientations as quaternions @c wxyz (shape @c (N,4)).
-     * @param[in] scales                 Initial local scales (shape @c (N,3)).
-     * @param[in] resetXformOpProperties Whether to normalize the xformOp stack to translate/orient/scale
-     *                                   before applying the initial transform.
+     * @param[in] resetXformOpProperties Whether to normalize the xformOp stack to translate/orient/scale.
      * @param[in] resolvePaths           Whether to resolve and expand path expressions.
      */
     Xform(const std::variant<std::string, std::vector<std::string>>& paths,
           // Xform
-          const std::optional<array::Array>& positions = std::nullopt,
-          const std::optional<array::Array>& translations = std::nullopt,
-          const std::optional<array::Array>& orientations = std::nullopt,
-          const std::optional<array::Array>& scales = std::nullopt,
           bool resetXformOpProperties = true,
           // Prim
           bool resolvePaths = true);
     ~Xform() = default;
+
+    /**
+     * @brief Check whether the prims at the given paths are of the type handled by this class.
+     * @details As the base class of all transformable prims, this method tests for the
+     *          @c UsdGeomXformable schema, which every shape, light, camera and mesh derives from.
+     *          A @c true flag therefore does not imply the prim is a plain @c Xform; use the
+     *          subclass-specific @c areOfType to narrow it down.
+     *
+     *          The paths are resolved against the active stage before being checked.
+     *          Since this method is static, the returned array is always allocated on the CPU.
+     * @param[in] paths Single path string or list of path strings. May include regular
+     *                  expressions that are expanded against the active stage.
+     * @return Boolean flags (dtype bool, shape @c (N,1)), one per resolved prim.
+     * @throws std::runtime_error if the given paths do not correspond to existing prims.
+     */
+    static array::Array areOfType(const std::variant<std::string, std::vector<std::string>>& paths);
 
     /**
      * @brief Set the visibility of the selected prims.
@@ -82,19 +87,25 @@ public:
 
     /**
      * @brief Get the world-frame poses (positions and orientations) of the selected prims.
-     * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
+     * @param[in] indices        Indices of prims to process. If omitted, all wrapped prims are processed.
+     * @param[in] rotationFormat Component order of the returned quaternions: @c "xyzw" or @c "wxyz".
      * @return A pair of (positions, orientations). Positions have shape @c (N,3);
-     *         orientations are quaternions @c wxyz with shape @c (N,4).
+     *         orientations are quaternions in @p rotationFormat order with shape @c (N,4).
+     * @throws std::invalid_argument if @p rotationFormat is neither @c "xyzw" nor @c "wxyz".
      */
-    std::tuple<array::Array, array::Array> getWorldPoses(const std::optional<array::Array>& indices = std::nullopt);
+    std::tuple<array::Array, array::Array> getWorldPoses(const std::optional<array::Array>& indices = std::nullopt,
+                                                         const std::string& rotationFormat = "xyzw");
 
     /**
      * @brief Get the local-frame poses (translations and orientations) of the selected prims.
-     * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
+     * @param[in] indices        Indices of prims to process. If omitted, all wrapped prims are processed.
+     * @param[in] rotationFormat Component order of the returned quaternions: @c "xyzw" or @c "wxyz".
      * @return A pair of (translations, orientations). Translations have shape @c (N,3);
-     *         orientations are quaternions @c wxyz with shape @c (N,4).
+     *         orientations are quaternions in @p rotationFormat order with shape @c (N,4).
+     * @throws std::invalid_argument if @p rotationFormat is neither @c "xyzw" nor @c "wxyz".
      */
-    std::tuple<array::Array, array::Array> getLocalPoses(const std::optional<array::Array>& indices = std::nullopt);
+    std::tuple<array::Array, array::Array> getLocalPoses(const std::optional<array::Array>& indices = std::nullopt,
+                                                         const std::string& rotationFormat = "xyzw");
 
     /**
      * @brief Get the local scales of the selected prims.
@@ -114,25 +125,31 @@ public:
      * @brief Set the local-frame poses (translations and/or orientations) of the selected prims.
      * @details At least one of @p translations or @p orientations must be provided.
      *          This method teleports prims to the specified poses.
-     * @param[in] translations Local-frame translations (shape @c (N,3)). Optional.
-     * @param[in] orientations Orientations as quaternions @c wxyz (shape @c (N,4)). Optional.
-     * @param[in] indices      Indices of prims to process. If omitted, all wrapped prims are processed.
+     * @param[in] translations   Local-frame translations (shape @c (N,3)). Optional.
+     * @param[in] orientations   Orientations as quaternions in @p rotationFormat order (shape @c (N,4)). Optional.
+     * @param[in] indices        Indices of prims to process. If omitted, all wrapped prims are processed.
+     * @param[in] rotationFormat Component order of @p orientations: @c "xyzw" or @c "wxyz".
+     * @throws std::invalid_argument if @p rotationFormat is neither @c "xyzw" nor @c "wxyz".
      */
     void setLocalPoses(const std::optional<array::Array>& translations = std::nullopt,
                        const std::optional<array::Array>& orientations = std::nullopt,
-                       const std::optional<array::Array>& indices = std::nullopt);
+                       const std::optional<array::Array>& indices = std::nullopt,
+                       const std::string& rotationFormat = "xyzw");
 
     /**
      * @brief Set the world-frame poses (positions and/or orientations) of the selected prims.
      * @details At least one of @p positions or @p orientations must be provided.
      *          This method teleports prims to the specified poses.
-     * @param[in] positions   World-frame positions (shape @c (N,3)). Optional.
-     * @param[in] orientations Orientations as quaternions @c wxyz (shape @c (N,4)). Optional.
-     * @param[in] indices      Indices of prims to process. If omitted, all wrapped prims are processed.
+     * @param[in] positions      World-frame positions (shape @c (N,3)). Optional.
+     * @param[in] orientations   Orientations as quaternions in @p rotationFormat order (shape @c (N,4)). Optional.
+     * @param[in] indices        Indices of prims to process. If omitted, all wrapped prims are processed.
+     * @param[in] rotationFormat Component order of @p orientations: @c "xyzw" or @c "wxyz".
+     * @throws std::invalid_argument if @p rotationFormat is neither @c "xyzw" nor @c "wxyz".
      */
     void setWorldPoses(const std::optional<array::Array>& positions = std::nullopt,
                        const std::optional<array::Array>& orientations = std::nullopt,
-                       const std::optional<array::Array>& indices = std::nullopt);
+                       const std::optional<array::Array>& indices = std::nullopt,
+                       const std::string& rotationFormat = "xyzw");
 
     /**
      * @brief Normalize the xformOp stack of all wrapped prims to the standard translate/orient/scale order.
@@ -145,12 +162,8 @@ public:
 protected:
     Xform();
 
-    /** @brief Applies the optional initial transform values to the wrapped prims. */
-    void _initialize(const std::optional<array::Array>& positions = std::nullopt,
-                     const std::optional<array::Array>& translations = std::nullopt,
-                     const std::optional<array::Array>& orientations = std::nullopt,
-                     const std::optional<array::Array>& scales = std::nullopt,
-                     bool resetXformOpProperties = false);
+    /** @brief Normalizes the xformOp stack of the wrapped prims when requested. */
+    void _initialize(bool resetXformOpProperties = false);
 
 private:
     struct XformOps

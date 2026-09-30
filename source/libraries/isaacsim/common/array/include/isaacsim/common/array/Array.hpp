@@ -74,9 +74,9 @@ struct CudaStorage
  * `std::vector<std::vector<T>>` alternatives produce a 2-D array. Supported element types are
  * `bool`, the fixed-width integer types from `<cstdint>`, `float`, and `double`.
  */
-using SupportedInputSpec = std::variant<ISAACSIM_COMMON_ARRAY_SCALARS(ISAACSIM_COMMON_ARRAY_DIM0),
-                                        ISAACSIM_COMMON_ARRAY_SCALARS(ISAACSIM_COMMON_ARRAY_DIM1),
-                                        ISAACSIM_COMMON_ARRAY_SCALARS(ISAACSIM_COMMON_ARRAY_DIM2)>;
+using SupportedInputSpecification = std::variant<ISAACSIM_COMMON_ARRAY_SCALARS(ISAACSIM_COMMON_ARRAY_DIM0),
+                                                 ISAACSIM_COMMON_ARRAY_SCALARS(ISAACSIM_COMMON_ARRAY_DIM1),
+                                                 ISAACSIM_COMMON_ARRAY_SCALARS(ISAACSIM_COMMON_ARRAY_DIM2)>;
 
 #undef ISAACSIM_COMMON_ARRAY_SCALARS
 #undef ISAACSIM_COMMON_ARRAY_DIM2
@@ -89,19 +89,21 @@ using SupportedInputSpec = std::variant<ISAACSIM_COMMON_ARRAY_SCALARS(ISAACSIM_C
  * @class Array
  * @brief Multi-dimensional array with support for CPU and CUDA devices.
  * @details
- * An Array combines a contiguous element buffer with a @ref Shape, a @ref DType, and a
+ * An Array combines a contiguous element buffer with a @ref Shape, a @ref Dtype, and a
  * @ref Device. Multiple Array instances may share the same underlying buffer; operations
  * such as @ref reshape() and @ref at() return views over the original allocation without
- * copying data. Copy-construction, copy-assignment, and @ref copy() each allocate an
- * independent buffer; use @ref clone() when you need to preserve the full buffer layout
- * including any pre-element offset from a prior @ref at() call.
+ * copying data. Copy-construction and copy-assignment are likewise cheap and share the
+ * buffer; use @ref copy() to allocate an independent buffer, or @ref clone() when you also
+ * need to preserve the full buffer layout including any pre-element offset from a prior
+ * @ref at() call.
  *
  * Arrays can be constructed from scalar values, `std::vector`, or `std::vector<std::vector>`
- * via @c SupportedInputSpec, or from an existing buffer via @ref fromBuffer(). Device and
+ * via @c SupportedInputSpecification, or from an existing buffer via @ref fromBuffer(). Device and
  * dtype conversion are available through @ref toDevice() and @ref toDtype().
  *
- * @note The element buffer is reference-counted; @ref reshape() and @ref at() share it,
- *       while copy-construction, copy-assignment, and @ref copy() each allocate a fresh buffer.
+ * @note The element buffer is reference-counted; @ref reshape(), @ref at(), copy-construction,
+ *       and copy-assignment all share it, while @ref copy() and @ref clone() each allocate a
+ *       fresh buffer.
  */
 class ISAACSIM_COMMON_ARRAY_API Array
 {
@@ -117,33 +119,35 @@ public:
      * @param[in] dtype  Element type for the resulting array. Inferred from @p value if omitted.
      * @param[in] device Target compute device. Defaults to the CPU.
      */
-    Array(const details::SupportedInputSpec& value,
-          const std::optional<DType>& dtype = std::nullopt,
+    Array(const details::SupportedInputSpecification& value,
+          const std::optional<Dtype>& dtype = std::nullopt,
           const Device& device = Device::Cpu());
 
     /**
-     * @brief Copy-constructs an independent deep copy of @p other.
-     * @details Allocates a new buffer of exactly @p other.nbytes() and copies all visible
-     *          elements. The resulting array has offset 0, so a slice obtained via @ref at()
-     *          is compacted into a dense layout.
+     * @brief Copy-constructs a shallow view of @p other sharing its storage.
+     * @details No data is copied: the new array has the same shape, dtype, device, and offset
+     *          as @p other and shares ownership of the same reference-counted buffer, so writes
+     *          through either array are visible through the other.
      * @param[in] other The Array to copy.
-     * @see clone() to preserve the full buffer layout including any pre-element offset.
+     * @see copy() for an independent, compacted deep copy.
+     * @see clone() for a deep copy that preserves the full buffer layout including any pre-element offset.
      */
-    Array(const Array& other);
+    Array(const Array& other) = default;
     /** @brief Move-constructs an Array and transfers ownership of its storage. */
     Array(Array&& other) = default;
     ~Array() = default;
 
     /**
-     * @brief Copy-assigns this Array from an independent deep copy of @p other.
-     * @details Allocates a new buffer of exactly @p other.nbytes() and copies all visible
-     *          elements. After assignment this Array has offset 0 and does not share storage
-     *          with @p other.
+     * @brief Copy-assigns this Array as a shallow view of @p other sharing its storage.
+     * @details No data is copied: after assignment this array has the same shape, dtype, device,
+     *          and offset as @p other and shares ownership of the same reference-counted buffer,
+     *          so writes through either array are visible through the other.
      * @param[in] other The Array to copy-assign from.
      * @return Reference to this Array.
-     * @see clone() to preserve the full buffer layout including any pre-element offset.
+     * @see copy() for an independent, compacted deep copy.
+     * @see clone() for a deep copy that preserves the full buffer layout including any pre-element offset.
      */
-    Array& operator=(const Array& other);
+    Array& operator=(const Array& other) = default;
     /** @brief Move-assigns an Array and transfers ownership of its storage. */
     Array& operator=(Array&& other) = default;
 
@@ -161,9 +165,9 @@ public:
 
     /**
      * @brief Returns the element data type of this array.
-     * @return The @ref DType of this array.
+     * @return The @ref Dtype of this array.
      */
-    DType dtype() const;
+    Dtype dtype() const;
 
     /**
      * @brief Returns the number of dimensions (rank) of this array.
@@ -239,6 +243,15 @@ public:
     Array reshape(const Shape& shape) const;
 
     /**
+     * @brief Returns a 1-D view of this array over the same buffer.
+     * @details Shorthand for reshaping to a single dimension holding all @ref size() elements.
+     *          No data is copied; the returned array shares the underlying buffer.
+     * @return A new 1-D Array sharing this array's buffer.
+     * @see reshape()
+     */
+    Array flatten() const;
+
+    /**
      * @brief Returns an independent, compacted deep copy of this array.
      * @details Allocates a new buffer of exactly @ref nbytes() and copies all visible
      *          elements. The returned array has offset 0, so a slice obtained via @ref at()
@@ -251,10 +264,12 @@ public:
     /**
      * @brief Returns an independent deep copy of this array with its own buffer.
      * @details
-     * Allocates a new buffer and copies all element data into it. The returned array
-     * does not share storage with this array.
+     * Duplicates the whole allocation, including any bytes preceding element 0, so the
+     * offset of a slice obtained via @ref at() is preserved (unlike @ref copy(), which
+     * compacts the visible elements to offset 0). The returned array does not share
+     * storage with this array.
      *
-     * @return A new Array with the same shape, dtype, device, and copied element data.
+     * @return A new Array with the same shape, dtype, device, offset, and copied element data.
      */
     Array clone() const;
 
@@ -269,14 +284,14 @@ public:
      *
      * @param[in] data   Shared pointer to the byte buffer.
      * @param[in] shape  Shape of the array.
-     * @param[in] dtype  Element type. Defaults to `float32`.
+     * @param[in] dtype  Element type. Required: raw bytes carry no type of their own.
      * @param[in] device Device on which the buffer resides. Defaults to the CPU.
      * @param[in] offset Byte offset within @p data at which element 0 begins.
      * @return A new Array backed by @p data.
      */
     static Array fromBuffer(std::shared_ptr<std::byte[]> data,
                             const Shape& shape,
-                            DType dtype = DType::Float32(),
+                            Dtype dtype,
                             const Device& device = Device::Cpu(),
                             size_t offset = 0);
 
@@ -305,7 +320,7 @@ public:
      * @param[in] copy  If `true`, always return an independent copy.
      * @return An Array with element type @p dtype.
      */
-    Array toDtype(DType dtype, bool copy = false) const;
+    Array toDtype(Dtype dtype, bool copy = false) const;
 
     /**
      * @brief Returns this array broadcast to the specified shape, or a new array if a transfer or copy is required.
@@ -344,7 +359,7 @@ public:
      *
      * @param[in] value Scalar or nested vector to write into this array.
      */
-    void set(const details::SupportedInputSpec& value);
+    void set(const details::SupportedInputSpecification& value);
 
     /**
      * @brief Overwrites the contents of this array with the elements of @p other.
@@ -394,17 +409,17 @@ public:
     std::string toString() const;
 
 private:
-    std::shared_ptr<std::byte[]> _cpuBuffer() const;
-    std::shared_ptr<std::byte[]> _buildCpuBuffer(const details::SupportedInputSpec& value);
+    std::shared_ptr<std::byte[]> _copyToCpuBuffer() const;
+    std::shared_ptr<std::byte[]> _buildCpuBuffer(const details::SupportedInputSpecification& value);
 
     Array(std::variant<details::CpuStorage, details::CudaStorage> storage,
           size_t offset,
           Shape shape,
-          DType dtype,
+          Dtype dtype,
           Device device);
 
-    std::string _itemToString() const;
-    std::string _dataToString() const;
+    std::string _formatItem() const;
+    std::string _formatData() const;
 
     template <typename T>
     void _setItem(std::byte* data, const T& value);
@@ -421,7 +436,7 @@ protected:
     /**
      * @brief Element data type of this array.
      */
-    DType m_dtype;
+    Dtype m_dtype;
 
     /**
      * @brief Compute device on which this array resides.
@@ -444,3 +459,5 @@ protected:
 } // namespace isaacsim
 
 #include "isaacsim/common/array/Array.tpp"
+#include "isaacsim/common/array/DLPack.hpp"
+#include "isaacsim/common/array/Functions.hpp"

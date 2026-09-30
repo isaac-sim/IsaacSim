@@ -87,95 +87,134 @@ NB_MODULE(_bindings, module)
     details::bindPythonSubscription(module);
 
     nb::class_<Float3>(module, "Float3", "Store a three-component floating-point value.")
-        .def(nb::init<>())
+        .def(nb::init<>(), "Create a value initialized to zero.")
         .def(
             "__init__",
             [](Float3* self, float x, float y, float z) {
                 new (self) Float3{ x, y, z };
             },
-            nb::arg("x"), nb::arg("y"), nb::arg("z"))
-        .def_rw("x", &Float3::x)
-        .def_rw("y", &Float3::y)
-        .def_rw("z", &Float3::z);
+            nb::arg("x"), nb::arg("y"), nb::arg("z"), "Create a value from its three components.")
+        .def_rw("x", &Float3::x, "First component.")
+        .def_rw("y", &Float3::y, "Second component.")
+        .def_rw("z", &Float3::z, "Third component.");
 
     nb::class_<Float4>(module, "Float4", "Store a four-component floating-point value.")
-        .def(nb::init<>())
+        .def(nb::init<>(), "Create a value initialized to zero.")
         .def(
             "__init__",
             [](Float4* self, float x, float y, float z, float w) {
                 new (self) Float4{ x, y, z, w };
             },
-            nb::arg("x"), nb::arg("y"), nb::arg("z"), nb::arg("w"))
-        .def_rw("x", &Float4::x)
-        .def_rw("y", &Float4::y)
-        .def_rw("z", &Float4::z)
-        .def_rw("w", &Float4::w);
+            nb::arg("x"), nb::arg("y"), nb::arg("z"), nb::arg("w"), "Create a value from its four components.")
+        .def_rw("x", &Float4::x, "First component.")
+        .def_rw("y", &Float4::y, "Second component.")
+        .def_rw("z", &Float4::z, "Third component.")
+        .def_rw("w", &Float4::w, "Fourth component.");
 
     nb::class_<SimulationId>(module, "SimulationId", "A unique identifier for a physics simulation instance.")
-        .def(nb::init<>())
-        .def(nb::init<size_t>())
+        .def(nb::init<>(), "Create an invalid simulation identifier.")
+        .def(nb::init<size_t>(), nb::arg("id"), "Create an identifier from an integer value.")
         .def(
             "__eq__", [](const SimulationId& left, const SimulationId& right) { return left == right; },
-            nb::is_operator())
+            nb::is_operator(), "Return whether two identifiers are equal.")
         .def(
             "__ne__", [](const SimulationId& left, const SimulationId& right) { return left != right; },
-            nb::is_operator())
-        .def("__hash__", &SimulationId::hash)
-        .def("__int__", [](const SimulationId& simulationId) { return simulationId.id; })
-        .def("__index__", [](const SimulationId& simulationId) { return simulationId.id; })
-        .def_ro("id", &SimulationId::id);
+            nb::is_operator(), "Return whether two identifiers differ.")
+        .def("__hash__", &SimulationId::computeHash, "Return a hash of the identifier.")
+        .def(
+            "__int__", [](const SimulationId& simulationId) { return simulationId.id; },
+            "Return the identifier as an integer.")
+        .def(
+            "__index__", [](const SimulationId& simulationId) { return simulationId.id; },
+            "Return the identifier for integer-index contexts.")
+        .def_ro("id", &SimulationId::id, "Integer identifier value.");
 
     nb::class_<PhysicsStepContext>(module, "PhysicsStepContext", "Identify the scene and simulation for a step callback.")
-        .def(nb::init<>())
-        .def_rw("scene_path", &PhysicsStepContext::scenePath)
-        .def_rw("simulation_id", &PhysicsStepContext::simulationId);
+        .def(nb::init<>(), "Create an empty step context.")
+        .def_rw("scene_path", &PhysicsStepContext::scenePath, "Path of the simulated physics scene.")
+        .def_rw("simulation_id", &PhysicsStepContext::simulationId, "Identifier of the simulation backend.");
 
     nb::enum_<ForceModeType>(module, "ForceMode", "Modes used when applying forces to physics objects.")
-        .value("FORCE", ForceModeType::eForce)
-        .value("IMPULSE", ForceModeType::eImpulse)
-        .value("VELOCITY_CHANGE", ForceModeType::eVelocityChange)
-        .value("ACCELERATION", ForceModeType::eAcceleration)
+        .value("FORCE", ForceModeType::eForce, "Apply a continuous force.")
+        .value("IMPULSE", ForceModeType::eImpulse, "Apply an instantaneous impulse.")
+        .value("VELOCITY_CHANGE", ForceModeType::eVelocityChange, "Apply an instantaneous velocity change.")
+        .value("ACCELERATION", ForceModeType::eAcceleration, "Apply a continuous acceleration.")
         .export_values();
 
     nb::enum_<ContactEventType>(module, "ContactEventType", "Lifecycle states reported for a contact pair.")
-        .value("CONTACT_FOUND", ContactEventType::eContactFound)
-        .value("CONTACT_LOST", ContactEventType::eContactLost)
-        .value("CONTACT_PERSIST", ContactEventType::eContactPersist)
+        .value("CONTACT_FOUND", ContactEventType::eContactFound, "A contact pair began touching.")
+        .value("CONTACT_LOST", ContactEventType::eContactLost, "A contact pair stopped touching.")
+        .value("CONTACT_PERSIST", ContactEventType::eContactPersist, "A contact pair remains touching.")
         .export_values();
 
     nb::class_<ContactEventHeader>(module, "ContactEventHeader", "Describe one pair of objects in a contact event.")
-        .def(nb::init<>())
-        .def_rw("type", &ContactEventHeader::type)
-        .def_rw("stage_id", &ContactEventHeader::stageId)
-        .def_rw("actor0", &ContactEventHeader::actor0)
-        .def_rw("actor1", &ContactEventHeader::actor1)
-        .def_rw("collider0", &ContactEventHeader::collider0)
-        .def_rw("collider1", &ContactEventHeader::collider1)
-        .def_rw("contact_data_offset", &ContactEventHeader::contactDataOffset)
-        .def_rw("num_contact_data", &ContactEventHeader::contactDataCount)
-        .def_rw("friction_anchors_data_offset", &ContactEventHeader::frictionAnchorsDataOffset)
-        .def_rw("num_friction_anchors_data", &ContactEventHeader::frictionAnchorDataCount)
-        .def_rw("proto_index0", &ContactEventHeader::prototypeIndex0)
-        .def_rw("proto_index1", &ContactEventHeader::prototypeIndex1);
+        .def(nb::init<>(), "Create an empty contact-event header.")
+        .def_rw("type", &ContactEventHeader::type, "Lifecycle state of the contact pair.")
+        .def_rw("stage_id", &ContactEventHeader::stageId, "Identifier of the stage containing the contact.")
+        .def_rw("actor0", &ContactEventHeader::actor0, "First actor path identifier.")
+        .def_rw("actor1", &ContactEventHeader::actor1, "Second actor path identifier.")
+        .def_rw("collider0", &ContactEventHeader::collider0, "First collider path identifier.")
+        .def_rw("collider1", &ContactEventHeader::collider1, "Second collider path identifier.")
+        .def_rw(
+            "contact_data_offset", &ContactEventHeader::contactDataOffset, "Offset of this pair's first contact point.")
+        .def_rw("num_contact_data", &ContactEventHeader::contactDataCount, "Number of contact points for this pair.")
+        .def_rw("friction_anchors_data_offset", &ContactEventHeader::frictionAnchorsDataOffset,
+                "Offset of this pair's first friction anchor.")
+        .def_rw("num_friction_anchors_data", &ContactEventHeader::frictionAnchorDataCount,
+                "Number of friction anchors for this pair.")
+        .def_rw("proto_index0", &ContactEventHeader::prototypeIndex0, "Prototype index for the first actor.")
+        .def_rw("proto_index1", &ContactEventHeader::prototypeIndex1, "Prototype index for the second actor.");
 
     nb::class_<ContactData>(module, "ContactData", "Describe one contact point.")
-        .def(nb::init<>())
-        .def_rw("position", &ContactData::position)
-        .def_rw("normal", &ContactData::normal)
-        .def_rw("separation", &ContactData::separation)
-        .def_rw("impulse", &ContactData::impulse);
+        .def(nb::init<>(), "Create empty contact-point data.")
+        .def_rw("position", &ContactData::position, "World-space contact position.")
+        .def_rw("normal", &ContactData::normal, "World-space contact normal.")
+        .def_rw("separation", &ContactData::separation, "Signed separation distance.")
+        .def_rw("impulse", &ContactData::impulse, "Normal impulse magnitude.");
 
     nb::class_<FrictionAnchor>(module, "FrictionAnchor", "Describe one friction anchor.")
-        .def(nb::init<>())
-        .def_rw("position", &FrictionAnchor::position)
-        .def_rw("impulse", &FrictionAnchor::impulse);
+        .def(nb::init<>(), "Create empty friction-anchor data.")
+        .def_rw("position", &FrictionAnchor::position, "World-space anchor position.")
+        .def_rw("impulse", &FrictionAnchor::impulse, "Friction impulse at the anchor.");
 
-    nb::bind_vector<ContactEventHeaderVector>(module, "ContactEventHeaderVector");
-    nb::bind_vector<ContactDataVector>(module, "ContactDataVector");
-    nb::bind_vector<FrictionAnchorsDataVector>(module, "FrictionAnchorsDataVector");
+    nb::bind_vector<ContactEventHeaderVector>(
+        module, "ContactEventHeaderVector", "Mutable sequence of contact-event headers.");
+    nb::bind_vector<ContactDataVector>(module, "ContactDataVector", "Mutable sequence of contact points.");
+    nb::bind_vector<FrictionAnchorsDataVector>(
+        module, "FrictionAnchorsDataVector", "Mutable sequence of friction anchors.");
+
+    // Bind scene-query and profiling vocabulary before the callback collections that reference it. Besides making
+    // these shared types available from their owning registration module, the ordering gives generated Python stubs
+    // valid local type names instead of unresolved C++ qualified names.
+    nb::class_<SceneQueryHitObject>(module, "SceneQueryHitObject", "Identify the objects reported by a scene query.")
+        .def(nb::init<>(), "Create an empty scene-query object hit.")
+        .def_rw("collision", &SceneQueryHitObject::collision, "Path of the hit collision shape.")
+        .def_rw("rigid_body", &SceneQueryHitObject::rigidBody, "Path of the hit rigid body.")
+        .def_rw("proto_index", &SceneQueryHitObject::prototypeIndex, "Prototype index for an instanced hit.");
+
+    nb::class_<SceneQueryHitLocation, SceneQueryHitObject>(
+        module, "SceneQueryHitLocation", "Describe the location and material of a scene-query hit.")
+        .def(nb::init<>(), "Create an empty located scene-query hit.")
+        .def_rw("normal", &SceneQueryHitLocation::normal, "Surface normal at the hit.")
+        .def_rw("position", &SceneQueryHitLocation::position, "World-space hit position.")
+        .def_rw("distance", &SceneQueryHitLocation::distance, "Distance from the query origin.")
+        .def_rw("face_index", &SceneQueryHitLocation::faceIndex, "Index of the hit mesh face.")
+        .def_rw("material", &SceneQueryHitLocation::material, "Path of the hit physics material.");
+
+    nb::class_<OverlapHit, SceneQueryHitObject>(module, "OverlapHit", "Describe an overlap query result.")
+        .def(nb::init<>(), "Create an empty overlap hit.");
+    nb::class_<RaycastHit, SceneQueryHitLocation>(module, "RaycastHit", "Describe a raycast query result.")
+        .def(nb::init<>(), "Create an empty raycast hit.");
+    nb::class_<SweepHit, SceneQueryHitLocation>(module, "SweepHit", "Describe a shape-sweep query result.")
+        .def(nb::init<>(), "Create an empty shape-sweep hit.");
+
+    nb::class_<PhysicsProfileStatistics>(module, "PhysicsProfileStats", "Timing data for one physics profiling zone.")
+        .def(nb::init<>(), "Create empty profiling statistics.")
+        .def_rw("zone_name", &PhysicsProfileStatistics::zoneName, "Name of the profiling zone.")
+        .def_rw("ms", &PhysicsProfileStatistics::elapsedMilliseconds, "Time in milliseconds for this zone.");
 
     nb::class_<SimulationFunctions>(module, "SimulationFns", "Callbacks that implement a physics simulation backend.")
-        .def(nb::init<>())
+        .def(nb::init<>(), "Create an empty simulation callback collection.")
         // Convert the opaque C++ ovstage pointer to an integer address for Python
         // backends (matching physics_manager.initialize's `ovstage: int` contract).
         // The default std::function caster would deliver a nanobind PyCapsule instead.
@@ -222,24 +261,42 @@ NB_MODULE(_bindings, module)
                     // so the traceback is logged; do not swallow them here.
                     return nb::cast<bool>(callback->function(reinterpret_cast<uintptr_t>(ovstage), usdIdentifierObject));
                 };
-            })
-        .def_rw("close", &SimulationFunctions::close)
-        .def_rw("get_attached_stage", &SimulationFunctions::getAttachedStage)
-        .def_rw("has_attached_stage", &SimulationFunctions::hasAttachedStage)
-        .def_rw("simulate_async", &SimulationFunctions::simulateAsynchronously)
-        .def_rw("simulate", &SimulationFunctions::simulate)
-        .def_rw("fetch_results", &SimulationFunctions::fetchResults)
-        .def_rw("check_results", &SimulationFunctions::checkResults)
-        .def_rw("flush_changes", &SimulationFunctions::flushChanges)
-        .def_rw("pause_change_tracking", &SimulationFunctions::pauseChangeTracking)
-        .def_rw("is_change_tracking_paused", &SimulationFunctions::isChangeTrackingPaused)
-        .def_rw("subscribe_physics_contact_report_events", &SimulationFunctions::subscribePhysicsContactReportEvents)
-        .def_rw("unsubscribe_physics_contact_report_events", &SimulationFunctions::unsubscribePhysicsContactReportEvents)
-        .def_rw("get_simulation_time_steps_per_second", &SimulationFunctions::getSimulationTimeStepsPerSecond)
-        .def_rw("get_simulation_timestamp", &SimulationFunctions::getSimulationTimestamp)
-        .def_rw("get_simulation_step_count", &SimulationFunctions::getSimulationStepCount)
-        .def_rw("subscribe_physics_on_step_events", &SimulationFunctions::subscribePhysicsOnStepEvents)
-        .def_rw("unsubscribe_physics_on_step_events", &SimulationFunctions::unsubscribePhysicsOnStepEvents)
+            },
+            "Callback that initializes a simulation against an OVStage instance.")
+        .def_rw("close", &SimulationFunctions::close, "Callback that closes simulation resources.")
+        .def_rw("get_attached_stage", &SimulationFunctions::getAttachedStage,
+                "Callback that returns the attached stage identifier.")
+        .def_rw("has_attached_stage", &SimulationFunctions::hasAttachedStage,
+                "Callback that reports whether a stage is attached.")
+        .def_rw("simulate_async", &SimulationFunctions::simulateAsynchronously,
+                "Callback that starts an asynchronous simulation step.")
+        .def_rw("simulate", &SimulationFunctions::simulate, "Callback that starts a simulation step.")
+        .def_rw("fetch_results", &SimulationFunctions::fetchResults,
+                "Callback that waits for and applies simulation results.")
+        .def_rw("check_results", &SimulationFunctions::checkResults,
+                "Callback that reports whether simulation results are ready.")
+        .def_rw("publish_transforms_to_stage", &SimulationFunctions::publishTransformsToStage,
+                "Callback that publishes simulated transforms to the stage.")
+        .def_rw("flush_changes", &SimulationFunctions::flushChanges,
+                "Callback that flushes pending stage changes to simulation.")
+        .def_rw("pause_change_tracking", &SimulationFunctions::pauseChangeTracking,
+                "Callback that pauses or resumes stage-change tracking.")
+        .def_rw("is_change_tracking_paused", &SimulationFunctions::isChangeTrackingPaused,
+                "Callback that reports whether stage-change tracking is paused.")
+        .def_rw("subscribe_physics_contact_report_events", &SimulationFunctions::subscribePhysicsContactReportEvents,
+                "Callback that subscribes to physics contact-report events.")
+        .def_rw("unsubscribe_physics_contact_report_events", &SimulationFunctions::unsubscribePhysicsContactReportEvents,
+                "Callback that unsubscribes from physics contact-report events.")
+        .def_rw("get_simulation_time_steps_per_second", &SimulationFunctions::getSimulationTimeStepsPerSecond,
+                "Callback that returns the configured simulation frequency.")
+        .def_rw("get_simulation_timestamp", &SimulationFunctions::getSimulationTimestamp,
+                "Callback that returns the current simulation timestamp.")
+        .def_rw("get_simulation_step_count", &SimulationFunctions::getSimulationStepCount,
+                "Callback that returns the current simulation step count.")
+        .def_rw("subscribe_physics_on_step_events", &SimulationFunctions::subscribePhysicsOnStepEvents,
+                "Callback that subscribes to simulation step events.")
+        .def_rw("unsubscribe_physics_on_step_events", &SimulationFunctions::unsubscribePhysicsOnStepEvents,
+                "Callback that unsubscribes from simulation step events.")
         .def_prop_rw(
             "is_capable_of_simulating",
             [](SimulationFunctions& self) -> nb::object
@@ -312,52 +369,71 @@ NB_MODULE(_bindings, module)
                         return false;
                     }
                 };
-            });
+            },
+            "Callback that reports support for stage schema types.");
 
     nb::class_<InteractionFunctions>(module, "InteractionFns", "Callbacks that implement interactive physics tools.")
-        .def(nb::init<>())
-        .def_rw("handle_raycast", &InteractionFunctions::handleRaycast)
-        .def_rw("get_prim_debug_data", &InteractionFunctions::getPrimDebugData);
+        .def(nb::init<>(), "Create an empty interaction callback collection.")
+        .def_rw("handle_raycast", &InteractionFunctions::handleRaycast,
+                "Callback that handles an interactive raycast request.")
+        .def_rw("get_prim_debug_data", &InteractionFunctions::getPrimDebugData,
+                "Callback that returns debug data for a prim.");
 
     nb::class_<SceneQueryFunctions>(module, "SceneQueryFns", "Callbacks that implement physics scene queries.")
-        .def(nb::init<>())
-        .def_rw("raycast_closest", &SceneQueryFunctions::raycastClosest)
-        .def_rw("raycast_all", &SceneQueryFunctions::raycastAll)
-        .def_rw("raycast_any", &SceneQueryFunctions::raycastAny)
-        .def_rw("sweep_sphere_closest", &SceneQueryFunctions::sweepSphereClosest)
-        .def_rw("sweep_sphere_all", &SceneQueryFunctions::sweepSphereAll)
-        .def_rw("sweep_sphere_any", &SceneQueryFunctions::sweepSphereAny)
-        .def_rw("sweep_box_closest", &SceneQueryFunctions::sweepBoxClosest)
-        .def_rw("sweep_box_all", &SceneQueryFunctions::sweepBoxAll)
-        .def_rw("sweep_box_any", &SceneQueryFunctions::sweepBoxAny)
-        .def_rw("sweep_shape_closest", &SceneQueryFunctions::sweepShapeClosest)
-        .def_rw("sweep_shape_all", &SceneQueryFunctions::sweepShapeAll)
-        .def_rw("sweep_shape_any", &SceneQueryFunctions::sweepShapeAny)
-        .def_rw("overlap_sphere", &SceneQueryFunctions::overlapSphere)
-        .def_rw("overlap_sphere_any", &SceneQueryFunctions::overlapSphereAny)
-        .def_rw("overlap_box", &SceneQueryFunctions::overlapBox)
-        .def_rw("overlap_box_any", &SceneQueryFunctions::overlapBoxAny)
-        .def_rw("overlap_shape", &SceneQueryFunctions::overlapShape)
-        .def_rw("overlap_shape_any", &SceneQueryFunctions::overlapShapeAny);
+        .def(nb::init<>(), "Create an empty scene-query callback collection.")
+        .def_rw("raycast_closest", &SceneQueryFunctions::raycastClosest, "Callback that returns the closest raycast hit.")
+        .def_rw("raycast_all", &SceneQueryFunctions::raycastAll, "Callback that returns every raycast hit.")
+        .def_rw("raycast_any", &SceneQueryFunctions::raycastAny, "Callback that reports whether a raycast hits.")
+        .def_rw("sweep_sphere_closest", &SceneQueryFunctions::sweepSphereClosest,
+                "Callback that returns the closest sphere-sweep hit.")
+        .def_rw("sweep_sphere_all", &SceneQueryFunctions::sweepSphereAll, "Callback that returns every sphere-sweep hit.")
+        .def_rw("sweep_sphere_any", &SceneQueryFunctions::sweepSphereAny,
+                "Callback that reports whether a sphere sweep hits.")
+        .def_rw("sweep_box_closest", &SceneQueryFunctions::sweepBoxClosest,
+                "Callback that returns the closest box-sweep hit.")
+        .def_rw("sweep_box_all", &SceneQueryFunctions::sweepBoxAll, "Callback that returns every box-sweep hit.")
+        .def_rw("sweep_box_any", &SceneQueryFunctions::sweepBoxAny, "Callback that reports whether a box sweep hits.")
+        .def_rw("sweep_shape_closest", &SceneQueryFunctions::sweepShapeClosest,
+                "Callback that returns the closest shape-sweep hit.")
+        .def_rw("sweep_shape_all", &SceneQueryFunctions::sweepShapeAll, "Callback that returns every shape-sweep hit.")
+        .def_rw(
+            "sweep_shape_any", &SceneQueryFunctions::sweepShapeAny, "Callback that reports whether a shape sweep hits.")
+        .def_rw("overlap_sphere", &SceneQueryFunctions::overlapSphere,
+                "Callback that returns overlapping shapes for a sphere.")
+        .def_rw("overlap_sphere_any", &SceneQueryFunctions::overlapSphereAny,
+                "Callback that reports whether a sphere overlaps a shape.")
+        .def_rw("overlap_box", &SceneQueryFunctions::overlapBox, "Callback that returns overlapping shapes for a box.")
+        .def_rw("overlap_box_any", &SceneQueryFunctions::overlapBoxAny,
+                "Callback that reports whether a box overlaps a shape.")
+        .def_rw("overlap_shape", &SceneQueryFunctions::overlapShape,
+                "Callback that returns shapes overlapping a stage shape.")
+        .def_rw("overlap_shape_any", &SceneQueryFunctions::overlapShapeAny,
+                "Callback that reports whether a stage shape overlaps another shape.");
 
     nb::class_<BenchmarkFunctions>(module, "BenchmarkFns", "Callbacks that expose backend profiling data.")
-        .def(nb::init<>())
-        .def_rw("subscribe_profile_stats_events", &BenchmarkFunctions::subscribeProfileStatisticsEvents)
-        .def_rw("unsubscribe_profile_stats_events", &BenchmarkFunctions::unsubscribeProfileStatisticsEvents);
+        .def(nb::init<>(), "Create an empty profiling callback collection.")
+        .def_rw("subscribe_profile_stats_events", &BenchmarkFunctions::subscribeProfileStatisticsEvents,
+                "Callback that subscribes to physics profiling statistics.")
+        .def_rw("unsubscribe_profile_stats_events", &BenchmarkFunctions::unsubscribeProfileStatisticsEvents,
+                "Callback that unsubscribes from physics profiling statistics.");
 
     nb::class_<Simulation>(module, "Simulation", "Group the callback collections registered by a physics engine.")
-        .def(nb::init<>())
-        .def_rw("simulation_fns", &Simulation::simulationFunctions)
-        .def_rw("scene_query_fns", &Simulation::sceneQueryFunctions)
-        .def_rw("interaction_fns", &Simulation::interactionFunctions)
-        .def_rw("benchmark_fns", &Simulation::benchmarkFunctions);
+        .def(nb::init<>(), "Create an empty physics simulation registration.")
+        .def_rw("simulation_fns", &Simulation::simulationFunctions, "Simulation lifecycle callbacks.")
+        .def_rw("scene_query_fns", &Simulation::sceneQueryFunctions, "Physics scene-query callbacks.")
+        .def_rw("interaction_fns", &Simulation::interactionFunctions, "Interactive physics callbacks.")
+        .def_rw("benchmark_fns", &Simulation::benchmarkFunctions, "Physics profiling callbacks.");
 
     nb::enum_<SimulationRegistryEventType>(
         module, "SimulationRegistryEventType", "Changes reported by the simulation registry.")
-        .value("SIMULATION_REGISTERED", SimulationRegistryEventType::eSimulationRegistered)
-        .value("SIMULATION_UNREGISTERED", SimulationRegistryEventType::eSimulationUnregistered)
-        .value("SIMULATION_ACTIVATED", SimulationRegistryEventType::eSimulationActivated)
-        .value("SIMULATION_DEACTIVATED", SimulationRegistryEventType::eSimulationDeactivated)
+        .value("SIMULATION_REGISTERED", SimulationRegistryEventType::eSimulationRegistered,
+               "A simulation backend was registered.")
+        .value("SIMULATION_UNREGISTERED", SimulationRegistryEventType::eSimulationUnregistered,
+               "A simulation backend was unregistered.")
+        .value("SIMULATION_ACTIVATED", SimulationRegistryEventType::eSimulationActivated,
+               "A simulation backend was activated.")
+        .value("SIMULATION_DEACTIVATED", SimulationRegistryEventType::eSimulationDeactivated,
+               "A simulation backend was deactivated.")
         .export_values();
 
     module.def("register_simulation", &registerSimulation, nb::arg("simulation"), nb::arg("name"),
@@ -376,12 +452,12 @@ NB_MODULE(_bindings, module)
         },
         nb::arg("id"), "Return a registered simulation, or None when the identifier is unknown.");
     module.def("get_simulation_name", &getSimulationName, nb::arg("id"), "Return the registered name of a simulation.");
-    module.def("get_num_simulations", &getNumberOfSimulations, "Return the number of registered simulations.");
+    module.def("get_num_simulations", &getSimulationCount, "Return the number of registered simulations.");
     module.def(
         "get_simulation_ids",
         []()
         {
-            std::vector<SimulationId> simulationIds(getNumberOfSimulations());
+            std::vector<SimulationId> simulationIds(getSimulationCount());
             simulationIds.resize(getSimulationIds(simulationIds.data(), simulationIds.size()));
             return simulationIds;
         },

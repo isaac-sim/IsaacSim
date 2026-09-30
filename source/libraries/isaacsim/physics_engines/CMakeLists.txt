@@ -31,6 +31,6 @@ isaacsim_add_group_dependency(
     DEPENDS_ON isaacsim_common
 )
 
+add_subdirectory(ovstage)
 add_subdirectory(ovphysx)
 add_subdirectory(ovnewton)
-add_subdirectory(ovstage)

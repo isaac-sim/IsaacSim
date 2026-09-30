@@ -6,16 +6,14 @@
 from isaacsim.common.logging import Logger
 
 
-def main() -> int:
-    """Print the Hello World result through the installed Isaac Sim Python API.
-
-    Returns:
-        Process exit code.
-    """
+def main() -> None:
+    """Print the Hello World result through the installed Isaac Sim Python API."""
     logger = Logger("isaacsim.examples.hello_world.python")
     logger.report("Hello World from Python.")
-    return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

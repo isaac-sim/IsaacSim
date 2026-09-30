@@ -10,7 +10,7 @@ owners = [
     "isaacsim.physics.manager",
     "isaacsim.physics_engines.ovphysx",
 ]
-topics = ["physics", "python", "usd"]
+topics = ["physics", "usd"]
 
 [build]
 adapter = "none"
@@ -36,4 +36,5 @@ surfaces = ["python"]
 
 [[test]]
 name = "default"
-stdout_contains = ["The cube fell."]
+path = "test.py"
+stdout_contains = ["Falling cube simulation test passed."]

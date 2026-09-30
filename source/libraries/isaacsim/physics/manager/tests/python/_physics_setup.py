@@ -13,24 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Configure the shared physics runtime used by manager tests."""
+"""Provide shared physics test helpers."""
 
 from __future__ import annotations
 
 import isaacsim.physics.registration as physics_registration
 
-# Configure the private OVStage runtime and register the OvPhysX backend.
+# Import OvPhysX through its public registration contract.
 import isaacsim.physics_engines.ovphysx as _ovphysx
-
-_ovphysx.activate()
-
-try:
-    import warp as _wp
-
-    if not _wp.is_initialized():
-        _wp.init()
-except Exception:
-    pass
 
 OVPHYSX_SIM_NAME = "ovphysx"
 
@@ -43,6 +33,29 @@ def set_suppress_readback(enable: bool) -> None:
 
     """
     _ovphysx.set_suppress_readback(enable)
+
+
+def set_tensor_device_ordinal(ordinal: int) -> None:
+    """Declare the device holding OvPhysX tensors.
+
+    OvPhysX exposes no query for the device its scene selected, so the caller that configured the tensor
+    device states it and every entity view reports it.
+
+    Args:
+        ordinal: CUDA device ordinal, or -1 for host memory.
+
+    """
+    _ovphysx.set_tensor_device_ordinal(ordinal)
+
+
+def get_tensor_device_ordinal() -> int:
+    """Get the declared OvPhysX tensor-device ordinal.
+
+    Returns:
+        The ordinal last declared, or -1 when none was.
+
+    """
+    return _ovphysx.get_tensor_device_ordinal()
 
 
 def find_ovphysx_sim_id() -> physics_registration.SimulationId | None:

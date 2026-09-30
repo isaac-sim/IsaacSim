@@ -5,11 +5,5 @@ SPDX-License-Identifier: Apache-2.0
 
 # Motion Generation
 
-This series demonstrates backend-neutral motion-generation controllers driving robots in a live physics simulation.
-
-The pick-and-place example time-parameterizes a Franka joint-space path, applies its commands through OvPhysX, and
-renders the measured robot and object poses with the OVGL debug viewport. Run it from the examples collection root:
-
-```bash
-python examples.py run motion_generation.pick_place
-```
+Drive mobile bases, track Cartesian targets, follow joint trajectories, and coordinate a pick-and-place task with a
+Franka Panda robot by using public motion-generation controllers in OvPhysX simulations.

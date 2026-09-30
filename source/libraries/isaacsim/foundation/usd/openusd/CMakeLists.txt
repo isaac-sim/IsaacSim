@@ -31,17 +31,25 @@ if(ISAACSIM_ENABLE_PYTHON_BINDINGS)
     set(Python3_VERSION "${Python_VERSION}" CACHE STRING "Python3 version" FORCE)
     set(PXR_FIND_TBB_IN_CONFIG OFF CACHE BOOL "" FORCE)
     set(PXR_FIND_OPENSUBDIV_IN_CONFIG OFF CACHE BOOL "" FORCE)
-    if(WIN32 AND NOT TARGET TBB::tbb)
+    if(NOT TARGET TBB::tbb)
         add_library(TBB::tbb SHARED IMPORTED)
-        set_target_properties(TBB::tbb PROPERTIES
-            IMPORTED_LOCATION "${ISAACSIM_TARGET_DEPS_DIR}/openusd/bin/tbb.dll"
-            IMPORTED_IMPLIB "${ISAACSIM_TARGET_DEPS_DIR}/openusd/lib/tbb.lib"
-            INTERFACE_INCLUDE_DIRECTORIES "${ISAACSIM_TARGET_DEPS_DIR}/openusd/include"
-            # The OpenUSD package contains release TBB binaries. Explicitly
-            # match their mode in Debug builds and avoid legacy TBB's broken
-            # empty-_DEBUG detection with current MSVC preprocessors.
-            INTERFACE_COMPILE_DEFINITIONS
-                "TBB_USE_DEBUG=0;TBB_USE_ASSERT=0;__TBB_NO_IMPLICIT_LINKAGE=1")
+        if(WIN32)
+            set_target_properties(TBB::tbb PROPERTIES
+                IMPORTED_LOCATION "${ISAACSIM_TARGET_DEPS_DIR}/openusd/bin/tbb.dll"
+                IMPORTED_IMPLIB "${ISAACSIM_TARGET_DEPS_DIR}/openusd/lib/tbb.lib"
+                INTERFACE_INCLUDE_DIRECTORIES "${ISAACSIM_TARGET_DEPS_DIR}/openusd/include"
+                # The OpenUSD package contains release TBB binaries. Explicitly
+                # match their mode in Debug builds and avoid legacy TBB's broken
+                # empty-_DEBUG detection with current MSVC preprocessors.
+                INTERFACE_COMPILE_DEFINITIONS
+                    "TBB_USE_DEBUG=0;TBB_USE_ASSERT=0;__TBB_NO_IMPLICIT_LINKAGE=1")
+        else()
+            set_target_properties(TBB::tbb PROPERTIES
+                IMPORTED_LOCATION "${ISAACSIM_TARGET_DEPS_DIR}/openusd/lib/libtbb.so.2"
+                IMPORTED_SONAME "libtbb.so.2"
+                INTERFACE_INCLUDE_DIRECTORIES "${ISAACSIM_TARGET_DEPS_DIR}/openusd/include"
+            )
+        endif()
     endif()
     set(MaterialX_DIR "${ISAACSIM_TARGET_DEPS_DIR}/openusd/lib/cmake/MaterialX" CACHE PATH "" FORCE)
     file(WRITE "${CMAKE_BINARY_DIR}/cmake/imath-stub/ImathConfig.cmake" "# no-op")
@@ -94,9 +102,9 @@ isaacsim_add_module(
     PRIVATE_DEPENDENCIES
         isaacsim::common-logging
     PUBLIC_CPP_HEADERS
-        isaacsim/foundation/usd/openusd/details/UsdHelpers.hpp
         isaacsim/foundation/usd/openusd/Usd.hpp
     SOURCES
+        src/details/UsdHelpers.hpp
         src/details/UsdHelpers.cpp
         src/Schemas.cpp
         src/Usd.cpp
@@ -141,20 +149,59 @@ target_include_directories(isaacsim-foundation-usd-openusd SYSTEM PRIVATE
 )
 
 if(ISAACSIM_ENABLE_PYTHON_BINDINGS)
+    set(_isaacsim_openusd_components
+        usd
+        usdGeom
+        usdPhysics
+        usdUtils
+    )
     if(WIN32)
         # PE/COFF does not support unresolved shared-library symbols. The OpenUSD
-        # package provides component import libraries; usd-core supplies their
-        # DLLs at runtime.
+        # package provides component import libraries. Native consumers do not
+        # run through usd-core's Python DLL-directory initialization, so package
+        # the imported shared-library closure needed by the linked components.
         target_link_libraries(isaacsim-foundation-usd-openusd PRIVATE
-            usd
-            usdGeom
-            usdPhysics
-            usdUtils
+            ${_isaacsim_openusd_components}
         )
     else()
         # USD symbols are loaded by Python usd-core at runtime; no direct link needed.
         target_link_options(isaacsim-foundation-usd-openusd PRIVATE
             "LINKER:--allow-shlib-undefined"
+        )
+    endif()
+
+    _isaacsim_collect_imported_runtime_targets(
+        _isaacsim_openusd_runtime_targets
+        ${_isaacsim_openusd_components}
+        Python3::Python
+    )
+    isaacsim_install_runtime_dependencies(
+        MODULE isaacsim.foundation.usd.openusd
+        TARGETS ${_isaacsim_openusd_runtime_targets}
+        NATIVE_ONLY
+    )
+    isaacsim_add_runtime_directory(
+        MODULE isaacsim.foundation.usd.openusd
+        SOURCE "${ISAACSIM_TARGET_DEPS_DIR}/openusd/lib/usd"
+        DESTINATION usd
+        WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/usd"
+        NATIVE_ONLY
+    )
+
+    if(UNIX AND NOT APPLE)
+        # Terminal executables do not have a Python process to preload
+        # usd-exchange. Keep their Linux USD link closure owned by Foundation.
+        add_library(isaacsim-foundation-usd-openusd-standalone INTERFACE)
+        add_library(isaacsim::foundation-usd-openusd-standalone ALIAS isaacsim-foundation-usd-openusd-standalone)
+        target_link_libraries(isaacsim-foundation-usd-openusd-standalone INTERFACE
+            "$<TARGET_FILE:usd>"
+            "$<TARGET_FILE:usdGeom>"
+            "$<TARGET_FILE:usdPhysics>"
+            "$<TARGET_FILE:usdUtils>"
+            "$<TARGET_FILE:Python3::Python>"
+        )
+        target_link_options(isaacsim-foundation-usd-openusd-standalone INTERFACE
+            "LINKER:-rpath-link,${ISAACSIM_TARGET_DEPS_DIR}/openusd/lib"
         )
     endif()
 else()
@@ -205,13 +252,14 @@ isaacsim_add_runtime_directory(
     MODULE isaacsim.foundation.usd.openusd
     SOURCE "${ISAACSIM_NATIVE_RUNTIME_DEPS_DIR}/physx_usd_schemas"
     DESTINATION third-party-schemas/physx_usd_schemas
+    WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/third-party-schemas/physx_usd_schemas"
 )
 isaacsim_add_runtime_directory(
     MODULE isaacsim.foundation.usd.openusd
     SOURCE "${ISAACSIM_NATIVE_RUNTIME_DEPS_DIR}/newton_usd_schemas"
     DESTINATION third-party-schemas/newton_usd_schemas
+    WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/third-party-schemas/newton_usd_schemas"
 )
-
 isaacsim_add_cpp_tests(
     MODULE isaacsim.foundation.usd.openusd
     REQUIRES_NO_BINDINGS
@@ -234,7 +282,10 @@ if(BUILD_TESTING AND NOT ISAACSIM_ENABLE_PYTHON_BINDINGS)
     endif()
     # Schemas.cpp queries PXR_NS::UsdSchemaRegistry directly; the module links
     # usd_ms and tbb as PRIVATE so we must repeat them here for the test binary.
-    target_link_directories(tests-isaacsim-foundation-usd-openusd PRIVATE "$<TARGET_FILE_DIR:isaacsim-foundation-usd-openusd>")
+    target_link_directories(
+        tests-isaacsim-foundation-usd-openusd
+        PRIVATE "$<TARGET_FILE_DIR:isaacsim-foundation-usd-openusd>"
+    )
     target_link_libraries(tests-isaacsim-foundation-usd-openusd PRIVATE tbb usd_ms)
 endif()
 

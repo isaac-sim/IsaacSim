@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <isaacsim/physics/entities/details/EntityUtils.hpp>
+#include "EntityUtils.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -28,65 +28,65 @@ namespace entities
 namespace details
 {
 
-static array::DType convertDType(tensors::DType dtype)
+static array::Dtype convertDtype(tensors::DType dtype)
 {
     switch (dtype)
     {
     case tensors::DType::eBool:
-        return array::DType::Bool();
+        return array::Dtype::Bool();
     case tensors::DType::eInt8:
-        return array::DType::Int8();
+        return array::Dtype::Int8();
     case tensors::DType::eInt16:
-        return array::DType::Int16();
+        return array::Dtype::Int16();
     case tensors::DType::eInt32:
-        return array::DType::Int32();
+        return array::Dtype::Int32();
     case tensors::DType::eInt64:
-        return array::DType::Int64();
+        return array::Dtype::Int64();
     case tensors::DType::eUInt8:
-        return array::DType::UInt8();
+        return array::Dtype::UInt8();
     case tensors::DType::eUInt16:
-        return array::DType::UInt16();
+        return array::Dtype::UInt16();
     case tensors::DType::eUInt32:
-        return array::DType::UInt32();
+        return array::Dtype::UInt32();
     case tensors::DType::eUInt64:
-        return array::DType::UInt64();
+        return array::Dtype::UInt64();
     case tensors::DType::eFloat32:
-        return array::DType::Float32();
+        return array::Dtype::Float32();
     case tensors::DType::eFloat64:
-        return array::DType::Float64();
+        return array::Dtype::Float64();
     default:
-        throw std::invalid_argument("convertDType: unsupported tensors::DType");
+        throw std::invalid_argument("convertDtype: unsupported tensors::DType");
     }
 }
 
-static tensors::DType convertDType(array::DType dtype)
+static tensors::DType convertDtype(array::Dtype dtype)
 {
     switch (dtype.kind())
     {
-    case array::DType::Kind::eBool:
+    case array::Dtype::Kind::eBool:
         return tensors::DType::eBool;
-    case array::DType::Kind::eInt8:
+    case array::Dtype::Kind::eInt8:
         return tensors::DType::eInt8;
-    case array::DType::Kind::eInt16:
+    case array::Dtype::Kind::eInt16:
         return tensors::DType::eInt16;
-    case array::DType::Kind::eInt32:
+    case array::Dtype::Kind::eInt32:
         return tensors::DType::eInt32;
-    case array::DType::Kind::eInt64:
+    case array::Dtype::Kind::eInt64:
         return tensors::DType::eInt64;
-    case array::DType::Kind::eUInt8:
+    case array::Dtype::Kind::eUInt8:
         return tensors::DType::eUInt8;
-    case array::DType::Kind::eUInt16:
+    case array::Dtype::Kind::eUInt16:
         return tensors::DType::eUInt16;
-    case array::DType::Kind::eUInt32:
+    case array::Dtype::Kind::eUInt32:
         return tensors::DType::eUInt32;
-    case array::DType::Kind::eUInt64:
+    case array::Dtype::Kind::eUInt64:
         return tensors::DType::eUInt64;
-    case array::DType::Kind::eFloat32:
+    case array::Dtype::Kind::eFloat32:
         return tensors::DType::eFloat32;
-    case array::DType::Kind::eFloat64:
+    case array::Dtype::Kind::eFloat64:
         return tensors::DType::eFloat64;
     default:
-        throw std::invalid_argument("convertDType: unsupported array::DType");
+        throw std::invalid_argument("convertDtype: unsupported array::Dtype");
     }
 }
 
@@ -105,35 +105,35 @@ static array::Device convertDevice(tensors::DeviceKind kind, int32_t ordinal)
     }
 }
 
-array::Array tensorDescToArray(const tensors::TensorDesc& desc)
+array::Array convertTensorDescriptionToArray(const tensors::TensorDescription& description)
 {
-    array::DType dtype = convertDType(desc.dtype);
-    array::Device device = convertDevice(desc.device, desc.deviceOrdinal);
-    array::Shape shape(desc.shape);
+    array::Dtype dtype = convertDtype(description.dtype);
+    array::Device device = convertDevice(description.device, description.deviceOrdinal);
+    array::Shape shape(description.shape);
 
     std::shared_ptr<std::byte[]> buffer;
-    if (desc.keepalive)
+    if (description.keepAlive)
     {
-        buffer = std::shared_ptr<std::byte[]>(desc.keepalive, static_cast<std::byte*>(desc.data));
+        buffer = std::shared_ptr<std::byte[]>(description.keepAlive, static_cast<std::byte*>(description.data));
     }
     else
     {
-        buffer = std::shared_ptr<std::byte[]>(std::shared_ptr<void>{}, static_cast<std::byte*>(desc.data));
+        buffer = std::shared_ptr<std::byte[]>(std::shared_ptr<void>{}, static_cast<std::byte*>(description.data));
     }
 
     return array::Array::fromBuffer(buffer, shape, dtype, device);
 }
 
-tensors::TensorDesc arrayToTensorDesc(const array::Array& arr)
+tensors::TensorDescription convertArrayToTensorDescription(const array::Array& array)
 {
-    tensors::TensorDesc tensorDesc;
-    tensorDesc.dtype = convertDType(arr.dtype());
-    tensorDesc.device = arr.device().isCpu() ? tensors::DeviceKind::eCpu : tensors::DeviceKind::eGpu;
-    tensorDesc.deviceOrdinal = arr.device().ordinal();
-    tensorDesc.shape = arr.shape().shape();
-    tensorDesc.data = const_cast<void*>(arr.data());
-    tensorDesc.keepalive = std::shared_ptr<void>(arr.buffer(), arr.buffer().get());
-    return tensorDesc;
+    tensors::TensorDescription tensorDescription;
+    tensorDescription.dtype = convertDtype(array.dtype());
+    tensorDescription.device = array.device().isCpu() ? tensors::DeviceKind::eCpu : tensors::DeviceKind::eGpu;
+    tensorDescription.deviceOrdinal = array.device().ordinal();
+    tensorDescription.shape = array.shape().shape();
+    tensorDescription.data = const_cast<void*>(array.data());
+    tensorDescription.keepAlive = std::shared_ptr<void>(array.buffer(), array.buffer().get());
+    return tensorDescription;
 }
 
 // Returns the number of rows, that is, the product of every dimension but the last.

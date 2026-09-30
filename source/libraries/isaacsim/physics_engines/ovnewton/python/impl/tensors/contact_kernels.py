@@ -31,6 +31,8 @@ can be reconstructed from MuJoCo world-space positions when Newton contacts do
 not provide per-shape points.
 """
 
+from __future__ import annotations
+
 import warp as wp
 
 
@@ -505,6 +507,7 @@ def gather_raw_contact_counts(
         indices: Source sensor index for each selected row.
         record_capacity: Number of valid records in the source buffers.
         selected_counts: Output count for each selected row.
+
     """
     row = wp.tid()
     source_sensor = indices[row]
@@ -529,6 +532,7 @@ def clamp_raw_contact_counts_to_capacity(
         selected_starts: Starting destination-record offset for each selected row.
         record_capacity: Number of records available in the destination buffers.
         selected_counts: In-place contact counts for the selected rows.
+
     """
     row = wp.tid()
     start = selected_starts[row]
@@ -576,6 +580,7 @@ def pack_raw_contact_data(
         destination_normals: Destination world-space contact normals.
         destination_separations: Destination contact separations.
         destination_actor_ids: Destination identifier of the other actor in each contact.
+
     """
     selected_row = wp.tid()
     source_sensor = indices[selected_row]

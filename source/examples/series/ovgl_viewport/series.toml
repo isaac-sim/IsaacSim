@@ -4,6 +4,7 @@
 id = "ovgl_viewport"
 title = "OVGL Viewport"
 summary = "Inspect USD stages with the lightweight OVGL debug viewport."
+kind = "collection"
 
 [[step]]
 example = "ovgl_viewport.cpp"

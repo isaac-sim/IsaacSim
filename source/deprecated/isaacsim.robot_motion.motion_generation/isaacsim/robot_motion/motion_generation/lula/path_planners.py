@@ -279,16 +279,16 @@ class RRT(LulaInterfaceHelper, PathPlanner):
         """Set a parameter for the RRT algorithm.
 
         `seed` (int):
-            -Used to initialize random sampling.
-            -`seed` must be positive.
-            -This parameter may also be set through the set_random_seed() function
+            - Used to initialize random sampling.
+            - `seed` must be positive.
+            - This parameter may also be set through the set_random_seed() function.
 
         `step_size` (float):
-            -Step size for tree extension.
-            -It is assumed that a straight path connecting two valid c-space configurations with
-            separation distance <= `step_size` is a valid edge, where separation distance is defined
-            as the L2-norm of the difference between the two configurations.
-            -`step_size` must be positive.
+            - Step size for tree extension.
+            - It is assumed that a straight path connecting two valid c-space configurations with
+              separation distance <= `step_size` is a valid edge, where separation distance is defined
+              as the L2-norm of the difference between the two configurations.
+            - `step_size` must be positive.
 
         `max_iterations` (int):
             - Maximum number of iterations of tree extensions that will be attempted.
@@ -298,10 +298,9 @@ class RRT(LulaInterfaceHelper, PathPlanner):
 
         `distance_metric_weights` (np.array[np.float64[num_dof,]]):
             - When selecting a node for tree extension, the closest node is defined using a weighted,
-              squared L2-norm:
-                distance = (q0 - q1)^T * W * (q0 - q1)
-                where q0 and q1 represent two configurations and W is a diagonal matrix formed from
-                `distance_metric_weights`.
+              squared L2-norm, ``distance = (q0 - q1)^T * W * (q0 - q1)``, where ``q0`` and ``q1``
+              represent two configurations and ``W`` is a diagonal matrix formed from
+              ``distance_metric_weights``.
             - The length of the `distance_metric_weights` must be equal to the number of c-space
               coordinates for the robot and each weight must be positive.
 

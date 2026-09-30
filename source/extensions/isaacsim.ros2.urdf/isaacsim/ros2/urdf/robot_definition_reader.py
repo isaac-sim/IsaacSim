@@ -103,6 +103,7 @@ class RobotDefinitionReader:
         self.node = None
         self.future = None
         self._request_generation = 0
+        self._request_thread: threading.Thread | None = None
         self.description_received_fn: typing.Callable[[str, bool], None] | None = None
         self.status_fn: typing.Callable[[str, int], None] | None = None
         self.urdf_doc = ""
@@ -185,11 +186,21 @@ class RobotDefinitionReader:
         if request_generation == self._request_generation:
             rclpy.try_shutdown()
 
-    def _cancel_request(self) -> None:
+    def _cancel_request(self) -> bool:
         self._request_generation += 1
         if self.future:
             self.future.cancel()
             self.future = None
+        if self._request_thread is threading.current_thread():
+            self._request_thread = None
+            return True
+        if self._request_thread and self._request_thread.is_alive():
+            self._request_thread.join(timeout=1.0)
+            if self._request_thread.is_alive():
+                carb.log_warn("Timed out waiting for the previous ROS 2 robot description request to stop")
+                return False
+        self._request_thread = None
+        return True
 
     def cancel(self) -> None:
         """Cancel any active robot description request."""
@@ -207,7 +218,8 @@ class RobotDefinitionReader:
         """
         import rclpy
 
-        self._cancel_request()
+        if not self._cancel_request():
+            return
         if not node_name:
             self.node_name = None
             return
@@ -221,4 +233,5 @@ class RobotDefinitionReader:
         node = rclpy.create_node("service_client")
 
         thread = threading.Thread(target=self.service_call, args=(node, node_name, request_generation), daemon=True)
+        self._request_thread = thread
         thread.start()

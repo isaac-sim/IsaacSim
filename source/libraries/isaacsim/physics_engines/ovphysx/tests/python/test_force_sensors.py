@@ -76,6 +76,7 @@ def _add_force_torque(
 
     Returns:
         Configured force API for the target prim.
+
     """
     prim = stage.GetPrimAtPath(Sdf.Path(path))
     api = PhysxSchema.PhysxForceAPI.Apply(prim)

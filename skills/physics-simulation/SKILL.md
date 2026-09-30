@@ -3,7 +3,7 @@ name: physics-simulation
 description: "PhysX/Newton scene and prim setup (bodies, joints, materials, sensors). Use when configuring simulation physics."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Physics Simulation in Isaac Sim

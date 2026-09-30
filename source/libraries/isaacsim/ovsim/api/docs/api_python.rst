@@ -16,9 +16,9 @@
 
 .. _isaacsim-ovsim-api-api-python:
 
-==========
-Python API
-==========
+==============================
+Python guide and API reference
+==============================
 
 .. currentmodule:: isaacsim.ovsim.api
 
@@ -31,11 +31,13 @@ Python API
 
 .. code-block:: python
 
+    from isaacsim.ovsim.api import make_client
+
     # name is "in-process" / "local", or "grpc".
     client = make_client("in-process")
 
-    # gRPC clients accept an optional configuration dict (e.g. connection target).
-    remote = make_client("grpc", {"endpoint": "grpc://localhost:50051"})
+    # gRPC clients require an explicit standard channel target.
+    remote = make_client("grpc", {"endpoint": "127.0.0.1:50051"})
 
     client.control.authoring.create_stage()
     values = client.data.read(paths, "attributeName")

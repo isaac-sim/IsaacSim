@@ -99,7 +99,7 @@ class _ContactContractBase(_ContractMixin, GridTestBase):
         """Create the rigid-contact view used by the contract.
 
         Args:
-            sim: Simulation view under test.
+            sim: Entity-view factory for the running simulation.
 
         """
         self.sim = sim

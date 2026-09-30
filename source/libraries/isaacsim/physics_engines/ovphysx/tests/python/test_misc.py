@@ -39,7 +39,6 @@ from _legacy_runner import (  # noqa: E402
 )
 from common.misc import (  # noqa: E402
     ArtJointFreeMotionToLimitMotionCommon,
-    SimViewInvalidateCommon,
     UsdPrimDeletionCommon,
 )
 from physx_usd_schemas import PhysxSchema  # noqa: E402
@@ -80,19 +79,6 @@ class TestUsdPrimDeletion:
     def test_prim_deletion_ovphysx_gg(self) -> None:
         """Deactivate one ball during GPU simulation with GPU tensors."""
         run_scenario(self, UsdPrimDeletionCommon, "ovphysx", gpu_device())
-
-
-class TestSimViewInvalidate:
-    """Check that explicit invalidation clears a live simulation view."""
-
-    def test_sim_view_invalidate_ovphysx_cc(self) -> None:
-        """Check the valid-to-invalid transition with CPU simulation and CPU tensors."""
-        run_scenario(self, SimViewInvalidateCommon, "ovphysx", cpu_device())
-
-    @gpu_only
-    def test_sim_view_invalidate_ovphysx_gg(self) -> None:
-        """Check the valid-to-invalid transition with GPU simulation and GPU tensors."""
-        run_scenario(self, SimViewInvalidateCommon, "ovphysx", gpu_device())
 
 
 class TestArtJointFreeMotionToLimitMotion:

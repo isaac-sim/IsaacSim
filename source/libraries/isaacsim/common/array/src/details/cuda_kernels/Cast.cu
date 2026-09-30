@@ -16,7 +16,7 @@
 // Compiled by nvcc into the standalone `isaacsim-common-array-cuda-kernels` shared library.
 // Never linked into `isaacsim-common-array` itself -- see CudaKernel.hpp.
 
-#include "KernelExport.hpp"
+#include "details/KernelExport.hpp"
 
 #include <isaacsim/common/array/Dtype.hpp>
 
@@ -24,7 +24,7 @@
 #include <cstdint>
 #include <cuda_runtime_api.h>
 
-using isaacsim::common::array::DType;
+using isaacsim::common::array::Dtype;
 
 namespace
 {
@@ -53,57 +53,22 @@ cudaError_t launchKernel(const void* source, void* destination, size_t count, cu
     return cudaGetLastError();
 }
 
-// Maps a DType::Kind runtime value to its C++ scalar type and invokes `fn<T>()` for it.
-template <typename Fn>
-cudaError_t dispatchByKind(int32_t kind, Fn&& fn)
-{
-    switch (static_cast<DType::Kind>(kind))
-    {
-    case DType::Kind::eBool:
-        return fn(bool{});
-    case DType::Kind::eInt8:
-        return fn(int8_t{});
-    case DType::Kind::eInt16:
-        return fn(int16_t{});
-    case DType::Kind::eInt32:
-        return fn(int32_t{});
-    case DType::Kind::eInt64:
-        return fn(int64_t{});
-    case DType::Kind::eUInt8:
-        return fn(uint8_t{});
-    case DType::Kind::eUInt16:
-        return fn(uint16_t{});
-    case DType::Kind::eUInt32:
-        return fn(uint32_t{});
-    case DType::Kind::eUInt64:
-        return fn(uint64_t{});
-    case DType::Kind::eFloat32:
-        return fn(float{});
-    case DType::Kind::eFloat64:
-        return fn(double{});
-    }
-    return cudaErrorInvalidValue;
-}
-
 } // namespace
 
 
-ISAACSIM_ARRAY_KERNEL_API cudaError_t arrayCast(const void* source,
-                                                void* destination,
-                                                size_t count,
-                                                int32_t sourceKind,
-                                                int32_t destinationKind,
-                                                cudaStream_t stream)
+ISAACSIM_COMMON_ARRAY_KERNEL_EXPORT cudaError_t castFunction(
+    const void* source, void* destination, size_t count, int32_t sourceKind, int32_t destinationKind, cudaStream_t stream)
 {
-    return dispatchByKind(sourceKind,
-                          [&](auto sourceSample) -> cudaError_t
-                          {
-                              using SrcT = decltype(sourceSample);
-                              return dispatchByKind(destinationKind,
-                                                    [&](auto destinationSample) -> cudaError_t
-                                                    {
-                                                        using DstT = decltype(destinationSample);
-                                                        return launchKernel<SrcT, DstT>(source, destination, count, stream);
-                                                    });
-                          });
+    return Dtype::dispatchByKind(static_cast<Dtype::Kind>(sourceKind),
+                                 [&](auto sourceSample) -> cudaError_t
+                                 {
+                                     using SrcT = decltype(sourceSample);
+                                     return Dtype::dispatchByKind(static_cast<Dtype::Kind>(destinationKind),
+                                                                  [&](auto destinationSample) -> cudaError_t
+                                                                  {
+                                                                      using DstT = decltype(destinationSample);
+                                                                      return launchKernel<SrcT, DstT>(
+                                                                          source, destination, count, stream);
+                                                                  });
+                                 });
 }

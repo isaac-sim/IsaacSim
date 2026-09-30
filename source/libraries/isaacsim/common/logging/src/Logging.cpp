@@ -15,7 +15,7 @@
 
 #include "isaacsim/common/logging/Logging.hpp"
 
-#include "isaacsim/common/logging/details/CarboniteBackend.hpp"
+#include "details/CarboniteBackend.hpp"
 
 #include <stdexcept>
 
@@ -49,71 +49,72 @@ std::shared_ptr<details::CarboniteChannel> acquireLoggerChannel(std::string_view
 
 } // namespace
 
-ConfigureResult configureGlobalLogging(const GlobalLoggingConfig& config) noexcept
+ConfigureResult configureGlobalLogging(const GlobalLoggingConfiguration& configuration) noexcept
 {
-    IsaacSimCommonLoggingGlobalConfig nativeConfig{};
-    nativeConfig.structSize = sizeof(nativeConfig);
+    IsaacSimCommonLoggingGlobalConfig nativeConfiguration{};
+    nativeConfiguration.structSize = sizeof(nativeConfiguration);
     std::vector<IsaacSimCommonLoggingChannelConfig> nativeChannels;
-    assignOptional(config.enabled, ISAACSIM_COMMON_LOGGING_CONFIG_ENABLED, nativeConfig.fields, nativeConfig.enabled);
-    assignOptional(config.minimumLevel, ISAACSIM_COMMON_LOGGING_CONFIG_MINIMUM_LEVEL, nativeConfig.fields,
-                   nativeConfig.minimumLevel);
-    assignOptional(config.asynchronous, ISAACSIM_COMMON_LOGGING_CONFIG_ASYNCHRONOUS, nativeConfig.fields,
-                   nativeConfig.asynchronous);
-    assignOptional(config.standardStreamEnabled, ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_ENABLED,
-                   nativeConfig.fields, nativeConfig.standardStreamEnabled);
-    assignOptional(config.standardStreamLevel, ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_LEVEL,
-                   nativeConfig.fields, nativeConfig.standardStreamLevel);
-    assignOptional(config.standardStreamFlush, ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_FLUSH,
-                   nativeConfig.fields, nativeConfig.standardStreamFlush);
-    assignOptional(config.outputStream, ISAACSIM_COMMON_LOGGING_CONFIG_OUTPUT_STREAM, nativeConfig.fields,
-                   nativeConfig.outputStream);
-    assignOptional(config.debugConsoleEnabled, ISAACSIM_COMMON_LOGGING_CONFIG_DEBUG_CONSOLE_ENABLED,
-                   nativeConfig.fields, nativeConfig.debugConsoleEnabled);
-    assignOptional(config.debugConsoleLevel, ISAACSIM_COMMON_LOGGING_CONFIG_DEBUG_CONSOLE_LEVEL, nativeConfig.fields,
-                   nativeConfig.debugConsoleLevel);
-    if (config.filePath.has_value())
+    assignOptional(configuration.enabled, ISAACSIM_COMMON_LOGGING_CONFIG_ENABLED, nativeConfiguration.fields,
+                   nativeConfiguration.enabled);
+    assignOptional(configuration.minimumLevel, ISAACSIM_COMMON_LOGGING_CONFIG_MINIMUM_LEVEL, nativeConfiguration.fields,
+                   nativeConfiguration.minimumLevel);
+    assignOptional(configuration.asynchronous, ISAACSIM_COMMON_LOGGING_CONFIG_ASYNCHRONOUS, nativeConfiguration.fields,
+                   nativeConfiguration.asynchronous);
+    assignOptional(configuration.standardStreamEnabled, ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_ENABLED,
+                   nativeConfiguration.fields, nativeConfiguration.standardStreamEnabled);
+    assignOptional(configuration.standardStreamLevel, ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_LEVEL,
+                   nativeConfiguration.fields, nativeConfiguration.standardStreamLevel);
+    assignOptional(configuration.standardStreamFlush, ISAACSIM_COMMON_LOGGING_CONFIG_STANDARD_STREAM_FLUSH,
+                   nativeConfiguration.fields, nativeConfiguration.standardStreamFlush);
+    assignOptional(configuration.outputStream, ISAACSIM_COMMON_LOGGING_CONFIG_OUTPUT_STREAM, nativeConfiguration.fields,
+                   nativeConfiguration.outputStream);
+    assignOptional(configuration.debugConsoleEnabled, ISAACSIM_COMMON_LOGGING_CONFIG_DEBUG_CONSOLE_ENABLED,
+                   nativeConfiguration.fields, nativeConfiguration.debugConsoleEnabled);
+    assignOptional(configuration.debugConsoleLevel, ISAACSIM_COMMON_LOGGING_CONFIG_DEBUG_CONSOLE_LEVEL,
+                   nativeConfiguration.fields, nativeConfiguration.debugConsoleLevel);
+    if (configuration.filePath.has_value())
     {
-        nativeConfig.fields |= ISAACSIM_COMMON_LOGGING_CONFIG_FILE_PATH;
-        nativeConfig.filePath = config.filePath->empty() ? nullptr : config.filePath->c_str();
+        nativeConfiguration.fields |= ISAACSIM_COMMON_LOGGING_CONFIG_FILE_PATH;
+        nativeConfiguration.filePath = configuration.filePath->empty() ? nullptr : configuration.filePath->c_str();
     }
-    assignOptional(
-        config.fileAppend, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_APPEND, nativeConfig.fields, nativeConfig.fileAppend);
-    assignOptional(
-        config.fileLevel, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_LEVEL, nativeConfig.fields, nativeConfig.fileLevel);
-    assignOptional(config.fileFlushLevel, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_FLUSH_LEVEL, nativeConfig.fields,
-                   nativeConfig.fileFlushLevel);
-    assignOptional(config.filenameIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_FILENAME_INCLUDED, nativeConfig.fields,
-                   nativeConfig.filenameIncluded);
-    assignOptional(config.lineNumberIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_LINE_NUMBER_INCLUDED, nativeConfig.fields,
-                   nativeConfig.lineNumberIncluded);
-    assignOptional(config.functionNameIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_FUNCTION_NAME_INCLUDED,
-                   nativeConfig.fields, nativeConfig.functionNameIncluded);
-    assignOptional(config.timestampIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_TIMESTAMP_INCLUDED, nativeConfig.fields,
-                   nativeConfig.timestampIncluded);
-    assignOptional(config.utcTimestamps, ISAACSIM_COMMON_LOGGING_CONFIG_UTC_TIMESTAMPS, nativeConfig.fields,
-                   nativeConfig.utcTimestamps);
-    assignOptional(config.microsecondTimestamps, ISAACSIM_COMMON_LOGGING_CONFIG_MICROSECOND_TIMESTAMPS,
-                   nativeConfig.fields, nativeConfig.microsecondTimestamps);
-    assignOptional(
-        config.elapsedTime, ISAACSIM_COMMON_LOGGING_CONFIG_ELAPSED_TIME, nativeConfig.fields, nativeConfig.elapsedTime);
-    assignOptional(config.threadIdIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_THREAD_ID_INCLUDED, nativeConfig.fields,
-                   nativeConfig.threadIdIncluded);
-    assignOptional(config.sourceIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_SOURCE_INCLUDED, nativeConfig.fields,
-                   nativeConfig.sourceIncluded);
-    assignOptional(config.processIdIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_PROCESS_ID_INCLUDED, nativeConfig.fields,
-                   nativeConfig.processIdIncluded);
-    assignOptional(config.traceIdIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_TRACE_ID_INCLUDED, nativeConfig.fields,
-                   nativeConfig.traceIdIncluded);
-    assignOptional(config.colorIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_COLOR_INCLUDED, nativeConfig.fields,
-                   nativeConfig.colorIncluded);
-    assignOptional(config.forceAnsiColor, ISAACSIM_COMMON_LOGGING_CONFIG_FORCE_ANSI_COLOR, nativeConfig.fields,
-                   nativeConfig.forceAnsiColor);
-    assignOptional(config.multiprocessGroupId, ISAACSIM_COMMON_LOGGING_CONFIG_MULTIPROCESS_GROUP_ID,
-                   nativeConfig.fields, nativeConfig.multiprocessGroupId);
-    if (!config.channels.empty())
+    assignOptional(configuration.fileAppend, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_APPEND, nativeConfiguration.fields,
+                   nativeConfiguration.fileAppend);
+    assignOptional(configuration.fileLevel, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_LEVEL, nativeConfiguration.fields,
+                   nativeConfiguration.fileLevel);
+    assignOptional(configuration.fileFlushLevel, ISAACSIM_COMMON_LOGGING_CONFIG_FILE_FLUSH_LEVEL,
+                   nativeConfiguration.fields, nativeConfiguration.fileFlushLevel);
+    assignOptional(configuration.filenameIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_FILENAME_INCLUDED,
+                   nativeConfiguration.fields, nativeConfiguration.filenameIncluded);
+    assignOptional(configuration.lineNumberIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_LINE_NUMBER_INCLUDED,
+                   nativeConfiguration.fields, nativeConfiguration.lineNumberIncluded);
+    assignOptional(configuration.functionNameIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_FUNCTION_NAME_INCLUDED,
+                   nativeConfiguration.fields, nativeConfiguration.functionNameIncluded);
+    assignOptional(configuration.timestampIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_TIMESTAMP_INCLUDED,
+                   nativeConfiguration.fields, nativeConfiguration.timestampIncluded);
+    assignOptional(configuration.utcTimestamps, ISAACSIM_COMMON_LOGGING_CONFIG_UTC_TIMESTAMPS,
+                   nativeConfiguration.fields, nativeConfiguration.utcTimestamps);
+    assignOptional(configuration.microsecondTimestamps, ISAACSIM_COMMON_LOGGING_CONFIG_MICROSECOND_TIMESTAMPS,
+                   nativeConfiguration.fields, nativeConfiguration.microsecondTimestamps);
+    assignOptional(configuration.elapsedTime, ISAACSIM_COMMON_LOGGING_CONFIG_ELAPSED_TIME, nativeConfiguration.fields,
+                   nativeConfiguration.elapsedTime);
+    assignOptional(configuration.threadIdIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_THREAD_ID_INCLUDED,
+                   nativeConfiguration.fields, nativeConfiguration.threadIdIncluded);
+    assignOptional(configuration.sourceIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_SOURCE_INCLUDED,
+                   nativeConfiguration.fields, nativeConfiguration.sourceIncluded);
+    assignOptional(configuration.processIdIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_PROCESS_ID_INCLUDED,
+                   nativeConfiguration.fields, nativeConfiguration.processIdIncluded);
+    assignOptional(configuration.traceIdIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_TRACE_ID_INCLUDED,
+                   nativeConfiguration.fields, nativeConfiguration.traceIdIncluded);
+    assignOptional(configuration.colorIncluded, ISAACSIM_COMMON_LOGGING_CONFIG_COLOR_INCLUDED,
+                   nativeConfiguration.fields, nativeConfiguration.colorIncluded);
+    assignOptional(configuration.forceAnsiColor, ISAACSIM_COMMON_LOGGING_CONFIG_FORCE_ANSI_COLOR,
+                   nativeConfiguration.fields, nativeConfiguration.forceAnsiColor);
+    assignOptional(configuration.multiprocessGroupId, ISAACSIM_COMMON_LOGGING_CONFIG_MULTIPROCESS_GROUP_ID,
+                   nativeConfiguration.fields, nativeConfiguration.multiprocessGroupId);
+    if (!configuration.channels.empty())
     {
-        nativeChannels.reserve(config.channels.size());
-        for (const ChannelLoggingConfig& channel : config.channels)
+        nativeChannels.reserve(configuration.channels.size());
+        for (const ChannelLoggingConfiguration& channel : configuration.channels)
         {
             IsaacSimCommonLoggingChannelConfig nativeChannel = ISAACSIM_COMMON_LOGGING_CHANNEL_CONFIG_INIT;
             nativeChannel.channel = channel.channel.c_str();
@@ -123,12 +124,12 @@ ConfigureResult configureGlobalLogging(const GlobalLoggingConfig& config) noexce
             nativeChannel.minimumLevel = static_cast<int32_t>(channel.minimumLevel);
             nativeChannels.push_back(nativeChannel);
         }
-        nativeConfig.fields |= ISAACSIM_COMMON_LOGGING_CONFIG_CHANNELS;
-        nativeConfig.channelConfigs = nativeChannels.data();
-        nativeConfig.channelConfigCount = nativeChannels.size();
+        nativeConfiguration.fields |= ISAACSIM_COMMON_LOGGING_CONFIG_CHANNELS;
+        nativeConfiguration.channelConfigs = nativeChannels.data();
+        nativeConfiguration.channelConfigCount = nativeChannels.size();
     }
 
-    return static_cast<ConfigureResult>(isaacsimCommonLoggingConfigureGlobal(&nativeConfig));
+    return static_cast<ConfigureResult>(isaacsimCommonLoggingConfigureGlobal(&nativeConfiguration));
 }
 
 Logger::Logger(std::string_view channel) : m_channel(acquireLoggerChannel(channel))

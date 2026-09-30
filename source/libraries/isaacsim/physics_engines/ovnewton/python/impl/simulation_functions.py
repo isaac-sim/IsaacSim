@@ -37,6 +37,7 @@ class NewtonSimulationFunctions:
 
     Args:
         stage: Newton stage that owns simulation state.
+
     """
 
     def __init__(self, stage: NewtonStage) -> None:
@@ -60,6 +61,7 @@ class NewtonSimulationFunctions:
 
         Returns:
             True when the Newton stage accepts the initialization, otherwise False.
+
         """
         # `as_native_handle` / `lookup_stage` are pure Python and need no runtime
         # discovery; `NewtonStage.initialize` calls `ovstage.setup()` itself before
@@ -94,6 +96,7 @@ class NewtonSimulationFunctions:
 
         Returns:
             Always True because the ovstage remains caller-owned.
+
         """
         self._stage.close()
         return True
@@ -103,6 +106,7 @@ class NewtonSimulationFunctions:
 
         Returns:
             Attached stage identifier, or zero when no stage is attached.
+
         """
         return self._stage.get_attached_stage()
 
@@ -112,6 +116,7 @@ class NewtonSimulationFunctions:
         Returns:
             True when a borrowed ovstage is retained (including after a failed
             model build that left ``_initialized`` false for retry), otherwise False.
+
         """
         return self._stage.has_attached_stage()
 
@@ -121,6 +126,7 @@ class NewtonSimulationFunctions:
         Args:
             elapsed_time: Duration of the simulation step in seconds.
             current_time: Current simulation time supplied by the manager.
+
         """
         self._stage.simulate_async(elapsed_time, current_time)
 
@@ -130,6 +136,7 @@ class NewtonSimulationFunctions:
         Args:
             elapsed_time: Duration of the simulation step in seconds.
             current_time: Current simulation time supplied by the manager.
+
         """
         self._stage.simulate(elapsed_time, current_time)
 
@@ -142,6 +149,7 @@ class NewtonSimulationFunctions:
 
         Returns:
             Always True because Newton completes the step synchronously.
+
         """
         return self._stage.check_results()
 
@@ -154,6 +162,7 @@ class NewtonSimulationFunctions:
 
         Args:
             pause: True to pause change tracking, or False to resume it.
+
         """
         self._stage.pause_change_tracking(pause)
 
@@ -162,6 +171,7 @@ class NewtonSimulationFunctions:
 
         Returns:
             True when the Newton stage has paused change tracking.
+
         """
         return self._stage.is_change_tracking_paused()
 
@@ -175,6 +185,7 @@ class NewtonSimulationFunctions:
 
         Returns:
             Identifier used to remove the subscription.
+
         """
         return self._stage.subscribe_contact_report(callback)
 
@@ -183,6 +194,7 @@ class NewtonSimulationFunctions:
 
         Args:
             subscription_id: Identifier returned when the callback was subscribed.
+
         """
         self._stage.unsubscribe_contact_report(subscription_id)
 
@@ -197,6 +209,7 @@ class NewtonSimulationFunctions:
 
         Returns:
             Configured number of simulation steps per second.
+
         """
         return int(self._stage.config.default_steps_per_second)
 
@@ -205,6 +218,7 @@ class NewtonSimulationFunctions:
 
         Returns:
             Timestamp incremented after each initialized step callback that does not encounter a solver error.
+
         """
         return self._stage.timestamp
 
@@ -213,6 +227,7 @@ class NewtonSimulationFunctions:
 
         Returns:
             Number of initialized step callbacks that did not encounter a solver error since attachment or reset.
+
         """
         return self._stage.step_count
 
@@ -230,6 +245,7 @@ class NewtonSimulationFunctions:
 
         Returns:
             Identifier used to remove the subscription.
+
         """
         return self._stage.subscribe_step_event(pre_step, order, callback)
 
@@ -238,6 +254,7 @@ class NewtonSimulationFunctions:
 
         Args:
             subscription_id: Identifier returned when the callback was subscribed.
+
         """
         self._stage.unsubscribe_step_event(subscription_id)
 
@@ -251,5 +268,6 @@ class NewtonSimulationFunctions:
 
         Returns:
             A successful-query flag and one support flag per requested schema.
+
         """
         return self._stage.is_capable_of_simulating(schema_names)

@@ -35,12 +35,12 @@ namespace foundation = isaacsim::foundation::ovsim::data;
 namespace physics = isaacsim::physics::ovsim::data;
 
 
-OutputValueType read(const PathType& paths, const std::string& attributeName, std::optional<double> timeStamp)
+OutputValueType read(const PathType& paths, const std::string& attributeName, std::optional<double> timestamp)
 {
     using namespace ::ovsim::interfaces::details;
     try
     {
-        return physics::read(paths, attributeName, timeStamp);
+        return physics::read(paths, attributeName, timestamp);
     }
     catch (const InitializationError&)
     {
@@ -51,7 +51,7 @@ OutputValueType read(const PathType& paths, const std::string& attributeName, st
 
     try
     {
-        return foundation::read(paths, attributeName, timeStamp);
+        return foundation::read(paths, attributeName, timestamp);
     }
     catch (const InitializationError&)
     {
@@ -66,12 +66,12 @@ OutputValueType read(const PathType& paths, const std::string& attributeName, st
 void write(const PathType& paths,
            const std::string& attributeName,
            const InputValueType& values,
-           std::optional<double> timeStamp)
+           std::optional<double> timestamp)
 {
     using namespace ::ovsim::interfaces::details;
     try
     {
-        physics::write(paths, attributeName, values, timeStamp);
+        physics::write(paths, attributeName, values, timestamp);
         return;
     }
     catch (const InitializationError&)
@@ -83,7 +83,7 @@ void write(const PathType& paths,
 
     try
     {
-        foundation::write(paths, attributeName, values, timeStamp);
+        foundation::write(paths, attributeName, values, timestamp);
         return;
     }
     catch (const InitializationError&)

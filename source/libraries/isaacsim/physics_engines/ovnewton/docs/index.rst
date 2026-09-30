@@ -20,6 +20,15 @@
 isaacsim.physics_engines.ovnewton
 =================================
 
+``isaacsim.physics_engines.ovnewton`` implements the physics manager and tensor
+interfaces with Newton. Importing the module registers and activates the
+backend; applications can then select ``"newton"`` through
+``isaacsim.physics.manager.PhysicsManager``.
+
+The backend requires the optional Newton runtime dependencies supplied by the
+physics-engines distribution. See the Python API reference for explicit
+configuration and lifecycle helpers.
+
 .. toctree::
     :maxdepth: 2
 

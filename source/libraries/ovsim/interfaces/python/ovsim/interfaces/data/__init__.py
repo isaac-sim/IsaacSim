@@ -18,14 +18,19 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
+__all__ = ["InputValueType", "Instance", "OutputValueType", "PathType", "ReadFunction", "WriteFunction"]
+
+#: One prim path or a collection of prim paths.
 PathType = str | list[str]
+#: Attribute values accepted by data providers.
 InputValueType = object
+#: Attribute values returned by data providers.
 OutputValueType = object
 
-# (paths, attribute_name, timestamp)
-ReadFn = Callable[[PathType, str, float | None], OutputValueType]
-# (paths, attribute_name, values, timestamp)
-WriteFn = Callable[[PathType, str, InputValueType, float | None], None]
+#: Read an attribute for one or more prim paths.
+ReadFunction = Callable[[PathType, str, float | None], OutputValueType]
+#: Write an attribute for one or more prim paths.
+WriteFunction = Callable[[PathType, str, InputValueType, float | None], None]
 
 
 class Instance(ABC):

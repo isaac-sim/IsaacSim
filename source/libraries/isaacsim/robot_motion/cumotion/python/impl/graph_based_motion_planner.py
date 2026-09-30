@@ -170,7 +170,8 @@ class GraphBasedMotionPlanner:
 
         if not (q_initial.size == q_final.size == len(self._cumotion_robot.controlled_joint_names)):
             raise RuntimeError(
-                f"Initial and final joint positions must be of length: {len(self._cumotion_robot.controlled_joint_names)}."
+                "Initial and final joint positions must be of length: "
+                f"{len(self._cumotion_robot.controlled_joint_names)}."
             )
 
         # create the planner with whatever the current parameters happen to be:

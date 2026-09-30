@@ -3,7 +3,7 @@ name: object-bin-packing
 description: "Pack boxes/parcels into a bin, pallet, or container and render SDG with IRO's bin_pack harmonizer. Use for warehouse/logistics packing synthetic data."
 license: Apache-2.0
 metadata:
-  author: NVIDIA Isaac Sim
+  author: NVIDIA Isaac Sim <isaac-sim@nvidia.com>
 ---
 
 # Object Bin Packing (IRO `bin_pack` harmonizer)

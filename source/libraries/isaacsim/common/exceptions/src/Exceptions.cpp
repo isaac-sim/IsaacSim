@@ -56,7 +56,7 @@ PrimPathError::PrimPathError(const std::string& primPath)
 {
 }
 
-const std::string& PrimPathError::primPath() const noexcept
+const std::string& PrimPathError::getPrimPath() const noexcept
 {
     return m_primPath;
 }
@@ -66,7 +66,7 @@ PrimPathStringError::PrimPathStringError(const std::string& primPathString)
 {
 }
 
-const std::string& PrimPathStringError::primPath() const noexcept
+const std::string& PrimPathStringError::getPrimPath() const noexcept
 {
     return m_primPath;
 }
@@ -79,12 +79,12 @@ AttributeNameError::AttributeNameError(const std::string& attributeName,
 {
 }
 
-const std::string& AttributeNameError::attributeName() const noexcept
+const std::string& AttributeNameError::getAttributeName() const noexcept
 {
     return m_attributeName;
 }
 
-const std::vector<std::string>& AttributeNameError::validAttributeNames() const noexcept
+const std::vector<std::string>& AttributeNameError::getValidAttributeNames() const noexcept
 {
     return m_validAttributeNames;
 }
@@ -100,17 +100,17 @@ ValueTypeError::ValueTypeError(const std::string& attributeName,
 {
 }
 
-const std::string& ValueTypeError::attributeName() const noexcept
+const std::string& ValueTypeError::getAttributeName() const noexcept
 {
     return m_attributeName;
 }
 
-const std::string& ValueTypeError::expectedType() const noexcept
+const std::string& ValueTypeError::getExpectedType() const noexcept
 {
     return m_expectedType;
 }
 
-const std::string& ValueTypeError::actualType() const noexcept
+const std::string& ValueTypeError::getActualType() const noexcept
 {
     return m_actualType;
 }
@@ -125,12 +125,12 @@ CudaRuntimeError::CudaRuntimeError(const std::string& callerName,
 {
 }
 
-const std::string& CudaRuntimeError::callerName() const noexcept
+const std::string& CudaRuntimeError::getCallerName() const noexcept
 {
     return m_callerName;
 }
 
-std::optional<int> CudaRuntimeError::errorCode() const noexcept
+std::optional<int> CudaRuntimeError::getErrorCode() const noexcept
 {
     return m_errorCode;
 }

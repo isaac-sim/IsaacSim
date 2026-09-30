@@ -15,12 +15,15 @@
    limitations under the License.
 
 .. _isaacsim-ovsim-clients-grpc:
+.. _isaacsim-ovsim-clients-grpc-overview:
 
 ============================
-Isaac Sim OV Sim gRPC client
+Isaac Sim OV SIM gRPC client
 ============================
+
+``isaacsim.ovsim.clients.grpc`` provides a C++ client for interacting with the Isaac Sim OV SIM service over gRPC.
 
 .. toctree::
     :maxdepth: 2
 
-    overview
+    api_cpp

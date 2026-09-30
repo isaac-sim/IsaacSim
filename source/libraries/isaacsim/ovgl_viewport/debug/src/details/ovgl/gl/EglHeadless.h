@@ -13,8 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef NUSD_EGL_HEADLESS_H
-#define NUSD_EGL_HEADLESS_H
+#pragma once
 
 #include <stdint.h>
 
@@ -114,5 +113,3 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* NUSD_EGL_HEADLESS_H */

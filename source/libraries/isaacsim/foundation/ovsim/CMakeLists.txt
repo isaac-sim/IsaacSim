@@ -27,11 +27,11 @@ isaacsim_add_module(
         isaacsim::foundation-prims
         isaacsim::foundation-utils
     PUBLIC_CPP_HEADERS
-        isaacsim/foundation/ovsim/details/Registry.hpp
         isaacsim/foundation/ovsim/control/authoring/Authoring.hpp
         isaacsim/foundation/ovsim/control/simulation/Simulation.hpp
         isaacsim/foundation/ovsim/data/Data.hpp
     SOURCES
+        src/details/Registry.hpp
         src/details/Registry.cpp
         src/Control.cpp
         src/Data.cpp
@@ -42,7 +42,7 @@ target_include_directories(isaacsim-foundation-ovsim PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/ovsim/interfaces/cpp>
 )
 
-# The public foundation wrappers include the canonical OV Sim interface headers,
+# The public foundation wrappers include the canonical OV SIM interface headers,
 # so ship those headers with the same development component.
 get_target_property(isaacsim_foundation_ovsim_group isaacsim-foundation-ovsim ISAACSIM_GROUP_NAME)
 _isaacsim_get_group_component(

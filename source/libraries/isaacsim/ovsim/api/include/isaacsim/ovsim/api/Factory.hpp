@@ -22,7 +22,6 @@
 #include <string>
 #include <unordered_map>
 
-
 namespace isaacsim
 {
 namespace ovsim

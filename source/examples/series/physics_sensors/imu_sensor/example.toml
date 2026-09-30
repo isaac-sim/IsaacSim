@@ -3,15 +3,16 @@
 
 id = "physics_sensors.imu_sensor"
 title = "IMU Sensor"
-summary = "Read the position, orientation, velocity, and acceleration of a prim as an IMU would."
+summary = "Derive orientation, angular velocity, and specific force for a mounted IMU."
 owners = [
+    "isaacsim.common.logging",
     "isaacsim.foundation.objects",
     "isaacsim.foundation.prims",
+    "isaacsim.physics.entities",
     "isaacsim.physics.manager",
-    "isaacsim.physics.registration",
     "isaacsim.physics_engines.ovphysx",
 ]
-topics = ["physics", "python", "sensors", "usd"]
+topics = ["physics", "sensors", "usd"]
 
 [build]
 adapter = "none"
@@ -22,6 +23,10 @@ path = "main.py"
 
 [requirements]
 system = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_common"
+surfaces = ["python"]
 
 [[requirements.modules]]
 name = "isaacsim_foundation"
@@ -38,20 +43,17 @@ surfaces = ["python"]
 [[test]]
 name = "default"
 stdout_contains = [
+    "IMU at /World/Body/Imu mounted on /World/Body.",
     "Reporting specific force, the proper acceleration.",
-    "Airborne finite-difference acceleration matches gravity.",
-    "Readings are stamped with the time their newest sample was taken.",
-    "Free-fall proper acceleration is near zero.",
-    "Free-fall angular velocity is read on the sensor Z axis.",
-    "Free-fall velocity is read on the sensor -Z axis.",
-    "Resting accelerometer reads one gravity along world up.",
-    "Resting sensor sits one mount offset above the body center.",
+    "Free fall at t =",
+    "At rest at t =",
+    "sensor specific force",
 ]
 
 
 [[test]]
-name = "self_test"
-arguments = ["--self-test"]
+name = "unit"
+path = "test.py"
 stdout_contains = [
-    "Self-test: all ",
+    "imu.py unit tests passed.",
 ]

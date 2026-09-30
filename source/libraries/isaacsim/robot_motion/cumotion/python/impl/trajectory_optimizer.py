@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Provides trajectory optimization capabilities using cuMotion's Trajectory Optimizer algorithm for generating smooth, collision-free robot trajectories."""
+"""Generate smooth, collision-free robot trajectories with cuMotion."""
 
 from __future__ import annotations
 
@@ -77,7 +77,8 @@ class TrajectoryOptimizer:
 
         if not set(cumotion_robot.controlled_joint_names).issubset(set(robot_joint_space)):
             raise ValueError(
-                f"Cumotion controlled joints {cumotion_robot.controlled_joint_names} are not a subset of the robot_joint_space {robot_joint_space}."
+                f"Cumotion controlled joints {cumotion_robot.controlled_joint_names} are not a subset of the "
+                f"robot_joint_space {robot_joint_space}."
             )
 
         if not trajectory_optimizer_config_filename:
@@ -149,7 +150,8 @@ class TrajectoryOptimizer:
 
         Args:
             initial_cspace_position: Initial joint configuration.
-            goal: Target goal specification (CSpaceTarget, TaskSpaceTarget, or TaskSpaceTargetGoalset). Note that all goals must be defined in the base frame.
+            goal: Target goal specification (CSpaceTarget, TaskSpaceTarget, or
+                TaskSpaceTargetGoalset). All goals must be defined in the base frame.
 
         Returns:
             Optimized trajectory if successful, None if planning failed.
@@ -196,7 +198,8 @@ class TrajectoryOptimizer:
             result = trajectory_optimizer.plan_to_task_space_target(initial_cspace_position, goal)
         else:
             raise ValueError(
-                f"Goal must be one of: CSpaceTarget, TaskSpaceTargetGoalset or TaskSpaceTarget. See Cumotion documentation."
+                "Goal must be one of: CSpaceTarget, TaskSpaceTargetGoalset, or TaskSpaceTarget. "
+                "See cuMotion documentation."
             )
 
         status = result.status()

@@ -3,7 +3,7 @@ name: "isaac-sim-installation"
 description: "Install Isaac Sim from a public standalone build, Docker image, or Python package behind preflight, compatibility, EULA, and --execute gates. Use when installing Isaac Sim; never launches the app."
 license: "Apache-2.0"
 metadata:
-  author: "ropardeshi"
+  author: "ropardeshi <info@nvidia.com>"
   tags:
     - isaac-sim
     - installation

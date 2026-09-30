@@ -470,6 +470,29 @@ class ArtifactTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "found 2"):
                 stage_tool._select_single(directory, "*.whl", "wheel")
 
+    def test_select_wheel_accepts_platform_independent_artifact(self) -> None:
+        """Accept a pure-Python wheel for a distribution without an explicit variant."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            wheel = directory / "acme_runtime-1.2.3-py3-none-any.whl"
+            wheel.touch()
+
+            selected = stage_tool._select_wheel(directory, "acme_runtime", "1.2.3", None)
+
+            self.assertEqual(selected, wheel)
+
+    def test_select_wheel_rejects_wrong_native_platform(self) -> None:
+        """Do not stage a native wheel built for another platform."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            (directory / "acme_runtime-1.2.3-cp312-abi3-win_amd64.whl").touch()
+
+            with (
+                mock.patch.object(stage_tool, "_platform_tag", return_value="linux_x86_64"),
+                self.assertRaisesRegex(RuntimeError, "found 0"),
+            ):
+                stage_tool._select_wheel(directory, "acme_runtime", "1.2.3", None)
+
     def test_wheel_install_uses_pip_index_semantics(self) -> None:
         """Ask pip to install the selected distribution without recording a direct URL."""
         with tempfile.TemporaryDirectory() as temporary_directory:

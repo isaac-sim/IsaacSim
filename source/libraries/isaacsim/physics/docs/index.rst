@@ -17,14 +17,14 @@
 .. _isaacsim-physics-library:
 
 ================
-isaacsim_physics
+isaacsim-physics
 ================
 
 ``isaacsim-physics`` provides backend-neutral simulation registration, simulation
 management, and tensor views. Physics engine implementations
 are supplied by the separate ``isaacsim-physics-engines`` distribution.
 
-The distribution separates the backend-neutral contracts into three modules:
+The distribution separates the backend-neutral contracts into four modules:
 
 * ``isaacsim.physics.registration`` defines the engine registration contracts and
   shared vocabulary.
@@ -32,6 +32,10 @@ The distribution separates the backend-neutral contracts into three modules:
   views.
 * ``isaacsim.physics.entities`` provides higher-level entities backed by the
   manager's tensor views.
+* ``isaacsim.physics.ovsim`` adapts the backend-neutral APIs to the OV SIM
+  control and data interfaces.
 
 Use this distribution when application code must remain independent of a specific
 physics engine implementation.
+
+The corresponding CMake package group is named ``isaacsim_physics``.

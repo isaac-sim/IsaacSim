@@ -84,7 +84,7 @@ enum class DeviceKind : int32_t
 /**
  * @brief Operation directions used to classify tensor implementations.
  */
-enum class ImplKind : int32_t
+enum class ImplementationKind : int32_t
 {
     /** @brief A read operation that retrieves tensor data. */
     eGet = 0,

@@ -15,12 +15,12 @@
 
 """Public API for the asset importer utilities.
 
-Re-exports the contents of every implementation submodule so callers can use
-short top-level imports (matching the documented ``python_api.md`` surface)::
+Re-exports the contents of the public utility submodules so callers can use
+short top-level imports (matching the documented top-level API surface)::
 
     from isaacsim.asset.importer.utils import collision_from_visuals, parse_robot_name
 
-The implementation submodules remain accessible via their original names::
+Those implementation submodules remain accessible via their original names::
 
     from isaacsim.asset.importer.utils import importer_utils
     importer_utils.collision_from_visuals(...)

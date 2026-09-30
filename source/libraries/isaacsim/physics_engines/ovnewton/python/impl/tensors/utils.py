@@ -113,6 +113,7 @@ def _compile_token(token: str) -> re.Pattern[str]:
 
     Returns:
         Anchored expression with alternation scoped to the complete segment.
+
     """
     return re.compile(f"^(?:{token.replace('*', '.*')})$")
 
@@ -125,6 +126,7 @@ def _collect_self_and_descendants(root: Usd.Prim, prims_ret: list[Usd.Prim]) -> 
     Args:
         root: Root prim to traverse.
         prims_ret: Destination list to extend.
+
     """
     if not root:
         return
@@ -147,6 +149,7 @@ def _collect_matching_descendants(
         matcher: Expression applied to each descendant name.
         prims_ret: Destination list for matching prims.
         matched_ancestor_names: Matching names already encountered on the current ancestor path.
+
     """
     if not root:
         return

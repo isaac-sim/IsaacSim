@@ -29,12 +29,8 @@ Plane::Plane(const std::variant<std::string, std::vector<std::string>>& paths,
              const std::optional<array::Array>& lengths,
              const std::optional<std::variant<std::string, std::vector<std::string>>>& axes,
              const std::optional<ColorType>& colors,
-             const std::optional<array::Array>& positions,
-             const std::optional<array::Array>& translations,
-             const std::optional<array::Array>& orientations,
-             const std::optional<array::Array>& scales,
              bool resetXformOpProperties)
-    : Shape(paths, /*shapeType=*/"Plane", colors, positions, translations, orientations, scales, resetXformOpProperties)
+    : Shape(paths, /*shapeType=*/"Plane", colors, resetXformOpProperties)
 {
     // Initialize instance from arguments.
     if (widths.has_value())
@@ -87,6 +83,11 @@ std::vector<std::string> Plane::getAxes(const std::optional<array::Array>& indic
 void Plane::updateExtents()
 {
     // TODO: Implement and call it when setting values.
+}
+
+array::Array Plane::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("Plane");
 }
 
 } // namespace shapes

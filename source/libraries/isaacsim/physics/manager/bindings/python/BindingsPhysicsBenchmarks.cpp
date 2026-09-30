@@ -25,11 +25,6 @@ void isaacsim::physics::manager::details::bindPhysicsBenchmarks(nb::module_& mod
     using namespace isaacsim::physics::manager;
     using namespace isaacsim::physics::registration;
 
-    nb::class_<PhysicsProfileStatistics>(module, "PhysicsProfileStats", "Timing data for one physics profiling zone.")
-        .def(nb::init<>())
-        .def_rw("zone_name", &PhysicsProfileStatistics::zoneName, "Name of the profiling zone")
-        .def_rw("ms", &PhysicsProfileStatistics::elapsedMilliseconds, "Time in milliseconds for this zone");
-
     module.def(
         "subscribe_profile_stats_events",
         [](ProfileStatisticsNotificationFunction callback)

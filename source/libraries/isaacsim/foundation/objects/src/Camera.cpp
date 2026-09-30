@@ -29,7 +29,7 @@ namespace
 
 // USD stores focal lengths and apertures in tenths of a scene unit; the public API works in scene
 // units, so values are scaled by 10 when writing to USD and by 0.1 when reading back.
-constexpr double kApertureScale = 10.0;
+constexpr double g_kApertureScale = 10.0;
 
 array::Array toScaledColumn(const array::Array& values, int64_t size, double factor)
 {
@@ -46,7 +46,7 @@ array::Array toScaledColumn(const array::Array& values, int64_t size, double fac
 
 array::Array scaled(const array::Array& values, double factor)
 {
-    auto data = values.reshape(array::Shape({ int64_t{ -1 } })).get<std::vector<double>>();
+    auto data = values.flatten().get<std::vector<double>>();
     for (auto& value : data)
     {
         value *= factor;
@@ -56,13 +56,7 @@ array::Array scaled(const array::Array& values, double factor)
 
 } // namespace
 
-Camera::Camera(const std::variant<std::string, std::vector<std::string>>& paths,
-               const std::optional<array::Array>& positions,
-               const std::optional<array::Array>& translations,
-               const std::optional<array::Array>& orientations,
-               const std::optional<array::Array>& scales,
-               bool resetXformOpProperties)
-    : Xform()
+Camera::Camera(const std::variant<std::string, std::vector<std::string>>& paths, bool resetXformOpProperties) : Xform()
 {
     // Get or create camera prims.
     auto [existentPaths, nonexistentPaths] = this->resolvePaths(paths);
@@ -70,7 +64,7 @@ Camera::Camera(const std::variant<std::string, std::vector<std::string>>& paths,
     if (!existentPaths.empty())
     {
         m_paths = std::move(existentPaths);
-        const std::vector<bool> isCamera = this->isA("Camera").get<std::vector<bool>>();
+        const std::vector<bool> isCamera = this->isA("Camera").flatten().get<std::vector<bool>>();
         for (std::size_t i = 0; i < m_paths.size(); ++i)
         {
             if (!isCamera[i])
@@ -89,19 +83,19 @@ Camera::Camera(const std::variant<std::string, std::vector<std::string>>& paths,
         }
     }
     // Initialize instance from arguments.
-    _initialize(positions, translations, orientations, scales, resetXformOpProperties);
+    _initialize(resetXformOpProperties);
 }
 
 
 void Camera::setFocalLengths(const array::Array& focalLengths, const std::optional<array::Array>& indices)
 {
     int64_t batchSize = _resolveIndexedSize(indices);
-    this->setAttributeValues("focalLength", toScaledColumn(focalLengths, batchSize, kApertureScale), indices);
+    this->setAttributeValues("focalLength", toScaledColumn(focalLengths, batchSize, g_kApertureScale), indices);
 }
 
 array::Array Camera::getFocalLengths(const std::optional<array::Array>& indices)
 {
-    return scaled(std::get<array::Array>(this->getAttributeValues("focalLength", indices)), 1.0 / kApertureScale);
+    return scaled(std::get<array::Array>(this->getAttributeValues("focalLength", indices)), 1.0 / g_kApertureScale);
 }
 
 void Camera::setFocusDistances(const array::Array& focusDistances, const std::optional<array::Array>& indices)
@@ -151,19 +145,21 @@ void Camera::setApertures(const std::optional<array::Array>& horizontalApertures
     if (horizontalApertures.has_value())
     {
         this->setAttributeValues(
-            "horizontalAperture", toScaledColumn(*horizontalApertures, batchSize, kApertureScale), indices);
+            "horizontalAperture", toScaledColumn(*horizontalApertures, batchSize, g_kApertureScale), indices);
     }
     if (verticalApertures.has_value())
     {
         this->setAttributeValues(
-            "verticalAperture", toScaledColumn(*verticalApertures, batchSize, kApertureScale), indices);
+            "verticalAperture", toScaledColumn(*verticalApertures, batchSize, g_kApertureScale), indices);
     }
 }
 
 std::tuple<array::Array, array::Array> Camera::getApertures(const std::optional<array::Array>& indices)
 {
-    return { scaled(std::get<array::Array>(this->getAttributeValues("horizontalAperture", indices)), 1.0 / kApertureScale),
-             scaled(std::get<array::Array>(this->getAttributeValues("verticalAperture", indices)), 1.0 / kApertureScale) };
+    return {
+        scaled(std::get<array::Array>(this->getAttributeValues("horizontalAperture", indices)), 1.0 / g_kApertureScale),
+        scaled(std::get<array::Array>(this->getAttributeValues("verticalAperture", indices)), 1.0 / g_kApertureScale)
+    };
 }
 
 void Camera::setApertureOffsets(const std::optional<array::Array>& horizontalOffsets,
@@ -179,21 +175,21 @@ void Camera::setApertureOffsets(const std::optional<array::Array>& horizontalOff
     if (horizontalOffsets.has_value())
     {
         this->setAttributeValues(
-            "horizontalApertureOffset", toScaledColumn(*horizontalOffsets, batchSize, kApertureScale), indices);
+            "horizontalApertureOffset", toScaledColumn(*horizontalOffsets, batchSize, g_kApertureScale), indices);
     }
     if (verticalOffsets.has_value())
     {
         this->setAttributeValues(
-            "verticalApertureOffset", toScaledColumn(*verticalOffsets, batchSize, kApertureScale), indices);
+            "verticalApertureOffset", toScaledColumn(*verticalOffsets, batchSize, g_kApertureScale), indices);
     }
 }
 
 std::tuple<array::Array, array::Array> Camera::getApertureOffsets(const std::optional<array::Array>& indices)
 {
     return { scaled(std::get<array::Array>(this->getAttributeValues("horizontalApertureOffset", indices)),
-                    1.0 / kApertureScale),
+                    1.0 / g_kApertureScale),
              scaled(std::get<array::Array>(this->getAttributeValues("verticalApertureOffset", indices)),
-                    1.0 / kApertureScale) };
+                    1.0 / g_kApertureScale) };
 }
 
 void Camera::setProjections(const std::variant<std::string, std::vector<std::string>>& projections,
@@ -296,8 +292,8 @@ void Camera::enforceSquarePixels(const array::Array& resolutions,
         resolutions.broadcastTo(array::Shape({ batchSize, int64_t{ 2 } })).get<std::vector<std::vector<double>>>();
     const std::vector<std::string> modeData = _resolveStringList(modes, indices);
     auto [horizontalArray, verticalArray] = this->getApertures(indices);
-    auto horizontal = horizontalArray.reshape(array::Shape({ int64_t{ -1 } })).get<std::vector<double>>();
-    auto vertical = verticalArray.reshape(array::Shape({ int64_t{ -1 } })).get<std::vector<double>>();
+    auto horizontal = horizontalArray.flatten().get<std::vector<double>>();
+    auto vertical = verticalArray.flatten().get<std::vector<double>>();
     for (std::size_t i = 0; i < static_cast<std::size_t>(batchSize); ++i)
     {
         double aspectRatio = resolutionData[i][1] / resolutionData[i][0];
@@ -326,6 +322,11 @@ void Camera::enforceSquarePixels(const array::Array& resolutions,
     }
     // Columns are sized to the selected prims and written back through the same indices.
     this->setApertures(array::Array(horizontalColumn), array::Array(verticalColumn), indices);
+}
+
+array::Array Camera::areOfType(const std::variant<std::string, std::vector<std::string>>& paths)
+{
+    return Prim(paths).isA("Camera");
 }
 
 } // namespace objects

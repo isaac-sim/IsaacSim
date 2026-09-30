@@ -3,7 +3,7 @@ name: isaac-sim-validator
 description: "Pre-delivery QA gate for Isaac Sim scripts (imports, lights, paths, frames). Level 3 executes untrusted Python unsandboxed and needs --confirm-execute. Use before handing off simulation work."
 license: Apache-2.0
 metadata:
-  author: Renato Gasoto
+  author: Renato Gasoto <info@nvidia.com>
 ---
 
 # Isaac Sim Validator

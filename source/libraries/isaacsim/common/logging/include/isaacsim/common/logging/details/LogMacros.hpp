@@ -48,8 +48,8 @@
         auto&& isaacsimLoggingLogger = (logger);                                                                       \
         if (isaacsimLoggingLogger.isEnabled(::isaacsim::common::logging::LogLevel::eWarning))                          \
         {                                                                                                              \
-            static std::atomic_flag isaacsimLoggingSubmitted = ATOMIC_FLAG_INIT;                                       \
-            if (!isaacsimLoggingSubmitted.test_and_set(std::memory_order_relaxed))                                     \
+            static std::atomic_flag s_isaacsimLoggingSubmitted = ATOMIC_FLAG_INIT;                                     \
+            if (!s_isaacsimLoggingSubmitted.test_and_set(std::memory_order_relaxed))                                   \
             {                                                                                                          \
                 ISAACSIM_LOG_WARNING(isaacsimLoggingLogger, __VA_ARGS__);                                              \
             }                                                                                                          \

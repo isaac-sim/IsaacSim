@@ -38,10 +38,10 @@ from _scenario import (  # noqa: E402
     GridParams,
     GridTestBase,
     SimParams,
+    SimulationEntities,
     Transform,
     get_asset_root,
 )
-from isaacsim.physics.manager.impl.tensors import SimulationView  # noqa: E402
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics  # noqa: E402
 
 
@@ -51,6 +51,7 @@ class ArticulationViewCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -64,11 +65,12 @@ class ArticulationViewCommon(GridTestBase):
         actor_path = self.env_template_path.AppendChild("cartpole")
         self.create_actor_from_asset(actor_path, Transform((0.0, 0.0, 1.0)), asset_path)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the CartPole view and validate its resolved paths.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         cartpoles = sim.create_articulation_view("/envs/*/cartpole")
         self.check_articulation_view(cartpoles, self.num_envs, 3, 2, True)
@@ -81,13 +83,14 @@ class ArticulationViewCommon(GridTestBase):
 
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Keep the scenario complete after startup validation.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
 
 
@@ -97,6 +100,7 @@ class HumanoidViewCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -106,23 +110,25 @@ class HumanoidViewCommon(GridTestBase):
         actor_path = self.env_template_path.AppendChild("humanoid")
         self.create_actor_from_asset(actor_path, Transform((0.0, 0.0, 1.5)), asset_path)
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the Humanoid view and validate its dimensions.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         humanoids = sim.create_articulation_view("/envs/*/humanoid/torso")
         self.check_articulation_view(humanoids, self.num_envs, 16, 21, True)
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Keep the scenario complete after startup validation.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
 
 
@@ -132,6 +138,7 @@ class ArticulationDofPropertiesCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -143,11 +150,12 @@ class ArticulationDofPropertiesCommon(GridTestBase):
             asset_path,
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Write and verify degree-of-freedom properties.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         humanoids = sim.create_articulation_view("/envs/*/humanoid/torso")
         n = humanoids.count
@@ -182,13 +190,14 @@ class ArticulationDofPropertiesCommon(GridTestBase):
 
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Keep the scenario complete after startup validation.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
 
 
@@ -201,6 +210,7 @@ class ArticulationDofLimitsSubsetCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -212,11 +222,12 @@ class ArticulationDofLimitsSubsetCommon(GridTestBase):
             asset_path,
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Write full-width and compact joint-limit subsets.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         humanoids = sim.create_articulation_view("/envs/*/humanoid/torso")
         n = humanoids.count
@@ -251,13 +262,14 @@ class ArticulationDofLimitsSubsetCommon(GridTestBase):
         assert wp_utils.wp_allclose(result2[odd], original[odd]), "odd envs must stay unchanged"
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Keep the scenario complete after startup validation.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
 
 
@@ -270,6 +282,7 @@ class ArticulationViewDuplicateNamesCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -315,11 +328,12 @@ class ArticulationViewDuplicateNamesCommon(GridTestBase):
     def _apply_engine_specifics(self) -> None:
         """Apply backend-specific schemas when a subclass requires them."""
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the articulation view and validate unique topology names.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         view = sim.create_articulation_view("/envs/*/SimpleArticulation")
         self.check_articulation_view(view, self.num_envs, 5, 4, True)
@@ -342,13 +356,14 @@ class ArticulationViewDuplicateNamesCommon(GridTestBase):
         assert any(n.startswith("TipJoint") for n in joint_names)
         self.finish()
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Keep the scenario complete after startup validation.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
 
 
@@ -362,6 +377,7 @@ class ArticulationCentroidalMomentumAndMassCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -384,23 +400,25 @@ class ArticulationCentroidalMomentumAndMassCommon(GridTestBase):
             ant_asset,
         )
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create Ant and Humanoid views and their shared index buffer.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         self.humanoids = sim.create_articulation_view("/envs/*/Humanoid/torso")
         self.ants = sim.create_articulation_view("/envs/*/ant/torso")
         self.all_indices = wp_utils.arange(self.ants.count, device=self.wp_device)
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Apply velocities and validate mass properties over three steps.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         if stepno == 1:
             vr_ants = self.ants.get_data("root-velocities").numpy().reshape(self.ants.count, 6).copy()
@@ -440,6 +458,7 @@ class ArticulationSpecialCasesCommon(GridTestBase):
     Args:
         test_case: Test instance that owns the scenario.
         device_params: Simulation and tensor device selection.
+
     """
 
     def __init__(self, test_case: object, device_params: DeviceParams) -> None:
@@ -465,23 +484,25 @@ class ArticulationSpecialCasesCommon(GridTestBase):
     def _apply_engine_specifics(self) -> None:
         """Apply backend-specific schemas when a subclass requires them."""
 
-    def on_start(self, sim: SimulationView) -> None:
+    def on_start(self, sim: SimulationEntities) -> None:
         """Create the fixed single-link articulation view.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
+
         """
         articulations = sim.create_articulation_view("/envs/*/SimpleArticulation")
         self.check_articulation_view(articulations, self.num_envs, 1, 0, True)
         self.articulations = articulations
 
-    def on_physics_step(self, sim: SimulationView, stepno: int, dt: float) -> None:
+    def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Round-trip the empty stiffness tensor and finish.
 
         Args:
-            sim: Active backend simulation view.
+            sim: Entity-view factory for the running simulation.
             stepno: Zero-based physics step number.
             dt: Duration of the physics step.
+
         """
         articulations = self.articulations
         # Trigger the (n, 0) special case; round-trip get/set should be a no-op.
