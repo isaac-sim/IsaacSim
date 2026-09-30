@@ -59,6 +59,38 @@ jobs:
           name: isaac-sim-packages-${{ inputs.platform }}-${{ inputs.config }}${{ inputs.coverage && '-cov' || '' }}
           path: _build/packages/
 
+      - name: Verify downloaded artifacts
+        run: |
+          set -euo pipefail
+          echo "=== Verifying artifact integrity ==="
+          mapfile -t archives < <(find _build/packages/ -name '*.7z' -o -name '*.zip')
+          if [ ${#archives[@]} -eq 0 ]; then
+            echo "::error::No archives found in _build/packages/ — download may have failed"
+            ls -laR _build/packages/ || true
+            exit 1
+          fi
+          # Find a 7-zip binary: p7zip-full ships "7z", standalone ships "7zz"
+          SEVENZIP=""
+          for cmd in 7z 7zz 7za; do
+            if command -v "$cmd" &>/dev/null; then SEVENZIP="$cmd"; break; fi
+          done
+          for archive in "${archives[@]}"; do
+            size=$(stat -c%s "$archive")
+            echo "Checking: $archive ($size bytes)"
+            if [ "$size" -lt 1000 ]; then
+              echo "::error::Archive suspiciously small ($size bytes): $archive"
+              exit 1
+            fi
+            if [ -n "$SEVENZIP" ]; then
+              if ! "$SEVENZIP" t "$archive" > /dev/null 2>&1; then
+                echo "::error::Corrupt archive: $archive"
+                exit 1
+              fi
+            else
+              echo "::warning::No 7z/7zz/7za available — skipping integrity test, size check passed"
+            fi
+          done
+          echo "All ${#archives[@]} archive(s) verified OK (tool: ${SEVENZIP:-size-only})"
 
       - name: Run tests
         env:

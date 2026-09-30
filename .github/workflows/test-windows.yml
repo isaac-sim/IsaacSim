@@ -85,6 +85,39 @@ jobs:
           name: isaac-sim-packages-${{ inputs.platform }}-${{ inputs.config }}
           path: C:\b\_build\packages\
 
+      - name: Verify downloaded artifacts
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host "=== Verifying artifact integrity ==="
+          $archives = Get-ChildItem -Path 'C:\b\_build\packages\' -Recurse -Include '*.7z','*.zip'
+          if ($archives.Count -eq 0) {
+            Write-Host "::error::No archives found in C:\b\_build\packages\ — download may have failed"
+            Get-ChildItem -Path 'C:\b\_build\packages\' -Recurse | Format-Table Name, Length
+            throw "No archives found after download"
+          }
+          # Find a 7-zip binary
+          $sevenZip = $null
+          foreach ($cmd in @('7z', '7zz', '7za')) {
+            if (Get-Command $cmd -ErrorAction SilentlyContinue) { $sevenZip = $cmd; break }
+          }
+          foreach ($archive in $archives) {
+            Write-Host "Checking: $($archive.FullName) ($($archive.Length) bytes)"
+            if ($archive.Length -lt 1000) {
+              Write-Host "::error::Archive suspiciously small ($($archive.Length) bytes): $($archive.FullName)"
+              throw "Archive too small: $($archive.FullName)"
+            }
+            if ($sevenZip) {
+              & $sevenZip t $archive.FullName | Out-Null
+              if ($LASTEXITCODE -ne 0) {
+                Write-Host "::error::Corrupt archive: $($archive.FullName)"
+                throw "Archive integrity check failed: $($archive.FullName)"
+              }
+            } else {
+              Write-Host "::warning::No 7z/7zz/7za available — skipping integrity test, size check passed"
+            }
+          }
+          Write-Host "All $($archives.Count) archive(s) verified OK (tool: $(if ($sevenZip) { $sevenZip } else { 'size-only' }))"
+
       - name: Accept EULA
         run: |
           New-Item -Path 'C:\b\.eula_accepted' -ItemType File -Force | Out-Null

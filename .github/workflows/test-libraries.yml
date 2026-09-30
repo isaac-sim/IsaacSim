@@ -54,6 +54,23 @@ jobs:
           name: isaac-sim-libraries-${{ inputs.platform }}-${{ inputs.config }}
           path: _cmake_build/
 
+      - name: Verify downloaded artifacts
+        run: |
+          set -euo pipefail
+          echo "=== Verifying artifact integrity ==="
+          tarfile="_cmake_build/isaacsim-libraries-release.tar"
+          if [ ! -f "$tarfile" ]; then
+            echo "::error::Expected tar archive not found: $tarfile"
+            ls -laR _cmake_build/ || true
+            exit 1
+          fi
+          echo "Checking: $tarfile ($(stat -c%s "$tarfile") bytes)"
+          if ! tar -tf "$tarfile" > /dev/null; then
+            echo "::error::Corrupt tar archive: $tarfile"
+            exit 1
+          fi
+          echo "Archive verified OK"
+
       - name: GPU info
         run: |
           echo "=== GPU info ==="
