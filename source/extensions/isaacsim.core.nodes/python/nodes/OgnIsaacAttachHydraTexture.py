@@ -38,6 +38,7 @@ class OgnIsaacAttachHydraTextureInternalState(BaseResetNode):
     def __init__(self) -> None:
         self.hydra_texture = None
         self.applied_render_vars = set()
+        self.render_product_path = None
         self.rp_sub_stop = None
         self.rp_sub_play = None
         self.drawable_changed_sub = None
@@ -45,6 +46,22 @@ class OgnIsaacAttachHydraTextureInternalState(BaseResetNode):
         settings = carb.settings.get_settings()
         self.is_async = settings.get("/app/asyncRendering") or False
         super().__init__(initialize=False)
+
+    def set_render_product(self, render_product_path: str) -> None:
+        """Reset cached attachment state when the render product target changes.
+
+        Args:
+            render_product_path: Render product path used by the current evaluation.
+        """
+        if self.render_product_path == render_product_path:
+            return
+        if self.hydra_texture is not None:
+            self.hydra_texture.set_updates_enabled(False)
+        self.hydra_texture = None
+        self.applied_render_vars.clear()
+        self.rp_sub_stop = None
+        self.rp_sub_play = None
+        self.render_product_path = render_product_path
 
     def on_timeline_stop(self, event: carb.eventdispatcher.Event) -> None:
         """Disable hydra texture updates when the timeline stops.
@@ -185,6 +202,8 @@ class OgnIsaacAttachHydraTexture:
             db.log_error(f'Invalid RenderProduct prim: "{render_product_path}"')
             return False
 
+        state.set_render_product(render_product_path)
+
         with Usd.EditContext(stage, stage.GetSessionLayer()):
             # Apply render vars
             render_vars = db.inputs.renderVars
@@ -288,6 +307,7 @@ class OgnIsaacAttachHydraTexture:
         if state is not None:
             # Clean up the hydra texture
             state.hydra_texture = None
+            state.render_product_path = None
             state.rp_sub_stop = None
             state.rp_sub_play = None
             state.drawable_changed_sub = None
