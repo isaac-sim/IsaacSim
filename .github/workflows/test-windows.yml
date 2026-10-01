@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 120
     defaults:
       run:
-        shell: pwsh
+        shell: powershell
     env:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: all
@@ -103,9 +103,9 @@ jobs:
           foreach ($archive in $archives) {
             $sizeBytes = $archive.Length
             $fullPath = $archive.FullName
-            Write-Host "Checking: $fullPath [$sizeBytes bytes]"
+            Write-Host ('Checking: ' + $fullPath + ' [' + $sizeBytes + ' bytes]')
             if ($sizeBytes -lt 1000) {
-              Write-Host "::error::Archive suspiciously small [$sizeBytes bytes]: $fullPath"
+              Write-Host ('::error::Archive suspiciously small [' + $sizeBytes + ' bytes]: ' + $fullPath)
               throw "Archive too small: $fullPath"
             }
             if ($sevenZip) {
@@ -119,7 +119,7 @@ jobs:
             }
           }
           $toolName = if ($sevenZip) { $sevenZip } else { 'size-only' }
-          Write-Host "All $($archives.Count) archives verified OK [tool: $toolName]"
+          Write-Host ('All ' + $archives.Count + ' archives verified OK [tool: ' + $toolName + ']')
 
       - name: Accept EULA
         run: |
