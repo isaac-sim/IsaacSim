@@ -119,7 +119,7 @@ jobs:
             }
           }
           $toolName = if ($sevenZip) { $sevenZip } else { 'size-only' }
-          Write-Host "All $($archives.Count) archive`(s`) verified OK `(tool: $toolName`)"
+          Write-Host "All $($archives.Count) archives verified OK [tool: $toolName]"
 
       - name: Accept EULA
         run: |
