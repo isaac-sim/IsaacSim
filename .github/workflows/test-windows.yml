@@ -85,6 +85,15 @@ jobs:
           name: isaac-sim-packages-${{ inputs.platform }}-${{ inputs.config }}
           path: C:\b\_build\packages\
 
+      - name: Fingerprint artifacts (post-download)
+        run: |
+          Write-Host '=== Artifact fingerprints (post-download) ==='
+          $files = Get-ChildItem -Path 'C:\b\_build\packages\' -Recurse -Include '*.7z','*.zip' | Sort-Object FullName
+          foreach ($f in $files) {
+            $hash = (Get-FileHash -Path $f.FullName -Algorithm SHA256).Hash.ToLower()
+            Write-Host ('  ' + $f.FullName + '  size=' + $f.Length + '  sha256=' + $hash)
+          }
+
       - name: Verify downloaded artifacts
         run: |
           $ErrorActionPreference = 'Stop'

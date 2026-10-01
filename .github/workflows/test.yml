@@ -59,6 +59,16 @@ jobs:
           name: isaac-sim-packages-${{ inputs.platform }}-${{ inputs.config }}${{ inputs.coverage && '-cov' || '' }}
           path: _build/packages/
 
+      - name: Fingerprint artifacts (post-download)
+        run: |
+          set -euo pipefail
+          echo "=== Artifact fingerprints (post-download) ==="
+          for f in $(find _build/packages/ -name '*.7z' -o -name '*.zip' | sort); do
+            size=$(stat -c%s "$f")
+            sha=$(sha256sum "$f" | cut -d' ' -f1)
+            echo "  $f  size=$size  sha256=$sha"
+          done
+
       - name: Verify downloaded artifacts
         run: |
           set -euo pipefail
@@ -76,14 +86,15 @@ jobs:
           done
           for archive in "${archives[@]}"; do
             size=$(stat -c%s "$archive")
-            echo "Checking: $archive ($size bytes)"
+            sha=$(sha256sum "$archive" | cut -d' ' -f1)
+            echo "Checking: $archive ($size bytes, sha256:$sha)"
             if [ "$size" -lt 1000 ]; then
-              echo "::error::Archive suspiciously small ($size bytes): $archive"
+              echo "::error::Archive suspiciously small ($size bytes, sha256:$sha): $archive"
               exit 1
             fi
             if [ -n "$SEVENZIP" ]; then
               if ! "$SEVENZIP" t "$archive" > /dev/null 2>&1; then
-                echo "::error::Corrupt archive: $archive"
+                echo "::error::Corrupt archive ($size bytes, sha256:$sha): $archive"
                 exit 1
               fi
             else

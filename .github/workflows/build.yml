@@ -89,6 +89,16 @@ jobs:
           echo "=== Packages created ==="
           ls -lah _build/packages/ || echo "No packages directory found"
 
+      - name: Fingerprint artifacts (pre-upload)
+        run: |
+          set -euo pipefail
+          echo "=== Artifact fingerprints (pre-upload) ==="
+          for f in $(find _build/packages/ -name '*.7z' -o -name '*.zip' | sort); do
+            size=$(stat -c%s "$f")
+            sha=$(sha256sum "$f" | cut -d' ' -f1)
+            echo "  $f  size=$size  sha256=$sha"
+          done
+
       - name: Upload packaged artifacts
         uses: actions/upload-artifact@v4
         with:

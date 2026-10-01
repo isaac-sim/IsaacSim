@@ -87,6 +87,15 @@ jobs:
             Write-Host "No packages directory found"
           }
 
+      - name: Fingerprint artifacts (pre-upload)
+        run: |
+          Write-Host '=== Artifact fingerprints (pre-upload) ==='
+          $files = Get-ChildItem -Path 'C:\b\_build\packages\' -Recurse -Include '*.7z','*.zip' | Sort-Object FullName
+          foreach ($f in $files) {
+            $hash = (Get-FileHash -Path $f.FullName -Algorithm SHA256).Hash.ToLower()
+            Write-Host ('  ' + $f.FullName + '  size=' + $f.Length + '  sha256=' + $hash)
+          }
+
       - name: Upload packaged artifacts
         uses: actions/upload-artifact@v4
         with:
