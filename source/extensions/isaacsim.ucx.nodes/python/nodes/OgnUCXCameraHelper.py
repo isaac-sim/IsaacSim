@@ -83,8 +83,10 @@ class OgnUCXCameraHelper:
             True if the node computes successfully, otherwise false.
         """
         if db.per_instance_state.initialized is False:
-            db.per_instance_state.initialized = True
             stage = omni.usd.get_context().get_stage()
+            if stage is None:
+                carb.log_warn("USD stage is not available yet, retrying on next call")
+                return False
             with Usd.EditContext(stage, stage.GetSessionLayer()):
                 render_product_path = db.inputs.renderProductPath
                 if not render_product_path:
@@ -92,9 +94,9 @@ class OgnUCXCameraHelper:
                     db.per_instance_state.initialized = False
                     return False
 
-                if stage.GetPrimAtPath(render_product_path) is None:
+                render_product_prim = stage.GetPrimAtPath(render_product_path)
+                if not render_product_prim or not render_product_prim.IsValid():
                     carb.log_warn("Render product not created yet, retrying on next call")
-                    db.per_instance_state.initialized = False
                     return False
                 db.per_instance_state.resetSimulationTimeOnStop = db.inputs.resetSimulationTimeOnStop
 
@@ -120,19 +122,21 @@ class OgnUCXCameraHelper:
                         sd.SensorType.Rgb.name
                     )
                     writer = rep.writers.get(db.per_instance_state.rv + f"UCX{time_type}PublishImage")
+                    if writer is None:
+                        carb.log_error("UCX camera image writer was not found")
+                        return False
                     writer.initialize(
                         port=db.inputs.port,
                         tag=db.inputs.tag,
                         sendCudaBuffer=bool(db.inputs.sendCudaBuffer),
                     )
-
-                    if writer is not None:
-                        db.per_instance_state.append_writer(writer)
-
+                    db.per_instance_state.append_writer(writer)
                     db.per_instance_state.attach_writers(render_product_path)
                 except Exception:
-                    print(traceback.format_exc())
+                    carb.log_error(f"UCXCameraHelper: Failed to setup writer: {traceback.format_exc()}")
                     return False
+
+                db.per_instance_state.initialized = True
 
         db.outputs.execOut = og.ExecutionAttributeState.ENABLED
         return True
