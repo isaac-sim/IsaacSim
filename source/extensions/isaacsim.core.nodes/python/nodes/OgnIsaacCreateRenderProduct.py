@@ -137,7 +137,22 @@ class OgnIsaacCreateRenderProduct:
                             db.log_error(f"Error attaching hydra texture to render product {render_product_path}: {e}")
                             db.outputs.execOut = omni.graph.core.ExecutionAttributeState.DISABLED
                             return False
+
+                    render_prod_prim = UsdRender.Product(stage.GetPrimAtPath(render_product_path))
+                    if not render_prod_prim:
+                        db.log_error(f'Invalid renderProduct "{render_product_path}"')
+                        return False
+
+                    requested_resolution = (db.inputs.width, db.inputs.height)
+                    if tuple(render_prod_prim.GetResolutionAttr().Get()) != requested_resolution:
+                        render_prod_prim.GetResolutionAttr().Set(Gf.Vec2i(*requested_resolution))
+                    requested_camera = db.inputs.cameraPrim[0].GetString()
+                    if list(render_prod_prim.GetCameraRel().GetTargets()) != [requested_camera]:
+                        render_prod_prim.GetCameraRel().SetTargets([requested_camera])
+
                     state.render_product_path = render_product_path
+                    state.resolution = requested_resolution
+                    state.camera_path = requested_camera
                     db.node.get_attribute("inputs:renderProductPrim").set([render_product_path])
                     db.outputs.renderProductPath = render_product_path
                     db.outputs.execOut = omni.graph.core.ExecutionAttributeState.ENABLED
