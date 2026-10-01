@@ -224,18 +224,18 @@ class OgnIsaacArticulationController:
         """
         state = db.per_instance_state
         try:
-            if not state.initialized:
-                if len(db.inputs.robotPath) != 0:
-                    state.prim_path = db.inputs.robotPath
-                else:
-                    if len(db.inputs.targetPrim) == 0:
-                        db.log_error("No robot prim found for the articulation controller")
-                        return False
-                    else:
-                        state.prim_path = db.inputs.targetPrim[0].GetString()
+            if len(db.inputs.robotPath) != 0:
+                prim_path = db.inputs.robotPath
+            else:
+                if len(db.inputs.targetPrim) == 0:
+                    db.log_error("No robot prim found for the articulation controller")
+                    return False
+                prim_path = db.inputs.targetPrim[0].GetString()
 
-                # initialize the controller handle for the robot
+            if not state.initialized or state.prim_path != prim_path:
+                state.prim_path = prim_path
                 state.initialize_controller()
+                state.joint_picked = False
 
             # pick the joints that are being commanded, this can be different at every step
             joint_names = db.inputs.jointNames
