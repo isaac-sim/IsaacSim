@@ -11,6 +11,8 @@ This directory contains scripts for building Docker images of Isaac Sim. The bui
 - [Build Process](#build-process)
 - [Example Usage](#example-usage)
 - [Environment Variables for `docker run`](#environment-variables-for-docker-run)
+- [Developing extensions with hot reload](#developing-extensions-with-hot-reload)
+- [Developing extensions with hot reload](#developing-extensions-with-hot-reload)
 - [Ports for streaming](#ports-for-streaming)
 - [Docker Compose (Isaac Sim + Web Viewer)](#docker-compose-isaac-sim--web-viewer)
   - [Quick start](#quick-start)
@@ -216,6 +218,14 @@ Alternatively, use the provided helper script which drops into a bash shell insi
 ```bash
 ./tools/docker/run_docker.sh
 ```
+
+### Developing extensions with hot reload
+
+For a bind-mounted extension development workflow with Kit filesystem watching and hot reload, see [Developing extensions in Docker](extension_development.md).
+
+### Developing extensions with hot reload
+
+For a bind-mounted extension development workflow with Kit filesystem watching and hot reload, see [Developing extensions in Docker](extension_development.md).
 
 ### Run with volume mounts:
 
