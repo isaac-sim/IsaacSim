@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 120
     defaults:
       run:
-        shell: powershell
+        shell: pwsh
     env:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: all

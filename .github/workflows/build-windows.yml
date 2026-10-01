@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 300
     defaults:
       run:
-        shell: powershell
+        shell: pwsh
     env:
       PM_PACKAGES_ROOT: ${{ github.workspace }}\.cache\packman
 
