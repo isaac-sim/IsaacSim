@@ -68,10 +68,9 @@ def get_filtered_entities(usdrt_stage: object, filter_pattern: str | None = None
     if not usdrt_stage:
         return [], "usdrt Stage not available for traversing"
 
-    # Get all prim paths from the usdrt stage
-
+    # Get all prim paths from the usdrt stage. Stage.Traverse() already excludes the pseudo-root.
     all_prim_paths = []
-    for prim in list(usdrt_stage.Traverse())[1:]:
+    for prim in usdrt_stage.Traverse():
         if not prim.GetPrimPath().pathString.startswith("/Render"):
             all_prim_paths.append(prim.GetPrimPath().pathString)
 
