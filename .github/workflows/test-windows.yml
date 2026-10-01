@@ -101,22 +101,25 @@ jobs:
             if (Get-Command $cmd -ErrorAction SilentlyContinue) { $sevenZip = $cmd; break }
           }
           foreach ($archive in $archives) {
-            Write-Host "Checking: $($archive.FullName) ($($archive.Length) bytes)"
-            if ($archive.Length -lt 1000) {
-              Write-Host "::error::Archive suspiciously small ($($archive.Length) bytes): $($archive.FullName)"
-              throw "Archive too small: $($archive.FullName)"
+            $sizeBytes = $archive.Length
+            $fullPath = $archive.FullName
+            Write-Host "Checking: $fullPath ($sizeBytes bytes)"
+            if ($sizeBytes -lt 1000) {
+              Write-Host "::error::Archive suspiciously small ($sizeBytes bytes): $fullPath"
+              throw "Archive too small: $fullPath"
             }
             if ($sevenZip) {
-              & $sevenZip t $archive.FullName | Out-Null
+              & $sevenZip t $fullPath | Out-Null
               if ($LASTEXITCODE -ne 0) {
-                Write-Host "::error::Corrupt archive: $($archive.FullName)"
-                throw "Archive integrity check failed: $($archive.FullName)"
+                Write-Host "::error::Corrupt archive: $fullPath"
+                throw "Archive integrity check failed: $fullPath"
               }
             } else {
-              Write-Host "::warning::No 7z/7zz/7za available — skipping integrity test, size check passed"
+              Write-Host "::warning::No 7z/7zz/7za available - skipping integrity test, size check passed"
             }
           }
-          Write-Host "All $($archives.Count) archive(s) verified OK (tool: $(if ($sevenZip) { $sevenZip } else { 'size-only' }))"
+          $toolName = if ($sevenZip) { $sevenZip } else { 'size-only' }
+          Write-Host "All $($archives.Count) archive(s) verified OK (tool: $toolName)"
 
       - name: Accept EULA
         run: |
