@@ -91,7 +91,7 @@ jobs:
           Write-Host "=== Verifying artifact integrity ==="
           $archives = Get-ChildItem -Path 'C:\b\_build\packages\' -Recurse -Include '*.7z','*.zip'
           if ($archives.Count -eq 0) {
-            Write-Host "::error::No archives found in C:\b\_build\packages\ — download may have failed"
+            Write-Host "::error::No archives found in C:\b\_build\packages\ -- download may have failed"
             Get-ChildItem -Path 'C:\b\_build\packages\' -Recurse | Format-Table Name, Length
             throw "No archives found after download"
           }
