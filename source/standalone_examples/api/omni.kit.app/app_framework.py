@@ -13,7 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Demonstrate AppFramework usage for running asynchronous Kit applications."""
+"""Demonstrate AppFramework usage for running asynchronous Kit applications.
+
+Kit intercepts ``sys.stdout``/``sys.stderr`` and ``sys.exit`` by default. This is useful for
+normal Kit applications, but it can interfere with notebook output capture and Python tooling.
+Set ``/app/python/interceptSysStdOutput`` and ``/app/python/interceptSysExit`` to ``false``
+when the host Python environment should retain ownership of those objects.
+"""
 
 import asyncio
 import os
@@ -27,6 +33,10 @@ argv = [
     "--no-window",
     "--/app/asyncRendering=False",
     "--/app/fastShutdown=True",
+    # Uncomment these when embedding Kit in an environment that must preserve
+    # Python's original stdout/stderr streams and sys.exit behavior, such as Jupyter.
+    # "--/app/python/interceptSysStdOutput=false",
+    # "--/app/python/interceptSysExit=false",
     "--enable",
     "omni.usd",
     "--enable",
