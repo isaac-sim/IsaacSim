@@ -249,7 +249,7 @@ class SimulationApp:
         self._exiting = False
 
         # Override settings from input config
-        self.config = self.DEFAULT_LAUNCHER_CONFIG
+        self.config = self.DEFAULT_LAUNCHER_CONFIG.copy()
         if experience == "":
             for exp in [
                 f'{os.environ["EXP_PATH"]}/omni.isaac.sim.python.kit',
