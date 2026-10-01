@@ -42,6 +42,11 @@ class OgnIsaacArticulationStateInternalState(BaseResetNode):
     def initialize_articulation(self) -> None:
         """Create the articulation handle for the selected robot prim and mark the state initialized."""
         self._articulation = Articulation(self.robot_prim)
+        self.dof_names = None
+        self.dof_indices = None
+        self._dof_names = []
+        self._dof_indices = None
+        self._link_indices = None
         self.initialized = True
 
     def pick_dofs(self, dof_names: Any, dof_indices: Any) -> None:
@@ -129,17 +134,16 @@ class OgnIsaacArticulationState:
         """
         state = db.per_instance_state
         try:
-            if not state.initialized:
-                if len(db.inputs.robotPath) != 0:
-                    state.robot_prim = db.inputs.robotPath
-                else:
-                    if not len(db.inputs.targetPrim):
-                        db.log_error("No robot prim found for the articulation state")
-                        return False
-                    else:
-                        state.robot_prim = db.inputs.targetPrim[0].GetString()
+            if len(db.inputs.robotPath) != 0:
+                robot_prim = db.inputs.robotPath
+            else:
+                if not len(db.inputs.targetPrim):
+                    db.log_error("No robot prim found for the articulation state")
+                    return False
+                robot_prim = db.inputs.targetPrim[0].GetString()
 
-                # initialize the articulation handle for the robot
+            if not state.initialized or state.robot_prim != robot_prim:
+                state.robot_prim = robot_prim
                 state.initialize_articulation()
 
             # pick the articulation DOFs to be queried, they can be different at every step
