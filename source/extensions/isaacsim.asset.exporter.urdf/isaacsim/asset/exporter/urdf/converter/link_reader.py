@@ -60,15 +60,16 @@ class LinkData:
     collisions: list[CollisionData] = field(default_factory=list)
 
 
-def read_link(prim: Usd.Prim) -> LinkData:
+def read_link(prim: Usd.Prim, visualize_collision_meshes: bool = False) -> LinkData:
     """Read all URDF link data from a rigid body prim.
 
     Classifies children as visuals or collisions based on CollisionAPI
-    and purpose attributes.  Geometry origins are set to identity here;
+    and purpose attributes. Geometry origins are set to identity here;
     they are recomputed by the orchestrator using URDF frames.
 
     Args:
         prim: USD prim with RigidBodyAPI.
+        visualize_collision_meshes: Whether collision geometry should also be emitted as visual geometry.
 
     Returns:
         LinkData with inertial, visuals, and collisions populated.
@@ -102,7 +103,7 @@ def read_link(prim: Usd.Prim) -> LinkData:
                     )
                 )
 
-            if is_visual:
+            if (is_visual and not is_collision) or (is_collision and visualize_collision_meshes):
                 mat_name = _get_bound_material_name(child)
                 link.visuals.append(
                     VisualData(
@@ -134,7 +135,7 @@ def _iter_geometry_children(prim: Usd.Prim) -> Generator[Usd.Prim, None, None]:
 
     Traverses the full subtree under the rigid body prim using
     Usd.TraverseInstanceProxies so that instanced geometry (common in
-    Isaac Sim assets) is found.  Stops descending into child rigid bodies
+    Isaac Sim assets) is found. Stops descending into child rigid bodies
     and joints to stay within the current link's scope.
 
     For instance proxies, reads from the prototype to ignore overrides.
