@@ -70,14 +70,17 @@ class TestCreateRenderProduct(ogts.OmniGraphTestCase):
                     ("createRP1.inputs:cameraPrim", "/OmniverseKit_Persp"),
                     ("createRP2.inputs:cameraPrim", "/OmniverseKit_Persp"),
                     ("createRP2.inputs:enabled", False),
-                    ("createRP3.inputs:cameraPrim", "/OmniverseKit_Persp"),
+                    ("createRP3.inputs:cameraPrim", "/OmniverseKit_Top"),
                     ("createRP3.inputs:renderProductPrim", [rp_3.path]),
                 ],
             },
         )
         self._stage = stage_utils.get_current_stage()
+        rp_3_product = UsdRender.Product(self._stage.GetPrimAtPath(rp_3.path))
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
+        self.assertEqual(rp_3_product.GetResolutionAttr().Get(), (1280, 720))
+        self.assertEqual(rp_3_product.GetCameraRel().GetTargets()[0], "/OmniverseKit_Top")
         await omni.kit.app.get_app().next_update_async()
         await omni.kit.app.get_app().next_update_async()
         rp_prefix = carb.settings.get_settings().get_as_string("/exts/omni.kit.hydra_texture/renderProduct/path/prefix")
