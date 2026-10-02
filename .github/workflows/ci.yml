@@ -21,6 +21,18 @@ on:
         description: "Run optional (non-blocking) test suites"
         type: boolean
         default: false
+      run_libraries_linux:
+        description: "Run Linux libraries build + test"
+        type: boolean
+        default: true
+      run_windows_build:
+        description: "Run Windows build"
+        type: boolean
+        default: true
+      run_windows_tests:
+        description: "Run Windows tests (requires Windows build)"
+        type: boolean
+        default: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -171,6 +183,82 @@ jobs:
       suite: ${{ matrix.suite }}
       bucket: ${{ matrix.bucket }}
       coverage: true
+
+  # ===========================================================================
+  # Build Libraries (standalone CMake/Pixi graph, no Kit dependency)
+  # ===========================================================================
+  build-libraries:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_libraries_linux }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            config: release
+    uses: ./.github/workflows/build-libraries.yml
+    with:
+      platform: ${{ matrix.platform }}
+      config: ${{ matrix.config }}
+
+  # ===========================================================================
+  # Test Libraries - Linux (uses libraries build, needs GPU)
+  # ===========================================================================
+  test-libraries:
+    needs: build-libraries
+    if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.run_libraries_linux) && needs.build-libraries.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            config: release
+    uses: ./.github/workflows/test-libraries.yml
+    with:
+      platform: ${{ matrix.platform }}
+      config: ${{ matrix.config }}
+
+  # ===========================================================================
+  # Build Matrix (Windows)
+  # ===========================================================================
+  build-windows:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_windows_build }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x86_64
+            config: release
+    uses: ./.github/workflows/build-windows.yml
+    secrets: inherit
+    with:
+      platform: ${{ matrix.platform }}
+      config: ${{ matrix.config }}
+
+  # ===========================================================================
+  # Test Matrix - Blocking Windows (uses Windows build)
+  # ===========================================================================
+  test-windows-blocking:
+    needs: build-windows
+    if: ${{ always() && (github.event_name != 'workflow_dispatch' || (inputs.run_windows_build && inputs.run_windows_tests)) && needs.build-windows.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x86_64
+            config: release
+            suite: startuptests
+            bucket: ""
+          - platform: windows-x86_64
+            config: release
+            suite: postinstalltests
+            bucket: ""
+    uses: ./.github/workflows/test-windows.yml
+    secrets: inherit
+    with:
+      platform: ${{ matrix.platform }}
+      config: ${{ matrix.config }}
+      suite: ${{ matrix.suite }}
+      bucket: ${{ matrix.bucket }}
 
   # ===========================================================================
   # Combine Coverage (runs after all tests, even if some fail)

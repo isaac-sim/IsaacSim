@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-name: Build (Coverage)
+name: Build Libraries
 
 on:
   workflow_call:
@@ -15,16 +15,15 @@ on:
 
 jobs:
   build:
-    name: "Build (${{ inputs.platform }} / ${{ inputs.config }} / cov)"
+    name: "Build Libraries (${{ inputs.platform }} / ${{ inputs.config }})"
     runs-on: [self-hosted, cpu]
-    timeout-minutes: 300
+    timeout-minutes: 180
     defaults:
       run:
         shell: bash
     env:
       OMNI_KIT_ALLOW_ROOT: 1
       PM_PACKAGES_ROOT: ${{ github.workspace }}/.cache/packman
-      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
 
     steps:
       - name: Checkout repository
@@ -36,13 +35,16 @@ jobs:
       - name: Ensure LFS files are smudged
         run: git lfs checkout
 
+      - name: Clean checkout
+        run: |
+          git clean -fdx
+          git reset --hard HEAD
+
       - name: Make all files user-writable
         run: chmod -R u+w .
 
       - name: Create caches
-        run: |
-          mkdir -p "${{ github.workspace }}/.cache/packman"
-          mkdir -p "${{ github.workspace }}/.cache/ccache"
+        run: mkdir -p "${{ github.workspace }}/.cache/packman"
 
       - name: Configure graphics build dependencies
         run: |
@@ -60,69 +62,40 @@ jobs:
           echo "CFLAGS=${CFLAGS:+${CFLAGS} }-isystem ${khronos_include}" >> "${GITHUB_ENV}"
           echo "CXXFLAGS=${CXXFLAGS:+${CXXFLAGS} }-isystem ${khronos_include}" >> "${GITHUB_ENV}"
 
-      - name: Build with coverage instrumentation
-        env:
-          BUILD_CONFIG: ${{ inputs.config }}
+      - name: Build Libraries
         run: |
           set -euo pipefail
           set -x
 
-          touch .eula_accepted
           find . -type f -iname "*.sh" -exec chmod +x {} +
 
-          echo "::group::Build (${BUILD_CONFIG} + gcov)"
-          ./build.sh -r --enable-gcov
+          echo "::group::Build Libraries (${{ inputs.config }})"
+          ./source/libraries/build.sh -r --rebuild --profile standard
           echo "::endgroup::"
 
-          mkdir -p "${{ github.workspace }}/.cache/package_temp/${{ github.run_id }}"
-
-          echo "::group::Package (coverage)"
-          mkdir -p _build/docs/isaac-sim/latest/py
-          ./repo.sh package -c "${BUILD_CONFIG}" -m isaac-sim-standalone-coverage \
-            --temp-dir "${{ github.workspace }}/.cache/package_temp/${{ github.run_id }}"
-          echo "::endgroup::"
-
-          rm -rf "${{ github.workspace }}/.cache/package_temp/${{ github.run_id }}"
-
-      - name: List packaged artifacts
+      - name: Archive library build artifacts
         run: |
-          echo "=== Coverage packages created ==="
-          ls -lah _build/packages/ || echo "No packages directory found"
+          tar -cf _cmake_build/isaacsim-libraries-release.tar \
+            --exclude=isaacsim-libraries-release/developer-environment \
+            --exclude=isaacsim-libraries-release/ovphysx-cache \
+            --exclude=isaacsim-libraries-release/Testing \
+            --exclude=isaacsim-libraries-release/warp-cache \
+            -C _cmake_build isaacsim-libraries-release
 
-      - name: Fingerprint artifacts (pre-upload)
-        run: |
-          set -euo pipefail
-          echo "=== Artifact fingerprints (pre-upload) ==="
-          for f in $(find _build/packages/ -name '*.7z' -o -name '*.zip' | sort); do
-            size=$(stat -c%s "$f")
-            sha=$(sha256sum "$f" | cut -d' ' -f1)
-            echo "  $f  size=$size  sha256=$sha"
-          done
-
-      - name: Upload coverage build artifacts
+      - name: Upload library build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: isaac-sim-packages-${{ inputs.platform }}-${{ inputs.config }}-cov
-          path: _build/packages/
-          compression-level: 0
-          retention-days: 7
-        if: success()
-
-      - name: Upload gcno files for coverage combine
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-gcno-${{ inputs.platform }}-${{ inputs.config }}
-          path: _build/intermediate/
+          name: isaac-sim-libraries-${{ inputs.platform }}-${{ inputs.config }}
+          path: _cmake_build/isaacsim-libraries-release.tar
           retention-days: 7
         if: success()
 
       - name: Upload build logs (on failure)
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs-${{ inputs.platform }}-${{ inputs.config }}-cov
+          name: build-libraries-logs-${{ inputs.platform }}-${{ inputs.config }}
           path: |
-            _build/**/*.log
-            _repo/repo.log
-            _repo/repolog*.txt
+            _cmake_build/**/*.log
+            ${{ github.workspace }}/.cache/packman/chk/**/logs/**/*.log
           retention-days: 7
         if: failure()
