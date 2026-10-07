@@ -1209,10 +1209,17 @@ class SimulationManager:
         if "name" in kwargs:
             carb.log_warn("The parameter 'name' is not longer supported and will be removed in a future version")
         # check for weak reference support (when the callback is a method of a class)
+        # - Only a weak reference to the instance and the method name are captured (as default arguments).
+        #   The wrapper's body must not reference `callback`: doing so would store the bound method in the
+        #   closure, which holds a strong reference to the instance and prevents it from being garbage-collected.
+        # - If the instance has been garbage-collected, the wrapper is a no-op.
         if hasattr(callback, "__self__"):
 
-            def on_event(e: Any, obj: Any = weakref.proxy(callback.__self__)) -> Any:
-                return getattr(obj, callback.__name__)(e)
+            def on_event(
+                e: Any, obj_ref: weakref.ref = weakref.ref(callback.__self__), method_name: str = callback.__name__
+            ) -> Any:
+                obj = obj_ref()
+                return getattr(obj, method_name)(e) if obj is not None else None
 
         else:
             on_event = callback
@@ -1241,8 +1248,16 @@ class SimulationManager:
         ]:
             if hasattr(callback, "__self__"):
 
-                def on_event(step_dt: float, context: Any, obj: Any = weakref.proxy(callback.__self__)) -> Any:
-                    return getattr(obj, callback.__name__)(step_dt, context) if cls._simulation_view_created else None
+                def on_event(
+                    step_dt: float,
+                    context: Any,
+                    obj_ref: weakref.ref = weakref.ref(callback.__self__),
+                    method_name: str = callback.__name__,
+                ) -> Any:
+                    if not cls._simulation_view_created:
+                        return None
+                    obj = obj_ref()
+                    return getattr(obj, method_name)(step_dt, context) if obj is not None else None
 
             else:
 
